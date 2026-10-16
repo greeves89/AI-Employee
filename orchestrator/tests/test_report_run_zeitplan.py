@@ -559,7 +559,8 @@ class FremdgetakteteZeitplaeneBleibenFremdgetaktet(_Basis):
     Mechanismen gegenseitig."""
 
     async def test_anlegen_mit_systemnamen_wird_abgewiesen(self):
-        for name in ("[Proactive] Beobachter", "[Rhythmus] Abendplanung", "[Plan] Block"):
+        for name in ("[Proactive] Beobachter", "[Rhythmus] Abendplanung", "[Plan] Block",
+                     "[Projekt] Leitstand"):
             with self.subTest(name=name):
                 async with self.Session() as db:
                     with self.assertRaises(HTTPException) as fehler:
@@ -581,8 +582,35 @@ class FremdgetakteteZeitplaeneBleibenFremdgetaktet(_Basis):
         async with self.Session() as db:
             self.assertFalse((await db.get(Schedule, plan.id)).adaptive)
 
+    async def test_projekt_takt_nachtraeglich_adaptiv_wird_abgewiesen(self):
+        """Der Arbeitstakt eines Projekts gehört dem Projekt (#952).
+
+        ``projekt_takt.abgleichen`` schreibt bei JEDEM Schreibvorgang am Projekt
+        ``interval_seconds`` und ``next_run_at`` neu. Stünde so ein Zeitplan auf
+        adaptiv, setzte der nächste Projekt-PATCH die erreichte Stufe still
+        zurück, während ``leerlaeufe``/``stufe`` am Zeitplan stehen bleiben."""
+        plan = await self._zeitplan(name="[Projekt] Leitstand")
+        async with self.Session() as db:
+            with self.assertRaises(HTTPException) as fehler:
+                await api.update_schedule(
+                    plan.id, ScheduleUpdate(adaptive=True), user=self.agent, db=db,
+                )
+        self.assertEqual(fehler.exception.status_code, 400)
+        async with self.Session() as db:
+            self.assertFalse((await db.get(Schedule, plan.id)).adaptive)
+
+    def test_die_sperrliste_kennt_das_praefix_des_projekt_takts(self):
+        """Das Präfix steht in ``adaptiver_takt`` wörtlich — hier wird es gegen
+        die Quelle gehalten, damit eine Umbenennung in ``projekt_takt`` nicht
+        still ein Loch in die Sperre reißt."""
+        from app.core import adaptiver_takt
+        from app.core.projekt_takt import TAKT_PRAEFIX
+
+        self.assertIn(TAKT_PRAEFIX.strip(), adaptiver_takt.FREMDGETAKTETE_PRAEFIXE)
+        self.assertTrue(adaptiver_takt.fremdgetaktet(f"{TAKT_PRAEFIX}Irgendein Projekt"))
+
     async def test_ein_gewoehnlicher_zeitplan_darf_weiterhin_adaptiv_werden(self):
-        """Gegenprobe: Die Sperre trifft nur die drei Präfixe."""
+        """Gegenprobe: Die Sperre trifft nur die vier Präfixe."""
         plan = await self._zeitplan(name="PR-Beobachter")
         async with self.Session() as db:
             antwort = await api.update_schedule(

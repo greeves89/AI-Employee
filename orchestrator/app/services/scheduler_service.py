@@ -1067,6 +1067,13 @@ class SchedulerService:
                 )
                 return
 
+        # Vor dem ``try`` zusammengebaut: der Waechter in
+        # test_scheduler_dispatch_lock_guard.py misst den Abstand zwischen dem
+        # Aufruf und seinem ``finally`` in Zeichen (#726), ein mehrzeiliges
+        # Argument am Aufruf laesst ihn fehlschlagen.
+        auftrag_metadaten = {"schedule_id": schedule.id, "adaptive": ist_adaptiv}
+        if takt_team_id:
+            auftrag_metadaten["team_id"] = takt_team_id
         try:
             task = await router.create_and_route_task(
                 title=f"[Scheduled] {schedule.name}",
@@ -1074,11 +1081,7 @@ class SchedulerService:
                 priority=schedule.priority,
                 agent_id=schedule.agent_id,
                 model=schedule.model,
-                metadata={
-                    "schedule_id": schedule.id,
-                    "adaptive": ist_adaptiv,
-                    **({"team_id": takt_team_id} if takt_team_id else {}),
-                },
+                metadata=auftrag_metadaten,
                 erlaubte_agenten=kandidaten,
             )
         finally:

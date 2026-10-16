@@ -37,6 +37,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 - Die von der Plattform selbst geführten Zeitpläne (Eigeninitiative, Tagesrhythmus,
   Tagesplan-Blöcke) lassen sich nicht auf adaptiv stellen: Ihr Takt kommt aus der
   Agenten-Konfiguration, beides zusammen würde sich gegenseitig überschreiben.
+- Dasselbe gilt für den Arbeitstakt eines Projekts: dessen Zeitplan führt das Projekt.
 
 ---
 

@@ -56,10 +56,14 @@ MAX_SCHWELLE = 50
 #: Zeitplaene, die die Plattform selbst fuehrt: ``[Proactive]`` und
 #: ``[Rhythmus]`` bekommen ihr Intervall bei jedem Abgleich aus der
 #: Agenten-Konfiguration (``app.core.eigeninitiative.abgleichen``), ``[Plan]``
-#: sind Einmal-Laeufe ohne Takt. Ein adaptiver Takt wuerde sich mit dem
-#: Abgleich gegenseitig ueberschreiben — deshalb ist adaptiv dort verboten
-#: (#941, Punkt 4).
-FREMDGETAKTETE_PRAEFIXE = ("[Proactive]", "[Rhythmus]", "[Plan]")
+#: sind Einmal-Laeufe ohne Takt, und ``[Projekt]`` ist der Arbeitstakt eines
+#: Projekts: ``app.core.projekt_takt.abgleichen`` setzt bei JEDEM Schreiben am
+#: Projekt ``interval_seconds`` und ``next_run_at`` neu. Ein adaptiver Takt
+#: wuerde sich mit dem Abgleich gegenseitig ueberschreiben — deshalb ist
+#: adaptiv dort verboten (#941, Punkt 4). Das Praefix steht hier woertlich und
+#: nicht als Import, damit dieses Modul ohne Projekt-Modell ladbar bleibt;
+#: ``test_report_run_zeitplan`` haelt es gegen ``projekt_takt.TAKT_PRAEFIX``.
+FREMDGETAKTETE_PRAEFIXE = ("[Proactive]", "[Rhythmus]", "[Plan]", "[Projekt]")
 
 
 def fremdgetaktet(name: str | None) -> bool:
@@ -69,7 +73,8 @@ def fremdgetaktet(name: str | None) -> bool:
 
 FREMDGETAKTET_GRUND = (
     "Diesen Zeitplan taktet die Plattform selbst ([Proactive]/[Rhythmus] aus der "
-    "Agenten-Konfiguration, [Plan] ist ein Einmal-Lauf). Ein adaptiver Takt würde "
+    "Agenten-Konfiguration, [Plan] ist ein Einmal-Lauf, [Projekt] der Arbeitstakt "
+    "eines Projekts). Ein adaptiver Takt würde "
     "sich damit gegenseitig überschreiben. Lege für einen Beobachtungs-Job einen "
     "eigenen Zeitplan an."
 )
