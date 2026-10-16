@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.tasks import _get_task_router, _get_user_agent_ids
 from app.core.task_router import TaskRouter
 from app.db.session import get_db
-from app.dependencies import is_agent_principal, require_auth, require_auth_or_agent
+from app.dependencies import get_redis_service, is_agent_principal, require_auth, require_auth_or_agent
 from app.models.agent import Agent
 from app.models.team import Team
 
@@ -32,6 +32,7 @@ class CreateTeam(BaseModel):
     farbe: str | None = None
     takt_minuten: int | None = None
     geteilt_mit: list[str] = []
+    repo: str | None = None
 
 
 class UpdateTeam(BaseModel):
@@ -44,6 +45,8 @@ class UpdateTeam(BaseModel):
     takt_minuten: int | None = None
     # Nutzer-IDs, die das Projekt sehen dürfen (ersetzt die bisherige Liste).
     geteilt_mit: list[str] | None = None
+    # GitHub-Repo (owner/name); leer entfernt es. Nur Administratoren.
+    repo: str | None = None
 
 
 def _farbe(wert: str | None) -> str | None:
@@ -72,6 +75,9 @@ def _serialize(t: Team) -> dict:
         "created_by": t.created_by, "farbe": getattr(t, "farbe", None),
         "takt_minuten": getattr(t, "takt_minuten", None),
         "geteilt_mit": list(getattr(t, "geteilt_mit", None) or []),
+        "repo": getattr(t, "repo", None),
+        "repo_abgleich_at": t.repo_abgleich_at.isoformat() if getattr(t, "repo_abgleich_at", None) else None,
+        "repo_fehler": getattr(t, "repo_fehler", None),
     }
 
 
@@ -145,6 +151,22 @@ async def _is_team_member(team: Team, user, db: AsyncSession) -> bool:
     return _ist_ersteller(team, user) or str(getattr(user, "id", "")) in set(getattr(team, "geteilt_mit", None) or [])
 
 
+def _repo_setzen(t: Team, repo: str, user) -> None:
+    """Repo an ein Projekt hängen — nur Administratoren: der GitHub-Zugang gilt für
+    die ganze Anlage, und über ihn liessen sich sonst fremde private Repos lesen."""
+    from app.core.projekt_git import repo_pruefen
+    from app.models.user import UserRole
+
+    if getattr(user, "role", None) != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Ein Repo verbindet nur ein Administrator.")
+    try:
+        neu = repo_pruefen(repo)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    if neu != t.repo:
+        t.repo, t.repo_abgleich_at, t.repo_fehler = neu, None, None
+
+
 def _nur_ersteller(team: Team, user) -> None:
     """Einstellungen des Projekts (Name, Mitglieder, Lead, Takt, Freigabe, Löschen) ändert nur der Ersteller."""
     if not _ist_ersteller(team, user):
@@ -183,6 +205,8 @@ async def create_team(body: CreateTeam, user=Depends(require_auth), db: AsyncSes
         geteilt_mit=await _freigabe(db, body.geteilt_mit, user),
         created_by=getattr(user, "email", None) or str(getattr(user, "id", "")),
     )
+    if body.repo:
+        _repo_setzen(team, body.repo, user)
     db.add(team)
     await db.commit()
     await db.refresh(team)
@@ -352,6 +376,7 @@ async def update_team(team_id: str, body: UpdateTeam, user=Depends(require_auth)
     _nur_ersteller(t, user)
     await _nur_eigene_agenten([*(body.member_agent_ids or []), body.lead_agent_id], user, db)
     if body.geteilt_mit is not None: t.geteilt_mit = await _freigabe(db, body.geteilt_mit, user)
+    if body.repo is not None: _repo_setzen(t, body.repo, user)
     if body.name is not None: t.name = body.name
     if body.description is not None: t.description = body.description
     if body.member_agent_ids is not None: t.member_agent_ids = body.member_agent_ids
@@ -996,3 +1021,19 @@ async def wissen_suchen(team_id: str, frage: str, user=Depends(require_auth_or_a
     if not frage:
         raise HTTPException(status_code=422, detail="Die Suchfrage ist leer.")
     return {"projekt_id": t.id, "treffer": await projekt_wissen.suchen(db, brain, frage)}
+
+
+@router.post("/{team_id}/repo/abgleichen")
+async def repo_abgleichen(team_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db),
+                          redis=Depends(get_redis_service)):
+    """Issues und PRs des Repos sofort aufs Board holen (sonst alle zehn Minuten)."""
+    from app.core import projekt_git
+
+    _kein_betrachter(user)
+    t = await _projekt(team_id, user, db)
+    if not t.repo:
+        raise HTTPException(status_code=400, detail="Das Projekt hat kein Repo.")
+    try:
+        return await projekt_git.projekt_abgleichen(db, redis, t)
+    except projekt_git.GitFehler as e:
+        raise HTTPException(status_code=502, detail=str(e))

@@ -105,6 +105,7 @@ class SchedulerService:
         self.docker = docker_service
         self._gc_counter = 0
         self._feeds_counter = 0
+        self._git_counter = 0
         self._idle_stop_counter = 0
         self._failure_watchdog_last_run: datetime | None = None
         self._dreaming_counter = 0
@@ -310,6 +311,16 @@ class SchedulerService:
                             )
                     except Exception as e:
                         logger.warning("[Scheduler] KnowledgeFeeds error: %s", e)
+                # Git-Projekte: Issues und PRs aufs Board (core/projekt_git).
+                self._git_counter += 30
+                if self._git_counter >= 600:  # alle 10 min
+                    self._git_counter = 0
+                    try:
+                        from app.core import projekt_git
+
+                        await projekt_git.alle_abgleichen(self.redis)
+                    except Exception as e:
+                        logger.warning("[Scheduler] Git-Abgleich: %s", e)
                 # Missed-run watchdog: catches schedules whose task never reported
                 # a terminal status (silent drops). Self-throttles to once per hour.
                 try:

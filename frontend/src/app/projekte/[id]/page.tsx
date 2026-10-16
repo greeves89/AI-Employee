@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, BookOpen, Crown, KanbanSquare, Loader2, MessageSquare, Pencil, Send, Trash2, Users } from "lucide-react";
+import { ArrowLeft, BookOpen, Crown, GitBranch, KanbanSquare, Loader2, MessageSquare, Pencil, RefreshCw, Send, Trash2, TriangleAlert, Users } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { CreateTeamModal } from "@/components/agents/create-team-modal";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
@@ -20,7 +20,7 @@ import { apiFehlertext } from "@/lib/api-fehler";
 import { agentZustand } from "@/lib/aufgaben-anzeige";
 import { projektFarbe, type ProjektBoard } from "@/lib/projekte";
 import { setVisibleInterval } from "@/lib/visible-interval";
-import { cn } from "@/lib/utils";
+import { cn, timeAgo } from "@/lib/utils";
 
 type Reiter = "board" | "wissen" | "team";
 
@@ -47,6 +47,7 @@ export default function ProjektPage() {
   const [ziel, setZiel] = useState<string>("");
   const [nurEingang, setNurEingang] = useState(false);
   const [sendet, setSendet] = useState(false);
+  const [gleichtAb, setGleichtAb] = useState(false);
   const eingabe = useRef<HTMLTextAreaElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
   // Zuletzt gezeigter Stand: alle fünf Sekunden kommt meist dasselbe — dann bleibt
@@ -144,6 +145,23 @@ export default function ProjektPage() {
       router.push("/projekte");
     } catch (e) {
       toast.error("Nicht gelöscht", apiFehlertext(e));
+    }
+  };
+
+  const repoAbgleichen = async () => {
+    if (!projekt) return;
+    setGleichtAb(true);
+    try {
+      const r = await api.projektRepoAbgleichen(projekt.id);
+      toast.success("Abgeglichen", `${r.neu} neu · ${r.aktualisiert} aktualisiert · ${r.erledigt} erledigt`);
+      zuletzt.current = "";
+      await laden();
+    } catch (e) {
+      toast.error("Nicht abgeglichen", apiFehlertext(e));
+      zuletzt.current = "";
+      await laden();
+    } finally {
+      setGleichtAb(false);
     }
   };
 
@@ -285,6 +303,29 @@ export default function ProjektPage() {
         </div>
 
         <div ref={boardRef} className="scroll-mt-20 space-y-4">
+          {projekt.repo && (
+            <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border px-3 py-2 text-xs",
+              projekt.repo_fehler ? "border-red-500/30 bg-red-500/5" : "border-foreground/[0.08] bg-card")}>
+              <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
+              <a href={`https://github.com/${projekt.repo}`} target="_blank" rel="noopener noreferrer" className="font-medium hover:underline">
+                {projekt.repo}
+              </a>
+              <span className="text-muted-foreground">
+                {projekt.repo_abgleich_at ? `abgeglichen ${timeAgo(projekt.repo_abgleich_at)}` : "noch nicht abgeglichen"} · alle 10 Min. automatisch
+              </span>
+              {projekt.repo_fehler && (
+                <span className="inline-flex items-center gap-1 text-red-600 dark:text-red-400">
+                  <TriangleAlert className="h-3.5 w-3.5" /> {projekt.repo_fehler}
+                </span>
+              )}
+              {darfSchreiben && (
+                <button type="button" onClick={repoAbgleichen} disabled={gleichtAb}
+                  className="ml-auto inline-flex items-center gap-1 rounded-lg border border-foreground/[0.1] px-2 py-1 hover:bg-foreground/[0.04] disabled:opacity-50">
+                  <RefreshCw className={cn("h-3 w-3", gleichtAb && "animate-spin")} /> Jetzt abgleichen
+                </button>
+              )}
+            </div>
+          )}
           <div className="flex gap-1 border-b border-foreground/[0.06]">
             {REITER.map(({ key, label, Icon }) => (
               <button key={key} type="button" onClick={() => setReiter(key)}

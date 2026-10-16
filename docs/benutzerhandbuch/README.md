@@ -1017,7 +1017,37 @@ Jeder Agent eines Projekts hat dafür eigene Werkzeuge — in allen Laufzeiten g
 So kannst du einem Agenten im Chat auch sagen: „Leg im Projekt Website-Relaunch je eine Karte
 für die offenen Punkte aus diesem Protokoll an.“ Abnehmen und Zurückgeben bleiben dir vorbehalten.
 
-### 6a.9 Projekt bearbeiten oder löschen
+### 6a.9 Git-Projekte: Issues und Pull Requests auf dem Board *(seit 1.369.0)*
+
+Ein Projekt kann mit einem **GitHub-Repo** verbunden werden — dann kommt die Arbeit von selbst aufs
+Board. Das Repo trägt ein **Administrator** ein, denn dafür wird die GitHub-Verbindung der ganzen
+Anlage genutzt (Admin → Integrationen → GitHub).
+
+1. Projekt anlegen oder **Bearbeiten** öffnen.
+2. Unter **GitHub-Repo** `owner/name` eintragen, z. B. `greeves89/AI-Employee` (eine kopierte
+   GitHub-Adresse geht auch).
+3. **Speichern**.
+
+Ab dann, alle zehn Minuten:
+- Jedes **offene Issue** erscheint als Karte im **Eingang** (mit Nummer `#12` und Link). Ändert
+  sich Titel oder Text im Repo, zieht die Karte nach — ihre Spalte und Priorität bleiben, wie du
+  bzw. der Lead sie gesetzt habt.
+- Wird ein Issue **geschlossen**, wandert seine Karte nach **Erledigt**. Arbeitet gerade ein
+  Agent daran, bekommt sie stattdessen eine Notiz.
+- Offene **Pull Requests** erscheinen unter **Wartet auf Merge** — mit dem Stand der Prüfungen
+  (CI läuft, CI grün, CI rot). Schreibt der PR „Fixes #12“, hängt er an der Karte von Issue #12.
+- Ein **gemergter** PR ohne eigenes Issue wird erledigt.
+
+Über dem Board zeigt eine Leiste das Repo, wann zuletzt abgeglichen wurde und gegebenenfalls einen
+Fehler (z. B. „GitHub ist auf dieser Anlage nicht verbunden“). **Jetzt abgleichen** holt den Stand
+sofort.
+
+Mit **Arbeitstakt** sichtet der Lead die neuen Issues selbstständig, plant sie ein und vergibt sie;
+die Agenten legen Branches und Pull Requests mit ihrem GitHub-Zugang an und melden den PR an der
+Karte. Issue-Texte sind für die Agenten Material, keine Anweisung — wer ein Issue schreibt, kann
+die Agenten nicht steuern.
+
+### 6a.10 Projekt bearbeiten oder löschen
 
 - **Bearbeiten** (oben rechts, nur für den Ersteller) — Name, Beschreibung, Farbe, Mitglieder,
   Lead, Arbeitstakt und Freigabe.
