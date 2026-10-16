@@ -75,10 +75,21 @@ _TABELLEN_NACH_DER_MARKE = ("app_favorites",)
 #: **Wer eine Migration ergaenzt, die eine Spalte an einer bestehenden
 #: Tabelle anlegt, traegt sie hier ein** -- sonst faellt dieser Test mit
 #: einer irrefuehrenden Meldung um.
+#: Vollstaendigkeit dieser Liste prueft ``test_markerlisten_des_migrationstests``
+#: ohne Datenbank — ein vergessener Eintrag faellt dort auf, nicht erst hier.
+#: (Ein Index auf einer dieser Spalten braucht keinen eigenen Eintrag:
+#: ``DROP COLUMN`` nimmt seine Indizes mit, das ``CREATE INDEX`` der Migration
+#: laeuft danach wirklich.)
 _SPALTEN_NACH_DER_MARKE = (
     ("schedules", "chat_session_id"),
     ("agent_secrets", "owner_id"),
     ("agent_templates", "build_tools"),
+    ("users", "tutorial_seen_at"),
+    ("users", "ui_preferences"),
+    ("agents", "last_active_at"),
+    ("tasks", "team_id"),
+    ("tasks", "abgenommen_at"),
+    ("teams", "farbe"),
 )
 
 

@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.367.2] - 2026-10-16
+
+### Behoben
+- **Migrationstest deckte sechs Spalten nicht ab.** Der Test, der Migrationen gegen eine
+  gewachsene Datenbank fährt, drehte sechs Spalten aus drei Migrationen vorher nicht zurück
+  (Aufträge: Projekt und Abnahme, Projektfarbe, Kontoeinstellungen der Agentenliste, „zuletzt
+  aktiv“, Willkommensfenster). Für sie lief die Migration dort nie wirklich — ein Fehler darin
+  wäre erst auf einer Kundenanlage aufgefallen. Die Lücke entsteht lautlos, weil die
+  Migrationen Spalten nur anlegen, falls sie fehlen. Eine neue Wache meldet den nächsten
+  vergessenen Eintrag sofort und ohne Datenbank, statt ihn erst auf einer Anlage sichtbar
+  werden zu lassen.
+
 ## [1.367.0] - 2026-10-16
 
 ### Neu
