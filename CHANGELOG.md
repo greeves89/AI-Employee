@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.366.1] - 2026-10-16
+
+### Behoben
+- **Die Hauptlinie ist wieder grün.** Die Prüfung „Schreiben nur in den Arbeitsbereichen"
+  aus 1.366.0 arbeitet korrekt — ihr Test tat es nicht: Er erzeugte sich mit
+  `tempfile.mkdtemp()` ein Verzeichnis und nahm an, es liege außerhalb der erlaubten
+  Bereiche. Auf macOS stimmt das, auf Linux liegt es unter `/tmp`, und `/tmp` ist
+  ausdrücklich erlaubt. Der Test lief beim Entwickeln grün und auf dem Bauserver rot,
+  ohne dass an der Regel etwas falsch war. Er legt die erlaubten Bereiche jetzt selbst
+  fest, statt sie von der Lage des Temp-Ordners zu borgen — und erkennt eine ausgehebelte
+  Regel weiterhin (gegengeprüft).
+
+---
+
 ## [1.366.0] - 2026-10-16
 
 ### Neu
