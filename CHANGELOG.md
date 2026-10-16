@@ -5,6 +5,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.368.0] - 2026-10-16
+
+### Neu
+- **Projekte als Leitstand.** Die Arbeit eines Projekts liegt als **Karten** auf dem Board:
+  Eingang → Bereit → In Arbeit → Prüfung → Erledigt. Karten werden eingeplant (mit Priorität
+  P1–P3), per **Los** an den Lead oder einen Agenten vergeben, abgenommen oder mit Hinweis
+  zurückgegeben. Der Lauf eines Agenten gehört zu seiner Karte; sein Ende schiebt sie zur
+  Prüfung, ein Abbruch zurück nach Bereit.
+- **Leitstand-Anzeige:** was gerade wer macht, mit den Stufen Planung → Bau → Tests → PR → CI →
+  Merge (die Agenten melden sie selbst), Reststapel mit „als Nächstes“, „Wartet auf Merge“ mit
+  Pull-Request-Stand, Erledigt-Verlauf.
+- **Arbeitstakt je Projekt** (alle 30 Minuten bis alle 4 Stunden): Der Lead sichtet den Eingang,
+  plant ein und vergibt die nächsten Karten. Ohne offene Karten fällt der Lauf aus.
+- **Projektwissen:** jedes Projekt hat eine eigene Wissensablage (Reiter „Wissen“). `index.md`
+  geht bei jedem Projektauftrag mit; die Agenten können das Wissen durchsuchen und ergänzen —
+  ohne Neustart, Zugriff nur für Agenten des Projekts.
+- **Projekt-Werkzeuge für Agenten** in allen Laufzeiten: `projekt_board`,
+  `projekt_karte_anlegen`, `projekt_karte_verschieben`, `projekt_karte_vergeben`,
+  `projekt_karte_stand`, `projekt_wissen_suchen`, `projekt_wissen_lesen`,
+  `projekt_wissen_schreiben`. Damit legt ein Agent z. B. Karten aus offenen Issues an.
+- Aufträge aus der Teamansicht der Agentenseite landen ebenfalls als Karte auf dem Board.
+
+### Sicherheit
+- Board, Karten und Wissen nur für Mitglieder des Projekts; Agenten beauftragen nur Agenten
+  desselben Nutzers; Ergebnisse eines Laufs sieht nur, wem der Agent gehört.
+- Issue-Texte, Board-Text und Projektwissen gehen als gerahmte Daten an die Agenten;
+  Markierungen im Text werden entschärft.
+
+---
+
 ## [1.367.2] - 2026-10-16
 
 ### Behoben
