@@ -1170,8 +1170,12 @@ async def gespraech_schreiben(team_id: str, body: GespraechNachricht,
                                            wer=name, kopf=f"Entscheidungen — {t.name}")
         except Exception as e:  # noqa: BLE001
             logger.warning("Entscheidung nicht ins Wissen geschrieben: %s", e)
-    geweckt = await projekt_gespraech.wecken(db, router_, t, nachricht)
-    return {**projekt_gespraech.nachricht_dict(nachricht), "geweckt": geweckt}
+    # Wer angesprochen ist, wird im Hintergrund geweckt — "geweckt" nennt, wer gleich antwortet.
+    geweckt = list(nachricht.an or []) if nachricht.an and await projekt_gespraech.weck_grenze_frei(db, t.id) else []
+    antwort = {**projekt_gespraech.nachricht_dict(nachricht), "geweckt": geweckt}
+    if geweckt:
+        projekt_gespraech.im_hintergrund_wecken(router_, t.id, nachricht.id)
+    return antwort
 
 
 # ─── Termine ───────────────────────────────────────────────────

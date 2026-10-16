@@ -1024,7 +1024,9 @@ Reiter **Gespräch**: Hier sprechen du und die Agenten des Projekts miteinander.
 4. **Senden** (oder Strg/Cmd + Enter).
 
 Der angesprochene Agent bekommt einen eigenen Lauf mit deiner Nachricht und dem jüngsten
-Gesprächsverlauf; seine Antwort erscheint nach kurzer Zeit im Gespräch. Agenten sprechen sich
+Gesprächsverlauf; seine Antwort erscheint nach kurzer Zeit im Gespräch. Bis dahin steht unter
+dem Gespräch „*Name* antwortet gleich …“ — ein gestoppter Agent wird dafür erst gestartet, das
+kann eine halbe Minute dauern. Deine Nachricht steht trotzdem sofort im Gespräch. Agenten sprechen sich
 untereinander genauso an. Außerdem stehen hier die **Protokolle** der Besprechungen, die
 **Tagesberichte** des Leads und jedes **abgenommene Ergebnis**.
 

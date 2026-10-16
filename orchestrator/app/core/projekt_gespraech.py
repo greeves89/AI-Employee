@@ -17,6 +17,7 @@ von außen — nur die eigentliche Ansprache ist der Auftrag.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from datetime import datetime, timedelta, timezone
@@ -145,6 +146,34 @@ async def wecken(db: AsyncSession, router, team: Team, nachricht: ProjektNachric
         except Exception as e:  # noqa: BLE001 — eine Ansprache darf die übrigen nicht verhindern
             log.warning("Projektgespräch %s: %s nicht geweckt: %s", team.id, agent_id, e)
     return geweckt
+
+
+_HINTERGRUND: set[asyncio.Task] = set()
+
+
+async def weck_grenze_frei(db: AsyncSession, team_id: str) -> bool:
+    return await _gewecktes_je_stunde(db, team_id) < MAX_WECKEN_JE_STUNDE
+
+
+async def _spaeter_wecken(router, team_id: str, nachricht_id: int) -> None:
+    from app.db.session import async_session_factory
+
+    try:
+        async with async_session_factory() as db:
+            team = await db.get(Team, team_id)
+            nachricht = await db.get(ProjektNachricht, nachricht_id)
+            if team is not None and nachricht is not None:
+                await wecken(db, router, team, nachricht)
+    except Exception as e:  # noqa: BLE001 — ein Hintergrundlauf darf nichts mitreissen
+        log.warning("Projektgespräch %s: Wecken nach Nachricht %s gescheitert: %s", team_id, nachricht_id, e)
+
+
+def im_hintergrund_wecken(router, team_id: str, nachricht_id: int) -> None:
+    """Wecken, ohne dass der Absender wartet: einen gestoppten Agenten zu starten dauert
+    Sekunden — die Nachricht steht sofort im Gespräch, die Antwort kommt danach."""
+    lauf = asyncio.create_task(_spaeter_wecken(router, team_id, nachricht_id))
+    _HINTERGRUND.add(lauf)
+    lauf.add_done_callback(_HINTERGRUND.discard)
 
 
 async def antwort_aus_lauf(db: AsyncSession, task) -> None:

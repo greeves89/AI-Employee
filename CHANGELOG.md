@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.372.2] - 2026-10-16
+
+### Behoben
+- Projektgespräch: Wer einen gestoppten Agenten ansprach, wartete beim Senden, bis der Agent
+  gestartet war (mehrere Sekunden, die Nachricht erschien so lange nicht). Das Wecken läuft
+  jetzt im Hintergrund; die Nachricht steht sofort da, darunter „… antwortet gleich“, bis die
+  Antwort kommt. Der Senden-Knopf hat eine Beschriftung für Screenreader.
+
+---
+
 ## [1.372.1] - 2026-10-16
 
 ### Sicherheit

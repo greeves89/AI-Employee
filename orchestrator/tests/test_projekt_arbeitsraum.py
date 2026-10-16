@@ -4,6 +4,7 @@ Echte (SQLite-)Datenbank und echtes Git der Wissensablage; nur der Versand der
 Läufe ist nachgestellt (``_Router`` aus test_projekte).
 """
 
+import asyncio
 import contextlib
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -36,10 +37,32 @@ class _Arbeitsraum(Basis):
 
 
 class Gespraech(_Arbeitsraum):
-    async def _schreiben(self, db, text, wer=MITGLIED, **kw):
-        router = _Router(db)
-        r = await api.gespraech_schreiben("p1", api.GespraechNachricht(text=text, **kw), router_=router, user=wer, db=db)
+    async def _schreiben(self, db, text, wer=MITGLIED, router=None, abwarten=True, **kw):
+        router = router or _Router(db)
+        with patch("app.db.session.async_session_factory", self.Session):
+            r = await api.gespraech_schreiben("p1", api.GespraechNachricht(text=text, **kw), router_=router, user=wer,
+                                              db=db)
+            if abwarten:
+                await asyncio.gather(*list(projekt_gespraech._HINTERGRUND))
         return r, router
+
+    async def test_senden_wartet_nicht_aufs_wecken(self):
+        """Einen gestoppten Agenten zu starten dauert Sekunden — die Nachricht kommt sofort zurück."""
+        frei = asyncio.Event()
+
+        class _Langsam(_Router):
+            async def create_and_route_task(self, **kw):
+                await frei.wait()
+                return await super().create_and_route_task(**kw)
+
+        async with self.Session() as db:
+            router = _Langsam(db)
+            with patch("app.db.session.async_session_factory", self.Session):
+                r, _ = await self._schreiben(db, "@A2 bitte prüfen", router=router, abwarten=False)
+                self.assertEqual((r["geweckt"], router.aufrufe), (["a2"], []))
+                frei.set()
+                await asyncio.gather(*list(projekt_gespraech._HINTERGRUND))
+        self.assertEqual(router.aufrufe[0]["agent_id"], "a2")
 
     async def test_mensch_ohne_ansprache_weckt_den_lead(self):
         async with self.Session() as db:

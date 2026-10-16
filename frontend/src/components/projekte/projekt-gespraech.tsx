@@ -36,6 +36,8 @@ export function ProjektGespraech({
   const [text, setText] = useState("");
   const [art, setArt] = useState<"nachricht" | "frage" | "entscheidung">("nachricht");
   const [sendet, setSendet] = useState(false);
+  // Angesprochene Agenten, deren Antwort noch aussteht (Wecken läuft im Hintergrund).
+  const [wartetAuf, setWartetAuf] = useState<{ id: string; seit: number; ab: number }[]>([]);
   const ende = useRef<HTMLDivElement>(null);
   const zuletzt = useRef("");
   const agentById = new Map(mitglieder.filter((m) => m.agent).map((m) => [m.id, m.agent as Agent]));
@@ -43,6 +45,11 @@ export function ProjektGespraech({
   const laden = useCallback(async () => {
     try {
       const r = await api.projektGespraech(projektId);
+      setWartetAuf((w) => {
+        const offen = w.filter((x) => Date.now() - x.ab < 10 * 60_000
+          && !r.nachrichten.some((n) => n.id > x.seit && n.autor_id === x.id));
+        return offen.length === w.length ? w : offen;
+      });
       const stand = JSON.stringify(r.nachrichten.map((n) => n.id));
       if (stand === zuletzt.current) return;
       zuletzt.current = stand;
@@ -67,7 +74,7 @@ export function ProjektGespraech({
       setText("");
       setArt("nachricht");
       if (r.geweckt.length) {
-        toastRef.current.success("Gesendet", `${r.geweckt.map((id) => agentById.get(id)?.name ?? id).join(", ")} antwortet gleich.`);
+        setWartetAuf((w) => [...w.filter((x) => !r.geweckt.includes(x.id)), ...r.geweckt.map((id) => ({ id, seit: r.id, ab: Date.now() }))]);
       }
       await laden();
     } catch (e) {
@@ -120,6 +127,12 @@ export function ProjektGespraech({
             );
           })
         )}
+        {wartetAuf.length > 0 && (
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            {wartetAuf.map((x) => agentById.get(x.id)?.name ?? x.id).join(", ")} antwortet gleich …
+          </p>
+        )}
         <div ref={ende} />
       </div>
 
@@ -149,7 +162,7 @@ export function ProjektGespraech({
               <option value="frage">Frage</option>
               <option value="entscheidung">Entscheidung</option>
             </select>
-            <button type="button" onClick={senden} disabled={sendet || !text.trim()}
+            <button type="button" onClick={senden} disabled={sendet || !text.trim()} aria-label="Senden" title="Senden (Strg/Cmd + Enter)"
               className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
               {sendet ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </button>
