@@ -574,6 +574,9 @@ class TaskRouter:
         if model is None:
             model = await self._route_model_by_content(agent_id, prompt)
 
+        # Projektbudget zuerst: es hält keinen Agenten an, lehnt nur den Lauf ab.
+        await self._projekt_budget_durchsetzen(agent_id, metadata, parent_task_id)
+
         # Budget (core/budget, #898): erlauben, Sparmodell der Laufzeit oder
         # blockieren+anhalten — dieselbe Entscheidung wie im Chat.
         model = await self._apply_budget_policy(agent_id, model)
@@ -2062,6 +2065,38 @@ class TaskRouter:
         if not router_cfg.get("enabled"):
             return None
         return route_model(prompt, router_cfg.get("rules"))
+
+    async def _projekt_budget_durchsetzen(self, agent_id: str, metadata: dict | None,
+                                          parent_task_id: str | None) -> None:
+        """Monatsbudget des Projekts, zu dem dieser Lauf gehören wird.
+
+        Das Projekt ermittelt sich wie in ``models.task._projekt_erben``: aus
+        ``metadata.team_id`` oder vom Eltern-Auftrag — dort nur, wenn der Agent
+        zum Projekt gehört. ``ValueError`` mit deutschem Hinweis, wenn erschöpft.
+        """
+        from app.core import budget
+        from app.models.agent import Agent
+        from app.models.team import Team
+
+        team_id = (metadata or {}).get("team_id")
+        if not team_id and parent_task_id:
+            team_id = await self.db.scalar(select(Task.team_id).where(Task.id == parent_task_id))
+            if team_id:
+                team = await self.db.get(Team, team_id)
+                mitglieder = set(team.member_agent_ids or []) | {team.lead_agent_id} if team else set()
+                if agent_id not in mitglieder:
+                    team_id = None
+        if not team_id:
+            return
+        entscheid = await budget.projekt_budget_pruefen(self.db, team_id)
+        if entscheid.art != budget.BLOCKIEREN:
+            return
+        try:
+            agent = await self.db.get(Agent, agent_id)
+            await budget.projekt_sperre_melden(self.db, team_id, agent, entscheid)
+        except Exception as e:  # noqa: BLE001 — die Sperre gilt auch ohne Meldung
+            logger.warning("Projektbudget-Meldung fuer %s fehlgeschlagen: %s", scrub_log(team_id), scrub_log(e))
+        raise ValueError(entscheid.hinweis)
 
     async def _apply_budget_policy(
         self, agent_id: str, requested_model: str | None

@@ -4555,6 +4555,76 @@ export interface Team {
   repo_fehler?: string | null;
   /** Schlüssel aus der Schlüsselverwaltung für private Repos. */
   repo_secret_id?: number | null;
+  /** Monatsbudget des Projekts in USD; leer = keins (setzt der Ersteller unter Finanzen). */
+  budget_usd?: number | null;
+}
+
+// ─── Finanzen (orchestrator: core/finanzen) — alle Beträge in USD ───
+
+export interface FinanzenProjekt {
+  id: string;
+  name: string;
+  farbe: string | null;
+  monat_usd: number;
+  vormonat_usd: number;
+  gesamt_usd: number;
+  budget_usd: number | null;
+  anteil_budget: number | null;
+  tokens_ein: number;
+  tokens_aus: number;
+  darf_budget: boolean;
+}
+
+export interface FinanzenAgent {
+  id: string;
+  name: string;
+  monat_usd: number;
+  aufgaben_usd: number;
+  chat_usd: number;
+  vormonat_usd: number;
+  budget_usd: number | null;
+  tokens_ein: number;
+  tokens_aus: number;
+}
+
+export interface Finanzen {
+  monat: string;
+  summe: {
+    monat_usd: number;
+    aufgaben_usd: number;
+    chat_usd: number;
+    vormonat_usd: number;
+    geloescht_usd: number;
+    ohne_projekt_aufgaben_usd: number;
+  };
+  budget: { budget_usd: number; verbraucht_usd: number } | null;
+  verlauf: { monat: string; aufgaben_usd: number; chat_usd: number; gesamt_usd: number }[];
+  je_projekt: FinanzenProjekt[];
+  je_agent: FinanzenAgent[];
+}
+
+export async function getFinanzen(monate = 6): Promise<Finanzen> {
+  return fetchJSON(`${getBase()}/finanzen?monate=${monate}`);
+}
+
+export async function setProjektBudget(id: string, budgetUsd: number | null): Promise<{ id: string; budget_usd: number | null }> {
+  return fetchJSON(`${getBase()}/finanzen/projekte/${id}/budget`, {
+    method: "PUT",
+    body: JSON.stringify({ budget_usd: budgetUsd }),
+  });
+}
+
+export async function exportFinanzen(monate = 12): Promise<void> {
+  const res = await fetch(`${getBase()}/finanzen/export.csv?monate=${monate}`, { credentials: "include" });
+  if (!res.ok) throw new Error(`Export fehlgeschlagen: ${res.status}`);
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `finanzen-${new Date().toISOString().slice(0, 7)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 export async function listTeams(): Promise<{ teams: Team[] }> {

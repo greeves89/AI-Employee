@@ -54,7 +54,7 @@ class Entscheid:
     modell: str | None = None
     #: Was der Mensch liest (Chat, Telegram, Kanal) — deutsch, ohne Interna.
     hinweis: str = ""
-    #: Welche Grenze gerissen ist: "agent" | "nutzer" | "anlage".
+    #: Welche Grenze gerissen ist: "agent" | "nutzer" | "anlage" | "projekt".
     grenze: str = ""
     verbraucht_usd: float = 0.0
     budget_usd: float = 0.0
@@ -158,6 +158,55 @@ async def budget_pruefen(db, agent, *, fuer_chat: bool = False) -> Entscheid:
                          grenze=grenze, verbraucht_usd=verbraucht, budget_usd=limit)
     return Entscheid(BLOCKIEREN, hinweis=_hinweis(agent, grenze, verbraucht, limit, False),
                      grenze=grenze, verbraucht_usd=verbraucht, budget_usd=limit)
+
+
+async def projekt_budget_pruefen(db, team_id: str | None) -> Entscheid:
+    """Darf das Projekt ``team_id`` in diesem Monat noch neue Läufe starten?
+
+    Gezählt werden die Aufgaben des Projekts (``tasks.team_id``) — Takt, Karten,
+    Gespräch, Besprechungen. Ein Projektbudget kennt keinen Sparmodus und hält
+    keinen Agenten an: der Agent arbeitet in anderen Projekten weiter.
+    """
+    if not team_id:
+        return ERLAUBT
+    from app.models.team import Team
+
+    team = await db.get(Team, team_id)
+    if team is None or not team.budget_usd or team.budget_usd <= 0:
+        return ERLAUBT
+    summe = (await _kosten.kosten(db, _kosten.Bereich.projekt(team_id), seit=_kosten.monatsbeginn())).gesamt
+    if summe < team.budget_usd:
+        return ERLAUBT
+    hinweis = (
+        f"Das Monatsbudget des Projekts „{team.name}“ ist aufgebraucht ({_kosten.betrag_anzeigen(summe)} von "
+        f"{_kosten.betrag_anzeigen(team.budget_usd)}). Neue Läufe des Projekts starten erst im nächsten Monat — "
+        "oder nachdem das Budget unter Finanzen erhöht wurde."
+    )
+    return Entscheid(BLOCKIEREN, hinweis=hinweis, grenze="projekt", verbraucht_usd=summe,
+                     budget_usd=float(team.budget_usd))
+
+
+async def projekt_sperre_melden(db, team_id: str, agent, entscheid: Entscheid) -> bool:
+    """Den Ersteller des Projekts benachrichtigen — einmal je Projekt und Monat.
+
+    Absender ist der Agent, dessen Lauf abgelehnt wurde: Benachrichtigungen sieht,
+    wem der Agent gehört, und Projekte legen Nutzer mit ihren eigenen Agenten an."""
+    from app.models.notification import Notification
+
+    if entscheid.art != BLOCKIEREN or agent is None:
+        return False
+    ziel = f"/finanzen?projekt={team_id}"
+    # Einmal je Projekt — gleich, welcher seiner Agenten zuerst abgewiesen wurde.
+    if await db.scalar(select(Notification.id).where(
+            Notification.action_url == ziel, Notification.created_at >= _kosten.monatsbeginn()).limit(1)):
+        return False
+    neu = await _melden(
+        db, absender=agent.id, ziel=ziel, typ="error",
+        titel="Projektbudget aufgebraucht", text=entscheid.hinweis, agent_id=agent.id,
+    )
+    if neu:
+        await db.commit()
+    return neu
 
 
 async def _schon_gemeldet(db, absender: str, ziel: str) -> bool:

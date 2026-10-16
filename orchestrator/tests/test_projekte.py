@@ -63,10 +63,12 @@ class Basis(unittest.IsolatedAsyncioTestCase):
             pass
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         async with self.engine.begin() as conn:
+            from app.models.kosten_historie import KostenHistorie
             from app.models.projekt_nachricht import ProjektNachricht
             from app.models.task_step import TaskStep
 
-            for model in (User, Agent, Task, Team, ProjektKarte, Schedule, SecondBrain, TaskStep, ProjektNachricht):
+            for model in (User, Agent, Task, Team, ProjektKarte, Schedule, SecondBrain, TaskStep, ProjektNachricht,
+                          KostenHistorie):
                 await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
         async with self.Session() as db:

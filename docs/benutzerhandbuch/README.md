@@ -1166,6 +1166,49 @@ die Agenten nicht steuern.
 
 ---
 
+## 6b. Finanzen: was die Agenten kosten *(seit 1.373.0)*
+
+Seitenleiste → **Finanzen**. Die Seite zeigt, was deine Agenten kosten — **je Monat, je Projekt
+und je Agent**. Mitglieder sehen nur ihre eigenen Agenten und Projekte; Administratoren sehen die
+Kosten der ganzen Anlage, aber auch hier nur die Projekte, die sie selbst angelegt haben oder die
+ihnen freigegeben sind.
+
+**Oben vier Kacheln:**
+- **Dieser Monat** — alles zusammen, darunter der Vormonat zum Vergleich.
+- **Aufgaben und Projekte** — Läufe, also Aufträge, Zeitpläne, Projektkarten, Takt, Gespräch und
+  Besprechungen; darunter, was davon **ohne Projekt** lief.
+- **Chat** — Gespräche mit den Agenten. Chat gehört zu keinem Projekt.
+- **Dein Monatsbudget** — falls ein Administrator dir eins gesetzt hat; sonst die Kosten
+  gelöschter Agenten und Verläufe, die in der Summe bleiben.
+
+**Verlauf je Monat** — Balken je Monat, Aufgaben und Chat übereinander. Oben rechts wählst du
+**3, 6 oder 12 Monate**.
+
+**Projekte** — je Projekt die Kosten dieses Monats, des Vormonats und insgesamt, dazu die Tokens.
+Ein Klick auf den Namen öffnet das Projekt. Auf der Projektseite selbst steht unter **Erledigt**
+die Zeile **Kosten diesen Monat** (mit Budget); ein Klick darauf führt hierher.
+
+**Ein Monatsbudget für ein Projekt setzen** (nur, wer das Projekt angelegt hat):
+
+1. In der Zeile des Projekts unter **Monatsbudget** auf den **Stift** klicken.
+2. Den Betrag eintragen (in der Währung der Anlage) — leer lassen heißt: kein Budget.
+3. **Speichern** (oder Enter).
+
+Der Balken darunter zeigt den Verbrauch: grün, ab 80 % gelb, ab 100 % rot. **Ist das Budget
+aufgebraucht, starten bis Monatsende keine neuen Läufe des Projekts mehr** — weder Karten noch
+Takt, Gespräch oder Besprechungen. Du bekommst einmal im Monat eine Benachrichtigung. Die Agenten
+selbst arbeiten in anderen Projekten und im Chat weiter. Ein höheres Budget gibt das Projekt sofort
+wieder frei.
+
+**Agenten** — je Agent Aufgaben, Chat, Summe des Monats (mit seinem Budget, falls gesetzt),
+Vormonat und Tokens.
+
+**CSV** (oben rechts) lädt die Zahlen als Tabelle herunter: Monate, Projekte und Agenten der
+letzten zwölf Monate, Beträge in US-Dollar.
+
+> Abgerechnet wird bei den Anbietern in US-Dollar. Angezeigt wird in der Währung der Anlage
+> (Verwaltung → Einstellungen); mit der Maus über einem Betrag siehst du den Originalwert.
+
 ## 7. Analytics
 
 **Analytics** ist dein Auswertungs-Dashboard über alle Agenten und Tasks — hier siehst du,

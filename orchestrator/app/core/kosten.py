@@ -54,15 +54,18 @@ def vor_tagen(tage: int) -> datetime:
 
 @dataclass(frozen=True)
 class Bereich:
-    """Wessen Kosten? Genau eine der drei Formen.
+    """Wessen Kosten? Genau eine der vier Formen.
 
     * ``agent_ids``: diese Agenten (auch leer → nichts)
     * ``besitzer_id``: alle Agenten eines Nutzers (für das Nutzerbudget)
-    * beides ``None``: die ganze Anlage, inklusive gelöschter Agenten
+    * ``projekt_id``: die Aufgaben eines Projekts (``tasks.team_id``) — Chat hat
+      keinen Projektbezug und zählt hier nicht
+    * alles ``None``: die ganze Anlage, inklusive gelöschter Agenten
     """
 
     agent_ids: frozenset[str] | None = None
     besitzer_id: str | None = None
+    projekt_id: str | None = None
 
     @classmethod
     def anlage(cls) -> "Bereich":
@@ -80,9 +83,13 @@ class Bereich:
     def besitzer(cls, user_id: str) -> "Bereich":
         return cls(besitzer_id=user_id)
 
+    @classmethod
+    def projekt(cls, team_id: str) -> "Bereich":
+        return cls(projekt_id=team_id)
+
     @property
     def ist_anlage(self) -> bool:
-        return self.agent_ids is None and self.besitzer_id is None
+        return self.agent_ids is None and self.besitzer_id is None and self.projekt_id is None
 
     @property
     def ist_leer(self) -> bool:
@@ -127,6 +134,10 @@ def _filter(stmt, spalte_agent, bereich: Bereich):
         return stmt.where(spalte_agent.in_(sorted(bereich.agent_ids)))
     if bereich.besitzer_id is not None:
         return stmt.join(Agent, spalte_agent == Agent.id).where(Agent.user_id == bereich.besitzer_id)
+    if bereich.projekt_id is not None:
+        from app.models.task import Task
+
+        return stmt.where(Task.team_id == bereich.projekt_id)
     return stmt
 
 
@@ -167,6 +178,8 @@ async def _historie(db, quelle: str, bereich: Bereich, seit, bis, je_tag: bool):
         stmt = stmt.where(H.agent_id.in_(sorted(bereich.agent_ids)))
     elif bereich.besitzer_id is not None:
         stmt = stmt.where(H.user_id == bereich.besitzer_id)
+    elif bereich.projekt_id is not None:
+        stmt = stmt.where(H.team_id == bereich.projekt_id)
     return (await db.execute(stmt.group_by(*gruppe))).all()
 
 
@@ -185,22 +198,25 @@ async def verdichten(db, quelle: str, bedingung) -> float:
     modell, zeit = (ChatMessage, ChatMessage.timestamp) if quelle == QUELLE_CHAT \
         else (Task, Task.created_at)
     tag = func.date(zeit)
+    # Aufgaben behalten ihr Projekt — sonst verschwänden Projektkosten mit dem Löschen.
+    projekt = Task.team_id if quelle == QUELLE_AUFGABEN else None
+    spalten = [modell.agent_id, tag, *([projekt] if projekt is not None else []), func.sum(modell.cost_usd)]
     zeilen = (await db.execute(
-        select(modell.agent_id, tag, func.sum(modell.cost_usd))
+        select(*spalten)
         .where(bedingung, modell.cost_usd.isnot(None))
-        .group_by(modell.agent_id, tag)
+        .group_by(*spalten[:-1])
     )).all()
-    zeilen = [(a, t, float(b or 0)) for a, t, b in zeilen if b]
+    zeilen = [(z[0], z[1], z[2] if projekt is not None else None, float(z[-1] or 0)) for z in zeilen if z[-1]]
     if not zeilen:
         return 0.0
-    agenten = sorted({str(a) for a, _, _ in zeilen if a})
+    agenten = sorted({str(a) for a, _, _, _ in zeilen if a})
     besitzer = dict((await db.execute(
         select(Agent.id, Agent.user_id).where(Agent.id.in_(agenten))
     )).all()) if agenten else {}
     summe = 0.0
-    for agent_id, t, betrag in zeilen:
+    for agent_id, t, team_id, betrag in zeilen:
         db.add(KostenHistorie(
-            tag=_als_datum(t), agent_id=agent_id, user_id=besitzer.get(agent_id),
+            tag=_als_datum(t), agent_id=agent_id, user_id=besitzer.get(agent_id), team_id=team_id,
             quelle=quelle, betrag_usd=betrag,
         ))
         summe += betrag
@@ -257,6 +273,8 @@ async def kosten(
     if bereich.ist_leer:
         return erg
     quellen = set(quellen)
+    if bereich.projekt_id is not None:
+        quellen.discard(QUELLE_CHAT)
 
     zeilen: list[tuple[str, str | None, object, float]] = []
     if QUELLE_AUFGABEN in quellen:
@@ -320,6 +338,77 @@ async def kosten(
             schluessel = _tag(tag)
             erg.je_tag[schluessel] = erg.je_tag.get(schluessel, 0.0) + betrag
     return erg
+
+
+async def je_projekt(db, team_ids: Iterable[str], seit: datetime | None = None,
+                     bis: datetime | None = None) -> dict[str, float]:
+    """Aufgabenkosten je Projekt (USD), inklusive verdichteter gelöschter Aufgaben.
+
+    Eine Abfrage für alle Projekte der Übersicht statt ``kosten`` je Projekt."""
+    from app.models.kosten_historie import KostenHistorie as H
+    from app.models.task import Task
+
+    ids = sorted({str(t) for t in team_ids if t})
+    if not ids:
+        return {}
+    stmt = select(Task.team_id, func.coalesce(func.sum(Task.cost_usd), 0)).where(
+        Task.team_id.in_(ids), Task.cost_usd.isnot(None))
+    hist = select(H.team_id, func.coalesce(func.sum(H.betrag_usd), 0)).where(
+        H.team_id.in_(ids), H.quelle == QUELLE_AUFGABEN)
+    if seit is not None:
+        stmt, hist = stmt.where(Task.created_at >= seit), hist.where(H.tag >= _als_datum(seit))
+    if bis is not None:
+        stmt, hist = stmt.where(Task.created_at < bis), hist.where(H.tag < _als_datum(bis))
+    erg: dict[str, float] = {}
+    for abfrage in (stmt.group_by(Task.team_id), hist.group_by(H.team_id)):
+        for team_id, betrag in (await db.execute(abfrage)).all():
+            if betrag:
+                erg[str(team_id)] = erg.get(str(team_id), 0.0) + float(betrag)
+    return erg
+
+
+async def tokens(db, *, agent_ids: Iterable[str] | None = None, team_ids: Iterable[str] | None = None,
+                 seit: datetime | None = None, bis: datetime | None = None, je: str = "agent") -> dict[str, tuple[int, int]]:
+    """Ein- und Ausgabe-Tokens je Agent (Aufgaben + Chat) oder je Projekt (Aufgaben).
+
+    Gelöschte Zeilen zählen hier nicht — die Historie hält nur Beträge."""
+    from app.models.chat_message import ChatMessage
+    from app.models.task import Task
+
+    erg: dict[str, list[int]] = {}
+
+    def _addieren(schluessel, ein, aus):
+        if schluessel is None:
+            return
+        z = erg.setdefault(str(schluessel), [0, 0])
+        z[0] += int(ein or 0)
+        z[1] += int(aus or 0)
+
+    if je == "projekt":
+        ids = sorted({str(t) for t in (team_ids or []) if t})
+        if not ids:
+            return {}
+        stmt = select(Task.team_id, func.sum(Task.input_tokens), func.sum(Task.output_tokens)).where(Task.team_id.in_(ids))
+        if seit is not None:
+            stmt = stmt.where(Task.created_at >= seit)
+        if bis is not None:
+            stmt = stmt.where(Task.created_at < bis)
+        for t, ein, aus in (await db.execute(stmt.group_by(Task.team_id))).all():
+            _addieren(t, ein, aus)
+    else:
+        ids = sorted({str(a) for a in (agent_ids or []) if a})
+        if not ids:
+            return {}
+        for modell, zeit in ((Task, Task.created_at), (ChatMessage, ChatMessage.timestamp)):
+            stmt = select(modell.agent_id, func.sum(modell.input_tokens), func.sum(modell.output_tokens)).where(
+                modell.agent_id.in_(ids))
+            if seit is not None:
+                stmt = stmt.where(zeit >= seit)
+            if bis is not None:
+                stmt = stmt.where(zeit < bis)
+            for a, ein, aus in (await db.execute(stmt.group_by(modell.agent_id))).all():
+                _addieren(a, ein, aus)
+    return {k: (v[0], v[1]) for k, v in erg.items()}
 
 
 async def chat_antworten(db, bereich: Bereich, seit: datetime | None = None) -> int:

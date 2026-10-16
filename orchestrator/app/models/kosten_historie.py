@@ -27,6 +27,8 @@ class KostenHistorie(Base):
     #: Besitzer des Agenten beim Verdichten — damit das Nutzerbudget die Kosten
     #: auch nach dem Löschen des Agenten weiter zählt.
     user_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    #: Projekt der Aufgabe (``tasks.team_id``) — damit Projektkosten das Löschen überleben.
+    team_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     #: ``aufgaben`` | ``chat`` (core.kosten.QUELLE_*).
     quelle: Mapped[str] = mapped_column(String(20), nullable=False)
     betrag_usd: Mapped[float] = mapped_column(Float, nullable=False)

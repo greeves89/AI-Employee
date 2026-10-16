@@ -82,6 +82,7 @@ def _serialize(t: Team) -> dict:
         "repo_abgleich_at": t.repo_abgleich_at.isoformat() if getattr(t, "repo_abgleich_at", None) else None,
         "repo_fehler": getattr(t, "repo_fehler", None),
         "repo_secret_id": getattr(t, "repo_secret_id", None),
+        "budget_usd": getattr(t, "budget_usd", None),
     }
 
 
