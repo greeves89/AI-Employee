@@ -1234,10 +1234,14 @@ Sekretariat nur.
 4. Unter **3.** die Uhrzeit des **Tagesbriefings** (Mo–Fr).
 5. **Sekretariat einrichten** klicken.
 
+![Assistent „Sekretariat einrichten“ auf der Seite Heute](screenshots/82-heute-einrichten.png)
+
 Die Agenten bekommen dabei Microsoft 365 im Modus **Entwürfe + Freigabe** und werden einmal neu
 gestartet. Je Nutzer gibt es ein Sekretariat; es ist nur für dich sichtbar.
 
 ### 6c.2 Die Seite „Heute“
+
+![Seite „Heute“ mit Eingabezeile, Wartet auf dich, Terminen, Posteingang, Erinnerungen, Briefing und Regeln](screenshots/83-heute.png)
 
 - **Eingabezeile oben:** Was du hier schreibst, bekommt das Sekretariat als Auftrag. Beginnt der
   Text mit **„Merke:“**, wird er eine **feste Regel** für alle Agenten des Sekretariats, z. B.
@@ -1259,6 +1263,8 @@ gestartet. Je Nutzer gibt es ein Sekretariat; es ist nur für dich sichtbar.
 
 Das Sekretariat ist ein Team wie ein Projekt: Unten auf der Seite führt ein Link zu Raum, Board
 und Gespräch, ein zweiter zu seinen Kosten unter **Finanzen**. In der Projektliste steht es nicht.
+Löschst du es (Projektseite → Papierkorb), enden auch seine Zeitpläne; wechselst du dort den Lead,
+sichtet ab dann der neue Lead das Postfach.
 
 ## 7. Analytics
 

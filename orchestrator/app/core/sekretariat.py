@@ -133,6 +133,13 @@ async def einrichten(db, user, agent_ids: list[str], *, sichten_minuten: int = 3
     return team
 
 
+async def ist_sekretariats_agent(db, agent_id: str) -> bool:
+    """Gehört der Agent zu einem Sekretariat? Dann sendet er Mails NIE direkt — gleich,
+    was in seiner Microsoft-Einstellung steht (api/mcp_msgraph.py)."""
+    teams = (await db.execute(select(Team).where(Team.art == ART, Team.is_active == True))).scalars().all()  # noqa: E712
+    return any(agent_id in set(t.member_agent_ids or []) | {t.lead_agent_id} for t in teams)
+
+
 # ─── Regeln („Merke: …“) ────────────────────────────────────────
 
 

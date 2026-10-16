@@ -73,8 +73,21 @@ async def mcp_msgraph_endpoint(agent_id: str, request: Request):
     async with async_session_factory() as db:
         agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     may_write = ms_access.write_enabled(agent.config if agent else None, "msgraph_access")
+    im_sekretariat = False
+    if agent is not None:
+        from app.core.sekretariat import ist_sekretariats_agent
+
+        async with async_session_factory() as db:
+            im_sekretariat = await ist_sekretariats_agent(db, agent_id)
+    if im_sekretariat and may_write:
+        # Fail-closed: Im Sekretariat geht keine Mail ohne Freigabe raus — auch wenn die
+        # Einstellung des Agenten später auf „Lesen + Schreiben“ gestellt wurde.
+        may_write = False
     entwurf = None
-    if not may_write and ms_access.entwurf_enabled(agent.config if agent else None):
+    # Die Mitgliedschaft im Sekretariat stuft nur HERAB (Schreiben → Entwurf), sie gibt nie
+    # mehr Rechte als die eigene Einstellung des Agenten: „Lesen“ bleibt „Lesen“.
+    if not may_write and (ms_access.entwurf_enabled(agent.config if agent else None)
+                          or (im_sekretariat and ms_access.write_enabled(agent.config if agent else None, "msgraph_access"))):
         from app.core.mail_freigabe import anfragen
 
         async def entwurf(message_id: str, betreff: str) -> str:

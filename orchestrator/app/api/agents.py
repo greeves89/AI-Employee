@@ -3605,6 +3605,15 @@ async def update_agent_integrations(
                        "Ein Administrator muss den Schalter in den Einstellungen zuerst lösen.",
             )
 
+        if body.get("msgraph_access") == "write":
+            from app.core.sekretariat import ist_sekretariats_agent
+
+            if await ist_sekretariats_agent(db, agent_id):
+                raise HTTPException(
+                    status_code=422,
+                    detail="Dieser Agent gehört zu deinem Sekretariat — dort gehen Mails nur nach deiner Freigabe raus. "
+                           "Wähle „Entwürfe + Freigabe“.",
+                )
         old_msgraph_access = config.get("msgraph_access", "read")
         if "msgraph_access" in body and body["msgraph_access"] in ("read", ms_access.ENTWURF, "write"):
             config["msgraph_access"] = body["msgraph_access"]

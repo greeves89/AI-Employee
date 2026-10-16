@@ -51,17 +51,27 @@ async def sichtbare_projekte(db, user) -> list:
     return [t for t in teams if await _is_team_member(t, user, db)]
 
 
-async def _ohne_projekt(db, bereich: _kosten.Bereich, seit, bis) -> float:
-    """Aufgaben im Bereich ohne Projekt (lebende Zeilen und Historie)."""
+async def _ohne_projekt(db, bereich: _kosten.Bereich, seit, bis, ausser: list[str] | None = None) -> float:
+    """Aufgaben im Bereich ohne Projekt (lebende Zeilen und Historie).
+
+    Mit ``ausser``: stattdessen Aufgaben MIT Projekt, aber nicht in diesen Projekten —
+    gelöschte Projekte oder solche, die der Nutzer nicht (mehr) sieht. Ohne diese Zeile
+    ging die Summe der Seite nicht auf."""
     from app.models.kosten_historie import KostenHistorie as H
     from app.models.task import Task
 
     if bereich.ist_leer:
         return 0.0
+    if ausser is None:
+        bed_t, bed_h = Task.team_id.is_(None), H.team_id.is_(None)
+    else:
+        bed_t, bed_h = Task.team_id.isnot(None), H.team_id.isnot(None)
+        if ausser:
+            bed_t, bed_h = bed_t & Task.team_id.notin_(ausser), bed_h & H.team_id.notin_(ausser)
     stmt = select(func.coalesce(func.sum(Task.cost_usd), 0)).where(
-        Task.team_id.is_(None), Task.cost_usd.isnot(None), Task.created_at >= seit, Task.created_at < bis)
+        bed_t, Task.cost_usd.isnot(None), Task.created_at >= seit, Task.created_at < bis)
     hist = select(func.coalesce(func.sum(H.betrag_usd), 0)).where(
-        H.team_id.is_(None), H.quelle == _kosten.QUELLE_AUFGABEN,
+        bed_h, H.quelle == _kosten.QUELLE_AUFGABEN,
         H.tag >= seit.date(), H.tag < bis.date())
     if bereich.agent_ids is not None:
         stmt = stmt.where(Task.agent_id.in_(sorted(bereich.agent_ids)))
@@ -142,6 +152,7 @@ async def uebersicht(db, user, anzahl_monate: int = 6) -> dict:
             "chat_usd": round(diesen.chat, 4), "vormonat_usd": round(vorher.gesamt, 4),
             "geloescht_usd": round(diesen.geloescht, 4),
             "ohne_projekt_aufgaben_usd": round(await _ohne_projekt(db, bereich, monat_von, monat_bis), 4),
+            "andere_projekte_aufgaben_usd": round(await _ohne_projekt(db, bereich, monat_von, monat_bis, ausser=ids), 4),
         },
         "budget": budget,
         "verlauf": verlauf,

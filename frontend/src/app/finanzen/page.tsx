@@ -178,7 +178,10 @@ function FinanzenSeite() {
               <Kachel label="Dieser Monat" wert={money.fmt(s.monat_usd)} titel={money.title(s.monat_usd)}
                 sub={<>Vormonat {money.fmt(s.vormonat_usd)}</>} />
               <Kachel label="Aufgaben und Projekte" wert={money.fmt(s.aufgaben_usd)} titel={money.title(s.aufgaben_usd)}
-                sub={<>davon ohne Projekt {money.fmt(s.ohne_projekt_aufgaben_usd)}</>} />
+                sub={<>
+                  davon ohne Projekt {money.fmt(s.ohne_projekt_aufgaben_usd)}
+                  {(s.andere_projekte_aufgaben_usd ?? 0) > 0 && <> · in gelöschten oder fremden Projekten {money.fmt(s.andere_projekte_aufgaben_usd ?? 0)}</>}
+                </>} />
               <Kachel label="Chat" wert={money.fmt(s.chat_usd)} titel={money.title(s.chat_usd)}
                 sub="Gespräche mit den Agenten, keinem Projekt zugeordnet" />
               {daten.budget ? (

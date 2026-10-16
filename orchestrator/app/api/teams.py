@@ -115,10 +115,21 @@ async def _freigabe(db: AsyncSession, ids: list[str], user) -> list[str]:
 
 
 async def _projekt_nachziehen(db: AsyncSession, t: Team) -> None:
-    """Takt-Zeitplan an Lead/Mitglieder/Takt anpassen — nach jeder Änderung am Team."""
+    """Zeitpläne des Teams an Lead/Mitglieder/Takt anpassen — nach jeder Änderung am Team.
+
+    Takt (core/projekt_takt), Termine und Sekretariats-Zeitpläne (``schedules.team_id``):
+    ein gelöschtes Team nimmt sie alle mit, ein neuer Lead übernimmt die des Sekretariats."""
+    from sqlalchemy import delete, update
+
     from app.core import projekt_takt
+    from app.models.schedule import Schedule
 
     await projekt_takt.abgleichen(db, t)
+    if not t.is_active:
+        await db.execute(delete(Schedule).where(Schedule.team_id == t.id))
+    elif getattr(t, "art", None) == "sekretariat" and t.lead_agent_id:
+        await db.execute(update(Schedule).where(
+            Schedule.team_id == t.id, Schedule.name.like("[Sekretariat] %")).values(agent_id=t.lead_agent_id))
     await db.commit()
 
 
