@@ -887,6 +887,18 @@ class SchedulerService:
                 )
                 return
 
+        # Arbeitstakt eines Projekts: ohne Karten im Eingang/Bereit faellt der Lauf
+        # aus (core/projekt_takt). Der Lauf gehoert zum Projekt (Board, Kosten).
+        takt_team_id = None
+        if schedule.name.startswith("[Projekt] "):
+            from app.core import projekt_takt
+
+            grund, takt_team_id = await projekt_takt.pruefen(db, schedule)
+            if grund:
+                schedule.next_run_at = _calc_next_run(schedule, now)
+                logger.info("[Scheduler] %s uebersprungen — %s", schedule.name, grund)
+                return
+
         # Meeting schedules: prompt starts with __meeting__:{json}
         if schedule.prompt.startswith("__meeting__:"):
             await self._execute_meeting_schedule(db, schedule)
@@ -1040,7 +1052,7 @@ class SchedulerService:
                 priority=schedule.priority,
                 agent_id=schedule.agent_id,
                 model=schedule.model,
-                metadata={"schedule_id": schedule.id},
+                metadata={"schedule_id": schedule.id, **({"team_id": takt_team_id} if takt_team_id else {})},
                 erlaubte_agenten=kandidaten,
             )
         finally:

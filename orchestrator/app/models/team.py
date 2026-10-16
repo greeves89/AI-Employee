@@ -1,6 +1,6 @@
 """Team model — a persistent, named group of agents with a designated lead."""
 
-from sqlalchemy import String, Text, Boolean
+from sqlalchemy import Boolean, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -24,3 +24,9 @@ class Team(Base, TimestampMixin):
     # Kennfarbe des Projekts (Raum, Karten, Menue) — eine der Farben aus
     # PROJEKT_FARBEN in api/teams.py; leer = Standardfarbe.
     farbe: Mapped[str | None] = mapped_column(String(20), nullable=True, default=None)
+    # Arbeitstakt des Projekts in Minuten (leer = aus): der Lead sichtet dann
+    # regelmaessig das Board und vergibt die naechsten Karten (core/projekt_takt.py).
+    takt_minuten: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    takt_schedule_id: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
+    # Slug des Second Brain mit dem Projektwissen (core/projekt_wissen.py).
+    wissen_slug: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)

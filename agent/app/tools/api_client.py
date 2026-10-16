@@ -10,6 +10,7 @@ import logging
 import time
 from contextvars import ContextVar
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -414,6 +415,111 @@ class OrchestratorAPIClient:
             text = (msg.get("text") or "").strip()
             lines.append(f"[{msg.get('timestamp', '?')}] {msg.get('from_name') or msg.get('from_id')}: {text}")
         return "\n\n".join(lines)
+
+    # ── Projekt-Board und Projektwissen (Paritaet: orchestrator-server.mjs) ──
+
+    @staticmethod
+    def _projekt_pfad(params: dict, *teile: str) -> str | None:
+        projekt = str(params.get("projekt_id") or "").strip()
+        if not projekt:
+            return None
+        rest = "".join(f"/{quote(t, safe='')}" for t in teile)
+        return f"/teams/{quote(projekt, safe='')}{rest}"
+
+    async def projekt_board(self, params: dict) -> str:
+        pfad = self._projekt_pfad(params, "board", "text")
+        if not pfad:
+            return "Error: projekt_id is required"
+        r = await self._request("GET", pfad)
+        if isinstance(r, str):
+            return r
+        return f'[EXTERNAL-DATA source="projekt-board"]\n{r.get("text", "")}\n[/EXTERNAL-DATA]'
+
+    async def projekt_karte_anlegen(self, params: dict) -> str:
+        pfad = self._projekt_pfad(params, "karten")
+        if not pfad or not params.get("titel"):
+            return "Error: projekt_id and titel are required"
+        k = await self._request("POST", pfad, json={
+            "titel": params["titel"], "text": params.get("text") or "",
+            "spalte": params.get("spalte") or "eingang", "prioritaet": params.get("prioritaet") or 2,
+        })
+        if isinstance(k, str):
+            return k
+        return f"Karte angelegt: [{k['id']}] {k['titel']} (Spalte {k['spalte']})."
+
+    async def projekt_karte_verschieben(self, params: dict) -> str:
+        if not params.get("karte_id"):
+            return "Error: karte_id is required"
+        pfad = self._projekt_pfad(params, "karten", str(params["karte_id"]))
+        if not pfad:
+            return "Error: projekt_id is required"
+        body = {f: params[f] for f in ("spalte", "prioritaet", "notiz") if params.get(f) is not None}
+        k = await self._request("PATCH", pfad, json=body)
+        if isinstance(k, str):
+            return k
+        return f"Karte [{k['id']}] {k['titel']}: Spalte {k['spalte']}, P{k['prioritaet']}."
+
+    async def projekt_karte_vergeben(self, params: dict) -> str:
+        if not params.get("karte_id"):
+            return "Error: karte_id is required"
+        pfad = self._projekt_pfad(params, "karten", str(params["karte_id"]), "vergeben")
+        if not pfad:
+            return "Error: projekt_id is required"
+        k = await self._request("POST", pfad, json={"agent_id": params.get("agent_id") or None})
+        if isinstance(k, str):
+            return k
+        return f"Karte [{k['id']}] {k['titel']} vergeben an {k['agent_id']} — Lauf {k['task_id']}."
+
+    async def projekt_karte_stand(self, params: dict) -> str:
+        if not params.get("karte_id"):
+            return "Error: karte_id is required"
+        pfad = self._projekt_pfad(params, "karten", str(params["karte_id"]), "stand")
+        if not pfad:
+            return "Error: projekt_id is required"
+        body = {f: params[f] for f in ("stufe", "pr_url", "notiz") if params.get(f) is not None}
+        k = await self._request("POST", pfad, json=body)
+        if isinstance(k, str):
+            return k
+        pr = f", PR {k['pr_url']}" if k.get("pr_url") else ""
+        return f"Stand gemeldet: [{k['id']}] Stufe {k.get('stufe') or '—'}{pr}."
+
+    async def projekt_wissen_suchen(self, params: dict) -> str:
+        pfad = self._projekt_pfad(params, "wissen", "suche")
+        frage = str(params.get("frage") or "").strip()
+        if not pfad or not frage:
+            return "Error: projekt_id and frage are required"
+        r = await self._request("GET", pfad, params={"frage": frage})
+        if isinstance(r, str):
+            return r
+        treffer = r.get("treffer") or []
+        if not treffer:
+            return f"Nichts gefunden zu „{frage}“."
+        text = "\n".join(f"{t.get('path')}: {' … '.join(t.get('snippets') or [])}" for t in treffer)
+        return f'[EXTERNAL-DATA source="projektwissen"]\n{text}\n[/EXTERNAL-DATA]'
+
+    async def projekt_wissen_lesen(self, params: dict) -> str:
+        basis = self._projekt_pfad(params, "wissen")
+        if not basis:
+            return "Error: projekt_id is required"
+        if not params.get("pfad"):
+            r = await self._request("GET", basis)
+            if isinstance(r, str):
+                return r
+            seiten = [d["path"] for d in r.get("dateien") or [] if d.get("type") == "file"]
+            return "\n".join(seiten) or "Noch keine Seiten."
+        r = await self._request("GET", f"{basis}/datei", params={"pfad": params["pfad"]})
+        if isinstance(r, str):
+            return r
+        return f'[EXTERNAL-DATA source="projektwissen"]\n{r.get("inhalt", "")}\n[/EXTERNAL-DATA]'
+
+    async def projekt_wissen_schreiben(self, params: dict) -> str:
+        pfad = self._projekt_pfad(params, "wissen", "datei")
+        if not pfad or not params.get("pfad") or params.get("inhalt") is None:
+            return "Error: projekt_id, pfad and inhalt are required"
+        r = await self._request("PUT", pfad, json={"pfad": params["pfad"], "inhalt": params["inhalt"]})
+        if isinstance(r, str):
+            return r
+        return f"{'Angelegt' if r.get('created') else 'Aktualisiert'}: {r.get('path')} ({r.get('bytes')} Bytes)."
 
     async def chat_search(self, params: dict) -> str:
         """Woertliche Suche im LAUFENDEN Gespraech (Paritaet: orchestrator-server.mjs).

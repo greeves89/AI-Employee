@@ -30,6 +30,7 @@ class CreateTeam(BaseModel):
     member_agent_ids: list[str] = []
     lead_agent_id: str | None = None
     farbe: str | None = None
+    takt_minuten: int | None = None
 
 
 class UpdateTeam(BaseModel):
@@ -38,6 +39,8 @@ class UpdateTeam(BaseModel):
     member_agent_ids: list[str] | None = None
     lead_agent_id: str | None = None
     farbe: str | None = None
+    # 0 schaltet den Takt ab; sonst einer der Werte aus projekt_takt.TAKTE.
+    takt_minuten: int | None = None
 
 
 def _farbe(wert: str | None) -> str | None:
@@ -48,13 +51,32 @@ def _farbe(wert: str | None) -> str | None:
     return wert
 
 
+def _takt(wert: int | None) -> int | None:
+    from app.core.projekt_takt import TAKTE
+
+    if not wert:
+        return None
+    if wert not in TAKTE:
+        raise HTTPException(status_code=422, detail=f"Takt in Minuten: {', '.join(map(str, TAKTE))} oder 0 (aus).")
+    return wert
+
+
 def _serialize(t: Team) -> dict:
     return {
         "id": t.id, "name": t.name, "description": t.description,
         "member_agent_ids": t.member_agent_ids or [],
         "lead_agent_id": t.lead_agent_id, "is_active": t.is_active,
         "created_by": t.created_by, "farbe": getattr(t, "farbe", None),
+        "takt_minuten": getattr(t, "takt_minuten", None),
     }
+
+
+async def _projekt_nachziehen(db: AsyncSession, t: Team) -> None:
+    """Takt-Zeitplan an Lead/Mitglieder/Takt anpassen — nach jeder Änderung am Team."""
+    from app.core import projekt_takt
+
+    await projekt_takt.abgleichen(db, t)
+    await db.commit()
 
 
 def _validate_lead(member_ids: list[str], lead_id: str | None) -> None:
@@ -117,11 +139,14 @@ async def create_team(body: CreateTeam, user=Depends(require_auth), db: AsyncSes
     team = Team(
         id=uuid.uuid4().hex[:32], name=body.name, description=body.description,
         member_agent_ids=body.member_agent_ids, lead_agent_id=body.lead_agent_id,
-        farbe=_farbe(body.farbe),
+        farbe=_farbe(body.farbe), takt_minuten=_takt(body.takt_minuten),
         created_by=getattr(user, "email", None) or str(getattr(user, "id", "")),
     )
     db.add(team)
     await db.commit()
+    await db.refresh(team)
+    await _wissen_sicherstellen(db, team, user)
+    await _projekt_nachziehen(db, team)
     await db.refresh(team)
     return _serialize(team)
 
@@ -216,12 +241,12 @@ async def projekte_uebersicht(user=Depends(require_auth), db: AsyncSession = Dep
         if eigene is not None and not (beteiligt & eigene):
             continue
         b = await projekte.board(db, t.id, sichtbar)
-        laufend = [k for k in b["spalten"]["in_arbeit"]]
         ergebnis.append({
             **_serialize(t),
             "kennzahlen": b["kennzahlen"],
-            "laufend": laufend[:5],
-            "naechste": b["spalten"]["wartet"][:3],
+            "laufend": b["laufend"][:5],
+            "naechste": b["spalten"]["bereit"][:3],
+            "takt": await _takt_info(db, t),
         })
     return {"projekte": ergebnis}
 
@@ -283,8 +308,11 @@ async def update_team(team_id: str, body: UpdateTeam, user=Depends(require_auth)
     if body.member_agent_ids is not None: t.member_agent_ids = body.member_agent_ids
     if body.lead_agent_id is not None: t.lead_agent_id = body.lead_agent_id
     if body.farbe is not None: t.farbe = _farbe(body.farbe)
+    if body.takt_minuten is not None: t.takt_minuten = _takt(body.takt_minuten)
     _validate_lead(t.member_agent_ids, t.lead_agent_id)
     await db.commit(); await db.refresh(t)
+    await _projekt_nachziehen(db, t)
+    await db.refresh(t)
     return _serialize(t)
 
 
@@ -294,6 +322,7 @@ async def delete_team(team_id: str, user=Depends(require_auth), db: AsyncSession
     await _require_team_access(t, user, db)
     t.is_active = False
     await db.commit()
+    await _projekt_nachziehen(db, t)  # Takt aus
     return {"status": "deleted", "id": team_id}
 
 
@@ -320,6 +349,7 @@ async def change_members(team_id: str, body: MembersChange, user=Depends(require
     if t.lead_agent_id and t.lead_agent_id not in members:
         t.lead_agent_id = None  # lead removed -> clear
     await db.commit()
+    await _projekt_nachziehen(db, t)
     await db.refresh(t)
     return _serialize(t)
 
@@ -332,6 +362,7 @@ async def set_lead(team_id: str, body: SetLead, user=Depends(require_auth), db: 
     _validate_lead(t.member_agent_ids, body.lead_agent_id)
     t.lead_agent_id = body.lead_agent_id
     await db.commit()
+    await _projekt_nachziehen(db, t)
     await db.refresh(t)
     return _serialize(t)
 
@@ -404,7 +435,7 @@ async def _darf_beauftragen(agent_id: str, user, db: AsyncSession) -> None:
     hat, darf deshalb nicht den Lead oder ein Mitglied eines anderen Nutzers
     beauftragen.
     """
-    erlaubt = await _get_user_agent_ids(user, db)
+    erlaubt = await _sicht(user, db)
     if erlaubt is not None and agent_id not in erlaubt:
         raise HTTPException(status_code=403, detail="Diesem Agenten kannst du keine Aufträge geben.")
 
@@ -422,9 +453,8 @@ async def _an_lead(t: Team, title: str, prompt: str, priority: int, request: Req
     return await router_.create_and_route_task(
         title=title, prompt=prefix + "\n## Aufgabe\n" + prompt,
         priority=priority, agent_id=t.lead_agent_id, parent_task_id=parent_task_id,
-        # "auftrag": der Text, wie der Mensch ihn erteilt hat (Nacharbeit, Board).
-        # "abnahme": das Ergebnis landet auf dem Board unter „Zur Abnahme“.
-        metadata={"team_id": t.id, "delegated_to_team": True, "auftrag": prompt, "abnahme": True, **meta},
+        # "auftrag": der Text, wie der Mensch ihn erteilt hat.
+        metadata={"team_id": t.id, "delegated_to_team": True, "auftrag": prompt, **meta},
     )
 
 
@@ -432,174 +462,452 @@ async def _an_lead(t: Team, title: str, prompt: str, priority: int, request: Req
 async def delegate_to_team(team_id: str, body: DelegateTask, request: Request,
                            router_: TaskRouter = Depends(_get_task_router),
                            user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Auftrag ans Team (Teamansicht der Agentenseite) — als Karte auf dem Projekt-Board."""
+    from app.core import projekte
+
+    _kein_betrachter(user)
     t = await _get_team(team_id, db)
     await _require_team_access(t, user, db)
-    task = await _an_lead(t, body.title, body.prompt, body.priority, request, router_, db, user)
-    return {"task_id": task.id, "lead_agent_id": t.lead_agent_id, "status": task.status}
+    if not t.lead_agent_id:
+        raise HTTPException(status_code=400, detail="assign a lead first")
+    karte = projekte.neue_karte(t.id, body.title, body.prompt, spalte="bereit", von=_wer(user))
+    db.add(karte)
+    await db.commit()
+    karte = await _vergeben(t, karte.id, None, user, request, router_, db)
+    return {"task_id": karte["task_id"], "lead_agent_id": t.lead_agent_id, "status": karte["task_status"],
+            "karte_id": karte["id"]}
 
 
-# ─── Projekte: Board, Auftrag, Abnahme ──────────────────────────
+# ─── Projekte: Board aus Karten, Vergeben, Abnahme, Wissen ───────
+#
+# Menschen UND Agenten des Projekts arbeiten hier (require_auth_or_agent +
+# _require_team_access: ein Agent muss Mitglied oder Lead sein). Abnehmen und
+# Zurückgeben bleiben Menschen vorbehalten.
 
 
 def _kein_betrachter(user) -> None:
     from app.models.user import UserRole
 
     if getattr(user, "role", None) == UserRole.VIEWER:
-        raise HTTPException(status_code=403, detail="Betrachter können keine Aufträge erteilen oder abnehmen.")
+        raise HTTPException(status_code=403, detail="Betrachter können im Projekt nichts ändern.")
+
+
+def _wer(user) -> str:
+    if is_agent_principal(user):
+        return f"agent:{user.id}"
+    return getattr(user, "email", None) or str(getattr(user, "id", ""))
+
+
+async def _sicht(user, db: AsyncSession) -> list[str] | None:
+    """Agenten, deren Läufe ``user`` sehen und beauftragen darf (None = alle).
+
+    Ein Agent steht für seinen Besitzer: er sieht und beauftragt die Agenten
+    desselben Nutzers — in einem gemischten Projekt nicht die der anderen.
+    """
+    if is_agent_principal(user):
+        ich = await db.get(Agent, str(user.id))
+        if ich is None or not ich.user_id:
+            return [str(user.id)]
+        return list((await db.execute(select(Agent.id).where(Agent.user_id == ich.user_id))).scalars().all())
+    return await _get_user_agent_ids(user, db)
+
+
+async def _projekt(team_id: str, user, db: AsyncSession) -> Team:
+    t = await _get_team(team_id, db)
+    await _require_team_access(t, user, db)
+    return t
+
+
+async def _takt_info(db: AsyncSession, t: Team) -> dict:
+    from app.models.schedule import Schedule
+
+    sched = await db.get(Schedule, t.takt_schedule_id) if t.takt_schedule_id else None
+    an = bool(t.takt_minuten and sched is not None and sched.enabled)
+    return {
+        "minuten": t.takt_minuten,
+        "aktiv": an,
+        "naechster_lauf": sched.next_run_at.isoformat() if an and sched.next_run_at else None,
+        "agent_id": sched.agent_id if an else None,
+    }
+
+
+async def _wissen_sicherstellen(db: AsyncSession, t: Team, user) -> None:
+    from app.core import projekt_wissen
+
+    try:
+        await projekt_wissen.sicherstellen(db, t, str(getattr(user, "id", "")) or None)
+    except Exception as e:  # noqa: BLE001 — ein Projekt entsteht auch ohne Wissensablage
+        await db.rollback()
+        logger.warning("Projektwissen für %s nicht angelegt: %s", t.id, e)
+
+
+def _kartenfehler(e: Exception) -> HTTPException:
+    if isinstance(e, LookupError):
+        return HTTPException(status_code=404, detail=str(e) or "Karte nicht gefunden.")
+    return HTTPException(status_code=409, detail=str(e))
 
 
 @router.get("/{team_id}/board")
-async def projekt_board(team_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+async def projekt_board(team_id: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
     from app.core import projekte
 
-    t = await _get_team(team_id, db)
-    await _require_team_access(t, user, db)
-    sichtbar = await _get_user_agent_ids(user, db)
-    return {"projekt": _serialize(t), **(await projekte.board(db, t.id, sichtbar))}
+    t = await _projekt(team_id, user, db)
+    if not t.wissen_slug and not is_agent_principal(user):
+        await _wissen_sicherstellen(db, t, user)
+    return {
+        "projekt": _serialize(t),
+        "takt": await _takt_info(db, t),
+        **(await projekte.board(db, t.id, await _sicht(user, db))),
+    }
 
 
-class ProjektAuftrag(BaseModel):
-    text: str = Field(min_length=1, max_length=20000)
-    titel: str | None = Field(default=None, max_length=200)
-    # Leer: an den Lead (oder das einzige Mitglied). Sonst direkt an dieses Mitglied.
-    agent_id: str | None = None
-    priority: int = Field(default=5, ge=0, le=10)
+@router.get("/{team_id}/board/text")
+async def projekt_board_text(team_id: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
+    """Das Board als Text — für die Werkzeuge der Agenten (projekt_board)."""
+    from app.core import projekte
+
+    t = await _projekt(team_id, user, db)
+    b = await projekte.board(db, t.id, await _sicht(user, db))
+    ids = set(t.member_agent_ids or []) | {k.get("agent_id") for s in b["spalten"].values() for k in s} \
+        | {lauf["agent_id"] for lauf in b["laufend"]}
+    ids.discard(None)
+    namen = {a.id: a.name for a in (await db.execute(select(Agent).where(Agent.id.in_(ids)))).scalars()} if ids else {}
+    mitglieder = ", ".join(
+        namen.get(m, m) + (" (Lead)" if m == t.lead_agent_id else "") for m in (t.member_agent_ids or [])
+    )
+    text = projekte.board_als_text(_serialize(t), b, namen)
+    return {"projekt_id": t.id, "text": f"{text}\n\nMitglieder: {mitglieder or '—'}"}
 
 
-@router.post("/{team_id}/auftrag", status_code=201)
-async def projekt_auftrag(team_id: str, body: ProjektAuftrag, request: Request,
-                          router_: TaskRouter = Depends(_get_task_router),
-                          user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
-    """Auftrag ans Projekt — per Chat-Zeile oder Klick im Raum."""
+class NeueKarte(BaseModel):
+    titel: str = Field(min_length=1, max_length=300)
+    text: str = Field(default="", max_length=20000)
+    spalte: str = "eingang"
+    prioritaet: int = Field(default=2, ge=1, le=3)
+
+
+@router.post("/{team_id}/karten", status_code=201)
+async def karte_anlegen(team_id: str, body: NeueKarte, user=Depends(require_auth_or_agent),
+                        db: AsyncSession = Depends(get_db)):
     from app.core import projekte
 
     _kein_betrachter(user)
-    t = await _get_team(team_id, db)
-    await _require_team_access(t, user, db)
-    text = body.text.strip()
-    if not text:
-        raise HTTPException(status_code=422, detail="Der Auftrag ist leer.")
-    titel = (body.titel or "").strip() or projekte.titel_aus(text)
-    mitglieder = list(t.member_agent_ids or [])
+    t = await _projekt(team_id, user, db)
+    try:
+        karte = projekte.neue_karte(t.id, body.titel, body.text, spalte=body.spalte,
+                                    prioritaet=body.prioritaet, von=_wer(user))
+    except projekte.KartenFehler as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    db.add(karte)
+    await db.commit()
+    return projekte.karte_dict(karte)
 
-    ziel = body.agent_id
-    if not ziel and not t.lead_agent_id:
-        if len(mitglieder) != 1:
-            raise HTTPException(
-                status_code=400,
-                detail="Wähle einen Agenten aus oder bestimme einen Lead für das Projekt.",
-            )
-        ziel = mitglieder[0]
 
+class KarteAendern(BaseModel):
+    spalte: str | None = None
+    prioritaet: int | None = Field(default=None, ge=1, le=3)
+    reihenfolge: float | None = None
+    notiz: str | None = Field(default=None, max_length=500)
+    titel: str | None = Field(default=None, min_length=1, max_length=300)
+    text: str | None = Field(default=None, max_length=20000)
+
+
+@router.patch("/{team_id}/karten/{karte_id}")
+async def karte_aendern(team_id: str, karte_id: str, body: KarteAendern, user=Depends(require_auth_or_agent),
+                        db: AsyncSession = Depends(get_db)):
+    from app.core import projekte
+
+    _kein_betrachter(user)
+    t = await _projekt(team_id, user, db)
+    try:
+        karte = await projekte.karte_laden(db, t.id, karte_id, sperren=True)
+        projekte.verschieben(karte, spalte=body.spalte, prioritaet=body.prioritaet,
+                             reihenfolge=body.reihenfolge, notiz=body.notiz)
+    except (LookupError, projekte.KartenFehler) as e:
+        await db.rollback()
+        raise _kartenfehler(e)
+    # Titel und Text eines Issues kommen aus dem Repo und würden beim nächsten
+    # Abgleich überschrieben — nur eigene Karten sind hier änderbar.
+    if karte.quelle == "eigen":
+        if body.titel is not None:
+            karte.titel = body.titel.strip()
+        if body.text is not None:
+            karte.text = body.text.strip()
+    await db.commit()
+    return projekte.karte_dict(karte)
+
+
+class Vergeben(BaseModel):
+    # Leer: Agent ruft → er selbst; Mensch ruft → der Lead (oder das einzige Mitglied).
+    agent_id: str | None = None
+
+
+async def _vergeben(t: Team, karte_id: str, agent_id: str | None, user, request: Request,
+                    router_: TaskRouter, db: AsyncSession) -> dict:
+    """Karte an einen Agenten geben: legt den Lauf an und schiebt sie nach In Arbeit."""
+    from app.core import projekte
+
+    mitglieder = set(t.member_agent_ids or []) | ({t.lead_agent_id} if t.lead_agent_id else set())
+    ziel = agent_id or (str(user.id) if is_agent_principal(user) else None)
+    an_lead = False
+    if not ziel:
+        if t.lead_agent_id:
+            an_lead = True
+        elif len(t.member_agent_ids or []) == 1:
+            ziel = t.member_agent_ids[0]
+        else:
+            raise HTTPException(status_code=400, detail="Wähle einen Agenten aus oder bestimme einen Lead für das Projekt.")
     if ziel:
         if ziel not in mitglieder:
             raise HTTPException(status_code=400, detail="Dieser Agent gehört nicht zum Projekt.")
         await _darf_beauftragen(ziel, user, db)
-        task = await router_.create_and_route_task(
-            title=titel, prompt=text, priority=body.priority, agent_id=ziel,
-            metadata={"team_id": t.id, "auftrag": text, "abnahme": True},
-        )
-    else:
-        task = await _an_lead(t, titel, text, body.priority, request, router_, db, user)
-    return projekte.karte(task)
+
+    # Erst unter Sperre als „in Arbeit“ markieren, dann den Lauf anlegen: der Router
+    # committet in derselben Sitzung (Sperre weg) — ein Doppelklick legte sonst zwei an.
+    try:
+        karte = await projekte.karte_laden(db, t.id, karte_id, sperren=True)
+    except LookupError as e:
+        raise _kartenfehler(e)
+    if karte.spalte not in ("eingang", "bereit"):
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Nur Karten aus Eingang oder Bereit lassen sich vergeben.")
+    vorher = karte.spalte
+    karte.spalte = "in_arbeit"
+    karte.task_id = None
+    await db.commit()
+
+    prioritaet = {1: 2, 2: 1, 3: 0}.get(karte.prioritaet, 1)
+    auftrag = projekte.karten_auftrag(karte, t.name)
+    try:
+        if an_lead:
+            task = await _an_lead(t, karte.titel[:200], auftrag, prioritaet, request, router_, db, user,
+                                  karte_id=karte.id)
+        else:
+            task = await router_.create_and_route_task(
+                title=karte.titel[:200], prompt=auftrag, priority=prioritaet, agent_id=ziel,
+                metadata={"team_id": t.id, "karte_id": karte.id, "auftrag": karte.text or karte.titel},
+            )
+    except Exception:
+        await db.rollback()
+        karte = await projekte.karte_laden(db, t.id, karte_id)
+        karte.spalte = vorher
+        await db.commit()
+        raise
+    karte = await projekte.karte_laden(db, t.id, karte_id)
+    projekte.in_arbeit_setzen(karte, task, ziel or t.lead_agent_id)
+    await db.commit()
+    return projekte.karte_dict(karte, task)
 
 
-async def _projekt_auftrag_laden(t: Team, task_id: str, user, db: AsyncSession, *, sperren: bool = False):
-    from app.models.task import Task
-
-    abfrage = select(Task).where(Task.id == task_id).execution_options(populate_existing=True)
-    task = await db.scalar(abfrage.with_for_update() if sperren else abfrage)
-    sichtbar = await _get_user_agent_ids(user, db)
-    if task is None or task.team_id != t.id or (sichtbar is not None and task.agent_id not in sichtbar):
-        raise HTTPException(status_code=404, detail="Auftrag nicht gefunden.")
-    return task
+@router.post("/{team_id}/karten/{karte_id}/vergeben", status_code=201)
+async def karte_vergeben(team_id: str, karte_id: str, body: Vergeben, request: Request,
+                         router_: TaskRouter = Depends(_get_task_router),
+                         user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
+    _kein_betrachter(user)
+    t = await _projekt(team_id, user, db)
+    return await _vergeben(t, karte_id, body.agent_id, user, request, router_, db)
 
 
-@router.post("/{team_id}/aufgaben/{task_id}/abnehmen")
-async def projekt_abnehmen(team_id: str, task_id: str,
-                           user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
-    from datetime import datetime, timezone
+class Stand(BaseModel):
+    stufe: str | None = None
+    pr_url: str | None = Field(default=None, max_length=500)
+    notiz: str | None = Field(default=None, max_length=500)
 
+
+@router.post("/{team_id}/karten/{karte_id}/stand")
+async def karte_stand(team_id: str, karte_id: str, body: Stand, user=Depends(require_auth_or_agent),
+                      db: AsyncSession = Depends(get_db)):
     from app.core import projekte
 
     _kein_betrachter(user)
-    t = await _get_team(team_id, db)
-    await _require_team_access(t, user, db)
-    # Gesperrt wie beim Zurueckgeben: sonst kann ein Auftrag zugleich abgenommen
-    # und zur Nacharbeit zurueckgegeben werden.
-    task = await _projekt_auftrag_laden(t, task_id, user, db, sperren=True)
-    if task.status not in projekte.ABNAHMEFAEHIG:
-        raise HTTPException(status_code=409, detail="Der Auftrag ist noch nicht fertig.")
-    if not projekte.braucht_abnahme(task):
-        raise HTTPException(status_code=409, detail="Dieser Auftrag braucht keine Abnahme.")
-    if (task.metadata_ or {}).get("zurueckgegeben_als"):
-        raise HTTPException(status_code=409, detail="Dieser Auftrag wurde zur Nacharbeit zurückgegeben.")
-    if task.abgenommen_at is None:
-        task.abgenommen_at = datetime.now(timezone.utc)
-        await db.commit()
-        await db.refresh(task)
-    return projekte.karte(task)
+    t = await _projekt(team_id, user, db)
+    try:
+        karte = await projekte.karte_laden(db, t.id, karte_id, sperren=True)
+        projekte.stand_melden(karte, stufe=body.stufe, pr_url=body.pr_url, notiz=body.notiz)
+    except (LookupError, projekte.KartenFehler) as e:
+        await db.rollback()
+        raise _kartenfehler(e)
+    await db.commit()
+    return projekte.karte_dict(karte)
+
+
+async def _lauf_der_karte(db: AsyncSession, karte, user):
+    """Der Lauf zur Karte — nur, wenn ``user`` ihn sehen darf (sonst kein Ergebnis/keine Nacharbeit)."""
+    from app.models.task import Task
+
+    if not karte.task_id:
+        return None
+    task = await db.get(Task, karte.task_id)
+    sicht = await _sicht(user, db)
+    if task is not None and sicht is not None and task.agent_id not in sicht:
+        raise HTTPException(status_code=403, detail="Diesen Lauf darfst du nicht abnehmen.")
+    return task
+
+
+@router.post("/{team_id}/karten/{karte_id}/abnehmen")
+async def karte_abnehmen(team_id: str, karte_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    from app.core import projekte
+
+    _kein_betrachter(user)
+    t = await _projekt(team_id, user, db)
+    try:
+        karte = await projekte.karte_laden(db, t.id, karte_id, sperren=True)
+        task = await _lauf_der_karte(db, karte, user)
+        projekte.abnehmen(karte, task)
+    except (LookupError, projekte.KartenFehler) as e:
+        await db.rollback()
+        raise _kartenfehler(e)
+    await db.commit()
+    return projekte.karte_dict(karte)
 
 
 class Zurueckgeben(BaseModel):
     hinweis: str = Field(min_length=1, max_length=8000)
 
 
-@router.post("/{team_id}/aufgaben/{task_id}/zurueckgeben", status_code=201)
-async def projekt_zurueckgeben(team_id: str, task_id: str, body: Zurueckgeben, request: Request,
-                               router_: TaskRouter = Depends(_get_task_router),
-                               user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
-    """Ergebnis nicht abnehmen, sondern mit Hinweis zur Nacharbeit zurueckgeben."""
+@router.post("/{team_id}/karten/{karte_id}/zurueckgeben", status_code=201)
+async def karte_zurueckgeben(team_id: str, karte_id: str, body: Zurueckgeben, request: Request,
+                             router_: TaskRouter = Depends(_get_task_router),
+                             user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Ergebnis nicht abnehmen, sondern mit Hinweis zur Nacharbeit zurückgeben."""
     from app.core import projekte
 
     _kein_betrachter(user)
-    t = await _get_team(team_id, db)
-    await _require_team_access(t, user, db)
-    # Zeile sperren und SOFORT als zurueckgegeben markieren: ein Doppelklick
-    # darf keine zweite Nacharbeit anlegen. Der Router committet in derselben
-    # Sitzung, die Sperre haelt also nur bis zur Markierung.
-    task = await _projekt_auftrag_laden(t, task_id, user, db, sperren=True)
-    if task.status not in projekte.ABNAHMEFAEHIG:
-        raise HTTPException(status_code=409, detail="Der Auftrag ist noch nicht fertig.")
-    meta = dict(task.metadata_ or {})
-    if meta.get("zurueckgegeben_als") or task.abgenommen_at is not None:
-        raise HTTPException(status_code=409, detail="Dieser Auftrag wurde schon abgenommen oder zurückgegeben.")
-    task.metadata_ = {**meta, "zurueckgegeben_als": "wird angelegt"}
+    t = await _projekt(team_id, user, db)
+    try:
+        karte = await projekte.karte_laden(db, t.id, karte_id, sperren=True)
+    except LookupError as e:
+        raise _kartenfehler(e)
+    if karte.spalte != "pruefung":
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Zurückgeben geht nur in der Prüfung.")
+    alt = await _lauf_der_karte(db, karte, user)
+    karte.spalte = "in_arbeit"  # Sperre: ein Doppelklick legt keine zweite Nacharbeit an
     await db.commit()
 
-    hinweis = body.hinweis.strip()
-    titel = f"Nacharbeit: {task.title}"[:200]
-    nacharbeit = projekte.nacharbeit_prompt(task, hinweis)
-    # Der urspruengliche Auftrag bleibt "auftrag" — sonst zitiert jede weitere
-    # Nacharbeit die vorige als Auftrag, und die Texte verschachteln sich.
-    ursprung = projekte.auftragstext(task)
+    prompt = projekte.nacharbeit_prompt(karte, alt, body.hinweis, t.name)
+    ueber_lead = bool(alt is not None and (alt.metadata_ or {}).get("delegated_to_team") and t.lead_agent_id)
+    ziel = None if ueber_lead else (karte.agent_id or (alt.agent_id if alt else None))
     try:
-        if meta.get("delegated_to_team") and t.lead_agent_id:
-            neu = await _an_lead(t, titel, nacharbeit, task.priority, request, router_, db, user,
-                                 parent_task_id=task.id, auftrag=ursprung)
+        if ueber_lead:
+            neu = await _an_lead(t, f"Nacharbeit: {karte.titel}"[:200], prompt, 1, request, router_, db, user,
+                                 parent_task_id=alt.id if alt else None, karte_id=karte.id)
         else:
-            if not task.agent_id:
-                raise HTTPException(status_code=409, detail="Der Auftrag hat keinen Agenten mehr.")
+            if not ziel:
+                raise HTTPException(status_code=409, detail="Die Karte hat keinen Agenten mehr — vergib sie neu.")
+            await _darf_beauftragen(ziel, user, db)
             neu = await router_.create_and_route_task(
-                title=titel, prompt=nacharbeit, priority=task.priority,
-                agent_id=task.agent_id, parent_task_id=task.id,
-                metadata={"team_id": t.id, "auftrag": ursprung, "abnahme": True},
+                title=f"Nacharbeit: {karte.titel}"[:200], prompt=prompt, priority=1, agent_id=ziel,
+                parent_task_id=alt.id if alt else None,
+                metadata={"team_id": t.id, "karte_id": karte.id, "auftrag": karte.text or karte.titel},
             )
     except Exception:
         await db.rollback()
-        # Der Router legt den Auftrag an, bevor er ihn einreiht. Scheiterte erst
-        # das Einreihen, gibt es die Nacharbeit schon — dann bleibt sie markiert,
-        # sonst legte ein zweiter Klick eine zweite an.
-        from app.models.task import Task
-
-        angelegt = await db.scalar(
-            select(Task.id).where(Task.parent_task_id == task_id, Task.title == titel)
-            .order_by(Task.created_at.desc()).limit(1)
-        )
-        alt = await db.get(Task, task_id)
-        alt.metadata_ = {**meta, "zurueckgegeben_als": angelegt} if angelegt else meta
+        karte = await projekte.karte_laden(db, t.id, karte_id)
+        karte.spalte = "pruefung"
         await db.commit()
         raise
-    task.metadata_ = {**meta, "zurueckgegeben_als": neu.id}
+    karte = await projekte.karte_laden(db, t.id, karte_id)
+    projekte.in_arbeit_setzen(karte, neu, ziel or t.lead_agent_id)
     await db.commit()
-    return projekte.karte(neu)
+    return projekte.karte_dict(karte, neu)
+
+
+class ProjektAuftrag(BaseModel):
+    text: str = Field(min_length=1, max_length=20000)
+    titel: str | None = Field(default=None, max_length=300)
+    # Leer: an den Lead (oder das einzige Mitglied). Sonst direkt an dieses Mitglied.
+    agent_id: str | None = None
+    # Nur als Karte in den Eingang legen, nicht gleich vergeben.
+    nur_eingang: bool = False
+    prioritaet: int = Field(default=2, ge=1, le=3)
+
+
+@router.post("/{team_id}/auftrag", status_code=201)
+async def projekt_auftrag(team_id: str, body: ProjektAuftrag, request: Request,
+                          router_: TaskRouter = Depends(_get_task_router),
+                          user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Auftrag ans Projekt — per Eingabezeile oder Klick im Raum: eine Karte, gleich vergeben."""
+    from app.core import projekte
+
+    _kein_betrachter(user)
+    t = await _projekt(team_id, user, db)
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="Der Auftrag ist leer.")
+    titel = (body.titel or "").strip() or projekte.titel_aus(text)
+    karte = projekte.neue_karte(t.id, titel, text, spalte="eingang" if body.nur_eingang else "bereit",
+                                prioritaet=body.prioritaet, von=_wer(user))
+    db.add(karte)
+    await db.commit()
+    if body.nur_eingang:
+        return projekte.karte_dict(karte)
+    return await _vergeben(t, karte.id, body.agent_id, user, request, router_, db)
+
+
+# ─── Projektwissen ──────────────────────────────────────────────
+
+
+async def _projekt_brain(t: Team, user, db: AsyncSession):
+    from app.core import projekt_wissen
+
+    brain = await projekt_wissen.brain_des_projekts(db, t)
+    if brain is None:
+        brain = await projekt_wissen.sicherstellen(db, t, str(getattr(user, "id", "")) or None)
+    return brain
+
+
+@router.get("/{team_id}/wissen")
+async def wissen_liste(team_id: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
+    from app.core import vault
+
+    t = await _projekt(team_id, user, db)
+    brain = await _projekt_brain(t, user, db)
+    eintraege = [e for e in vault.list_entries(brain.host_path) if not e["name"].startswith(".")]
+    return {"projekt_id": t.id, "dateien": eintraege}
+
+
+@router.get("/{team_id}/wissen/datei")
+async def wissen_lesen(team_id: str, pfad: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
+    from app.core import vault
+
+    t = await _projekt(team_id, user, db)
+    brain = await _projekt_brain(t, user, db)
+    try:
+        return {"pfad": pfad, "inhalt": vault.read_file(brain.host_path, pfad)}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Seite nicht gefunden.")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class WissenSeite(BaseModel):
+    pfad: str = Field(min_length=1, max_length=300)
+    inhalt: str = Field(max_length=200_000)
+
+
+@router.put("/{team_id}/wissen/datei")
+async def wissen_schreiben(team_id: str, body: WissenSeite, user=Depends(require_auth_or_agent),
+                           db: AsyncSession = Depends(get_db)):
+    from app.core import projekt_wissen
+
+    _kein_betrachter(user)
+    t = await _projekt(team_id, user, db)
+    brain = await _projekt_brain(t, user, db)
+    try:
+        return await projekt_wissen.schreiben(db, brain, body.pfad.strip(), body.inhalt)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{team_id}/wissen/suche")
+async def wissen_suchen(team_id: str, frage: str, user=Depends(require_auth_or_agent),
+                        db: AsyncSession = Depends(get_db)):
+    from app.core import projekt_wissen
+
+    t = await _projekt(team_id, user, db)
+    brain = await _projekt_brain(t, user, db)
+    frage = frage.strip()[:500]
+    if not frage:
+        raise HTTPException(status_code=422, detail="Die Suchfrage ist leer.")
+    return {"projekt_id": t.id, "treffer": await projekt_wissen.suchen(db, brain, frage)}

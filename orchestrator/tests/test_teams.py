@@ -134,28 +134,8 @@ async def test_delegate_requires_lead():
     assert e.value.status_code == 400
 
 
-@pytest.mark.asyncio
-async def test_delegate_creates_lead_task_with_roster(monkeypatch):
-    import app.api.teams as teams_mod
-    from app.api.teams import delegate_to_team, DelegateTask
-    from app.models.team import Team
-    from unittest.mock import AsyncMock, MagicMock
-    t = Team(id="t1", name="T", member_agent_ids=["lead1", "m2"], lead_agent_id="lead1", is_active=True)
-    db = AsyncMock(); db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=t))
-    # avoid real container/agent lookups
-    async def fake_roster(team, db_, request): return "- Lead [lead1] (LEAD): builds\n- M2 [m2]: tests"
-    monkeypatch.setattr(teams_mod, "_team_roster", fake_roster)
-    captured = {}
-    class _Task: id = "task1"; status = "queued"
-    router_ = AsyncMock()
-    async def fake_create(**kw): captured.update(kw); return _Task()
-    router_.create_and_route_task = fake_create
-    out = await delegate_to_team("t1", DelegateTask(title="build", prompt="do x"),
-                                 request=MagicMock(), router_=router_, user=_admin(), db=db)
-    assert out["task_id"] == "task1" and out["lead_agent_id"] == "lead1"
-    assert captured["agent_id"] == "lead1"
-    assert "Team-Roster" in captured["prompt"] and "do x" in captured["prompt"]
-    assert captured["metadata"]["team_id"] == "t1"
+# Delegation ans Team: getestet in test_projekte.py (Teamansicht.test_delegation_landet_als_karte),
+# gegen eine echte Datenbank — sie legt seit v1.368 eine Karte auf dem Projekt-Board an.
 
 
 # ─── Task 5: list_my_team MCP tool (team-scoped roster) ──────────

@@ -90,6 +90,11 @@ ALWAYS_ALLOWED_TOOLS = frozenset({
     "list_agent_messages", "list_apps", "gesetze_search",
     # Liest nur im laufenden Gespraech, das der Nutzer ohnehin vor sich hat.
     "chat_search",
+    # Projekt-Board und Projektwissen: Arbeit unter Agenten desselben Projekts
+    # planen und festhalten — dieselbe Klasse wie create_task/secondbrain_write.
+    # Der Server prueft bei jedem Aufruf die Mitgliedschaft im Projekt.
+    "projekt_board", "projekt_karte_anlegen", "projekt_karte_verschieben", "projekt_karte_vergeben",
+    "projekt_karte_stand", "projekt_wissen_suchen", "projekt_wissen_lesen", "projekt_wissen_schreiben",
     # Presents something TO the user — same class as present_view, no effect
     # beyond display.
     "present_file", "present_image",

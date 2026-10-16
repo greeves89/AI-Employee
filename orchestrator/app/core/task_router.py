@@ -877,6 +877,13 @@ class TaskRouter:
             await self._remove_from_queue(task.agent_id, task_id)
         task.status = TaskStatus.CANCELLED
         task.completed_at = datetime.now(timezone.utc)
+        # Abgebrochen: die Karte des Laufs geht zurueck nach Bereit (core/projekte).
+        try:
+            from app.core.projekte import lauf_beendet
+
+            await lauf_beendet(self.db, task)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Karte zu abgebrochenem Lauf %s nicht zurueckgelegt: %s", scrub_log(task_id), scrub_log(e))
         await self.db.commit()
         await self.db.refresh(task)
         return task
@@ -953,6 +960,14 @@ class TaskRouter:
 
         if agent_id or task.agent_id:
             await aktivitaet_vermerken(self.redis, task.agent_id or agent_id)
+
+        # Projekt-Board: die Karte dieses Laufs geht zur Pruefung (core/projekte).
+        try:
+            from app.core.projekte import lauf_beendet
+
+            await lauf_beendet(self.db, task)
+        except Exception as e:  # noqa: BLE001 — das Board darf das Abschliessen nie stoppen
+            logger.warning("Karte zu Lauf %s nicht weitergeschoben: %s", scrub_log(task_id), scrub_log(e))
 
         # Update agent metrics for self-improvement tracking
         if agent_id:
