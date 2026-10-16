@@ -1169,7 +1169,10 @@ die Agenten nicht steuern.
 ## 6b. Finanzen: was die Agenten kosten *(seit 1.373.0)*
 
 Seitenleiste → **Finanzen**. Die Seite zeigt, was deine Agenten kosten — **je Monat, je Projekt
-und je Agent**. Mitglieder sehen nur ihre eigenen Agenten und Projekte; Administratoren sehen die
+und je Agent**.
+
+![Seite „Finanzen“: Kacheln, Verlauf je Monat, Projekte und Agenten](screenshots/80-finanzen.png)
+ Mitglieder sehen nur ihre eigenen Agenten und Projekte; Administratoren sehen die
 Kosten der ganzen Anlage, aber auch hier nur die Projekte, die sie selbst angelegt haben oder die
 ihnen freigegeben sind.
 
@@ -1194,6 +1197,8 @@ die Zeile **Kosten diesen Monat** (mit Budget); ein Klick darauf führt hierher.
 1. In der Zeile des Projekts unter **Monatsbudget** auf den **Stift** klicken.
 2. Den Betrag eintragen (in der Währung der Anlage) — leer lassen heißt: kein Budget.
 3. **Speichern** (oder Enter).
+
+![Monatsbudget eines Projekts eintragen](screenshots/81-finanzen-projektbudget.png)
 
 Der Balken darunter zeigt den Verbrauch: grün, ab 80 % gelb, ab 100 % rot. **Ist das Budget
 aufgebraucht, starten bis Monatsende keine neuen Läufe des Projekts mehr** — weder Karten noch
