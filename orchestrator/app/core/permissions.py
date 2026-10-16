@@ -85,7 +85,7 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         "mcp_server_ids": [],
         "integration_providers": [],
         "url_host_patterns": [],
-        "menu_paths": ["/dashboard", "/agents", "/tasks"],  # read-only views
+        "menu_paths": ["/dashboard", "/agents", "/tasks", "/projekte"],  # read-only views
         # Hoechste Autonomiestufe, die diese Rolle ihren Agenten geben darf
         # (None = unbegrenzt). Siehe app/core/autonomie_grenze.py.
         "max_autonomy_level": "l1",

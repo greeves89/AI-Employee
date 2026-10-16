@@ -21,3 +21,6 @@ class Team(Base, TimestampMixin):
     created_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
     # Active flag
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Kennfarbe des Projekts (Raum, Karten, Menue) — eine der Farben aus
+    # PROJEKT_FARBEN in api/teams.py; leer = Standardfarbe.
+    farbe: Mapped[str | None] = mapped_column(String(20), nullable=True, default=None)

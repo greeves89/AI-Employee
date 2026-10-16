@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text, event, select
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -53,6 +53,13 @@ class Task(Base, TimestampMixin):
         String, ForeignKey("tasks.id"), nullable=True, index=True
     )
     metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+    # Projekt (= Team), zu dem der Auftrag gehoert. Gesetzt beim Anlegen ueber
+    # ein Projekt; Unterauftraege erben ihn vom Eltern-Auftrag (siehe
+    # _projekt_erben unten) — so landen auch die Teilarbeiten des Leads auf
+    # dem Board und in den Kosten des Projekts.
+    team_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    # Wann der Mensch das Ergebnis abgenommen hat (Board: Zur Abnahme -> Erledigt).
+    abgenommen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -87,3 +94,25 @@ class Task(Base, TimestampMixin):
     subtasks: Mapped[list["Task"]] = relationship(
         "Task", foreign_keys=[parent_task_id], viewonly=True
     )
+
+
+@event.listens_for(Task, "before_insert")
+def _projekt_erben(mapper, connection, target: Task) -> None:
+    """EINE Stelle fuer die Projektzuordnung — gilt fuer jeden Anlege-Weg.
+
+    Auftraege entstehen an rund zwanzig Stellen (Router, Zeitplaene, Workflows,
+    direkte Inserts). Statt jede davon um ein Projekt-Feld zu erweitern, erbt
+    ein Auftrag hier das Projekt seines Eltern-Auftrags. ``metadata.team_id``
+    setzen nur Server-Wege (Team-Delegation); ueber die API kann niemand
+    Metadaten mitgeben.
+    """
+    if target.team_id:
+        return
+    team_id = (target.metadata_ or {}).get("team_id")
+    if not team_id and target.parent_task_id:
+        tasks = Task.__table__
+        team_id = connection.execute(
+            select(tasks.c.team_id).where(tasks.c.id == target.parent_task_id)
+        ).scalar_one_or_none()
+    if team_id:
+        target.team_id = str(team_id)[:32]

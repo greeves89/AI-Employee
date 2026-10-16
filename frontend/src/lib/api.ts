@@ -1,5 +1,6 @@
 import type { ActivityTimelineResponse, AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, FeedbackStatus, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, DayPlanItem, ProactiveResponse, Responsibility, ReflectionRun, ReflectionStatus, Task, Schedule, FileEntry, Settings, SecondBrain, Integration, TodoListResponse, WebhookEvent } from "./types";
 import { getApiUrl, getBase, getWsUrl } from "./config";
+import type { ProjektBoard, ProjektKarte, ProjektKennzahlen } from "./projekte";
 
 let _refreshing: Promise<void> | null = null;
 
@@ -4540,6 +4541,8 @@ export interface Team {
   lead_agent_id: string | null;
   is_active: boolean;
   created_by: string | null;
+  /** Kennfarbe des Projekts (Schlüssel aus PROJEKT_FARBEN). */
+  farbe?: string | null;
 }
 
 export async function listTeams(): Promise<{ teams: Team[] }> {
@@ -4551,6 +4554,7 @@ export async function createTeam(body: {
   description?: string;
   member_agent_ids?: string[];
   lead_agent_id?: string | null;
+  farbe?: string | null;
 }): Promise<Team> {
   return fetchJSON(`${getBase()}/teams/`, {
     method: "POST",
@@ -4564,7 +4568,13 @@ export async function getTeam(id: string): Promise<Team> {
 
 export async function updateTeam(
   id: string,
-  body: { name?: string; description?: string; member_agent_ids?: string[]; lead_agent_id?: string | null },
+  body: {
+    name?: string;
+    description?: string;
+    member_agent_ids?: string[];
+    lead_agent_id?: string | null;
+    farbe?: string | null;
+  },
 ): Promise<Team> {
   return fetchJSON(`${getBase()}/teams/${id}`, {
     method: "PATCH",
@@ -4600,6 +4610,43 @@ export async function delegateToTeam(
   return fetchJSON(`${getBase()}/teams/${id}/tasks`, {
     method: "POST",
     body: JSON.stringify(body),
+  });
+}
+
+// Projekte (= Teams mit Board und Raum)
+
+export interface ProjektUebersicht extends Team {
+  kennzahlen: ProjektKennzahlen;
+  laufend: ProjektKarte[];
+  naechste: ProjektKarte[];
+}
+
+export async function getProjekte(): Promise<{ projekte: ProjektUebersicht[] }> {
+  return fetchJSON(`${getBase()}/teams/uebersicht`);
+}
+
+export async function getProjektBoard(id: string): Promise<ProjektBoard & { projekt: Team }> {
+  return fetchJSON(`${getBase()}/teams/${id}/board`);
+}
+
+export async function projektAuftrag(
+  id: string,
+  body: { text: string; titel?: string; agent_id?: string | null },
+): Promise<ProjektKarte> {
+  return fetchJSON(`${getBase()}/teams/${id}/auftrag`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function projektAbnehmen(id: string, taskId: string): Promise<ProjektKarte> {
+  return fetchJSON(`${getBase()}/teams/${id}/aufgaben/${taskId}/abnehmen`, { method: "POST" });
+}
+
+export async function projektZurueckgeben(id: string, taskId: string, hinweis: string): Promise<ProjektKarte> {
+  return fetchJSON(`${getBase()}/teams/${id}/aufgaben/${taskId}/zurueckgeben`, {
+    method: "POST",
+    body: JSON.stringify({ hinweis }),
   });
 }
 

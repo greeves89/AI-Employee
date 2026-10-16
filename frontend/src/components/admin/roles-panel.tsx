@@ -16,6 +16,7 @@ const MENU_PATHS = [
   "/dashboard",
   "/agents",
   "/tasks",
+  "/projekte",
   "/analytics",
   "/knowledge",
   "/meeting-rooms",
