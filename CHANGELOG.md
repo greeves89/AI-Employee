@@ -15,6 +15,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 - Finanzen: Läufe gelöschter oder fremder Projekte stehen als eigener Posten — die Summe der
   Seite geht wieder auf.
 
+### Sicherheit
+- Agenten eines Sekretariats senden nie direkt: Beim Einrichten wird auch „Lesen + Schreiben“
+  auf „Entwürfe + Freigabe“ herabgestuft (notfalls ohne den gewohnten Weg), die Einstellung lehnt
+  „Lesen + Schreiben“ danach ab, und der Microsoft-Zugang behandelt sie zur Laufzeit immer als
+  Entwurfsmodus.
+
 ### Handbuch
 - Abbildungen 82–83 (Sekretariat einrichten, Seite Heute).
 

@@ -81,6 +81,65 @@ class Einrichten(_Sek):
         self.assertIn("p1", namen)
 
 
+class NieDirektSenden(_Sek):
+    async def test_einrichten_stuft_schreiben_herab_auch_wenn_der_normale_weg_scheitert(self):
+        from app.models.agent import Agent
+
+        async with self.Session() as db:
+            a1 = await db.get(Agent, "a1")
+            a1.config = {"msgraph_access": "write"}
+            await db.commit()
+            with patch("app.api.sekretariat.update_agent_integrations",
+                       AsyncMock(side_effect=HTTPException(status_code=403, detail="Rolle"))), \
+                    patch("app.core.ms_access.read_only_enabled", return_value=False), \
+                    patch("app.api.teams._wissen_sicherstellen", AsyncMock()):
+                r = await api.einrichten(api.Einrichten(agent_ids=["a1"]), user=A, db=db, manager=None)
+            await db.refresh(a1)
+        self.assertEqual(a1.config["msgraph_access"], "entwurf")
+        self.assertTrue(r["hinweise"])
+
+    async def test_sekretariats_agent_bekommt_kein_schreiben(self):
+        from app.api import agents as agents_api
+        from app.models.agent import Agent
+
+        async with self.Session() as db:
+            await self._einrichten(db)
+            self.assertTrue(await sekretariat.ist_sekretariats_agent(db, "a2"))
+            self.assertFalse(await sekretariat.ist_sekretariats_agent(db, "b1"))
+            manager = SimpleNamespace(_get_agent=AsyncMock(return_value=await db.get(Agent, "a2")))
+            with patch("app.api.agents._check_owner", AsyncMock()), \
+                    patch("app.core.ms_access.read_only_enabled", return_value=False), \
+                    patch("app.core.permissions.get_effective_permissions", AsyncMock(return_value={})):
+                with self.assertRaises(HTTPException) as e:
+                    await agents_api.update_agent_integrations(
+                        "a2", {"integrations": ["microsoft"], "msgraph_access": "write"}, user=A, db=db, manager=manager)
+        self.assertEqual(e.exception.status_code, 422)
+
+
+class MsGraphEndpunkt(_Sek):
+    async def test_sekretariats_agent_mit_schreiben_bekommt_nur_entwurfs_werkzeuge(self):
+        import json as _json
+
+        from app.api import mcp_msgraph
+        from app.dependencies import make_agent_token
+        from app.models.agent import Agent
+
+        async with self.Session() as db:
+            await self._einrichten(db)
+            a2 = await db.get(Agent, "a2")
+            a2.config = {"msgraph_access": "write"}
+            await db.commit()
+        anfrage = SimpleNamespace(headers={"Authorization": f"Bearer {make_agent_token('a2')}"},
+                                  json=AsyncMock(return_value={"jsonrpc": "2.0", "id": 1, "method": "tools/list"}))
+        with patch("app.api.mcp_msgraph.async_session_factory", self.Session), \
+                patch("app.core.ms_access.read_only_enabled", return_value=False):
+            antwort = await mcp_msgraph.mcp_msgraph_endpoint("a2", anfrage)
+        namen = {t["name"] for t in _json.loads(antwort.body)["result"]["tools"]}
+        self.assertIn("ms_send_email", namen)          # wird zum Entwurf + Freigabe
+        self.assertNotIn("ms_forward_email", namen)    # direktes Senden gibt es nicht
+        self.assertNotIn("ms_create_calendar_event", namen)
+
+
 class Aufraeumen(_Sek):
     async def test_loeschen_nimmt_zeitplaene_mit_und_lead_wechsel_haengt_um(self):
         from app.api import teams

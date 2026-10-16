@@ -67,13 +67,20 @@ async def einrichten(body: Einrichten, user=Depends(require_auth), db: AsyncSess
         agent = await db.get(Agent, agent_id)
         cfg = dict(agent.config or {}) if agent else {}
         integrationen = list(dict.fromkeys([*(cfg.get("integrations") or []), "microsoft"]))
-        aenderung = {"integrations": integrationen}
-        if cfg.get("msgraph_access", "read") != "write":
-            aenderung["msgraph_access"] = zugang
+        # Immer herabstufen — auch „Lesen + Schreiben“: im Sekretariat sendet niemand ohne Freigabe.
+        aenderung = {"integrations": integrationen, "msgraph_access": zugang}
         try:
             await update_agent_integrations(agent_id, aenderung, user=user, db=db, manager=manager)
         except HTTPException as e:
             hinweise.append(f"{agent.name if agent else agent_id}: Microsoft nicht eingestellt — {e.detail}")
+            if agent is not None and cfg.get("msgraph_access") == "write":
+                # Der gewohnte Weg scheiterte (z. B. Rollenrecht) — die Herabstufung gilt trotzdem.
+                from sqlalchemy.orm.attributes import flag_modified
+
+                cfg["msgraph_access"] = zugang
+                agent.config = cfg
+                flag_modified(agent, "config")
+                await db.commit()
     return {"id": team.id, "hinweise": hinweise}
 
 
