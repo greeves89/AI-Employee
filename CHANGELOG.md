@@ -5,6 +5,41 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.366.0] - 2026-10-16
+
+### Neu
+- **Der Agent behält den Faden.** Ein Chat wird als eine Sitzung fortgesetzt. Wird der
+  Kontext voll (Grenze `CHAT_UEBERGABE_TOKENS`, Standard 150.000, höchstens 60 % des
+  Modellfensters), schreibt der Agent vorher eine Übergabe (Ziel, Vorgaben, Stand,
+  Entscheidungen, Dateien, nächste Schritte) und sichert Korrekturen des Nutzers ins
+  Gedächtnis. Die neue Sitzung beginnt mit dieser Übergabe und den jüngsten Nachrichten im
+  Wortlaut statt bei null — ebenso nach einem Notfall-Neustart (Prompt zu lang), einem
+  Modellwechsel oder einer verlorenen Sitzungskennung.
+- **Codex setzt das Gespräch fort.** Codex-Agenten begannen bisher jede Nachricht in einem
+  neuen Faden und kannten die vorige nicht. Jetzt wird der Faden per Kennung fortgesetzt;
+  fehlt er, startet ein neuer mit Übertrag.
+- **Werkzeug `chat_search`** in allen Laufzeiten: wörtliche Suche im aktuellen Gespräch, auch
+  in Teilen, die nicht mehr im Kontext stehen.
+- **Regeln und Skills nach einer Verdichtung.** Verdichtet Claude Code den Verlauf selbst,
+  bekommt die nächste Nachricht Regeln und Skill-Hinweise wieder vollständig.
+
+### Geändert
+- **Kein Neustart mehr nach sieben Tagen Pause.** Die Sitzung eines Chats läuft nicht mehr ab;
+  „Neues Gespräch“ bzw. `/reset` beginnen bewusst ohne Übertrag.
+
+### Sicherheit
+- Der Übergabe-Zug läuft ausschließlich mit dem Gedächtnis-Werkzeug; Korrekturen werden nur
+  übernommen, wenn der Nutzer sie selbst geäußert hat (nicht aus Webseiten, Dateien oder
+  Werkzeugausgaben).
+- Der Übertrag ist als Verlauf gekennzeichnet, nicht als Anweisung; Markierungen im alten
+  Text werden entschärft.
+- Übergaben werden nach 90 Tagen gelöscht, und beim Löschen eines Chats verschwinden Sitzung,
+  Übergabe und Neuanfang-Marke des Agenten mit.
+- `chat_search` verarbeitet höchstens acht Suchwörter und ist nur für den Agenten selbst
+  erreichbar.
+
+---
+
 ## [1.365.6] - 2026-10-16
 
 ### Sicherheit
