@@ -80,6 +80,9 @@ CORE_TOOL_NAMES = {
     # must always be loaded — otherwise the agent hits "tool not available" mid-workflow
     # (it cannot search_tools for a capability the workflow already required).
     "skill_search", "skill_install", "skill_rate", "skill_propose", "rate_task",
+    # Gerade NACH einer Verdichtung des Verlaufs gebraucht — dann weiss das Modell
+    # nicht mehr, dass es etwas nachzuschlagen gibt, und sucht nicht erst danach.
+    "chat_search",
 }
 MAX_ACTIVATED_TOOLS = 60  # core (~27) + search_tools + activated stays well under 128
 DESKTOP_MCP_ACTIVE_ENV = "AI_EMPLOYEE_DESKTOP_MCP_ACTIVE"
@@ -573,42 +576,14 @@ class LLMChatHandler:
         """Die letzten Zuege dieser Unterhaltung aus dem Orchestrator holen.
 
         Best effort: geht es schief, redet der Agent ohne Vorgeschichte weiter —
-        das ist der Zustand von vorher und darf den Zug nicht kippen.
+        das ist der Zustand von vorher und darf den Zug nicht kippen. Derselbe Weg
+        wie der Uebertrag fuer Claude Code und Codex (app/chat_uebertrag).
         """
+        from app.chat_uebertrag import verlauf_laden
         from app.tools.api_client import current_chat_session
 
-        session_id = current_chat_session.get(None)
-        if not session_id:
-            return []
-        try:
-            from app.tools.api_client import OrchestratorAPIClient
-            client = OrchestratorAPIClient()
-            try:
-                antwort = await client._request(
-                    "GET",
-                    f"/agents/{client.agent_id}/chat/history",
-                    params={"session_id": session_id, "limit": VERLAUF_NACHLADEN_MAX},
-                )
-            finally:
-                await client._client.aclose()
-        except Exception as e:  # noqa: BLE001
-            logger.warning("[Kontext] Verlauf nicht nachladbar: %s", e)
-            return []
-
-        if not isinstance(antwort, dict):
-            logger.warning("[Kontext] Verlauf nicht nachladbar: %s", str(antwort)[:200])
-            return []
-
-        zuege: list[ChatMessage] = []
-        for eintrag in antwort.get("messages") or []:
-            rolle = eintrag.get("role")
-            inhalt = (eintrag.get("content") or "").strip()
-            # Nur echte Wortmeldungen. `system`-Zeilen sind Kacheln und
-            # Statusmeldungen der Oberflaeche — sie standen dem Modell nie zur
-            # Verfuegung und wuerden es jetzt nur verwirren.
-            if rolle in ("user", "assistant") and inhalt:
-                zuege.append(ChatMessage(role=rolle, content=inhalt))
-
+        zuege = [ChatMessage(role=z["role"], content=z["content"])
+                 for z in await verlauf_laden(current_chat_session.get(None), VERLAUF_NACHLADEN_MAX)]
         if zuege:
             logger.info("[Kontext] %d fruehere Zuege dieser Unterhaltung geladen", len(zuege))
         return zuege

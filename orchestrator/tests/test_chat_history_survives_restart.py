@@ -78,24 +78,31 @@ class TheRuntimeActuallyReloadsTests(unittest.TestCase):
         self.assertEqual(len(block), 2)
         self.assertIn("_verlauf_nachladen()", block[1][:1400])
 
+    # Seit 1.366 laedt die custom_llm-Laufzeit ueber denselben Weg wie der
+    # Uebertrag fuer Claude Code und Codex (agent/app/chat_uebertrag.verlauf_laden).
+    GEMEINSAM = (Path(__file__).resolve().parents[2] / "agent/app/chat_uebertrag.py").read_text()
+
+    def _gemeinsam(self):
+        return self.GEMEINSAM.split("async def verlauf_laden", 1)[1][:2400]
+
     def test_it_asks_for_this_conversation_only(self):
         """Ohne die Sitzungskennung holte es fremde Unterhaltungen herein —
         also genau das, was der Nutzer befuerchtet hat."""
         block = self.QUELLE.split("async def _verlauf_nachladen", 1)[1][:2000]
         self.assertIn("current_chat_session", block)
-        self.assertIn('"session_id": session_id', block)
+        self.assertIn("verlauf_laden(current_chat_session", block)
+        self.assertIn('"session_id": session_id', self._gemeinsam())
 
     def test_only_real_turns_are_restored(self):
         """`system`-Zeilen sind Kacheln und Statusmeldungen der Oberflaeche —
         das Modell hat sie nie gesehen und wuerde davon nur irritiert."""
-        block = self.QUELLE.split("async def _verlauf_nachladen", 1)[1][:2000]
-        self.assertIn('rolle in ("user", "assistant")', block)
+        self.assertIn('rolle in ("user", "assistant")', self._gemeinsam())
 
     def test_a_failure_does_not_kill_the_turn(self):
         """Ohne Vorgeschichte weiterreden ist der Zustand von vorher — das darf
         keinen Fehler werfen."""
-        block = self.QUELLE.split("async def _verlauf_nachladen", 1)[1][:2000]
-        self.assertIn("Verlauf nicht nachladbar", block)
+        block = self._gemeinsam()
+        self.assertIn("Verlauf nicht ladbar", block)
         self.assertIn("return []", block)
 
     def test_the_amount_is_bounded(self):

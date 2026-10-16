@@ -247,12 +247,35 @@ class StromLeser:
         return []
 
 
+class _StillerPublisher:
+    """Verschluckt Chat-Ereignisse eines internen Zugs (Uebergabe), haelt aber den
+    Stillstands-Wachhund am Leben — der Zug arbeitet ja."""
+
+    def __init__(self, laut):
+        object.__setattr__(self, "_laut", laut)
+
+    async def publish_chat(self, *_a, **_k):
+        self._laut.last_activity_at = time.monotonic()
+
+    def __getattr__(self, name):
+        return getattr(self._laut, name)
+
+    def __setattr__(self, name, value):
+        # z. B. ``last_activity_at`` aus dem stderr-Leser: muss am ECHTEN
+        # Publisher landen, den der Wachhund im Consumer liest.
+        setattr(self._laut, name, value)
+
+
 class ChatHandler:
     """Handles interactive chat sessions using Claude Code CLI with --resume."""
 
     def __init__(self, log_publisher: LogPublisher):
         self.log_publisher = log_publisher
         self.session_id: str | None = None
+        # Fuellstand des Kontexts nach dem letzten Zug (Token) und ob Claude Code
+        # den Verlauf zwischendurch verdichtet hat — siehe _execute_cli.
+        self._kontext_tokens = 0
+        self._kompaktiert = False
         # Fortlaufende Kostensumme der CLI-Sitzung nach dem letzten Lauf (#896).
         # ``total_cost_usd`` zaehlt ueber ``--resume`` weiter; was EINE Nachricht
         # gekostet hat, ist die Differenz hierzu. ``None`` = unbekannt (Sitzung
@@ -308,12 +331,12 @@ class ChatHandler:
             if was_resumed:
                 await self.log_publisher.publish_chat(
                     message_id, "system",
-                    {"message": "Der Gespraechsverlauf war zu lang geworden — ich "
-                                "beginne eine neue Sitzung und beantworte die "
-                                "Nachricht gleich erneut. Frueheres aus diesem Chat "
-                                "kenne ich dann nicht mehr aus dem Verlauf."},
+                    {"message": "Der Gesprächsverlauf war zu lang geworden — ich setze "
+                                "ihn in einer neuen Sitzung fort und nehme die letzten "
+                                "Nachrichten und den Stand des Gesprächs mit."},
                 )
-                result = await self._execute_cli(message_id, fresh_text or text, model)
+                result = await self._execute_cli(
+                    message_id, await self._mit_uebertrag(fresh_text or text), model)
 
         # If --resume failed, reset session and retry without it
         if (
@@ -325,9 +348,12 @@ class ChatHandler:
             self.session_id = None
             await self.log_publisher.publish_chat(
                 message_id, "system",
-                {"message": "Session expired, starting fresh conversation..."},
+                {"message": "Die vorige Sitzung war nicht mehr vorhanden — ich setze "
+                            "das Gespräch in einer neuen fort und nehme die letzten "
+                            "Nachrichten mit."},
             )
-            result = await self._execute_cli(message_id, fresh_text or text, model)
+            result = await self._execute_cli(
+                message_id, await self._mit_uebertrag(fresh_text or text), model)
 
         # Zugangsfehler: auf den ERNEUERTEN Token warten und wiederholen.
         #
@@ -404,6 +430,11 @@ class ChatHandler:
                     message_id, "system", {"message": m}
                 ),
             )
+            # Vor dem Abschluss-Marker: ist der Kontext voll, wird JETZT uebergeben
+            # (stiller Zug in derselben Sitzung), statt die Verdichtung von Claude
+            # Code oder den harten Neustart abzuwarten. Kosten zaehlen zum Zug.
+            if result.get("status") == "completed" and self._uebergabe_faellig(model):
+                await self._uebergeben(message_id, model, result)
         finally:
             self.is_running = False
             self._process = None
@@ -412,10 +443,62 @@ class ChatHandler:
         await self.log_publisher.publish_chat(message_id, "done", result)
         return result
 
+    # -- Gespraechsfaden (app/chat_uebertrag) -------------------------------
+
+    async def _mit_uebertrag(self, text: str) -> str:
+        from app.chat_uebertrag import mit_uebertrag
+        return await mit_uebertrag(self, text)
+
+    def _uebergabe_faellig(self, model: str) -> bool:
+        from app.config import chat_uebergabe_schwelle
+        if not self.session_id or getattr(self, "uebergabe_ablegen", None) is None:
+            return False
+        return getattr(self, "_kontext_tokens", 0) >= chat_uebergabe_schwelle(model)
+
+    async def _uebergeben(self, message_id: str, model: str, result: dict) -> None:
+        """Stiller Uebergabe-Zug, dann Sitzungswechsel.
+
+        Der Agent sichert dauerhaft, was ueber das Gespraech hinaus gilt, und
+        schreibt die Uebergabe; der Nutzer sieht nur einen Hinweis. Scheitert
+        etwas, bleibt die Sitzung einfach bestehen — schlechter als vorher wird
+        es nicht.
+        """
+        from app.chat_uebertrag import UEBERGABE_AUFTRAG
+        await self.log_publisher.publish_chat(
+            message_id, "system",
+            {"message": "Das Gespräch ist lang geworden — ich sichere den Stand und setze "
+                        "es gleich mit frischem Kontext fort."},
+        )
+        laut = self.log_publisher
+        self.log_publisher = _StillerPublisher(laut)
+        try:
+            zug = await self._execute_cli(message_id, UEBERGABE_AUFTRAG, model, nur_gedaechtnis=True)
+        finally:
+            self.log_publisher = laut
+        for feld in ("cost_usd", "input_tokens", "output_tokens", "cache_write_tokens", "cached_tokens"):
+            if isinstance(zug.get(feld), (int, float)):
+                result[feld] = (result.get(feld) or 0) + zug[feld]
+        uebergabe = (zug.get("text") or "").strip()
+        if zug.get("status") != "completed" or not uebergabe:
+            logger.warning("Uebergabe fehlgeschlagen (%s) — Sitzung bleibt bestehen",
+                           str(zug.get("error"))[:120])
+            return
+        await self.uebergabe_ablegen(uebergabe)
+        logger.info("Uebergabe fuer Sitzung %s gespeichert (%d Zeichen, Kontext %d Token) — "
+                    "naechste Nachricht in neuer Sitzung", self.session_id, len(uebergabe),
+                    getattr(self, "_kontext_tokens", 0))
+        self.session_id = None
+        self._kontext_tokens = 0
+
     async def _execute_cli(
-        self, message_id: str, text: str, model: str
+        self, message_id: str, text: str, model: str, nur_gedaechtnis: bool = False,
     ) -> dict:
-        """Execute a single Claude CLI invocation and stream results."""
+        """Execute a single Claude CLI invocation and stream results.
+
+        ``nur_gedaechtnis``: der Zug sieht KEINE eingebauten Werkzeuge und nur den
+        Memory-Server (Uebergabe-Zug, siehe _uebergeben) — Erlaubnisliste statt
+        Sperrliste.
+        """
         cmd = ["claude"]
 
         # Resume previous session for conversation continuity
@@ -446,6 +529,17 @@ class ChatHandler:
             "--disallowedTools", "AskUserQuestion",
             "--model", model,
         ])
+        mcp_datei = None
+        if nur_gedaechtnis:
+            import tempfile
+
+            from app.config import stdio_mcp_server
+            # Datei statt Kommandozeile: die Konfiguration traegt das Agenten-Token,
+            # und die Kommandozeile sieht jeder Prozess im Container.
+            fd, mcp_datei = tempfile.mkstemp(prefix="uebergabe-mcp-", suffix=".json")
+            with os.fdopen(fd, "w") as fh:
+                json.dump({"mcpServers": {"memory": stdio_mcp_server("memory-server.mjs")}}, fh)
+            cmd.extend(["--tools", "", "--strict-mcp-config", "--mcp-config", mcp_datei])
 
         env = os.environ.copy()
         reasoning = getattr(self, "_reasoning", "")
@@ -459,6 +553,10 @@ class ChatHandler:
             oauth_token = get_oauth_token()
             if oauth_token:
                 env["CLAUDE_CODE_OAUTH_TOKEN"] = oauth_token
+        # Fuer chat_search: in welchem Gespraech dieser Zug laeuft. Die MCP-Server
+        # der CLI erben die Umgebung (siehe chat_suche_env).
+        from app.tools.api_client import chat_suche_env
+        chat_suche_env(env)
 
         self._interrupted = False  # set by stop_current() when steering cuts this turn short
         result_data: dict = {"status": "completed", "text": ""}
@@ -504,6 +602,22 @@ class ChatHandler:
                 if event.get("session_id") and not self.session_id:
                     self.session_id = event["session_id"]
                     logger.info(f"Captured session_id: {self.session_id}")
+
+                # Fuellstand des Kontexts: der Prompt der LETZTEN Modellanfrage
+                # (Eingabe + Cache), nicht die Summe des Zugs. Helfer (Subagenten)
+                # haben einen eigenen Kontext und zaehlen nicht.
+                if event_type == "assistant" and not event.get("parent_tool_use_id"):
+                    nutzung = (event.get("message") or {}).get("usage") or {}
+                    belegt = sum(int(nutzung.get(k) or 0) for k in (
+                        "input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
+                    if belegt:
+                        self._kontext_tokens = belegt
+                # Claude Code hat den Verlauf selbst verdichtet: Regeln und Skill-
+                # Block (nur im ersten Zug vollstaendig) sind danach weg — der
+                # Consumer gibt sie mit der naechsten Nachricht wieder mit.
+                if event_type == "system" and event.get("subtype") == "compact_boundary":
+                    self._kompaktiert = True
+                    logger.info("Claude Code hat den Verlauf von %s verdichtet", self.session_id)
 
                 for art, daten in leser.ereignis(event):
                     await self.log_publisher.publish_chat(message_id, art, daten)
@@ -580,6 +694,12 @@ class ChatHandler:
             await self.log_publisher.publish_chat(
                 message_id, "error", {"message": str(e)}
             )
+        finally:
+            if mcp_datei:
+                try:
+                    os.unlink(mcp_datei)
+                except OSError:
+                    pass
 
         return result_data
 

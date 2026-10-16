@@ -497,6 +497,37 @@ so bleibt ein Thema beisammen.
 
 ![Aufgeklappter Werkzeugaufruf mit Eingabe und Ausgabe](screenshots/65-chat-werkzeugaufruf.png)
 
+#### Lange Gespräche: der Agent behält den Faden *(seit 1.366.0)*
+
+Ein Gespräch läuft beim Agenten als **eine fortlaufende Sitzung** — jede neue Nachricht setzt
+sie fort, auch nach Tagen. Wird ein Gespräch sehr lang, passiert Folgendes:
+
+1. **Übergabe:** Ist der Kontext gut gefüllt (bis 150.000 Token, höchstens 60 % des
+   Modellfensters), steht nach der Antwort im Verlauf *„Das Gespräch ist lang geworden — ich
+   sichere den Stand und setze es gleich mit frischem Kontext fort.“* Der Agent speichert
+   dabei dauerhaft, was über das Gespräch hinaus gilt — vor allem **deine Korrekturen** („mach
+   das nicht so, sondern so“) als Erinnerung —, und schreibt eine Übergabe: Ziel, deine
+   Vorgaben, Stand, Entscheidungen, Dateien, nächste Schritte.
+2. **Fortsetzung:** Deine nächste Nachricht läuft in einer frischen Sitzung. Sie bekommt die
+   Übergabe und die **letzten Nachrichten wörtlich** mit. Du musst nichts tun und nichts
+   wiederholen.
+3. **Ältere Stellen:** Fragst du nach etwas, das weiter zurückliegt, sucht der Agent es mit dem
+   Werkzeug **chat_search** im ganzen Verlauf dieses Gesprächs — und nur in diesem.
+
+Dasselbe gilt, wenn ein Verlauf doch einmal zu lang für das Modell wird (*„Der
+Gesprächsverlauf war zu lang geworden — ich setze ihn in einer neuen Sitzung fort …“*) und
+nach einem Modellwechsel. **Neues Gespräch** bzw. `/reset` in Telegram ist dagegen ein
+bewusster Neuanfang: dann nimmt der Agent nichts aus dem alten Gespräch mit.
+
+> **Was dauerhaft bleibt:** Soll eine Korrektur für **alle** künftigen Gespräche gelten, sag
+> es dem Agenten ausdrücklich („merk dir das dauerhaft“) — er legt sie dann als Erinnerung
+> oder in seinem Skill ab. Korrekturen an Skills überleben seit 1.365.3 auch Updates.
+
+*Für Administratoren:* Die Schwelle steht in der Agenten-Umgebung als
+`CHAT_UEBERGABE_TOKENS` (Standard 150000, `0` schaltet die vorausschauende Übergabe ab). Bei
+Codex-Agenten gibt es nur die Fortsetzung mit Übertrag, keine vorausschauende Übergabe — Codex
+verdichtet lange Verläufe selbst.
+
 #### Ziel setzen mit /goal — der Agent arbeitet weiter, bis es erreicht ist *(seit 1.357.0)*
 
 Für Aufträge, die mehrere Schritte brauchen, musst du nicht nach jeder Antwort „weiter“

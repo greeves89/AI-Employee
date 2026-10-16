@@ -121,6 +121,113 @@ def tool_output_excluded(msg) -> bool:
     return bool((msg.meta or {}).get("tool_output_excluded"))
 
 
+def sichtbare_nachrichten(messages: list, *, for_model: bool) -> list:
+    """Was vom Verlauf übrig bleibt — EINE Regel für Verlauf und Chat-Suche.
+
+    ``messages`` chronologisch (älteste zuerst). Doppelte Zeilen (gleiche
+    Kennung, Rolle und Text — zwei Schreiber, siehe ``chat_persistence``) fallen
+    weg, die älteste bleibt. Mit ``for_model`` fehlen zusätzlich verdichtete und
+    von Hand ausgeschlossene Nachrichten (#538 Punkt 4/5): was der Mensch aus dem
+    Kontext genommen hat, findet der Agent auch über die Suche nicht wieder.
+    """
+    out = []
+    seen: set[tuple[str, str, str]] = set()
+    for msg in messages:
+        key = (msg.message_id or str(msg.id), msg.role, msg.content or "")
+        if key in seen:
+            continue
+        seen.add(key)
+        if for_model and excluded_from_model(msg):
+            continue
+        out.append(msg)
+    return out
+
+
+# ── Wörtliche Suche im laufenden Gespräch (Werkzeug ``chat_search``) ─────────
+
+#: Grenzen der Suche. Die Anfrage kommt vom Modell, also hart begrenzt.
+SUCHE_MAX_LAENGE = 200
+SUCHE_MAX_TREFFER = 30
+#: Ausschnitt um die Fundstelle — genug, um einen Satz samt Umfeld zu sehen.
+AUSSCHNITT_LAENGE = 400
+#: Mehr Kandidaten liest die Suche nicht aus der Datenbank; ein einzelnes
+#: Gespräch mit mehr Treffern als das ist ohnehin nicht mehr sinnvoll zu lesen.
+_SUCHE_KANDIDATEN_MAX = 1000
+
+
+#: Mehr Suchwoerter bringen keine bessere Suche, nur mehr ILIKE-Bedingungen.
+MAX_SUCHWOERTER = 8
+
+
+def suchwoerter(q: str) -> list[str]:
+    """Die Wörter der Anfrage, ohne Dubletten, in Kleinschreibung — höchstens
+    ``MAX_SUCHWOERTER`` (die ersten zählen)."""
+    out: list[str] = []
+    for wort in (q or "").lower().split():
+        if wort not in out:
+            out.append(wort)
+        if len(out) >= MAX_SUCHWOERTER:
+            break
+    return out
+
+
+def ausschnitt(content: str, woerter: list[str], laenge: int = AUSSCHNITT_LAENGE) -> str:
+    """Ein Ausschnitt von etwa ``laenge`` Zeichen um die erste Fundstelle."""
+    text = content or ""
+    if len(text) <= laenge:
+        return text
+    klein = text.lower()
+    treffer = [p for p in (klein.find(w) for w in woerter) if p >= 0]
+    pos = min(treffer) if treffer else 0
+    start = max(0, min(pos - laenge // 3, len(text) - laenge))
+    ende = start + laenge
+    return ("…" if start > 0 else "") + text[start:ende] + ("…" if ende < len(text) else "")
+
+
+async def search_session(
+    db: AsyncSession, agent_id: str, session_id: str, q: str, limit: int = 10,
+) -> dict:
+    """Wörtliche Suche in EINEM Gespräch eines Agenten.
+
+    Groß-/Kleinschreibung egal, mehrere Wörter müssen alle vorkommen. Gesucht
+    wird in dem, was der Agent auch über den Verlauf sehen darf
+    (``sichtbare_nachrichten(..., for_model=True)``). Neueste Treffer zuerst.
+
+    Bewusst nur ein Gespräch: ``ChatMessage`` kennt keinen Nutzer, ein Agent kann
+    mehreren Menschen gehören — eine gesprächsübergreifende Suche würde fremde
+    Unterhaltungen preisgeben.
+    """
+    woerter = suchwoerter(q)
+    if not woerter:
+        return {"session_id": session_id, "total": 0, "matches": []}
+    query = select(ChatMessage).where(
+        ChatMessage.agent_id == agent_id,
+        ChatMessage.session_id == session_id,
+    )
+    for wort in woerter:
+        # autoescape: ``%`` und ``_`` aus der Anfrage sind Text, keine Platzhalter.
+        query = query.where(ChatMessage.content.icontains(wort, autoescape=True))
+    kandidaten = list((await db.execute(
+        query.order_by(ChatMessage.id.desc()).limit(_SUCHE_KANDIDATEN_MAX)
+    )).scalars().all())
+    kandidaten.reverse()  # chronologisch, wie im Verlauf
+    sichtbar = sichtbare_nachrichten(kandidaten, for_model=True)
+    sichtbar.reverse()  # neueste zuerst
+    return {
+        "session_id": session_id,
+        "total": len(sichtbar),
+        "matches": [
+            {
+                "message_id": m.message_id,
+                "role": m.role,
+                "timestamp": m.timestamp.isoformat() if m.timestamp else None,
+                "excerpt": ausschnitt(m.content or "", woerter),
+            }
+            for m in sichtbar[:limit]
+        ],
+    }
+
+
 async def _reasoning_of(db: AsyncSession, agent_id: str, session_id: str) -> str | None:
     """Gewählte Denktiefe eines Gesprächs — ``None``, wenn nie eine gesetzt wurde."""
     return (await db.execute(

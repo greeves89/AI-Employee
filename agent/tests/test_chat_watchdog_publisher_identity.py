@@ -32,6 +32,9 @@ class FakeRedis:
     async def setex(self, key, _ttl, value):
         self.store[key] = value
 
+    async def set(self, key, value):
+        self.store[key] = value
+
     async def delete(self, key):
         self.store.pop(key, None)
 

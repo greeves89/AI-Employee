@@ -114,6 +114,57 @@ async function apiCall(path, options = {}) {
   return res.json();
 }
 
+// --- chat_search: woertliche Suche im LAUFENDEN Gespraech ---
+//
+// Das Gespraech bestimmt die Laufzeit, nie das Modell: ChatMessage kennt keinen
+// Nutzer, und ein Agent kann mehreren Menschen gehoeren. Wuerde das Werkzeug eine
+// Gespraechskennung annehmen, koennte das Modell in fremden Unterhaltungen lesen.
+// Die Laufzeit setzt AI_CHAT_SESSION beim Start der CLI fuer einen Chat-Zug
+// (chat_handler.py / codex_runner.py); dieser stdio-Prozess erbt sie. In einer
+// Aufgabe fehlt sie — dann wird nichts durchsucht.
+export const CHAT_SEARCH_DESCRIPTION =
+  "Search the verbatim history of the chat conversation you are in right now " +
+  "(only this conversation — never other chats or other users). Use it when the user " +
+  "refers to something said earlier in this chat that is no longer in your context — " +
+  "e.g. after a long conversation was condensed or continued in a new session (\"the " +
+  "number I gave you earlier\", \"what did we agree on last week?\"). Look it up instead " +
+  "of guessing. Returns matching messages (newest first) with role, time and an excerpt.";
+export const CHAT_SEARCH_QUERY_DESCRIPTION =
+  "Words to search for (case-insensitive; with several words, all must occur in the message).";
+export const CHAT_SEARCH_NO_SESSION =
+  "Kein laufendes Gespräch — chat_search durchsucht nur das Gespräch, in dem du gerade " +
+  "stehst, und ist in Aufgaben nicht verfügbar.";
+
+export async function chatSearch(args, session = process.env.AI_CHAT_SESSION) {
+  const query = String(args?.query || "").trim();
+  if (!query) {
+    return { content: [{ type: "text", text: "Error: query cannot be empty" }] };
+  }
+  if (query.length > 200) {
+    return { content: [{ type: "text", text: "Error: query is too long (max. 200 characters)" }] };
+  }
+  if (!session) {
+    return { content: [{ type: "text", text: CHAT_SEARCH_NO_SESSION }] };
+  }
+  const limit = Math.min(Math.max(Math.trunc(Number(args?.limit)) || 10, 1), 30);
+  const params = new URLSearchParams({ session_id: session, q: query, limit: String(limit) });
+  const result = await apiCall(`/agents/${encodeURIComponent(AGENT_ID)}/chat/search?${params}`);
+  const matches = result.matches || [];
+  if (matches.length === 0) {
+    return { content: [{ type: "text", text: `No messages in this conversation match '${query}'.` }] };
+  }
+  const lines = matches.map(
+    (m) => `[${m.timestamp || "?"}] ${m.role} (${m.message_id}): ${m.excerpt}`
+  );
+  return {
+    content: [{
+      type: "text",
+      text: `${matches.length} of ${result.total} matches in this conversation for '${query}' ` +
+        `(newest first):\n\n${wrapData("chat-history", lines.join("\n\n"))}`,
+    }],
+  };
+}
+
 // Eine Fabrik statt einer Modul-Instanz: im HTTP-Modus bedient ein Prozess
 // mehrere gleichzeitige Laeufe, und ein `Server` laesst sich nur an genau einen
 // Transport binden (siehe _transport.mjs).
@@ -359,6 +410,24 @@ export function buildServer() {
             },
           },
           required: ["agent_id"],
+        },
+      },
+      {
+        name: "chat_search",
+        description: CHAT_SEARCH_DESCRIPTION,
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: {
+              type: "string",
+              description: CHAT_SEARCH_QUERY_DESCRIPTION,
+            },
+            limit: {
+              type: "number",
+              description: "Maximum number of matches (default: 10, max: 30).",
+            },
+          },
+          required: ["query"],
         },
       },
       {
@@ -1384,6 +1453,9 @@ export function buildServer() {
           }],
         };
       }
+
+      case "chat_search":
+        return chatSearch(args);
 
       case "send_message": {
         const sendResult = await apiCall(`/agents/${args.agent_id}/message`, {

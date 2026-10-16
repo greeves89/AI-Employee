@@ -348,7 +348,12 @@ class ChatConsumer:
     into the running conversation for that same channel only.
     """
 
-    _CLAUDE_SESSION_TTL = 86400 * 7  # 7 days
+    # Die Sitzungskennung je Kanal verfiel bis v1.365 nach 7 Tagen Ruhe, und das
+    # Gespraech begann ohne Vorgeschichte neu — strenger als jedes Vergleichssystem
+    # (Hermes setzt nie von selbst zurueck). Jetzt 180 Tage, bei jeder Nachricht neu
+    # gesetzt: praktisch unbegrenzt, der Bestand bleibt aber endlich. Geloescht wird
+    # sie bei /reset, beim Modellwechsel, bei einer Uebergabe und mit dem Chat.
+    _SITZUNG_AUFBEWAHRUNG_S = 180 * 86400
 
     def __init__(self, agent_id: str):
         self.agent_id = agent_id
@@ -450,12 +455,17 @@ class ChatConsumer:
             # Kostenstand der Sitzung (#896): ohne ihn ist unbekannt, was die
             # naechste Nachricht kostet — die CLI zaehlt ueber --resume weiter.
             kosten_stand = None
+            nutzung_stand = None
             try:
                 parsed = json.loads(stored)
                 if isinstance(parsed, dict):
                     session_id, stored_model = parsed.get("session_id"), parsed.get("model")
                     if isinstance(parsed.get("kosten_stand"), (int, float)):
                         kosten_stand = float(parsed["kosten_stand"])
+                    # Codex zaehlt die Nutzung je Faden fortlaufend — ohne den Stand
+                    # haette der erste fortgesetzte Zug den ganzen Verlauf berechnet.
+                    if isinstance(parsed.get("nutzung_stand"), dict):
+                        nutzung_stand = parsed["nutzung_stand"]
             except (TypeError, ValueError):
                 pass  # legacy bare-string value (pre-model-tracking) — no model to compare
             if stored_model and stored_model != model:
@@ -468,21 +478,27 @@ class ChatConsumer:
                 handler.session_id = session_id
                 if hasattr(handler, "_kosten_stand"):
                     handler._kosten_stand = kosten_stand
-                logger.info("Restored Claude session %s for %s", handler.session_id, source_key)
+                if nutzung_stand is not None and hasattr(handler, "_nutzung_stand"):
+                    handler._nutzung_stand = nutzung_stand
+                logger.info("Restored chat session %s for %s", handler.session_id, source_key)
 
         self._handlers[source_key] = handler
         return handler
 
     async def _persist_session(self, source_key: str, handler: object, model: str | None = None) -> None:
         """Save the handler's session ID (+ the model it ran under) to Redis."""
+        key = f"agent:{self.agent_id}:claude_session:{source_key}"
         session_id = getattr(handler, "session_id", None)
         if session_id:
-            await self.redis.setex(
-                f"agent:{self.agent_id}:claude_session:{source_key}",
-                self._CLAUDE_SESSION_TTL,
-                json.dumps({"session_id": session_id, "model": model,
-                            "kosten_stand": getattr(handler, "_kosten_stand", None)}),
-            )
+            stand = {"session_id": session_id, "model": model,
+                     "kosten_stand": getattr(handler, "_kosten_stand", None)}
+            if hasattr(handler, "_nutzung_stand"):  # nur Codex zaehlt je Faden fortlaufend
+                stand["nutzung_stand"] = handler._nutzung_stand
+            await self.redis.setex(key, self._SITZUNG_AUFBEWAHRUNG_S, json.dumps(stand))
+        elif hasattr(handler, "session_id"):
+            # Sitzung gewechselt (Uebergabe, zu langer Verlauf): die alte Kennung
+            # darf nach einem Neustart nicht wieder aufleben.
+            await self.redis.delete(key)
 
     async def _reset_handler(self, source_key: str) -> None:
         """Clear session for one channel (new chat)."""
@@ -493,6 +509,9 @@ class ChatConsumer:
             # Neuer Chat: Fachanleitungen wieder von vorn (Liste + passende Anleitung).
             handler._fachanleitungen = None
         await self.redis.delete(f"agent:{self.agent_id}:claude_session:{source_key}")
+        # Bewusster Neuanfang: keine Uebergabe, kein Uebertrag des alten Verlaufs.
+        from app.chat_uebertrag import neuanfang_markieren
+        await neuanfang_markieren(self.redis, self.agent_id, source_key)
 
     # ------------------------------------------------------------------ #
     # Cancel listener                                                      #
@@ -623,9 +642,16 @@ class ChatConsumer:
             return _build_telegram_prompt(text, telegram_ctx, is_new_session=is_new)
         return _build_channel_prompt(text, source, is_new)
 
-    def _prepare_text(self, text: str, telegram_ctx: dict | None, source: str, handler: object) -> str:
+    def _prepare_text(self, text: str, telegram_ctx: dict | None, source: str, handler: object,
+                      uebertrag: str = "") -> str:
         from app.runner_hooks import get_approval_rules_prefix
         is_new = self._is_new_session(handler)
+        # Claude Code hat den Verlauf verdichtet (compact_boundary): die Sitzung
+        # laeuft weiter, aber Regeln und Skill-Block standen nur im ersten Zug und
+        # sind mit der Zusammenfassung weg — also wie zu Sitzungsbeginn mitgeben.
+        verdichtet = getattr(handler, "_kompaktiert", False) is True
+        if verdichtet and handler is not None:
+            handler._kompaktiert = False
         # Die Autonomie-Regeln standen bisher vor JEDER Nachricht — obwohl sie sich
         # zwischen zwei Nachrichten fast nie aendern und im Verlauf laengst stehen.
         # Jetzt: zum Sitzungsbeginn, und danach nur, wenn der Nutzer sie wirklich
@@ -637,17 +663,17 @@ class ChatConsumer:
         # abholt, damit die erste sie nie zu sehen bekam — sie haette mit einer
         # zurueckgezogenen Freigabe weitergearbeitet.
         rules_prefix = get_approval_rules_prefix()
-        if is_new or rules_prefix != getattr(handler, "_last_rules_prefix", None):
+        if is_new or verdichtet or rules_prefix != getattr(handler, "_last_rules_prefix", None):
             # Ohne Handler (erste Nachricht eines Kanals) gibt es nichts zu merken —
             # is_new ist dann ohnehin wahr, die Regeln gehen also raus.
             if handler is not None:
                 handler._last_rules_prefix = rules_prefix
         else:
             rules_prefix = ""
-        skills_prefix = self._skills_prefix(text) if is_new else ""
-        fach = self._fachanleitungen(text, handler, is_new)
-        return (rules_prefix + skills_prefix + fach + self._wrap(text, telegram_ctx, source, is_new)
-                + self._zeit())
+        skills_prefix = self._skills_prefix(text) if (is_new or verdichtet) else ""
+        fach = self._fachanleitungen(text, handler, is_new or verdichtet)
+        return (rules_prefix + skills_prefix + fach + uebertrag
+                + self._wrap(text, telegram_ctx, source, is_new) + self._zeit())
 
     @staticmethod
     def _zeit() -> str:
@@ -881,7 +907,21 @@ class ChatConsumer:
             return
 
         raw_text = text
-        text = self._prepare_text(text, telegram_ctx, source, handler)
+        # Neue Sitzung in einem Gespraech MIT Vorgeschichte (Uebergabe, Modell-
+        # wechsel, neu aufgesetzter Agent): der Faden reisst nicht ab — letzte
+        # Uebergabe + juengste Nachrichten woertlich (app/chat_uebertrag).
+        uebertrag = ""
+        if hasattr(handler, "session_id"):
+            from app.chat_uebertrag import uebergabe_speichern, uebertrag_block
+            if self._is_new_session(handler):
+                uebertrag = await uebertrag_block(self.redis, self.agent_id, source_key, raw_text)
+            # Fuer den Notfall-Reset (zu langer Verlauf) mitten im Zug und fuer die
+            # Uebergabe am Ende eines Zugs — der Handler kennt weder Redis noch Kanal.
+            handler.uebertrag_laden = (
+                lambda sk=source_key, rt=raw_text: uebertrag_block(self.redis, self.agent_id, sk, rt))
+            handler.uebergabe_ablegen = (
+                lambda t, sk=source_key: uebergabe_speichern(self.redis, self.agent_id, sk, t))
+        text = self._prepare_text(text, telegram_ctx, source, handler, uebertrag=uebertrag)
         # Fallschirm fuer den Laengenfehler: dieselbe Nachricht, aufbereitet als
         # erste einer neuen Sitzung. Der Handler greift nur danach, wenn er den
         # Verlauf tatsaechlich wegwerfen musste.

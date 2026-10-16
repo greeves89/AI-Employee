@@ -30,6 +30,35 @@ current_chat_session: ContextVar[str | None] = ContextVar(
 )
 
 
+#: Antwort von ``chat_search`` ausserhalb eines Gespraechs (Aufgaben, Zeitplaene
+#: ohne Faden). Wortgleich in orchestrator-server.mjs.
+CHAT_SEARCH_NO_SESSION = (
+    "Kein laufendes Gespräch — chat_search durchsucht nur das Gespräch, in dem du gerade "
+    "stehst, und ist in Aufgaben nicht verfügbar."
+)
+
+
+#: Umgebungsvariable, ueber die Claude Code und Codex dem MCP-Server
+#: (orchestrator-server.mjs) das laufende Gespraech fuer ``chat_search`` mitgeben.
+CHAT_SESSION_ENV = "AI_CHAT_SESSION"
+
+
+def chat_suche_env(env: dict, session: str | None = None) -> dict:
+    """``AI_CHAT_SESSION`` in der Umgebung eines CLI-Starts setzen — oder entfernen.
+
+    Ohne ``session`` gilt ``current_chat_session``: der Chat-Verbraucher setzt es
+    zu Beginn jedes Chat-Zuges, in Aufgaben bleibt es leer. Ohne Gespraech wird
+    die Variable ENTFERNT, nicht nur nicht gesetzt — ``os.environ.copy()`` darf
+    keinen fremden Wert in eine Aufgabe tragen. Gibt ``env`` zurueck.
+    """
+    session = session if session is not None else current_chat_session.get()
+    if session:
+        env[CHAT_SESSION_ENV] = session
+    else:
+        env.pop(CHAT_SESSION_ENV, None)
+    return env
+
+
 def _session_field() -> dict:
     """``{"chat_session_id": ...}`` — oder nichts, ausserhalb eines Gespraechs."""
     session = current_chat_session.get()
@@ -385,6 +414,47 @@ class OrchestratorAPIClient:
             text = (msg.get("text") or "").strip()
             lines.append(f"[{msg.get('timestamp', '?')}] {msg.get('from_name') or msg.get('from_id')}: {text}")
         return "\n\n".join(lines)
+
+    async def chat_search(self, params: dict) -> str:
+        """Woertliche Suche im LAUFENDEN Gespraech (Paritaet: orchestrator-server.mjs).
+
+        Das Gespraech kommt aus ``current_chat_session`` — die Laufzeit setzt es
+        zu Beginn des Zuges. Eine Kennung aus ``params`` wird nicht beachtet:
+        ``ChatMessage`` kennt keinen Nutzer, das Modell koennte sonst in fremden
+        Unterhaltungen lesen.
+        """
+        query = str(params.get("query") or "").strip()
+        if not query:
+            return "Error: query cannot be empty"
+        if len(query) > 200:
+            return "Error: query is too long (max. 200 characters)"
+        session = current_chat_session.get()
+        if not session:
+            return CHAT_SEARCH_NO_SESSION
+        try:
+            limit = int(params.get("limit") or 10)
+        except (TypeError, ValueError):
+            limit = 10
+        limit = min(max(limit, 1), 30)
+        result = await self._request(
+            "GET",
+            f"/agents/{self.agent_id}/chat/search",
+            params={"session_id": session, "q": query, "limit": limit},
+        )
+        if isinstance(result, str):
+            return result
+        matches = result.get("matches") or []
+        if not matches:
+            return f"No messages in this conversation match '{query}'."
+        lines = [
+            f"[{m.get('timestamp') or '?'}] {m.get('role')} ({m.get('message_id')}): {m.get('excerpt')}"
+            for m in matches
+        ]
+        return (
+            f"{len(matches)} of {result.get('total', len(matches))} matches in this conversation "
+            f"for '{query}' (newest first):\n\n"
+            '[EXTERNAL-DATA source="chat-history"]\n' + "\n\n".join(lines) + "\n[/EXTERNAL-DATA]"
+        )
 
     @staticmethod
     def _nachricht_kontext(params: dict) -> dict:

@@ -90,7 +90,7 @@ MCP_SERVER_TOOLS: dict[str, list[str]] = {
         "request_approval", "send_telegram"
     ],
     "orchestrator": [
-        "app_logs", "complete_onboarding", "complete_todo", "create_schedule",
+        "app_logs", "chat_search", "complete_onboarding", "complete_todo", "create_schedule",
         "create_skill", "create_task", "create_task_batch", "delegate_and_wait",
         "get_agent_conversation", "get_day_plan", "get_tasks_status",
         "list_agent_messages", "list_apps", "list_my_team", "list_schedules",
@@ -121,6 +121,7 @@ DEFINITION_TOOLS = [
     "brain_search",
     "brain_update",
     "browser",
+    "chat_search",
     "check_approval",
     "complete_onboarding",
     "complete_todo",
