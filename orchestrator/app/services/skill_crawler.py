@@ -12,6 +12,12 @@ import re
 from datetime import datetime, timezone
 
 import httpx
+
+from app.core.verbindungswiederholung import (
+    PAUSEN_HINTERGRUND_S,
+    VERBINDUNGSFEHLER,
+    mit_verbindungswiederholung,
+)
 import yaml
 
 logger = logging.getLogger(__name__)
@@ -241,6 +247,10 @@ class SkillCrawlerService:
                     len(github_repos), len(db_sources), len(zeilen))
 
         all_skills: list[dict] = []
+        # Quellen, die nicht am Inhalt, sondern an der VERBINDUNG scheiterten.
+        # Die Zahl entscheidet unten, ob ein leeres Ergebnis ein echtes "nichts
+        # gefunden" ist oder ein Netzaussetzer (#746).
+        verbindungsausfaelle = 0
         from app.config import settings
         headers = {"Accept": "application/vnd.github.v3+json"}
         if settings.github_token:
@@ -259,6 +269,8 @@ class SkillCrawlerService:
                         s.setdefault("trusted", False)
                     all_skills.extend(skills)
                 except Exception as e:
+                    if isinstance(e, VERBINDUNGSFEHLER):
+                        verbindungsausfaelle += 1
                     logger.warning("Failed to crawl %s: %s", repo, e)
 
             # 2. Quellen aus der Datenbank: eingebaute (system:builtin) und vom Admin
@@ -282,6 +294,8 @@ class SkillCrawlerService:
                     all_skills.extend(skills)
                     await self._update_source_status(src["id"], f"ok: {len(skills)} skills")
                 except Exception as e:
+                    if isinstance(e, VERBINDUNGSFEHLER):
+                        verbindungsausfaelle += 1
                     logger.warning("Failed to crawl source '%s' (%s): %s",
                                    src["name"], src["location"], e)
                     await self._update_source_status(src["id"], f"error: {str(e)[:180]}")
@@ -294,6 +308,23 @@ class SkillCrawlerService:
                 seen.add(s["name"])
                 unique.append(s)
         unique.sort(key=lambda s: s["name"])
+
+        # Ein Netzaussetzer darf nicht als "gecrawlt, 0 Skills" im Zwischenspeicher
+        # landen. Vorher ueberschrieb jeder solche Lauf den guten Katalog mit einer
+        # leeren Liste UND einem frischen ``crawled_at`` — sieben Tage Haltbarkeit,
+        # also bis zum naechsten Wochenlauf. Wer in die Verwaltung sah, bekam
+        # "gerade gecrawlt, 0 Quellen" und konnte nicht unterscheiden, ob es oben
+        # nichts Neues gibt oder ob hier das Netz weg war. Die Datenbank bleibt
+        # unberuehrt (der Abgleich fuegt nur hinzu), deshalb genuegt es, den
+        # Zwischenspeicher stehen zu lassen.
+        if not unique and verbindungsausfaelle:
+            logger.error(
+                "Skill crawler: kein Ergebnis — %d Quelle(n) scheiterten an der "
+                "Verbindung (Namensaufloesung/Netz). Zwischenspeicher und "
+                "Frischestempel bleiben unveraendert, kein leerer Katalog.",
+                verbindungsausfaelle,
+            )
+            return []
 
         payload = {
             "skills": unique,
@@ -321,7 +352,12 @@ class SkillCrawlerService:
         tree = None
         used_ref = None
         for r in candidate_refs:
-            resp = await client.get(f"https://api.github.com/repos/{repo}/git/trees/{r}?recursive=1")
+            ziel = f"https://api.github.com/repos/{repo}/git/trees/{r}?recursive=1"
+            resp = await mit_verbindungswiederholung(
+                lambda ziel=ziel: client.get(ziel),
+                zweck=f"Skill-Crawler ({repo}, Baum {r})",
+                pausen=PAUSEN_HINTERGRUND_S,
+            )
             if resp.status_code == 200:
                 tree = resp.json().get("tree", [])
                 used_ref = r
@@ -337,7 +373,12 @@ class SkillCrawlerService:
         skills = []
         for path in skill_paths:
             try:
-                resp = await client.get(f"https://raw.githubusercontent.com/{repo}/{used_ref}/{path}")
+                roh = f"https://raw.githubusercontent.com/{repo}/{used_ref}/{path}"
+                resp = await mit_verbindungswiederholung(
+                    lambda roh=roh: client.get(roh),
+                    zweck=f"Skill-Crawler ({repo}/{path})",
+                    pausen=PAUSEN_HINTERGRUND_S,
+                )
                 if resp.status_code == 200:
                     s = self._skill_from_content(resp.text, path, repo)
                     if s:

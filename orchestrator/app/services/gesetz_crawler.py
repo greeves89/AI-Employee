@@ -44,6 +44,12 @@ from xml.etree.ElementTree import (
 )
 
 import httpx
+
+from app.core.verbindungswiederholung import (
+    PAUSEN_HINTERGRUND_S,
+    VERBINDUNGSFEHLER,
+    mit_verbindungswiederholung,
+)
 from defusedxml import (
     ElementTree,  # XML from an external source: XXE/billion-laughs hardened
 )
@@ -381,10 +387,15 @@ class _AusfallZaehler:
         self.anzahl = 0
         self.erster_grund: str | None = None
         self.kennungen: list[str] = []
+        #: Davon an der VERBINDUNG gescheitert (Netz/Namensaufloesung), nicht am
+        #: Inhalt. Trennt den Netzaussetzer vom stehenden Mangel (#746).
+        self.verbindungsausfaelle = 0
 
     def melde(self, kennung: str, fehler: BaseException) -> None:
         self.anzahl += 1
         self.kennungen.append(kennung)
+        if isinstance(fehler, VERBINDUNGSFEHLER):
+            self.verbindungsausfaelle += 1
         if self.erster_grund is None:
             self.erster_grund = f"{kennung}: {type(fehler).__name__}: {fehler}"
 
@@ -450,6 +461,18 @@ class GesetzCrawlerService:
                 logger.error("Gesetz crawler (DE) error: %s", e, exc_info=True)
             await asyncio.sleep(CRAWL_INTERVAL)
 
+    @staticmethod
+    def _netzaussetzer(ausfaelle: _AusfallZaehler, geschrieben: int) -> bool:
+        """Lauf hat nichts geschrieben und scheiterte an der Verbindung?
+
+        Dann darf der Frischestempel NICHT weiterruecken: ``/api/compliance``
+        zeigt ihn mit der Normenzahl zusammen an, und "gerade gecrawlt, 0 Normen"
+        liest sich wie ein leerer Bestand statt wie ein Netzaussetzer (#746). Der
+        alte Stempel ist die ehrlichere Angabe: er sagt, wann zuletzt wirklich
+        etwas geholt wurde.
+        """
+        return geschrieben == 0 and ausfaelle.verbindungsausfaelle > 0
+
     def _bericht(self, ausfaelle: _AusfallZaehler, geschrieben: int) -> str | None:
         stand = _stehend(self._stehend.get(ausfaelle.bereich), ausfaelle)
         self._stehend[ausfaelle.bereich] = stand
@@ -457,7 +480,11 @@ class GesetzCrawlerService:
 
     async def _fetch_toc(self, client: httpx.AsyncClient) -> list[tuple[str, str]]:
         """Return [(title, slug), ...] from gii-toc.xml."""
-        resp = await client.get(TOC_URL)
+        resp = await mit_verbindungswiederholung(
+            lambda: client.get(TOC_URL),
+            zweck="Gesetz-Crawler (Inhaltsverzeichnis)",
+            pausen=PAUSEN_HINTERGRUND_S,
+        )
         resp.raise_for_status()
         root = ElementTree.fromstring(resp.content)
         out: list[tuple[str, str]] = []
@@ -471,7 +498,11 @@ class GesetzCrawlerService:
 
     async def _fetch_one(self, client: httpx.AsyncClient, slug: str) -> dict | None:
         url = f"https://www.gesetze-im-internet.de/{slug}/xml.zip"
-        resp = await client.get(url, follow_redirects=True)
+        resp = await mit_verbindungswiederholung(
+            lambda: client.get(url, follow_redirects=True),
+            zweck=f"Gesetz-Crawler ({slug})",
+            pausen=PAUSEN_HINTERGRUND_S,
+        )
         if resp.status_code != 200:
             return None
         with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
@@ -503,8 +534,15 @@ class GesetzCrawlerService:
 
         from datetime import datetime
 
-        self.last_crawled_at = datetime.now(UTC).isoformat()
-        self.law_count = written
+        if self._netzaussetzer(ausfaelle, written):
+            logger.error(
+                "Gesetz crawler: 0 Normen geschrieben, %d von %d Fehlschlaegen an der "
+                "Verbindung (Namensaufloesung/Netz) — Frischestempel bleibt auf %s.",
+                ausfaelle.verbindungsausfaelle, ausfaelle.anzahl, self.last_crawled_at,
+            )
+        else:
+            self.last_crawled_at = datetime.now(UTC).isoformat()
+            self.law_count = written
         bericht = self._bericht(ausfaelle, written)
         if bericht:
             logger.warning(bericht)
@@ -523,9 +561,13 @@ class GesetzCrawlerService:
         ) as client:
             for celex, kurzname in EU_CURATED_LAWS:
                 try:
-                    resp = await client.get(
-                        EU_CELLAR_URL.format(celex=celex),
-                        headers={"Accept": "application/xhtml+xml"},
+                    eu_ziel = EU_CELLAR_URL.format(celex=celex)
+                    resp = await mit_verbindungswiederholung(
+                        lambda eu_ziel=eu_ziel: client.get(
+                            eu_ziel, headers={"Accept": "application/xhtml+xml"},
+                        ),
+                        zweck=f"Gesetz-Crawler EU ({celex})",
+                        pausen=PAUSEN_HINTERGRUND_S,
                     )
                     if resp.status_code != 200:
                         logger.debug("Gesetz crawler (EU): %s -> HTTP %s", celex, resp.status_code)
@@ -541,8 +583,15 @@ class GesetzCrawlerService:
 
         from datetime import datetime
 
-        self.eu_last_crawled_at = datetime.now(UTC).isoformat()
-        self.eu_law_count = written
+        if self._netzaussetzer(ausfaelle, written):
+            logger.error(
+                "Gesetz crawler (EU): 0 Normen geschrieben, %d von %d Fehlschlaegen an "
+                "der Verbindung (Namensaufloesung/Netz) — Frischestempel bleibt auf %s.",
+                ausfaelle.verbindungsausfaelle, ausfaelle.anzahl, self.eu_last_crawled_at,
+            )
+        else:
+            self.eu_last_crawled_at = datetime.now(UTC).isoformat()
+            self.eu_law_count = written
         bericht = self._bericht(ausfaelle, written)
         if bericht:
             logger.warning(bericht)
