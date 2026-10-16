@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.376.1] - 2026-10-16
+
+### Behoben — Crawler-Netzaussetzer (#746)
+- **Gesetz- und Skill-Crawler versuchen einen kurzen Netzaussetzer jetzt bis zu
+  40 Sekunden lang erneut**, statt den Lauf nach dem ersten Fehlschlag aufzugeben.
+  Gemessener Anlass: eine 34-sekündige Namensauflösungsstörung hat zuvor einen
+  kompletten Lauf beider Crawler gekostet.
+- **Ein Netzaussetzer täuscht keine Frische mehr vor.** Scheitert ein Lauf
+  trotzdem komplett am Netz, bleiben der bisherige Gesetzesbestand und sein
+  Frischestempel unverändert, und der Skill-Katalog im Zwischenspeicher wird
+  nicht durch einen leeren Katalog ersetzt. Vorher sah ein Netzaussetzer in der
+  Verwaltung wie ein echter „0 Treffer"-Befund aus.
+
+---
+
 ## [1.376.0] - 2026-10-16
 
 ### Geändert — Microsoft nutzerbezogen

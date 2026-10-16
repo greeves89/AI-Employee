@@ -56,6 +56,20 @@ VERBINDUNGSFEHLER: tuple[type[BaseException], ...] = (
 # die Anfrage des Nutzers aufhalten, ohne die langen Faelle zuverlaessig zu retten.
 PAUSEN_S: tuple[float, ...] = (0.4, 1.6)
 
+# Fuer Laeufe im Hintergrund (Crawler, geplante Abgleiche) ist die Leiter oben zu
+# kurz. Der Unterschied ist nicht Geschmack, sondern gemessen: das laengste
+# Aussetzer-Fenster der Anlage dauerte 34 Sekunden (13.10., 04:00:57-04:01:31) und
+# hat damit ZWEI vollstaendige Laeufe gekostet (Skill-Crawler ueber alle Quellen,
+# Gesetz-Crawler EU und DE). Mit 2,0 s Deckung waere keiner der beiden gerettet
+# worden - ein Fix in dieser Groesse haette also nur so ausgesehen.
+#
+# Hier wartet kein Mensch auf eine Antwort: der Skill-Crawler laeuft woechentlich,
+# der Gesetz-Crawler taeglich, beide in einer Hintergrundschleife. 40 s Deckung
+# kosten im gesunden Fall nichts (die Pausen entstehen nur nach einem
+# Verbindungsfehler) und im kranken Fall hoechstens 40 s an einem Lauf, der sonst
+# komplett verloren ist.
+PAUSEN_HINTERGRUND_S: tuple[float, ...] = (2.0, 8.0, 30.0)
+
 T = TypeVar("T")
 
 
