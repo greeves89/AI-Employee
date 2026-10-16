@@ -90,7 +90,7 @@ class CodexSelfHealTests(unittest.IsolatedAsyncioTestCase):
         from app import codex_runner
         src = inspect.getsource(codex_runner.CodexChatHandler.handle_message)
         self.assertIn("_is_context_length_error", src)
-        self.assertIn("Der Gespraechsverlauf war zu lang geworden", src)
+        self.assertIn("Der Gesprächsverlauf war zu lang geworden", src)
         self.assertIn("einzelne Nachricht ist zu gross", src)
 
 

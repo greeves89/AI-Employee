@@ -66,6 +66,10 @@ class Settings(BaseSettings):
     # single `codex exec` turn while still streaming tool activity; default 0
     # disables the hard wall-clock timeout for Codex chats.
     chat_turn_timeout_seconds: int = 600
+    # Ab dieser Kontextfuellung (Token) wird ein Chat uebergeben und in einer
+    # frischen Sitzung fortgesetzt (app/chat_uebertrag). Zusaetzlich nie ueber
+    # 60 % des Modellfensters. 0 = keine vorausschauende Uebergabe.
+    chat_uebergabe_tokens: int = 150_000
     codex_chat_turn_timeout_seconds: int = 0
 
     # Custom MCP servers (JSON: {"name": "http://url"}) - used by both modes
@@ -141,6 +145,22 @@ CLAUDE_THINKING_BUDGET = {
 #: einer Stufe haette man leicht eine davon uebersehen.
 _STUFEN_LLM = {"off": ""}                          # Rest unveraendert
 _STUFEN_CODEX = {"off": "minimal", "max": "xhigh"}  # Codex kennt "max" nicht
+
+
+def chat_uebergabe_schwelle(model: str) -> int:
+    """Ab wie vielen Token Kontext ein Chat uebergeben wird.
+
+    Hoechstens 60 % des Modellfensters — sonst kaeme bei einem Fenster von einer
+    Million Token die Uebergabe erst bei 600.000, lange nachdem die Qualitaet
+    langer Verlaeufe nachlaesst und jeder Zug den ganzen Verlauf neu einliest.
+    Gleiche Groessenordnung wie die Verdichtung der custom_llm-Laufzeit
+    (context_compressor: min(75 % des Fensters, 150k)).
+    """
+    grenze = settings.chat_uebergabe_tokens
+    if grenze <= 0:
+        return 1 << 62  # abgeschaltet
+    from app.model_registry import get_context_window
+    return min(grenze, int(get_context_window(model) * 0.6))
 
 
 def reasoning_fuer(harness: str, level: str) -> str:

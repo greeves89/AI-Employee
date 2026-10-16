@@ -228,9 +228,13 @@ class CodexAgentRunner:
         self._process = None
         return result
 
-    async def _run_codex(self, target_id: str, prompt: str, model: str, stream: str, resume: bool = False) -> dict:
+    async def _run_codex(self, target_id: str, prompt: str, model: str, stream: str, resume: bool = False,
+                         resume_id: str | None = None) -> dict:
+        """``resume_id``: diesen Codex-Faden fortsetzen (Chat ueber Nachrichten
+        hinweg); ``resume``: den juengsten (Steuerung mitten im Zug)."""
         self._interrupted = False  # set by interrupt() when a steering message cuts this turn short
-        if not resume:
+        self.thread_id = None
+        if not resume and not resume_id:
             # Neuer Faden: die Summe der CLI beginnt bei null.
             self._nutzung_stand = {}
 
@@ -271,7 +275,9 @@ class CodexAgentRunner:
             from app.config import reasoning_fuer
             effort = reasoning_fuer("codex", _reasoning)
             common += ["-c", f'model_reasoning_effort="{effort}"']
-        if resume:
+        if resume_id:
+            cmd = ["codex", "exec", "resume"] + common + [resume_id, "-"]
+        elif resume:
             cmd = ["codex", "exec", "resume"] + common + ["--last", "-"]
         else:
             cmd = ["codex", "exec"] + common + ["-C", settings.workspace_dir, "-"]
@@ -353,6 +359,10 @@ class CodexAgentRunner:
                         {"tool_use_id": tool_id, "content": output},
                     )
 
+                # Kennung des Fadens: damit setzt die naechste Chat-Nachricht genau
+                # dieses Gespraech fort (``codex exec resume <id>``).
+                if event.get("type") == "thread.started" and event.get("thread_id"):
+                    self.thread_id = event["thread_id"]
                 if str(event.get("type", "")).endswith("completed"):
                     completed_seen = True
                 if event.get("type") == "turn.completed":
@@ -473,7 +483,15 @@ class CodexAgentRunner:
 
 
 class CodexChatHandler:
-    """Handles chat messages through Codex CLI."""
+    """Chat ueber Codex CLI — EIN Faden je Kanal, ueber Nachrichten hinweg.
+
+    Bis v1.365 begann jede Chat-Nachricht ein neues ``codex exec``: der Agent
+    kannte nicht einmal die vorige Nachricht desselben Gespraechs. Jetzt merkt
+    sich der Handler die Kennung des Codex-Fadens (``session_id``, der Consumer
+    speichert sie wie bei Claude Code in Redis) und setzt ihn mit
+    ``codex exec resume <id>`` fort. Geht das nicht (Faden weg, Verlauf zu lang),
+    beginnt ein neuer Faden mit Uebertrag (app/chat_uebertrag).
+    """
 
     def __init__(self, log_publisher: LogPublisher):
         self.log_publisher = log_publisher
@@ -482,6 +500,10 @@ class CodexChatHandler:
         self.is_running = False
         # Live steering: set by the ChatConsumer (see steering.py).
         self.pending_drain = None
+        # Kennung des Codex-Fadens dieses Kanals und sein fortlaufender
+        # Nutzungsstand (Codex zaehlt je Faden weiter — Kosten = Differenz).
+        self.session_id: str | None = None
+        self._nutzung_stand: dict = {}
 
     async def handle_message(self, message_id: str, text: str, model: str | None = None,
                              reasoning: str = "") -> dict:
@@ -489,8 +511,9 @@ class CodexChatHandler:
 
         A message that arrives on this channel mid-turn interrupts the run (SIGINT,
         handled gracefully) and is folded into a follow-up turn that resumes the same
-        session via `codex exec resume --last`. See steering.py.
+        thread. See steering.py.
         """
+        from app.chat_uebertrag import mit_uebertrag
         from app.steering import run_turns_with_steering
         # Held for this turn (incl. steering follow-ups); read when the CLI args
         # are assembled.
@@ -498,30 +521,41 @@ class CodexChatHandler:
         self.is_running = True
         model = model or settings.default_model
         # ONE runner for the whole (possibly multi-fold) exchange so interrupt() hits
-        # the live process and `resume --last` continues the same session.
+        # the live process.
         self._runner = CodexAgentRunner(self.log_publisher)
+        if self.session_id:
+            self._runner._nutzung_stand = dict(self._nutzung_stand or {})
+
+        async def _frisch(t: str, grund: str) -> dict:
+            """Neuer Faden mit Uebertrag — der Faden ist weg oder zu lang."""
+            self.session_id = None
+            await self.log_publisher.publish_chat(message_id, "system", {"message": grund})
+            fresh = getattr(self, "fresh_session_text", None) or t
+            return await self._runner._run_codex(
+                message_id, await mit_uebertrag(self, fresh), model, stream="chat")
 
         async def _run_turn(t: str, is_resume: bool) -> dict:
             from app.chat_handler import _is_context_length_error
 
-            res = await self._runner._run_codex(message_id, t, model, stream="chat", resume=is_resume)
-            # If `resume --last` isn't supported / no session was saved, don't lose the
-            # folded message — fall back to a fresh turn.
-            if is_resume and res.get("status") == "error":
-                # Zu langer Verlauf: dieselbe Selbstheilung wie im Claude-Pfad —
-                # Sitzung verwerfen, Nutzer informieren, frisch wiederholen (#623).
+            faden = self.session_id or (self._runner.thread_id if is_resume else None)
+            res = await self._runner._run_codex(message_id, t, model, stream="chat", resume_id=faden)
+            # Anmeldung abgelaufen/fehlt: ein neuer Faden scheitert genauso —
+            # durchreichen statt „Sitzung nicht fortsetzbar“ zu melden.
+            if faden and res.get("status") == "error" and not _codex_auth_problem():
                 if _is_context_length_error(res.get("error", "")):
-                    await self.log_publisher.publish_chat(
-                        message_id, "system",
-                        {"message": "Der Gespraechsverlauf war zu lang geworden — ich "
-                                    "beginne eine neue Sitzung und beantworte die "
-                                    "Nachricht gleich erneut. Frueheres aus diesem Chat "
-                                    "kenne ich dann nicht mehr aus dem Verlauf."},
-                    )
+                    res = await _frisch(t, "Der Gesprächsverlauf war zu lang geworden — ich setze "
+                                           "ihn in einem neuen Faden fort und nehme die letzten "
+                                           "Nachrichten und den Stand des Gesprächs mit.")
                 else:
-                    logger.warning("Codex resume failed, retrying fresh: %s", str(res.get("error"))[:120])
-                res = await self._runner._run_codex(message_id, t, model, stream="chat", resume=False)
-            # Frische Sitzung und trotzdem zu gross: die EINZELNE Nachricht sprengt
+                    logger.warning("Codex resume %s failed, retrying fresh: %s", faden,
+                                   str(res.get("error"))[:120])
+                    res = await _frisch(t, "Die vorige Sitzung war nicht mehr fortsetzbar — ich "
+                                           "setze das Gespräch in einer neuen fort und nehme die "
+                                           "letzten Nachrichten mit.")
+            if self._runner.thread_id:
+                self.session_id = self._runner.thread_id
+                self._nutzung_stand = dict(getattr(self._runner, "_nutzung_stand", {}) or {})
+            # Frischer Faden und trotzdem zu gross: die EINZELNE Nachricht sprengt
             # das Fenster — wiederholen ist zwecklos, erklaeren hilft (#623).
             if res.get("status") == "error" and _is_context_length_error(res.get("error", "")):
                 res = {
@@ -557,6 +591,8 @@ class CodexChatHandler:
             await self._runner.interrupt()
 
     async def reset_session(self) -> None:
+        self.session_id = None
+        self._nutzung_stand = {}
         await self.log_publisher.publish_chat(
             "", "system", {"message": "Codex chat session reset"}
         )

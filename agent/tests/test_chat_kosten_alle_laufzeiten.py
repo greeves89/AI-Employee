@@ -187,6 +187,12 @@ class KostenStandUeberlebtNeustart(unittest.IsolatedAsyncioTestCase):
             async def setex(self, k, _ttl, v):
                 self.daten[k] = v
 
+            async def set(self, k, v):
+                self.daten[k] = v
+
+            async def delete(self, k):
+                self.daten.pop(k, None)
+
             async def get(self, k):
                 return self.daten.get(k)
 
