@@ -528,6 +528,64 @@ class OrchestratorAPIClient:
             return r
         return f"{'Angelegt' if r.get('created') else 'Aktualisiert'}: {r.get('path')} ({r.get('bytes')} Bytes)."
 
+    async def projekt_gespraech_lesen(self, params: dict) -> str:
+        pfad = self._projekt_pfad(params, "gespraech")
+        if not pfad:
+            return "Error: projekt_id is required"
+        try:
+            anzahl = min(max(int(params.get("anzahl") or 30), 1), 100)
+        except (TypeError, ValueError):
+            anzahl = 30
+        r = await self._request("GET", pfad, params={"limit": anzahl})
+        if isinstance(r, str):
+            return r
+        text = "\n\n".join(f"[{n.get('art')}] {n.get('autor_name')}: {n.get('text')}" for n in r.get("nachrichten") or [])
+        return self._gerahmt("projektgespraech", text or "Noch keine Nachrichten.")
+
+    async def projekt_gespraech_schreiben(self, params: dict) -> str:
+        pfad = self._projekt_pfad(params, "gespraech")
+        if not pfad or not params.get("text"):
+            return "Error: projekt_id and text are required"
+        r = await self._request("POST", pfad, json={
+            "text": params["text"], "art": params.get("art") or "nachricht", "an": params.get("an") or [],
+        })
+        if isinstance(r, str):
+            return r
+        geweckt = f" Angesprochen: {', '.join(r.get('geweckt') or [])}." if r.get("geweckt") else ""
+        return f"Im Projektgespräch geschrieben ({r.get('art')}).{geweckt}"
+
+    async def projekt_wissen_ergaenzen(self, params: dict) -> str:
+        pfad = self._projekt_pfad(params, "wissen", "ergaenzen")
+        if not pfad or not params.get("pfad") or not params.get("abschnitt"):
+            return "Error: projekt_id, pfad and abschnitt are required"
+        r = await self._request("POST", pfad, json={"pfad": params["pfad"], "abschnitt": params["abschnitt"]})
+        if isinstance(r, str):
+            return r
+        return f"Ergänzt: {r.get('path')} ({r.get('bytes')} Bytes)."
+
+    async def projekt_termine(self, params: dict) -> str:
+        pfad = self._projekt_pfad(params, "termine")
+        if not pfad:
+            return "Error: projekt_id is required"
+        r = await self._request("GET", pfad)
+        if isinstance(r, str):
+            return r
+        termine = [f"- {t.get('art')} {t.get('uhrzeit') or ''}{' ' + t['wochentag'] if t.get('wochentag') else ''}: "
+                   f"{t.get('thema')} (nächster: {t.get('naechster') or '—'}, id {t.get('id')})" for t in r.get("termine") or []]
+        raeume = [f"- {b.get('name')} ({b.get('zustand')}, {b.get('erstellt') or ''})" for b in (r.get("besprechungen") or [])[:5]]
+        text = "Termine:\n" + ("\n".join(termine) or "- keine") + "\n\nLetzte Besprechungen:\n" + ("\n".join(raeume) or "- keine")
+        return self._gerahmt("projekt-termine", text)
+
+    async def projekt_termin_anlegen(self, params: dict) -> str:
+        pfad = self._projekt_pfad(params, "termine")
+        if not pfad or not params.get("art") or not params.get("uhrzeit"):
+            return "Error: projekt_id, art and uhrzeit are required"
+        body = {f: params[f] for f in ("art", "uhrzeit", "wochentag", "datum", "thema") if params.get(f) is not None}
+        t = await self._request("POST", pfad, json=body)
+        if isinstance(t, str):
+            return t
+        return f"Termin angelegt: {t.get('art')} {t.get('uhrzeit')} — nächster {t.get('naechster') or '—'} (id {t.get('id')})."
+
     async def chat_search(self, params: dict) -> str:
         """Woertliche Suche im LAUFENDEN Gespraech (Paritaet: orchestrator-server.mjs).
 

@@ -26,6 +26,7 @@ from app.models.agent_message import AgentMessage
 from app.models.task_rating import TaskRating
 from app.models.kosten_historie import KostenHistorie
 from app.models.projekt_karte import ProjektKarte
+from app.models.projekt_nachricht import ProjektNachricht
 from app.models.test_run import TestRun
 from app.models.meeting import Meeting
 from app.models.meeting_room import MeetingRoom
@@ -66,6 +67,7 @@ __all__ = [
     "TaskRating",
     "KostenHistorie",
     "ProjektKarte",
+    "ProjektNachricht",
     "TestRun",
     "Meeting",
     "MeetingRoom",

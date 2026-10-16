@@ -961,13 +961,16 @@ class TaskRouter:
         if agent_id or task.agent_id:
             await aktivitaet_vermerken(self.redis, task.agent_id or agent_id)
 
-        # Projekt-Board: die Karte dieses Laufs geht zur Pruefung (core/projekte).
+        # Projekt-Board: die Karte dieses Laufs geht zur Pruefung (core/projekte);
+        # ein Lauf aus dem Projektgespraech stellt seine Antwort ins Gespraech.
         try:
+            from app.core.projekt_gespraech import antwort_aus_lauf
             from app.core.projekte import lauf_beendet
 
             await lauf_beendet(self.db, task)
+            await antwort_aus_lauf(self.db, task)
         except Exception as e:  # noqa: BLE001 — das Board darf das Abschliessen nie stoppen
-            logger.warning("Karte zu Lauf %s nicht weitergeschoben: %s", scrub_log(task_id), scrub_log(e))
+            logger.warning("Projekt zu Lauf %s nicht nachgezogen: %s", scrub_log(task_id), scrub_log(e))
 
         # Update agent metrics for self-improvement tracking
         if agent_id:

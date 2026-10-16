@@ -2367,6 +2367,7 @@ class SchedulerService:
             stages_config=config.get("stages_config"),
             use_moderator=config.get("use_moderator", True),
             created_by=config.get("created_by", "schedule"),
+            team_id=config.get("team_id"),
             messages=[{
                 "role": "system",
                 "agent_id": None,
@@ -2374,22 +2375,24 @@ class SchedulerService:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }],
         )
-        db.add(room)
-        await db.flush()  # get room.id before starting
-
         # Start the meeting loop
         from app.api.meeting_rooms import _run_meeting, _start_moderator_container, _running_rooms
         room.state = "running"
+        db.add(room)
+        room_id, room_name, mit_moderator = room.id, room.name, room.use_moderator
+        # Commit, nicht nur flush: _run_meeting liest den Raum in einer EIGENEN
+        # Sitzung — fand er ihn noch nicht, endete die Besprechung sofort.
+        await db.commit()
 
         mod_agent_id = None
-        if room.use_moderator and self.docker:
+        if mit_moderator and self.docker:
             from app.config import settings as _settings
-            mod_agent_id = await _start_moderator_container(room.id, self.docker, _settings.redis_url_internal)
+            mod_agent_id = await _start_moderator_container(room_id, self.docker, _settings.redis_url_internal)
 
         import asyncio
-        task = asyncio.create_task(_run_meeting(room.id, self.redis, mod_agent_id=mod_agent_id, docker=self.docker))
-        _running_rooms[room.id] = task
-        logger.info("[Scheduler] Started scheduled meeting %s: %s", room.id, room.name)
+        task = asyncio.create_task(_run_meeting(room_id, self.redis, mod_agent_id=mod_agent_id, docker=self.docker))
+        _running_rooms[room_id] = task
+        logger.info("[Scheduler] Started scheduled meeting %s: %s", room_id, room_name)
 
 
 def _contact_hours_note(proactive_config: dict) -> str:

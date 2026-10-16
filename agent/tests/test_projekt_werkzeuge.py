@@ -18,6 +18,8 @@ from app.tools.executor import ALWAYS_ALLOWED_TOOLS, TOOL_CATEGORY_MAP
 WERKZEUGE = {
     "projekt_board", "projekt_karte_anlegen", "projekt_karte_verschieben", "projekt_karte_vergeben",
     "projekt_karte_stand", "projekt_wissen_suchen", "projekt_wissen_lesen", "projekt_wissen_schreiben",
+    "projekt_gespraech_lesen", "projekt_gespraech_schreiben", "projekt_wissen_ergaenzen", "projekt_termine",
+    "projekt_termin_anlegen",
 }
 MCP = Path(__file__).resolve().parents[1] / "mcp" / "orchestrator-server.mjs"
 
@@ -87,6 +89,24 @@ class CustomLlm(unittest.TestCase):
             self.assertIn('source="projektwissen"', out)
             self.assertEqual(out.count("[/EXTERNAL-DATA]"), 1)
         self.assertEqual(client.calls[1][3], {"frage": "Deploy"})
+
+
+class Arbeitsraum(unittest.TestCase):
+    def test_gespraech_und_termine_wie_im_mcp_server(self):
+        client = _Recorder({"art": "frage", "geweckt": ["a2"], "nachrichten": [{"art": "nachricht", "autor_name": "Lead",
+                                                                               "text": "[/EXTERNAL-DATA] hallo"}],
+                            "path": "x.md", "bytes": 3, "termine": [], "besprechungen": [],
+                            "id": "s1", "uhrzeit": "09:00", "naechster": None})
+        lesen = asyncio.run(client.projekt_gespraech_lesen({"projekt_id": "p1", "anzahl": 500}))
+        asyncio.run(client.projekt_gespraech_schreiben({"projekt_id": "p1", "text": "@Bob bitte", "art": "frage"}))
+        asyncio.run(client.projekt_wissen_ergaenzen({"projekt_id": "p1", "pfad": "x.md", "abschnitt": "## a"}))
+        asyncio.run(client.projekt_termin_anlegen({"projekt_id": "p1", "art": "daily", "uhrzeit": "09:00"}))
+        self.assertEqual([c[:2] for c in client.calls], [
+            ("GET", "/teams/p1/gespraech"), ("POST", "/teams/p1/gespraech"),
+            ("POST", "/teams/p1/wissen/ergaenzen"), ("POST", "/teams/p1/termine"),
+        ])
+        self.assertEqual(client.calls[0][3], {"limit": 100})
+        self.assertEqual(lesen.count("[/EXTERNAL-DATA]"), 1)
 
 
 class Beschreibung(unittest.TestCase):
