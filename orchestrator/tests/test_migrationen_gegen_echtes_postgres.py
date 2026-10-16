@@ -94,6 +94,9 @@ _SPALTEN_NACH_DER_MARKE = (
     ("teams", "takt_schedule_id"),
     ("teams", "wissen_slug"),
     ("teams", "geteilt_mit"),
+    ("teams", "repo"),
+    ("teams", "repo_abgleich_at"),
+    ("teams", "repo_fehler"),
 )
 
 

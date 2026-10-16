@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.369.0] - 2026-10-16
+
+### Neu
+- **Git-Projekte.** Ein Projekt lässt sich mit einem GitHub-Repo verbinden (nur Administratoren,
+  über die GitHub-Verbindung der Anlage; auch GitHub Enterprise). Alle zehn Minuten — oder per
+  „Jetzt abgleichen“ — kommen offene Issues als Karten in den Eingang, geschlossene Issues werden
+  erledigt, offene Pull Requests erscheinen unter „Wartet auf Merge“ mit CI-Stand aus den Checks;
+  „Fixes #12“ verknüpft den PR mit der Issue-Karte, gemergte PRs ohne Issue werden erledigt.
+  Spalte und Priorität einer Karte gehören dem Projekt und bleiben beim Abgleich erhalten.
+
+### Sicherheit
+- Die Plattform liest das Repo nur; Issue-Texte gehen gerahmt als Material an die Agenten.
+
+---
+
 ## [1.368.0] - 2026-10-16
 
 ### Neu

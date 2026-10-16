@@ -1,6 +1,8 @@
 """Team model — a persistent, named group of agents with a designated lead."""
 
-from sqlalchemy import Boolean, Integer, String, Text
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -31,5 +33,10 @@ class Team(Base, TimestampMixin):
     # Wem der Ersteller das Projekt freigegeben hat (Nutzer-IDs). Ohne Freigabe
     # sieht ein Projekt NUR, wer es angelegt hat (api/teams._is_team_member).
     geteilt_mit: Mapped[list] = mapped_column(JSONB, default=list)
+    # GitHub-Repo des Projekts (owner/name): Issues und PRs kommen aufs Board
+    # (core/projekt_git.py). Setzen darf es nur ein Administrator.
+    repo: Mapped[str | None] = mapped_column(String(200), nullable=True, default=None)
+    repo_abgleich_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    repo_fehler: Mapped[str | None] = mapped_column(String(300), nullable=True, default=None)
     # Slug des Second Brain mit dem Projektwissen (core/projekt_wissen.py).
     wissen_slug: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)

@@ -4549,6 +4549,10 @@ export interface Team {
   geteilt_mit?: string[];
   /** Ob der angemeldete Nutzer das Projekt angelegt hat (nur er verwaltet es). */
   darf_verwalten?: boolean;
+  /** GitHub-Repo (owner/name): Issues und PRs kommen aufs Board. */
+  repo?: string | null;
+  repo_abgleich_at?: string | null;
+  repo_fehler?: string | null;
 }
 
 export async function listTeams(): Promise<{ teams: Team[] }> {
@@ -4563,6 +4567,7 @@ export async function createTeam(body: {
   farbe?: string | null;
   takt_minuten?: number | null;
   geteilt_mit?: string[];
+  repo?: string;
 }): Promise<Team> {
   return fetchJSON(`${getBase()}/teams/`, {
     method: "POST",
@@ -4584,6 +4589,7 @@ export async function updateTeam(
     farbe?: string | null;
     takt_minuten?: number | null;
     geteilt_mit?: string[];
+    repo?: string;
   },
 ): Promise<Team> {
   return fetchJSON(`${getBase()}/teams/${id}`, {
@@ -4630,6 +4636,12 @@ export interface ProjektUebersicht extends Team {
   laufend: ProjektLauf[];
   naechste: ProjektKarte[];
   takt: ProjektTakt;
+}
+
+export async function projektRepoAbgleichen(
+  id: string,
+): Promise<{ neu: number; aktualisiert: number; erledigt: number; offene_issues: number; offene_prs: number }> {
+  return fetchJSON(`${getBase()}/teams/${id}/repo/abgleichen`, { method: "POST" });
 }
 
 export async function getProjektVerzeichnis(): Promise<{ users: { id: string; name: string; email?: string }[] }> {

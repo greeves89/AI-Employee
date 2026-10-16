@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { useToast } from "@/components/ui/dialog-provider";
 import { PROJEKT_FARBEN, TAKTE } from "@/lib/projekte";
+import { useAuthStore } from "@/lib/auth";
 
 interface CreateTeamModalProps {
   open: boolean;
@@ -42,6 +43,8 @@ export function CreateTeamModal({
   const [farbe, setFarbe] = useState<string>("blau");
   const [takt, setTakt] = useState<number>(0);
   const [geteilt, setGeteilt] = useState<string[]>([]);
+  const [repo, setRepo] = useState("");
+  const istAdmin = useAuthStore((s) => s.user?.role) === "admin";
   const [nutzer, setNutzer] = useState<{ id: string; name: string; email?: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +59,7 @@ export function CreateTeamModal({
       setFarbe(team?.farbe ?? "blau");
       setTakt(team?.takt_minuten ?? 0);
       setGeteilt(team?.geteilt_mit ?? []);
+      setRepo(team?.repo ?? "");
       setError(null);
     }
   }, [open, team]);
@@ -91,6 +95,8 @@ export function CreateTeamModal({
         member_agent_ids: memberIds,
         lead_agent_id: leadAgentId || null,
         ...(projekt ? { farbe, takt_minuten: takt, geteilt_mit: geteilt } : {}),
+        // Das Repo verbindet nur ein Administrator (der GitHub-Zugang gilt für die Anlage).
+        ...(projekt && istAdmin ? { repo: repo.trim() } : {}),
       };
       if (isEdit && team) {
         await api.updateTeam(team.id, body);
@@ -285,6 +291,25 @@ export function CreateTeamModal({
                           : "Der Lead muss Mitglied des Teams sein und erhält delegierte Tasks."}
                       </p>
                     </div>
+
+                    {projekt && istAdmin && (
+                      <div>
+                        <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                          GitHub-Repo <span className="text-muted-foreground/40">(optional)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={repo}
+                          onChange={(e) => setRepo(e.target.value)}
+                          placeholder="owner/name, z. B. greeves89/AI-Employee"
+                          className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
+                        />
+                        <p className="text-[11px] text-muted-foreground/50 mt-1">
+                          Offene Issues kommen alle zehn Minuten in den Eingang, Pull Requests mit CI-Stand unter
+                          „Wartet auf Merge“. Nutzt die GitHub-Verbindung der Anlage (Integrationen).
+                        </p>
+                      </div>
+                    )}
 
                     {projekt && (
                       <div>

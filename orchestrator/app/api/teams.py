@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.tasks import _get_task_router, _get_user_agent_ids
 from app.core.task_router import TaskRouter
 from app.db.session import get_db
-from app.dependencies import is_agent_principal, require_auth, require_auth_or_agent
+from app.dependencies import get_redis_service, is_agent_principal, require_auth, require_auth_or_agent
 from app.models.agent import Agent
 from app.models.team import Team
 
@@ -32,6 +32,7 @@ class CreateTeam(BaseModel):
     farbe: str | None = None
     takt_minuten: int | None = None
     geteilt_mit: list[str] = []
+    repo: str | None = None
 
 
 class UpdateTeam(BaseModel):
@@ -44,6 +45,8 @@ class UpdateTeam(BaseModel):
     takt_minuten: int | None = None
     # Nutzer-IDs, die das Projekt sehen dürfen (ersetzt die bisherige Liste).
     geteilt_mit: list[str] | None = None
+    # GitHub-Repo (owner/name); leer entfernt es. Nur Administratoren.
+    repo: str | None = None
 
 
 def _farbe(wert: str | None) -> str | None:
@@ -72,6 +75,9 @@ def _serialize(t: Team) -> dict:
         "created_by": t.created_by, "farbe": getattr(t, "farbe", None),
         "takt_minuten": getattr(t, "takt_minuten", None),
         "geteilt_mit": list(getattr(t, "geteilt_mit", None) or []),
+        "repo": getattr(t, "repo", None),
+        "repo_abgleich_at": t.repo_abgleich_at.isoformat() if getattr(t, "repo_abgleich_at", None) else None,
+        "repo_fehler": getattr(t, "repo_fehler", None),
     }
 
 
@@ -145,6 +151,22 @@ async def _is_team_member(team: Team, user, db: AsyncSession) -> bool:
     return _ist_ersteller(team, user) or str(getattr(user, "id", "")) in set(getattr(team, "geteilt_mit", None) or [])
 
 
+def _repo_setzen(t: Team, repo: str, user) -> None:
+    """Repo an ein Projekt hängen — nur Administratoren: der GitHub-Zugang gilt für
+    die ganze Anlage, und über ihn liessen sich sonst fremde private Repos lesen."""
+    from app.core.projekt_git import repo_pruefen
+    from app.models.user import UserRole
+
+    if getattr(user, "role", None) != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Ein Repo verbindet nur ein Administrator.")
+    try:
+        neu = repo_pruefen(repo)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    if neu != t.repo:
+        t.repo, t.repo_abgleich_at, t.repo_fehler = neu, None, None
+
+
 def _nur_ersteller(team: Team, user) -> None:
     """Einstellungen des Projekts (Name, Mitglieder, Lead, Takt, Freigabe, Löschen) ändert nur der Ersteller."""
     if not _ist_ersteller(team, user):
@@ -183,6 +205,8 @@ async def create_team(body: CreateTeam, user=Depends(require_auth), db: AsyncSes
         geteilt_mit=await _freigabe(db, body.geteilt_mit, user),
         created_by=getattr(user, "email", None) or str(getattr(user, "id", "")),
     )
+    if body.repo:
+        _repo_setzen(team, body.repo, user)
     db.add(team)
     await db.commit()
     await db.refresh(team)
@@ -352,6 +376,7 @@ async def update_team(team_id: str, body: UpdateTeam, user=Depends(require_auth)
     _nur_ersteller(t, user)
     await _nur_eigene_agenten([*(body.member_agent_ids or []), body.lead_agent_id], user, db)
     if body.geteilt_mit is not None: t.geteilt_mit = await _freigabe(db, body.geteilt_mit, user)
+    if body.repo is not None: _repo_setzen(t, body.repo, user)
     if body.name is not None: t.name = body.name
     if body.description is not None: t.description = body.description
     if body.member_agent_ids is not None: t.member_agent_ids = body.member_agent_ids
@@ -759,14 +784,16 @@ async def _vergeben(t: Team, karte_id: str, agent_id: str | None, user, request:
     await db.commit()
 
     prioritaet = {1: 2, 2: 1, 3: 0}.get(karte.prioritaet, 1)
-    auftrag = projekte.karten_auftrag(karte, t.name, fremd=await _fremd_fuer(karte, ziel or t.lead_agent_id, db))
+    fremd = await _fremd_fuer(karte, ziel or t.lead_agent_id, db)
+    auftrag = projekte.karten_auftrag(karte, t.name, fremd=fremd)
+    titel = projekte.lauf_titel(karte, fremd)
     try:
         if an_lead:
-            task = await _an_lead(t, karte.titel[:200], auftrag, prioritaet, request, router_, db, user,
+            task = await _an_lead(t, titel, auftrag, prioritaet, request, router_, db, user,
                                   karte_id=karte.id)
         else:
             task = await router_.create_and_route_task(
-                title=karte.titel[:200], prompt=auftrag, priority=prioritaet, agent_id=ziel,
+                title=titel, prompt=auftrag, priority=prioritaet, agent_id=ziel,
                 metadata={"team_id": t.id, "karte_id": karte.id, "auftrag": karte.text or karte.titel},
             )
     except Exception:
@@ -871,18 +898,19 @@ async def karte_zurueckgeben(team_id: str, karte_id: str, body: Zurueckgeben, re
 
     ueber_lead = bool(alt is not None and (alt.metadata_ or {}).get("delegated_to_team") and t.lead_agent_id)
     ziel = None if ueber_lead else (karte.agent_id or (alt.agent_id if alt else None))
-    prompt = projekte.nacharbeit_prompt(karte, alt, body.hinweis, t.name,
-                                        fremd=await _fremd_fuer(karte, ziel or t.lead_agent_id, db))
+    fremd = await _fremd_fuer(karte, ziel or t.lead_agent_id, db)
+    prompt = projekte.nacharbeit_prompt(karte, alt, body.hinweis, t.name, fremd=fremd)
+    titel = f"Nacharbeit: {projekte.lauf_titel(karte, fremd)}"[:200]
     try:
         if ueber_lead:
-            neu = await _an_lead(t, f"Nacharbeit: {karte.titel}"[:200], prompt, 1, request, router_, db, user,
+            neu = await _an_lead(t, titel, prompt, 1, request, router_, db, user,
                                  parent_task_id=alt.id if alt else None, karte_id=karte.id)
         else:
             if not ziel:
                 raise HTTPException(status_code=409, detail="Die Karte hat keinen Agenten mehr — vergib sie neu.")
             await _darf_beauftragen(ziel, user, db)
             neu = await router_.create_and_route_task(
-                title=f"Nacharbeit: {karte.titel}"[:200], prompt=prompt, priority=1, agent_id=ziel,
+                title=titel, prompt=prompt, priority=1, agent_id=ziel,
                 parent_task_id=alt.id if alt else None,
                 metadata={"team_id": t.id, "karte_id": karte.id, "auftrag": karte.text or karte.titel},
             )
@@ -996,3 +1024,19 @@ async def wissen_suchen(team_id: str, frage: str, user=Depends(require_auth_or_a
     if not frage:
         raise HTTPException(status_code=422, detail="Die Suchfrage ist leer.")
     return {"projekt_id": t.id, "treffer": await projekt_wissen.suchen(db, brain, frage)}
+
+
+@router.post("/{team_id}/repo/abgleichen")
+async def repo_abgleichen(team_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db),
+                          redis=Depends(get_redis_service)):
+    """Issues und PRs des Repos sofort aufs Board holen (sonst alle zehn Minuten)."""
+    from app.core import projekt_git
+
+    _kein_betrachter(user)
+    t = await _projekt(team_id, user, db)
+    if not t.repo:
+        raise HTTPException(status_code=400, detail="Das Projekt hat kein Repo.")
+    try:
+        return await projekt_git.projekt_abgleichen(db, redis, t)
+    except projekt_git.GitFehler as e:
+        raise HTTPException(status_code=502, detail=str(e))
