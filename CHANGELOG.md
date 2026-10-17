@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.376.12] - 2026-10-17
+
+### Behoben — lange Läufe zeigten nur ihren letzten Abschnitt an
+
+Wartet ein Agent während einer Aufgabe im Hintergrund (etwa auf CI oder einen
+Merge), meldet die Laufzeit nach jedem Aufwachen ein eigenes Teilergebnis. Bisher
+zählte nur das letzte: Ein Lauf über 71 Minuten stand mit 0,7 Minuten und 4 Zügen
+in der Liste, die Tokens fehlten zum größten Teil — auch in der Token-Anzeige unter
+Finanzen. Die Kosten stimmten, weil sie als fortlaufende Summe gemeldet werden.
+
+Jetzt werden Dauer, Züge und Tokens über alle Teilergebnisse eines Laufs addiert;
+die Kosten werden weiterhin genau einmal gebucht. Wirkt nach dem Aktualisieren
+der Agenten.
+
+---
+
 ## [1.376.11] - 2026-10-17
 
 ### Behoben — die Überwachung „Zeitplan liefert kein Ergebnis mehr" war für fast alle Zeitpläne blind (#988)

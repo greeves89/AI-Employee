@@ -31,6 +31,50 @@ def _fehlertext(event: dict) -> str:
     return str(event.get("result") or "")
 
 
+def _summe(bisher, neu):
+    """Zwei Zaehlwerte addieren; fehlt einer, gilt der andere."""
+    if bisher is None:
+        return neu
+    if neu is None:
+        return bisher
+    return bisher + neu
+
+
+def ergebnis_uebernehmen(bisher: dict | None, event: dict, text_output: list[str]) -> dict:
+    """Ein ``result``-Ereignis in die Werte des Laufs einrechnen.
+
+    Ein Lauf meldet MEHRERE ``result``-Ereignisse, wenn der Agent im Hintergrund
+    wartet: jedes Aufwachen (fertiger Hintergrundbefehl) ist ein neuer Abschnitt
+    mit eigenem Ergebnis. Dauer, Zuege und Tokens gelten je Abschnitt — sie werden
+    addiert. ``total_cost_usd`` ist dagegen die fortlaufende Summe des Prozesses
+    und wird uebernommen, nicht addiert. Im Betrieb stand sonst ein 71-Minuten-Lauf
+    fuer 71 $ mit 0,7 Minuten und 4 Zuegen da.
+    """
+    bisher = bisher or {}
+    usage = event.get("usage", {}) or {}
+    return {
+        "status": "completed",
+        "duration_ms": _summe(bisher.get("duration_ms"), event.get("duration_ms")),
+        "num_turns": _summe(bisher.get("num_turns"), event.get("num_turns")),
+        # CLI emits "total_cost_usd"; keep "cost_usd" as legacy fallback
+        "cost_usd": max(bisher.get("cost_usd") or 0.0, model_registry.claude_gesamtkosten(event)),
+        "input_tokens": _summe(bisher.get("input_tokens"), usage.get("input_tokens")),
+        "output_tokens": _summe(bisher.get("output_tokens"), usage.get("output_tokens")),
+        "result": event.get("result", "") or "\n".join(text_output),
+        # Ein 401 mitten im Lauf kommt NICHT als Fehler-Exit, sondern
+        # genau so: als result mit is_error und dem 401-Text (#799) —
+        # im Betrieb mit subtype='success', also zaehlt nur is_error.
+        # Ohne dieses Kennzeichen sah execute_task nur „completed"
+        # und die Wiederholung nach Token-Rotation griff nie.
+        "is_error": bool(event.get("is_error")),
+        # Der Fehlertext NUR aus dem Ereignis, nie aus dem gesammelten
+        # Agententext: ein Agent, der gerade an einem OAuth-Thema
+        # arbeitet und an etwas anderem stirbt, darf nicht als
+        # Zugangsverlust gelten (und umgekehrt).
+        "is_error_text": _fehlertext(event) if event.get("is_error") else "",
+    }
+
+
 class AgentRunner:
     """Wraps Claude Code CLI in headless mode (-p + --output-format stream-json).
 
@@ -215,30 +259,9 @@ class AgentRunner:
                             text_output.append(block["text"])
 
                 if event.get("type") == "result":
+                    result_data = ergebnis_uebernehmen(
+                        result_data if got_result else None, event, text_output)
                     got_result = True
-                    result_text = event.get("result", "") or "\n".join(text_output)
-                    usage = event.get("usage", {}) or {}
-                    result_data = {
-                        "status": "completed",
-                        "duration_ms": event.get("duration_ms"),
-                        "num_turns": event.get("num_turns"),
-                        # CLI emits "total_cost_usd"; keep "cost_usd" as legacy fallback
-                        "cost_usd": model_registry.claude_gesamtkosten(event),
-                        "input_tokens": usage.get("input_tokens"),
-                        "output_tokens": usage.get("output_tokens"),
-                        "result": result_text,
-                        # Ein 401 mitten im Lauf kommt NICHT als Fehler-Exit, sondern
-                        # genau so: als result mit is_error und dem 401-Text (#799) —
-                        # im Betrieb mit subtype='success', also zaehlt nur is_error.
-                        # Ohne dieses Kennzeichen sah execute_task nur „completed"
-                        # und die Wiederholung nach Token-Rotation griff nie.
-                        "is_error": bool(event.get("is_error")),
-                        # Der Fehlertext NUR aus dem Ereignis, nie aus dem gesammelten
-                        # Agententext: ein Agent, der gerade an einem OAuth-Thema
-                        # arbeitet und an etwas anderem stirbt, darf nicht als
-                        # Zugangsverlust gelten (und umgekehrt).
-                        "is_error_text": _fehlertext(event) if event.get("is_error") else "",
-                    }
 
             returncode = await self._process.wait()
             await stderr_task
