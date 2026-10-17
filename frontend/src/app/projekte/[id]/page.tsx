@@ -276,7 +276,8 @@ export default function ProjektPage() {
                 onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) abgeben(); }}
                 rows={text.includes("\n") || text.length > 90 ? 3 : 1}
                 aria-label="Auftrag"
-                placeholder="Auftrag geben: Was soll erledigt werden? Die erste Zeile wird zum Titel."
+                placeholder="Auftrag geben: Was soll erledigt werden?"
+                title="Die erste Zeile wird zum Titel der Karte. Strg/Cmd + Enter gibt ab."
                 className="min-w-0 flex-1 resize-none rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
               />
               <div className="flex flex-wrap items-center gap-2">
@@ -284,11 +285,12 @@ export default function ProjektPage() {
                   value={ziel}
                   onChange={(e) => setZiel(e.target.value)}
                   aria-label="Empfänger"
+                  title="Der Lead verteilt den Auftrag; „Direkt an …“ gibt ihn genau einem Agenten."
                   disabled={nurEingang}
-                  className="min-w-0 flex-[1_1_100%] rounded-lg border border-foreground/[0.1] bg-background/80 px-2.5 py-2 text-sm outline-none disabled:opacity-50 sm:flex-1 lg:w-56 lg:flex-none"
+                  className="min-w-0 flex-[1_1_100%] rounded-lg border border-foreground/[0.1] bg-background/80 px-2.5 py-2 text-sm outline-none disabled:opacity-50 sm:flex-1 lg:w-60 lg:flex-none"
                 >
                   {projekt.lead_agent_id ? (
-                    <option value="">An den Lead{lead ? ` (${lead.name})` : ""} — er verteilt</option>
+                    <option value="">An den Lead{lead ? ` (${lead.name})` : ""}</option>
                   ) : mitglieder.length === 1 ? (
                     <option value="">An {mitglieder[0].agent?.name ?? "das Mitglied"}</option>
                   ) : (

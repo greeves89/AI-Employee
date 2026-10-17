@@ -36,7 +36,7 @@ export function ProjektKopfleiste({
     { label: "Bereit", wert: k.bereit },
     { label: "In Arbeit", wert: k.in_arbeit, aktiv: k.in_arbeit > 0 },
     { label: "Prüfung", wert: k.pruefung, achtung: k.pruefung > 0 },
-    { label: "Erledigt · 7 Tage", wert: k.fertig_7_tage },
+    { label: "Erledigt", zusatz: " · 7 Tage", wert: k.fertig_7_tage },
   ];
 
   return (
@@ -51,7 +51,9 @@ export function ProjektKopfleiste({
                 style={f.aktiv ? { color: farbe } : undefined}>
                 {f.wert}
               </span>
-              <span className="mt-1 max-w-full truncate text-[10px] text-muted-foreground sm:text-[11px]">{f.label}</span>
+              <span className="mt-1 max-w-full truncate text-[10px] text-muted-foreground sm:text-[11px]" title={f.label + (f.zusatz ?? "")}>
+                {f.label}{f.zusatz && <span className="hidden sm:inline">{f.zusatz}</span>}
+              </span>
               {i < fluss.length - 1 && (
                 <ChevronRight className="absolute -right-2 top-1/2 hidden h-3.5 w-3.5 -translate-y-1/2 text-foreground/20 sm:block" />
               )}
