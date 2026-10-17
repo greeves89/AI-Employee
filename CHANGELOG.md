@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.376.15] - 2026-10-17
+
+### Behoben — Feinschliff der neuen Projektseite
+
+- Der Platzhalter im Feld „Auftrag geben“ wurde in der einzeiligen Ansicht
+  abgeschnitten; er ist jetzt kurz, der Hinweis zur ersten Zeile steht im Tooltip.
+- Das Empfänger-Feld zeigt „An den Lead (Name)“ vollständig.
+- In der Kennzahlenleiste steht auf dem Handy „Erledigt“ statt eines
+  abgeschnittenen „Erledigt · 7 …“.
+
+---
+
 ## [1.376.14] - 2026-10-17
 
 ### Geändert — die Projektseite ist neu geordnet
