@@ -930,6 +930,9 @@ geordnet — das Wichtigste zuerst:
    arbeitet jemand.
 
 **Der Reiter Raum** zeigt das Projekt als Büro:
+
+![Reiter „Raum“: links der Raum mit den Agenten und darunter der Erledigt-Verlauf, rechts der Leitstand](screenshots/72b-projekt-raum-reiter.png)
+
 - **Schreibtische** — je Mitglied einer. Arbeitet ein Agent, leuchtet sein Bildschirm in der
   Projektfarbe, der Bildschirm „schreibt“, der Agent wippt, und rechts oben neben ihm steht,
   was er gerade tut (seine letzte Ausgabe).
