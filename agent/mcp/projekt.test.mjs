@@ -61,6 +61,38 @@ test("vergeben und Stand melden treffen die Karte im Projekt", async () => {
   }
 });
 
+const AUSZUG_HINWEIS = "Hinweis: nur die ersten 1500 Zeichen von index.md gehen in einen Projektauftrag ein.";
+
+test("projekt_wissen_schreiben gibt den Auszug-Hinweis des Servers weiter (#979)", async () => {
+  const { server } = await stub({ path: "index.md", created: false, bytes: 2600, hinweis: AUSZUG_HINWEIS });
+  try {
+    const r = await projektWerkzeug("projekt_wissen_schreiben", { projekt_id: "p1", pfad: "index.md", inhalt: "x" });
+    assert.ok(r.content[0].text.includes(AUSZUG_HINWEIS), "schreiben verschluckt den Hinweis");
+  } finally {
+    await stop(server);
+  }
+});
+
+test("projekt_wissen_ergaenzen gibt den Auszug-Hinweis des Servers weiter (#979)", async () => {
+  const { server } = await stub({ path: "index.md", bytes: 2600, hinweis: AUSZUG_HINWEIS });
+  try {
+    const r = await projektWerkzeug("projekt_wissen_ergaenzen", { projekt_id: "p1", pfad: "index.md", abschnitt: "x" });
+    assert.ok(r.content[0].text.includes(AUSZUG_HINWEIS), "ergaenzen verschluckt den Hinweis");
+  } finally {
+    await stop(server);
+  }
+});
+
+test("Projektwissen: ohne Hinweis bleibt die Meldung genau wie vorher", async () => {
+  const { server } = await stub({ path: "index.md", created: true, bytes: 12 });
+  try {
+    const r = await projektWerkzeug("projekt_wissen_schreiben", { projekt_id: "p1", pfad: "index.md", inhalt: "x" });
+    assert.equal(r.content[0].text, "Angelegt: index.md (12 Bytes).");
+  } finally {
+    await stop(server);
+  }
+});
+
 test("Projektwissen: schreiben per PUT, lesen ist gerahmt", async () => {
   const { server, anfragen } = await stub({ path: "index.md", created: false, bytes: 12, inhalt: "# Wissen" });
   try {

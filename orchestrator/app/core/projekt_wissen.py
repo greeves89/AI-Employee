@@ -29,16 +29,26 @@ from app.models.team import Team
 
 log = logging.getLogger(__name__)
 
+# Wie viel von ``AUSZUG_SEITE`` in einen Projektauftrag geht. Die Grenze zählt
+# ZEICHEN, nicht Zeilen — wer sie in einer anderen Einheit weitergibt, schneidet
+# dem Agenten still den Seitenschluss ab (Issue #979).
 AUSZUG_ZEICHEN = 1500
+AUSZUG_SEITE = "index.md"
+AUSZUG_MARKER = "[… gekürzt — weiter mit projekt_wissen_lesen]"
 
 INDEX_VORLAGE = """# {name}
 
-Projektwissen — was jeder im Projekt wissen muss. Kurz halten: Dieser Text geht
-bei jedem Projektauftrag an den Agenten mit.
+Projektwissen — was jeder im Projekt wissen muss. Nur die ersten {grenze} Zeichen
+dieser Seite gehen bei jedem Projektauftrag an den Agenten mit, alles danach
+nicht. Also das Wichtigste zuerst, Ausführliches auf eigene Seiten.
 
 ## Ziel
 
 {ziel}
+
+## Stand
+
+- Woran gerade gearbeitet wird
 
 ## Wichtige Orte
 
@@ -48,10 +58,72 @@ bei jedem Projektauftrag an den Agenten mit.
 
 - Wie wir arbeiten, was gilt, was zu vermeiden ist
 
+## Ansprechpartner
+
+- Wer entscheidet, wer zuständig ist
+
 ## Weitere Seiten
 
 Ausführliches gehört in eigene Seiten (z. B. `entscheidungen.md`, `architektur.md`).
 """
+
+
+def index_vorlage(name: str, ziel: str) -> str:
+    """Die Startseite — mit der echten Grenze darin.
+
+    Als Funktion und nicht als ``.format``-Aufruf beim Anleger, damit kein
+    Aufrufer ``grenze`` vergessen kann: die Zahl soll nie wieder von
+    ``AUSZUG_ZEICHEN`` abweichen können.
+    """
+    return INDEX_VORLAGE.format(name=name, ziel=ziel, grenze=AUSZUG_ZEICHEN)
+
+
+def auftrag_index_zeile() -> str:
+    """Was ein Auftrag über ``AUSZUG_SEITE`` sagen muss — Einheit und Zahl aus einer Hand.
+
+    Stand in ``api/teams.py`` als Fließtext mit eigener Zahl („höchstens 40
+    Zeilen") und lief damit von der durchgesetzten Grenze weg: 40 Zeilen deutscher
+    Prosa sind rund 2500 Zeichen, von denen nur 1500 ankamen — der Seitenschluss
+    (Ansprechpartner, Vereinbarungen) fiel still weg (Issue #979).
+    """
+    return (f"- `{AUSZUG_SEITE}`: Ziel, Stand, wichtige Orte, Vereinbarungen, Ansprechpartner. "
+            f"Von dieser Seite gehen die ersten {AUSZUG_ZEICHEN} ZEICHEN in jeden Projektauftrag "
+            "ein, alles darüber hinaus erreicht keinen Agenten. Also das Wichtigste zuerst und "
+            "Ausführliches auf eigene Seiten — die Grenze zählt Zeichen, nicht Zeilen.")
+
+
+def auszug_text(text: str) -> tuple[str, bool]:
+    """Was von einer Seite in einen Projektauftrag geht — und ob dabei gekürzt wurde.
+
+    EINE Stelle für Auszug und Rückmeldung. Ein zweiter Längenvergleich an
+    anderer Stelle liefe beim nächsten Eingriff (``strip``, Marker, Grenze)
+    auseinander und stellte die stille Lücke aus Issue #979 wieder her.
+    """
+    text = text.strip()
+    if len(text) <= AUSZUG_ZEICHEN:
+        return text, False
+    return text[:AUSZUG_ZEICHEN].rstrip() + "\n" + AUSZUG_MARKER, True
+
+
+def _auszug_warnung(host_path: str, pfad: str, inhalt: str) -> str | None:
+    """Rückmeldung an den Schreibenden, wenn sein Text den Auszug sprengt.
+
+    Ohne sie ist der Schnitt für ihn unsichtbar: die Seite ist vollständig
+    gespeichert, in den Projektauftrag geht aber nur ihr Anfang (Issue #979).
+    Betrifft nur ``AUSZUG_SEITE`` — jede andere Seite wird nie gekürzt.
+    """
+    try:
+        if vault.resolve_path(host_path, pfad) != vault.resolve_path(host_path, AUSZUG_SEITE):
+            return None
+    except ValueError:
+        return None
+    _, gekuerzt = auszug_text(inhalt)
+    if not gekuerzt:
+        return None
+    return (f"Hinweis: Gespeichert ist die ganze Seite, aber nur die ersten {AUSZUG_ZEICHEN} "
+            f"Zeichen von {AUSZUG_SEITE} gehen in einen Projektauftrag ein — deine "
+            f"{len(inhalt.strip())} Zeichen werden dafür gekürzt. Das Wichtigste nach vorn, "
+            "Ausführliches auf eine eigene Seite.")
 
 
 def _slug(team: Team) -> str:
@@ -95,7 +167,7 @@ async def sicherstellen(db: AsyncSession, team: Team, angelegt_von: str | None =
     try:
         vault.write_file(
             brain.host_path, "index.md",
-            INDEX_VORLAGE.format(name=team.name, ziel=(team.description or "(noch nicht beschrieben)").strip()),
+            index_vorlage(team.name, (team.description or "(noch nicht beschrieben)").strip()),
             overwrite=False,
         )
     except FileExistsError:
@@ -115,9 +187,7 @@ async def auszug(db: AsyncSession, team: Team) -> str:
         text = vault.read_file(brain.host_path, "index.md").strip()
     except (FileNotFoundError, ValueError, OSError):
         return ""
-    if len(text) > AUSZUG_ZEICHEN:
-        text = text[:AUSZUG_ZEICHEN].rstrip() + "\n[… gekürzt — weiter mit projekt_wissen_lesen]"
-    return text
+    return auszug_text(text)[0]
 
 
 async def suchen(db: AsyncSession, brain: SecondBrain, frage: str, limit: int = 8) -> list[dict]:
@@ -136,7 +206,8 @@ async def schreiben(db: AsyncSession, brain: SecondBrain, pfad: str, inhalt: str
         await vault_indexer.index_file(db, brain.label, brain.host_path, pfad)
     except Exception as e:  # noqa: BLE001 — Einlesen darf das Schreiben nie scheitern lassen
         log.warning("Projektwissen nicht neu eingelesen (%s): %s", vault.safe_log(pfad), vault.safe_log(e))
-    return ergebnis
+    hinweis = _auszug_warnung(brain.host_path, pfad, inhalt)
+    return {**ergebnis, "hinweis": hinweis} if hinweis else ergebnis
 
 
 async def anhaengen(db: AsyncSession, brain: SecondBrain, pfad: str, abschnitt: str, *, wer: str = "Projekt",

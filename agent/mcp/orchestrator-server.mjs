@@ -199,7 +199,11 @@ export async function projektWerkzeug(name, args = {}) {
         method: "PUT",
         body: JSON.stringify({ pfad: args.pfad, inhalt: args.inhalt }),
       });
-      return { content: [{ type: "text", text: `${r.created ? "Angelegt" : "Aktualisiert"}: ${r.path} (${r.bytes} Bytes).` }] };
+      // r.hinweis meldet, dass die Seite den Auszug sprengt, der in jeden
+      // Projektauftrag geht. Ein selbst gebauter Antworttext MUSS ihn mitnehmen,
+      // sonst bleibt der Schnitt unsichtbar (Issue #979).
+      const meldung = `${r.created ? "Angelegt" : "Aktualisiert"}: ${r.path} (${r.bytes} Bytes).`;
+      return { content: [{ type: "text", text: r.hinweis ? `${meldung} ${r.hinweis}` : meldung }] };
     }
     case "projekt_gespraech_lesen": {
       const anzahl = Math.min(Math.max(Number(args.anzahl) || 30, 1), 100);
@@ -222,7 +226,8 @@ export async function projektWerkzeug(name, args = {}) {
         method: "POST",
         body: JSON.stringify({ pfad: args.pfad, abschnitt: args.abschnitt }),
       });
-      return { content: [{ type: "text", text: `Ergänzt: ${r.path} (${r.bytes} Bytes).` }] };
+      const ergaenzt = `Ergänzt: ${r.path} (${r.bytes} Bytes).`;
+      return { content: [{ type: "text", text: r.hinweis ? `${ergaenzt} ${r.hinweis}` : ergaenzt }] };
     }
 
     case "projekt_termine": {
@@ -674,8 +679,9 @@ export function buildServer() {
         name: "projekt_wissen_schreiben",
         description:
           "Write (create or replace) a Markdown page in the project's knowledge base so every project member " +
-          "knows it: decisions, conventions, how things work. Keep index.md short — it is sent along with every " +
-          "project task. Never store passwords or tokens.",
+          "knows it: decisions, conventions, how things work. Keep index.md short — only its first 1500 " +
+          "CHARACTERS are sent along with every project task, the rest is cut; put the essentials first and " +
+          "details on their own pages. Never store passwords or tokens.",
         inputSchema: {
           type: "object",
           properties: {
@@ -721,7 +727,8 @@ export function buildServer() {
         name: "projekt_wissen_ergaenzen",
         description:
           "Append a section to a page of the project knowledge base (creates the page if missing). Never overwrites — " +
-          "use it for findings, decisions, how-tos. Use projekt_wissen_schreiben only to rewrite a page on purpose.",
+          "use it for findings, decisions, how-tos. Use projekt_wissen_schreiben only to rewrite a page on " +
+          "purpose. On index.md mind that only its first 1500 CHARACTERS are sent along with every project task.",
         inputSchema: {
           type: "object",
           properties: {

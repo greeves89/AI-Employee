@@ -4839,8 +4839,8 @@ export async function projektWissenVersion(id: string, pfad: string, version: st
   return fetchJSON(`${getBase()}/teams/${id}/wissen/version?pfad=${encodeURIComponent(pfad)}&version=${version}`);
 }
 
-export async function projektWissenWiederherstellen(id: string, pfad: string, version: string): Promise<void> {
-  await fetchJSON(`${getBase()}/teams/${id}/wissen/wiederherstellen`, {
+export async function projektWissenWiederherstellen(id: string, pfad: string, version: string): Promise<WissenGespeichert> {
+  return fetchJSON(`${getBase()}/teams/${id}/wissen/wiederherstellen`, {
     method: "POST",
     body: JSON.stringify({ pfad, version }),
   });
@@ -4916,7 +4916,17 @@ export async function projektWissenLesen(id: string, pfad: string): Promise<{ pf
   return fetchJSON(`${getBase()}/teams/${id}/wissen/datei?pfad=${encodeURIComponent(pfad)}`);
 }
 
-export async function projektWissenSchreiben(id: string, pfad: string, inhalt: string): Promise<{ path: string; created: boolean }> {
+// hinweis: der Server meldet hier, dass die Seite ueber die Grenze gewachsen ist,
+// ab der sie nicht mehr in einen Projektauftrag eingeht (Issue #979). Ohne das Feld
+// im Typ bleibt der Schnitt auch im Web-Editor unsichtbar.
+export interface WissenGespeichert {
+  path: string;
+  created?: boolean;
+  bytes?: number;
+  hinweis?: string;
+}
+
+export async function projektWissenSchreiben(id: string, pfad: string, inhalt: string): Promise<WissenGespeichert> {
   return fetchJSON(`${getBase()}/teams/${id}/wissen/datei`, { method: "PUT", body: JSON.stringify({ pfad, inhalt }) });
 }
 

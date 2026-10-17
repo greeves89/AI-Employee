@@ -801,7 +801,7 @@ ORCHESTRATOR_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "projekt_wissen_ergaenzen",
-            "description": "Append a section to a page of the project knowledge base (creates the page if missing). Never overwrites — use it for findings, decisions, how-tos. Use projekt_wissen_schreiben only to rewrite a page on purpose.",
+            "description": "Append a section to a page of the project knowledge base (creates the page if missing). Never overwrites — use it for findings, decisions, how-tos. Use projekt_wissen_schreiben only to rewrite a page on purpose. On index.md mind that only its first 1500 CHARACTERS are sent along with every project task.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -1133,7 +1133,7 @@ ORCHESTRATOR_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "projekt_wissen_schreiben",
-            "description": "Write (create or replace) a Markdown page in the project's knowledge base so every project member knows it: decisions, conventions, how things work. Keep index.md short — it is sent along with every project task. Never store passwords or tokens.",
+            "description": "Write (create or replace) a Markdown page in the project's knowledge base so every project member knows it: decisions, conventions, how things work. Keep index.md short — only its first 1500 CHARACTERS are sent along with every project task, the rest is cut; put the essentials first and details on their own pages. Never store passwords or tokens.",
             "parameters": {
                 "type": "object",
                 "properties": {
