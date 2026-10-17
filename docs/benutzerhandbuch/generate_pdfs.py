@@ -721,7 +721,7 @@ def main():
     ]
 
     print("=" * 60)
-    print("  VoiceAI Hörmann - PDF Documentation Generator")
+    print("  AI-Employee - PDF Documentation Generator")
     print(f"  Brand: mindsquare AG ({PRIMARY} | {ACCENT})")
     print("=" * 60)
     print()
