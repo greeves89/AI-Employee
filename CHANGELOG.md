@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.376.16] - 2026-10-17
+
+### Behoben
+- **Das Plattform-Fehlerlog war fuer `grep` regelmaessig unsichtbar — ein Nullbefund dort bedeutete nicht, dass der Fehler weg ist.** Ein unsauberer Stop hinterlaesst in `/shared/platform-errors.log` einen Block NUL-Bytes. EIN solches Byte genuegt, damit `grep MUSTER datei` die ganze Datei als binaer behandelt: keine Ausgabe, Rueckgabewert 1 — nicht unterscheidbar von einem ehrlichen "kein Treffer". Auf einer laufenden Anlage trugen drei von vier Loggenerationen solche Loecher (174 / 393 / 0 / 3219 Bytes); eine Fehlerklasse mit 37 echten Vorkommen las sich dadurch als "nicht vorhanden". Der Orchestrator repariert die Datei jetzt beim Start — also genau nach dem unsauberen Stop, der das Loch verursacht hat — und protokolliert, wie viele Bytes betroffen waren. Eine gesunde Logdatei wird dabei nicht angefasst.
+- **Die Anleitung schickte jeden Agenten in genau diese Falle.** Der Hinweis auf das Fehlerlog sagte "lies diese Datei", aber nicht, wie man sie verlaesslich liest. Er nennt jetzt `grep -a` und benennt, warum ein blankes `grep` dort nichts beweist.
+
+---
+
 ## [1.376.15] - 2026-10-17
 
 ### Behoben — Feinschliff der neuen Projektseite
