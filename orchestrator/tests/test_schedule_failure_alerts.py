@@ -163,6 +163,7 @@ def _make_watchdog_service(redis_mock):
     svc.redis = redis_mock
     svc._failure_watchdog_last_run = None
     svc._watchdog_alerted = {}
+    svc._watchdog_gemeldet_um = {}
     return svc
 
 
