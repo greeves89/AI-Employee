@@ -189,8 +189,11 @@ export function AgentFigur({
       className="pointer-events-auto absolute flex -translate-x-1/2 -translate-y-full flex-col items-center"
       style={{ left: x, top: y + 4 }}
     >
+      {/* Die Sprechblase sitzt rechts oben neben dem Kopf, nicht mittig darüber: die
+          Plätze stehen schräg, der Nachbar sitzt links oben — mittig verdeckte die Blase
+          ihn (Board-Test 2026-10-17). Absolut gesetzt, damit Figur und Name nicht springen. */}
       {mitText && titel && (
-        <div className="mb-1 line-clamp-2 max-w-[11rem] rounded-lg bg-background/95 px-2 py-0.5 text-[10px] leading-snug shadow ring-1 ring-emerald-500/30" title={titel}>
+        <div className="pointer-events-none absolute bottom-[calc(100%-1.75rem)] left-[calc(50%+0.75rem)] z-10 line-clamp-2 w-max max-w-[9.5rem] rounded-lg rounded-bl-none bg-background/95 px-2 py-0.5 text-[10px] leading-snug shadow ring-1 ring-emerald-500/30" title={titel}>
           {titel}
         </div>
       )}
