@@ -63,7 +63,7 @@ export function ProjektLeitstand({
   return (
     <div className="min-w-0 space-y-4">
       {/* Gerade in Arbeit */}
-      <section className="rounded-2xl border border-foreground/[0.08] bg-card p-4">
+      <section className="min-w-0 rounded-2xl border border-foreground/[0.08] bg-card p-4">
         <div className="flex items-baseline justify-between gap-2">
           <h2 className="text-sm font-semibold">Gerade in Arbeit</h2>
           <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground" title="Arbeitstakt des Projekts">
@@ -109,7 +109,7 @@ export function ProjektLeitstand({
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
         {/* Reststapel */}
-        <section className="rounded-2xl border border-foreground/[0.08] bg-card p-4">
+        <section className="min-w-0 rounded-2xl border border-foreground/[0.08] bg-card p-4">
           <h2 className="text-sm font-semibold">Reststapel</h2>
           <button type="button" onClick={onZumBoard} className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
             <span className="rounded-full bg-foreground/[0.06] px-2 py-0.5"><b className="tabular-nums">{k.eingang}</b> Eingang</span>
@@ -133,7 +133,7 @@ export function ProjektLeitstand({
         </section>
 
         {/* Wartet auf Merge */}
-        <section className="rounded-2xl border border-foreground/[0.08] bg-card p-4">
+        <section className="min-w-0 rounded-2xl border border-foreground/[0.08] bg-card p-4">
           <h2 className="text-sm font-semibold">Wartet auf Merge</h2>
           {merge.length === 0 ? (
             <p className="mt-2 text-xs text-muted-foreground">Kein offener Pull Request.</p>

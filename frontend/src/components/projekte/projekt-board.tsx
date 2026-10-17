@@ -57,8 +57,8 @@ export interface BoardAktionen {
 }
 
 function Knopf({
-  onClick, children, titel, haupt = false, gefahr = false,
-}: { onClick: () => Promise<void> | void; children: React.ReactNode; titel?: string; haupt?: boolean; gefahr?: boolean }) {
+  onClick, children, titel, haupt = false, gefahr = false, leise = false,
+}: { onClick: () => Promise<void> | void; children: React.ReactNode; titel?: string; haupt?: boolean; gefahr?: boolean; leise?: boolean }) {
   const [busy, setBusy] = useState(false);
   return (
     <button
@@ -77,6 +77,7 @@ function Knopf({
         "inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50",
         haupt ? "bg-primary text-primary-foreground hover:bg-primary/90"
           : gefahr ? "text-muted-foreground hover:bg-red-500/10 hover:text-red-500"
+            : leise ? "text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
             : "border border-foreground/[0.1] hover:bg-foreground/[0.04]",
       )}
     >
@@ -87,9 +88,11 @@ function Knopf({
 }
 
 function Karte({
-  karte, agents, mitglieder, leadId, farbe, aktionen, onZurueck,
+  karte, agents, mitglieder, leadId, farbe, aktionen, onZurueck, ausgabe,
 }: {
   karte: ProjektKarte;
+  /** Letzte Ausgabe des laufenden Agenten (nur in Arbeit). */
+  ausgabe?: string | null;
   agents: Map<string, Agent>;
   mitglieder: string[];
   leadId: string | null;
@@ -106,7 +109,8 @@ function Karte({
   const wann = karte.erledigt ?? karte.aktualisiert ?? karte.erstellt;
 
   return (
-    <div className={cn("rounded-xl border bg-card p-3 text-sm shadow-sm", gescheitert ? "border-red-500/30" : "border-foreground/[0.08]")}>
+    <div className={cn("rounded-xl border bg-card text-sm shadow-sm", karte.spalte === "eingang" ? "p-2.5" : "p-3",
+      gescheitert ? "border-red-500/30" : "border-foreground/[0.08]")}>
       <div className="flex items-start gap-1.5">
         <button
           type="button"
@@ -144,7 +148,12 @@ function Karte({
       {karte.notiz && <p className="mt-1.5 rounded-md bg-amber-500/10 px-2 py-1 text-[11px] text-amber-700 dark:text-amber-300">{karte.notiz}</p>}
 
       {karte.spalte === "in_arbeit" && (
-        <div className="mt-2"><StufenLeiste stufe={karte.stufe} farbe={farbe} klein /></div>
+        <>
+          {ausgabe && (
+            <p className="mt-1.5 line-clamp-2 text-[11px] italic text-foreground/70" title={ausgabe}>„{ausgabe}“</p>
+          )}
+          <div className="mt-2"><StufenLeiste stufe={karte.stufe} farbe={farbe} klein /></div>
+        </>
       )}
 
       {karte.pr_url && (
@@ -163,10 +172,10 @@ function Karte({
       )}
 
       {/* Aktionen je Spalte */}
-      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+      <div className={cn("flex flex-wrap items-center gap-1.5", karte.spalte === "eingang" ? "mt-1.5 -mb-1 -ml-1" : "mt-2.5")}>
         {karte.spalte === "eingang" && (
           <>
-            <Knopf haupt onClick={() => aktionen.verschieben(karte, { spalte: "bereit" })}>
+            <Knopf leise titel="Nach Bereit — kommt als Nächstes dran" onClick={() => aktionen.verschieben(karte, { spalte: "bereit" })}>
               Einplanen <ArrowRight className="h-3 w-3" />
             </Knopf>
             <Knopf gefahr titel="Verwerfen (nach Erledigt)" onClick={() => aktionen.verschieben(karte, { spalte: "erledigt" })}>
@@ -241,6 +250,7 @@ export function ProjektBoardAnsicht({
   const [titel, setTitel] = useState("");
   const [text, setText] = useState("");
   const agentById = new Map(agents.map((a) => [a.id, a]));
+  const ausgabeJeLauf = new Map(board.laufend.map((l) => [l.task_id, l.letzte_ausgabe]));
   const [nacharbeiter, setNacharbeiter] = useState("");
   const imProjekt = [...new Set([...(leadId ? [leadId] : []), ...mitglieder])];
   const bisherDa = !!zurueck?.agent_id && imProjekt.includes(zurueck.agent_id);
@@ -277,7 +287,7 @@ export function ProjektBoardAnsicht({
                   <p className="px-1 py-3 text-xs text-muted-foreground/70">{sp.leer}</p>
                 ) : (
                   karten.map((k) => (
-                    <Karte key={k.id} karte={k} agents={agentById} mitglieder={mitglieder} leadId={leadId} farbe={farbe}
+                    <Karte key={k.id} karte={k} agents={agentById} ausgabe={k.task_id ? ausgabeJeLauf.get(k.task_id) : null} mitglieder={mitglieder} leadId={leadId} farbe={farbe}
                       aktionen={aktionen} onZurueck={(karte) => { setHinweis(""); setNacharbeiter(""); setZurueck(karte); }} />
                   ))
                 )}

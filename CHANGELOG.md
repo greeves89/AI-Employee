@@ -5,6 +5,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.376.14] - 2026-10-17
+
+### Geändert — die Projektseite ist neu geordnet
+
+Bisher lagen bis zum Board acht Kästen übereinander, vieles stand doppelt da
+(Eingang im Raum, im Reststapel und auf dem Board; offene Pull Requests im
+Leitstand und in der Prüfung).
+
+- **Kennzahlenleiste oben:** Eingang › Bereit › In Arbeit › Prüfung › Erledigt
+  als Zahlen in einer Zeile, daneben Kosten des Monats, Takt und Repo-Stand mit
+  Abgleich-Knopf.
+- **Auftrag geben** ist eine schmale Zeile, die bei längeren Texten mitwächst.
+- **Das Board steht direkt darunter.** Raum, Leitstand und der Erledigt-Verlauf
+  haben einen eigenen Reiter **Raum**. Die Seite merkt sich den zuletzt gewählten
+  Reiter. Am Reiter Board zeigt eine Zahl, wie viel auf deine Prüfung wartet.
+- **Karten in Arbeit** zeigen die letzte Ausgabe des Agenten. Die Karten im
+  Eingang sind kompakter, „Einplanen“ ist kein großer blauer Knopf mehr.
+- Auf dem Handy wurde die Seite nicht mehr breiter als der Bildschirm.
+
+---
+
 ## [1.376.13] - 2026-10-17
 
 ### Behoben — Zeitpläne verbrennen weniger Geld
