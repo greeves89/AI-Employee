@@ -28,9 +28,20 @@ class TaskStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+#: Die Endzustaende einer Aufgabe — EINE Quelle fuer beide Benutzungsarten:
+#: die Pruefung eines einzelnen Status und das Filtern in einer Abfrage
+#: (`Task.status.notin_(TERMINAL_TASK_STATUSES)`). Zwei getrennte Aufzaehlungen
+#: laufen beim naechsten neuen Endzustand lautlos auseinander.
+TERMINAL_TASK_STATUSES: tuple["TaskStatus", ...] = (
+    TaskStatus.COMPLETED,
+    TaskStatus.FAILED,
+    TaskStatus.CANCELLED,
+)
+
+
 def is_terminal_task_status(status: "TaskStatus") -> bool:
     """Returns True if the task is in a terminal (non-resumable) state."""
-    return status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED)
+    return status in TERMINAL_TASK_STATUSES
 
 
 class TaskPriority(int, enum.Enum):

@@ -5,6 +5,45 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.376.11] - 2026-10-17
+
+### Behoben — die Überwachung „Zeitplan liefert kein Ergebnis mehr" war für fast alle Zeitpläne blind (#988)
+
+Es gibt einen Wächter, der melden soll, wenn ein wiederkehrender Zeitplan zwar
+startet, seine Läufe aber spurlos verschwinden — also wenn ein Auftrag losgeschickt
+wird und nie ein Ergebnis zurückkommt. Genau der Fall, in dem morgens das erwartete
+Ergebnis fehlt und niemand weiß, warum.
+
+Dieser Wächter hat für jeden Zeitplan, der öfter als alle zwei Stunden läuft,
+**nie** gemeldet. Er fragte „wie lange ist es her, dass zuletzt etwas gestartet
+wurde?" und wartete auf zwei Stunden ohne Start. Bei einem Zeitplan, der alle
+30 Minuten startet, wird diese Zahl nie größer als 30 Minuten — auch dann nicht,
+wenn seit Tagen kein einziger Lauf ein Ergebnis geliefert hat. Gemeldet wurde also
+nur, was ohnehin schon ganz stillstand; der stille Verlust, für den der Wächter
+gebaut war, blieb unsichtbar. Ein stummer Wächter sieht aus wie ein gesundes System,
+deshalb ist das über lange Zeit niemandem aufgefallen.
+
+Der Wächter fragt jetzt die richtige Größe: wie lange der **älteste Auftrag ohne
+Ergebnis** schon offen ist. Damit meldet er den Verlust unabhängig davon, wie oft
+der Zeitplan läuft.
+
+Zwei Dinge gehören dazu:
+
+* Beendet die Aufsicht einen hängenden Auftrag (kein Lebenszeichen mehr), wird dieser
+  Fehlschlag jetzt auch beim Zeitplan verbucht. Vorher blieb dessen Rechnung für immer
+  offen, und derselbe, längst erledigte Vorfall konnte erneut gemeldet werden.
+* Neue Meldebremse: höchstens eine Meldung je Zeitplan und zwölf Stunden. Ein Zeitplan,
+  der weiterläuft und dauerhaft nichts zurückmeldet, hätte sonst stündlich eine neue
+  Telegram-Nachricht ausgelöst — und die wird abgeschaltet statt gelesen.
+
+Für den Betrieb ändert sich sonst nichts: ein Zeitplan muss weiterhin mindestens zwei
+Läufe ohne Ergebnis haben und mindestens zwei Stunden warten, bevor gemeldet wird.
+Erwartbar ist, dass in den ersten Tagen Meldungen zu Zeitplänen auftauchen, die
+tatsächlich schon länger nichts liefern — das sind keine neuen Fehler, sondern bisher
+unsichtbare.
+
+---
+
 ## [1.376.10] - 2026-10-17
 
 ### Behoben — „Modelle suchen" löschte den gefundenen Stand, wenn ein Anbieter nicht antwortete (#984)

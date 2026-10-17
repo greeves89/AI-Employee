@@ -21,7 +21,7 @@ from app.core.log_redaction import scrub_log
 from app.core.task_router import TaskRouter
 from app.db.session import resilient_session
 from app.models.schedule import Schedule
-from app.models.task import Task
+from app.models.task import TERMINAL_TASK_STATUSES, Task
 from app.services.redis_service import RedisService
 from app.services.watchdog import (
     as_utc,
@@ -42,6 +42,26 @@ logger = logging.getLogger(__name__)
 # letting them surface as a full-traceback ERROR via the outer loop handler —
 # matching how every other sub-tick in run() reports its own failures.
 _TRANSIENT_DB_ERRORS = (OperationalError, DBAPIError, ConnectionError, TimeoutError)
+
+#: Karenzzeit des Fehler-Waechters: so alt muss die aelteste unquittierte
+#: Absendung eines Zeitplans sein, bevor gemeldet wird. Sie daempft den
+#: Normalfall "ein Auftrag fliegt noch" — nicht mehr, seit sie am richtigen
+#: Zeitstempel haengt (#988).
+_WATCHDOG_KARENZ = timedelta(hours=2)
+
+#: Zweite Bremse neben der Drift-Schranke, und erst seit #988 noetig: vorher
+#: konnte ein weiter feuernder Zeitplan die Zeitbedingung gar nicht erfuellen.
+#: Jetzt kann er es — und genau im Zielfall (feuert weiter, nichts quittiert)
+#: waechst `drift` bei jedem Takt, womit die Dedup ueber `_watchdog_alerted`
+#: jede Stunde erneut durchlaesst. Ohne diese Pause wuerde aus einem erkannten
+#: Dauerproblem eine stuendliche Telegram-Flut, und der Nutzer schaltet den
+#: Melder ab statt den Zeitplan zu reparieren.
+_WATCHDOG_MELDEPAUSE = timedelta(hours=12)
+
+#: Obergrenze der Aufgaben-Abfrage des Fehler-Waechters. Gross genug, dass die
+#: aelteste offene Absendung jedes Zeitplans sicher enthalten ist, und klein
+#: genug, dass ein Rueckstau nicht stuendlich in den Speicher gelesen wird.
+_WATCHDOG_ABSENDUNGEN_MAX = 2000
 
 # Wie lange eine unbeantwortete Freigabe stehen bleibt, bevor sie verfaellt.
 # Deutlich laenger als die laengste Wartezeit eines Agenten (15 min): eine
@@ -125,6 +145,9 @@ class SchedulerService:
         # Per-schedule drift value at which we last alerted; prevents hourly spam
         # for a stuck schedule — only re-alerts when drift increases.
         self._watchdog_alerted: dict[str, int] = {}
+        # Wann zuletzt gemeldet — die Drift-Dedup allein reicht nicht, weil
+        # `drift` bei einem weiter feuernden Zeitplan mit jedem Takt waechst (#988).
+        self._watchdog_gemeldet_um: dict[str, datetime] = {}
         # Einmal melden, wenn der Sentinel verstummt — nicht alle 30 Sekunden.
         self._sentinel_alerted: bool = False
         # Letztes Lebenszeichen VOR dem Alarm (Unix-Sekunden), damit die
@@ -1747,6 +1770,66 @@ class SchedulerService:
             return {}
         return (agent.config or {}).get("proactive", {}) or {}
 
+    async def _aelteste_offene_absendung(
+        self, db: AsyncSession, now: datetime
+    ) -> dict[str, datetime]:
+        """Je Zeitplan der Zeitpunkt der aeltesten Absendung ohne Endstatus.
+
+        Der Fehler-Waechter braucht das Alter der aeltesten UNQUITTIERTEN
+        Absendung. Der Zeitplan selbst kennt nur `last_run_at` — die juengste —
+        und die ist bei jedem Takt unter der Karenzzeit immer frisch. Die
+        gesuchte Groesse steht daneben in der Aufgabentabelle: genau die
+        Auftraege, die der Waechter in seinem eigenen Docstring meint ("never
+        reached a terminal status").
+
+        Gelesen wird einmal je Durchgang fuer ALLE Zeitplaene, nicht je
+        Zeitplan. Drei Grenzen halten die Abfrage klein, denn fuer
+        PENDING/QUEUED gibt es im Haus KEINEN Raeumpfad (der Stale-Waechter
+        greift nur bei RUNNING, `_gc_expired_tasks` nur bei gesetztem
+        `evict_after`) — die Menge kann also wachsen:
+        * nur zwei Spalten statt ganzer Zeilen (`prompt`/`result` sind `Text`),
+        * nur Absendungen, die aelter als die Karenzzeit sind — juengere
+          koennen den Schwellwert ohnehin nie erreichen,
+        * eine Obergrenze wie bei jeder anderen Aufgaben-Abfrage hier; mit
+          `ORDER BY created_at ASC` schneidet sie das Juengste ab, also genau
+          das, was fuer ein Aeltesten-Minimum nicht gebraucht wird.
+
+        Die Zuordnung zum Zeitplan steht in `metadata_["schedule_id"]`
+        (gesetzt beim Absenden) und wird wie ueberall sonst im Haus in Python
+        gefiltert, weil sich JSON-Containment je Treiber unterschiedlich
+        verhaelt.
+        """
+        offen: dict[str, datetime] = {}
+        try:
+            zeilen = (
+                await db.execute(
+                    select(Task.created_at, Task.metadata_)
+                    .where(
+                        Task.status.notin_(TERMINAL_TASK_STATUSES),
+                        Task.created_at < now - _WATCHDOG_KARENZ,
+                    )
+                    .order_by(Task.created_at.asc())
+                    .limit(_WATCHDOG_ABSENDUNGEN_MAX)
+                )
+            ).all()
+        except Exception:  # noqa: BLE001 — ohne die Liste faellt der Waechter
+            # auf sein altes Mass zurueck; eine verpasste Verschaerfung darf den
+            # Durchgang nicht abbrechen.
+            logger.debug("[Scheduler] FailureWatchdog: offene Absendungen nicht lesbar", exc_info=True)
+            return offen
+        for zeile in zeilen:
+            erstellt, meta = zeile[0], zeile[1]
+            if not isinstance(meta, dict):
+                continue
+            schedule_id = meta.get("schedule_id")
+            erstellt = as_utc(erstellt)
+            if not schedule_id or erstellt is None:
+                continue
+            bisher = offen.get(schedule_id)
+            if bisher is None or erstellt < bisher:
+                offen[schedule_id] = erstellt
+        return offen
+
     async def _tick_failure_watchdog(self) -> None:
         """Detect schedules that fired but whose task never reached a terminal
         status (silent drop) and publish a Telegram alert.
@@ -1773,18 +1856,43 @@ class SchedulerService:
             schedules = (
                 await db.execute(select(Schedule).where(Schedule.enabled == True))  # noqa: E712
             ).scalars().all()
+            offen = await self._aelteste_offene_absendung(db, now)
             for s in schedules:
                 drift = s.total_runs - (s.success_count + s.fail_count)
                 # Only alert on at least 2 outstanding runs to dampen the noise
                 # from a single in-flight task that hasn't reported back yet.
                 if drift < 2 or not s.last_run_at:
                     continue
+                # Das Alter der AELTESTEN unquittierten Absendung, nicht das der
+                # juengsten (#988): `last_run_at` wird beim Absenden gesetzt
+                # (Zeile ~1130), nie beim Fertigwerden. Solange ein Zeitplan
+                # ueberhaupt noch feuert, ist `now - last_run_at` damit nie
+                # groesser als sein eigener Takt — jeder Takt unter der
+                # Karenzzeit konnte die Bedingung also NIE erfuellen, gleich
+                # wie viele seiner Laeufe spurlos verschwanden.
+                aelteste = offen.get(s.id)
+                # Das GROESSERE der beiden Masse, nicht das neue statt des
+                # alten. Eine offene Absendung kann juenger sein als
+                # `last_run_at` — eine Selbstheilungs-Wiederholung erbt die
+                # `schedule_id` und traegt ein frisches `created_at`, ebenso
+                # ein Probelauf von Hand. Mit "neues ersetzt altes" haette
+                # ausgerechnet so eine junge Zeile einen Alarm unterdrueckt,
+                # den die alte Fassung gefeuert haette. So ist der Waechter
+                # nie unempfindlicher als vorher, nur zusaetzlich empfindlich.
                 stale_for = now - s.last_run_at
-                if stale_for < timedelta(hours=2):
+                if aelteste is not None:
+                    stale_for = max(stale_for, now - aelteste)
+                if stale_for < _WATCHDOG_KARENZ:
                     continue
                 # De-dup: only alert when drift increases beyond last alerted level.
                 # Without this the same alert fires every hour indefinitely.
                 if drift <= self._watchdog_alerted.get(s.id, 0):
+                    continue
+                # Und die Zeitbremse darueber: `drift` waechst bei einem weiter
+                # feuernden Zeitplan mit jedem Takt, die Drift-Dedup allein
+                # liesse also stuendlich erneut durch (#988).
+                zuletzt = self._watchdog_gemeldet_um.get(s.id)
+                if zuletzt is not None and (now - zuletzt) < _WATCHDOG_MELDEPAUSE:
                     continue
                 if not self.redis or not self.redis.client:
                     continue
@@ -1800,8 +1908,14 @@ class SchedulerService:
                         f"Zeitplan *{safe_name}* hat {drift} Läufe ohne Ergebnis "
                         f"(gesamt {s.total_runs}, erfolgreich {s.success_count}, "
                         f"fehlgeschlagen {s.fail_count}).\n"
-                        f"Letzter Lauf {s.last_run_at.strftime('%d.%m.%Y %H:%M UTC')} "
-                        f"(vor {int(stale_for.total_seconds() // 3600)} h)."
+                        f"Letzter Lauf {s.last_run_at.strftime('%d.%m.%Y %H:%M UTC')}.\n"
+                        + (
+                            "Älteste Absendung ohne Ergebnis: vor "
+                            f"{int(stale_for.total_seconds() // 3600)} h."
+                            if aelteste is not None
+                            else "Keine offene Absendung auffindbar — gemessen "
+                            f"am letzten Lauf (vor {int(stale_for.total_seconds() // 3600)} h)."
+                        )
                     ),
                     "parse_mode": "Markdown",
                 }
@@ -1810,6 +1924,7 @@ class SchedulerService:
                         "telegram:notification", _json.dumps(payload)
                     )
                     self._watchdog_alerted[s.id] = drift
+                    self._watchdog_gemeldet_um[s.id] = now
                 except Exception as e:
                     logger.warning("[Scheduler] FailureWatchdog publish error: %s", e)
 
@@ -1824,6 +1939,40 @@ class SchedulerService:
             lb = LoadBalancer(self.redis)
             router = TaskRouter(db, self.redis, lb, docker_service=self.docker)
             return await router.dispatch_due_retries()
+
+    async def _buche_stale_auf_zeitplan(self, db: AsyncSession, task: Task) -> None:
+        """Einen als stale beendeten Zeitplan-Lauf auch auf dem Zeitplan buchen.
+
+        `mark_task_stale` setzt die Aufgabe direkt am Modell auf FAILED und
+        geht damit an `TaskRouter._update_schedule_stats` vorbei — der einzigen
+        Stelle, die `success_count`/`fail_count` fortschreibt. Die Folge war
+        eine Buchhaltung, die sich nie wieder schliesst: `total_runs` zaehlt
+        weiter, die Summe der beiden Zaehler nicht, und der daraus gerechnete
+        `drift` des Fehler-Waechters blieb fuer immer erhoeht — er meldete
+        denselben, laengst beendeten und laengst gemeldeten Lauf erneut.
+
+        Seit #988 kommt ein zweiter Grund dazu: der Fehler-Waechter misst das
+        Alter der aeltesten Absendung OHNE Endstatus. Eine stale-markierte
+        Aufgabe ist endgueltig und faellt aus dieser Messung heraus. Bliebe ihr
+        Verlust ungebucht, waere der Waechter fuer genau die Faelle wieder
+        blind, die der Stale-Waechter vorher aufgeraeumt hat.
+
+        `consecutive_failures` bleibt bewusst unberuehrt: daran haengt die
+        automatische Abschaltung eines Zeitplans, und ein haengender Lauf ist
+        kein gemeldeter Fehlschlag des Auftrags.
+        """
+        schedule_id = (task.metadata_ or {}).get("schedule_id")
+        if not schedule_id:
+            return
+        try:
+            schedule = (
+                await db.execute(select(Schedule).where(Schedule.id == schedule_id))
+            ).scalar_one_or_none()
+        except Exception:  # noqa: BLE001 — die Stale-Markierung selbst ist wichtiger
+            logger.debug("[Scheduler] Stale-Buchung: Zeitplan nicht lesbar", exc_info=True)
+            return
+        if schedule is not None:
+            schedule.fail_count += 1
 
     async def _tick_stale_task_watchdog(self) -> None:
         """Mark RUNNING tasks that stopped heart-beating as stale.
@@ -1867,6 +2016,7 @@ class SchedulerService:
             minuten = int(schwelle.total_seconds() // 60)
             for task in stale:
                 mark_task_stale(task, now, schwelle)
+                await self._buche_stale_auf_zeitplan(db, task)
                 # Ohne das laeuft der Agent nach dem Abbruch weiter und verbrennt
                 # Zeit und Token fuer ein Ergebnis, das niemand mehr annimmt
                 # (#692 Punkt C). Der Kanal existiert bereits fuer `cancel_task`.
