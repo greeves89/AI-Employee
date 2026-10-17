@@ -185,7 +185,8 @@ class SchedulerOhneAgent(unittest.IsolatedAsyncioTestCase):
         svc = SchedulerService(redis=MagicMock())
         svc._clear_retry_budgets = AsyncMock()
         router = MagicMock(create_and_route_task=AsyncMock(return_value=SimpleNamespace(id="t1")))
-        db = MagicMock(add=MagicMock(), execute=AsyncMock())
+        # execute liefert ein Ergebnis wie SQLAlchemy (scalars().all()), keine Koroutine.
+        db = MagicMock(add=MagicMock(), execute=AsyncMock(return_value=MagicMock()))
         with patch.object(api, "kandidaten_fuer_urheber", kandidaten):
             await svc._execute_schedule(db, router, zeitplan, datetime(2026, 10, 4, 9, 0, tzinfo=timezone.utc))
         return router, db

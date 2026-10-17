@@ -104,6 +104,11 @@ _TRANSIENT_RETRY_DELAY = timedelta(minutes=12)
 _LOCK_RETRY_MAX_ATTEMPTS = 3
 _LOCK_RETRY_DELAY = timedelta(seconds=30)
 _RETRY_REASONS = ("overload", "off_duty", "busy", "lock", "down")
+# Wie weit zurueck ein noch offener Lauf DESSELBEN Zeitplans den naechsten
+# Start verhindert. Laenger als jeder echte Lauf (gut eine Stunde), kurz genug,
+# dass eine liegengebliebene PENDING-Leiche den Zeitplan nicht ewig sperrt —
+# fuer PENDING/QUEUED gibt es keinen Raeumpfad (siehe _aelteste_offene_absendung).
+_OFFENER_LAUF_FENSTER = timedelta(hours=6)
 
 # Eine Meldung pro Zeitplan und Stunde. Ein Zeitplan, der oefter als stuendlich
 # laeuft, verwirft bei einer laengeren Stoerung sonst die ganze Nacht lang alle
@@ -968,6 +973,17 @@ class SchedulerService:
             logger.info("[Scheduler] Meeting schedule %s executed", schedule.name)
             return
 
+        # Laeuft dieser Zeitplan noch (oder wartet seine Wiederholung auf den Start),
+        # faellt der Termin aus. Die Busy-Pruefung weiter unten sieht das nicht: sie
+        # liest den Redis-Status des Agenten, und dort steht waehrend eines Chats
+        # der Chat — oder die Wiederholung ist noch nicht in der Warteschlange. Im
+        # Betrieb startete so ein 30-Minuten-Zeitplan neben seinem eigenen Lauf, das
+        # Modell las den ganzen Auftrag, fand die Arbeitssperre und hoerte auf (je ~2 $).
+        if not _is_one_shot(schedule) and await self._lauf_noch_offen(db, schedule, now):
+            schedule.next_run_at = _calc_next_run(schedule, now)
+            logger.info("[Scheduler] %s uebersprungen — der vorige Lauf ist noch offen", schedule.name)
+            return
+
         # For proactive schedules: always use the latest PROACTIVE_PROMPT from code
         # so prompt improvements apply immediately to all agents without DB migration.
         # Per-agent additions (admin/user editable in the UI) are appended to the
@@ -1050,8 +1066,10 @@ class SchedulerService:
         # still, und nichts warnt davor (alles gruen, Wirkung null). Der Hinweis
         # haengt am Prompt JEDES adaptiven Laufs, und die Auftrags-Metadaten
         # tragen die Eigenschaft mit, damit sie auch im Verlauf sichtbar ist.
-        from app.core.adaptiver_takt import MELDE_HINWEIS
+        from app.core.adaptiver_takt import MELDE_HINWEIS, WARTE_HINWEIS
         ist_adaptiv = bool(getattr(schedule, "adaptive", False))
+        if not _is_one_shot(schedule):
+            prompt = prompt + WARTE_HINWEIS
         if ist_adaptiv:
             prompt = prompt + MELDE_HINWEIS
 
@@ -1769,6 +1787,22 @@ class SchedulerService:
         if not agent:
             return {}
         return (agent.config or {}).get("proactive", {}) or {}
+
+    async def _lauf_noch_offen(self, db: AsyncSession, schedule: Schedule, now: datetime) -> bool:
+        """Ob ein Auftrag dieses Zeitplans noch keinen Endstatus hat.
+
+        Zuordnung ueber ``metadata_["schedule_id"]``, in Python gefiltert wie in
+        ``_aelteste_offene_absendung``. Nur die letzten Stunden und nur die
+        Metadaten-Spalte, damit die Abfrage je Termin klein bleibt.
+        """
+        stmt = select(Task.metadata_).where(
+            Task.status.notin_(TERMINAL_TASK_STATUSES),
+            Task.created_at > now - _OFFENER_LAUF_FENSTER,
+        )
+        if schedule.agent_id:
+            stmt = stmt.where(Task.agent_id == schedule.agent_id)
+        zeilen = (await db.execute(stmt.limit(500))).scalars().all()
+        return any(isinstance(m, dict) and m.get("schedule_id") == schedule.id for m in zeilen)
 
     async def _aelteste_offene_absendung(
         self, db: AsyncSession, now: datetime

@@ -4595,6 +4595,8 @@ export interface FinanzenAgent {
   budget_usd: number | null;
   tokens_ein: number;
   tokens_aus: number;
+  /** Tokens verbraucht, aber für das Modell ist kein Preis hinterlegt (z. B. Codex). */
+  preis_unbekannt?: boolean;
 }
 
 export interface Finanzen {

@@ -5,6 +5,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.376.13] - 2026-10-17
+
+### Behoben — Zeitpläne verbrennen weniger Geld
+
+- **Kein Start neben dem eigenen Lauf:** Ein wiederkehrender Zeitplan startet
+  nicht mehr, solange sein voriger Lauf noch arbeitet oder dessen Wiederholung
+  auf den Start wartet. Bisher sah die Prüfung das nicht, wenn der Agent
+  gleichzeitig im Chat war. Der zweite Lauf las dann den ganzen Auftrag, fand die
+  Sperre und hörte auf — je etwa 2 $.
+- **Nicht im Hintergrund warten:** Jeder wiederkehrende Lauf und die
+  Grundanweisung aller Agenten sagen jetzt ausdrücklich: auf CI, Merges oder
+  Deploys nicht in Warteschleifen warten, sondern den Lauf beenden; der nächste
+  Lauf prüft den Stand. Ein einzelner Lauf, der so wartete, kostete 71 $.
+- **Finanzen — Preis unbekannt:** Agenten, die Tokens verbrauchen, für deren
+  Modell aber kein Preis hinterlegt ist (Codex), fehlten in der Liste ganz. Sie
+  erscheinen jetzt mit ihren Tokens und dem Vermerk „Preis unbekannt“ statt 0 $.
+
+Die Anweisung für alle Agenten wirkt nach dem Aktualisieren der Agenten.
+
+---
+
 ## [1.376.12] - 2026-10-17
 
 ### Behoben — lange Läufe zeigten nur ihren letzten Abschnitt an
