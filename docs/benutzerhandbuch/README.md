@@ -908,47 +908,61 @@ Arbeitstakt.
 
 ![Seite „Projekte“ — Menüpunkt in der Seitenleiste, je Projekt eine Karte mit Raum und Zahlen](screenshots/70-projekte-uebersicht.png)
 
-### 6a.2 Raum und Leitstand
+### 6a.2 Aufbau der Projektseite *(neu geordnet seit 1.376.14)*
 
-Ein Klick auf eine Projektkarte öffnet das Projekt.
+Ein Klick auf eine Projektkarte öffnet das Projekt. Die Seite ist von oben nach unten
+geordnet — das Wichtigste zuerst:
 
-![Projektseite: Raum mit den Agenten, Leitstand rechts, darunter „Auftrag geben“](screenshots/72-projekt-raum.png)
+![Projektseite: oben die Kennzahlenleiste, darunter „Auftrag geben“ und die Reiter mit dem Board](screenshots/72-projekt-raum.png)
 
-**Der Raum** (links oben):
+1. **Kennzahlenleiste** — der Fluss der Karten als Zahlen: **Eingang › Bereit › In Arbeit ›
+   Prüfung › Erledigt (7 Tage)**. Ein Klick auf eine Zahl springt zum Board. Rechts daneben:
+   - **Kosten** des Projekts in diesem Monat (mit Budget, falls eins gesetzt ist) — ein Klick
+     öffnet die Finanzen,
+   - **Takt** — ob der Arbeitstakt läuft und wann der nächste Lauf ist,
+   - bei Git-Projekten das **Repo**, wann es zuletzt abgeglichen wurde, und der Knopf zum
+     sofortigen Abgleich (Pfeilkreis).
+2. **Auftrag geben** — eine Zeile zum Schreiben, daneben Empfänger und **Abgeben**
+   (siehe 6a.4).
+3. **Reiter** — **Board** (Standard), **Raum**, **Gespräch**, **Termine**, **Wissen**, **Team**.
+   Die Seite merkt sich den zuletzt gewählten Reiter. Eine orange Zahl am Reiter Board heißt:
+   so viele Karten warten auf deine Prüfung. Ein grüner Punkt am Reiter Raum heißt: gerade
+   arbeitet jemand.
+
+**Der Reiter Raum** zeigt das Projekt als Büro:
 - **Schreibtische** — je Mitglied einer. Arbeitet ein Agent, leuchtet sein Bildschirm in der
-  Projektfarbe, der Bildschirm „schreibt“, der Agent wippt, und über ihm steht, was er
-  gerade tut (seine letzte Ausgabe).
+  Projektfarbe, der Bildschirm „schreibt“, der Agent wippt, und rechts oben neben ihm steht,
+  was er gerade tut (seine letzte Ausgabe).
 - **Krone** — markiert den Lead.
 - **Papierstapel** neben der Tür — alles, was noch nicht vergeben ist (Eingang und Bereit).
   Ein Klick darauf springt zum Board.
 - **Board an der Wand** — farbige Zettel: blau = in Arbeit, orange = Prüfung, grün = heute fertig.
+- Ein Klick auf einen Agenten trägt ihn als Empfänger unter **Auftrag geben** ein.
 
-**Der Leitstand** (rechts):
+Rechts daneben steht der **Leitstand**:
 - **Gerade in Arbeit** — je Lauf der Agent, die Karte, **was er zuletzt geschrieben oder getan
   hat** und die **Stufe**: Planung → Bau → Tests → PR → CI → Merge. Die Agenten melden die Stufe;
   was sich belegen lässt, zieht der Stand selbst nach (ein laufender Lauf ist mindestens „Bau“,
   ein verknüpfter Pull Request „PR“, laufende Prüfungen „CI“, ein gemergter PR „Merge“).
   „Teilarbeit“ heißt: Der Lead hat einen Teil an einen Kollegen weitergegeben.
-- **Takt** — ob der Arbeitstakt läuft und wann der nächste Lauf ist.
-- **Reststapel** — wie viele Karten im Eingang und auf Bereit liegen, und **als Nächstes**
-  die wichtigste bereite Karte.
+- **Reststapel** mit der Karte, die **als Nächstes** drankommt.
 - **Wartet auf Merge** — Karten mit offenem Pull Request, mit Stand (offen, CI läuft,
   CI grün/rot); ein Klick öffnet den Pull Request.
 
-Darunter zeigt **Erledigt** die fertigen Karten der letzten sieben Tage als Balken.
+Unter dem Raum zeigt **Erledigt** die fertigen Karten der letzten sieben Tage als Balken.
 
 Auf schmalen Bildschirmen blendet der Raum Namen und Sprechblasen aus; der Reiter **Team**
 zeigt sie weiter.
 
 ### 6a.3 Das Board: vom Eingang bis Erledigt
 
-Unter dem Raum liegt der Reiter **Board** mit fünf Spalten:
+Der Reiter **Board** hat fünf Spalten:
 
 | Spalte | Bedeutung | Was du tun kannst |
 |---|---|---|
 | **Eingang** | Neu, noch nicht gesichtet | **Einplanen** (→ Bereit) oder **verwerfen** (Papierkorb) |
 | **Bereit** | Eingeplant, wartet auf einen Agenten | Empfänger wählen und **Los** klicken — der Agent legt los |
-| **In Arbeit** | Ein Agent arbeitet daran | Stufe und Pull Request ansehen; Klick auf den Titel öffnet den Lauf |
+| **In Arbeit** | Ein Agent arbeitet daran | Letzte Ausgabe, Stufe und Pull Request ansehen; Klick auf den Titel öffnet den Lauf |
 | **Prüfung** | Der Agent ist fertig (oder gescheitert) | **Abnehmen** oder **Zurückgeben** |
 | **Erledigt** | Abgenommen oder verworfen (letzte 30 Tage) | — |
 
@@ -962,13 +976,14 @@ Unter dem Raum liegt der Reiter **Board** mit fünf Spalten:
 
 ### 6a.4 Einen Auftrag geben
 
-1. Im Kasten **Auftrag geben** beschreiben, was erledigt werden soll. Die **erste Zeile**
-   wird zum Titel der Karte.
-2. Im Auswahlfeld darunter festlegen, wer den Auftrag bekommt:
+1. In der Zeile **Auftrag geben** (unter der Kennzahlenleiste) beschreiben, was erledigt
+   werden soll. Die **erste Zeile** wird zum Titel der Karte; bei längeren Texten wird das
+   Feld von selbst größer.
+2. Im Auswahlfeld daneben festlegen, wer den Auftrag bekommt:
    - **An den Lead — er verteilt**: der Lead zerlegt den Auftrag und gibt Teile an die
      Kollegen weiter.
    - **Direkt an …**: genau dieser Agent arbeitet ihn ab.
-   Schneller: im Raum auf einen Agenten klicken — er wird als Empfänger eingetragen.
+   Schneller: im Reiter **Raum** auf einen Agenten klicken — er wird als Empfänger eingetragen.
 3. Soll der Auftrag erst einmal nur gesammelt werden, den Haken **nur in den Eingang**
    setzen — dann entsteht nur eine Karte im Eingang, und niemand legt los.
 4. **Abgeben** klicken (oder Strg/Cmd + Enter).
@@ -1134,7 +1149,7 @@ Ab dann, regelmäßig:
   bzw. der Lead sie gesetzt habt.
 - Wird ein Issue **geschlossen**, wandert seine Karte nach **Erledigt**. Arbeitet gerade ein
   Agent daran, bekommt sie stattdessen eine Notiz.
-- Offene **Pull Requests** erscheinen unter **Wartet auf Merge** — mit dem Stand der Prüfungen
+- Offene **Pull Requests** erscheinen in der Spalte **Prüfung** und im Leitstand (Reiter Raum) unter **Wartet auf Merge** — mit dem Stand der Prüfungen
   (CI läuft, CI grün, CI rot). Schreibt der PR „Fixes #12“, hängt er an der Karte von Issue #12.
 - Ein **gemergter** PR ohne eigenes Issue wird erledigt.
 

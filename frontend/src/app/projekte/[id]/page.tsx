@@ -3,43 +3,45 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, BookOpen, CalendarClock, Crown, GitBranch, KanbanSquare, Loader2, MessageSquare, MessagesSquare, Pencil, RefreshCw, Send, Trash2, TriangleAlert, Users, Wallet } from "lucide-react";
+import { ArrowLeft, BookOpen, Box, CalendarClock, Crown, GitBranch, KanbanSquare, Loader2, MessageSquare, MessagesSquare, Pencil, Send, Trash2, TriangleAlert, Users } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { CreateTeamModal } from "@/components/agents/create-team-modal";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { ProjektRaum } from "@/components/projekte/projekt-raum";
 import { ProjektBoardAnsicht, ProjektVerlauf, type BoardAktionen } from "@/components/projekte/projekt-board";
 import { ProjektLeitstand } from "@/components/projekte/projekt-leitstand";
+import { ProjektKopfleiste } from "@/components/projekte/projekt-kopfleiste";
 import { ProjektWissen } from "@/components/projekte/projekt-wissen";
 import { ProjektGespraech } from "@/components/projekte/projekt-gespraech";
 import { ProjektTermine } from "@/components/projekte/projekt-termine";
 import { raumZustand } from "@/components/raum/iso";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import { useAgents } from "@/hooks/use-agents";
-import { useMoney } from "@/hooks/use-money";
 import { useAuthStore } from "@/lib/auth";
 import * as api from "@/lib/api";
 import { apiFehlertext } from "@/lib/api-fehler";
 import { agentZustand } from "@/lib/aufgaben-anzeige";
 import { projektFarbe, type ProjektBoard } from "@/lib/projekte";
 import { setVisibleInterval } from "@/lib/visible-interval";
-import { cn, timeAgo } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
-type Reiter = "board" | "gespraech" | "termine" | "wissen" | "team";
+type Reiter = "board" | "raum" | "gespraech" | "termine" | "wissen" | "team";
 
 const REITER: { key: Reiter; label: string; Icon: typeof KanbanSquare }[] = [
   { key: "board", label: "Board", Icon: KanbanSquare },
+  { key: "raum", label: "Raum", Icon: Box },
   { key: "gespraech", label: "Gespräch", Icon: MessagesSquare },
   { key: "termine", label: "Termine", Icon: CalendarClock },
   { key: "wissen", label: "Wissen", Icon: BookOpen },
   { key: "team", label: "Team", Icon: Users },
 ];
 
+const REITER_SCHLUESSEL = "projekt-reiter";
+
 export default function ProjektPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const toast = useToast();
-  const money = useMoney();
   const confirm = useConfirm();
   const rolle = useAuthStore((s) => s.user?.role);
   const darfSchreiben = rolle !== "viewer";
@@ -49,6 +51,17 @@ export default function ProjektPage() {
   const [fehler, setFehler] = useState<string | null>(null);
   const [bearbeiten, setBearbeiten] = useState(false);
   const [reiter, setReiter] = useState<Reiter>("board");
+  // Zuletzt gewählter Reiter je Betrachter (nur Bequemlichkeit, darf fehlen).
+  useEffect(() => {
+    try {
+      const gemerkt = window.localStorage.getItem(REITER_SCHLUESSEL) as Reiter | null;
+      if (gemerkt && REITER.some((r) => r.key === gemerkt)) setReiter(gemerkt);
+    } catch { /* Speicher gesperrt — dann eben Board */ }
+  }, []);
+  const reiterWaehlen = (r: Reiter) => {
+    setReiter(r);
+    try { window.localStorage.setItem(REITER_SCHLUESSEL, r); } catch { /* egal */ }
+  };
   const [text, setText] = useState("");
   const [ziel, setZiel] = useState<string>("");
   const [nurEingang, setNurEingang] = useState(false);
@@ -174,7 +187,7 @@ export default function ProjektPage() {
   };
 
   const zumBoard = () => {
-    setReiter("board");
+    reiterWaehlen("board");
     boardRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
@@ -225,153 +238,109 @@ export default function ProjektPage() {
         }
       />
 
-      <div className="space-y-6 p-4 sm:p-6">
-        {/* min-w-0: sonst drückt ein langer Text (Titel im Leitstand) die Seite auf dem
-            Handy breiter als den Bildschirm, und der Raum wird abgeschnitten. */}
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_24rem]">
-          <div className="min-w-0 space-y-4">
-            <div className="rounded-2xl border border-foreground/[0.08] bg-card p-3">
-              <ProjektRaum
-                name={projekt.name}
-                farbe={farbe}
-                mitglieder={mitglieder}
-                leadId={projekt.lead_agent_id}
-                kennzahlen={board.kennzahlen}
-                laufend={board.laufend}
-                onAgent={(aid) => { setZiel(aid); eingabe.current?.focus(); }}
-                onStapel={zumBoard}
-              />
-            </div>
+      <div className="space-y-4 p-4 sm:p-6">
+        {veraltet.length > 0 && (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+            <TriangleAlert className="h-3.5 w-3.5" />
+            <span>
+              {veraltet.length === 1 ? "Ein Agent läuft" : `${veraltet.length} Agenten laufen`} auf altem Stand — ohne
+              Aktualisieren fehlen {veraltet.length === 1 ? "ihm" : "ihnen"} die Projekt-Werkzeuge (Board, Karten, Wissen):
+            </span>
+            {veraltet.map((m) => (
+              <Link key={m.id} href={`/agents/${m.id}`} className="font-medium underline-offset-2 hover:underline">{m.agent?.name}</Link>
+            ))}
+          </div>
+        )}
+        {!projekt.repo && projekt.darf_verwalten && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-dashed border-foreground/[0.12] px-3 py-2 text-xs text-muted-foreground">
+            <GitBranch className="h-3.5 w-3.5" />
+            <span>Kein GitHub-Repo verbunden — mit Repo kommen offene Issues und Pull Requests von selbst aufs Board.</span>
+            <button type="button" onClick={() => setBearbeiten(true)}
+              className="ml-auto rounded-lg border border-foreground/[0.1] px-2 py-1 text-foreground hover:bg-foreground/[0.04]">
+              Repo verbinden
+            </button>
+          </div>
+        )}
 
-            <div className="grid min-w-0 gap-4 sm:grid-cols-[minmax(0,1fr)_14rem]">
-              {darfSchreiben ? (
-                <div className="rounded-2xl border border-foreground/[0.08] bg-card p-4">
-                  <h2 className="text-sm font-semibold">Auftrag geben</h2>
-                  <textarea
-                    ref={eingabe}
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) abgeben(); }}
-                    rows={3}
-                    placeholder="Was soll erledigt werden? Die erste Zeile wird zum Titel der Karte."
-                    className="mt-2 w-full resize-none rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
-                  />
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <select
-                      value={ziel}
-                      onChange={(e) => setZiel(e.target.value)}
-                      aria-label="Empfänger"
-                      disabled={nurEingang}
-                      className="min-w-0 flex-[1_1_100%] rounded-lg border border-foreground/[0.1] bg-background/80 px-2.5 py-2 text-sm outline-none disabled:opacity-50 sm:flex-1"
-                    >
-                      {projekt.lead_agent_id ? (
-                        <option value="">An den Lead{lead ? ` (${lead.name})` : ""} — er verteilt</option>
-                      ) : mitglieder.length === 1 ? (
-                        <option value="">An {mitglieder[0].agent?.name ?? "das Mitglied"}</option>
-                      ) : (
-                        <option value="">Agent wählen …</option>
-                      )}
-                      {mitglieder.map(({ id: mid, agent }) => (
-                        <option key={mid} value={mid}>Direkt an {agent?.name ?? mid}</option>
-                      ))}
-                    </select>
-                    <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <input type="checkbox" checked={nurEingang} onChange={(e) => setNurEingang(e.target.checked)} />
-                      nur in den Eingang
-                    </label>
-                    <button
-                      type="button"
-                      onClick={abgeben}
-                      disabled={sendet || !text.trim() || mitglieder.length === 0 || (!nurEingang && brauchtWahl && !ziel)}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                    >
-                      {sendet ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                      Abgeben
-                    </button>
-                  </div>
-                  {mitglieder.length === 0 && (
-                    <p className="mt-2 text-xs text-muted-foreground">Weise dem Projekt zuerst Agenten zu (Bearbeiten).</p>
+        <ProjektKopfleiste board={board} projektId={projekt.id} budgetUsd={projekt.budget_usd} farbe={farbe}
+          repo={projekt.repo} repoAbgleichAt={projekt.repo_abgleich_at} repoFehler={projekt.repo_fehler}
+          gleichtAb={gleichtAb} onAbgleichen={darfSchreiben ? repoAbgleichen : undefined} onBoard={zumBoard} />
+
+        {darfSchreiben && (
+          <div className="rounded-2xl border border-foreground/[0.08] bg-card p-2.5">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-start">
+              <textarea
+                ref={eingabe}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) abgeben(); }}
+                rows={text.includes("\n") || text.length > 90 ? 3 : 1}
+                aria-label="Auftrag"
+                placeholder="Auftrag geben: Was soll erledigt werden? Die erste Zeile wird zum Titel."
+                className="min-w-0 flex-1 resize-none rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={ziel}
+                  onChange={(e) => setZiel(e.target.value)}
+                  aria-label="Empfänger"
+                  disabled={nurEingang}
+                  className="min-w-0 flex-[1_1_100%] rounded-lg border border-foreground/[0.1] bg-background/80 px-2.5 py-2 text-sm outline-none disabled:opacity-50 sm:flex-1 lg:w-56 lg:flex-none"
+                >
+                  {projekt.lead_agent_id ? (
+                    <option value="">An den Lead{lead ? ` (${lead.name})` : ""} — er verteilt</option>
+                  ) : mitglieder.length === 1 ? (
+                    <option value="">An {mitglieder[0].agent?.name ?? "das Mitglied"}</option>
+                  ) : (
+                    <option value="">Agent wählen …</option>
                   )}
-                  {ziel && agentById.get(ziel) && (
-                    <Link href={`/agents/${ziel}`} className="mt-2 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-                      <MessageSquare className="h-3.5 w-3.5" /> Chat mit {agentById.get(ziel)?.name} öffnen
-                    </Link>
-                  )}
-                </div>
-              ) : <div />}
-              <div className="rounded-2xl border border-foreground/[0.08] bg-card p-4">
-                <div className="flex items-baseline justify-between">
-                  <h2 className="text-sm font-semibold">Erledigt</h2>
-                  <span className="text-[11px] text-muted-foreground">{board.kennzahlen.fertig_7_tage} in 7 Tagen</span>
-                </div>
-                <div className="mt-3"><ProjektVerlauf kennzahlen={board.kennzahlen} farbe={farbe} /></div>
-                <Link href={`/finanzen?projekt=${projekt.id}`} title={money.title(board.kennzahlen.kosten_monat_usd ?? 0)}
-                  className="mt-3 flex items-center justify-between gap-2 border-t border-foreground/[0.06] pt-2 text-[11px] text-muted-foreground hover:text-foreground">
-                  <span className="inline-flex items-center gap-1"><Wallet className="h-3 w-3" /> Kosten diesen Monat</span>
-                  <span className={cn("tabular-nums", projekt.budget_usd && (board.kennzahlen.kosten_monat_usd ?? 0) >= projekt.budget_usd && "font-semibold text-red-500")}>
-                    {money.fmt(board.kennzahlen.kosten_monat_usd ?? 0)}
-                    {projekt.budget_usd ? ` von ${money.fmt(projekt.budget_usd)}` : ""}
-                  </span>
-                </Link>
+                  {mitglieder.map(({ id: mid, agent }) => (
+                    <option key={mid} value={mid}>Direkt an {agent?.name ?? mid}</option>
+                  ))}
+                </select>
+                <label className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
+                  <input type="checkbox" checked={nurEingang} onChange={(e) => setNurEingang(e.target.checked)} />
+                  nur in den Eingang
+                </label>
+                <button
+                  type="button"
+                  onClick={abgeben}
+                  disabled={sendet || !text.trim() || mitglieder.length === 0 || (!nurEingang && brauchtWahl && !ziel)}
+                  className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 lg:ml-0"
+                >
+                  {sendet ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  Abgeben
+                </button>
               </div>
             </div>
+            {(mitglieder.length === 0 || (ziel && agentById.get(ziel))) && (
+              <div className="mt-1.5 px-1 text-xs text-muted-foreground">
+                {mitglieder.length === 0 ? (
+                  "Weise dem Projekt zuerst Agenten zu (Bearbeiten)."
+                ) : (
+                  <Link href={`/agents/${ziel}`} className="inline-flex items-center gap-1 hover:text-foreground">
+                    <MessageSquare className="h-3.5 w-3.5" /> Chat mit {agentById.get(ziel)?.name} öffnen
+                  </Link>
+                )}
+              </div>
+            )}
           </div>
-
-          <ProjektLeitstand board={board} agents={agents} farbe={farbe} onZumBoard={zumBoard} />
-        </div>
+        )}
 
         <div ref={boardRef} className="scroll-mt-20 space-y-4">
-          {veraltet.length > 0 && (
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
-              <TriangleAlert className="h-3.5 w-3.5" />
-              <span>
-                {veraltet.length === 1 ? "Ein Agent läuft" : `${veraltet.length} Agenten laufen`} auf altem Stand — ohne
-                Aktualisieren fehlen {veraltet.length === 1 ? "ihm" : "ihnen"} die Projekt-Werkzeuge (Board, Karten, Wissen):
-              </span>
-              {veraltet.map((m) => (
-                <Link key={m.id} href={`/agents/${m.id}`} className="font-medium underline-offset-2 hover:underline">{m.agent?.name}</Link>
-              ))}
-            </div>
-          )}
-          {!projekt.repo && projekt.darf_verwalten && (
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-dashed border-foreground/[0.12] px-3 py-2 text-xs text-muted-foreground">
-              <GitBranch className="h-3.5 w-3.5" />
-              <span>Kein GitHub-Repo verbunden — mit Repo kommen offene Issues und Pull Requests von selbst aufs Board.</span>
-              <button type="button" onClick={() => setBearbeiten(true)}
-                className="ml-auto rounded-lg border border-foreground/[0.1] px-2 py-1 text-foreground hover:bg-foreground/[0.04]">
-                Repo verbinden
-              </button>
-            </div>
-          )}
-          {projekt.repo && (
-            <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border px-3 py-2 text-xs",
-              projekt.repo_fehler ? "border-red-500/30 bg-red-500/5" : "border-foreground/[0.08] bg-card")}>
-              <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
-              <a href={`https://github.com/${projekt.repo}`} target="_blank" rel="noopener noreferrer" className="font-medium hover:underline">
-                {projekt.repo}
-              </a>
-              <span className="text-muted-foreground">
-                {projekt.repo_abgleich_at ? `abgeglichen ${timeAgo(projekt.repo_abgleich_at)}` : "noch nicht abgeglichen"} · alle 10 Min. automatisch
-              </span>
-              {projekt.repo_fehler && (
-                <span className="inline-flex items-center gap-1 text-red-600 dark:text-red-400">
-                  <TriangleAlert className="h-3.5 w-3.5" /> {projekt.repo_fehler}
-                </span>
-              )}
-              {darfSchreiben && (
-                <button type="button" onClick={repoAbgleichen} disabled={gleichtAb}
-                  className="ml-auto inline-flex items-center gap-1 rounded-lg border border-foreground/[0.1] px-2 py-1 hover:bg-foreground/[0.04] disabled:opacity-50">
-                  <RefreshCw className={cn("h-3 w-3", gleichtAb && "animate-spin")} /> Jetzt abgleichen
-                </button>
-              )}
-            </div>
-          )}
           <div className="flex gap-1 overflow-x-auto border-b border-foreground/[0.06]">
             {REITER.map(({ key, label, Icon }) => (
-              <button key={key} type="button" onClick={() => setReiter(key)}
+              <button key={key} type="button" onClick={() => reiterWaehlen(key)}
                 className={cn("-mb-px inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-sm",
                   reiter === key ? "border-primary font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}>
                 <Icon className="h-4 w-4" /> {label}
+                {key === "board" && board.kennzahlen.pruefung > 0 && (
+                  <span className="rounded-full bg-orange-500/15 px-1.5 text-[10px] font-semibold text-orange-600 dark:text-orange-400"
+                    title="Wartet auf deine Prüfung">{board.kennzahlen.pruefung}</span>
+                )}
+                {key === "raum" && board.laufend.length > 0 && (
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" title="Jemand arbeitet gerade" />
+                )}
               </button>
             ))}
           </div>
@@ -379,6 +348,32 @@ export default function ProjektPage() {
           {reiter === "board" && (
             <ProjektBoardAnsicht board={board} agents={agents} mitglieder={mitgliederIds} leadId={projekt.lead_agent_id}
               farbe={farbe} aktionen={aktionen} />
+          )}
+          {reiter === "raum" && (
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
+              <div className="min-w-0 space-y-4">
+                <div className="rounded-2xl border border-foreground/[0.08] bg-card p-3">
+                  <ProjektRaum
+                    name={projekt.name}
+                    farbe={farbe}
+                    mitglieder={mitglieder}
+                    leadId={projekt.lead_agent_id}
+                    kennzahlen={board.kennzahlen}
+                    laufend={board.laufend}
+                    onAgent={(aid) => { setZiel(aid); eingabe.current?.focus(); }}
+                    onStapel={zumBoard}
+                  />
+                </div>
+                <div className="rounded-2xl border border-foreground/[0.08] bg-card p-4">
+                  <div className="flex items-baseline justify-between">
+                    <h2 className="text-sm font-semibold">Erledigt</h2>
+                    <span className="text-[11px] text-muted-foreground">{board.kennzahlen.fertig_7_tage} in 7 Tagen</span>
+                  </div>
+                  <div className="mt-3"><ProjektVerlauf kennzahlen={board.kennzahlen} farbe={farbe} /></div>
+                </div>
+              </div>
+              <ProjektLeitstand board={board} agents={agents} farbe={farbe} onZumBoard={zumBoard} />
+            </div>
           )}
           {reiter === "gespraech" && (
             <ProjektGespraech projektId={projekt.id} mitglieder={mitglieder} leadId={projekt.lead_agent_id} darfSchreiben={darfSchreiben} />
