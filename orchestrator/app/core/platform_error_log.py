@@ -68,6 +68,49 @@ def _harden_uvicorn_access_logging() -> None:
             handler.setFormatter(_RedactingWrapperFormatter(inner))
 
 
+_MAX_REPAIR_BYTES = 8_000_000
+
+
+def strip_nul_bytes(path: str, max_bytes: int = _MAX_REPAIR_BYTES) -> int:
+    """Repair a log file that an unclean shutdown left with a run of NUL bytes.
+
+    A file being appended to can come back after a hard kill with NUL bytes
+    where the last writes were never flushed to disk. That looks harmless and
+    is not: **one** NUL byte anywhere makes the WHOLE file count as binary for
+    grep, so ``grep PATTERN /shared/platform-errors.log`` prints nothing and
+    exits 1 — indistinguishable from an honest "no match". An agent triaging a
+    recurring platform error then concludes the error class is gone when in
+    truth its own measurement never read the file.
+
+    That is not a hypothetical: on a live installation three of the four log
+    generations carried such holes (174 / 393 / 0 / 3219 NUL bytes), i.e. the
+    grep-based triage every agent is pointed at was silently blind most of the
+    time. Startup is the right moment to repair it, because the hole is left
+    behind by exactly the unclean stop that this startup follows.
+
+    Rewrites IN PLACE (same inode, no ``os.replace``) so a file descriptor that
+    some other handler already holds keeps writing to the file we just fixed.
+    A file with no NUL byte is not written to at all and stays byte-identical.
+
+    Returns the number of NUL bytes removed; 0 if the file was clean, missing,
+    too large to repair, or not readable.
+    """
+    try:
+        if os.path.getsize(path) > max_bytes:
+            return 0
+        with open(path, "r+b") as fh:
+            data = fh.read()
+            removed = data.count(b"\x00")
+            if removed == 0:
+                return 0
+            fh.seek(0)
+            fh.write(data.replace(b"\x00", b""))
+            fh.truncate()
+        return removed
+    except OSError:
+        return 0
+
+
 def setup_platform_error_log(path: str | None = None, level: int = logging.WARNING) -> bool:
     """Attach a rotating, secret-redacted WARNING+ file handler to the root logger.
 
@@ -76,6 +119,11 @@ def setup_platform_error_log(path: str | None = None, level: int = logging.WARNI
     and nothing breaks.
     """
     target = path or os.environ.get("PLATFORM_ERROR_LOG_PATH", _DEFAULT_PATH)
+    # Repair NUL holes an unclean stop may have left behind BEFORE appending to
+    # the file again — otherwise a single such byte makes every agent's
+    # `grep` on this log return "no match" for the whole file (see
+    # strip_nul_bytes).
+    removed = strip_nul_bytes(target)
     try:
         os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
         handler = RotatingFileHandler(
@@ -98,6 +146,13 @@ def setup_platform_error_log(path: str | None = None, level: int = logging.WARNI
     # Ensure WARNING+ records actually reach the handler.
     if root.level == logging.NOTSET or root.level > level:
         root.setLevel(level)
+    if removed:
+        logging.getLogger(__name__).warning(
+            "Platform error log carried %d NUL byte(s) from an unclean stop and "
+            "was repaired — grep would have reported the whole file as having no "
+            "matches until now",
+            removed,
+        )
     return True
 
 
