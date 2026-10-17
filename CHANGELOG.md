@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.376.8] - 2026-10-17
+
+### Behoben
+- Projektraum: Die Sprechblase eines arbeitenden Agenten sitzt jetzt rechts oben neben
+  seinem Kopf statt mittig darüber — sie verdeckte sonst das Symbol des Nachbarn am schrägen Tisch.
+
+---
+
 ## [1.376.7] - 2026-10-17
 
 ### Behoben — Hintergrundläufe meldeten Erfolg, obwohl sie am Netz gescheitert waren (#977)
