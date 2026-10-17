@@ -295,7 +295,13 @@ export interface AdminModelCatalogMode {
 }
 export interface AdminModelCatalog {
   modes: AdminModelCatalogMode[];
+  // Stempel des letzten VOLLSTAENDIGEN Standes — steht still, solange ein
+  // Anbieter nicht geantwortet hat (#984). Die drei Felder darunter sagen, warum.
   discovered_at: string | null;
+  last_attempt_at?: string | null;
+  // Anbieter -> Grund ("HTTP 401", "Verbindung nicht zustande gekommen").
+  providers_failed?: Record<string, string>;
+  providers_kept?: string[];
   last_discovery?: {
     anthropic_found: number;
     openai_found: number;
@@ -304,6 +310,10 @@ export interface AdminModelCatalog {
     anthropic_queried: boolean;
     openai_queried: boolean;
     foundry_queried?: boolean;
+    providers_failed?: Record<string, string>;
+    providers_kept?: string[];
+    kept_from_cache?: number;
+    last_attempt_at?: string;
   };
 }
 // Full catalog incl. disabled models + source flags (admin only).
