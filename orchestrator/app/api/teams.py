@@ -1358,15 +1358,14 @@ async def wissen_wiederherstellen(team_id: str, body: Wiederherstellen, user=Dep
 async def wissen_aufbauen(team_id: str, request: Request, router_: TaskRouter = Depends(_get_task_router),
                           user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     """Karte für den Lead: das Projektwissen aus Repo und Beschreibung aufbauen."""
-    from app.core import projekte
+    from app.core import projekt_wissen, projekte
 
     _kein_betrachter(user)
     t = await _projekt(team_id, user, db)
     quelle = f"das Repo {t.repo} (README, Dokumentation, Struktur, offene Issues)" if t.repo else "die Projektbeschreibung und vorhandene Dateien"
     text = (
         f"Lies {quelle} und baue daraus das Projektwissen auf:\n"
-        "- `index.md` (höchstens 40 Zeilen): Ziel, Stand, wichtige Orte, Vereinbarungen, Ansprechpartner — "
-        "das bekommt jeder Agent bei jedem Projektauftrag mit.\n"
+        f"{projekt_wissen.auftrag_index_zeile()}\n"
         "- `architektur.md`: Aufbau, Bausteine, wie man etwas startet, testet und ausliefert.\n"
         "- `glossar.md`: Fachbegriffe des Projekts.\n"
         "Schreibe mit `projekt_wissen_schreiben`; nichts erfinden, Unklares als offene Frage notieren. "

@@ -526,7 +526,11 @@ class OrchestratorAPIClient:
         r = await self._request("PUT", pfad, json={"pfad": params["pfad"], "inhalt": params["inhalt"]})
         if isinstance(r, str):
             return r
-        return f"{'Angelegt' if r.get('created') else 'Aktualisiert'}: {r.get('path')} ({r.get('bytes')} Bytes)."
+        meldung = f"{'Angelegt' if r.get('created') else 'Aktualisiert'}: {r.get('path')} ({r.get('bytes')} Bytes)."
+        # Der Server meldet unter "hinweis", wenn die Seite den Auszug sprengt, der
+        # in jeden Projektauftrag geht. Ein selbst gebauter Antworttext MUSS ihn
+        # mitnehmen, sonst bleibt der Schnitt unsichtbar (Issue #979).
+        return f"{meldung} {r['hinweis']}" if r.get("hinweis") else meldung
 
     async def projekt_gespraech_lesen(self, params: dict) -> str:
         pfad = self._projekt_pfad(params, "gespraech")
@@ -561,7 +565,8 @@ class OrchestratorAPIClient:
         r = await self._request("POST", pfad, json={"pfad": params["pfad"], "abschnitt": params["abschnitt"]})
         if isinstance(r, str):
             return r
-        return f"Ergänzt: {r.get('path')} ({r.get('bytes')} Bytes)."
+        meldung = f"Ergänzt: {r.get('path')} ({r.get('bytes')} Bytes)."
+        return f"{meldung} {r['hinweis']}" if r.get("hinweis") else meldung
 
     async def projekt_termine(self, params: dict) -> str:
         pfad = self._projekt_pfad(params, "termine")

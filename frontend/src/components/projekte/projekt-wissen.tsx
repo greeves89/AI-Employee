@@ -2,7 +2,7 @@
 
 /**
  * Projektwissen: eigene Wissensablage je Projekt (orchestrator: core/projekt_wissen).
- * index.md geht bei jedem Projektauftrag an den Agenten mit — kurz halten.
+ * index.md geht bei jedem Projektauftrag an den Agenten mit — aber nur ihr Anfang.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -13,6 +13,14 @@ import { MarkdownContent } from "@/components/ui/markdown-content";
 import { Fenster } from "@/components/ui/fenster";
 import { useToast } from "@/components/ui/dialog-provider";
 import { cn } from "@/lib/utils";
+
+/**
+ * Spiegel von ``projekt_wissen.AUSZUG_ZEICHEN`` (orchestrator). Mehr von index.md
+ * geht nicht in einen Projektauftrag ein; wer die Grenze nicht kennt, schreibt
+ * den Seitenschluss ins Leere (Issue #979). Ein Test im Orchestrator hält die
+ * beiden Zahlen zusammen.
+ */
+const AUSZUG_ZEICHEN = 1500;
 
 export function ProjektWissen({
   projektId, darfSchreiben, onAufbauen,
@@ -59,8 +67,9 @@ export function ProjektWissen({
   const zurueckholen = async () => {
     if (!alt) return;
     try {
-      await api.projektWissenWiederherstellen(projektId, pfad, alt.version);
-      toastRef.current.success("Zurückgeholt", `${pfad} — als neue Version gespeichert`);
+      const r = await api.projektWissenWiederherstellen(projektId, pfad, alt.version);
+      if (r?.hinweis) toastRef.current.warning("Zurückgeholt, aber gekürzt im Auftrag", r.hinweis);
+      else toastRef.current.success("Zurückgeholt", `${pfad} — als neue Version gespeichert`);
       setVerlauf(null);
       setAlt(null);
       await oeffnen(pfad);
@@ -99,10 +108,13 @@ export function ProjektWissen({
   const speichern = async () => {
     setSpeichert(true);
     try {
-      await api.projektWissenSchreiben(projektId, pfad, entwurf);
+      const r = await api.projektWissenSchreiben(projektId, pfad, entwurf);
       setInhalt(entwurf);
       setBearbeiten(false);
-      toast.success("Gespeichert", pfad);
+      // r.hinweis steht da, wenn die Seite nicht mehr vollstaendig in einen
+      // Projektauftrag eingeht (Issue #979) — gespeichert ist sie trotzdem.
+      if (r?.hinweis) toast.warning("Gespeichert, aber gekürzt im Auftrag", r.hinweis);
+      else toast.success("Gespeichert", pfad);
       liste();
     } catch (e) {
       toast.error("Nicht gespeichert", apiFehlertext(e));
@@ -207,7 +219,8 @@ export function ProjektWissen({
         </div>
         {pfad === "index.md" && (
           <p className="mb-3 rounded-lg bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
-            Diese Seite bekommt jeder Agent bei jedem Projektauftrag mit — kurz halten, Ausführliches in eigene Seiten.
+            Diese Seite bekommt jeder Agent bei jedem Projektauftrag mit — aber nur ihre ersten{" "}
+            {AUSZUG_ZEICHEN} Zeichen. Das Wichtigste zuerst, Ausführliches in eigene Seiten.
           </p>
         )}
         {bearbeiten ? (

@@ -5,6 +5,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.376.9] - 2026-10-17
+
+### Behoben — Projektwissen: die letzten 40 % der Startseite erreichten keinen Agenten (#979)
+
+Der Auftrag „Projektwissen aufbauen" gab für `index.md` eine Grenze von „höchstens
+40 Zeilen" vor. Durchgesetzt wird aber eine Grenze in ZEICHEN: nur die ersten 1500
+Zeichen der Seite gehen in einen Projektauftrag ein. 40 Zeilen deutscher Prosa sind
+rund 2500 Zeichen — eine Seite, die sich exakt an die Vorgabe hielt, verlor damit
+rund 40 % und zwar immer ihr Ende. Genau dort stehen die Abschnitte, die die Vorgabe
+selbst verlangt: Vereinbarungen und Ansprechpartner. Für den schreibenden Agenten
+war das unsichtbar, er zählte seine 40 Zeilen und hielt die Seite für ausgeliefert.
+
+Was sich ändert:
+
+- Der Auftragstext nennt jetzt die durchgesetzte Grenze in ihrer Einheit, und die
+  Zahl kommt aus derselben Quelle wie der Schnitt — sie können nicht mehr
+  auseinanderlaufen. Dasselbe gilt für die Startseiten-Vorlage, die zusätzlich alle
+  verlangten Abschnitte anlegt (bisher fehlten „Stand" und „Ansprechpartner").
+- Wer `index.md` über die Grenze hinaus schreibt oder ergänzt, erfährt es sofort:
+  „Gespeichert ist die ganze Seite, aber nur die ersten 1500 Zeichen gehen in einen
+  Projektauftrag ein." Das gilt für alle vier Wege — Claude Code und Codex über den
+  MCP-Server, Custom-LLM über den API-Client, und den Web-Editor auf der
+  Projektseite, der den Hinweis als Warnung anzeigt und die Grenze nun im
+  Seitenkopf nennt. Die Datei selbst wird nie gekürzt, nur der Auszug.
+- Die Beschreibungen der Werkzeuge `projekt_wissen_schreiben` und
+  `projekt_wissen_ergaenzen` nennen die Grenze ebenfalls, damit ein Agent sie kennt,
+  bevor er schreibt.
+
+---
+
 ## [1.376.8] - 2026-10-17
 
 ### Behoben
