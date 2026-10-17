@@ -113,10 +113,15 @@ async def uebersicht(db, user, anzahl_monate: int = 6) -> dict:
 
     # Agenten: Aufgaben und Chat getrennt, dazu Tokens des Monats.
     nur_aufgaben = await _kosten.kosten(db, bereich, seit=monat_von, bis=monat_bis, quellen=(_kosten.QUELLE_AUFGABEN,))
-    agent_ids = sorted(set(diesen.je_agent) | set(vorher.je_agent))
+    agent_ids = set(diesen.je_agent) | set(vorher.je_agent)
+    # Agenten mit Tokens, aber ohne Betrag: Für ihr Modell ist kein Preis hinterlegt
+    # (Codex mit gpt-6). Ohne diese Ergänzung fehlten sie in der Liste ganz — ihr
+    # Verbrauch war unsichtbar statt als „Preis unbekannt" markiert.
+    tok = await _kosten.tokens(db, agent_ids=sorted(set(bereich.agent_ids or ()) | agent_ids),
+                               seit=monat_von, bis=monat_bis)
+    agent_ids = sorted(agent_ids | {aid for aid, (ein, aus) in tok.items() if ein or aus})
     agenten = {a.id: a for a in (await db.execute(select(Agent).where(Agent.id.in_(agent_ids)))).scalars()} \
         if agent_ids else {}
-    tok = await _kosten.tokens(db, agent_ids=agent_ids, seit=monat_von, bis=monat_bis)
     je_agent = []
     for aid in agent_ids:
         a = agenten.get(aid)
@@ -128,6 +133,7 @@ async def uebersicht(db, user, anzahl_monate: int = 6) -> dict:
             "id": aid, "name": a.name, "monat_usd": round(gesamt, 4), "aufgaben_usd": round(auf, 4),
             "chat_usd": round(gesamt - auf, 4), "vormonat_usd": round(vorher.je_agent.get(aid, 0.0), 4),
             "budget_usd": a.budget_usd, "tokens_ein": tok.get(aid, (0, 0))[0], "tokens_aus": tok.get(aid, (0, 0))[1],
+            "preis_unbekannt": not gesamt and any(tok.get(aid, (0, 0))),
         })
     je_agent.sort(key=lambda z: -z["monat_usd"])
 

@@ -286,8 +286,11 @@ function FinanzenSeite() {
                           <td className="py-2"><Link href={`/agents/${a.id}`} className="hover:underline">{a.name}</Link></td>
                           <td className="py-2 text-right tabular-nums text-muted-foreground">{money.fmt(a.aufgaben_usd)}</td>
                           <td className="py-2 text-right tabular-nums text-muted-foreground">{money.fmt(a.chat_usd)}</td>
-                          <td className="py-2 text-right tabular-nums" title={money.title(a.monat_usd)}>
-                            {money.fmt(a.monat_usd)}
+                          <td className="py-2 text-right tabular-nums"
+                            title={a.preis_unbekannt
+                              ? "Für das Modell dieses Agenten ist kein Preis hinterlegt. Der Verbrauch steht in der Spalte Tokens."
+                              : money.title(a.monat_usd)}>
+                            {a.preis_unbekannt ? <span className="text-muted-foreground">Preis unbekannt</span> : money.fmt(a.monat_usd)}
                             {a.budget_usd ? <span className="text-[11px] text-muted-foreground"> / {money.fmt(a.budget_usd)}</span> : null}
                           </td>
                           <td className="py-2 text-right tabular-nums text-muted-foreground">{money.fmt(a.vormonat_usd)}</td>

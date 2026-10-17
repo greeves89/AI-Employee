@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
-from app.core.adaptiver_takt import MELDE_HINWEIS
+from app.core.adaptiver_takt import MELDE_HINWEIS, WARTE_HINWEIS
 from app.core.eigeninitiative import _takt_abweicht, abgleichen
 from app.models.agent import Agent, AgentState
 from app.models.schedule import Schedule
@@ -93,7 +93,8 @@ class DerLaufErfaehrtDassErMeldenMuss(unittest.IsolatedAsyncioTestCase):
 
     async def test_gegenprobe_ein_gewoehnlicher_lauf_bleibt_unveraendert(self):
         aufruf = await self._feuern(self._zeitplan(adaptive=False))
-        self.assertEqual(aufruf["prompt"], "Offene PRs abarbeiten")
+        # Jeder wiederkehrende Lauf traegt den Warte-Hinweis, nur der Melde-Auftrag fehlt.
+        self.assertEqual(aufruf["prompt"], "Offene PRs abarbeiten" + WARTE_HINWEIS)
         self.assertNotIn("report_run", aufruf["prompt"])
         self.assertEqual(aufruf["metadata"], {"schedule_id": "s1", "adaptive": False})
 

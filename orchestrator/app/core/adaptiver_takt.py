@@ -136,6 +136,21 @@ FREMDGETAKTET_GRUND = (
 )
 
 
+#: Haengt am Prompt JEDES wiederkehrenden Zeitplan-Laufs, adaptiv oder nicht.
+#: Anlass: Ein 30-Minuten-Zeitplan wartete in 24 Hintergrund-Schleifen auf CI und
+#: Merges. Jedes Aufwachen las den ganzen Verlauf mit dem teuren Modell neu —
+#: 71 Minuten und 71 $ fuer einen Lauf, dessen Arbeit nach wenigen Minuten
+#: getan war. Der naechste Takt sieht ohnehin nach.
+WARTE_HINWEIS = (
+    "\n\n---\n"
+    "**Nicht im Hintergrund warten:** Dieser Lauf kommt im festen Takt wieder. "
+    "Warte NICHT auf CI, Merges, Deploys oder Antworten — keine Warteschleifen, "
+    "kein `sleep`, keine Hintergrundbefehle, die dich später wecken. Stoße an, "
+    "was anzustoßen ist, halte im Ergebnis fest, worauf du wartest, und beende "
+    "den Lauf. Der nächste Lauf prüft den Stand."
+)
+
+
 #: Dieser Satz haengt am Prompt JEDES adaptiven Zeitplan-Laufs (#941, Punkt 3).
 #: Ohne ihn erfaehrt der Lauf nie, dass er melden muss — Rechenregel und
 #: Werkzeug waeren korrekt, der Takt bewegte sich trotzdem nie, und nichts

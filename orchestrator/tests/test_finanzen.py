@@ -68,6 +68,23 @@ class Uebersicht(_Finanzen):
         self.assertEqual(len(u["verlauf"]), 3)
         self.assertEqual(u["verlauf"][-1]["gesamt_usd"], 2.25)
 
+    async def test_agent_mit_tokens_ohne_preis_erscheint_als_preis_unbekannt(self):
+        """Codex mit gpt-6: Tokens erfasst, Betrag 0. Bisher fehlte so ein Agent ganz."""
+        from app.models.agent import Agent, AgentState
+        async with self.Session() as db:
+            db.add(Agent(id="a3", name="A3", state=AgentState.IDLE, user_id="ua", config={}))
+            db.add(Task(id="tc", title="codex", prompt="p", agent_id="a3", status=TaskStatus.COMPLETED,
+                        cost_usd=0.0, input_tokens=4_000_000, output_tokens=17_000, created_at=JETZT))
+            db.add(Task(id="tf", title="fremd", prompt="p", agent_id="b1", status=TaskStatus.COMPLETED,
+                        cost_usd=0.0, input_tokens=5, output_tokens=5, created_at=JETZT))
+            await db.commit()
+            u = await finanzen.uebersicht(db, MITGLIED, 1)
+        agenten = {a["id"]: a for a in u["je_agent"]}
+        self.assertNotIn("b1", agenten)  # fremder Agent bleibt draußen
+        self.assertTrue(agenten["a3"]["preis_unbekannt"])
+        self.assertEqual((agenten["a3"]["tokens_ein"], agenten["a3"]["tokens_aus"]), (4_000_000, 17_000))
+        self.assertFalse(agenten["a1"]["preis_unbekannt"])
+
     async def test_summe_geht_auf_auch_mit_geloeschtem_projekt(self):
         async with self.Session() as db:
             db.add(Task(id="tx", title="alt", prompt="p", agent_id="a2", team_id="weg", status=TaskStatus.COMPLETED,
