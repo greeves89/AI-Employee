@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
+from typing import NamedTuple
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +36,11 @@ from app.config import settings
 from app.core.model_catalog import (
     MODEL_CATALOG,
     model_family,
+)
+from app.core.verbindungswiederholung import (
+    PAUSEN_S,
+    VERBINDUNGSFEHLER,
+    mit_verbindungswiederholung,
 )
 from app.services.settings_service import SettingsService
 
@@ -50,7 +56,11 @@ _ANTHROPIC_MODELS_URL = "https://api.anthropic.com/v1/models"
 # Beleg, wo die Abfrage hin muesste, faende sich ein sicherer Weg,
 # gegen das ChatGPT-Konto statt gegen den API-Schluessel zu pruefen.
 _OPENAI_MODELS_URL = "https://api.openai.com/v1/models"
-_HTTP_TIMEOUT = 15.0
+# 15 s fuer die Antwort, aber nur 5 s fuer den VERBINDUNGSAUFBAU. Der Aufbau ist
+# genau die Klasse, die unten wiederholt wird (siehe ``mit_verbindungswiederholung``);
+# mit 15 s waeren drei Versuche je Anbieter 45 s Wartezeit fuer einen Menschen, der
+# vor dem Knopf sitzt. So sind es hoechstens 3x5 s + 2,0 s Pausen = 17 s je Anbieter.
+_HTTP_TIMEOUT = httpx.Timeout(15.0, connect=5.0)
 
 
 def _seed_models() -> list[dict]:
@@ -70,6 +80,23 @@ def _seed_models() -> list[dict]:
                     }
                 )
     return out
+
+
+# Jeder Modell-Datensatz MUSS diese Felder tragen: ``_payload_from_records`` und
+# ``_is_enabled`` greifen hart darauf zu (``rec["label"]``, ``rec["source"]``). Ein
+# unvollstaendiger Datensatz im Zwischenspeicher hat deshalb bisher den ganzen
+# Katalog mit ``KeyError`` beendet — und zwar in ``GET /agents/models`` fuer JEDEN
+# Nutzer, nicht nur fuer Administratoren. Er wird darum beim Lesen ausgesiebt.
+_PFLICHTFELDER = ("mode", "provider", "value", "label", "tier", "source")
+
+
+def _brauchbar(rec: object) -> bool:
+    """Taugt dieser Datensatz aus dem Zwischenspeicher fuer den Katalog?"""
+    if not isinstance(rec, dict):
+        return False
+    if not all(isinstance(rec.get(f), str) for f in _PFLICHTFELDER):
+        return False
+    return all(rec[f] for f in ("mode", "provider", "value"))
 
 
 async def _load_cache(svc: SettingsService) -> dict:
@@ -118,12 +145,18 @@ def _is_enabled(rec: dict, overrides: dict[str, bool]) -> bool:
     return rec["source"] == "seed"
 
 
-async def _all_records(db: AsyncSession) -> tuple[list[dict], dict[str, bool], str | None]:
+async def _all_records(db: AsyncSession) -> tuple[list[dict], dict[str, bool], dict]:
     svc = SettingsService(db)
     cache = await _load_cache(svc)
     overrides = await _load_overrides(svc)
-    merged = _merge(_seed_models(), cache.get("models", []))
-    return merged, overrides, cache.get("discovered_at")
+    brauchbar = [r for r in cache.get("models", []) if _brauchbar(r)]
+    if len(brauchbar) != len(cache.get("models", [])):
+        logger.warning(
+            "model_discovery_cache: %d unvollstaendige Datensaetze uebersprungen",
+            len(cache.get("models", [])) - len(brauchbar),
+        )
+    merged = _merge(_seed_models(), brauchbar)
+    return merged, overrides, cache
 
 
 async def _configured_claude_providers(db: AsyncSession) -> set[str]:
@@ -221,9 +254,17 @@ async def get_effective_payload(db: AsyncSession) -> dict:
 
 async def get_admin_catalog(db: AsyncSession) -> dict:
     """Full catalog for the admin UI: every known model with enabled + source."""
-    records, overrides, discovered_at = await _all_records(db)
+    records, overrides, stand = await _all_records(db)
     payload = _payload_from_records(records, enabled_only=False, overrides=overrides)
-    payload["discovered_at"] = discovered_at
+    # ``discovered_at`` = Stempel des letzten VOLLSTAENDIGEN Standes. Die drei
+    # Felder danach gehoeren dazu, sonst behauptet die Oberflaeche nach einem
+    # Neuladen wieder etwas Falsches: ohne ``last_attempt_at`` sieht ein
+    # Administrator nicht, dass gerade gesucht wurde, und ohne
+    # ``providers_failed``/``providers_kept`` nicht, WARUM der Stempel steht (#984).
+    payload["discovered_at"] = stand.get("discovered_at")
+    payload["last_attempt_at"] = stand.get("last_attempt_at")
+    payload["providers_failed"] = stand.get("providers_failed") or {}
+    payload["providers_kept"] = stand.get("providers_kept") or []
     return payload
 
 
@@ -285,14 +326,51 @@ async def _anthropic_auth_headers(db: AsyncSession | None = None, user_id: str |
     return None
 
 
-async def _discover_anthropic(db: AsyncSession | None = None, user_id: str | None = None) -> list[dict]:
+class Abruf(NamedTuple):
+    """Ergebnis EINES Anbieter-Abrufs — die Liste allein reicht nicht.
+
+    Eine leere Liste hat zwei voellig verschiedene Bedeutungen: "der Anbieter hat
+    nichts (Neues)" und "wir haben ihn nicht erreicht". Nur die zweite darf den
+    bisher entdeckten Stand NICHT ueberschreiben (#984). Deshalb ein benanntes
+    Feld statt eines zweiten Rueckgabewerts im Tupel: ein nackter boolescher
+    Zusatzwert wurde in #977 vom Aufrufer still ignoriert, und der ganze Fix war
+    damit wirkungslos — ``ergebnis.gescheitert`` laesst sich nicht versehentlich
+    uebersehen, und ``mypy``/Tests sprechen darueber.
+    """
+
+    modelle: list[dict]
+    gescheitert: bool
+    # Kurzer Grund fuer die Oberflaeche ("HTTP 401", "Verbindung nicht zustande
+    # gekommen"). Ohne ihn kann ein Administrator einen dauerhaften Fehlzustand
+    # (falscher Schluessel) nicht von einem Aussetzer unterscheiden und weiss
+    # nicht, dass er handeln muss.
+    grund: str = ""
+
+
+def _kurzgrund(e: BaseException) -> str:
+    """Einzeiliger Grund fuer die Oberflaeche — keine Stapelspur, kein Schluessel."""
+    if isinstance(e, httpx.HTTPStatusError):
+        return f"HTTP {e.response.status_code}"
+    if isinstance(e, VERBINDUNGSFEHLER):
+        return "Verbindung nicht zustande gekommen"
+    if isinstance(e, httpx.TimeoutException):
+        return "Zeitueberschreitung"
+    return type(e).__name__
+
+
+async def _discover_anthropic(db: AsyncSession | None = None, user_id: str | None = None) -> Abruf:
     headers = await _anthropic_auth_headers(db, user_id)
     if not headers:
-        return []
+        # Nicht konfiguriert ist nicht gescheitert: hier wurde niemand gefragt.
+        return Abruf([], gescheitert=False)
     out: list[dict] = []
     try:
         async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
-            resp = await client.get(_ANTHROPIC_MODELS_URL, headers=headers)
+            resp = await mit_verbindungswiederholung(
+                lambda: client.get(_ANTHROPIC_MODELS_URL, headers=headers),
+                zweck="Anthropic-Modellabruf",
+                pausen=PAUSEN_S,
+            )
             resp.raise_for_status()
             for m in resp.json().get("data", []):
                 mid = m.get("id", "")
@@ -310,10 +388,11 @@ async def _discover_anthropic(db: AsyncSession | None = None, user_id: str | Non
                 )
     except Exception as e:  # noqa: BLE001 — discovery is best-effort
         logger.warning("Anthropic model discovery failed: %s", e)
-    return out
+        return Abruf(out, gescheitert=True, grund=_kurzgrund(e))
+    return Abruf(out, gescheitert=False)
 
 
-async def _discover_openai() -> list[dict]:
+async def _discover_openai() -> Abruf:
     """Bislang ausschliesslich codex_cli-Entdeckung ueber den API-Schluessel —
     und genau das ist das Problem, nicht nur Details davon.
 
@@ -333,10 +412,11 @@ async def _discover_openai() -> list[dict]:
     ``app.core.model_catalog``, nicht entdeckt — diese Funktion ist bis auf
     Weiteres ein bewusster Leerlauf.
     """
-    return []
+    # Leerlauf, nicht Ausfall: es wurde nichts versucht, also ist nichts gescheitert.
+    return Abruf([], gescheitert=False)
 
 
-async def _discover_foundry() -> list[dict]:
+async def _discover_foundry() -> Abruf:
     """Claude-Deployments einer Azure-AI-Foundry-Ressource (Kundenbefund
     2026-08-18: fuer "foundry" gab es keinerlei Suchpfad — deployte Modelle
     tauchten nie im Katalog auf). Erreichbar nur, wenn in den Provider-
@@ -345,14 +425,18 @@ async def _discover_foundry() -> list[dict]:
     key = settings.foundry_api_key
     resource = (settings.foundry_resource or "").strip()
     if not (key and resource):
-        return []
+        return Abruf([], gescheitert=False)
     base = resource if "://" in resource else f"https://{resource}.services.ai.azure.com"
     url = base.rstrip("/") + "/anthropic/v1/models"
     headers = {"x-api-key": key, "api-key": key, "anthropic-version": "2023-06-01"}
     out: list[dict] = []
     try:
         async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
-            resp = await client.get(url, headers=headers)
+            resp = await mit_verbindungswiederholung(
+                lambda: client.get(url, headers=headers),
+                zweck="Foundry-Modellabruf",
+                pausen=PAUSEN_S,
+            )
             resp.raise_for_status()
             for m in resp.json().get("data", []):
                 mid = m.get("id", "")
@@ -370,7 +454,8 @@ async def _discover_foundry() -> list[dict]:
                 )
     except Exception as e:  # noqa: BLE001 — discovery is best-effort
         logger.warning("Foundry model discovery failed: %s", e)
-    return out
+        return Abruf(out, gescheitert=True, grund=_kurzgrund(e))
+    return Abruf(out, gescheitert=False)
 
 
 async def discover(db: AsyncSession, user_id: str | None = None) -> dict:
@@ -383,6 +468,20 @@ async def discover(db: AsyncSession, user_id: str | None = None) -> dict:
     Only models NOT already in the seed are cached (the seed is authoritative
     for its own strings). Newly discovered models stay DISABLED until an admin
     enables them.
+
+    **Ein Anbieter raeumt seinen Stand nur auf, wenn er gefragt wurde UND
+    geantwortet hat** (#984). Vorher loeschte ein Knopfdruck waehrend eines
+    Netzaussetzers den gesamten entdeckten Stand und setzte zugleich einen
+    frischen Stempel — es gibt nur diesen einen Schluessel, aus dem sich das
+    haette heilen koennen.
+
+    Der Preis ist sichtbar und bewusst in Kauf genommen: ein Modell, das der
+    Anbieter wirklich zurueckgezogen hat, steht nach einem gescheiterten Abruf
+    laenger in der Liste. Damit das kein stiller Dauerzustand wird (falscher
+    Schluessel, geloeschte Ressource), nennt die Antwort — und nach einem
+    Neuladen auch ``get_admin_catalog`` — Ross und Reiter:
+    ``providers_failed`` (Anbieter -> Grund, z. B. "HTTP 401"),
+    ``providers_kept`` (wessen alter Stand drinsteht) und ``last_attempt_at``.
     """
     anthropic_queried = bool(await _anthropic_auth_headers(db, user_id))
     # _discover_openai() ist bewusst ein Leerlauf (siehe dort) — als "abgefragt"
@@ -393,44 +492,116 @@ async def discover(db: AsyncSession, user_id: str | None = None) -> dict:
     anthropic = await _discover_anthropic(db, user_id)
     openai = await _discover_openai()
     foundry = await _discover_foundry()
-    found = anthropic + openai + foundry
+    abrufe = {"anthropic": anthropic, "openai": openai, "foundry": foundry}
+    befragt = {
+        "anthropic": anthropic_queried,
+        "openai": openai_queried,
+        "foundry": foundry_queried,
+    }
+    gescheitert = {
+        name: (a.grund or "nicht erreichbar")
+        for name, a in sorted(abrufe.items())
+        if a.gescheitert
+    }
+    # DIE REGEL: ein Anbieter darf seinen bisherigen Stand nur aufraeumen, wenn er
+    # GEFRAGT WURDE und GEANTWORTET hat. Beide Haelften sind noetig:
+    #   * gescheitert -> wir wissen nichts Neues, der alte Stand bleibt (#984);
+    #   * nicht gefragt -> ebenfalls nichts Neues. Das ist kein Randfall: die
+    #     Anthropic-Zugangsdaten koennen aus der PERSOENLICHEN Ablage des
+    #     aufrufenden Administrators kommen (siehe ``_anthropic_auth_headers``).
+    #     Ohne diese Haelfte loescht ein zweiter Administrator ohne eigene
+    #     Zugangsdaten mit einem Knopfdruck den Stand, den der erste gefunden hat.
+    darf_aufraeumen = {
+        name for name, a in abrufe.items() if befragt[name] and not a.gescheitert
+    }
+    # openai wird BEWUSST nicht entdeckt (siehe ``_discover_openai``), ist also nie
+    # "befragt". Alte entdeckte openai-Eintraege sind damit Altlast und sollen
+    # verschwinden — nicht von der Regel oben geschuetzt werden.
+    darf_aufraeumen.add("openai")
+    found = anthropic.modelle + openai.modelle + foundry.modelle
+
+    svc = SettingsService(db)
+    alter_stand = await _load_cache(svc)
+    # Alter Stand der Anbieter, die nicht aufraeumen durften. Unvollstaendige
+    # Datensaetze werden dabei NICHT mitgeschleppt (``_brauchbar``): sie beenden
+    # den Katalogaufbau mit ``KeyError`` und wuerden hier sonst festgeschrieben,
+    # solange der Anbieter unten ist.
+    uebernommen = [
+        rec
+        for rec in alter_stand.get("models", [])
+        if _brauchbar(rec) and rec["provider"] not in darf_aufraeumen
+    ]
 
     seed_keys = {(r["mode"], r["provider"], r["value"]) for r in _seed_models()}
     extras: list[dict] = []
     seen: set[tuple[str, str, str]] = set()
-    for rec in found:
-        key = (rec["mode"], rec["provider"], rec["value"])
-        if key in seed_keys or key in seen:
+    # Frische Treffer zuerst: bei gleichem Schluessel gewinnt das, was der
+    # Anbieter gerade gesagt hat, gegen den uebernommenen Eintrag.
+    aus_cache_drin = 0
+    uebernommen_von: set[str] = set()
+    for rec, aus_cache in [*((r, False) for r in found), *((r, True) for r in uebernommen)]:
+        key = (rec.get("mode"), rec.get("provider"), rec.get("value"))
+        if None in key or key in seed_keys or key in seen:
             continue
         seen.add(key)
         extras.append(rec)
+        if aus_cache:
+            # Erst HIER zaehlen, nicht vorher: ein uebernommener Eintrag, den ein
+            # frischer Treffer verdraengt hat, wurde nicht uebernommen — die
+            # Oberflaeche wuerde sonst eine Uebernahme behaupten, die es nicht gab.
+            aus_cache_drin += 1
+            uebernommen_von.add(rec["provider"])
 
-    svc = SettingsService(db)
+    # ZWEI Stempel, weil zwei verschiedene Fragen dahinterstehen — ein einziger
+    # kann sie nicht beide wahrheitsgemaess beantworten (#984):
+    #   * ``discovered_at``   — seit wann ist dieser Stand VOLLSTAENDIG frisch.
+    #     Steht im Stand auch nur ein uebernommener Eintrag, ruckt er nicht weiter;
+    #     sonst meldet die Oberflaeche "gerade gesucht" ueber altem Wissen.
+    #   * ``last_attempt_at`` — wann zuletzt gesucht WURDE. Ohne ihn sieht ein
+    #     Administrator nach einem Ausfall nicht, dass sein Knopfdruck etwas getan
+    #     hat, und beim allerersten Lauf stuende dort ewig "noch nie gesucht".
     # Timestamp comes from real wall-clock here (service call, not a workflow),
     # so datetime.now is fine.
+    jetzt = datetime.now(timezone.utc).isoformat()
+    vollstaendig = not gescheitert and aus_cache_drin == 0
     cache = {
-        "discovered_at": datetime.now(timezone.utc).isoformat(),
+        "discovered_at": jetzt if vollstaendig else alter_stand.get("discovered_at"),
+        "last_attempt_at": jetzt,
         "models": extras,
         "providers_queried": {
             "anthropic": anthropic_queried,
             "openai": openai_queried,
             "foundry": foundry_queried,
         },
+        "providers_failed": gescheitert,
+        "providers_kept": sorted(uebernommen_von),
     }
     await svc.set(CACHE_KEY, json.dumps(cache))
     await db.commit()
     logger.info(
-        "Model discovery: %d anthropic + %d openai + %d foundry found, %d new extras cached",
-        len(anthropic), len(openai), len(foundry), len(extras),
+        "Model discovery: %d anthropic + %d openai + %d foundry found, %d extras cached%s",
+        len(anthropic.modelle), len(openai.modelle), len(foundry.modelle), len(extras),
+        "" if vollstaendig else (
+            f" — Stand unvollstaendig: {aus_cache_drin} Modelle von "
+            f"{', '.join(sorted(uebernommen_von)) or '-'} aus dem alten Stand uebernommen"
+            f"{', nicht erreicht: ' + ', '.join(f'{k} ({v})' for k, v in gescheitert.items()) if gescheitert else ''}"
+            f", Stempel bleibt {alter_stand.get('discovered_at')}"
+        ),
     )
     result = await get_admin_catalog(db)
     result["last_discovery"] = {
-        "anthropic_found": len(anthropic),
-        "openai_found": len(openai),
-        "foundry_found": len(foundry),
+        "anthropic_found": len(anthropic.modelle),
+        "openai_found": len(openai.modelle),
+        "foundry_found": len(foundry.modelle),
         "new_extras": len(extras),
         "anthropic_queried": anthropic_queried,
         "openai_queried": openai_queried,
         "foundry_queried": foundry_queried,
+        # Ohne diese Felder meldet der Knopf "0 erkannt", wenn niemand gefragt
+        # werden konnte — die Falschaussage aus #984.
+        "providers_failed": gescheitert,
+        "providers_kept": sorted(uebernommen_von),
+        "kept_from_cache": aus_cache_drin,
+        "last_attempt_at": jetzt,
     }
     return result

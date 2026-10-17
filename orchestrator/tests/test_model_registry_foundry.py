@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.config import settings
-from app.services.model_registry_service import _discover_foundry
+from app.services.model_registry_service import Abruf, _discover_foundry
 
 
 def _client_returning(payload, status=200):
@@ -29,7 +29,9 @@ class FoundryDiscoveryTests(unittest.IsolatedAsyncioTestCase):
     async def test_without_resource_or_key_nothing_is_queried(self):
         with patch.object(settings, "foundry_api_key", ""), \
              patch.object(settings, "foundry_resource", ""):
-            self.assertEqual(await _discover_foundry(), [])
+            # Nicht konfiguriert ist NICHT gescheitert (#984): hier wurde niemand
+            # gefragt, also darf auch kein alter Stand uebernommen werden.
+            self.assertEqual(await _discover_foundry(), Abruf([], gescheitert=False, grund=""))
 
     async def test_resource_name_builds_the_anthropic_route_and_parses_claude(self):
         payload = {"data": [
@@ -46,10 +48,10 @@ class FoundryDiscoveryTests(unittest.IsolatedAsyncioTestCase):
         headers = client.get.call_args.kwargs["headers"]
         self.assertEqual(headers["x-api-key"], "fk")
         self.assertEqual(headers["api-key"], "fk")
-        self.assertEqual(out, [{
+        self.assertEqual(out, Abruf([{
             "mode": "claude_code", "provider": "foundry", "value": "claude-opus-5",
             "label": "Claude Opus 5", "tier": "Discovered", "source": "discovered",
-        }])
+        }], gescheitert=False, grund=""))
 
     async def test_full_url_resource_is_used_as_is(self):
         ctx, client = _client_returning({"data": []})
@@ -65,7 +67,11 @@ class FoundryDiscoveryTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(settings, "foundry_api_key", "fk"), \
              patch.object(settings, "foundry_resource", "res"), \
              patch("httpx.AsyncClient", return_value=ctx):
-            self.assertEqual(await _discover_foundry(), [])
+            # Best-effort bleibt best-effort (keine Ausnahme nach oben), der Abruf
+            # meldet den Ausfall aber jetzt mit (#984).
+            self.assertEqual(
+                await _discover_foundry(), Abruf([], gescheitert=True, grund="RuntimeError"),
+            )
 
 
 if __name__ == "__main__":

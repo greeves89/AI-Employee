@@ -41,15 +41,37 @@ export function ModelCatalogAdmin() {
       const d = res.last_discovery;
       if (d) {
         const parts: string[] = [];
-        parts.push(`Anthropic: ${d.anthropic_queried ? `${d.anthropic_found} erkannt` : "kein API-Key"}`);
-        parts.push(`OpenAI: ${d.openai_queried ? `${d.openai_found} erkannt` : "kein API-Key"}`);
-        parts.push(`Foundry: ${d.foundry_queried ? `${d.foundry_found ?? 0} erkannt` : "keine Ressource/Key hinterlegt"}`);
+        // Ein nicht erreichter Anbieter darf NICHT als "0 erkannt" erscheinen —
+        // das ist von "der Anbieter hat nichts" nicht zu unterscheiden (#984).
+        const failed = d.providers_failed ?? {};
+        const beschreibe = (provider: string, queried: boolean, found: number, ohneKey: string) => {
+          const grund = failed[provider];
+          if (grund) {
+            // Ein Teilergebnis NICHT verschweigen: der Abruf kann mitten im Lesen
+            // abgebrochen sein, dann sind die bis dahin gelesenen Modelle echt.
+            return found > 0
+              ? `${found} gelesen, Abruf abgebrochen (${grund})`
+              : `nicht erreichbar (${grund}), alter Stand behalten`;
+          }
+          return queried ? `${found} erkannt` : ohneKey;
+        };
+        parts.push(`Anthropic: ${beschreibe("anthropic", d.anthropic_queried, d.anthropic_found, "kein API-Key")}`);
+        parts.push(`OpenAI: ${beschreibe("openai", d.openai_queried, d.openai_found, "kein API-Key")}`);
+        parts.push(`Foundry: ${beschreibe("foundry", d.foundry_queried ?? false, d.foundry_found ?? 0, "keine Ressource/Key hinterlegt")}`);
         // Say out loud what this can NOT find: Bedrock/Vertex deployments have
         // no listing we can query — without this line it looks like a bug when
         // a connected resource shows no models. Foundry IS queried since
         // v1.268.0, via the resource + key from the provider settings.
+        const namen = Object.keys(failed);
+        const ausfall = namen.length
+          ? ` Nicht erreicht: ${namen.map((n) => `${n} (${failed[n]})`).join(", ")} — ` +
+            `${d.kept_from_cache ?? 0} Modelle aus dem bisherigen Stand bleiben erhalten, ` +
+            `der Zeitstempel rückt nicht weiter. Bleibt das so, liegt es nicht am Netz: ` +
+            `dann Schlüssel bzw. Ressource in den Provider-Einstellungen prüfen.`
+          : "";
         setNote(
-          `${parts.join(" · ")} — ${d.new_extras} neue Modelle. Neue Modelle sind zunächst deaktiviert. ` +
+          `${parts.join(" · ")} — ${d.new_extras} zusätzlich erkannte Modelle (ohne Basis-Katalog). ` +
+          `Neu erkannte Modelle sind zunächst deaktiviert.${ausfall} ` +
           `Hinweis: Foundry wird über Ressource + Key aus den Provider-Einstellungen abgefragt; ` +
           `Bedrock- oder Vertex-Deployments trägst du weiterhin unter KI-Konten ein.`
         );
@@ -76,6 +98,13 @@ export function ModelCatalogAdmin() {
   const discoveredAt = catalog?.discovered_at
     ? new Date(catalog.discovered_at).toLocaleString("de-DE")
     : null;
+  // Nach einem Neuladen ist die POST-Antwort weg. Ohne diese beiden Werte aus dem
+  // Katalog selbst sähe ein Administrator nur ein altes (oder gar kein) Datum und
+  // nicht, dass der letzte Versuch an einem Anbieter gescheitert ist (#984).
+  const lastAttemptAt = catalog?.last_attempt_at
+    ? new Date(catalog.last_attempt_at).toLocaleString("de-DE")
+    : null;
+  const failedPersisted = Object.entries(catalog?.providers_failed ?? {});
 
   return (
     <section>
@@ -92,9 +121,25 @@ export function ModelCatalogAdmin() {
             <h3 className="text-sm font-semibold">Verfügbare Modelle</h3>
             <p className="text-[11px] text-muted-foreground/60">
               {discoveredAt
-                ? `Zuletzt automatisch erkannt: ${discoveredAt}`
-                : "Noch keine Auto-Discovery durchgeführt — Basis-Modelle sind freigeschaltet."}
+                ? `Vollständig erkannt: ${discoveredAt}`
+                : lastAttemptAt
+                  ? "Noch kein vollständiger Stand — mindestens ein Anbieter hat nicht geantwortet."
+                  : "Noch keine Auto-Discovery durchgeführt — Basis-Modelle sind freigeschaltet."}
+              {lastAttemptAt && lastAttemptAt !== discoveredAt
+                ? ` · Letzter Versuch: ${lastAttemptAt}`
+                : ""}
             </p>
+            {failedPersisted.length > 0 && (
+              <p className="text-[11px] text-amber-600 dark:text-amber-500 mt-0.5">
+                Nicht erreicht:{" "}
+                {failedPersisted.map(([name, grund]) => `${name} (${grund})`).join(", ")} — der
+                bisherige Stand dieser Anbieter bleibt erhalten
+                {catalog?.providers_kept?.length
+                  ? ` (${catalog.providers_kept.join(", ")})`
+                  : ""}
+                .
+              </p>
+            )}
           </div>
           <button
             onClick={discover}

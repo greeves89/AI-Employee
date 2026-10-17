@@ -5,6 +5,44 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.376.10] - 2026-10-17
+
+### Behoben — „Modelle suchen" löschte den gefundenen Stand, wenn ein Anbieter nicht antwortete (#984)
+
+In der Verwaltung unter „Modelle freischalten" fragt der Knopf „Modelle suchen" die
+Anbieter nach verfügbaren Modellen ab. War ein Anbieter in diesem Moment nicht
+erreichbar — ein Namensauflösungs-Aussetzer von zwei Sekunden reichte —, dann wurde
+das leere Ergebnis als neuer Stand gespeichert: alle bisher gefundenen Modelle waren
+weg, und zwar endgültig, denn es gibt keine zweite Ablage, aus der sich das heilen
+ließe. Gleichzeitig stand in der Oberfläche ein frischer Zeitstempel. Der
+Administrator las dort „gerade gesucht, nichts gefunden" — nicht unterscheidbar von
+„es gibt wirklich nichts", und deshalb kein Grund, es nochmal zu versuchen.
+
+Was sich ändert:
+
+- Ein Anbieter räumt seinen Stand nur noch auf, wenn er gefragt wurde UND geantwortet
+  hat. Ein gescheiterter Abruf lässt die bisher gefundenen Modelle stehen. Das gilt
+  auch für den Fall, dass gar nicht gefragt wurde: bisher genügte ein zweiter
+  Administrator ohne eigene Claude-Zugangsdaten, der auf den Knopf drückte, um die
+  Funde des ersten zu löschen.
+- Die Oberfläche sagt jetzt, was wirklich passiert ist: „Vollständig erkannt: <Datum>"
+  bleibt stehen, solange der Stand altes Wissen enthält, daneben steht „Letzter
+  Versuch: <Datum>" und in Bernstein, welcher Anbieter nicht erreicht wurde und warum
+  („HTTP 401", „Verbindung nicht zustande gekommen"). Das überlebt auch ein Neuladen
+  der Seite. Wer dort dauerhaft „HTTP 401" liest, weiß, dass es nicht am Netz liegt,
+  sondern am Schlüssel.
+- Kurze Aussetzer kosten den Abruf nicht mehr: jeder Anbieter wird nach einem
+  Verbindungsfehler zweimal nachgefragt (zusammen 2,0 s). Die Wartezeit für den
+  Menschen vor dem Knopf bleibt dabei begrenzt — der Verbindungsaufbau hat eine
+  eigene, kurze Zeitschranke von 5 s.
+- Ein unvollständiger Datensatz in der Ablage beendet den Modellkatalog nicht mehr mit
+  einem Fehler. Das traf vorher jede Nutzerin und jeden Nutzer, nicht nur
+  Administratoren.
+
+Bewusst in Kauf genommen: ein Modell, das ein Anbieter wirklich zurückgezogen hat,
+steht nach einem gescheiterten Abruf länger in der Liste. Das ist das kleinere Übel —
+und es ist jetzt an der genannten Ausfallmeldung ablesbar, statt still zu geschehen.
+
 ## [1.376.9] - 2026-10-17
 
 ### Behoben — Projektwissen: die letzten 40 % der Startseite erreichten keinen Agenten (#979)
