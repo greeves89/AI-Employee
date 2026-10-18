@@ -1,13 +1,16 @@
 """A NUL hole in the platform error log makes every agent's grep blind.
 
 A log file being appended to can come back after a hard kill with a run of NUL
-bytes where the last writes were never flushed. ONE such byte anywhere makes
-the whole file count as binary for grep: ``grep PATTERN file`` then prints
-nothing and exits 1, which an agent cannot tell apart from an honest "no
-match". Measured on a live installation: three of the four log generations
-carried such holes (174 / 393 / 0 / 3219 NUL bytes), so the grep-based triage
-agents are explicitly pointed at was silently blind most of the time — a
-recurring error class then reads as "gone".
+bytes where the last writes were never flushed. A text log with NUL bytes in it
+counts as binary for grep: ``grep PATTERN file`` then prints nothing and exits
+1, which an agent cannot tell apart from an honest "no match".
+
+How readily that happens depends on the grep (measured 2026-10-18): GNU grep
+goes binary on ANY NUL byte, ugrep 7.8.4 — the grep in the agent image — only
+when the FIRST NUL byte lies below offset 262144. On a live installation three
+of the four generations carried holes (174 / 393 / 0 / 3219 NUL bytes) and the
+active file was over that line (first NUL at 211665), so its triage really was
+silent and a recurring error class read as "gone".
 
 These tests pin the repair, the "don't touch a healthy file" half of the rule,
 and the instruction text that sends agents to this file in the first place.
@@ -18,6 +21,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from app.core import platform_error_log as pel
@@ -138,6 +142,10 @@ def test_agent_guidance_warns_about_the_binary_grep_trap():
 
     assert "grep -a" in bullet, bullet
     assert "binary" in bullet.lower(), bullet
+    # And it must point at ALL generations: the log rotates at 2 MB, so a
+    # search against the active file alone silently measures only today —
+    # the second way this same file turns a real error into a null finding.
+    assert "platform-errors.log*" in bullet, bullet
 
 
 # --- The rest gap of the startup fix: rotated generations (issue #997 A) ------
@@ -260,36 +268,122 @@ def test_healthy_generation_is_left_byte_identical(tmp_path):
     assert clean.stat().st_mtime == 1_000_000
 
 
-def test_one_unrepairable_generation_does_not_stop_the_others(tmp_path):
-    """An oversized `.1` must not swallow the repair of `.2`.
+def test_a_clean_generation_in_the_middle_does_not_end_the_repair(tmp_path):
+    """The live shape: broken `.1`, CLEAN `.2`, broken `.3`.
 
-    `strip_nul_bytes` skips a file above `max_bytes`. If the loop treated that
-    as "stop here", one big generation would re-open the blindness for every
-    older one behind it.
+    `strip_nul_bytes` returns 0 for a healthy generation — the normal case. If
+    the startup loop read that 0 as "nothing more to do here", the OLDEST
+    generation would stay binary, and the repair would look like it worked.
+    Drives the real `setup_platform_error_log`, not a loop rebuilt in the test:
+    the resilience being asserted lives in the production code.
     """
     target = _log_with_hole(tmp_path)
-    big = tmp_path / "platform-errors.log.1"
-    _generation_with_hole(big, 393, _OLD_CLASS)
-    small = tmp_path / "platform-errors.log.2"
-    _generation_with_hole(small, 7, _OLD_CLASS)
+    broken_1 = tmp_path / "platform-errors.log.1"
+    clean_2 = tmp_path / "platform-errors.log.2"
+    broken_3 = tmp_path / "platform-errors.log.3"
+    _generation_with_hole(broken_1, 393, _OLD_CLASS)
+    clean_2.write_bytes(b"2026-09-06 21:18:56,001 WARNING app.core.task_router: clean\n")
+    _generation_with_hole(broken_3, 3_219, _OLD_CLASS)
+
     root = logging.getLogger()
     before = list(root.handlers)
     try:
-        # Only `.1` is above the cap; the active file and `.2` are below it.
-        assert big.stat().st_size > 400
-        assert small.stat().st_size < 400
-        repaired = [
-            pel.strip_nul_bytes(p, max_bytes=400) for p in pel.log_generations(str(target))
-        ]
-        assert repaired[0] == 174          # active file repaired
-        assert sum(repaired) == 174 + 7    # `.2` repaired despite `.1` skipped
-        assert b"\x00" in big.read_bytes()      # skipped, as designed
-        assert b"\x00" not in small.read_bytes()
+        assert pel.setup_platform_error_log(str(target)) is True
     finally:
         for h in list(root.handlers):
             if h not in before:
                 root.removeHandler(h)
                 h.close()
+
+    assert b"\x00" not in broken_3.read_bytes(), "oldest generation left behind"
+    assert b"\x00" not in broken_1.read_bytes()
+    assert b"\x00" not in target.read_bytes()
+
+
+def test_report_counts_bytes_and_only_the_files_it_repaired(caplog):
+    """The message must not inflate itself with the healthy generations.
+
+    It is the only trace that a forensic log was rewritten, so "spread over N
+    files" has to mean N files that actually had a hole.
+    """
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as raw:
+        tmp_path = Path(raw)
+        target = _log_with_hole(tmp_path)
+        _generation_with_hole(tmp_path / "platform-errors.log.1", 393, _OLD_CLASS)
+        (tmp_path / "platform-errors.log.2").write_bytes(b"clean generation\n")
+
+        root = logging.getLogger()
+        before = list(root.handlers)
+        try:
+            with caplog.at_level(logging.WARNING, logger=pel.__name__):
+                assert pel.setup_platform_error_log(str(target)) is True
+        finally:
+            for h in list(root.handlers):
+                if h not in before:
+                    root.removeHandler(h)
+                    h.close()
+
+    reports = [r for r in caplog.records if "NUL byte(s)" in r.getMessage()]
+    assert len(reports) == 1, [r.getMessage() for r in reports]
+    assert reports[0].args == (174 + 393, 2)
+
+
+def test_repair_is_reported_even_when_the_handler_already_exists(caplog):
+    """The idempotent early return repaired too — it must say so.
+
+    A second startup in the same process (or a re-entry after a reload) takes
+    the "handler already attached" path. The repair has already happened by
+    then; staying silent there means a rotated generation gets rewritten with
+    no trace at all.
+    """
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as raw:
+        tmp_path = Path(raw)
+        target = tmp_path / "platform-errors.log"
+        target.write_bytes(b"2026-10-18 11:00:00,000 WARNING app.test: healthy start\n")
+        root = logging.getLogger()
+        before = list(root.handlers)
+        try:
+            assert pel.setup_platform_error_log(str(target)) is True
+            rotated = tmp_path / "platform-errors.log.1"
+            _generation_with_hole(rotated, 42, _OLD_CLASS)
+            with caplog.at_level(logging.WARNING, logger=pel.__name__):
+                assert pel.setup_platform_error_log(str(target)) is True
+            assert b"\x00" not in rotated.read_bytes()
+        finally:
+            for h in list(root.handlers):
+                if h not in before:
+                    root.removeHandler(h)
+                    h.close()
+
+    reports = [r for r in caplog.records if "NUL byte(s)" in r.getMessage()]
+    assert len(reports) == 1, [r.getMessage() for r in reports]
+    assert reports[0].args == (42, 1)
+
+
+def test_oversized_generation_is_skipped_without_stopping_the_loop(tmp_path):
+    """Unit-level counter-half to the clean-middle case.
+
+    `_MAX_REPAIR_BYTES` (8 MB) is four times the rotation size, so in production
+    this cap cannot trigger — it is a guard against a path that is NOT this
+    handler's log. Pinned here on the helper rather than through startup, so the
+    test does not depend on a byte budget that a longer log line would break.
+    """
+    first = tmp_path / "platform-errors.log.1"
+    second = tmp_path / "platform-errors.log.2"
+    _generation_with_hole(first, 393, _OLD_CLASS)
+    _generation_with_hole(second, 7, _OLD_CLASS)
+    assert first.stat().st_size > second.stat().st_size
+
+    cap = second.stat().st_size + 1
+    repaired = [pel.strip_nul_bytes(str(f), max_bytes=cap) for f in (first, second)]
+
+    assert repaired == [0, 7]
+    assert b"\x00" in first.read_bytes()        # skipped, as designed
+    assert b"\x00" not in second.read_bytes()   # and the next one still ran
 
 
 def test_handler_backup_count_and_repair_range_cannot_drift(tmp_path):
@@ -304,8 +398,11 @@ def test_handler_backup_count_and_repair_range_cannot_drift(tmp_path):
     before = list(root.handlers)
     try:
         assert pel.setup_platform_error_log(str(target)) is True
-        installed = [h for h in root.handlers if h not in before]
-        assert installed, "handler was not installed"
+        installed = [
+            h for h in root.handlers
+            if h not in before and isinstance(h, RotatingFileHandler)
+        ]
+        assert installed, "rotating handler was not installed"
         assert installed[0].backupCount == pel._BACKUP_COUNT
         # The by-range part of the selector must cover exactly those files.
         for generation in range(1, pel._BACKUP_COUNT + 1):
@@ -345,3 +442,100 @@ def test_known_generations_are_found_even_if_the_directory_cannot_be_listed(tmp_
     for p in found:
         pel.strip_nul_bytes(p)
     assert b"\x00" not in rotated.read_bytes()
+
+
+def test_a_symlink_under_a_generation_name_is_not_followed(tmp_path):
+    """Everyone with write access to /shared can plant that name.
+
+    Following it would let the repair rewrite a file OUTSIDE the log directory.
+    """
+    target = _log_with_hole(tmp_path)
+    outside = tmp_path / "elsewhere" / "secrets.bin"
+    outside.parent.mkdir()
+    payload = b"not a log\x00at all\n"
+    outside.write_bytes(payload)
+    (tmp_path / "platform-errors.log.2").symlink_to(outside)
+
+    for p in pel.log_generations(str(target)):
+        pel.strip_nul_bytes(p)
+
+    assert str(tmp_path / "platform-errors.log.2") not in pel.log_generations(str(target))
+    assert outside.read_bytes() == payload
+
+
+def test_a_hard_link_under_a_generation_name_is_not_rewritten(tmp_path):
+    """`islink` cannot see a hard link — `st_nlink` can.
+
+    Without that check a `platform-errors.log.2` hard-linked to another
+    service's log would have THAT file stripped of its NUL bytes.
+    """
+    target = _log_with_hole(tmp_path)
+    other = tmp_path / "other-service.log"
+    payload = b"another service\x00important\n"
+    other.write_bytes(payload)
+    os.link(other, tmp_path / "platform-errors.log.2")
+
+    for p in pel.log_generations(str(target)):
+        pel.strip_nul_bytes(p)
+
+    assert other.read_bytes() == payload
+
+
+def test_non_ascii_digit_suffixes_are_not_generations(tmp_path):
+    r"""`\d` is Unicode in Python, and `int()` accepts those digits too.
+
+    A file named `platform-errors.log.٣` (U+0663) or `.１２` (fullwidth) would
+    otherwise be picked up and rewritten as if it were a rotated generation.
+    """
+    target = _log_with_hole(tmp_path)
+    impostors = {
+        "platform-errors.log.٣": b"arabic-indic\x00three\n",
+        "platform-errors.log.１２": b"fullwidth\x00twelve\n",
+    }
+    for name, payload in impostors.items():
+        (tmp_path / name).write_bytes(payload)
+
+    for p in pel.log_generations(str(target)):
+        pel.strip_nul_bytes(p)
+
+    assert pel.log_generations(str(target)) == [str(target)]
+    for name, payload in impostors.items():
+        assert (tmp_path / name).read_bytes() == payload, name
+
+
+def test_the_file_name_is_matched_literally_not_as_a_pattern(tmp_path):
+    """The basename goes into a regex, so its dots must be escaped.
+
+    Unescaped, `platform-errors.log` matches `platform-errorsXlogY` as well —
+    any similarly named file in the directory would be rewritten.
+    """
+    target = _log_with_hole(tmp_path)
+    look_alike = tmp_path / "platform-errorsXlog.1"
+    payload = b"different file\x00entirely\n"
+    look_alike.write_bytes(payload)
+
+    for p in pel.log_generations(str(target)):
+        pel.strip_nul_bytes(p)
+
+    assert look_alike.read_bytes() == payload
+
+
+def test_generations_come_back_in_order_active_file_first(tmp_path):
+    """Order is part of what the function promises.
+
+    The active file is the one a repair must reach before the handler appends
+    to it; the rotated ones follow youngest to oldest, so a truncated run still
+    fixes the files most likely to be read.
+    """
+    target = tmp_path / "platform-errors.log"
+    target.write_bytes(b"active\x00\n")
+    for generation in (3, 1, 2, 11):
+        (tmp_path / f"platform-errors.log.{generation}").write_bytes(b"x\x00\n")
+
+    assert pel.log_generations(str(target)) == [
+        str(target),
+        str(tmp_path / "platform-errors.log.1"),
+        str(tmp_path / "platform-errors.log.2"),
+        str(tmp_path / "platform-errors.log.3"),
+        str(tmp_path / "platform-errors.log.11"),
+    ]

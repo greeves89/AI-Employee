@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import stat
 import sys
 from logging.handlers import RotatingFileHandler
 
@@ -82,17 +83,23 @@ def strip_nul_bytes(path: str, max_bytes: int = _MAX_REPAIR_BYTES) -> int:
 
     A file being appended to can come back after a hard kill with NUL bytes
     where the last writes were never flushed to disk. That looks harmless and
-    is not: **one** NUL byte anywhere makes the WHOLE file count as binary for
-    grep, so ``grep PATTERN /shared/platform-errors.log`` prints nothing and
-    exits 1 — indistinguishable from an honest "no match". An agent triaging a
-    recurring platform error then concludes the error class is gone when in
-    truth its own measurement never read the file.
+    is not: a text log with a NUL byte in it counts as BINARY, so
+    ``grep PATTERN /shared/platform-errors.log`` prints nothing and exits 1 —
+    indistinguishable from an honest "no match". An agent triaging a recurring
+    platform error then concludes the error class is gone when in truth its own
+    measurement never read the file.
 
-    That is not a hypothetical: on a live installation three of the four log
-    generations carried such holes (174 / 393 / 0 / 3219 NUL bytes), i.e. the
-    grep-based triage every agent is pointed at was silently blind most of the
-    time. Startup is the right moment to repair it, because the hole is left
-    behind by exactly the unclean stop that this startup follows.
+    How readily that happens depends on the grep (measured 2026-10-18): GNU
+    grep goes binary on ANY NUL byte, while ugrep 7.8.4 — the grep in the agent
+    image — only does so when the FIRST NUL byte lies below offset 262144
+    (bracketed: 262143 silent, 262144 readable, independent of file size).
+    On a live installation three of the four log generations carried holes
+    (174 / 393 / 0 / 3219 NUL bytes) and the active file was over that line
+    (first NUL at 211665), so its triage really was silent; see
+    ``log_generations`` for what that means for the rotated ones.
+
+    Startup is the right moment to repair it, because the hole is left behind
+    by exactly the unclean stop that this startup follows.
 
     Rewrites IN PLACE (same inode, no ``os.replace``) so a file descriptor that
     some other handler already holds keeps writing to the file we just fixed.
@@ -115,6 +122,30 @@ def strip_nul_bytes(path: str, max_bytes: int = _MAX_REPAIR_BYTES) -> int:
         return removed
     except OSError:
         return 0
+
+
+def _is_own_regular_file(path: str) -> bool:
+    """A plain file that nothing else is also pointing at.
+
+    Everyone with write access to the log directory can create a name that
+    looks like a generation. Three shapes must therefore be refused, because
+    rewriting them in place would damage something that is not our log:
+
+    * a **directory** (or anything that is not a regular file),
+    * a **symlink** — it would be followed out of the directory,
+    * a **hard link** (``st_nlink > 1``) — ``islink`` does not see those at
+      all, so a ``platform-errors.log.2`` hard-linked to another service's log
+      would have that service's file stripped.
+
+    Refusing a hard-linked generation is the safe direction either way: at
+    worst a genuine generation that someone linked elsewhere keeps its NUL
+    bytes, which is exactly the state before this repair existed.
+    """
+    try:
+        info = os.lstat(path)
+    except OSError:
+        return False
+    return stat.S_ISREG(info.st_mode) and info.st_nlink == 1
 
 
 def log_generations(path: str, backup_count: int = _BACKUP_COUNT) -> list[str]:
@@ -163,7 +194,10 @@ def log_generations(path: str, backup_count: int = _BACKUP_COUNT) -> list[str]:
     except OSError:
         entries = []
     for name in entries:
-        match = re.fullmatch(re.escape(stem) + r"\.(\d+)", name)
+        # [0-9], NOT \d: in Unicode mode \d also matches e.g. U+0663 ARABIC-
+        # INDIC DIGIT THREE, and int() accepts it — a file named
+        # "platform-errors.log.٣" would be rewritten as if it were generation 3.
+        match = re.fullmatch(re.escape(stem) + r"\.([0-9]+)", name)
         if match:
             found.append((int(match.group(1)), os.path.join(directory, name)))
     for _generation, candidate in sorted(found):
@@ -171,11 +205,30 @@ def log_generations(path: str, backup_count: int = _BACKUP_COUNT) -> list[str]:
         if key in seen:
             continue
         seen.add(key)
-        # A directory or a symlink under this name is not a log generation of
-        # ours; rewriting it in place would corrupt whatever it really is.
-        if os.path.isfile(candidate) and not os.path.islink(candidate):
+        if _is_own_regular_file(candidate):
             paths.append(candidate)
     return paths
+
+
+def _report_repair(removed: int, repaired_files: int) -> None:
+    """Say what was repaired — on EVERY path that repaired something.
+
+    The repair runs before the handler is (re-)installed, so it also happens on
+    the idempotent early return and when the directory turns out not to be
+    writable. Reporting only on the one happy path would rewrite rotated
+    generations silently, and a silent rewrite of a forensic log is the kind of
+    change nobody can reconstruct afterwards.
+    """
+    if not removed:
+        return
+    logging.getLogger(__name__).warning(
+        "Platform error log carried %d NUL byte(s) from an unclean stop, spread "
+        "over %d of its file(s) (active log plus rotated generations), and was "
+        "repaired — grep would have reported those whole files as having no "
+        "matches until now",
+        removed,
+        repaired_files,
+    )
 
 
 def setup_platform_error_log(path: str | None = None, level: int = logging.WARNING) -> bool:
@@ -194,8 +247,13 @@ def setup_platform_error_log(path: str | None = None, level: int = logging.WARNI
     # Over ALL generations, not just the active file: a hole that appears after
     # startup is carried into `<path>.1` by the next rotation, and a repair that
     # only ever sees the active path can then never reach it again (see
-    # log_generations). One oversized or unreadable generation must not stop the
-    # others from being repaired, hence the plain loop.
+    # log_generations).
+    #
+    # Every generation is visited unconditionally. A 0 from strip_nul_bytes is
+    # the NORMAL case — a healthy generation — and must never be read as "we
+    # are done here": the live shape had a clean `.2` sitting between a broken
+    # `.1` and a broken `.3`, so stopping at the first 0 would leave the oldest
+    # generation unrepaired.
     removed = 0
     repaired_files = 0
     for generation_path in log_generations(target):
@@ -209,6 +267,7 @@ def setup_platform_error_log(path: str | None = None, level: int = logging.WARNI
             target, maxBytes=2_000_000, backupCount=_BACKUP_COUNT, encoding="utf-8"
         )
     except OSError:
+        _report_repair(removed, repaired_files)
         return False
 
     handler.setLevel(level)
@@ -217,22 +276,23 @@ def setup_platform_error_log(path: str | None = None, level: int = logging.WARNI
     )
 
     root = logging.getLogger()
-    # Idempotent: don't stack a second handler on repeated startups.
+    # Idempotent: don't stack a second handler on repeated startups. The one we
+    # just built is closed explicitly rather than left to the garbage
+    # collector: CPython's refcounting does close the orphaned stream right
+    # away (measured — a repeated call keeps exactly one descriptor on the
+    # file), but that is an implementation detail, and a descriptor left open
+    # on a ROTATING file keeps the old inode alive after rotation, i.e. disk
+    # that no visible file accounts for.
     for h in root.handlers:
         if isinstance(h, RotatingFileHandler) and getattr(h, "baseFilename", "") == handler.baseFilename:
+            handler.close()
+            _report_repair(removed, repaired_files)
             return True
     root.addHandler(handler)
     # Ensure WARNING+ records actually reach the handler.
     if root.level == logging.NOTSET or root.level > level:
         root.setLevel(level)
-    if removed:
-        logging.getLogger(__name__).warning(
-            "Platform error log carried %d NUL byte(s) from an unclean stop in "
-            "%d of its generation(s) and was repaired — grep would have reported "
-            "those whole files as having no matches until now",
-            removed,
-            repaired_files,
-        )
+    _report_repair(removed, repaired_files)
     return True
 
 
