@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.377.0] - 2026-10-18
+
+### Geändert
+- **Ein Zeitplan, der nie wieder lief, meldete sich genau EIN Mal — egal ob er einen Tag oder 19 Tage lang tot war.** Der Wächter, der einen lautlos verworfenen Cron-Termin erkennt, dedupliziert über `last_run_at`. Bei einem Zeitplan, der weiterläuft, ist das richtig: ein neuer Lauf ändert die Marke, ein neuer Verlust danach zählt wieder. Bei einem Zeitplan, der endgültig tot ist, ändert sich `last_run_at` aber nie wieder — die eine Meldung aus der ersten Erkennung blieb für immer die einzige, egal wie lange der Ausfall dauerte. Ein Beispiel auf der eigenen Anlage: 19 Tage, 18 verlorene Termine, eine einzige Warnung. Der Wächter meldet sich jetzt erneut, sobald sich die Zahl der verlorenen Termine verdoppelt (1, 2, 4, 8, 16, …) — ein einmaliger Ausrutscher bleibt eine Meldung, ein dauerhafter Ausfall wird mit wachsendem Nachdruck laut statt zu verstummen. Die Meldung nennt jetzt auch die Zahl der verlorenen Termine, und der Fehlerzähler des Zeitplans wächst mit der tatsächlichen Zahl der Verluste statt mit der Zahl der Erkennungen.
+
+---
+
 ## [1.376.18] - 2026-10-18
 
 ### Behoben
