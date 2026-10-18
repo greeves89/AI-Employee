@@ -125,9 +125,21 @@ def log_generations(path: str, backup_count: int = _BACKUP_COUNT) -> list[str]:
     wanders into a backup file and stays there forever: ``strip_nul_bytes`` was
     only ever called with the active path, and nothing else ever touches ``.1``
     to ``.3``. Measured live on 2026-10-17: ``.1`` (393 NUL bytes, 07.09.) and
-    ``.3`` (3.219 NUL bytes, 06.09.) carried holes months old. Every agent is
-    pointed at this log and an honest triage reads all generations, so those two
-    files stayed permanently binary — and permanently silent — for grep.
+    ``.3`` (3.219 NUL bytes, 06.09.) carried holes months old, in the files an
+    honest triage reads next to the active one.
+
+    How much that costs depends on WHERE the hole sits, and that is worth being
+    precise about (measured 2026-10-18 against the grep in the agent image,
+    ugrep 7.8.4): it declares the whole file binary — no output, exit 1, i.e.
+    indistinguishable from an honest "no match" — exactly when the first NUL
+    byte lies below offset 262144 (bracketed: 262143 silent, 262144 readable).
+    Of the live files only the ACTIVE one was over that line (first NUL at
+    211665); ``.1`` (481753) and ``.3`` (979821) still answered. A rotated
+    generation is nevertheless exposed, for two reasons: the hole position is
+    wherever the unclean stop happened, so roughly every eighth hole in a 2 MB
+    generation falls inside that window; and GNU grep — the grep most hosts
+    carry — goes binary on ANY NUL byte, as does every tool that decodes the
+    file as text. Repairing all generations removes the question entirely.
 
     Returns the active path first, then the rotated ones in generation order.
     Besides ``.1`` to ``backup_count`` this also picks up numerically suffixed
