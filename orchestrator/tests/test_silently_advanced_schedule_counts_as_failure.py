@@ -473,7 +473,62 @@ async def test_report_dropped_slot_does_not_reset_an_already_higher_missed_count
     with p1, p2, p3, _frozen(now_seven_losses):
         await svc._tick_missed_schedule_watchdog()
 
-    # fail_count: 6 (Tick) + 1 (Echtzeit-Slot) + hoechstens 1 (der EINE neue
-    # Slot zwischen 6 und 7) -- NICHT 6 + 1 + 5 (faelschlich zurueckgesetzt).
-    assert schedule.fail_count <= 8
+    # fail_count: 6 (Tick) + 1 (Echtzeit-Slot) = 7. Der naechste Tick sieht
+    # croninatisch 7 faellige Slots, bucket(7)==bucket(bekannt=7) -> keine
+    # weitere Buchung (der 7. Slot ist exakt der, den der Echtzeit-Pfad schon
+    # gezaehlt hat) -- NICHT 6 + 1 + 5 (faelschlich zurueckgesetzt auf 1 und
+    # dann um 6 nachgeholt).
+    assert schedule.fail_count == 7
+    assert schedule.total_runs == schedule.fail_count + 27
+
+
+@pytest.mark.asyncio
+async def test_repeated_realtime_dropouts_are_not_double_counted_by_the_tick():
+    """Gegenlesen-Fund zu #1001 (zweite Runde): ein taeglicher Zeitplan, dessen
+    Lauf jeden Tag per Retry aufgegeben wird (last_run_at bewegt sich NIE,
+    weil kein Versuch je durchlief), rief VOR diesem Fix bei jedem Give-up
+    `_remember_silently_advanced(..., missed_count=1)` -- ein fester Wert, der
+    den bekannten Stand nie ueber 1 hinaus anhob. Zwei echte Give-ups fuer
+    last_run_at zaehlten `fail_count` real korrekt auf 2 hoch, aber der
+    Tick-Waechter hielt den bekannten Stand bei 1 und bucht beim naechsten
+    Tick dieselben bereits gezaehlten Slots ein zweites Mal (2 echte + hier
+    faelschlich nochmal welche). Mit dem laufenden Zaehler (statt fest `1`)
+    bleibt `fail_count` exakt bei der Zahl der tatsaechlich verlorenen Slots."""
+    svc = _make_service()
+    schedule = _FakeSchedule()
+    session = _FakeSession()
+
+    # Zwei echte Give-ups fuer T1 (06.09.) und T2 (07.09.) -- last_run_at
+    # (und damit der Marker) bleibt dabei unveraendert, da kein Lauf durchkam.
+    await svc._report_dropped_slot(
+        schedule, datetime(2026, 9, 6, 21, 0, tzinfo=timezone.utc),
+        reason="overload", attempts=2,
+    )
+    await svc._report_dropped_slot(
+        schedule, datetime(2026, 9, 7, 21, 0, tzinfo=timezone.utc),
+        reason="overload", attempts=2,
+    )
+    assert schedule.fail_count == 2  # zwei echte Verluste, direkt gezaehlt
+
+    # Der Tick-Waechter sieht per Cron-Mathematik jetzt 3 faellige Slots
+    # (06., 07., 08.09.) seit demselben last_run_at -- NUR der dritte (08.09.)
+    # ist dem Echtzeit-Pfad noch unbekannt.
+    now_three_losses = datetime(2026, 9, 8, 21, 10, 0, tzinfo=timezone.utc)
+    p1, p2, p3 = _patched(svc, [schedule], session)[0]
+    with p1, p2, p3, _frozen(now_three_losses):
+        await svc._tick_missed_schedule_watchdog()
+
+    # NICHT 4 (2 echte + faelschlich nochmal 2 ueber den Tick, weil der
+    # bekannte Stand vor dem Fix bei 1 statt 2 eingefroren war).
+    assert schedule.fail_count == 2
+    assert schedule.total_runs == schedule.fail_count + 27
+
+    # Der dritte Slot (08.09.) holt beim naechsten Bucket-Sprung nach, sobald
+    # ein vierter faelliger Slot den Bucket von 2 auf 4 anhebt -- die
+    # Gesamtsumme bleibt exakt, nur die Meldung kommt gebuendelt statt pro Tag.
+    now_four_losses = now_three_losses + timedelta(days=1)
+    p1, p2, p3 = _patched(svc, [schedule], session)[0]
+    with p1, p2, p3, _frozen(now_four_losses):
+        await svc._tick_missed_schedule_watchdog()
+    assert schedule.fail_count == 4
     assert schedule.total_runs == schedule.fail_count + 27

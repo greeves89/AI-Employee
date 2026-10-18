@@ -1445,12 +1445,19 @@ class SchedulerService:
         # Dieselbe Marke wie der Waechter in _tick_missed_schedule_watchdog
         # (#803): der Verlust ist hiermit gebucht, die zweite Erkennung
         # (last_run_at hinkt der Cron-Regel hinterher) darf ihn nicht
-        # nochmal zaehlen und nochmal melden. Buchung mit missed_count=1
-        # (Bucket 0): dieser Pfad laeuft in Echtzeit fuer GENAU den einen
-        # Slot, der gerade aufgegeben wurde — nicht fuer eine laengere
-        # Verlustserie (#1001). Bleibt der Zeitplan trotzdem tot, uebernimmt
-        # der Tick-Waechter unten die weitere Eskalation.
-        await self._remember_silently_advanced(schedule.id, silently_advanced_marker(schedule), 1)
+        # nochmal zaehlen und nochmal melden. Buchung mit dem bisher bekannten
+        # Stand + 1 (#1001 Gegenlesen-Fund, zweite Runde): ein fester Wert
+        # `1` wuerde bei WIEDERHOLTEN Give-ups fuer denselben last_run_at
+        # (taeglicher Zeitplan, der jeden Tag erneut aufgibt) immer wieder
+        # auf 1 begrenzt bleiben -- der Tick-Waechter saehe dann per Cron-
+        # Mathematik einen weit hoeheren echten Verlust und buchte dieselben
+        # Slots, die hier schon einzeln in fail_count gezaehlt wurden, ein
+        # zweites Mal. Mit dem laufenden Zaehler bleibt "bekannt" in beiden
+        # Pfaden derselbe Begriff, der Tick-Waechter unten uebernimmt nur noch
+        # die Eskalation ueber das hier Gezaehlte hinaus.
+        marker = silently_advanced_marker(schedule)
+        bekannt = await self._silently_advanced_known_count(schedule.id, marker)
+        await self._remember_silently_advanced(schedule.id, marker, bekannt + 1)
 
         logger.warning(
             "[Scheduler] %s: Slot %s nach %s Versuchen (%s) verworfen",
@@ -2366,6 +2373,35 @@ class SchedulerService:
             except Exception as e:
                 logger.warning("[Scheduler] DueSchedules alert publish error: %s", e)
 
+    async def _silently_advanced_known_count(self, schedule_id: str, marker: str) -> int:
+        """Hoechster bereits bekannter `missed_count` fuer `marker` -- Prozessspeicher
+        UND Redis, der groessere Stand gewinnt (#803: Redis-Fallback; #1001 Gegenlesen-
+        Fund: Prozessspeicher kann weiter sein, wenn Redis gerade nichts weiss) -- ohne
+        selbst etwas zu buchen. Gemeinsame Grundlage fuer `_silently_advanced_already_booked`
+        (Alarm-Drosselung) UND `_report_dropped_slot` (Echtzeit-Zaehlung je Give-up), damit
+        beide Pfade denselben Begriff von "bereits in fail_count gebucht" verwenden --
+        sonst zaehlt ein wiederholt gebuchtes `missed_count=1` im Echtzeitpfad denselben
+        Bucket immer wieder als 1 statt kumulativ, und der Tick-Waechter bucht die schon
+        per Echtzeitpfad gezaehlten Slots ein zweites Mal.
+        """
+        cached = self._silently_advanced_alerted.get(schedule_id)
+        bekannt = cached[1] if cached is not None and cached[0] == marker else 0
+        if not self.redis or not self.redis.client:
+            return bekannt
+        try:
+            gespeichert = await self.redis.client.get(_silently_advanced_marker_key(schedule_id))
+        except Exception:  # noqa: BLE001 -- ohne Redis lieber einmal zu viel melden als nie
+            logger.debug("[Scheduler] SilentlyAdvanced-Marke nicht lesbar", exc_info=True)
+            return bekannt
+        if isinstance(gespeichert, bytes):
+            gespeichert = gespeichert.decode("utf-8", errors="replace")
+        elif not isinstance(gespeichert, str):
+            gespeichert = None  # kein Key (None) oder unerwarteter Typ -> wie "nichts gebucht"
+        stored_marker, stored_count = _parse_silently_advanced_state(gespeichert)
+        if stored_marker == marker:
+            bekannt = max(bekannt, stored_count)
+        return bekannt
+
     async def _silently_advanced_already_booked(
         self, schedule_id: str, marker: str, missed_count: int
     ) -> tuple[bool, int]:
@@ -2390,28 +2426,7 @@ class SchedulerService:
         kann (#1001 Punkt 3).
         """
         bucket = _silently_advanced_bucket(missed_count)
-        cached = self._silently_advanced_alerted.get(schedule_id)
-        bekannt = cached[1] if cached is not None and cached[0] == marker else 0
-        if bekannt and _silently_advanced_bucket(bekannt) >= bucket:
-            return True, bekannt
-        if not self.redis or not self.redis.client:
-            return False, bekannt
-        try:
-            gespeichert = await self.redis.client.get(_silently_advanced_marker_key(schedule_id))
-        except Exception:  # noqa: BLE001 -- ohne Redis lieber einmal zu viel melden als nie
-            logger.debug("[Scheduler] SilentlyAdvanced-Marke nicht lesbar", exc_info=True)
-            return False, bekannt
-        if isinstance(gespeichert, bytes):
-            gespeichert = gespeichert.decode("utf-8", errors="replace")
-        elif not isinstance(gespeichert, str):
-            gespeichert = None  # kein Key (None) oder unerwarteter Typ -> wie "nichts gebucht"
-        stored_marker, stored_count = _parse_silently_advanced_state(gespeichert)
-        # Prozessspeicher UND Redis koennen fuer dieselbe Marke unterschiedlich
-        # weit sein (z.B. Redis ohne echten Fallback in Tests) -- der groessere
-        # bekannte Stand gewinnt, damit das Delta im Aufrufer nie zu hoch
-        # ausfaellt, nur weil eine der beiden Quellen gerade nichts weiss.
-        if stored_marker == marker:
-            bekannt = max(bekannt, stored_count)
+        bekannt = await self._silently_advanced_known_count(schedule_id, marker)
         if bekannt and _silently_advanced_bucket(bekannt) >= bucket:
             self._silently_advanced_alerted[schedule_id] = (marker, bekannt)
             return True, bekannt
