@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.376.17] - 2026-10-18
+
+### Behoben
+- **Die Reparatur des Fehlerlogs erreichte nur die aktive Datei — in den rotierten Generationen blieben die Loecher dauerhaft liegen.** Die Haertung aus 1.376.16 raeumt `/shared/platform-errors.log` beim Start auf, bekam aber genau EINEN Pfad. Entsteht ein Loch NACH dem Start und rotiert die Datei vorher, wandert es nach `.1` — und dort hat es nie wieder jemand angefasst. Auf einer laufenden Anlage trugen `.1` (393 Bytes, 07.09.) und `.3` (3.219 Bytes, 06.09.) Loecher aus dem September; wer bei einer Fehlersuche alle Generationen durchsucht, las diese beiden Dateien also seit Wochen blind. Der Start repariert jetzt alle Generationen, auch solche, die von einer frueher groesseren Rotationstiefe uebrig sind. Gesunde Dateien bleiben unveraendert, und Nachbardateien wie `.log.gz`, `.log.bak` oder das Log eines anderen Dienstes werden nicht angefasst.
+
+---
+
 ## [1.376.16] - 2026-10-17
 
 ### Behoben

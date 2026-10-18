@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sys
 from logging.handlers import RotatingFileHandler
 
@@ -70,6 +71,11 @@ def _harden_uvicorn_access_logging() -> None:
 
 _MAX_REPAIR_BYTES = 8_000_000
 
+# The handler's backupCount AND the repair loop's range read this one value, so
+# the two can never drift apart: a second, hand-maintained copy of "3" is
+# exactly how a rotated generation ends up outside the repaired set again.
+_BACKUP_COUNT = 3
+
 
 def strip_nul_bytes(path: str, max_bytes: int = _MAX_REPAIR_BYTES) -> int:
     """Repair a log file that an unclean shutdown left with a run of NUL bytes.
@@ -111,6 +117,55 @@ def strip_nul_bytes(path: str, max_bytes: int = _MAX_REPAIR_BYTES) -> int:
         return 0
 
 
+def log_generations(path: str, backup_count: int = _BACKUP_COUNT) -> list[str]:
+    """The active log plus EVERY rotated generation that exists next to it.
+
+    ``RotatingFileHandler`` moves the active file to ``<path>.1`` and shifts the
+    older ones up, so a NUL hole that is not repaired before the next rotation
+    wanders into a backup file and stays there forever: ``strip_nul_bytes`` was
+    only ever called with the active path, and nothing else ever touches ``.1``
+    to ``.3``. Measured live on 2026-10-17: ``.1`` (393 NUL bytes, 07.09.) and
+    ``.3`` (3.219 NUL bytes, 06.09.) carried holes months old. Every agent is
+    pointed at this log and an honest triage reads all generations, so those two
+    files stayed permanently binary — and permanently silent — for grep.
+
+    Returns the active path first, then the rotated ones in generation order.
+    Besides ``.1`` to ``backup_count`` this also picks up numerically suffixed
+    siblings ABOVE that range: lowering ``backupCount`` orphans the generations
+    that a previous, larger setting had already written, and the handler never
+    looks at them again. Only ``<basename>.<digits>`` regular files count — a
+    ``.log.gz``, a ``.log.bak`` or another log's generation is never rewritten.
+    """
+    paths = [path]
+    # Keyed on the normalised path: the range below and the directory scan can
+    # spell the SAME file two ways ("foo.log.1" vs "./foo.log.1"), and without
+    # this the file would be visited twice.
+    seen = {os.path.normpath(path)}
+    directory = os.path.dirname(path) or "."
+    stem = os.path.basename(path)
+    found: list[tuple[int, str]] = []
+    for generation in range(1, backup_count + 1):
+        found.append((generation, f"{path}.{generation}"))
+    try:
+        entries = os.listdir(directory)
+    except OSError:
+        entries = []
+    for name in entries:
+        match = re.fullmatch(re.escape(stem) + r"\.(\d+)", name)
+        if match:
+            found.append((int(match.group(1)), os.path.join(directory, name)))
+    for _generation, candidate in sorted(found):
+        key = os.path.normpath(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        # A directory or a symlink under this name is not a log generation of
+        # ours; rewriting it in place would corrupt whatever it really is.
+        if os.path.isfile(candidate) and not os.path.islink(candidate):
+            paths.append(candidate)
+    return paths
+
+
 def setup_platform_error_log(path: str | None = None, level: int = logging.WARNING) -> bool:
     """Attach a rotating, secret-redacted WARNING+ file handler to the root logger.
 
@@ -123,11 +178,23 @@ def setup_platform_error_log(path: str | None = None, level: int = logging.WARNI
     # the file again — otherwise a single such byte makes every agent's
     # `grep` on this log return "no match" for the whole file (see
     # strip_nul_bytes).
-    removed = strip_nul_bytes(target)
+    #
+    # Over ALL generations, not just the active file: a hole that appears after
+    # startup is carried into `<path>.1` by the next rotation, and a repair that
+    # only ever sees the active path can then never reach it again (see
+    # log_generations). One oversized or unreadable generation must not stop the
+    # others from being repaired, hence the plain loop.
+    removed = 0
+    repaired_files = 0
+    for generation_path in log_generations(target):
+        generation_removed = strip_nul_bytes(generation_path)
+        if generation_removed:
+            removed += generation_removed
+            repaired_files += 1
     try:
         os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
         handler = RotatingFileHandler(
-            target, maxBytes=2_000_000, backupCount=3, encoding="utf-8"
+            target, maxBytes=2_000_000, backupCount=_BACKUP_COUNT, encoding="utf-8"
         )
     except OSError:
         return False
@@ -148,10 +215,11 @@ def setup_platform_error_log(path: str | None = None, level: int = logging.WARNI
         root.setLevel(level)
     if removed:
         logging.getLogger(__name__).warning(
-            "Platform error log carried %d NUL byte(s) from an unclean stop and "
-            "was repaired — grep would have reported the whole file as having no "
-            "matches until now",
+            "Platform error log carried %d NUL byte(s) from an unclean stop in "
+            "%d of its generation(s) and was repaired — grep would have reported "
+            "those whole files as having no matches until now",
             removed,
+            repaired_files,
         )
     return True
 
