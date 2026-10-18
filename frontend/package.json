@@ -23,7 +23,7 @@
     "date-fns": "^4.4.0",
     "docx-preview": "^0.4.1",
     "exceljs": "^4.4.0",
-    "framer-motion": "^13.4.3",
+    "framer-motion": "^14.3.0",
     "geist": "^1.7.2",
     "html-to-image": "^1.11.13",
     "lucide-react": "^1.53.0",
