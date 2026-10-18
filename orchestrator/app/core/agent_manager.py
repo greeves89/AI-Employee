@@ -1238,7 +1238,8 @@ class AgentManager:
             return {}
         logger.info("[Zugang] %s laeuft mit %s Zugang",
                     harness, "eigenem" if source == creds.SOURCE_PERSONAL else "Team-")
-        return creds.env_for(harness, secret)
+        return {**creds.env_for(harness, secret),
+                **creds.personal_oauth_env(harness, source, secret)}
 
     async def _warn_model_substituted(self, acc, gewuenscht: str, ersatz: str) -> None:
         """Den Besitzer darauf hinweisen, dass sein Agent auf einem ANDEREN

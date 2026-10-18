@@ -114,6 +114,32 @@ def team_license_allowed() -> bool:
     return bool(getattr(settings, "allow_team_license", True))
 
 
+async def _own_secret(db: AsyncSession, owner_id: str | None, harness: str) -> str | None:
+    """Der eigene Zugang — beim Claude-Abo vorher erneuert, falls er bald abläuft.
+
+    Ohne die Erneuerung bekam ein frisch erstellter Container eine Abschrift, die
+    wenige Stunden später tot war (#999). Scheitert der Weg über die Erneuerung
+    selbst (z. B. ein schlanker Sitzungs-Ersatz ohne ``commit``), gilt der
+    gespeicherte Stand — wie vorher.
+    """
+    if harness == "claude_code":
+        try:
+            from app.core.personal_claude_token import current_claude_token
+            return await current_claude_token(db, owner_id)
+        except Exception:  # noqa: BLE001
+            logger.warning("[Zugang] Erneuerung des eigenen Claude-Zugangs nicht moeglich, "
+                           "gespeicherter Stand gilt", exc_info=True)
+            # Auf Postgres ist die Transaktion nach einem Datenbankfehler
+            # abgebrochen. Ohne rollback scheiterte auch das Lesen unten, resolve
+            # wuerfe, und der Container liefe still auf dem globalen Token — auch
+            # wenn die Teamlizenz gesperrt ist.
+            try:
+                await db.rollback()
+            except Exception:  # noqa: BLE001 — schlanker Sitzungs-Ersatz ohne rollback
+                pass
+    return await personal_credential(db, owner_id, harness)
+
+
 async def resolve(db: AsyncSession, *, owner_id: str | None, mode: str | None,
                   model_provider: str | None) -> tuple[str, str | None, str | None]:
     """``(quelle, harness, geheimnis)`` für diesen Agenten.
@@ -142,7 +168,7 @@ async def resolve(db: AsyncSession, *, owner_id: str | None, mode: str | None,
         except Exception:  # noqa: BLE001
             besitzer = None
     if personal_credentials_allowed(besitzer):
-        own = await personal_credential(db, owner_id, harness)
+        own = await _own_secret(db, owner_id, harness)
         if own:
             return SOURCE_PERSONAL, harness, own
     else:
@@ -179,6 +205,25 @@ async def team_secret(db: AsyncSession, harness: str) -> str | None:
     return None
 
 
+#: Sagt dem Agenten, dass sein Claude-Token aus dem EIGENEN Zugang kommt. Dann
+#: liest er nicht die gemeinsame Token-Datei der Teamlizenz (die hätte Vorrang und
+#: der eigene Zugang wirkte gar nicht), sondern fragt regelmässig
+#: ``GET /agents/{id}/claude-token`` nach dem erneuerten Token (#999).
+PERSONAL_SOURCE_ENV = "CLAUDE_CREDENTIAL_SOURCE"
+
+
+def personal_oauth_env(harness: str | None, source: str, secret: str | None) -> dict[str, str]:
+    """Die Markierung für ein eigenes Claude-OAuth-Token — sonst nichts.
+
+    Ein API-Schlüssel läuft nicht ab und braucht keine Nachfrage; Codex hat seinen
+    eigenen Rückweg (``agent_codex_auth``).
+    """
+    if harness == "claude_code" and source == SOURCE_PERSONAL and secret \
+            and not secret.startswith("sk-ant-api"):
+        return {PERSONAL_SOURCE_ENV: "personal"}
+    return {}
+
+
 def env_for(harness: str, secret: str) -> dict[str, str]:
     """Wie der Zugang im Container ankommt.
 
@@ -191,6 +236,7 @@ def env_for(harness: str, secret: str) -> dict[str, str]:
     if harness == "claude_code":
         # Ein API-Schluessel und ein OAuth-Token sehen unterschiedlich aus und
         # gehoeren in unterschiedliche Variablen; die CLI waehlt danach.
-        key = "ANTHROPIC_API_KEY" if secret.startswith("sk-ant-api") else "CLAUDE_CODE_OAUTH_TOKEN"
-        return {key: secret}
+        if secret.startswith("sk-ant-api"):
+            return {"ANTHROPIC_API_KEY": secret}
+        return {"CLAUDE_CODE_OAUTH_TOKEN": secret}
     return {"CODEX_AUTH_JSON": secret}

@@ -49,6 +49,14 @@ class UserAiCredential(Base):
     #: bezahlten Abo — im Klartext hätte es hier nichts zu suchen.
     secret_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
 
+    #: Nur beim Claude-Abo aus der Browser-Anmeldung: Refresh-Token und Ablaufzeit
+    #: des Access-Tokens in ``secret_encrypted``. Ohne sie lief der eigene Zugang
+    #: nach wenigen Stunden ab und blieb tot (#999). Erneuert wird ausschliesslich
+    #: in :mod:`app.core.personal_claude_token`. Bei eingefügten Tokens und
+    #: API-Schlüsseln bleiben beide leer — dort gibt es nichts zu erneuern.
+    refresh_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     #: Was der Nutzer sieht, damit er seinen Zugang wiedererkennt ("Claude Max",
     #: "ChatGPT Plus privat"). Nie das Geheimnis selbst.
     label: Mapped[str | None] = mapped_column(String(120), nullable=True)

@@ -100,9 +100,21 @@ async def wait_for_new_oauth_token(previous: str, timeout: float = 180.0,
     dann darf der Aufrufer es trotzdem versuchen, statt gar nichts zu tun.
     """
     import asyncio as _asyncio
+    import os as _os
+
+    # Eigenes Claude-Abo (#999): hier schreibt niemand eine Datei. Das neue Token
+    # liegt im Orchestrator und kommt nur per Abruf — also aktiv nachfragen,
+    # statt bis zum naechsten Takt der Hintergrundschleife zu warten. Der Abruf
+    # erneuert dort auch ein abgelaufenes Token.
+    eigenes_abo = _os.environ.get("CLAUDE_CREDENTIAL_SOURCE", "") == "personal"
+    naechster_abruf = 0.0
 
     deadline = _asyncio.get_running_loop().time() + timeout
     while _asyncio.get_running_loop().time() < deadline:
+        if eigenes_abo and _asyncio.get_running_loop().time() >= naechster_abruf:
+            from app import claude_token_sync
+            await claude_token_sync.fetch_once(settings.agent_id)
+            naechster_abruf = _asyncio.get_running_loop().time() + 10.0
         current = get_oauth_token()
         if current and current != previous:
             logger.info("[Auth] Neuer Zugangstoken erkannt — Zug wird wiederholt")
@@ -112,12 +124,35 @@ async def wait_for_new_oauth_token(previous: str, timeout: float = 180.0,
     return None
 
 
+#: Token aus dem EIGENEN Claude-Abo, zuletzt vom Orchestrator geholt
+#: (``app.claude_token_sync``). ``None`` heisst: kein eigenes Abo (mehr) — dann
+#: gilt der bisherige Weg über die gemeinsame Token-Datei.
+_personal_oauth_token: str | None = None
+_personal_oauth_cleared = False
+
+
+def set_personal_oauth_token(token: str | None) -> None:
+    global _personal_oauth_token, _personal_oauth_cleared
+    _personal_oauth_token = token or None
+    _personal_oauth_cleared = not token
+
+
 def get_oauth_token() -> str:
     """Return the most current OAuth token.
 
     Checks the shared volume JSON file first (written by the orchestrator
     after each token refresh), falling back to the env-var based config.
+
+    Ausnahme (#999): Läuft der Agent mit dem EIGENEN Claude-Abo seines Besitzers
+    (``CLAUDE_CREDENTIAL_SOURCE=personal``), gilt dessen Token. Die gemeinsame
+    Datei gehört zur Teamlizenz — hatte sie Vorrang, wirkte das eigene Abo nie,
+    und wo die Teamlizenz gesperrt ist, lief der Agent auf ein fremdes Konto.
     """
+    import os
+
+    if os.environ.get("CLAUDE_CREDENTIAL_SOURCE", "") == "personal" and not _personal_oauth_cleared:
+        # Vor dem ersten erfolgreichen Abruf: die Abschrift aus der Erstellung.
+        return _personal_oauth_token or settings.claude_code_oauth_token
     try:
         with open(SHARED_TOKEN_PATH) as f:
             data = json.load(f)

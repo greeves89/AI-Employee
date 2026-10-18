@@ -171,16 +171,19 @@ class TheLoginIsTheSameAsForAdminsTests(unittest.TestCase):
         self.assertIn('harness="claude_code"', block)
 
     def test_the_token_is_stored_encrypted(self):
+        # Seit #999 schreibt ``apply_token_data`` Access- und Refresh-Token —
+        # beide verschluesselt (Verhalten: test_personal_claude_token_999).
         block = self.API_ME.split('@router.post("/anthropic/exchange")', 1)[1]
-        self.assertIn("encrypt_token(token)", block)
+        self.assertIn("apply_token_data(row, token_data", block)
 
     def test_it_reuses_the_platform_exchange(self):
         """Eine zweite Umsetzung des OAuth-Austauschs waere die naechste Stelle,
         die auseinanderlaeuft."""
-        # Seit der Umstellung auf die vorhandene Abhaengigkeit heisst der
-        # Aufruf ``service.exchange_code`` — gebaut wird der Dienst einmal in
-        # ``_oauth_service``, genau wie in integrations.py.
-        self.assertIn("service.exchange_code(", self.API_ME)
+        # Der Austausch selbst bleibt der der Plattform. Seit #999 aber OHNE
+        # Speichern: ``service.exchange_code`` legte das private Abo in die
+        # globale Anthropic-Integration, also in die Teamlizenz der Anlage.
+        self.assertIn("service.exchange_code_tokens(", self.API_ME)
+        self.assertNotIn("service.exchange_code(", self.API_ME)
 
     def test_the_frontend_offers_both_logins(self):
         for fn in ("startMyAnthropicLogin", "exchangeMyAnthropicLogin", "startMyCodexLogin"):

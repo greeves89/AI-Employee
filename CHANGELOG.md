@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.376.18] - 2026-10-18
+
+### Behoben
+- **Agenten mit dem eigenen Claude-Abo hörten nach wenigen Stunden auf zu arbeiten.** Wer sein persönliches Claude-Abo per Browser-Anmeldung hinterlegt hatte, bekam nach einigen Stunden nur noch „401 OAuth access token has expired". Neu anmelden half jeweils nur bis zum nächsten Ablauf, Neustarten oder Neuerstellen gar nicht. Der Grund: Gespeichert wurde nur ein kurzlebiges Zugangstoken, ohne den Schlüssel zum Erneuern, und niemand hat es erneuert. Jetzt werden beide gespeichert, die Plattform erneuert das Token kurz vor dem Ablauf, und laufende Agenten holen sich das neue Token jede Minute selbst ab. Bei einer Ablehnung fragen sie sofort nach.
+- **Die persönliche Anmeldung hat die Teamlizenz der ganzen Anlage ersetzt.** Die Browser-Anmeldung für das eigene Abo hat zusätzlich den gemeinsamen Claude-Zugang überschrieben. Danach liefen alle Agenten auf der Teamlizenz still über das private Abo dieses Nutzers, auf seine Kosten und sein Kontingent. Die persönliche Anmeldung landet jetzt ausschließlich im eigenen Zugang.
+- **Das eigene Abo wirkte bisher gar nicht, solange eine Teamlizenz eingerichtet war.** Der Agent bevorzugte immer die gemeinsame Token-Datei der Teamlizenz. Ein Agent mit eigenem Abo nutzt jetzt dessen Token.
+
+**Einmal nötig nach dem Update:** Wer sein Claude-Abo vor dieser Version per Browser angemeldet hat, meldet sich einmal neu an und erstellt seine Agenten danach neu. Ältere Zugänge enthalten den Schlüssel zum Erneuern nicht. Administratoren sollten außerdem prüfen, auf welches Konto die Teamlizenz zeigt: Hat sich bei ihnen schon jemand mit seinem eigenen Abo angemeldet, steht dort vermutlich dessen Konto. Dann die Teamlizenz unter Einstellungen → Modelle neu verbinden.
+
+---
+
 ## [1.376.17] - 2026-10-18
 
 ### Behoben

@@ -135,6 +135,19 @@ class OAuthService:
 
     async def exchange_code(self, provider_name: str, code: str, state: str) -> OAuthIntegration:
         """Exchange authorization code for tokens, encrypt and store them."""
+        user_id, token_data = await self.exchange_code_tokens(provider_name, code, state)
+        return await self.persist_tokens(provider_name, user_id, token_data)
+
+    async def exchange_code_tokens(
+        self, provider_name: str, code: str, state: str
+    ) -> tuple[str | None, dict]:
+        """Den Code eintauschen, OHNE etwas zu speichern — ``(user_id, token_data)``.
+
+        Der eigene Claude-Zugang eines Nutzers (#999) braucht genau das: Lief
+        seine Anmeldung über :meth:`exchange_code`, landete sie in der EINEN
+        globalen Anthropic-Integration — der Teamlizenz — und alle Agenten der
+        Anlage arbeiteten danach still auf seinem privaten Abo.
+        """
         state_key = f"oauth:state:{state}"
         raw = await self.redis.client.get(state_key)
         if not raw:
@@ -212,7 +225,7 @@ class OAuthService:
                 raise ValueError(f"Token exchange failed: {token_response.status_code}")
             token_data = token_response.json()
 
-        return await self.persist_tokens(provider_name, user_id, token_data)
+        return user_id, token_data
 
     async def persist_tokens(
         self, provider_name: str, user_id: str | None, token_data: dict
