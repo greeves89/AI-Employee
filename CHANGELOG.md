@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.376.17] - 2026-10-18
+
+### Behoben
+- **Die Reparatur des Fehlerlogs erreichte nur die aktive Datei — in den rotierten Generationen blieben die Loecher liegen.** Die Haertung aus 1.376.16 raeumt `/shared/platform-errors.log` beim Start auf, bekam aber genau EINEN Pfad. Entsteht ein Loch NACH dem Start und rotiert die Datei vorher, wandert es nach `.1` — und dort hat es nie wieder jemand angefasst. Auf einer laufenden Anlage trugen `.1` (393 Bytes, 07.09.) und `.3` (3.219 Bytes, 06.09.) Loecher aus dem September. Der Start repariert jetzt alle Generationen, auch solche, die von einer frueher groesseren Rotationstiefe uebrig sind. Gesunde Dateien bleiben unveraendert, und Nachbardateien wie `.log.gz`, `.log.bak` oder das Log eines anderen Dienstes werden nicht angefasst.
+- **Die Auswahl der zu reparierenden Dateien ist gehaertet.** Eine Datei im Logverzeichnis, die nur wie eine Generation aussieht, wird nicht angefasst: nur ASCII-Ziffern zaehlen als Generationsnummer (`…log.٣` mit arabisch-indischer Drei galt vorher als `.3`), und neben Verzeichnissen und Symlinks werden jetzt auch **harte Verweise** abgelehnt — ein `…log.2`, das hart auf das Log eines anderen Dienstes zeigt, haette dessen Datei umgeschrieben. Die Reparatur meldet sich ausserdem auf jedem Weg, auf dem sie etwas geaendert hat; ein stilles Umschreiben eines forensischen Logs liesse sich hinterher von niemandem nachvollziehen.
+- **Die Anleitung fuer Agenten nennt jetzt alle Generationen.** Sie verwies auf `/shared/platform-errors.log` — die Datei rotiert aber bei 2 MB, sodass eine Suche darin nur den heutigen Tag misst und nicht den Zeitraum, den man gemeint hat. Sie nennt jetzt `grep -a MUSTER /shared/platform-errors.log*`.
+- **Praezisierung zur Aussage aus 1.376.16 („drei von vier Generationen waren blind"):** nachgemessen am 18.10.2026 gegen das `grep` im Agentenbild (ugrep 7.8.4) haengt die Stille davon ab, WO das Loch sitzt — die Datei gilt genau dann als binaer (keine Ausgabe, Rueckgabewert 1), wenn das erste NUL-Byte unter Position 262144 liegt; eingeklammert: 262143 still, 262144 lesbar. Von den echten Dateien lag nur die AKTIVE darueber (erstes NUL bei 211665), `.1` und `.3` antworteten weiter. Die frueher pauschale Formulierung war also zu weit. Am Handlungsbedarf aendert das nichts: die Lochposition ist dort, wo die Anlage unsauber stoppte, und faellt in einer 2-MB-Generation etwa jedes achte Mal in dieses Fenster — und GNU grep, das die meisten Rechner mitbringen, behandelt JEDE Datei mit einem NUL-Byte als binaer.
+
+---
+
 ## [1.376.16] - 2026-10-17
 
 ### Behoben

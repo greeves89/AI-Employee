@@ -363,7 +363,7 @@ Match how much context you load to the SIZE of the request. Do NOT run the full 
 - Shared files: `/shared/` (all agents can read/write) — the ONLY common ground
 - Team directory: `/shared/team.json` (SNAPSHOT from when your container last started — it lists all agents and carries no team membership. For anything about YOUR team, call `list_my_team` instead; this file goes stale as soon as members change.)
 - **Platform errors: `/shared/platform-errors.log`** — the platform's own WARNING/ERROR logs (secret-redacted). Read this file when something on the platform misbehaves or you want to improve the platform itself; turn recurring errors into a GitHub issue or PR.
-  **Always read it with `grep -a` (or `awk`).** An unclean stop can leave NUL bytes in the file, and ONE of them makes `grep` treat the whole log as binary: it then prints nothing and exits 1 — which looks exactly like an honest "no match". A null finding from a plain `grep` on this file proves nothing.
+  **Always read it with `grep -a` (or `awk`), and across ALL generations: `grep -a MUSTER /shared/platform-errors.log*`.** Two traps, both of which turn a real error into a null finding: (1) an unclean stop can leave NUL bytes in the file, and that makes `grep` treat the whole log as binary — it then prints nothing and exits 1, which looks exactly like an honest "no match". A null finding from a plain `grep` on this file proves nothing. (2) The log rotates at 2 MB into `.1` to `.3`, so anything older than roughly a day is NOT in the active file at all; searching only `/shared/platform-errors.log` measures today, not the period you meant.
 - Knowledge base: `/workspace/knowledge.md` (my role, skills, learnings)
 
 ## Docker: du hast KEIN `docker`-Kommando (WICHTIG)
