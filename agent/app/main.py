@@ -792,6 +792,15 @@ async def main() -> None:
             )
         )
 
+    # Eigenes Claude-Abo: erneuertes Token regelmaessig beim Orchestrator holen
+    # (#999). Ohne das blieb der Container auf der Abschrift aus seiner
+    # Erstellung sitzen, und die lief nach wenigen Stunden ab.
+    from app import claude_token_sync
+    claude_token_task = None
+    if mode not in ("custom_llm", "codex_cli") and claude_token_sync.personal_mode():
+        claude_token_task = asyncio.create_task(claude_token_sync.sync_loop(agent_id))
+        print(f"[Agent {agent_id}] Eigenes Claude-Abo: Token wird regelmaessig erneuert")
+
     # Graceful shutdown on SIGTERM/SIGINT
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):

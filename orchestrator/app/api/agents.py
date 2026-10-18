@@ -3753,6 +3753,43 @@ async def get_agent_mcp_credentials(
     }
 
 
+@router.get("/{agent_id}/claude-token")
+async def get_agent_claude_token(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    agent_auth: dict = Depends(verify_agent_token),
+):
+    """Das aktuelle Token aus dem EIGENEN Claude-Abo des Besitzers (#999).
+
+    Der laufende Agent fragt hier regelmässig nach. Vorher hatte er nur die
+    Abschrift aus seiner Erstellung, und die lief nach wenigen Stunden ab. Die
+    Erneuerung selbst passiert hier im Orchestrator; der Refresh-Token verlässt
+    ihn nie.
+
+    ``source`` ist ``personal``, wenn dieser Agent wirklich mit dem eigenen Abo
+    läuft — sonst kommt kein Token zurück, und der Agent bleibt beim bisherigen
+    Weg (Teamlizenz).
+    """
+    if agent_auth["agent_id"] != agent_id:
+        raise HTTPException(status_code=403, detail="Das Agenten-Token passt nicht zum Zielagenten.")
+    from app.core import agent_credentials as creds
+
+    agent = await db.get(Agent, agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
+    # Nur der Claude-Code-Modus kann mit einem eigenen Claude-Abo laufen; dieselbe
+    # Zuordnung wie AgentManager._model_provider_for_mode.
+    mode = agent.mode or "claude_code"
+    if mode != "claude_code":
+        return {"source": creds.SOURCE_NONE, "access_token": None}
+    source, harness, secret = await creds.resolve(
+        db, owner_id=agent.user_id, mode=mode, model_provider="anthropic",
+    )
+    if not creds.personal_oauth_env(harness, source, secret):
+        return {"source": source, "access_token": None}
+    return {"source": source, "access_token": secret}
+
+
 # --- Volume Mounts ---
 
 

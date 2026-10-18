@@ -149,6 +149,11 @@ async def upsert_my_credential(
         row = UserAiCredential(user_id=user.id, harness=harness)
         db.add(row)
     row.secret_encrypted = encrypt_token(secret)
+    # Ein eingefügtes Token hat keinen Refresh-Token. Ein stehengebliebener aus
+    # einer früheren Browser-Anmeldung gehörte zu einem anderen Token — die
+    # Erneuerung würde damit das eben Eingefügte überschreiben (#999).
+    row.refresh_token_encrypted = None
+    row.expires_at = None
     row.label = (body.label or "").strip() or None
     # Ein neuer Zugang ist ungeprueft. „ok" zu behaupten, waere geraten — und beim
     # naechsten Fehlschlag suchte jemand an der falschen Stelle.
@@ -261,26 +266,33 @@ async def exchange_anthropic_login(
 ):
     """Den eingefuegten Code eintauschen und als EIGENEN Zugang hinterlegen.
 
-    Der Austausch selbst ist derselbe wie beim Administrator — er legt dabei
-    zusaetzlich die uebliche Integration an. Entscheidend ist der Schritt
-    danach: das Zugangstoken wandert in ``user_ai_credentials``, denn nur von
-    dort liest ``agent_credentials`` beim Bau eines Containers. Ohne diesen
-    Schritt haette der Nutzer sich erfolgreich angemeldet — und seine Agenten
-    liefen trotzdem ohne seinen Zugang.
+    Der Austausch selbst ist derselbe wie beim Administrator, gespeichert wird
+    aber NUR in ``user_ai_credentials`` — nie in der globalen Anthropic-
+    Integration, die die Teamlizenz ist (#999). Mit dem Zugangstoken landen
+    Refresh-Token und Ablaufzeit im Zugang; erneuert wird in
+    :mod:`app.core.personal_claude_token`.
     """
     _eigene_zugaenge_erlaubt(user)
-    from app.core.encryption import decrypt_token
+    from datetime import datetime, timezone
+
+    from app.core.personal_claude_token import apply_token_data
 
     code = (body.code or "").split("#")[0].strip()
     if not code:
         raise HTTPException(status_code=400, detail="Kein Code eingefuegt")
 
+    # Nur eintauschen, NICHT als Integration speichern (#999): Anthropic ist ein
+    # globaler Anbieter, ``exchange_code`` haette die Teamlizenz der ganzen Anlage
+    # durch dieses private Abo ersetzt.
     try:
-        integration = await service.exchange_code("anthropic", code, body.state)
+        state_user, token_data = await service.exchange_code_tokens("anthropic", code, body.state)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    # Die Anmeldung muss von DIESEM Nutzer gestartet worden sein (/anthropic/start
+    # legt seine Kennung in den state) — sonst landete ein fremdes Abo hier.
+    if state_user is not None and str(state_user) != str(user.id):
+        raise HTTPException(status_code=400, detail="Anmeldung gehoert zu einem anderen Nutzer")
 
-    token = decrypt_token(integration.access_token_encrypted)
     row = (await db.execute(
         select(UserAiCredential).where(
             UserAiCredential.user_id == user.id,
@@ -290,8 +302,15 @@ async def exchange_anthropic_login(
     if row is None:
         row = UserAiCredential(user_id=user.id, harness="claude_code")
         db.add(row)
-    row.secret_encrypted = encrypt_token(token)
-    row.label = (body.label or "").strip() or integration.account_label or "Claude-Abo"
+    # Access-Token, Refresh-Token und Ablaufzeit zusammen — sonst stirbt der
+    # Zugang, sobald das Access-Token abläuft. Neuer Login, also auch kein
+    # Refresh-Token aus einem frueheren Konto stehen lassen.
+    row.refresh_token_encrypted = None
+    try:
+        apply_token_data(row, token_data, datetime.now(timezone.utc))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Anmeldung lieferte kein Zugangstoken")
+    row.label = (body.label or "").strip() or row.label or "Claude-Abo"
     row.last_status = "ok"
     await db.commit()
     return {"status": "connected", "label": row.label,

@@ -127,7 +127,10 @@ class TheResolverIsActuallyWiredTests(unittest.IsolatedAsyncioTestCase):
             env = await mgr._owner_credential_env("u1", "claude_code", "anthropic")
         finally:
             creds.resolve = orig
-        self.assertEqual(env, {"CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat01-meins"})
+        # Seit #999 mit Markierung: der Agent holt dann das erneuerte Token beim
+        # Orchestrator, statt die gemeinsame Datei der Teamlizenz zu lesen.
+        self.assertEqual(env, {"CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat01-meins",
+                               "CLAUDE_CREDENTIAL_SOURCE": "personal"})
 
     async def test_a_broken_lookup_does_not_stop_the_agent(self):
         """Ein Fehler beim Aufloesen darf keinen Agenten am Start hindern —

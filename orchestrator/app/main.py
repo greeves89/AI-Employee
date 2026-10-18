@@ -1621,9 +1621,18 @@ async def lifespan(app: FastAPI):
                 "CREATE INDEX IF NOT EXISTS ix_user_ai_credentials_user "
                 "ON user_ai_credentials (user_id)"
             ))
+            # #999: Refresh-Token und Ablaufzeit fuer das eigene Claude-Abo.
+            await conn.execute(_txt_uc(
+                "ALTER TABLE user_ai_credentials "
+                "ADD COLUMN IF NOT EXISTS refresh_token_encrypted text"
+            ))
+            await conn.execute(_txt_uc(
+                "ALTER TABLE user_ai_credentials "
+                "ADD COLUMN IF NOT EXISTS expires_at timestamptz"
+            ))
         logger.info("user_ai_credentials table ensured")
     except Exception as e:
-        logger.warning(f"Could not ensure app_shares table: {e}")
+        logger.warning(f"Could not ensure user_ai_credentials table: {e}")
 
     # Ensure the chat_sessions table (per-chat title/pin metadata) on every
     # startup, independent of Alembic (10 heads → `upgrade head` may not run the
