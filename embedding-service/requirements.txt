@@ -7,7 +7,7 @@ sentence-transformers==6.1.0
 # when none is available"). Deshalb exakt gepinnt: Dependabot schlaegt jede neue
 # Version als PR vor, und der Workflow "Frischer Image-Bau" (fresh-build.yml) prueft
 # sie gegen das torch im Dockerfile, bevor sie in main landet -- und jede Nacht erneut.
-transformers==5.19.0
+transformers==5.20.1
 pydantic==2.14.1
 # NOTE: torch is installed separately in the Dockerfile from the CPU-only
 # PyTorch index — the default PyPI wheel bundles ~2 GB of NVIDIA CUDA
