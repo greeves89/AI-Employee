@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.377.4] - 2026-10-21
+
+### Geändert
+- pydantic im Embedding-Service auf 2.14.1 aktualisiert (Fehlerbehebungen in der Validierung: TypedDict-Vererbung, Decimal-Ziffernobergrenze, Bereichspruefung fuer timedelta, benannte Tupel in Sequenzen; dazu zwei Beschleunigungen der Modellvalidierung). Die Felder des Embedding-Service nutzen nur Text, Wahrheitswerte, Listen und Ganzzahlen - keine der verschaerften Pruefungen greift dort.
+
 ## [1.377.3] - 2026-10-21
 
 ### Behoben
