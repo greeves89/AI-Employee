@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.377.3] - 2026-10-21
+
+### Behoben
+- **Ein Agent konnte nach einem abgestürzten Lauf für unbegrenzte Zeit als "beschäftigt" gelten — jeder fällige Zeitplan wurde dann endlos übersprungen.** Das Signal, an dem der Zeitplaner erkennt, dass ein Agent gerade arbeitet, hatte keine Altersgrenze: Startete ein Lauf eine Aufgabe und stürzte danach ab, bevor er sich wieder als frei meldete, blieb der Agent dauerhaft "beschäftigt" — auf der eigenen Anlage gemessen 29 Stunden am Stück, über zehn Zeitpläne hinweg, mehr als 30 ersatzlos verworfene Termine (Podcast, Blog, Integrations-Scan, Postfach-Sichtung und mehr). Der Zeitplaner prüft jetzt bei einem gemeldeten "beschäftigt" zusätzlich, ob die zugehörige Aufgabe laut Datenbank wirklich noch läuft und innerhalb der letzten drei Stunden ein Lebenszeichen gesendet hat — ein echter, lange laufender Auftrag bleibt davon unberührt, nur ein verwaister Zustand ohne laufende Aufgabe dahinter gilt nicht mehr als Besetzt.
+
+---
+
 ## [1.377.1] - 2026-10-21
 
 ### Geändert
