@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.377.1] - 2026-10-21
+
+### Geändert
+- fastapi im Embedding-Service auf 0.143.2 aktualisiert (Fehlerbehebung: blockierende Pruefung von Frontend-Fallback-Dateien).
+
 ## [1.377.0] - 2026-10-18
 
 ### Geändert
