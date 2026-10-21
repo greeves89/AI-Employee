@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.377.5] - 2026-10-22
+
+### Behoben
+- **Die Microsoft-365-Verbindung (Postfach, Kalender, Teams) konnte nach einer erneuten Anmeldung trotzdem weiter abgelaufen bleiben.** Beim Login über Microsoft wurde der frisch erhaltene Zugriffs-Token nur dann gespeichert, wenn Microsoft bei genau diesem Login auch einen neuen Erneuerungs-Token mitschickte — was nicht bei jeder Anmeldung passiert. Fehlte er, verwarf das System den kompletten frischen Zugang und liess den alten, bereits abgelaufenen Zustand stehen; die Verbindung musste dann von Hand unter Einstellungen → Integrationen neu aufgebaut werden, bis der nächste Login zufällig wieder einen Erneuerungs-Token lieferte. Der frische Zugriffs-Token wird jetzt unabhängig davon gespeichert, ein bereits vorhandener Erneuerungs-Token bleibt dabei erhalten.
+
 ## [1.377.4] - 2026-10-21
 
 ### Geändert
