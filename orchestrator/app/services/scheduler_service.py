@@ -30,6 +30,7 @@ from app.services.watchdog import (
     find_silently_advanced_schedules,
     silently_advanced_marker,
     is_sentinel_stale,
+    is_task_stale,
     find_stale_tasks,
     mark_task_stale,
     md_escape,
@@ -967,6 +968,21 @@ class SchedulerService:
             is_busy_with_task = queue_depth > 0 or (
                 current_task and not current_task.startswith("chat:")
             )
+            if is_busy_with_task and queue_depth == 0 and current_task:
+                abgestanden = await self._current_task_abgestanden(
+                    db, schedule.agent_id, current_task, now,
+                )
+                if abgestanden:
+                    # current_task ohne Warteschlange, aber laut DB nicht (mehr)
+                    # frisch beatmet: der Lauf, der ihn gesetzt hat, ist nie bis
+                    # zum naechsten publish_status("idle") gekommen und dieses
+                    # Signal bliebe sonst unbegrenzt "belegt" stehen (#1010).
+                    logger.warning(
+                        "[Scheduler] Proactive %s — Belegt-Signal fuer Agent %s ignoriert: "
+                        "current_task=%r ohne frisches Lebenszeichen (abgestanden, #1010)",
+                        schedule.name, schedule.agent_id, current_task,
+                    )
+                    is_busy_with_task = False
             if is_busy_with_task:
                 schedule.next_run_at = await self._retry_or_advance(
                     schedule, now, reason="busy",
@@ -1148,6 +1164,20 @@ class SchedulerService:
             is_busy_with_task = queue_depth > 0 or (
                 current_task and not current_task.startswith("chat:")
             )
+            if is_busy_with_task and queue_depth == 0 and current_task:
+                abgestanden = await self._current_task_abgestanden(
+                    db, schedule.agent_id, current_task, now,
+                )
+                if abgestanden:
+                    # Gleiche Regel wie im Proactive-Pfad oben (#1010): ein
+                    # current_task ohne frisches DB-Lebenszeichen ist kein
+                    # echtes Belegt, sondern ein Lauf, der nie "idle" gemeldet hat.
+                    logger.warning(
+                        "[Scheduler] %s — Belegt-Signal fuer Agent %s ignoriert: "
+                        "current_task=%r ohne frisches Lebenszeichen (abgestanden, #1010)",
+                        schedule.name, schedule.agent_id, current_task,
+                    )
+                    is_busy_with_task = False
             if is_busy_with_task:
                 await self.redis.release_dispatch_lock(schedule.agent_id, lock_token)
                 schedule.next_run_at = await self._retry_or_advance(
@@ -1761,6 +1791,42 @@ class SchedulerService:
         from app.config import settings as _cfg
 
         return timedelta(minutes=max(1, int(getattr(_cfg, "watchdog_stale_task_minutes", 180))))
+
+    async def _current_task_abgestanden(
+        self, db: AsyncSession, agent_id: str, current_task: str, now: datetime,
+    ) -> bool:
+        """True, wenn ``current_task`` aus dem Redis-Status-Hash NICHT (mehr)
+        zu einer wirklich laufenden, frisch beatmeten Aufgabe gehoert (#1010).
+
+        Redis haelt ``current_task``/``last_heartbeat`` nur bei STATUSWECHSEL
+        fest (``log_publisher.publish_status``) — bleibt der Prozess, der es
+        gesetzt hat, vor dem naechsten Wechsel haengen (Absturz, OOM-Kill),
+        wuerde ein eigener Redis-Zeitstempel das Belegt-Signal unbegrenzt
+        stehen lassen. Waehrend ein Task wirklich laeuft, zieht aber
+        ``task:heartbeat`` (alle ~60s, ``task_router.handle_task_heartbeat``,
+        #692) ``Task.updated_at`` in der DB nach — DAS ist die einzige Quelle,
+        die "haengt" sauber von "arbeitet nur lange" trennt (dieselbe
+        Schwelle wie der DB-Watchdog aus #838). Nur echte Task-IDs pruefen:
+        ``room:``/``msg:`` sind Meeting-/Nachrichten-Marker ohne Task-Zeile
+        und bleiben bewusst unangetastet ("busy", wie bisher) — dieses Issue
+        ist an gestorbenen SCHEDULED-TASK-Laeufen gemessen, nicht an diesen.
+        """
+        if current_task.startswith("room:") or current_task.startswith("msg:"):
+            return False
+        from app.models.task import TaskStatus
+
+        try:
+            task = (await db.execute(
+                select(Task).where(Task.id == current_task, Task.agent_id == agent_id)
+            )).scalar_one_or_none()
+            if task is None or task.status != TaskStatus.RUNNING:
+                # Redis nennt eine Aufgabe, die laut DB gar nicht (mehr)
+                # laeuft — eine Datenleiche, kein echtes Belegt.
+                return True
+            return is_task_stale(task, now, self._stale_schwelle())
+        except Exception:  # noqa: BLE001 — im Zweifel nicht faelschlich entsperren
+            logger.debug("[Scheduler] Belegt-Abfrage fehlgeschlagen", exc_info=True)
+            return False
 
     async def _stale_task_count(self, db: AsyncSession, agent_id: str, now: datetime) -> int:
         """Wie viele Aufgaben dieses Agenten haengen? Nutzt die Watchdog-Definition,
