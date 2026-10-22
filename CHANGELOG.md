@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.377.6] - 2026-10-22
+
+### Geändert
+- Die erlaubte Versionsspanne für die Bedrock-Runtime-Anbindung (Sprachein-/ausgabe über Nova Sonic) im Orchestrator auf `aws-sdk-bedrock-runtime` bis 0.13 erweitert (zuvor bis 0.12). Keine eigene Codeänderung nötig; Bild-Neubau und Startprobe liefen gegen die neu erlaubte Version durch.
+
 ## [1.377.5] - 2026-10-22
 
 ### Behoben
