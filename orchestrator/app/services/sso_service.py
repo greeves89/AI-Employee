@@ -272,8 +272,23 @@ class SSOService:
         # requests the full Graph scopes + offline_access), persist them so MS
         # Graph is usable right after login — no separate "connect M365" step.
         # Reuses OAuthService storage so tokens live in exactly one place.
+        #
+        # Persist whenever an access_token came back, NOT only when this specific
+        # exchange also returned a refresh_token (#1009): persist_tokens() already
+        # keeps any EXISTING refresh_token when the response omits one, so gating
+        # the whole call on refresh_token's presence just throws away a perfectly
+        # valid, longer-lived access_token on logins where Microsoft didn't rotate
+        # the refresh_token — leaving the OLD access_token to expire with nothing
+        # refreshing it. Log when that happens so a real "no refresh token at all"
+        # case (first-ever login without offline_access consent) stays visible.
         from app.models.oauth_integration import PER_USER_PROVIDERS
-        if provider_name in PER_USER_PROVIDERS and token_data.get("refresh_token"):
+        if provider_name in PER_USER_PROVIDERS and access_token:
+            if not token_data.get("refresh_token"):
+                logger.warning(
+                    "%s login for user %s returned no refresh_token — keeping any "
+                    "existing one on file instead of discarding the fresh access_token",
+                    scrub_log(provider_name), scrub_log(email),
+                )
             try:
                 from app.services.oauth_service import OAuthService
                 await OAuthService(self.db, self.redis).persist_tokens(

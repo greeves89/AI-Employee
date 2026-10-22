@@ -5,6 +5,33 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.377.6] - 2026-10-22
+
+### Geändert
+- Die erlaubte Versionsspanne für die Bedrock-Runtime-Anbindung (Sprachein-/ausgabe über Nova Sonic) im Orchestrator auf `aws-sdk-bedrock-runtime` bis 0.13 erweitert (zuvor bis 0.12). Keine eigene Codeänderung nötig; Bild-Neubau und Startprobe liefen gegen die neu erlaubte Version durch.
+
+## [1.377.5] - 2026-10-22
+
+### Behoben
+- **Die Microsoft-365-Verbindung (Postfach, Kalender, Teams) konnte nach einer erneuten Anmeldung trotzdem weiter abgelaufen bleiben.** Beim Login über Microsoft wurde der frisch erhaltene Zugriffs-Token nur dann gespeichert, wenn Microsoft bei genau diesem Login auch einen neuen Erneuerungs-Token mitschickte — was nicht bei jeder Anmeldung passiert. Fehlte er, verwarf das System den kompletten frischen Zugang und liess den alten, bereits abgelaufenen Zustand stehen; die Verbindung musste dann von Hand unter Einstellungen → Integrationen neu aufgebaut werden, bis der nächste Login zufällig wieder einen Erneuerungs-Token lieferte. Der frische Zugriffs-Token wird jetzt unabhängig davon gespeichert, ein bereits vorhandener Erneuerungs-Token bleibt dabei erhalten.
+
+## [1.377.4] - 2026-10-21
+
+### Geändert
+- pydantic im Embedding-Service auf 2.14.1 aktualisiert (Fehlerbehebungen in der Validierung: TypedDict-Vererbung, Decimal-Ziffernobergrenze, Bereichspruefung fuer timedelta, benannte Tupel in Sequenzen; dazu zwei Beschleunigungen der Modellvalidierung). Die Felder des Embedding-Service nutzen nur Text, Wahrheitswerte, Listen und Ganzzahlen - keine der verschaerften Pruefungen greift dort.
+
+## [1.377.3] - 2026-10-21
+
+### Behoben
+- **Ein Agent konnte nach einem abgestürzten Lauf für unbegrenzte Zeit als "beschäftigt" gelten — jeder fällige Zeitplan wurde dann endlos übersprungen.** Das Signal, an dem der Zeitplaner erkennt, dass ein Agent gerade arbeitet, hatte keine Altersgrenze: Startete ein Lauf eine Aufgabe und stürzte danach ab, bevor er sich wieder als frei meldete, blieb der Agent dauerhaft "beschäftigt" — auf der eigenen Anlage gemessen 29 Stunden am Stück, über zehn Zeitpläne hinweg, mehr als 30 ersatzlos verworfene Termine (Podcast, Blog, Integrations-Scan, Postfach-Sichtung und mehr). Der Zeitplaner prüft jetzt bei einem gemeldeten "beschäftigt" zusätzlich, ob die zugehörige Aufgabe laut Datenbank wirklich noch läuft und innerhalb der letzten drei Stunden ein Lebenszeichen gesendet hat — ein echter, lange laufender Auftrag bleibt davon unberührt, nur ein verwaister Zustand ohne laufende Aufgabe dahinter gilt nicht mehr als Besetzt.
+
+---
+
+## [1.377.1] - 2026-10-21
+
+### Geändert
+- fastapi im Embedding-Service auf 0.143.2 aktualisiert (Fehlerbehebung: blockierende Pruefung von Frontend-Fallback-Dateien).
+
 ## [1.377.0] - 2026-10-18
 
 ### Geändert
