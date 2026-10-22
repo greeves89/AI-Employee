@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.377.7] - 2026-10-22
+
+### Geändert
+- Mehrere Frontend-Abhängigkeiten im patch- und minor-Bereich aktualisiert: Radix-UI-Komponenten (Dialog, Dropdown-Menu, Select, Slot, Tabs, Toast), lucide-react, mermaid, next, react/react-dom, @types/node und postcss. Keine eigene Codeänderung nötig; Build und Typecheck liefen gegen die neuen Versionen durch.
+
 ## [1.377.6] - 2026-10-22
 
 ### Geändert
