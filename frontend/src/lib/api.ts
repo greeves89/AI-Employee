@@ -3881,6 +3881,15 @@ export async function updateSessionCapabilities(
   });
 }
 
+/** Der Bridge-Sitzung einen Agenten zuordnen (null = keiner). Mitdenken und
+ *  Regeln ohne eigenen Agenten nutzen diesen Agenten. */
+export async function assignComputerUseAgent(sessionId: string, agentId: string | null): Promise<ComputerUseSession> {
+  return fetchJSON(`${getBase()}/computer-use/sessions/${sessionId}/agent`, {
+    method: "PATCH",
+    body: JSON.stringify({ agent_id: agentId }),
+  });
+}
+
 /* Mitdenker (#1019): Regeln „Wenn ich in X bin, biete Y an“ — die Bridge
    gleicht sie lokal ab und zeigt das Angebot im Overlay. */
 

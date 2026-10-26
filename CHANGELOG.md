@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.378.3] - 2026-10-26
+
+### Behoben
+- **Mitdenken ließ sich über die Oberfläche nicht nutzen.** Es braucht einen Agenten an der Bridge-Sitzung, die Oberfläche bot aber keinen Weg, ihn zuzuordnen; und beim Zuordnen hätte der Server „Mitsehen“ auf den Agenten-Standard gekürzt. Jetzt ordnet „Mitdenken“ auf der Seite eines Agenten genau diesen Agenten zu, Regeln von dort gehören diesem Agenten, und „Mitsehen“ bleibt beim Zuordnen stehen — es ist die Entscheidung des Menschen über seinen Rechner, keine Fähigkeit des Agenten.
+- **Menüleiste zeigte „nicht verbunden“, obwohl die Bridge verbunden war.** Die Statuszeile wurde seit jeher nur beim Start gesetzt; sie folgt jetzt demselben Zustand wie das Hauptfenster.
+
+### Geändert
+- **Neuer Look der Bridge-Fenster (macOS und Windows):** App-Symbol im Kopf, großer Verbindungsstatus mit einer Hauptaktion (Verbinden oder Trennen), Bereich „Mitsehen“ mit Mitdenken-Schalter, runde Eingabefelder und Knöpfe in Markenfarbe. Das Anmeldefenster ersetzt das Hauptfenster, solange es offen ist, statt darüber zu liegen.
+- App-Symbol in der von macOS erwarteten Form (abgerundet, mit Rand und Schatten).
+- Echte Umlaute in allen sichtbaren Texten der Bridge.
+
 ## [1.378.2] - 2026-10-26
 
 ### Behoben

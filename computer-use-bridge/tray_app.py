@@ -695,9 +695,12 @@ def _label(cv, text, x, y, w, h, size=13, bold=False, muted=False, color=None):
 def _input(cv, x, y, w, placeholder="", secure=False, value=""):
     from AppKit import NSTextField, NSSecureTextField, NSFont
     cls = NSSecureTextField if secure else NSTextField
-    f = cls.alloc().initWithFrame_(((x, y), (w, 26)))
+    # Runde Felder (NSTextFieldRoundedBezel) mit etwas Luft — die flachen
+    # 26-Punkt-Felder waren der zweite Grund, warum die Dialoge „alt“ wirkten.
+    f = cls.alloc().initWithFrame_(((x, y - 3), (w, 30)))
+    f.setBezelStyle_(1)
     f.cell().setPlaceholderString_(placeholder)
-    f.setFont_(NSFont.systemFontOfSize_(13))
+    f.setFont_(NSFont.systemFontOfSize_(14))
     if value:
         f.setStringValue_(value)
     cv.addSubview_(f)
@@ -746,13 +749,11 @@ def _install_edit_menu() -> None:
 
 
 def _button(cv, title, x, y, w=120, h=28, key="", style=1):
-    from AppKit import NSButton
-    b = NSButton.alloc().initWithFrame_(((x, y), (w, h)))
-    b.setTitle_(title)
-    b.setBezelStyle_(style)
+    """Knopf der Dialoge — als Pille: die Eingabetaste-Aktion in Markenfarbe,
+    alles andere dezent. Ersetzt die grauen System-Knoepfe an allen Stellen."""
+    b = _pill_button(cv, title, x, y - 4, w, h=max(h, 34), primary=(key == "\r"))
     if key:
         b.setKeyEquivalent_(key)
-    cv.addSubview_(b)
     return b
 
 
@@ -760,7 +761,28 @@ def _button(cv, title, x, y, w=120, h=28, key="", style=1):
 # den Screenshots WISSEN, dass es sauber rendert. Ein Ton fuer alle
 # Primaeraktionen, damit die Oberflaeche eine erkennbare Farbe hat statt lauter
 # grauer System-Knoepfe (der Hauptgrund, warum die App „alt" wirkte).
-_ACCENT_RGB = (0.06, 0.46, 0.98)
+_ACCENT_RGB = (0.01, 0.47, 0.78)   # Blau des App-Symbols
+
+
+def _dunkel() -> bool:
+    """Dunkles Erscheinungsbild? (Pillen-Fuellungen brauchen je eine eigene Farbe.)"""
+    try:
+        from AppKit import NSApp
+        return "Dark" in str(NSApp.effectiveAppearance().name())
+    except Exception:  # noqa: BLE001
+        return True
+
+
+def _app_symbol_bild(groesse: float = 56):
+    """Das App-Symbol als NSImage — oder None, wenn es nicht im Bundle liegt."""
+    pfad = _asset_pfad("app-symbol-1024.png")
+    if not pfad:
+        return None
+    from AppKit import NSImage
+    bild = NSImage.alloc().initWithContentsOfFile_(pfad)
+    if bild is not None:
+        bild.setSize_((groesse, groesse))
+    return bild
 
 
 def _pill_button(cv, title, x, y, w, h=36, primary=False, danger=False):
@@ -783,13 +805,14 @@ def _pill_button(cv, title, x, y, w, h=36, primary=False, danger=False):
             NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, bl, 1.0).CGColor())
         b.setContentTintColor_(NSColor.whiteColor())
     else:
+        ton = 1.0 if _dunkel() else 0.0
         b.layer().setBackgroundColor_(
-            NSColor.colorWithSRGBRed_green_blue_alpha_(1, 1, 1, 0.09).CGColor())
+            NSColor.colorWithSRGBRed_green_blue_alpha_(ton, ton, ton, 0.09 if ton else 0.05).CGColor())
         b.layer().setBorderWidth_(1)
         b.layer().setBorderColor_(
-            NSColor.colorWithSRGBRed_green_blue_alpha_(1, 1, 1, 0.16).CGColor())
+            NSColor.colorWithSRGBRed_green_blue_alpha_(ton, ton, ton, 0.16 if ton else 0.12).CGColor())
         b.setContentTintColor_(NSColor.labelColor())
-    b.setFont_(NSFont.systemFontOfSize_(13))
+    b.setFont_(NSFont.systemFontOfSize_weight_(13, 0.23 if (primary or danger) else 0.0))
     cv.addSubview_(b)
     return b
 
@@ -826,6 +849,15 @@ def _card(cv, x, y, w, h, radius=16):
 
 def _header(cv, title, subtitle, symbol, x, y, w):
     from AppKit import NSColor, NSImage, NSImageView, NSMakeRect, NSVisualEffectView
+    bild = _app_symbol_bild(56)
+    if bild is not None:
+        # Das echte App-Symbol statt eines Systemsymbols in blauer Kachel.
+        ansicht = NSImageView.alloc().initWithFrame_(NSMakeRect(x, y - 6, 56, 56))
+        ansicht.setImage_(bild)
+        cv.addSubview_(ansicht)
+        _label(cv, title, x + 70, y + 24, w - 70, 28, size=22, bold=True)
+        _label(cv, subtitle, x + 70, y + 4, w - 70, 18, size=12, muted=True)
+        return
     icon_bg = NSVisualEffectView.alloc().initWithFrame_(NSMakeRect(x, y - 4, 52, 52))
     icon_bg.setMaterial_(3)
     icon_bg.setState_(1)
@@ -902,8 +934,8 @@ def show_setup_dialog(cfg: dict) -> dict | None:
 
     _header(
         cv,
-        "AI Employee",
-        "Desktop-App und sichere Computer-Use Bridge fuer deinen Mac.",
+        "Bei AI Employee anmelden",
+        "Dein Rechner, sicher verbunden mit deinen Agenten.",
         "cpu",
         PAD,
         H - 92,
@@ -916,7 +948,7 @@ def show_setup_dialog(cfg: dict) -> dict | None:
 
     inner_x = card_x + 22
     input_w = card_w - 44
-    _label(cv, "Bridge Connection URL oder Server", inner_x, card_y + card_h - 50, input_w, 16, size=11, bold=True, muted=True)
+    _label(cv, "Server-Adresse", inner_x, card_y + card_h - 50, input_w, 16, size=11, bold=True, muted=True)
     url_f  = _input(cv, inner_x, card_y + card_h - 82, input_w, "wss://agents.example.com/ws/computer-use/bridge?session_id=...", value=cfg.get("url",""))
 
     _label(cv, "E-Mail", inner_x, card_y + card_h - 124, input_w, 16, size=11, bold=True, muted=True)
@@ -942,9 +974,17 @@ def show_setup_dialog(cfg: dict) -> dict | None:
     cancel_btn.setTarget_(h); cancel_btn.setAction_("cancel:")
     save_btn.setTarget_(h);   save_btn.setAction_("save:")
 
+    # Ein Fenster statt zwei uebereinander: das Hauptfenster tritt zurueck, solange
+    # die Anmeldung offen ist, und kommt danach wieder.
+    haupt = _main_state.get("panel")
+    haupt_sichtbar = bool(haupt is not None and haupt.isVisible())
+    if haupt_sichtbar:
+        haupt.orderOut_(None)
     NSApp.activateIgnoringOtherApps_(True)
     NSApp.runModalForWindow_(panel)
     panel.close()
+    if haupt_sichtbar:
+        haupt.makeKeyAndOrderFront_(None)
     return result_box[0]
 
 
@@ -1059,7 +1099,7 @@ def show_permissions_dialog(cfg: dict) -> None:
     # GESPERRT (fail-closed in bridge.py:shell_run), mit Eintrag muss das
     # Arbeitsverzeichnis darin liegen. "Beschraenkt auf" stand hier vorher —
     # eine Zusage, hinter der gar keine Implementierung lag.
-    _label(cv, "Startordner fuer Shell-Befehle. Ohne Eintrag sind Shell-Befehle gesperrt.",
+    _label(cv, "Startordner für Shell-Befehle. Ohne Eintrag sind Shell-Befehle gesperrt.",
            folder_card_x + 150, folder_card_y + folder_card_h - 30, folder_card_w - 170, 16, size=11, muted=True)
 
     paths = list(cfg.get("allowed_paths", []))
@@ -1075,7 +1115,7 @@ def show_permissions_dialog(cfg: dict) -> None:
     scroll.setDocumentView_(tv)
     cv.addSubview_(scroll)
 
-    add_btn = _button(cv, "+ Hinzufuegen", folder_card_x + folder_card_w - 132, folder_card_y + 56, 112)
+    add_btn = _button(cv, "+ Hinzufügen", folder_card_x + folder_card_w - 132, folder_card_y + 56, 112)
     del_btn = _button(cv, "Entfernen", folder_card_x + folder_card_w - 132, folder_card_y + 22, 112)
 
     status_lbl = _label(cv, "", PAD, 52, W-2*PAD-140, 16, size=11, muted=True)
@@ -1239,12 +1279,56 @@ def _main_status_parts() -> tuple[str, str]:
     return "Nicht verbunden", "gray"
 
 
+def hauptfenster_inhalt(cfg: dict, status: tuple[str, str], beschaeftigt: bool,
+                        sieht_mit: bool, regeln: int | None = None) -> dict:
+    """Was das Hauptfenster zeigt — fuer Mac und Windows gleich, ohne Fenster testbar.
+
+    ``status`` ist ``_main_status_parts()``, ``beschaeftigt`` = verbunden oder
+    beim Verbinden (dann heisst der Hauptknopf „Trennen“)."""
+    url = str(cfg.get("url") or "")
+    host = urllib.parse.urlparse(url).hostname or url or "kein Server eingetragen"
+    teile = [host]
+    if cfg.get("session"):
+        teile.append(f"Sitzung {str(cfg['session'])[:8]}")
+    teile.append(f"Bridge {BRIDGE_VERSION}")
+    caps = list(cfg.get("allowed_capabilities") or [])
+    darf_sehen = "observe" in caps
+    if not darf_sehen:
+        sehen = "Aus — unter Berechtigungen „Mitsehen“ einschalten."
+    elif sieht_mit:
+        sehen = "Sieht mit" + (f" · {regeln} Regel{'n' if regeln != 1 else ''}" if regeln is not None else "")
+        sehen += " · Mitdenken " + ("an" if cfg.get("mitdenken") else "aus")
+    else:
+        sehen = "Freigegeben — wirkt, sobald die Bridge verbunden ist."
+    return {
+        "status": status[0],
+        "farbe": status[1],
+        "meta": " · ".join(teile),
+        "aktion": "Trennen" if beschaeftigt else "Verbinden",
+        "sehen": sehen,
+        "sieht_mit": bool(darf_sehen and sieht_mit),
+        "mitdenken_knopf": "Mitdenken ausschalten" if cfg.get("mitdenken") else "Mitdenken einschalten",
+        "freigaben": f"{len(caps)} Freigabe{'n' if len(caps) != 1 else ''}",
+    }
+
+
+def _regel_anzahl() -> int | None:
+    b = _overlay.get("bridge")
+    observer = getattr(b, "observer", None)
+    return len(observer.regeln) if observer is not None and observer.beobachten else None
+
+
+_STATUS_FARBEN = {"green": (0.13, 0.76, 0.37), "amber": (1.0, 0.62, 0.04),
+                  "red": (1.0, 0.27, 0.23), "gray": (0.55, 0.55, 0.58)}
+_AIEMainHandler = None
+
+
 def show_main_window(cfg: dict) -> None:
     """Das macOS-Hauptfenster — nicht-modal, einmalig, live aktualisiert."""
     if not _appkit_available():
         return _show_main_window_ctk(cfg)
 
-    from AppKit import NSApp, NSMakeRect, NSObject, NSVisualEffectView
+    from AppKit import NSApp, NSFont, NSImage, NSMakeRect, NSObject, NSVisualEffectView
 
     existing = _main_state.get("panel")
     if existing is not None:
@@ -1258,9 +1342,8 @@ def show_main_window(cfg: dict) -> None:
             _main_state.clear()
 
     _appkit_handlers_init()
-    # Hoehe an den Inhalt angepasst: 560 liess unten eine grosse leere Flaeche.
-    W, H = 680, 480
-    PAD = 32
+    W, H = 620, 480
+    PAD = 28
     panel = _make_panel("AI Employee Bridge", W, H)
     cv = panel.contentView()
     try:
@@ -1274,93 +1357,108 @@ def show_main_window(cfg: dict) -> None:
     backdrop.setState_(1)
     cv.addSubview_positioned_relativeTo_(backdrop, -1, None)
 
-    _header(cv, "AI Employee Bridge",
-            "Dein Rechner, sicher verbunden mit deinen Agenten.",
+    _header(cv, "AI Employee Bridge", "Dein Rechner, sicher verbunden mit deinen Agenten.",
             "cpu", PAD, H - 96, W - 2 * PAD)
 
-    # ── Karte: Verbindung ────────────────────────────────────────────────
     card_x, card_w = PAD, W - 2 * PAD
-    conn_y, conn_h = H - 330, 210
+    # ── Verbindung: grosser Status, eine Hauptaktion ─────────────────────
+    conn_h = 112
+    conn_y = H - 128 - conn_h
     _card(cv, card_x, conn_y, card_w, conn_h)
-    _label(cv, "Verbindung", card_x + 22, conn_y + conn_h - 34, 200, 18, size=13, bold=True)
-    text, farbe = _main_status_parts()
-    badge = _badge(cv, f"● {text}", card_x + card_w - 240, conn_y + conn_h - 34, farbe)
+    _label(cv, "VERBINDUNG", card_x + 22, conn_y + conn_h - 30, 200, 14, size=10, bold=True, muted=True)
+    status_lbl = _label(cv, "", card_x + 22, conn_y + conn_h - 62, card_w - 220, 26, size=19, bold=True)
+    meta_lbl = _label(cv, "", card_x + 22, conn_y + 20, card_w - 220, 18, size=12, muted=True)
+    aktion_btn = _pill_button(cv, "Verbinden", card_x + card_w - 172, conn_y + (conn_h - 38) / 2, 150, h=38,
+                              primary=True)
 
-    def _row(lbl, val, y):
-        _label(cv, lbl, card_x + 24, y, 90, 16, size=12, muted=True)
-        return _label(cv, val, card_x + 124, y, card_w - 150, 16, size=12)
+    # ── Mitsehen ─────────────────────────────────────────────────────────
+    seh_h = 118
+    seh_y = conn_y - 16 - seh_h
+    _card(cv, card_x, seh_y, card_w, seh_h)
+    _label(cv, "MITSEHEN", card_x + 22, seh_y + seh_h - 30, 200, 14, size=10, bold=True, muted=True)
+    sehen_lbl = _label(cv, "", card_x + 22, seh_y + seh_h - 58, card_w - 44, 20, size=13)
+    mitdenken_btn = _pill_button(cv, "Mitdenken einschalten", card_x + 20, seh_y + 16, 190)
+    perms_btn = _pill_button(cv, "Berechtigungen…", card_x + 222, seh_y + 16, 150)
+    freigaben_lbl = _label(cv, "", card_x + 386, seh_y + 24, card_w - 400, 18, size=12, muted=True)
 
-    server_lbl = _row("Server", cfg.get("url") or "—", conn_y + conn_h - 68)
-    session_lbl = _row("Session", (cfg.get("session") or "—")[:20], conn_y + conn_h - 92)
-    _row("Version", f"Bridge v{BRIDGE_VERSION}", conn_y + conn_h - 116)
-    cap_map = {c["id"]: c["label"] for c in CAPABILITY_META}
-    caps = cfg.get("allowed_capabilities", [])
-    caps_lbl = _row("Erlaubt", ", ".join(cap_map.get(c, c) for c in caps) or "Keine",
-                    conn_y + conn_h - 140)
-
-    connect_btn = _pill_button(cv, "Verbinden", card_x + 20, conn_y + 18, 150, primary=True)
-    disconnect_btn = _pill_button(cv, "Trennen", card_x + 182, conn_y + 18, 120)
-
-    # ── Karte: Arbeiten ──────────────────────────────────────────────────
-    act_y, act_h = conn_y - 96, 82
-    _card(cv, card_x, act_y, card_w, act_h)
-    _label(cv, "Arbeiten", card_x + 22, act_y + act_h - 30, 200, 18, size=13, bold=True)
-    voice_btn = _pill_button(cv, "Voice starten", card_x + 20, act_y + 16, 150, primary=True)
-    perms_btn = _pill_button(cv, "Berechtigungen…", card_x + 182, act_y + 16, 150)
-    settings_btn = _pill_button(cv, "Einstellungen…", card_x + 344, act_y + 16, 140)
-    web_btn = _pill_button(cv, "Web-UI öffnen", card_x + 496, act_y + 16, 110)
+    # ── Weitere Aktionen ─────────────────────────────────────────────────
+    zeile_y = seh_y - 16 - 34
+    knoepfe = []
+    x = card_x
+    for titel, symbol, breite in (("Sprechen", "mic.fill", 130), ("Einstellungen", "gearshape", 150),
+                                  ("Im Browser öffnen", "safari", 180)):
+        b = _pill_button(cv, titel, x, zeile_y, breite)
+        try:
+            b.setImage_(NSImage.imageWithSystemSymbolName_accessibilityDescription_(symbol, titel))
+            b.setImagePosition_(2)          # Bild links vom Text
+            b.setImageHugsTitle_(True)
+        except Exception:  # noqa: BLE001 — aeltere macOS-Versionen: nur Text
+            pass
+        knoepfe.append(b)
+        x += breite + 12
 
     _label(cv, "Die Bridge läuft im Hintergrund weiter, wenn du dieses Fenster schließt.",
-           PAD, 22, W - 2 * PAD, 16, size=11, muted=True)
+           PAD, 18, W - 2 * PAD, 16, size=11, muted=True)
 
-    class _MainHandler(NSObject):
-        def doconnect_(self, _s):
-            cb = _main_state.get("connect")
-            if cb:
-                cb()
+    global _AIEMainHandler
+    if _AIEMainHandler is None:
+        class AIEMainHandler(NSObject):
+            def doaktion_(self, _s):
+                if is_running() or _status == "connecting":
+                    stop_bridge()
+                else:
+                    cb = _main_state.get("connect")
+                    if cb:
+                        cb()
+                _main_window_refresh(_main_state.get("cfg") or {})
 
-        def dodisconnect_(self, _s):
-            stop_bridge()
-            _main_window_refresh(cfg)
+            def domitdenken_(self, _s):
+                c = _main_state.get("cfg") or {}
+                mitdenken_umschalten(c)
+                _main_window_refresh(c)
 
-        def dovoice_(self, _s):
-            show_interaction_bar(cfg)
+            def doperms_(self, _s):
+                c = _main_state.get("cfg") or {}
+                show_permissions_dialog(c)
+                c.update(load_config())
+                _main_window_refresh(c)
 
-        def doperms_(self, _s):
-            show_permissions_dialog(cfg)
-            cfg.update(load_config())
-            _main_window_refresh(cfg)
+            def dovoice_(self, _s):
+                show_interaction_bar(_main_state.get("cfg") or {})
 
-        def dosettings_(self, _s):
-            cb = _main_state.get("settings")
-            if cb:
-                cb()
+            def dosettings_(self, _s):
+                cb = _main_state.get("settings")
+                if cb:
+                    cb()
 
-        def doweb_(self, _s):
-            if cfg.get("url"):
-                webbrowser.open(cfg["url"])
+            def doweb_(self, _s):
+                url = (_main_state.get("cfg") or {}).get("url")
+                if url:
+                    webbrowser.open(url)
 
-    handler = _MainHandler.alloc().init()
-    for btn, action in ((connect_btn, "doconnect:"), (disconnect_btn, "dodisconnect:"),
-                        (voice_btn, "dovoice:"), (perms_btn, "doperms:"),
-                        (settings_btn, "dosettings:"), (web_btn, "doweb:")):
+        _AIEMainHandler = AIEMainHandler
+    handler = _AIEMainHandler.alloc().init()
+    for btn, action in ((aktion_btn, "doaktion:"), (mitdenken_btn, "domitdenken:"), (perms_btn, "doperms:"),
+                        (knoepfe[0], "dovoice:"), (knoepfe[1], "dosettings:"), (knoepfe[2], "doweb:")):
         btn.setTarget_(handler)
         btn.setAction_(action)
 
     _main_state.update({
-        "panel": panel, "handler": handler, "badge": badge,
-        "server_lbl": server_lbl, "session_lbl": session_lbl, "caps_lbl": caps_lbl,
-        "cap_map": cap_map,
+        "panel": panel, "handler": handler, "cfg": cfg, "status_lbl": status_lbl, "meta_lbl": meta_lbl,
+        "aktion_btn": aktion_btn, "sehen_lbl": sehen_lbl, "mitdenken_btn": mitdenken_btn,
+        "freigaben_lbl": freigaben_lbl,
     })
-
     NSApp.activateIgnoringOtherApps_(True)
     panel.orderFrontRegardless()
     panel.makeKeyAndOrderFront_(None)
+    # Erst NACH dem Anzeigen fuellen — die Aktualisierung arbeitet nur an
+    # sichtbaren Fenstern; sonst stuende bis zum naechsten Takt alles leer.
+    _main_window_refresh(cfg)
 
 
 def _main_window_refresh(cfg: dict) -> None:
-    """Badge und Zeilen des Hauptfensters an den echten Zustand angleichen.
-    Wird vom rumps-Timer alle 3 s aufgerufen — nur wenn das Fenster offen ist."""
+    """Hauptfenster an den echten Zustand angleichen. Vom rumps-Timer alle 3 s
+    aufgerufen — nur wenn das Fenster offen ist."""
     panel = _main_state.get("panel")
     if panel is None:
         return
@@ -1368,105 +1466,171 @@ def _main_window_refresh(cfg: dict) -> None:
         if not panel.isVisible():
             return
         from AppKit import NSColor
-        text, farbe = _main_status_parts()
-        colors = {"green": (0.13, 0.76, 0.37, 1), "amber": (1.0, 0.62, 0.04, 1),
-                  "red": (1.0, 0.27, 0.23, 1), "gray": (0.55, 0.55, 0.58, 1)}
-        r, g, b, a = colors.get(farbe, colors["gray"])
-        badge = _main_state.get("badge")
-        badge.setStringValue_(f"● {text}")
-        badge.setTextColor_(NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, a))
-        _main_state["server_lbl"].setStringValue_(cfg.get("url") or "—")
-        _main_state["session_lbl"].setStringValue_((cfg.get("session") or "—")[:20])
-        cap_map = _main_state.get("cap_map") or {}
-        caps = cfg.get("allowed_capabilities", [])
-        _main_state["caps_lbl"].setStringValue_(
-            ", ".join(cap_map.get(c, c) for c in caps) or "Keine")
+        _main_state["cfg"] = cfg
+        inhalt = hauptfenster_inhalt(cfg, _main_status_parts(), is_running() or _status == "connecting",
+                                     _sieht_mit(), _regel_anzahl())
+        r, g, b = _STATUS_FARBEN.get(inhalt["farbe"], _STATUS_FARBEN["gray"])
+        lbl = _main_state["status_lbl"]
+        lbl.setStringValue_(f"● {inhalt['status']}")
+        lbl.setTextColor_(NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, 1))
+        _main_state["meta_lbl"].setStringValue_(inhalt["meta"])
+        knopf = _main_state["aktion_btn"]
+        if knopf.title() != inhalt["aktion"]:
+            knopf.setTitle_(inhalt["aktion"])
+            # Verbinden = Hauptaktion in Markenfarbe, Trennen = dezent.
+            if inhalt["aktion"] == "Verbinden":
+                knopf.layer().setBackgroundColor_(NSColor.colorWithSRGBRed_green_blue_alpha_(*_ACCENT_RGB, 1).CGColor())
+                knopf.setContentTintColor_(NSColor.whiteColor())
+                knopf.layer().setBorderWidth_(0)
+            else:
+                ton = 1.0 if _dunkel() else 0.0
+                knopf.layer().setBackgroundColor_(NSColor.colorWithSRGBRed_green_blue_alpha_(ton, ton, ton, 0.09).CGColor())
+                knopf.layer().setBorderWidth_(1)
+                knopf.layer().setBorderColor_(NSColor.colorWithSRGBRed_green_blue_alpha_(ton, ton, ton, 0.16).CGColor())
+                knopf.setContentTintColor_(NSColor.labelColor())
+        sehen = _main_state["sehen_lbl"]
+        sehen.setStringValue_(inhalt["sehen"])
+        sehen.setTextColor_(NSColor.colorWithSRGBRed_green_blue_alpha_(0.31, 0.9, 0.9, 1)
+                            if inhalt["sieht_mit"] else NSColor.labelColor())
+        _main_state["mitdenken_btn"].setTitle_(inhalt["mitdenken_knopf"])
+        _main_state["freigaben_lbl"].setStringValue_(inhalt["freigaben"])
     except Exception:  # noqa: BLE001 — ein kaputtes Fenster darf das Tray nicht mitreissen
-        _main_state.clear()
+        app_log.debug("Hauptfenster nicht aktualisierbar", exc_info=True)
+        # Nur das Fenster vergessen — die Rueckrufe connect/settings gehoeren der App.
+        _main_state.pop("panel", None)
+
+
+_CTK_MARKE = "#0378c7"          # Blau des App-Symbols
+_CTK_KARTE = ("#f3f4f6", "#1d2129")
+_CTK_STATUS = {"green": "#22c55e", "amber": "#f59e0b", "red": "#ef4444", "gray": "#8b919c"}
+
+
+def _ctk_fenster_symbol(root) -> None:
+    """Fenster- und Taskleistensymbol unter Windows."""
+    pfad = _asset_pfad("app-symbol.ico")
+    if pfad and IS_WIN:
+        try:
+            root.iconbitmap(pfad)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _ctk_kopf(ctk, eltern, titel: str, unterzeile: str):
+    """Kopf mit echtem App-Symbol — dasselbe Bild wie im Mac-Fenster."""
+    kopf = ctk.CTkFrame(eltern, fg_color="transparent")
+    pfad = _asset_pfad("app-symbol-1024.png")
+    if pfad:
+        try:
+            from PIL import Image
+            bild = ctk.CTkImage(light_image=Image.open(pfad), dark_image=Image.open(pfad), size=(56, 56))
+            ctk.CTkLabel(kopf, image=bild, text="").pack(side="left", padx=(0, 14))
+        except Exception:  # noqa: BLE001
+            pass
+    texte = ctk.CTkFrame(kopf, fg_color="transparent")
+    texte.pack(side="left")
+    ctk.CTkLabel(texte, text=titel, font=ctk.CTkFont(size=22, weight="bold"), anchor="w").pack(anchor="w")
+    ctk.CTkLabel(texte, text=unterzeile, text_color="gray55", font=ctk.CTkFont(size=12), anchor="w").pack(anchor="w")
+    return kopf
 
 
 def _show_main_window_ctk(cfg: dict) -> None:
-    """Das Windows-Hauptfenster — Tabs statt verstreuter Dialoge."""
+    """Das Windows-Hauptfenster — derselbe Aufbau wie auf dem Mac
+    (``hauptfenster_inhalt`` liefert fuer beide den Inhalt)."""
     if not _ctk_available():
         return _show_status_plain_tkinter(cfg)
     ctk = _ctk_setup()
 
     root = ctk.CTk()
     root.title("AI Employee Bridge")
-    root.geometry("760x560")
-    root.minsize(680, 500)
+    root.geometry("640x520")
+    root.minsize(600, 500)
+    _ctk_fenster_symbol(root)
 
-    head = ctk.CTkFrame(root, fg_color="transparent")
-    head.pack(fill="x", padx=24, pady=(20, 0))
-    ctk.CTkLabel(head, text="AI Employee Bridge",
-                 font=ctk.CTkFont(size=22, weight="bold")).pack(side="left")
-    status_badge = ctk.CTkLabel(head, text="●", font=ctk.CTkFont(size=13))
-    status_badge.pack(side="right")
+    _ctk_kopf(ctk, root, "AI Employee Bridge", "Dein Rechner, sicher verbunden mit deinen Agenten.").pack(
+        fill="x", padx=28, pady=(24, 16))
 
-    tabs = ctk.CTkTabview(root, corner_radius=12)
-    tabs.pack(fill="both", expand=True, padx=20, pady=14)
-    tab_ueber = tabs.add("Übersicht")
-    tab_voice = tabs.add("Voice")
+    def karte(titel):
+        k = ctk.CTkFrame(root, fg_color=_CTK_KARTE, corner_radius=16)
+        k.pack(fill="x", padx=28, pady=(0, 14))
+        ctk.CTkLabel(k, text=titel, text_color="gray55", font=ctk.CTkFont(size=10, weight="bold")).pack(
+            anchor="w", padx=20, pady=(14, 0))
+        return k
 
-    # ── Übersicht ────────────────────────────────────────────────────────
-    grid = ctk.CTkFrame(tab_ueber, fg_color="#1e1e2e", corner_radius=10)
-    grid.pack(fill="x", padx=8, pady=8)
+    # ── Verbindung ───────────────────────────────────────────────────────
+    k1 = karte("VERBINDUNG")
+    zeile = ctk.CTkFrame(k1, fg_color="transparent")
+    zeile.pack(fill="x", padx=20, pady=(2, 16))
+    links = ctk.CTkFrame(zeile, fg_color="transparent")
+    links.pack(side="left", fill="x", expand=True)
+    status_lbl = ctk.CTkLabel(links, text="", font=ctk.CTkFont(size=19, weight="bold"), anchor="w")
+    status_lbl.pack(anchor="w")
+    meta_lbl = ctk.CTkLabel(links, text="", text_color="gray55", font=ctk.CTkFont(size=12), anchor="w")
+    meta_lbl.pack(anchor="w")
 
-    rows = {}
-    for i, (lbl, val) in enumerate((
-        ("Server", cfg.get("url") or "—"),
-        ("Session", (cfg.get("session") or "—")[:20]),
-        ("Version", f"Bridge v{BRIDGE_VERSION}"),
-        ("Erlaubt", ""),
-    )):
-        ctk.CTkLabel(grid, text=lbl, text_color="gray50", width=90, anchor="w",
-                     font=ctk.CTkFont(size=12)).grid(row=i, column=0, sticky="w", padx=(16, 6), pady=6)
-        rows[lbl] = ctk.CTkLabel(grid, text=val, anchor="w", font=ctk.CTkFont(size=12))
-        rows[lbl].grid(row=i, column=1, sticky="w", pady=6)
+    def _aktion():
+        if is_running() or _status == "connecting":
+            stop_bridge()
+        else:
+            cb = _main_state.get("connect")
+            if cb:
+                cb()
 
-    btns = ctk.CTkFrame(tab_ueber, fg_color="transparent")
-    btns.pack(fill="x", padx=8, pady=(6, 0))
+    aktion_btn = ctk.CTkButton(zeile, text="Verbinden", width=150, height=38, corner_radius=12,
+                               fg_color=_CTK_MARKE, font=ctk.CTkFont(size=13, weight="bold"), command=_aktion)
+    aktion_btn.pack(side="right")
 
-    def _do_connect():
-        cb = _main_state.get("connect")
-        if cb:
-            cb()
+    # ── Mitsehen ─────────────────────────────────────────────────────────
+    k2 = karte("MITSEHEN")
+    sehen_lbl = ctk.CTkLabel(k2, text="", font=ctk.CTkFont(size=13), anchor="w")
+    sehen_lbl.pack(anchor="w", padx=20, pady=(2, 8))
+    reihe = ctk.CTkFrame(k2, fg_color="transparent")
+    reihe.pack(fill="x", padx=20, pady=(0, 16))
+    zweit = dict(height=34, corner_radius=12, fg_color=("gray85", "#2a2f39"), hover_color=("gray78", "#353b47"),
+                 text_color=("gray10", "gray90"), border_width=1, border_color=("gray75", "#3a404c"))
 
-    ctk.CTkButton(btns, text="Verbinden", width=130, command=_do_connect).pack(side="left")
-    ctk.CTkButton(btns, text="Trennen", width=110, fg_color="#333", hover_color="#444",
-                  command=stop_bridge).pack(side="left", padx=8)
-    ctk.CTkButton(btns, text="Berechtigungen…", width=150,
-                  command=lambda: show_permissions_dialog(cfg)).pack(side="left", padx=8)
+    def _mitdenken():
+        mitdenken_umschalten(cfg)
+        _tick(einmal=True)
 
-    def _do_settings():
+    mitdenken_btn = ctk.CTkButton(reihe, text="Mitdenken einschalten", width=190, command=_mitdenken, **zweit)
+    mitdenken_btn.pack(side="left")
+    ctk.CTkButton(reihe, text="Berechtigungen…", width=150, command=lambda: show_permissions_dialog(cfg),
+                  **zweit).pack(side="left", padx=10)
+    freigaben_lbl = ctk.CTkLabel(reihe, text="", text_color="gray55", font=ctk.CTkFont(size=12))
+    freigaben_lbl.pack(side="left", padx=6)
+
+    # ── Weitere Aktionen ─────────────────────────────────────────────────
+    unten = ctk.CTkFrame(root, fg_color="transparent")
+    unten.pack(fill="x", padx=28, pady=(2, 0))
+
+    def _einstellungen():
         cb = _main_state.get("settings")
         if cb:
             cb()
 
-    ctk.CTkButton(btns, text="Einstellungen…", width=140, command=_do_settings).pack(side="left")
-    ctk.CTkButton(btns, text="Web-UI", width=90, fg_color="transparent", border_width=1,
-                  border_color="#444", text_color="gray70",
-                  command=lambda: cfg.get("url") and webbrowser.open(cfg["url"])).pack(side="left", padx=8)
+    for titel, befehl, breite in (("Sprechen", lambda: show_interaction_bar(cfg), 130),
+                                  ("Einstellungen", _einstellungen, 150),
+                                  ("Im Browser öffnen", lambda: cfg.get("url") and webbrowser.open(cfg["url"]), 170)):
+        ctk.CTkButton(unten, text=titel, width=breite, command=befehl, **zweit).pack(side="left", padx=(0, 10))
 
-    ctk.CTkLabel(tab_ueber, text="Die Bridge läuft im Hintergrund weiter, wenn du dieses Fenster schließt.",
-                 text_color="gray50", font=ctk.CTkFont(size=11)).pack(anchor="w", padx=8, pady=(14, 0))
+    ctk.CTkLabel(root, text="Die Bridge läuft im Hintergrund weiter, wenn du dieses Fenster schließt.",
+                 text_color="gray50", font=ctk.CTkFont(size=11)).pack(anchor="w", padx=28, pady=(14, 0))
 
-    # ── Voice ────────────────────────────────────────────────────────────
-    ctk.CTkLabel(tab_voice, text="Direkt mit dem Voice Layer deines Agenten sprechen.",
-                 text_color="gray60", font=ctk.CTkFont(size=12)).pack(anchor="w", padx=8, pady=(8, 2))
-    ctk.CTkButton(tab_voice, text="Voice-Leiste öffnen", width=170,
-                  command=lambda: show_interaction_bar(cfg)).pack(anchor="w", padx=8, pady=8)
-
-    def _tick():
-        text, farbe = _main_status_parts()
-        colors = {"green": "#22c55e", "amber": "#f59e0b", "red": "#ef4444", "gray": "#6b7280"}
-        status_badge.configure(text=f"● {text}", text_color=colors.get(farbe, "#6b7280"))
-        rows["Server"].configure(text=cfg.get("url") or "—")
-        rows["Session"].configure(text=(cfg.get("session") or "—")[:20])
-        cap_map = {c["id"]: c["label"] for c in CAPABILITY_META}
-        rows["Erlaubt"].configure(
-            text=", ".join(cap_map.get(c, c) for c in cfg.get("allowed_capabilities", [])) or "Keine")
-        root.after(2000, _tick)
+    def _tick(einmal: bool = False):
+        inhalt = hauptfenster_inhalt(cfg, _main_status_parts(), is_running() or _status == "connecting",
+                                     _sieht_mit(), _regel_anzahl())
+        status_lbl.configure(text=f"● {inhalt['status']}", text_color=_CTK_STATUS.get(inhalt["farbe"], "#8b919c"))
+        meta_lbl.configure(text=inhalt["meta"])
+        if inhalt["aktion"] == "Verbinden":
+            aktion_btn.configure(text="Verbinden", fg_color=_CTK_MARKE, text_color="white", border_width=0)
+        else:
+            aktion_btn.configure(text="Trennen", fg_color=("gray85", "#2a2f39"), text_color=("gray10", "gray90"),
+                                 border_width=1)
+        sehen_lbl.configure(text=inhalt["sehen"], text_color="#4ee6e6" if inhalt["sieht_mit"] else ("gray10", "gray90"))
+        mitdenken_btn.configure(text=inhalt["mitdenken_knopf"])
+        freigaben_lbl.configure(text=inhalt["freigaben"])
+        if not einmal:
+            root.after(2000, _tick)
 
     _tick()
     root.mainloop()
@@ -1718,7 +1882,7 @@ def show_interaction_bar(cfg: dict) -> None:
     if agents_error:
         status_text = f"Agenten nicht ladbar: {agents_error}"[:60]
     elif not agents:
-        status_text = "Keine Agenten gefunden — Anmeldung pruefen"
+        status_text = "Keine Agenten gefunden — Anmeldung prüfen"
     # Breite so, dass der Text VOR dem Connect-Button endet (W-304=576) —
     # 312..556, danach 20px Luft bis zum Button. Keine Ueberlappung mehr.
     status = _label(cv, status_text, 312, 51, 244, 16, size=11, color=color(0.63, 0.70, 0.80, 1))
@@ -1852,7 +2016,7 @@ class _MicStreamer:
             )
             stream.start()
         except Exception as e:  # noqa: BLE001 — kein Mikro / belegt / Freigabe fehlt
-            return f"Mikrofon liess sich nicht oeffnen: {e}"
+            return f"Mikrofon ließ sich nicht öffnen: {e}"
         self._stream = stream
         return ""
 
@@ -2127,14 +2291,15 @@ def _show_setup_tkinter(cfg):
     # 400px was too short on Windows (DPI/font scaling) → the "Anmelden" button
     # was clipped off the bottom. Taller default + vertical resize + minsize so
     # the button is always reachable regardless of display scaling.
-    root.geometry("480x560")
-    root.minsize(480, 480)
+    root.geometry("480x580")
+    root.minsize(480, 500)
     root.resizable(False, True)
+    _ctk_fenster_symbol(root)
 
-    # Header
-    ctk.CTkLabel(root, text="AI-Employee Bridge", font=ctk.CTkFont(size=20, weight="bold")).pack(anchor="w", padx=24, pady=(24, 2))
-    ctk.CTkLabel(root, text="Verbinde diesen PC mit deinem AI-Employee Server.", text_color="gray60", font=ctk.CTkFont(size=12)).pack(anchor="w", padx=24)
-    ctk.CTkFrame(root, height=1, fg_color="#333").pack(fill="x", padx=24, pady=12)
+    # Kopf mit App-Symbol — wie auf dem Mac
+    _ctk_kopf(ctk, root, "AI Employee Bridge", "Dein Rechner, sicher verbunden mit deinen Agenten.").pack(
+        fill="x", padx=24, pady=(24, 8))
+    ctk.CTkFrame(root, height=1, fg_color=("gray80", "#333")).pack(fill="x", padx=24, pady=12)
 
     def field(label, placeholder, secure=False, value=""):
         ctk.CTkLabel(root, text=label, font=ctk.CTkFont(size=10, weight="bold"), text_color="gray50").pack(anchor="w", padx=24, pady=(4,1))
@@ -2143,7 +2308,7 @@ def _show_setup_tkinter(cfg):
         e.pack(padx=24)
         return e
 
-    url_f = field("BRIDGE URL ODER SERVER", "wss://agents.example.com/ws/computer-use/bridge?session_id=...", value=cfg.get("url",""))
+    url_f = field("SERVER-ADRESSE", "wss://agents.example.com/ws/computer-use/bridge?session_id=...", value=cfg.get("url",""))
     em_f  = field("E-MAIL",    "name@example.com", value=cfg.get("email", ""))
     pw_f  = field("PASSWORT",  "••••••••", secure=True)
 
@@ -2186,7 +2351,8 @@ def _show_setup_tkinter(cfg):
 
     ctk.CTkButton(btn_frame, text="Abbrechen", fg_color="transparent", border_width=1,
                   text_color="gray60", border_color="#444", width=100, command=on_cancel).pack(side="right", padx=(8,0))
-    ctk.CTkButton(btn_frame, text="Anmelden & Verbinden", width=180, command=on_save).pack(side="right")
+    ctk.CTkButton(btn_frame, text="Anmelden & verbinden", width=190, height=38, corner_radius=12,
+                  fg_color=_CTK_MARKE, font=ctk.CTkFont(size=13, weight="bold"), command=on_save).pack(side="right")
 
     root.mainloop()
     return result if result else None
@@ -3078,14 +3244,17 @@ def run_macos(cfg: dict) -> None:
             connecting = _status == "connecting" or self._connecting
             configured = bool(self.cfg.get("url") and self.cfg.get("token") and self.cfg.get("session"))
             try:
-                self.menu["Status:"] = "Status: " + (
-                    "verbunden" if connected else
-                    "verbinde..." if connecting else
-                    _status.replace("error: ", "") if _status != "disconnected" else
-                    "nicht verbunden"
-                )
+                # EINE Ableitung mit dem Hauptfenster (_main_status_parts). Und den
+                # TITEL setzen: rumps' Menu.__setitem__ tut bei vorhandenem Schluessel
+                # nichts — die Zeile blieb so fuer immer beim Stand des App-Starts
+                # stehen („nicht verbunden“, waehrend das Fenster „Verbunden“ zeigte).
+                text = "Status: " + _main_status_parts()[0]
+                if "Status:" in self.menu:
+                    self.menu["Status:"].title = text
+                else:
+                    self.menu["Status:"] = text
             except Exception:
-                pass
+                app_log.debug("Statuszeile nicht aktualisierbar", exc_info=True)
             for title, enabled in {
                 "Öffnen": True,
                 "Verbinden": not connected,
