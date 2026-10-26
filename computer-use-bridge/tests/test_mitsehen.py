@@ -169,6 +169,23 @@ class Sperrzone(unittest.TestCase):
         self.assertEqual(len(klicks), 1)
 
 
+class Abdecken(unittest.TestCase):
+    def tearDown(self):
+        bridge.OVERLAY_SPERRZONE = None
+        bridge.OVERLAY_ABDECKEN = False
+
+    def test_flaeche_wird_grau(self):
+        from PIL import Image
+        from unittest.mock import patch
+
+        bridge.OVERLAY_SPERRZONE = (100, 0, 200, 50)
+        img = Image.new("RGB", (800, 400), (255, 0, 0))
+        with patch.object(bridge, "_logical_screen_size", return_value=(400, 200)):
+            bridge._overlay_abdecken(img)
+        self.assertEqual(img.getpixel((400, 50)), (128, 128, 128), "Mitte der Flaeche (Retina x2)")
+        self.assertEqual(img.getpixel((50, 50)), (255, 0, 0), "daneben unberuehrt")
+
+
 class Vordergrund(unittest.TestCase):
     def test_liest_ohne_fehler(self):
         """Auf dem Build-Runner (macOS/Windows) laeuft der echte Weg — er darf nie werfen."""

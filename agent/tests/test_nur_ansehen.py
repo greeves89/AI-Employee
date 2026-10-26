@@ -44,6 +44,24 @@ class ClaudeGrenze(unittest.TestCase):
         self.assertEqual(eingebaute_werkzeuge(True, True), "")
 
 
+class GedaechtnisNurLesen(unittest.TestCase):
+    def test_claude_sperrt_gedaechtnis_schreiben_nur_beim_ansehen(self):
+        from app.chat_handler import gesperrte_werkzeuge
+
+        self.assertEqual(gesperrte_werkzeuge(False), ["AskUserQuestion"])
+        gesperrt = gesperrte_werkzeuge(True)
+        self.assertIn("mcp__memory__memory_save", gesperrt)
+        self.assertIn("mcp__memory__memory_delete", gesperrt)
+
+    def test_custom_llm_liest_nur(self):
+        from app.llm_chat_handler import NUR_ANSEHEN_WERKZEUGE
+
+        self.assertIn("read_file", NUR_ANSEHEN_WERKZEUGE)
+        for verboten in ("memory_save", "memory_delete", "write_file", "edit_file", "bash",
+                         "web_fetch", "computer_use", "send_message"):
+            self.assertNotIn(verboten, NUR_ANSEHEN_WERKZEUGE)
+
+
 class _Publisher:
     async def publish_chat(self, message_id, kind, payload):
         pass

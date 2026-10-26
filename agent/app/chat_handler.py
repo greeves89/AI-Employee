@@ -276,6 +276,16 @@ def eingebaute_werkzeuge(nur_gedaechtnis: bool, nur_ansehen: bool) -> str:
     return "Read" if nur_ansehen and not nur_gedaechtnis else ""
 
 
+#: Im Nur-ansehen-Zug ist das Gedaechtnis nur zum Lesen da — sonst koennte sich
+#: eine praeparierte Seite dauerhaft hineinschreiben.
+GEDAECHTNIS_SCHREIBEN = ("mcp__memory__memory_save", "mcp__memory__memory_delete")
+
+
+def gesperrte_werkzeuge(nur_ansehen: bool) -> list[str]:
+    """Werte fuer ``--disallowedTools`` (siehe AskUserQuestion unten)."""
+    return ["AskUserQuestion", *(GEDAECHTNIS_SCHREIBEN if nur_ansehen else ())]
+
+
 class ChatHandler:
     """Handles interactive chat sessions using Claude Code CLI with --resume."""
 
@@ -549,7 +559,7 @@ class ChatHandler:
             # JSON in the chat and cannot answer at all. Taking it away makes
             # the agent ask in plain text, which the chat (incl. live steering)
             # already handles properly.
-            "--disallowedTools", "AskUserQuestion",
+            "--disallowedTools", *gesperrte_werkzeuge(self._nur_ansehen),
             "--model", model,
         ])
         mcp_datei = None

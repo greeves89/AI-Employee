@@ -183,6 +183,15 @@ class RegelnApi(_Mit):
             self.assertEqual(await cu.regel_loeschen(vom_agenten["id"], caller=_agent("a1"), db=db), {"ok": True})
             self.assertEqual(await cu.regel_loeschen(vom_menschen["id"], caller=A, db=db), {"ok": True})
 
+    async def test_zu_langer_auftrag_wird_abgelehnt_nicht_gekuerzt(self):
+        """Das Ja gilt dem sichtbaren Auftrag — ein abgeschnittener Rest dahinter
+        waere eine Zustimmung zu etwas Ungesehenem."""
+        async with self.Session() as db:
+            with self.assertRaises(HTTPException) as cm:
+                await cu.regel_anlegen(cu.RegelEingabe(**{**_REGEL, "auftrag": "x" * (bm.MAX_AUFTRAG + 1)}),
+                                       caller=A, db=db)
+        self.assertEqual(cm.exception.status_code, 422)
+
     async def test_agent_tagesgrenze(self):
         async with self.Session() as db:
             for _ in range(bm.MAX_AGENT_REGELN_JE_TAG):

@@ -583,6 +583,20 @@ def _bildschirm_rohbild(display_id=None):
     if img is None:
         import pyautogui
         img = pyautogui.screenshot()
+    if OVERLAY_ABDECKEN and OVERLAY_SPERRZONE and display_id is None:
+        img = _overlay_abdecken(img)
+    return img
+
+
+def _overlay_abdecken(img):
+    """Die Overlay-Flaeche (logische Punkte) im Bild grau fuellen."""
+    from PIL import ImageDraw
+
+    breite_logisch = (_logical_screen_size() or (0, 0))[0] or img.width
+    s = img.width / breite_logisch
+    x, y, w, h = OVERLAY_SPERRZONE
+    ImageDraw.Draw(img).rectangle((int(x * s), int(y * s), int((x + w) * s), int((y + h) * s)),
+                                  fill=(128, 128, 128))
     return img
 
 
@@ -2486,6 +2500,11 @@ _OVERLAY_ANTWORTEN = {"vorschlag_antwort", "overlay_stopp", "overlay_weiter"}
 #: — die Tray-App traegt es ein. Der Agent bedient denselben Bildschirm; in diese
 #: Flaeche klickt er nicht, sonst koennte er sein eigenes „Ja“ druecken.
 OVERLAY_SPERRZONE: tuple[float, float, float, float] | None = None
+#: Kann das Betriebssystem das Overlay NICHT aus Aufnahmen nehmen (Windows vor
+#: 10 2004), deckt die Bridge seine Flaeche im Bild selbst ab. Auf dem Mac und
+#: neueren Windows fehlt es ohnehin — dort bliebe sonst unnoetig ein Stueck des
+#: Bildschirms fuer den Agenten verdeckt.
+OVERLAY_ABDECKEN = False
 
 
 def in_overlay(x: float, y: float) -> bool:

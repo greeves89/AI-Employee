@@ -1033,7 +1033,11 @@ function MitdenkerPanel({ session, onChange }: {
             <input className={feld} placeholder="Angebot im Overlay (z. B. Soll ich dir Titel vorschlagen?)" value={neu.angebot}
               onChange={(e) => setNeu({ ...neu, angebot: e.target.value })} />
             <textarea className={cn(feld, "min-h-[56px]")} placeholder="Auftrag nach einem Ja (was der Agent dann tun soll)" value={neu.auftrag}
+              maxLength={300}
               onChange={(e) => setNeu({ ...neu, auftrag: e.target.value })} />
+            <p className="text-right text-[10px] text-muted-foreground/50">
+              {neu.auftrag.length}/300 — steht im Overlay vollständig neben dem Ja
+            </p>
             <input className={feld} placeholder="Name (optional)" value={neu.name}
               onChange={(e) => setNeu({ ...neu, name: e.target.value })} />
             <button

@@ -775,7 +775,7 @@ export function buildServer() {
             wenn_app: { type: "string", description: "App name contains, e.g. 'Chrome', 'Excel'." },
             wenn_titel: { type: "string", description: "Window title contains, e.g. 'YouTube Studio'." },
             angebot: { type: "string", description: "Question shown in the overlay, German, Du-Form, max 300 chars." },
-            auftrag: { type: "string", description: "What you will do after a Yes." },
+            auftrag: { type: "string", description: "What you will do after a Yes — one sentence, max 300 chars (shown in full in the overlay)." },
           },
           required: ["angebot", "auftrag"],
         },

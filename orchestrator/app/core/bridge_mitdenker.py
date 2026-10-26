@@ -31,10 +31,11 @@ MAX_AGENT_REGELN_JE_TAG = 10
 STANDARD_DECKEL = 40
 MAX_DECKEL = 500
 
-_FELDLAENGEN = {"name": 120, "wenn_app": 120, "wenn_titel": 200, "angebot": 300, "auftrag": 4000}
-#: Ein Auftrag, den der Agent beim Mitdenken selbst formuliert, bleibt kurz — er
-#: steht im Overlay neben dem Ja und muss dort ganz lesbar sein.
-MAX_MITDENK_AUFTRAG = 500
+#: Ein Auftrag steht im Overlay neben dem Ja und muss dort GANZ lesbar sein — das Ja
+#: gilt genau dem, was zu sehen ist, nie einem abgeschnittenen Rest dahinter.
+MAX_AUFTRAG = 300
+MAX_MITDENK_AUFTRAG = MAX_AUFTRAG
+_FELDLAENGEN = {"name": 120, "wenn_app": 120, "wenn_titel": 200, "angebot": 300, "auftrag": MAX_AUFTRAG}
 #: Ab diesem Agenten-Abbild kennt jede Laufzeit den Nur-ansehen-Zug. Aelteren
 #: Agenten schickt der Server KEINE Bilder — sie saehen sie mit allen Werkzeugen.
 NUR_ANSEHEN_AB = (1, 378, 0)
@@ -105,10 +106,15 @@ def regel_fuer_bridge(r) -> dict:
 
 
 def _felder_pruefen(felder: dict) -> dict:
+    auftrag = felder.get("auftrag")
+    if auftrag is not None and len(" ".join(str(auftrag).split())) > MAX_AUFTRAG:
+        # Nicht still kuerzen: der Mensch soll wissen, dass sein Auftrag nicht passt.
+        raise RegelFehler(f"Der Auftrag ist zu lang — höchstens {MAX_AUFTRAG} Zeichen, "
+                          "damit er im Overlay vollständig zu lesen ist.")
     sauber = {}
     for feld, laenge in _FELDLAENGEN.items():
         if feld in felder and felder[feld] is not None:
-            sauber[feld] = str(felder[feld]).strip()[:laenge]
+            sauber[feld] = " ".join(str(felder[feld]).split())[:laenge]
     return sauber
 
 

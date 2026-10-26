@@ -2534,7 +2534,8 @@ class OverlayModell:
             self.vorschlag_id = str(nachricht.get("id") or "")
             self.ausgeblendet = False
             self._zeigen("frage", str(nachricht.get("text") or ""))
-            self.auftrag = str(nachricht.get("auftrag") or "")[:300]
+            # Ungekuerzt: das Ja gilt genau diesem Text (der Server begrenzt ihn).
+            self.auftrag = str(nachricht.get("auftrag") or "")
             return True
         if art != "overlay_status":
             return False
@@ -2657,7 +2658,7 @@ class _MacOverlay:
     """Schwebendes Panel oben mittig, ueber allen Fenstern, ohne die aktive
     Anwendung zu verdraengen. AppKit nur auf dem Hauptthread."""
 
-    W, H = 640, 160
+    W, H = 640, 184
 
     def __init__(self, cfg: dict) -> None:
         self.cfg = cfg
@@ -2737,7 +2738,8 @@ class _MacOverlay:
         self.kopf = label("", 20, H - 30, W - 200, 18, 12, fett=True)
         label("AI Employee", W - 120, H - 30, 100, 18, 11, alpha=0.5)
         self.text = label("", 20, H - 74, W - 40, 40, 13)
-        self.detail = label("", 20, 50, W - 40, 30, 11, alpha=0.62)
+        self.detail = label("", 20, 50, W - 40, 56, 11, alpha=0.62)
+        self.detail.setMaximumNumberOfLines_(5)
         self.eingabe = NSTextField.alloc().initWithFrame_(((20, 14), (W - 420, 26)))
         self.eingabe.cell().setPlaceholderString_("Optional: Antwort oder Hinweis")
         self.eingabe.setFont_(NSFont.systemFontOfSize_(12))
@@ -2936,9 +2938,16 @@ def _aus_aufnahmen_nehmen(root) -> None:
         import ctypes
         user32 = ctypes.windll.user32
         hwnd = user32.GetParent(root.winfo_id()) or root.winfo_id()
-        user32.SetWindowDisplayAffinity(hwnd, 0x11)
-    except Exception:  # noqa: BLE001 — aeltere Windows-Version: Sperrzone gilt trotzdem
-        app_log.debug("Overlay nicht aus Aufnahmen nehmbar", exc_info=True)
+        ok = bool(user32.SetWindowDisplayAffinity(hwnd, 0x11))
+    except Exception:  # noqa: BLE001
+        ok = False
+    if not ok:
+        # Aeltere Windows-Version: die Bridge deckt die Flaeche im Bild selbst ab.
+        app_log.info("Overlay nicht aus Aufnahmen nehmbar — wird im Bild abgedeckt")
+    try:
+        _bridge_module().OVERLAY_ABDECKEN = not ok
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def mitdenken_umschalten(cfg: dict) -> bool:

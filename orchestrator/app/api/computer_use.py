@@ -1320,11 +1320,6 @@ def _offenes_angebot(session: dict) -> bool:
     return any(jetzt - v["ts"] < _VORSCHLAG_SPERRT_SECS for v in (session.get("vorschlaege") or {}).values())
 
 
-def _auftrag_kurz(auftrag: str, laenge: int = 300) -> str:
-    text = " ".join(str(auftrag or "").split())
-    return text if len(text) <= laenge else text[: laenge - 1] + "…"
-
-
 async def _vorschlag_zeigen(session: dict, *, angebot: str, auftrag: str, agent_id: str,
                             quelle: str, app: str, titel: str, regel_id: int | None = None) -> str | None:
     jetzt = time.time()
@@ -1336,8 +1331,9 @@ async def _vorschlag_zeigen(session: dict, *, angebot: str, auftrag: str, agent_
     session["vorschlaege"] = dict(sorted(offen.items(), key=lambda kv: kv[1]["ts"])[-5:])
     # Das Ja gilt dem, was der Agent dann TUT — deshalb steht der Auftrag mit im
     # Overlay, nicht nur die freundliche Frage davor.
+    # Vollstaendig, nie gekuerzt — Auftraege sind auf bm.MAX_AUFTRAG begrenzt.
     if await _an_bridge(session, {"type": "vorschlag", "id": vid, "text": angebot,
-                                  "auftrag": _auftrag_kurz(auftrag), "quelle": quelle}):
+                                  "auftrag": auftrag, "quelle": quelle}):
         return vid
     session["vorschlaege"].pop(vid, None)
     return None
