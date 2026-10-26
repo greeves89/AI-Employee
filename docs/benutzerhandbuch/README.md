@@ -2574,7 +2574,9 @@ helfen kann — zum Beispiel „Soll ich dir Titel vorschlagen?“, sobald du Yo
 (Bridge ab 1.378.0).
 
 **Schritt 1 — Mitsehen einschalten.**
-1. Linke Seitenleiste → **Agenten** → deinen Agenten öffnen → Reiter **Computer-Use**.
+1. Linke Seitenleiste → **Agenten** → deinen Agenten öffnen. In der einfachen Ansicht klickst
+   du unter dem Chat auf das Symbol **Computer** (Bildschirm); als Admin auf den Reiter
+   **Computer-Steuerung**.
 2. In der Sitzungskarte auf **Berechtigungen** klicken.
 3. Den Schalter **Mitsehen** einschalten (Risiko „hoch“, standardmäßig aus).
 

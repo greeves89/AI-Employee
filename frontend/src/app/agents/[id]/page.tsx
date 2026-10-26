@@ -760,9 +760,12 @@ function BudgetBar({ spent, budget, action }: { spent: number; budget: number; a
 
 /** Mitglieder-Ansicht: was frueher als Reiter oben stand, unten in der
  *  Chat-Leiste als Icon — je ein Fenster mit der bestehenden Verwaltung. */
-type SchnellKey = "konnektoren" | "modell" | "rechte" | "dateien" | "wissen";
+type SchnellKey = "konnektoren" | "computer" | "modell" | "rechte" | "dateien" | "wissen";
 const SCHNELL: { key: SchnellKey; titel: string; icon: typeof CheckCircle2 }[] = [
   { key: "konnektoren", titel: "Konnektoren", icon: Plug },
+  // Bridge auf dem eigenen Rechner: Sitzung, Berechtigungen, Mitsehen und Regeln
+  // (#1019) — dieselbe Verwaltung wie der Admin-Reiter „Computer-Steuerung".
+  { key: "computer", titel: "Computer", icon: Monitor },
   { key: "modell", titel: "Modell", icon: Cpu },
   { key: "rechte", titel: "Rechte", icon: ShieldCheck },
   { key: "dateien", titel: "Dateien", icon: FolderOpen },
@@ -794,6 +797,9 @@ function Schnellzugriff({ agent, setAgent }: { agent: Agent; setAgent: (a: Agent
               <BridgeDownload />
               <IntegrationSelector agentId={agent.id} />
             </div>
+          )}
+          {offen === "computer" && (
+            <ComputerUseTab agentId={agent.id} browserMode={agent.browser_mode} />
           )}
           {offen === "modell" && (
             <NurAbschnitt.Provider value="Modell & Verhalten">

@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.378.2] - 2026-10-26
+
+### Behoben
+- **Mitglieder kamen nicht an die Computer-Steuerung.** In der einfachen Ansicht für Nicht-Admins fehlte der Computer-Use-Bereich ganz — Sitzung, Berechtigungen, „Mitsehen“, „Mitdenken“ und die Regeln (#1019) waren nur im Admin-Reiter erreichbar. Neues Symbol **Computer** in der Leiste unter dem Chat öffnet denselben Bereich.
+
 ## [1.378.1] - 2026-10-26
 
 ### Neu
