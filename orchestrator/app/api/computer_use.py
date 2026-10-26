@@ -1352,8 +1352,8 @@ def _blick_lesen(msg: dict) -> dict:
         except (binascii.Error, ValueError):
             bild = ""
     return {
-        "app": str(msg.get("app") or "")[:120],
-        "titel": str(msg.get("titel") or "")[:300],
+        "app": " ".join(str(msg.get("app") or "").split())[:120],
+        "titel": " ".join(str(msg.get("titel") or "").split())[:300],
         "bild": bild,
         "media_type": media_type,
         "ts": time.time(),
@@ -1435,8 +1435,8 @@ async def _regel_treffer(session: dict, msg: dict) -> None:
     zuletzt = session.setdefault("_regel_zuletzt", {})
     if time.time() - zuletzt.get(regel_id, 0) < _REGEL_SERVER_RUHE_SECS:
         return
-    app = str(msg.get("app") or "")[:120]
-    titel = str(msg.get("titel") or "")[:300]
+    app = " ".join(str(msg.get("app") or "").split())[:120]
+    titel = " ".join(str(msg.get("titel") or "").split())[:300]
     async with async_session_factory() as db:
         r = await bm.regel_holen(db, session["user_id"], regel_id)
         # Nachpruefen statt glauben: Die Bridge meldet, der Server entscheidet.
