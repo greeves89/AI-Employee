@@ -25,7 +25,7 @@ a = Analysis(
     ['tray_app.py'],
     pathex=['.'],
     binaries=ctk_binaries + pw_binaries,
-    datas=[('bridge.py', '.'), ('_version.py', '.'), ('assets/tray-*.png', 'assets')] + ctk_datas + pw_datas + certifi_datas,
+    datas=[('bridge.py', '.'), ('_version.py', '.'), ('assets/tray-*.png', 'assets'), ('assets/app-symbol-1024.png', 'assets'), ('assets/app-symbol.ico', 'assets')] + ctk_datas + pw_datas + certifi_datas,
     hiddenimports=[
         'pystray',
         'pystray._win32',

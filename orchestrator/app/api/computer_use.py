@@ -672,7 +672,9 @@ async def update_capabilities(
 
     if session.get("agent_id"):
         agent_default = await _agent_default_capabilities(session["agent_id"], db)
-        over_cap = set(req.allowed_capabilities) - agent_default
+        # Mitsehen ist keine Faehigkeit des Agenten, sondern die Entscheidung des
+        # Menschen ueber seinen Rechner (#1019) — der Agenten-Standard begrenzt sie nicht.
+        over_cap = set(req.allowed_capabilities) - agent_default - {OBSERVE_CAP}
         if over_cap:
             raise HTTPException(
                 status_code=422,
@@ -742,11 +744,15 @@ async def assign_agent(
         if not agent or str(agent.user_id) != str(user.id):
             raise HTTPException(status_code=404, detail="Agent not found or not yours")
         agent_default = _default_caps_from_policy(agent.access_policy)
-        session["allowed_capabilities"] = set(session.get("allowed_capabilities") or []) & agent_default
+        bisher = set(session.get("allowed_capabilities") or [])
+        # Mitsehen bleibt, wie der Mensch es eingestellt hat (siehe update_capabilities).
+        session["allowed_capabilities"] = (bisher & agent_default) | (bisher & {OBSERVE_CAP})
 
     session["agent_id"] = req.agent_id
     logger.info(f"Session {scrub_log(session_id)}: agent_id set to {scrub_log(req.agent_id)}")
     await _persist_session(session_id)
+    # Mitdenken haengt am Agenten der Sitzung — die Bridge muss es sofort wissen.
+    await _beobachter_konfig_senden(session_id)
     return _session_view(session_id, session)
 
 

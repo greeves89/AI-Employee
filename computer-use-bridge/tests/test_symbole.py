@@ -44,3 +44,27 @@ class Dateien(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Hauptfenster(unittest.TestCase):
+    """Was Mac- und Windows-Hauptfenster zeigen — eine Ableitung fuer beide."""
+
+    CFG = {"url": "https://agents.example.com", "session": "a29e61c61b6c",
+           "allowed_capabilities": ["screenshots", "observe"], "mitdenken": False}
+
+    def test_verbunden_mit_mitsehen(self):
+        i = tray_app.hauptfenster_inhalt(self.CFG, ("Verbunden", "green"), True, True, 2)
+        self.assertEqual(i["aktion"], "Trennen")
+        self.assertIn("agents.example.com", i["meta"])
+        self.assertIn("Sitzung a29e61c6", i["meta"])
+        self.assertTrue(i["sehen"].startswith("Sieht mit · 2 Regeln"))
+        self.assertTrue(i["sieht_mit"])
+        self.assertEqual(i["mitdenken_knopf"], "Mitdenken einschalten")
+
+    def test_ohne_freigabe_kein_mitsehen(self):
+        cfg = {**self.CFG, "allowed_capabilities": ["screenshots"]}
+        i = tray_app.hauptfenster_inhalt(cfg, ("Nicht verbunden", "gray"), False, True)
+        self.assertEqual(i["aktion"], "Verbinden")
+        self.assertFalse(i["sieht_mit"], "Ohne Freigabe zeigt das Fenster nie „sieht mit“")
+        self.assertIn("Berechtigungen", i["sehen"])
+        self.assertEqual(i["freigaben"], "1 Freigabe")

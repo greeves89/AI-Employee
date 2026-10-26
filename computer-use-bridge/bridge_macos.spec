@@ -34,6 +34,7 @@ a = Analysis(
         ('bridge.py', '.'),   # bundle bridge.py next to executable
         ('_version.py', '.'),
         ('assets/menueleiste-*.png', 'assets'),   # Menueleisten-Symbole je Zustand
+        ('assets/app-symbol-1024.png', 'assets'), # Kopf der Fenster
     ] + pw_datas + certifi_datas,
     hiddenimports=[
         'rumps',

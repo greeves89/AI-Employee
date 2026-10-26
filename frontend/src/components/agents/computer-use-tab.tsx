@@ -52,6 +52,7 @@ import {
   createBridgeRegel,
   updateBridgeRegel,
   deleteBridgeRegel,
+  assignComputerUseAgent,
   type BridgeRegel,
   type ComputerUseSession,
 } from "@/lib/api";
@@ -400,6 +401,7 @@ export function ComputerUseTab({ agentId, browserMode: initialBrowserMode = fals
             {sessions.map((session) => (
               <SessionCard
                 key={session.session_id}
+                agentId={agentId}
                 session={session}
                 browserWsBase={browserWsBase}
                 expectedBridgeVersion={bridgeVersion}
@@ -483,6 +485,7 @@ export function ComputerUseTab({ agentId, browserMode: initialBrowserMode = fals
 // ── Session Card ──────────────────────────────────────────────────────────────
 
 function SessionCard({
+  agentId,
   session,
   browserWsBase,
   expectedBridgeVersion,
@@ -490,6 +493,7 @@ function SessionCard({
   onCapabilitiesChange,
   onSessionChange,
 }: {
+  agentId: string;
   session: ComputerUseSession;
   browserWsBase: string;
   expectedBridgeVersion: string | null;
@@ -822,7 +826,7 @@ function SessionCard({
         humanCaptureAllowed={allowedSet.has("input_capture")}
       />
 
-      <MitdenkerPanel session={session} onChange={onSessionChange} />
+      <MitdenkerPanel agentId={agentId} session={session} onChange={onSessionChange} />
     </motion.div>
   );
 }
@@ -848,11 +852,15 @@ const LEERE_REGEL = { name: "", wenn_app: "", wenn_titel: "", angebot: "", auftr
 /** Die Bridge sieht mit und bietet im Overlay Hilfe an: Regeln wirken lokal und
  *  kosten nichts; Mitdenken schickt bei deutlichen Wechseln ein Bild an den
  *  Agenten, begrenzt durch den Tagesdeckel. */
-function MitdenkerPanel({ session, onChange }: {
+function MitdenkerPanel({ agentId, session, onChange }: {
+  agentId: string;
   session: ComputerUseSession;
   onChange: (patch: Partial<ComputerUseSession>) => void;
 }) {
   const beobachten = (session.allowed_capabilities ?? []).includes("observe");
+  // „An“ heisst hier: DIESER Agent denkt mit. Steht Mitdenken fuer einen anderen
+  // (oder noch gar keinen) Agenten an, zeigt der Schalter aus — Einschalten ordnet zu.
+  const mitdenkenHier = !!session.mitdenken && session.agent_id === agentId;
   const [offen, setOffen] = useState(false);
   const [regeln, setRegeln] = useState<BridgeRegel[]>([]);
   const [laeufeHeute, setLaeufeHeute] = useState(0);
@@ -878,6 +886,12 @@ function MitdenkerPanel({ session, onChange }: {
   const mitdenkerSetzen = async (patch: { mitdenken?: boolean; deckel?: number }) => {
     setFehler(null);
     try {
+      // Mitdenken braucht einen Agenten an der Sitzung — eingeschaltet auf der
+      // Seite eines Agenten heisst: DIESER Agent schaut hin und uebernimmt.
+      if (patch.mitdenken && session.agent_id !== agentId) {
+        const zugeordnet = await assignComputerUseAgent(session.session_id, agentId);
+        onChange({ agent_id: zugeordnet.agent_id, allowed_capabilities: zugeordnet.allowed_capabilities });
+      }
       const r = await updateSessionCapabilities(session.session_id, session.allowed_capabilities ?? [], patch);
       onChange({ mitdenken: r.mitdenken, deckel: r.deckel });
     } catch (e) {
@@ -889,7 +903,9 @@ function MitdenkerPanel({ session, onChange }: {
     setSpeichert(true);
     setFehler(null);
     try {
-      await createBridgeRegel(neu);
+      // Regeln von dieser Seite gehoeren diesem Agenten — sie wirken damit auch,
+      // wenn der Sitzung (noch) kein Agent zugeordnet ist.
+      await createBridgeRegel({ ...neu, agent_id: agentId });
       setNeu(LEERE_REGEL);
       await laden();
     } catch (e) {
@@ -930,7 +946,7 @@ function MitdenkerPanel({ session, onChange }: {
           Mitsehen und Mitdenken
         </span>
         <span className="flex items-center gap-2 text-[10px] text-muted-foreground/60">
-          {beobachten ? (session.mitdenken ? "Mitdenken an" : "nur Regeln") : "aus"}
+          {beobachten ? (mitdenkenHier ? "Mitdenken an" : "nur Regeln") : "aus"}
           {offen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
         </span>
       </button>
@@ -947,24 +963,26 @@ function MitdenkerPanel({ session, onChange }: {
             <div className="min-w-0">
               <p className="text-xs font-medium text-foreground">Mitdenken</p>
               <p className="text-[10px] text-muted-foreground/60">
-                Bei deutlichen Bildschirmwechseln sieht der Agent ein Bild und bietet von sich aus an, was er abnehmen kann.
-                {session.agent_id ? "" : " Dafür muss der Sitzung ein Agent zugeordnet sein."}
+                Bei deutlichen Bildschirmwechseln sieht dieser Agent ein Bild und bietet von sich aus an, was er abnehmen kann.
+                {session.agent_id && session.agent_id !== agentId
+                  ? " Gerade denkt ein anderer Agent mit — Einschalten übernimmt es für diesen."
+                  : ""}
               </p>
             </div>
             <button
               disabled={!beobachten}
-              onClick={() => mitdenkerSetzen({ mitdenken: !session.mitdenken })}
+              onClick={() => mitdenkerSetzen({ mitdenken: !mitdenkenHier })}
               className={cn(
                 "relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors disabled:opacity-40",
-                session.mitdenken ? "bg-red-500" : "bg-foreground/[0.12]",
+                mitdenkenHier ? "bg-red-500" : "bg-foreground/[0.12]",
               )}
               role="switch"
-              aria-checked={!!session.mitdenken}
+              aria-checked={mitdenkenHier}
               aria-label="Mitdenken"
             >
               <span className={cn(
                 "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform",
-                session.mitdenken ? "translate-x-4" : "translate-x-0",
+                mitdenkenHier ? "translate-x-4" : "translate-x-0",
               )} />
             </button>
           </div>

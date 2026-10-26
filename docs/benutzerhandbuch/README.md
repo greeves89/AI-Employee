@@ -2509,11 +2509,17 @@ Infobereich der Taskleiste (Windows) zeigt sie ihren Zustand:
 | Bildschirm mit Auge | verbunden **und sieht mit** (Freigabe „Mitsehen“, siehe 23.3) |
 
 **Schritt 2 — Anmelden.** App starten → **Einstellungen/Anmelden**. Felder:
-- **Bridge-URL / Server** — Adresse deiner Instanz.
+- **Server-Adresse** — Adresse deiner Instanz.
 - **E-Mail** + **Passwort** — deine Zugangsdaten.
 - **Beim Start automatisch verbinden** (Häkchen) — optional.
 - **Anmelden & Verbinden** klicken. *(Hinweis: Das Login-Fenster lässt sich vergrößern,
   falls der Button verdeckt ist.)*
+
+Danach zeigt das Hauptfenster der Bridge den Verbindungsstatus mit **einem** Knopf
+(Verbinden bzw. Trennen), darunter den Bereich **Mitsehen** und die Knöpfe Sprechen,
+Einstellungen und „Im Browser öffnen“:
+
+![Hauptfenster der Bridge: Status Verbunden, Bereich Mitsehen, Aktionen](screenshots/23-bridge-hauptfenster.png)
 
 **Schritt 3 — Berechtigungen festlegen.** Im Dialog wählst du pro Fähigkeit (Screenshot,
 Klick, Tippen, App öffnen, Shell, Zwischenablage, Browser-Steuerung, ego lite …), **was der
@@ -2604,8 +2610,10 @@ der Agent legt die Regel selbst an (in der Liste steht dann „vom Agenten“).
 deutlichen Bildschirmwechseln ein Bild an den Agenten der Sitzung; er bietet dann von sich
 aus an, was er dir abnehmen kann — auch ohne Regel. Höchstens ein Blick je Minute, dazu ein
 **Tagesdeckel** (Feld „Höchstens … Blicke am Tag“, Standard 40). Jeder Blick ist ein
-Modellaufruf und kostet wie eine Chatnachricht. Voraussetzung: der Sitzung ist ein Agent
-zugeordnet. In der Bridge-App geht es auch über den Menüpunkt **Mitdenken** (Haken).
+Modellaufruf und kostet wie eine Chatnachricht. Schaltest du Mitdenken auf der Seite eines
+Agenten ein, denkt **dieser** Agent mit und übernimmt die Aufträge. Regeln, die du dort
+anlegst, gehören ebenfalls diesem Agenten. In der Bridge-App geht Mitdenken auch über den
+Menüpunkt **Mitdenken** (Haken) oder den Knopf im Hauptfenster.
 
 **Das Overlay.**
 

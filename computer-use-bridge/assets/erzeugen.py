@@ -98,7 +98,27 @@ def _funkeln(d: ImageDraw.ImageDraw, cx: float, cy: float, r: float, farbe) -> N
 
 
 def app_symbol(groesse: int = 1024) -> Image.Image:
+    """App-Symbol in der Form, die macOS erwartet: abgerundetes Quadrat mit Rand
+    (824 von 1024, Radius ~185) und leichtem Schatten. Anders als iOS rundet macOS
+    nicht selbst ab — ein randloses Quadrat stuende im Dock eckig da."""
     G = groesse * UEBER
+    inhalt = _app_inhalt(G)
+    rand = round(G * 100 / 1024)
+    k = G - 2 * rand
+    maske = Image.new("L", (G, G), 0)
+    ImageDraw.Draw(maske).rounded_rectangle((rand, rand, rand + k, rand + k), radius=round(k * 0.225), fill=255)
+    schatten = maske.filter(ImageFilter.GaussianBlur(G * 0.012)).point(lambda v: round(v * 0.45))
+    bild = Image.new("RGBA", (G, G), (0, 0, 0, 0))
+    bild.paste(Image.new("RGBA", (G, G), (0, 0, 0, 255)), (0, round(G * 0.008)), schatten)
+    flaeche = inhalt.resize((k, k), Image.LANCZOS)
+    tafel = Image.new("RGBA", (G, G), (0, 0, 0, 0))
+    tafel.paste(flaeche, (rand, rand))
+    bild = Image.alpha_composite(bild, Image.composite(tafel, Image.new("RGBA", (G, G), (0, 0, 0, 0)), maske))
+    return bild.resize((groesse, groesse), Image.LANCZOS)
+
+
+def _app_inhalt(G: int) -> Image.Image:
+    """Die randlose Flaeche (Verlauf, Kachel, Bildschirm mit Auge)."""
     bild = _verlauf(G).convert("RGBA")
     ebene = Image.new("RGBA", (G, G), (0, 0, 0, 0))
     d = ImageDraw.Draw(ebene)
@@ -122,7 +142,7 @@ def app_symbol(groesse: int = 1024) -> Image.Image:
     _funkeln(d, G * 0.73, G * 0.735, G * 0.048, CYAN)
     r = G * 0.03
     d.ellipse((G * 0.675 - r, G * 0.64 - r, G * 0.675 + r, G * 0.64 + r), fill=CYAN)
-    return bild.resize((groesse, groesse), Image.LANCZOS)
+    return bild
 
 
 def menueleiste(zustand: str, groesse: int = 44) -> Image.Image:

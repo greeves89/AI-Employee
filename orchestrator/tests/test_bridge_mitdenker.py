@@ -539,6 +539,48 @@ class KonfigMitAltemAbbild(_Mit):
             self.konfig_mock = self.konfig.start()
 
 
+class ZuordnungBehaeltMitsehen(_Mit):
+    """Mitdenken braucht einen Agenten an der Sitzung. Das Zuordnen kuerzt die Rechte
+    auf den Agenten-Standard — Mitsehen ist aber keine Agenten-Faehigkeit, sondern
+    die Entscheidung des Menschen, und darf dabei nicht verschwinden."""
+
+    async def asyncTearDown(self):
+        cu._sessions.pop("s1", None)
+        await super().asyncTearDown()
+
+    async def test_zuordnen_laesst_mitsehen_stehen(self):
+        s = _sitzung(agent_id=None, allowed_capabilities={"screenshots", "shell", "observe"})
+        cu._sessions["s1"] = s
+        with patch.object(cu, "_persist_session", AsyncMock()), \
+             patch.object(cu, "_beobachter_konfig_senden", AsyncMock()) as konfig:
+            async with self.Session() as db:
+                await cu.assign_agent("s1", cu.AgentAssignment(agent_id="a1"), user=A, db=db)
+        self.assertIn("observe", s["allowed_capabilities"])
+        self.assertNotIn("shell", s["allowed_capabilities"], "Der Agenten-Standard gilt fuer alles andere weiter")
+        konfig.assert_awaited_with("s1")
+
+    async def test_mitsehen_trotz_agentenstandard_einschaltbar(self):
+        s = _sitzung(agent_id="a1", allowed_capabilities={"screenshots"})
+        cu._sessions["s1"] = s
+        with patch.object(cu, "_persist_session", AsyncMock()), \
+             patch.object(cu, "_beobachter_konfig_senden", AsyncMock()):
+            async with self.Session() as db:
+                await cu.update_capabilities("s1", cu.CapabilityUpdate(allowed_capabilities=["screenshots", "observe"]),
+                                             user=A, db=db)
+                with self.assertRaises(HTTPException):
+                    await cu.update_capabilities("s1", cu.CapabilityUpdate(allowed_capabilities=["shell"]),
+                                                 user=A, db=db)
+        self.assertIn("observe", s["allowed_capabilities"])
+
+    async def test_fremder_agent_nicht_zuordenbar(self):
+        cu._sessions["s1"] = _sitzung(agent_id=None)
+        with patch.object(cu, "_persist_session", AsyncMock()):
+            async with self.Session() as db:
+                with self.assertRaises(HTTPException) as cm:
+                    await cu.assign_agent("s1", cu.AgentAssignment(agent_id="b1"), user=A, db=db)
+        self.assertEqual(cm.exception.status_code, 404)
+
+
 class AbbildUndPrompt(unittest.TestCase):
     def test_nur_ab_1378(self):
         for version, erwartet in (("1.378.0", True), ("v1.379.2", True), ("1.377.9", False),
