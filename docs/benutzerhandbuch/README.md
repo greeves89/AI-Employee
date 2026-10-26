@@ -2512,6 +2512,10 @@ Infobereich der Taskleiste (Windows) zeigt sie ihren Zustand:
 - **Server-Adresse** — Adresse deiner Instanz.
 - **E-Mail** + **Passwort** — deine Zugangsdaten.
 - **Beim Start automatisch verbinden** (Häkchen) — optional.
+
+Die Bridge bleibt danach angemeldet: Sie erneuert ihre Anmeldung selbst. Neu anmelden musst
+du dich nur, wenn sie länger als sieben Tage nicht lief oder du dich am Server überall
+abgemeldet hast.
 - **Anmelden & Verbinden** klicken. *(Hinweis: Das Login-Fenster lässt sich vergrößern,
   falls der Button verdeckt ist.)*
 
