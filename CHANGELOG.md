@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.378.6] - 2026-10-26
+
+### Geändert
+- **Animationsbibliothek (framer-motion) im Frontend auf Version 14 angehoben.** Reiner Versionssprung ohne sichtbare Änderung — die im Frontend genutzten Teile (`motion`, `AnimatePresence`) sind unverändert; v14 entfernt nur interne Kompatibilitäts-APIs für sehr alte v13-Versionen, die hier nicht genutzt wurden.
+
 ## [1.378.5] - 2026-10-26
 
 ### Geändert
