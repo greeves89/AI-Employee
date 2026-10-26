@@ -2974,6 +2974,43 @@ def _aus_aufnahmen_nehmen(root) -> None:
         pass
 
 
+# ── Symbole (Menueleiste / Tray) ──────────────────────────────────────────────
+
+SYMBOL_ZUSTAENDE = ("getrennt", "verbindet", "verbunden", "sieht_mit")
+_TEXT_SYMBOL = {"getrennt": "○", "verbindet": "◐", "verbunden": "●", "sieht_mit": "◉"}
+
+
+def tray_zustand(status: str, verbindet: bool, sieht_mit: bool) -> str:
+    """Welches Symbol gerade gilt. „sieht_mit“ nur bei stehender Verbindung — der
+    Mensch soll auf einen Blick sehen, dass die Bridge gerade selbst hinschaut."""
+    if status == "connected":
+        return "sieht_mit" if sieht_mit else "verbunden"
+    if verbindet or status == "connecting":
+        return "verbindet"
+    return "getrennt"
+
+
+def _sieht_mit() -> bool:
+    b = _overlay.get("bridge")
+    return bool(b is not None and getattr(getattr(b, "observer", None), "beobachten", False))
+
+
+def _asset_pfad(name: str) -> str | None:
+    """Datei aus assets/ — im Bundle (PyInstaller) oder neben dem Quelltext."""
+    kandidaten = []
+    if getattr(sys, "frozen", False):
+        if getattr(sys, "_MEIPASS", None):
+            kandidaten.append(Path(sys._MEIPASS))
+        inhalt = Path(sys.executable).parent.parent
+        kandidaten += [inhalt / "Resources", inhalt / "Frameworks", Path(sys.executable).parent]
+    kandidaten.append(Path(__file__).parent)
+    for k in kandidaten:
+        pfad = k / "assets" / name
+        if pfad.exists():
+            return str(pfad)
+    return None
+
+
 def mitdenken_umschalten(cfg: dict) -> bool:
     """Mitdenken an/aus (Tray-Menue). Speichert und gibt es sofort an den Server."""
     cfg["mitdenken"] = not bool(cfg.get("mitdenken"))
@@ -3023,12 +3060,17 @@ def run_macos(cfg: dict) -> None:
             show_main_window(self.cfg)
 
         def _update_icon(self):
-            if is_running():
-                self.title = "●"
-            elif _status == "connecting" or self._connecting:
-                self.title = "◐"
+            zustand = tray_zustand(_status, self._connecting, _sieht_mit())
+            pfad = _asset_pfad(f"menueleiste-{zustand}.png")
+            if pfad:
+                # Template: macOS faerbt das Symbol selbst fuer helle und dunkle Leisten.
+                if getattr(self, "_symbol", None) != pfad:
+                    self.template = True
+                    self.icon = pfad
+                    self.title = None
+                    self._symbol = pfad
             else:
-                self.title = "○"
+                self.title = _TEXT_SYMBOL[zustand]
             self._sync_menu()
 
         def _sync_menu(self):
@@ -3163,9 +3205,13 @@ def run_tray(cfg: dict) -> None:
     except ImportError:
         sys.exit(1)
 
-    def make_icon(connected):
+    def make_icon(zustand):
+        pfad = _asset_pfad(f"tray-{zustand}.png")
+        if pfad:
+            return Image.open(pfad).convert("RGBA")
         img = Image.new("RGBA", (64, 64), (0,0,0,0))
-        ImageDraw.Draw(img).ellipse([8,8,56,56], fill=(34,197,94) if connected else (156,163,175))
+        farbe = {"verbunden": (34,197,94), "sieht_mit": (6,182,212), "verbindet": (217,119,6)}.get(zustand, (156,163,175))
+        ImageDraw.Draw(img).ellipse([8,8,56,56], fill=farbe)
         return img
 
     def on_connect(icon, item):
@@ -3243,9 +3289,18 @@ def run_tray(cfg: dict) -> None:
     def on_quit(icon, item): stop_bridge(); icon.stop()
     def refresh(icon):
         import time
-        while True: icon.icon = make_icon(is_running()); time.sleep(3)
+        zuletzt = None
+        while True:
+            zustand = tray_zustand(_status, False, _sieht_mit())
+            if zustand != zuletzt:
+                icon.icon = make_icon(zustand)
+                icon.title = {"getrennt": "AI-Employee Bridge — getrennt", "verbindet": "AI-Employee Bridge — verbindet",
+                              "verbunden": "AI-Employee Bridge — verbunden",
+                              "sieht_mit": "AI-Employee Bridge — sieht mit"}[zustand]
+                zuletzt = zustand
+            time.sleep(3)
 
-    icon = pystray.Icon("AI-Employee Bridge", make_icon(False), menu=pystray.Menu(
+    icon = pystray.Icon("AI-Employee Bridge", make_icon("getrennt"), menu=pystray.Menu(
         # default=True: Doppelklick aufs Tray-Symbol oeffnet das Hauptfenster.
         pystray.MenuItem("Öffnen", on_open_main, default=True),
         pystray.Menu.SEPARATOR,

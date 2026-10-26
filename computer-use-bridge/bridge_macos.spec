@@ -33,6 +33,7 @@ a = Analysis(
     datas=[
         ('bridge.py', '.'),   # bundle bridge.py next to executable
         ('_version.py', '.'),
+        ('assets/menueleiste-*.png', 'assets'),   # Menueleisten-Symbole je Zustand
     ] + pw_datas + certifi_datas,
     hiddenimports=[
         'rumps',
@@ -99,7 +100,7 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name='AI-Employee Bridge.app',
-    icon=None,
+    icon='assets/app-symbol.icns',
     bundle_identifier='com.ai-employee.bridge',
     info_plist={
         'NSPrincipalClass': 'NSApplication',

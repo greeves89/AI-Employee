@@ -2496,6 +2496,18 @@ gesetzten Berechtigungen.
 **Schritt 1 — App holen.** Aus dem Release `bridge-latest` herunterladen:
 `AI-Employee-Bridge-Windows.zip` (Windows) bzw. `AI-Employee-Bridge.dmg` (macOS).
 
+Du erkennst die Bridge am Symbol mit Bildschirm und Auge. In der Menüleiste (macOS) bzw. im
+Infobereich der Taskleiste (Windows) zeigt sie ihren Zustand:
+
+![App-Symbol der Bridge und die vier Zustände: getrennt, verbindet, verbunden, sieht mit](screenshots/23-bridge-symbole.png)
+
+| Symbol | Bedeutung |
+|---|---|
+| Bildschirm, blass / grau | getrennt |
+| Bildschirm mit drei Punkten / orange | verbindet |
+| Bildschirm mit Punkt / blau | verbunden |
+| Bildschirm mit Auge | verbunden **und sieht mit** (Freigabe „Mitsehen“, siehe 23.3) |
+
 **Schritt 2 — Anmelden.** App starten → **Einstellungen/Anmelden**. Felder:
 - **Bridge-URL / Server** — Adresse deiner Instanz.
 - **E-Mail** + **Passwort** — deine Zugangsdaten.

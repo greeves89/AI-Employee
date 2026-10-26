@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.378.1] - 2026-10-26
+
+### Neu
+- **Eigenes Symbol für die Computer-Use-Bridge (macOS und Windows).** Bisher trug die App das Standard-Symbol des Paketierers und die Menüleiste nur Textzeichen. Das neue App-Symbol gehört zur Familie der iOS-App (blauer Verlauf, Glas-Kachel) und zeigt einen Bildschirm mit Auge.
+- **Zustand auf einen Blick** in der Menüleiste (macOS, passt sich hellem und dunklem Modus an) und im Infobereich (Windows): getrennt, verbindet, verbunden — und **sieht mit**, solange die Bridge mit der Freigabe „Mitsehen“ selbst hinschaut.
+- Die Symbole entstehen reproduzierbar aus `computer-use-bridge/assets/erzeugen.py`.
+
 ## [1.378.0] - 2026-10-26
 
 ### Neu
