@@ -542,9 +542,17 @@ class KonfigMitAltemAbbild(_Mit):
 class ZuordnungBehaeltMitsehen(_Mit):
     """Mitdenken braucht einen Agenten an der Sitzung. Das Zuordnen kuerzt die Rechte
     auf den Agenten-Standard — Mitsehen ist aber keine Agenten-Faehigkeit, sondern
-    die Entscheidung des Menschen, und darf dabei nicht verschwinden."""
+    die Entscheidung des Menschen, und darf dabei nicht verschwinden. Ausser: der
+    Nutzer hat eine Autonomie-Obergrenze, oder der Agent einen ausdruecklichen
+    Standard ohne Mitsehen."""
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        self.p_grenze = patch("app.core.autonomie_grenze.autonomie_obergrenze", AsyncMock(return_value=None))
+        self.grenze = self.p_grenze.start()
 
     async def asyncTearDown(self):
+        self.p_grenze.stop()
         cu._sessions.pop("s1", None)
         await super().asyncTearDown()
 
@@ -571,6 +579,34 @@ class ZuordnungBehaeltMitsehen(_Mit):
                     await cu.update_capabilities("s1", cu.CapabilityUpdate(allowed_capabilities=["shell"]),
                                                  user=A, db=db)
         self.assertIn("observe", s["allowed_capabilities"])
+
+    async def test_begrenzte_rolle_verliert_mitsehen(self):
+        """Die Ausnahme darf die Autonomie-Grenze begrenzter Rollen nicht aushebeln."""
+        self.grenze.return_value = "l1"
+        s = _sitzung(agent_id=None, allowed_capabilities={"screenshots", "observe"})
+        cu._sessions["s1"] = s
+        with patch.object(cu, "_persist_session", AsyncMock()), \
+             patch.object(cu, "_beobachter_konfig_senden", AsyncMock()):
+            async with self.Session() as db:
+                await cu.assign_agent("s1", cu.AgentAssignment(agent_id="a1"), user=A, db=db)
+                self.assertNotIn("observe", s["allowed_capabilities"])
+                with self.assertRaises(HTTPException):
+                    await cu.update_capabilities("s1", cu.CapabilityUpdate(allowed_capabilities=["observe"]),
+                                                 user=A, db=db)
+
+    async def test_ausdruecklicher_agentenstandard_entscheidet(self):
+        async with self.Session() as db:
+            from app.models.agent import Agent
+            a1 = await db.get(Agent, "a1")
+            a1.access_policy = {"computer_use_default_capabilities": ["screenshots"]}
+            await db.commit()
+        s = _sitzung(agent_id=None, allowed_capabilities={"screenshots", "observe"})
+        cu._sessions["s1"] = s
+        with patch.object(cu, "_persist_session", AsyncMock()), \
+             patch.object(cu, "_beobachter_konfig_senden", AsyncMock()):
+            async with self.Session() as db:
+                await cu.assign_agent("s1", cu.AgentAssignment(agent_id="a1"), user=A, db=db)
+        self.assertEqual(s["allowed_capabilities"], {"screenshots"})
 
     async def test_fremder_agent_nicht_zuordenbar(self):
         cu._sessions["s1"] = _sitzung(agent_id=None)

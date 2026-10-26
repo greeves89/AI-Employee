@@ -189,6 +189,31 @@ async def _agent_default_capabilities(agent_id: str, db: AsyncSession) -> set[st
     return _default_caps_from_policy(agent.access_policy)
 
 
+async def _mitsehen_frei(agent_id: str, user, db: AsyncSession, agent=None) -> bool:
+    """Darf „Mitsehen“ an dieser Sitzung bleiben, obwohl der Agenten-Standard es
+    nicht nennt? (#1019)
+
+    Mitsehen ist die Entscheidung des Menschen ueber SEINEN Rechner — der
+    Plattform-Standard nennt es nicht, weil er fuer Agenten-Aktionen gedacht ist.
+    Zwei Grenzen bleiben aber stehen:
+    * Hat der Agent einen AUSDRUECKLICHEN Computer-Use-Standard, gilt der auch
+      fuer Mitsehen (jemand hat bewusst festgelegt, was dieser Agent bekommt).
+    * Ein Nutzer mit Autonomie-Obergrenze bekommt sensible Gruppen nur ueber
+      diesen ausdruecklichen Standard (siehe core/autonomie_grenze) — sonst
+      haette die Ausnahme die Grenze fuer begrenzte Rollen ausgehebelt.
+    """
+    from app.core import autonomy_matrix as am
+    from app.core.autonomie_grenze import autonomie_obergrenze
+    from app.models.agent import Agent
+
+    agent = agent if agent is not None else await db.get(Agent, agent_id)
+    if agent is None:
+        return False
+    if am.computer_use_default_capabilities(agent.access_policy) is not None:
+        return False            # ausdruecklicher Standard entscheidet (oben schon enthalten)
+    return await autonomie_obergrenze(user, db) is None
+
+
 def _action_allowed(action: str, allowed: set[str]) -> bool:
     """Return True if the action is covered by at least one allowed capability group."""
     group = _ACTION_TO_GROUP.get(action)
@@ -672,9 +697,9 @@ async def update_capabilities(
 
     if session.get("agent_id"):
         agent_default = await _agent_default_capabilities(session["agent_id"], db)
-        # Mitsehen ist keine Faehigkeit des Agenten, sondern die Entscheidung des
-        # Menschen ueber seinen Rechner (#1019) — der Agenten-Standard begrenzt sie nicht.
-        over_cap = set(req.allowed_capabilities) - agent_default - {OBSERVE_CAP}
+        if await _mitsehen_frei(session["agent_id"], user, db):
+            agent_default = agent_default | {OBSERVE_CAP}
+        over_cap = set(req.allowed_capabilities) - agent_default
         if over_cap:
             raise HTTPException(
                 status_code=422,
@@ -744,9 +769,9 @@ async def assign_agent(
         if not agent or str(agent.user_id) != str(user.id):
             raise HTTPException(status_code=404, detail="Agent not found or not yours")
         agent_default = _default_caps_from_policy(agent.access_policy)
-        bisher = set(session.get("allowed_capabilities") or [])
-        # Mitsehen bleibt, wie der Mensch es eingestellt hat (siehe update_capabilities).
-        session["allowed_capabilities"] = (bisher & agent_default) | (bisher & {OBSERVE_CAP})
+        if await _mitsehen_frei(req.agent_id, user, db, agent=agent):
+            agent_default = agent_default | {OBSERVE_CAP}
+        session["allowed_capabilities"] = set(session.get("allowed_capabilities") or []) & agent_default
 
     session["agent_id"] = req.agent_id
     logger.info(f"Session {scrub_log(session_id)}: agent_id set to {scrub_log(req.agent_id)}")
