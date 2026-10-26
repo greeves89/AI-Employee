@@ -11,6 +11,7 @@ echten Rechner eines Menschen.
 """
 
 import time
+import json
 import unittest
 from unittest.mock import AsyncMock
 
@@ -123,7 +124,9 @@ class DispatchGuardTests(unittest.IsolatedAsyncioTestCase):
         finally:
             _a.wait_for = orig
 
-        self.assertEqual(len(ws.sent), 1)
+        # Genau EIN Befehl. Daneben geht seit #1019 die Schrittmeldung ans Overlay.
+        befehle = [m for m in ws.sent if json.loads(m).get("type") == "command"]
+        self.assertEqual(len(befehle), 1)
         self.assertEqual(cu._sessions["s1"]["action_count"], 1)
         entry = cu._sessions["s1"]["audit_log"][-1]
         self.assertEqual(entry["action"], "open_app")

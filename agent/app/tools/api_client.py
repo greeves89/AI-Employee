@@ -591,6 +591,38 @@ class OrchestratorAPIClient:
             return e
         return f"Erinnerung angelegt für {e.get('faellig')}: {e.get('text')}"
 
+    async def bildschirm_regel_anlegen(self, params: dict) -> str:
+        """Regel für das Bridge-Overlay (#1019; Parität: orchestrator-server.mjs)."""
+        if not params.get("angebot") or not params.get("auftrag"):
+            return "Error: angebot and auftrag are required"
+        body = {f: params[f] for f in ("name", "wenn_app", "wenn_titel", "angebot", "auftrag")
+                if params.get(f) is not None}
+        r = await self._request("POST", "/computer-use/regeln", json=body)
+        if isinstance(r, str):
+            return r
+        bedingung = " und ".join(x for x in (
+            f"App enthält „{r.get('wenn_app')}“" if r.get("wenn_app") else "",
+            f"Titel enthält „{r.get('wenn_titel')}“" if r.get("wenn_titel") else "") if x)
+        return f"Regel {r.get('id')} angelegt: wenn {bedingung} → „{r.get('angebot')}“"
+
+    async def bildschirm_regeln(self, params: dict) -> str:
+        d = await self._request("GET", "/computer-use/regeln")
+        if isinstance(d, str):
+            return d
+        zeilen = [f"- {r.get('id')}: {r.get('name')} ({'aktiv' if r.get('aktiv') else 'aus'}; "
+                  f"App „{r.get('wenn_app') or '—'}“, Titel „{r.get('wenn_titel') or '—'}“; "
+                  f"{r.get('treffer')} Treffer; von {r.get('von')}) → „{r.get('angebot')}“"
+                  for r in d.get("regeln") or []]
+        return ("\n".join(zeilen) or "Keine Regeln.") + f"\nMitdenk-Läufe heute: {d.get('laeufe_heute') or 0}"
+
+    async def bildschirm_regel_loeschen(self, params: dict) -> str:
+        if params.get("regel_id") is None:
+            return "Error: regel_id is required"
+        r = await self._request("DELETE", f"/computer-use/regeln/{int(params['regel_id'])}")
+        if isinstance(r, str):
+            return r
+        return f"Regel {params['regel_id']} gelöscht."
+
     async def projekt_termin_anlegen(self, params: dict) -> str:
         pfad = self._projekt_pfad(params, "termine")
         if not pfad or not params.get("art") or not params.get("uhrzeit"):

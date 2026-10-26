@@ -44,7 +44,10 @@ _RANG = {am.DENY: 0, am.ASK: 1, am.ALLOW: 2}
 # Bildschirm, Maus und Tastatur hinausgehen: Shell auf dem Rechner, Mitschnitt von
 # Eingaben und Mikrofon, Browser (eigenes Profil bzw. die ECHTE angemeldete
 # Sitzung). Alle standardmaessig aus.
-SENSIBLE_COMPUTER_USE = frozenset({"shell", "input_capture", "voice_capture", "browser", "ego_browser"})
+# ``observe`` (#1019): die Bridge sieht von sich aus alles, was auf dem Bildschirm
+# steht — dieselbe Klasse wie der Tastatur-Mitschnitt.
+SENSIBLE_COMPUTER_USE = frozenset({"shell", "input_capture", "voice_capture", "browser", "ego_browser",
+                                   "observe"})
 
 
 async def autonomie_obergrenze(user, db) -> str | None:

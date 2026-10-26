@@ -544,13 +544,7 @@ def capture_screenshot(scale: float = 1.0, display: int | None = None) -> tuple[
                 f"1 bis {len(bildschirme)}."
             )
 
-    img = (
-        _capture_macos_inprocess(gewaehlt.get("id") if gewaehlt else None)
-        if sys.platform == "darwin" else None
-    )
-    if img is None:
-        import pyautogui
-        img = pyautogui.screenshot()
+    img = _bildschirm_rohbild(gewaehlt.get("id") if gewaehlt else None)
 
     # Scale down large Retina screenshots (Claude hallucinates coordinates >1280px)
     max_width = 1280
@@ -580,6 +574,16 @@ def capture_screenshot(scale: float = 1.0, display: int | None = None) -> tuple[
         "displays": bildschirme,
     }
     return b64, meta
+
+
+def _bildschirm_rohbild(display_id=None):
+    """Das ungeschnittene Bildschirmbild (PIL) — Quartz im eigenen Prozess auf dem
+    Mac, sonst pyautogui. Gemeinsamer Weg fuer Screenshot und Beobachter."""
+    img = _capture_macos_inprocess(display_id) if sys.platform == "darwin" else None
+    if img is None:
+        import pyautogui
+        img = pyautogui.screenshot()
+    return img
 
 
 def take_screenshot(scale: float = 1.0) -> str:
@@ -2346,6 +2350,239 @@ class CommandDispatcher:
 
 # ── WebSocket Bridge ──────────────────────────────────────────────────────────
 
+# ── Mitsehen (#1019): Beobachter, Regeln, Overlay ─────────────────────────────
+#
+# Bis hierher fuehrt die Bridge nur aus, was ein Agent schickt. Der Beobachter
+# dreht das um: Er schaut alle paar Sekunden selbst hin (aktive Anwendung,
+# Fenstertitel, ein kleiner Bild-Fingerabdruck) und meldet
+#   * ``rule_hit``    — eine Regel des Menschen trifft (LOKAL abgeglichen, kein Token),
+#   * ``observation`` — mit Mitdenken: das Bild hat sich deutlich veraendert und
+#                       wieder beruhigt; der Agent entscheidet, ob er etwas anbietet.
+# Was er beobachten darf, sagt der Server (``observer_config``, Capability
+# ``observe``). Was im Overlay steht, kommt ebenfalls vom Server.
+
+
+def _norm(wert) -> str:
+    return " ".join(str(wert or "").split()).casefold()
+
+
+def regel_passt(regel: dict, app, titel) -> bool:
+    """Gleiche Logik wie ``orchestrator/app/core/bridge_mitdenker.regel_passt`` —
+    ``test_bridge_mitdenker`` haelt beide zusammen. „Enthaelt“, ohne
+    Gross-/Kleinschreibung; eine Regel ohne Bedingung trifft nie."""
+    if not regel.get("aktiv", True):
+        return False
+    wenn_app, wenn_titel = _norm(regel.get("wenn_app")), _norm(regel.get("wenn_titel"))
+    if not wenn_app and not wenn_titel:
+        return False
+    if wenn_app and wenn_app not in _norm(app):
+        return False
+    if wenn_titel and wenn_titel not in _norm(titel):
+        return False
+    return True
+
+
+def _vordergrund_mac() -> dict:
+    from AppKit import NSWorkspace  # type: ignore
+    from Quartz import (  # type: ignore
+        CGWindowListCopyWindowInfo, kCGNullWindowID, kCGWindowListExcludeDesktopElements,
+        kCGWindowListOptionOnScreenOnly,
+    )
+
+    front = NSWorkspace.sharedWorkspace().frontmostApplication()
+    if front is None:
+        return {"app": "", "titel": ""}
+    pid = front.processIdentifier()
+    titel = ""
+    # Fensternamen liefert macOS nur mit Bildschirmaufnahme-Freigabe — die hat
+    # die Bridge ohnehin. Das erste Fenster der Ebene 0 ist das vorderste.
+    for w in CGWindowListCopyWindowInfo(
+            kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID) or []:
+        if w.get("kCGWindowOwnerPID") == pid and w.get("kCGWindowLayer", 0) == 0 and w.get("kCGWindowName"):
+            titel = str(w.get("kCGWindowName"))
+            break
+    return {"app": str(front.localizedName() or ""), "titel": titel}
+
+
+def _vordergrund_win() -> dict:
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+    hwnd = user32.GetForegroundWindow()
+    if not hwnd:
+        return {"app": "", "titel": ""}
+    laenge = user32.GetWindowTextLengthW(hwnd)
+    puffer = ctypes.create_unicode_buffer(laenge + 1)
+    user32.GetWindowTextW(hwnd, puffer, laenge + 1)
+    pid = wintypes.DWORD()
+    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+    app = ""
+    # PROCESS_QUERY_LIMITED_INFORMATION reicht fuer den Programmnamen und geht
+    # auch bei Prozessen mit hoeherer Integritaetsstufe.
+    handle = kernel32.OpenProcess(0x1000, False, pid.value)
+    if handle:
+        try:
+            pfad = ctypes.create_unicode_buffer(1024)
+            groesse = wintypes.DWORD(1024)
+            if kernel32.QueryFullProcessImageNameW(handle, 0, pfad, ctypes.byref(groesse)):
+                app = os.path.splitext(os.path.basename(pfad.value))[0]
+        finally:
+            kernel32.CloseHandle(handle)
+    return {"app": app, "titel": puffer.value}
+
+
+def vordergrund() -> dict:
+    """Aktive Anwendung und Titel ihres vordersten Fensters — Mac und Windows.
+    Nie ein Fehler: Was nicht lesbar ist, bleibt leer."""
+    try:
+        if IS_MAC:
+            return _vordergrund_mac()
+        if IS_WIN:
+            return _vordergrund_win()
+    except Exception:  # noqa: BLE001
+        log.debug("Vordergrund nicht lesbar", exc_info=True)
+    return {"app": "", "titel": ""}
+
+
+def bild_fingerabdruck(img) -> int:
+    """Durchschnitts-Hash 16x16: 256 Bit, die sich bei kleinen Aenderungen
+    (Mauszeiger, Uhrzeit) kaum, bei einem neuen Bildschirminhalt stark aendern."""
+    klein = img.convert("L").resize((16, 16))
+    werte = list(klein.getdata())
+    schnitt = sum(werte) / len(werte)
+    bits = 0
+    for w in werte:
+        bits = (bits << 1) | (1 if w > schnitt else 0)
+    return bits
+
+
+def bild_abstand(a: int, b: int) -> int:
+    return bin(a ^ b).count("1")
+
+
+def _bild_als_jpeg(img, breite: int = 1280, qualitaet: int = 60) -> str:
+    from PIL import Image
+
+    if img.width > breite:
+        img = img.resize((breite, int(img.height * breite / img.width)), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.convert("RGB").save(buf, format="JPEG", quality=qualitaet, optimize=True)
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+#: Was das Overlay an den Server schicken darf.
+_OVERLAY_ANTWORTEN = {"vorschlag_antwort", "overlay_stopp", "overlay_weiter"}
+
+
+class ScreenObserver:
+    """Schaut selbst hin, solange der Server es erlaubt (``observer_config``).
+
+    Laeuft in einem eigenen Thread und gibt Ereignisse an ``melden(dict)`` —
+    nie direkt an den WebSocket (der gehoert der asyncio-Schleife).
+    """
+
+    TAKT_SECS = 3.0
+    # Ab so vielen abweichenden Bits (von 256) gilt das Bild als neu.
+    SCHWELLE_BITS = 40
+    # So lange muss das Bild ruhig sein, bevor ein Blick an den Agenten geht.
+    RUHE_SECS = 4.0
+    # Hoechstens ein Blick je Minute — der Tagesdeckel steht zusaetzlich auf dem Server.
+    MIN_ABSTAND_SECS = 60.0
+    # Dieselbe Regel im selben Fenster bietet erst nach 10 Minuten wieder an.
+    REGEL_RUHE_SECS = 600.0
+
+    def __init__(self, melden, bild_holen=None, vordergrund_holen=None, uhr=time.monotonic):
+        self._melden = melden
+        self._bild_holen = bild_holen or _bildschirm_rohbild
+        self._vordergrund_holen = vordergrund_holen or vordergrund
+        self._uhr = uhr
+        self.beobachten = False
+        self.mitdenken = False
+        self.gestoppt = False
+        self.regeln: list[dict] = []
+        self._kontext: tuple[str, str] | None = None
+        self._abdruck: int | None = None
+        self._unruhig_seit: float | None = None
+        self._letzter_blick = -1e9
+        self._regel_zuletzt: dict[tuple, float] = {}
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def konfigurieren(self, cfg: dict) -> None:
+        self.beobachten = bool(cfg.get("beobachten"))
+        self.mitdenken = self.beobachten and bool(cfg.get("mitdenken"))
+        self.gestoppt = bool(cfg.get("gestoppt"))
+        self.regeln = [r for r in (cfg.get("regeln") or []) if isinstance(r, dict)]
+        log.info("Mitsehen: %s, Mitdenken: %s, %d Regel(n)",
+                 "an" if self.beobachten else "aus", "an" if self.mitdenken else "aus", len(self.regeln))
+
+    def starten(self) -> None:
+        if self._thread and self._thread.is_alive():
+            return
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._schleife, name="mitsehen", daemon=True)
+        self._thread.start()
+
+    def anhalten(self) -> None:
+        self._stop.set()
+        self.beobachten = False
+
+    def _schleife(self) -> None:
+        while not self._stop.wait(self.TAKT_SECS):
+            if not self.beobachten:
+                continue
+            try:
+                self.schritt()
+            except ScreenRecordingPermissionError as e:
+                log.warning("Mitsehen pausiert: %s", e)
+                self.beobachten = False
+            except Exception:  # noqa: BLE001 — ein Fehlblick beendet das Mitsehen nicht
+                log.debug("Mitsehen: Blick fehlgeschlagen", exc_info=True)
+
+    def schritt(self) -> None:
+        """Ein Blick. Oeffentlich, damit Tests ihn ohne Thread treiben koennen."""
+        jetzt = self._uhr()
+        vorn = self._vordergrund_holen()
+        app, titel = vorn.get("app", ""), vorn.get("titel", "")
+        kontext = (app, titel)
+        neuer_kontext = kontext != self._kontext
+        self._kontext = kontext
+
+        if neuer_kontext and not self.gestoppt:
+            for regel in self.regeln:
+                if not regel_passt(regel, app, titel):
+                    continue
+                schluessel = (regel.get("id"), _norm(titel))
+                if jetzt - self._regel_zuletzt.get(schluessel, -1e9) < self.REGEL_RUHE_SECS:
+                    continue
+                self._regel_zuletzt[schluessel] = jetzt
+                self._melden({"type": "rule_hit", "regel_id": regel.get("id"), "app": app, "titel": titel})
+                break
+
+        if not self.mitdenken or self.gestoppt:
+            return
+        img = self._bild_holen()
+        if img is None:
+            return
+        abdruck = bild_fingerabdruck(img)
+        if (neuer_kontext or self._abdruck is None
+                or bild_abstand(abdruck, self._abdruck) > self.SCHWELLE_BITS):
+            self._unruhig_seit = jetzt
+        self._abdruck = abdruck
+        if self._unruhig_seit is None:
+            return
+        if jetzt - self._unruhig_seit < self.RUHE_SECS:
+            return
+        if jetzt - self._letzter_blick < self.MIN_ABSTAND_SECS:
+            return
+        self._unruhig_seit = None
+        self._letzter_blick = jetzt
+        self._melden({"type": "observation", "app": app, "titel": titel,
+                      "bild_b64": _bild_als_jpeg(img), "media_type": "image/jpeg"})
+
+
 class Bridge:
     def __init__(
         self,
@@ -2354,6 +2591,7 @@ class Bridge:
         session_id: str | None = None,
         extra_headers: dict[str, str] | None = None,
         on_state=None,
+        on_overlay=None,
     ):
         self.ws_url = ws_url
         self.token = token
@@ -2374,6 +2612,13 @@ class Bridge:
         # Same pattern for microphone chunks — sounddevice calls back on its
         # own audio thread, never from the asyncio loop.
         self._voice_events: queue.Queue = queue.Queue(maxsize=1000)
+        # Mitsehen (#1019): Ereignisse des Beobachters und Antworten aus dem
+        # Overlay — beide entstehen ausserhalb der asyncio-Schleife.
+        self._ausgang: queue.Queue = queue.Queue(maxsize=200)
+        self.observer = ScreenObserver(self._ausgang_ablegen)
+        # GUI-Rueckruf fuer das Overlay: on_overlay(nachricht) mit
+        # observer_config / vorschlag / overlay_status. Ohne GUI nur Protokoll.
+        self.on_overlay = on_overlay
 
     def _ensure_dispatcher(self) -> CommandDispatcher:
         if self.dispatcher is None:
@@ -2390,6 +2635,55 @@ class Bridge:
             self._input_events.put_nowait(event)
         except queue.Full:
             log.warning("Input-capture queue full — dropping event")
+
+    def _ausgang_ablegen(self, nachricht: dict) -> None:
+        """Aus jedem Thread erlaubt — gesendet wird in ``_drain_ausgang``."""
+        try:
+            self._ausgang.put_nowait(nachricht)
+        except queue.Full:
+            log.warning("Ausgang voll — Nachricht verworfen (%s)", nachricht.get("type"))
+
+    def overlay_antwort(self, nachricht: dict) -> bool:
+        """Antwort aus dem Overlay an den Server. Nur die bekannten Arten —
+        das Overlay soll keinen beliebigen Kanal zum Server haben."""
+        if nachricht.get("type") not in _OVERLAY_ANTWORTEN:
+            return False
+        if nachricht["type"] == "overlay_stopp":
+            # Sofort lokal still sein, nicht erst auf die Antwort des Servers warten.
+            self.observer.gestoppt = True
+        self._ausgang_ablegen(nachricht)
+        return True
+
+    def _overlay_melden(self, nachricht: dict) -> None:
+        if nachricht.get("type") == "overlay_status":
+            zustand = nachricht.get("zustand")
+            if zustand == "gestoppt":
+                self.observer.gestoppt = True
+            elif zustand in ("bereit", "arbeitet"):
+                self.observer.gestoppt = False
+        if not self.on_overlay:
+            log.info("Overlay: %s %s", nachricht.get("type"),
+                     nachricht.get("text") or nachricht.get("zustand") or "")
+            return
+        try:
+            self.on_overlay(nachricht)
+        except Exception:  # noqa: BLE001 — ein kaputtes Overlay darf die Bridge nicht toeten
+            log.debug("on_overlay callback failed", exc_info=True)
+
+    async def _drain_ausgang(self, ws) -> None:
+        while self._running:
+            try:
+                nachricht = await asyncio.get_event_loop().run_in_executor(
+                    None, self._ausgang.get, True, 0.5
+                )
+            except queue.Empty:
+                continue
+            except Exception:  # noqa: BLE001 — loop shutting down
+                return
+            try:
+                await ws.send(json.dumps(nachricht))
+            except Exception:  # noqa: BLE001 — connection gone; reconnect loop handles it
+                return
 
     def _queue_voice_event(self, event: dict) -> None:
         """Called from the sounddevice audio thread — must not block or send."""
@@ -2485,6 +2779,8 @@ class Bridge:
                                     + (AX_ACTIONS if ax_tree_available() else []),
                     "ax_tree_available": ax_tree_available(),
                     "ego_browser_available": ego_browser_available(),
+                    # Kann von sich aus hinsehen (#1019) — aeltere Bridges koennen es nicht.
+                    "mitsehen": True,
                 }
                 await ws.send(json.dumps(caps))
                 log.info(f"Connected. Waiting for commands... (platform: {platform.system()})")
@@ -2500,12 +2796,18 @@ class Bridge:
 
                 drain_task = asyncio.create_task(self._drain_input_events(ws))
                 voice_drain_task = asyncio.create_task(self._drain_voice_events(ws))
+                ausgang_task = asyncio.create_task(self._drain_ausgang(ws))
+                self.observer.starten()
                 try:
                     async for raw in ws:
                         await self._handle_message(ws, raw)
                 finally:
                     drain_task.cancel()
                     voice_drain_task.cancel()
+                    ausgang_task.cancel()
+                    # Ohne Verbindung sieht niemand zu — bis der Server nach dem
+                    # Wiederverbinden neu erlaubt (observer_config).
+                    self.observer.konfigurieren({})
                     if self.dispatcher and self.dispatcher.input_recorder:
                         # Never leave a keylogger running past the connection.
                         self.dispatcher.input_recorder.stop()
@@ -2570,6 +2872,13 @@ class Bridge:
         elif msg_type == "session_info":
             self.session_id = msg.get("session_id")
             log.info(f"Session ID: {self.session_id}")
+
+        elif msg_type == "observer_config":
+            self.observer.konfigurieren(msg)
+            self._overlay_melden(msg)
+
+        elif msg_type in ("vorschlag", "overlay_status"):
+            self._overlay_melden(msg)
 
 
 # ── Extra headers (identity-aware proxy support, issue #374) ──────────────────
@@ -2703,8 +3012,14 @@ async def run(
     stop_event: threading.Event | None = None,
     extra_headers: dict[str, str] | None = None,
     on_state=None,
+    on_overlay=None,
+    on_bridge=None,
 ) -> None:
     """Async entry point for use as a library (e.g. from tray_app).
+
+    ``on_overlay(nachricht)`` bekommt alles fuers Overlay (#1019); ``on_bridge(bridge)``
+    reicht die Instanz heraus, damit das Overlay mit ``bridge.overlay_antwort``
+    antworten kann.
 
     ``on_state(state, detail)`` is called on connect/disconnect so a GUI can show
     the real state. Without it the tray had no way to learn that the handshake
@@ -2714,12 +3029,17 @@ async def run(
     ws_url = url.rstrip("/").replace("http://", "ws://").replace("https://", "wss://")
     if extra_headers is None:
         extra_headers = collect_extra_headers(None)
-    bridge = Bridge(ws_url, token, session_id, extra_headers=extra_headers, on_state=on_state)
+    bridge = Bridge(ws_url, token, session_id, extra_headers=extra_headers, on_state=on_state,
+                    on_overlay=on_overlay)
+    if on_bridge:
+        on_bridge(bridge)
     if stop_event:
         async def _watch_stop():
             while not stop_event.is_set():
                 await asyncio.sleep(0.5)
             bridge.running = False
+            # Getrennt heisst: niemand sieht mehr hin.
+            bridge.observer.anhalten()
         asyncio.create_task(_watch_stop())
     await bridge.connect()
 

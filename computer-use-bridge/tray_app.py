@@ -122,6 +122,7 @@ CAPABILITY_META = [
     {"id": "input_capture", "label": "Eingaben mitschneiden", "desc": "Deine Klicks und Tasten aufzeichnen (Replay)", "risk": "hoch"},
     {"id": "voice_capture", "label": "Mikrofon",              "desc": "Mikrofon mithören (nur zwischen Start und Stopp)", "risk": "hoch"},
     {"id": "shell",         "label": "Shell-Befehle",         "desc": "Terminal-Befehle in freigegebenen Ordnern (siehe Ordner-Zugriff)", "risk": "hoch"},
+    {"id": "observe",       "label": "Mitsehen",              "desc": "Von sich aus hinsehen, Regeln prüfen, Hilfe anbieten (Overlay)", "risk": "hoch"},
 ]
 
 DEFAULT_CAPABILITIES = {c["id"] for c in CAPABILITY_META if c["id"] in
@@ -303,6 +304,10 @@ def _scope_payload(cfg: dict | None) -> dict:
         payload["allowed_domains"] = domains
     else:
         payload["clear_domain_scope"] = True
+    # Mitdenken (#1019): Bilder an den Agenten. Nur mitschicken, wenn hier je
+    # eingestellt — sonst bleibt, was in der Weboberflaeche steht.
+    if "mitdenken" in cfg:
+        payload["mitdenken"] = bool(cfg.get("mitdenken"))
     return payload
 
 
@@ -501,7 +506,8 @@ def _run_bridge_thread(url, token, session_id):
 
         asyncio.run(bridge_module.run(url=url, token=token,
                                       session_id=session_id, stop_event=_bridge_stop,
-                                      on_state=_on_state))
+                                      on_state=_on_state, on_overlay=_on_overlay,
+                                      on_bridge=_on_bridge))
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
             _status = "error: neu anmelden"
@@ -2457,6 +2463,441 @@ def _show_status_plain_tkinter(cfg):
     root.mainloop()
 
 
+# ── Overlay (#1019): Angebote, Fragen, Schritte — oben in der Bildschirmmitte ──
+#
+# Die Bridge meldet ueber ``on_overlay`` drei Arten: ``observer_config``,
+# ``vorschlag`` (der Agent bietet etwas an) und ``overlay_status`` (arbeitet,
+# fertig, gestoppt, Hinweis). ``OverlayModell`` entscheidet, WAS zu sehen ist
+# und was ein Klick an den Server schickt — fuer Mac und Windows gleich. Die
+# beiden Oberflaechen darunter zeichnen nur.
+
+_OVERLAY_TITEL = {
+    "frage": "Angebot",
+    "arbeitet": "Arbeitet",
+    "ergebnis": "Fertig",
+    "fehler": "Fehler",
+    "gestoppt": "Gestoppt",
+    "hinweis": "Hinweis",
+}
+
+
+class OverlayModell:
+    """Zustand des Overlays. Reine Logik — testbar ohne Fenster."""
+
+    def __init__(self) -> None:
+        self.sichtbar = False
+        self.art = ""
+        self.text = ""
+        self.schritte = 0
+        self.vorschlag_id: str | None = None
+        self.agent_id: str | None = None
+        self.gestoppt = False
+        # „Ausblenden“ gilt bis zum naechsten Angebot oder Stopp — Statusmeldungen
+        # eines laufenden Auftrags holen das Fenster nicht zurueck.
+        self.ausgeblendet = False
+
+    @property
+    def titel(self) -> str:
+        titel = _OVERLAY_TITEL.get(self.art, "")
+        if self.art == "arbeitet" and self.schritte:
+            titel += f" · {self.schritte} Schritt{'e' if self.schritte != 1 else ''}"
+        return titel
+
+    def knoepfe(self) -> list[tuple[str, str]]:
+        if self.art == "frage":
+            return [("ja", "Ja"), ("nein", "Nein"), ("stopp", "Stopp"), ("chat", "Chat"), ("aus", "Ausblenden")]
+        if self.art == "arbeitet":
+            return [("stopp", "Stopp"), ("chat", "Chat"), ("aus", "Ausblenden")]
+        if self.art == "gestoppt":
+            return [("weiter", "Freigeben"), ("chat", "Chat"), ("aus", "Ausblenden")]
+        return [("chat", "Chat"), ("aus", "Schließen")]
+
+    @property
+    def mit_eingabe(self) -> bool:
+        return self.art == "frage"
+
+    def verarbeiten(self, nachricht: dict) -> bool:
+        """Nachricht der Bridge einarbeiten. True = neu zeichnen."""
+        art = nachricht.get("type")
+        if art == "observer_config":
+            self.agent_id = nachricht.get("agent_id") or self.agent_id
+            if nachricht.get("gestoppt") and not self.gestoppt:
+                self.gestoppt = True
+                self._zeigen("gestoppt", "Gestoppt. Der Agent darf auf diesem Rechner nichts tun, bis du freigibst.")
+                return True
+            self.gestoppt = bool(nachricht.get("gestoppt"))
+            return False
+        if art == "vorschlag":
+            self.vorschlag_id = str(nachricht.get("id") or "")
+            self.ausgeblendet = False
+            self._zeigen("frage", str(nachricht.get("text") or ""))
+            return True
+        if art != "overlay_status":
+            return False
+        zustand = nachricht.get("zustand")
+        text = str(nachricht.get("text") or "")
+        if nachricht.get("schritte") is not None:
+            self.schritte = int(nachricht.get("schritte") or 0)
+        if zustand == "arbeitet":
+            # Ein offenes Angebot bleibt stehen, bis der Mensch antwortet.
+            if self.art == "frage" and self.sichtbar:
+                return False
+            aktion = str(nachricht.get("aktion") or "")
+            self._zeigen("arbeitet", text or (f"Agent arbeitet … ({aktion})" if aktion else "Agent arbeitet …"))
+            return not self.ausgeblendet
+        if zustand in ("fertig", "fehler"):
+            self._zeigen("ergebnis" if zustand == "fertig" else "fehler", text or "Fertig.")
+            self.ausgeblendet = False
+            return True
+        if zustand == "gestoppt":
+            self.gestoppt = True
+            self.ausgeblendet = False
+            self._zeigen("gestoppt", text or "Gestoppt.")
+            return True
+        if zustand == "bereit":
+            self.gestoppt = False
+            self.sichtbar = False
+            return True
+        if zustand == "hinweis":
+            self._zeigen("hinweis", text)
+            return not self.ausgeblendet
+        return False
+
+    def _zeigen(self, art: str, text: str) -> None:
+        self.art = art
+        self.text = text[:600]
+        self.sichtbar = not self.ausgeblendet or art in ("frage", "gestoppt", "ergebnis", "fehler")
+
+    def klick(self, knopf: str, eingabe: str = "") -> dict | None:
+        """Was der Klick an den Server schickt (oder None). Aendert den Zustand."""
+        if knopf == "ja" and self.vorschlag_id:
+            nachricht = {"type": "vorschlag_antwort", "id": self.vorschlag_id, "antwort": "ja",
+                         "text": " ".join(eingabe.split())[:1000]}
+            self.vorschlag_id = None
+            self.schritte = 0
+            self._zeigen("arbeitet", "Agent übernimmt …")
+            return nachricht
+        if knopf == "nein" and self.vorschlag_id:
+            nachricht = {"type": "vorschlag_antwort", "id": self.vorschlag_id, "antwort": "nein"}
+            self.vorschlag_id = None
+            self.sichtbar = False
+            return nachricht
+        if knopf == "stopp":
+            self.gestoppt = True
+            self.vorschlag_id = None
+            self._zeigen("gestoppt", "Gestoppt. Der Agent darf auf diesem Rechner nichts tun, bis du freigibst.")
+            return {"type": "overlay_stopp"}
+        if knopf == "weiter":
+            self.gestoppt = False
+            self.sichtbar = False
+            return {"type": "overlay_weiter"}
+        if knopf == "aus":
+            self.sichtbar = False
+            self.ausgeblendet = self.art in ("arbeitet", "hinweis")
+            return None
+        return None
+
+
+_overlay: dict = {"modell": OverlayModell(), "bridge": None, "ui": None}
+
+
+def _overlay_chat_url(cfg: dict) -> str | None:
+    base = str(cfg.get("url") or "").rstrip("/")
+    if not base:
+        return None
+    agent_id = _overlay["modell"].agent_id
+    return f"{base}/agents/{urllib.parse.quote(str(agent_id))}" if agent_id else base
+
+
+def _overlay_klick(cfg: dict, knopf: str, eingabe: str = "") -> None:
+    """Gemeinsamer Klick-Weg beider Oberflaechen."""
+    if knopf == "chat":
+        url = _overlay_chat_url(cfg)
+        if url:
+            webbrowser.open(url)
+        return
+    nachricht = _overlay["modell"].klick(knopf, eingabe)
+    bridge_instanz = _overlay.get("bridge")
+    if nachricht and bridge_instanz is not None:
+        bridge_instanz.overlay_antwort(nachricht)
+    ui = _overlay.get("ui")
+    if ui is not None:
+        ui.zeichnen()
+
+
+def _on_bridge(bridge_instanz) -> None:
+    _overlay["bridge"] = bridge_instanz
+
+
+def _on_overlay(nachricht: dict) -> None:
+    """Aus dem Bridge-Thread: Modell aktualisieren, Oberflaeche anstossen."""
+    if not _overlay["modell"].verarbeiten(nachricht):
+        return
+    ui = _overlay.get("ui")
+    if ui is None:
+        cfg = load_config()
+        ui = _MacOverlay(cfg) if _appkit_available() else _TkOverlay(cfg)
+        _overlay["ui"] = ui
+    ui.zeichnen()
+
+
+class _MacOverlay:
+    """Schwebendes Panel oben mittig, ueber allen Fenstern, ohne die aktive
+    Anwendung zu verdraengen. AppKit nur auf dem Hauptthread."""
+
+    W, H = 640, 132
+
+    def __init__(self, cfg: dict) -> None:
+        self.cfg = cfg
+        self.panel = None
+
+    def zeichnen(self) -> None:
+        from PyObjCTools import AppHelper  # type: ignore
+        AppHelper.callAfter(self._zeichnen_haupt)
+
+    def _bauen(self) -> None:
+        from AppKit import (NSBackingStoreBuffered, NSButton, NSColor, NSFont, NSMakeRect,
+                            NSObject, NSPanel, NSTextField, NSVisualEffectView,
+                            NSWindowStyleMaskBorderless)
+
+        global _OverlayPanelKlasse, _OverlayHandlerKlasse
+        if _OverlayPanelKlasse is None:
+            class AIEOverlayPanel(NSPanel):
+                # Randlose Panels werden sonst nie Schluesselfenster — das
+                # Antwortfeld liesse sich nicht anklicken.
+                def canBecomeKeyWindow(self):
+                    return True
+
+            class AIEOverlayHandler(NSObject):
+                def klick_(self, sender):
+                    ui = _overlay.get("ui")
+                    if ui is None:
+                        return
+                    knopf = ui.tag_zu_knopf.get(int(sender.tag()), "")
+                    eingabe = str(ui.eingabe.stringValue()) if ui.eingabe is not None else ""
+                    _overlay_klick(ui.cfg, knopf, eingabe)
+
+            _OverlayPanelKlasse, _OverlayHandlerKlasse = AIEOverlayPanel, AIEOverlayHandler
+
+        def farbe(r, g, b, a=1.0):
+            return NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, a)
+
+        W, H = self.W, self.H
+        # 1<<7 = NSWindowStyleMaskNonactivatingPanel: Das Overlay erscheint, ohne
+        # der Anwendung, in der der Mensch gerade arbeitet, den Fokus zu nehmen.
+        panel = _OverlayPanelKlasse.alloc().initWithContentRect_styleMask_backing_defer_(
+            NSMakeRect(0, 0, W, H), NSWindowStyleMaskBorderless | (1 << 7), NSBackingStoreBuffered, False)
+        panel.setReleasedWhenClosed_(False)
+        panel.setLevel_(25)
+        panel.setOpaque_(False)
+        panel.setBackgroundColor_(NSColor.clearColor())
+        panel.setHasShadow_(True)
+        # Auf jedem Schreibtisch (Spaces) und ueber Vollbild-Apps.
+        panel.setCollectionBehavior_((1 << 0) | (1 << 8))
+        try:
+            f = panel.screen().visibleFrame()
+            panel.setFrameOrigin_((f.origin.x + (f.size.width - W) / 2, f.origin.y + f.size.height - H - 8))
+        except Exception:  # noqa: BLE001
+            panel.center()
+        cv = panel.contentView()
+        hinten = NSVisualEffectView.alloc().initWithFrame_(NSMakeRect(0, 0, W, H))
+        hinten.setMaterial_(3)
+        hinten.setState_(1)
+        hinten.setWantsLayer_(True)
+        hinten.layer().setCornerRadius_(18)
+        hinten.layer().setBorderWidth_(1)
+        hinten.layer().setBorderColor_(farbe(0.92, 0.36, 0.04, 0.55).CGColor())
+        cv.addSubview_(hinten)
+
+        def label(text, x, y, w, h, groesse, fett=False, alpha=0.92):
+            lbl = NSTextField.labelWithString_(text)
+            lbl.setFont_(NSFont.boldSystemFontOfSize_(groesse) if fett else NSFont.systemFontOfSize_(groesse))
+            lbl.setTextColor_(farbe(1, 1, 1, alpha))
+            lbl.setFrame_(((x, y), (w, h)))
+            lbl.setLineBreakMode_(0)
+            lbl.setMaximumNumberOfLines_(3)
+            cv.addSubview_(lbl)
+            return lbl
+
+        self.kopf = label("", 20, H - 30, W - 200, 18, 12, fett=True)
+        label("AI Employee", W - 120, H - 30, 100, 18, 11, alpha=0.5)
+        self.text = label("", 20, 50, W - 40, H - 84, 13)
+        self.eingabe = NSTextField.alloc().initWithFrame_(((20, 14), (W - 420, 26)))
+        self.eingabe.cell().setPlaceholderString_("Optional: Antwort oder Hinweis")
+        self.eingabe.setFont_(NSFont.systemFontOfSize_(12))
+        cv.addSubview_(self.eingabe)
+        self.handler = _OverlayHandlerKlasse.alloc().init()
+        self.knoepfe = []
+        for i in range(5):
+            btn = NSButton.alloc().initWithFrame_(NSMakeRect(0, 12, 74, 30))
+            btn.setBordered_(False)
+            btn.setWantsLayer_(True)
+            btn.layer().setCornerRadius_(14)
+            btn.setTag_(i)
+            btn.setTarget_(self.handler)
+            btn.setAction_("klick:")
+            cv.addSubview_(btn)
+            self.knoepfe.append(btn)
+        self.tag_zu_knopf: dict[int, str] = {}
+        self._farbe = farbe
+        self.panel = panel
+
+    def _zeichnen_haupt(self) -> None:
+        try:
+            if self.panel is None:
+                self._bauen()
+            m = _overlay["modell"]
+            if not m.sichtbar:
+                self.panel.orderOut_(None)
+                return
+            self.kopf.setStringValue_(m.titel)
+            self.text.setStringValue_(m.text)
+            self.eingabe.setHidden_(not m.mit_eingabe)
+            if m.mit_eingabe:
+                self.eingabe.setStringValue_("")
+            knoepfe = m.knoepfe()
+            self.tag_zu_knopf = {}
+            x = self.W - 20
+            for i, btn in enumerate(self.knoepfe):
+                if i >= len(knoepfe):
+                    btn.setHidden_(True)
+                    continue
+                schluessel, beschriftung = knoepfe[len(knoepfe) - 1 - i]
+                breite = 64 if len(beschriftung) <= 5 else 92
+                x -= breite
+                btn.setFrame_(((x, 12), (breite, 30)))
+                x -= 6
+                btn.setTitle_(beschriftung)
+                btn.setTag_(i)
+                self.tag_zu_knopf[i] = schluessel
+                hauptknopf = schluessel in ("ja", "weiter")
+                warnknopf = schluessel == "stopp"
+                btn.layer().setBackgroundColor_(
+                    (self._farbe(0.92, 0.36, 0.04, 1) if hauptknopf else
+                     self._farbe(0.75, 0.15, 0.15, 0.9) if warnknopf else
+                     self._farbe(1, 1, 1, 0.14)).CGColor())
+                btn.setContentTintColor_(self._farbe(1, 1, 1, 1))
+                btn.setHidden_(False)
+            self.panel.orderFrontRegardless()
+            if m.mit_eingabe:
+                self.panel.makeKeyWindow()
+        except Exception:  # noqa: BLE001 — ein Zeichenfehler darf die Bridge nicht stoeren
+            app_log.warning("Overlay nicht zeichenbar", exc_info=True)
+
+
+_OverlayPanelKlasse = None
+_OverlayHandlerKlasse = None
+
+
+class _TkOverlay:
+    """Windows (und Linux): randloses tkinter-Fenster oben mittig, immer im
+    Vordergrund. Laeuft in EINEM eigenen Thread mit eigener Schleife; die Bridge
+    stoesst nur ueber eine Warteschlange an — tkinter fasst kein fremder Thread an."""
+
+    W, H = 640, 150
+
+    def __init__(self, cfg: dict) -> None:
+        import queue as _queue
+
+        self.cfg = cfg
+        self._auftraege: "_queue.Queue[str]" = _queue.Queue()
+        self._thread = threading.Thread(target=self._schleife, name="overlay", daemon=True)
+        self._thread.start()
+
+    def zeichnen(self) -> None:
+        self._auftraege.put("zeichnen")
+
+    def _schleife(self) -> None:
+        try:
+            import tkinter as tk
+        except ImportError:
+            return
+        root = tk.Tk()
+        root.withdraw()
+        root.overrideredirect(True)
+        root.attributes("-topmost", True)
+        try:
+            root.attributes("-alpha", 0.97)
+        except Exception:  # noqa: BLE001
+            pass
+        hinten, vorne, akzent = "#14161c", "#f2f2f2", "#ea5b0b"
+        rahmen = tk.Frame(root, bg=hinten, highlightthickness=1, highlightbackground=akzent)
+        rahmen.pack(fill="both", expand=True)
+        kopf = tk.Label(rahmen, text="", bg=hinten, fg=vorne, font=("Segoe UI", 10, "bold"), anchor="w")
+        kopf.pack(fill="x", padx=16, pady=(10, 0))
+        text = tk.Label(rahmen, text="", bg=hinten, fg=vorne, font=("Segoe UI", 10), anchor="w",
+                        justify="left", wraplength=self.W - 32)
+        text.pack(fill="x", padx=16, pady=(4, 6))
+        unten = tk.Frame(rahmen, bg=hinten)
+        unten.pack(fill="x", padx=16, pady=(0, 10))
+        eingabe = tk.Entry(unten, bg="#222631", fg=vorne, insertbackground=vorne, relief="flat",
+                           font=("Segoe UI", 10))
+        knopf_rahmen = tk.Frame(unten, bg=hinten)
+        knopf_rahmen.pack(side="right")
+
+        def klick(schluessel):
+            _overlay_klick(self.cfg, schluessel, eingabe.get())
+
+        def neu_zeichnen():
+            m = _overlay["modell"]
+            if not m.sichtbar:
+                root.withdraw()
+                return
+            kopf.configure(text=m.titel)
+            text.configure(text=m.text)
+            if m.mit_eingabe:
+                eingabe.delete(0, "end")
+                eingabe.pack(side="left", fill="x", expand=True, padx=(0, 8))
+            else:
+                eingabe.pack_forget()
+            for kind in knopf_rahmen.winfo_children():
+                kind.destroy()
+            for schluessel, beschriftung in m.knoepfe():
+                farbe = akzent if schluessel in ("ja", "weiter") else "#b42828" if schluessel == "stopp" else "#2a2e39"
+                tk.Button(knopf_rahmen, text=beschriftung, bg=farbe, fg="white", relief="flat",
+                          activebackground=farbe, activeforeground="white", padx=10,
+                          font=("Segoe UI", 9, "bold"), command=lambda s=schluessel: klick(s)
+                          ).pack(side="left", padx=(6, 0))
+            root.update_idletasks()
+            x = (root.winfo_screenwidth() - self.W) // 2
+            root.geometry(f"{self.W}x{max(self.H, root.winfo_reqheight())}+{x}+8")
+            root.deiconify()
+            root.lift()
+            root.attributes("-topmost", True)
+
+        def abholen():
+            import queue as _queue
+            try:
+                while True:
+                    self._auftraege.get_nowait()
+                    neu_zeichnen()
+            except _queue.Empty:
+                pass
+            except Exception:  # noqa: BLE001
+                app_log.warning("Overlay nicht zeichenbar", exc_info=True)
+            root.after(150, abholen)
+
+        root.after(150, abholen)
+        root.mainloop()
+
+
+def mitdenken_umschalten(cfg: dict) -> bool:
+    """Mitdenken an/aus (Tray-Menue). Speichert und gibt es sofort an den Server."""
+    cfg["mitdenken"] = not bool(cfg.get("mitdenken"))
+    save_config(cfg)
+    if cfg.get("url") and cfg.get("token") and cfg.get("session"):
+        def _senden():
+            try:
+                api_update_capabilities(cfg["url"], cfg["token"], cfg["session"],
+                                        cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES)), cfg)
+            except Exception as e:  # noqa: BLE001
+                _notify(f"Mitdenken nicht übertragen: {e}")
+        threading.Thread(target=_senden, daemon=True).start()
+    if cfg["mitdenken"] and "observe" not in (cfg.get("allowed_capabilities") or []):
+        _notify("Mitdenken braucht die Freigabe „Mitsehen“ — unter Berechtigungen einschalten.")
+    return cfg["mitdenken"]
+
+
 # ── macOS menu bar (rumps) ─────────────────────────────────────────────────────
 
 def run_macos(cfg: dict) -> None:
@@ -2516,6 +2957,7 @@ def run_macos(cfg: dict) -> None:
                 "Trennen": connected or connecting,
                 "Berechtigungen…": True,
                 "Interaction Bar": True,
+                "Mitdenken": True,
                 "Status": True,
                 "Einstellungen…": True,
                 "AI-Employee öffnen": True,
@@ -2525,6 +2967,10 @@ def run_macos(cfg: dict) -> None:
                     self.menu[title].enabled = enabled
                 except Exception:
                     pass
+            try:
+                self.menu["Mitdenken"].state = 1 if self.cfg.get("mitdenken") else 0
+            except Exception:
+                pass
 
         def _connect(self):
             global _status
@@ -2565,6 +3011,11 @@ def run_macos(cfg: dict) -> None:
         @rumps.clicked("Interaction Bar")
         def on_interaction_bar(self, _):
             show_interaction_bar(self.cfg)
+
+        @rumps.clicked("Mitdenken")
+        def on_mitdenken(self, sender):
+            # Haken = der Agent sieht bei deutlichen Bildschirmwechseln mit (#1019).
+            sender.state = 1 if mitdenken_umschalten(self.cfg) else 0
 
         @rumps.clicked("Einstellungen…")
         def on_settings(self, _):
@@ -2691,6 +3142,7 @@ def run_tray(cfg: dict) -> None:
     def on_open_main(icon, item): _one_dialog(lambda: show_main_window(cfg))
     def on_permissions(icon, item): _one_dialog(lambda: show_permissions_dialog(cfg))
     def on_interaction(icon, item): _one_dialog(lambda: show_interaction_bar(cfg))
+    def on_mitdenken(icon, item): mitdenken_umschalten(cfg)
     def on_settings(icon, item): _one_dialog(_settings_inline)
     def on_status(icon, item): _one_dialog(lambda: show_status_window(cfg))
     def on_open(icon, item):
@@ -2709,6 +3161,7 @@ def run_tray(cfg: dict) -> None:
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Berechtigungen…", on_permissions),
         pystray.MenuItem("Interaction Bar", on_interaction),
+        pystray.MenuItem("Mitdenken", on_mitdenken, checked=lambda item: bool(cfg.get("mitdenken"))),
         pystray.MenuItem("Einstellungen…", on_settings),
         pystray.MenuItem("Status", on_status),
         pystray.Menu.SEPARATOR,

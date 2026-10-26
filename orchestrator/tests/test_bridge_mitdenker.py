@@ -1,0 +1,554 @@
+"""Bridge als Mitdenker (#1019): Regeln, Tagesdeckel, Overlay-Nachrichten.
+
+Was hier festgehalten wird:
+* Regeln gehören einem Menschen — fremde sieht, ändert und löscht niemand; ein
+  Agent legt Regeln nur für sich an und löscht nur seine eigenen.
+* Die Bridge gleicht Regeln lokal ab (``bridge.regel_passt``), der Server prüft
+  den gemeldeten Treffer nach (``bridge_mitdenker.regel_passt``) — beide
+  Fassungen urteilen gleich.
+* Ohne Capability ``observe`` passiert mit Beobachtungen nichts; Bilder gehen nur
+  bei eingeschaltetem Mitdenken und innerhalb des Tagesdeckels an den Agenten.
+* „Stopp“ im Overlay sperrt jede weitere Aktion des Agenten auf dem Rechner.
+"""
+
+import json
+import sys
+import unittest
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+
+from fastapi import HTTPException
+
+from app.api import computer_use as cu
+from app.core import bridge_mitdenker as bm
+from app.models.bridge_regel import BridgeRegel
+from app.models.user import UserRole
+from tests.test_projekte import Basis
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "computer-use-bridge"))
+import bridge  # noqa: E402
+
+A = SimpleNamespace(id="ua", email="a@example.invalid", role=UserRole.MEMBER)
+B = SimpleNamespace(id="ub", email="b@example.invalid", role=UserRole.MEMBER)
+
+
+def _agent(aid):
+    return SimpleNamespace(id=aid, principal_type="agent", role="agent")
+
+
+_REGEL = {"name": "Studio", "wenn_app": "Chrome", "wenn_titel": "YouTube Studio",
+          "angebot": "Soll ich Titel vorschlagen?", "auftrag": "Schlage drei Titel vor."}
+
+
+class RegelPasst(unittest.TestCase):
+    FAELLE = [
+        ({"wenn_app": "Chrome"}, "Google Chrome", "x", True),
+        ({"wenn_app": "chrome"}, "Google  CHROME", "x", True),
+        ({"wenn_titel": "YouTube Studio"}, "Safari", "Kanal-Inhalte - YouTube Studio", True),
+        ({"wenn_app": "Chrome", "wenn_titel": "Studio"}, "Google Chrome", "Gmail", False),
+        ({"wenn_app": "Excel"}, "Google Chrome", "Excel-Tipps", False),
+        ({}, "Google Chrome", "irgendwas", False),
+        ({"wenn_app": "  ", "wenn_titel": ""}, "Google Chrome", "x", False),
+        ({"wenn_app": "Chrome", "aktiv": False}, "Google Chrome", "x", False),
+        ({"wenn_titel": "Rechnung"}, None, None, False),
+    ]
+
+    def test_server_urteilt_wie_erwartet(self):
+        for regel, app, titel, erwartet in self.FAELLE:
+            with self.subTest(regel=regel, app=app, titel=titel):
+                self.assertEqual(bm.regel_passt(regel, app, titel), erwartet)
+
+    def test_bridge_urteilt_wie_der_server(self):
+        """Die Bridge entscheidet lokal, der Server prüft nach — laufen die beiden
+        auseinander, bietet die Bridge an, was der Server verwirft, oder umgekehrt."""
+        for regel, app, titel, _ in self.FAELLE:
+            with self.subTest(regel=regel, app=app, titel=titel):
+                self.assertEqual(bridge.regel_passt(regel, app, titel), bm.regel_passt(regel, app, titel))
+
+
+class AngebotLesen(unittest.TestCase):
+    def test_json_angebot(self):
+        a = bm.angebot_lesen('Klar: {"angebot": "Soll ich vergleichen?", "auftrag": "Vergleiche drei Akkus."}')
+        self.assertEqual(a, {"angebot": "Soll ich vergleichen?", "auftrag": "Vergleiche drei Akkus."})
+
+    def test_nichts_und_fehler_sind_kein_angebot(self):
+        for antwort in ("NICHTS", "nichts.", "", None, "[Fehler: Budget aufgebraucht]",
+                        '{"angebot": "", "auftrag": "x"}', '{"angebot": "x"}', "kein json", "[1, 2]"):
+            with self.subTest(antwort=antwort):
+                self.assertIsNone(bm.angebot_lesen(antwort))
+
+
+class _Redis:
+    def __init__(self):
+        self.werte = {}
+
+    async def incr(self, k):
+        self.werte[k] = self.werte.get(k, 0) + 1
+        return self.werte[k]
+
+    async def expire(self, k, s):
+        return True
+
+    async def get(self, k):
+        return self.werte.get(k)
+
+
+class Tagesdeckel(unittest.IsolatedAsyncioTestCase):
+    async def test_deckel_greift(self):
+        r = _Redis()
+        erlaubt = [await bm.lauf_erlaubt(r, "ua", 3) for _ in range(5)]
+        self.assertEqual(erlaubt, [True, True, True, False, False])
+        self.assertEqual(await bm.laeufe_heute(r, "ua"), 5)
+        self.assertEqual(await bm.laeufe_heute(r, "ub"), 0)
+
+    async def test_ohne_redis_kein_lauf(self):
+        self.assertFalse(await bm.lauf_erlaubt(None, "ua", 40))
+
+    async def test_deckel_null_heisst_aus(self):
+        self.assertFalse(await bm.lauf_erlaubt(_Redis(), "ua", 0))
+
+    def test_deckel_wird_begrenzt(self):
+        self.assertEqual(bm.deckel_lesen("abc"), bm.STANDARD_DECKEL)
+        self.assertEqual(bm.deckel_lesen(-5), 0)
+        self.assertEqual(bm.deckel_lesen(10_000), bm.MAX_DECKEL)
+
+
+class _Mit(Basis):
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        async with self.engine.begin() as conn:
+            await conn.run_sync(BridgeRegel.metadata.create_all, tables=[BridgeRegel.__table__])
+        self.p_db = patch("app.db.session.async_session_factory", self.Session)
+        self.p_db.start()
+        self.konfig = patch.object(cu, "beobachter_konfig_an_nutzer", AsyncMock())
+        self.konfig_mock = self.konfig.start()
+
+    async def asyncTearDown(self):
+        self.konfig.stop()
+        self.p_db.stop()
+        await super().asyncTearDown()
+
+
+class RegelnApi(_Mit):
+    async def test_anlegen_und_auflisten(self):
+        async with self.Session() as db:
+            r = await cu.regel_anlegen(cu.RegelEingabe(**_REGEL), caller=A, db=db)
+            self.assertEqual(r["von"], "nutzer")
+            self.assertTrue(r["aktiv"])
+            liste = await cu.regeln_auflisten(caller=A, db=db)
+        self.assertEqual([x["id"] for x in liste["regeln"]], [r["id"]])
+        self.konfig_mock.assert_awaited_with("ua")
+
+    async def test_ohne_bedingung_abgelehnt(self):
+        async with self.Session() as db:
+            with self.assertRaises(HTTPException) as cm:
+                await cu.regel_anlegen(cu.RegelEingabe(angebot="x", auftrag="y"), caller=A, db=db)
+        self.assertEqual(cm.exception.status_code, 422)
+
+    async def test_fremder_agent_als_ziel_abgelehnt(self):
+        async with self.Session() as db:
+            with self.assertRaises(HTTPException) as cm:
+                await cu.regel_anlegen(cu.RegelEingabe(**_REGEL, agent_id="b1"), caller=A, db=db)
+        self.assertEqual(cm.exception.status_code, 422)
+
+    async def test_fremde_regeln_unsichtbar_und_unantastbar(self):
+        async with self.Session() as db:
+            r = await cu.regel_anlegen(cu.RegelEingabe(**_REGEL), caller=A, db=db)
+            liste = await cu.regeln_auflisten(caller=B, db=db)
+            self.assertEqual(liste["regeln"], [])
+            with self.assertRaises(HTTPException) as cm:
+                await cu.regel_aendern(r["id"], cu.RegelEingabe(aktiv=False), user=B, db=db)
+            self.assertEqual(cm.exception.status_code, 404)
+            with self.assertRaises(HTTPException) as cm:
+                await cu.regel_loeschen(r["id"], caller=B, db=db)
+            self.assertEqual(cm.exception.status_code, 404)
+            # Agent eines anderen Menschen
+            with self.assertRaises(HTTPException):
+                await cu.regel_loeschen(r["id"], caller=_agent("b1"), db=db)
+
+    async def test_agent_legt_nur_fuer_sich_an(self):
+        async with self.Session() as db:
+            r = await cu.regel_anlegen(cu.RegelEingabe(**_REGEL, agent_id="a2"), caller=_agent("a1"), db=db)
+        self.assertEqual(r["agent_id"], "a1")
+        self.assertEqual(r["von"], "agent:a1")
+
+    async def test_agent_loescht_nicht_die_regeln_des_menschen(self):
+        async with self.Session() as db:
+            vom_menschen = await cu.regel_anlegen(cu.RegelEingabe(**_REGEL), caller=A, db=db)
+            vom_agenten = await cu.regel_anlegen(cu.RegelEingabe(**_REGEL), caller=_agent("a1"), db=db)
+            with self.assertRaises(HTTPException):
+                await cu.regel_loeschen(vom_menschen["id"], caller=_agent("a1"), db=db)
+            self.assertEqual(await cu.regel_loeschen(vom_agenten["id"], caller=_agent("a1"), db=db), {"ok": True})
+            self.assertEqual(await cu.regel_loeschen(vom_menschen["id"], caller=A, db=db), {"ok": True})
+
+    async def test_agent_tagesgrenze(self):
+        async with self.Session() as db:
+            for _ in range(bm.MAX_AGENT_REGELN_JE_TAG):
+                await cu.regel_anlegen(cu.RegelEingabe(**_REGEL), caller=_agent("a1"), db=db)
+            with self.assertRaises(HTTPException) as cm:
+                await cu.regel_anlegen(cu.RegelEingabe(**_REGEL), caller=_agent("a1"), db=db)
+        self.assertEqual(cm.exception.status_code, 422)
+
+    async def test_aendern_haelt_bedingung(self):
+        async with self.Session() as db:
+            r = await cu.regel_anlegen(cu.RegelEingabe(**_REGEL), caller=A, db=db)
+            with self.assertRaises(HTTPException):
+                await cu.regel_aendern(r["id"], cu.RegelEingabe(wenn_app="", wenn_titel=""), user=A, db=db)
+
+
+class _Ws:
+    def __init__(self):
+        self.gesendet = []
+
+    async def send_text(self, text):
+        self.gesendet.append(json.loads(text))
+
+    def typen(self):
+        return [m["type"] for m in self.gesendet]
+
+
+def _sitzung(**extra):
+    s = {
+        "user_id": "ua", "created_at": 0, "last_activity_at": 9e12, "bridge_connected": True,
+        "bridge_ws": _Ws(), "action_count": 0, "audit_log": [], "pending_results": {},
+        "allowed_capabilities": {"screenshots", "observe"}, "allowed_apps": None, "allowed_domains": None,
+        "agent_id": "a1", "mitdenken": True, "deckel": None,
+    }
+    s.update(extra)
+    return s
+
+
+class Beobachtung(_Mit):
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        self.redis = _Redis()
+        self.p_redis = patch.object(cu, "_redis", SimpleNamespace(client=self.redis))
+        self.p_redis.start()
+
+    async def asyncTearDown(self):
+        self.p_redis.stop()
+        cu._sessions.pop("s1", None)
+        await super().asyncTearDown()
+
+    async def _beobachten(self, s, bild="QUJD"):
+        cu._sessions["s1"] = s
+        with patch.object(cu, "_mitdenken", AsyncMock()) as m:
+            await cu._beobachtung("s1", s, {"app": "Google Chrome", "titel": "Shop", "bild_b64": bild,
+                                            "media_type": "image/jpeg"})
+            for t in list(s.get("_aufgaben") or []):
+                await t
+        return m
+
+    async def test_ohne_observe_passiert_nichts(self):
+        s = _sitzung(allowed_capabilities={"screenshots"})
+        m = await self._beobachten(s)
+        m.assert_not_called()
+        self.assertNotIn("letzter_blick", s)
+
+    async def test_ohne_mitdenken_kein_lauf(self):
+        s = _sitzung(mitdenken=False)
+        m = await self._beobachten(s)
+        m.assert_not_called()
+        self.assertEqual(s["letzter_blick"]["app"], "Google Chrome")
+
+    async def test_mitdenken_startet_lauf(self):
+        m = await self._beobachten(_sitzung())
+        m.assert_called_once()
+
+    async def test_offenes_angebot_sperrt(self):
+        s = _sitzung(vorschlaege={"v": {"ts": __import__("time").time(), "angebot": "x"}})
+        m = await self._beobachten(s)
+        m.assert_not_called()
+
+    async def test_tagesdeckel_meldet_einmal(self):
+        s = _sitzung(deckel=1)
+        await self._beobachten(s)
+        s["mitdenken_laeuft"] = False
+        m = await self._beobachten(s)
+        m.assert_not_called()
+        s["mitdenken_laeuft"] = False
+        await self._beobachten(s)
+        hinweise = [x for x in s["bridge_ws"].gesendet if x.get("zustand") == "hinweis"]
+        self.assertEqual(len(hinweise), 1)
+
+    async def test_zu_grosses_bild_wird_verworfen(self):
+        s = _sitzung()
+        m = await self._beobachten(s, bild="A" * (cu._MAX_BILD_B64 + 1))
+        m.assert_not_called()
+
+    async def test_mitdenken_zeigt_angebot(self):
+        s = _sitzung()
+        cu._sessions["s1"] = s
+        antwort = '{"angebot": "Soll ich vergleichen?", "auftrag": "Vergleiche."}'
+        with patch("app.services.agent_chat_bridge.ask_agent_via_chat", AsyncMock(return_value=antwort)) as ask:
+            await cu._mitdenken("s1", cu._blick_lesen({"app": "Chrome", "titel": "Shop", "bild_b64": "QUJD"}))
+        self.assertEqual(ask.await_args.kwargs["chat_session_id"], "bridge-beobachter")
+        self.assertEqual(ask.await_args.kwargs["images"][0]["data"], "QUJD")
+        vorschlag = [x for x in s["bridge_ws"].gesendet if x["type"] == "vorschlag"]
+        self.assertEqual(vorschlag[0]["text"], "Soll ich vergleichen?")
+        self.assertFalse(s["mitdenken_laeuft"])
+
+
+class Overlay(_Mit):
+    async def asyncTearDown(self):
+        cu._sessions.pop("s1", None)
+        await super().asyncTearDown()
+
+    async def _regel(self, **extra):
+        async with self.Session() as db:
+            return await cu.regel_anlegen(cu.RegelEingabe(**{**_REGEL, **extra}), caller=A, db=db)
+
+    async def test_regeltreffer_wird_nachgeprueft(self):
+        r = await self._regel()
+        s = _sitzung()
+        await cu._regel_treffer(s, {"regel_id": r["id"], "app": "Google Chrome", "titel": "Gmail"})
+        self.assertNotIn("vorschlag", s["bridge_ws"].typen())
+        await cu._regel_treffer(s, {"regel_id": r["id"], "app": "Google Chrome", "titel": "YouTube Studio"})
+        self.assertIn("vorschlag", s["bridge_ws"].typen())
+
+    async def test_fremde_regel_loest_nichts_aus(self):
+        async with self.Session() as db:
+            fremd = await cu.regel_anlegen(cu.RegelEingabe(**_REGEL), caller=B, db=db)
+        s = _sitzung()
+        await cu._regel_treffer(s, {"regel_id": fremd["id"], "app": "Google Chrome", "titel": "YouTube Studio"})
+        self.assertEqual(s["bridge_ws"].gesendet, [])
+
+    async def test_ja_gibt_den_auftrag(self):
+        r = await self._regel()
+        s = _sitzung()
+        cu._sessions["s1"] = s
+        await cu._regel_treffer(s, {"regel_id": r["id"], "app": "Google Chrome", "titel": "YouTube Studio"})
+        vid = next(x["id"] for x in s["bridge_ws"].gesendet if x["type"] == "vorschlag")
+        s["letzter_blick"] = cu._blick_lesen({"app": "Google Chrome", "titel": "YouTube Studio", "bild_b64": "QUJD"})
+        with patch("app.services.agent_chat_bridge.ask_agent_via_chat",
+                   AsyncMock(return_value="Drei Titel eingetragen.")) as ask:
+            await cu._vorschlag_antwort("s1", s, {"id": vid, "antwort": "ja", "text": "kurz bitte"})
+            for t in list(s["_aufgaben"]):
+                await t
+        text = ask.await_args.args[2]
+        self.assertIn("Schlage drei Titel vor.", text)
+        self.assertIn("kurz bitte", text)
+        self.assertEqual(ask.await_args.kwargs["chat_session_id"], "bridge")
+        self.assertEqual(s["bridge_ws"].gesendet[-1]["zustand"], "fertig")
+        self.assertFalse(s["auftrag_laeuft"])
+
+    async def test_nein_und_unbekannt_tun_nichts(self):
+        r = await self._regel()
+        s = _sitzung()
+        await cu._regel_treffer(s, {"regel_id": r["id"], "app": "Google Chrome", "titel": "YouTube Studio"})
+        vid = next(x["id"] for x in s["bridge_ws"].gesendet if x["type"] == "vorschlag")
+        with patch("app.services.agent_chat_bridge.ask_agent_via_chat", AsyncMock()) as ask:
+            await cu._vorschlag_antwort("s1", s, {"id": "gibtsnicht", "antwort": "ja"})
+            await cu._vorschlag_antwort("s1", s, {"id": vid, "antwort": "nein"})
+            # Nach dem Nein ist das Angebot verbraucht.
+            await cu._vorschlag_antwort("s1", s, {"id": vid, "antwort": "ja"})
+        ask.assert_not_called()
+
+    async def test_stopp_sperrt_jede_aktion(self):
+        s = _sitzung()
+        cu._sessions["s1"] = s
+        await cu._overlay_stopp(s)
+        with self.assertRaises(HTTPException) as cm:
+            await cu.dispatch_bridge_command("s1", "screenshot", {}, caller_user_id="ua", caller_label="a1",
+                                             caller_agent_id="a1")
+        self.assertEqual(cm.exception.status_code, 409)
+        await cu._overlay_weiter(s)
+        self.assertFalse(s["gestoppt"])
+
+    async def test_konfig_ohne_observe_ohne_regeln(self):
+        await self._regel()
+        self.konfig.stop()
+        try:
+            s = _sitzung(allowed_capabilities={"screenshots"})
+            cu._sessions["s1"] = s
+            await cu._beobachter_konfig_senden("s1")
+            konfig = s["bridge_ws"].gesendet[-1]
+            self.assertEqual(konfig["type"], "observer_config")
+            self.assertFalse(konfig["beobachten"])
+            self.assertEqual(konfig["regeln"], [])
+            s["allowed_capabilities"] = {"observe"}
+            await cu._beobachter_konfig_senden("s1")
+            konfig = s["bridge_ws"].gesendet[-1]
+            self.assertTrue(konfig["beobachten"] and konfig["mitdenken"])
+            self.assertEqual(len(konfig["regeln"]), 1)
+            # Der Auftrag bleibt auf dem Server.
+            self.assertNotIn("auftrag", konfig["regeln"][0])
+        finally:
+            self.konfig_mock = self.konfig.start()
+
+
+class _Uhr:
+    def __init__(self):
+        self.t = 1000.0
+
+    def __call__(self):
+        return self.t
+
+
+def _bild(farbe):
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGB", (320, 200), (255, 255, 255))
+    if farbe:
+        ImageDraw.Draw(img).rectangle((0, 0, 160, 200), fill=farbe)
+    return img
+
+
+class Beobachter(unittest.TestCase):
+    """Der Beobachter in der Bridge — ohne Thread, mit gestellter Uhr."""
+
+    def setUp(self):
+        self.ereignisse = []
+        self.uhr = _Uhr()
+        self.vorn = {"app": "Google Chrome", "titel": "Start"}
+        self.bild = _bild(None)
+        self.o = bridge.ScreenObserver(self.ereignisse.append, bild_holen=lambda: self.bild,
+                                       vordergrund_holen=lambda: dict(self.vorn), uhr=self.uhr)
+
+    def _schritte(self, n, sekunden=3.0):
+        for _ in range(n):
+            self.uhr.t += sekunden
+            self.o.schritt()
+
+    def typen(self):
+        return [e["type"] for e in self.ereignisse]
+
+    def test_regel_trifft_einmal_je_fenster(self):
+        self.o.konfigurieren({"beobachten": True, "regeln": [
+            {"id": 7, "wenn_titel": "YouTube Studio", "angebot": "x", "aktiv": True}]})
+        self.vorn["titel"] = "Inhalte - YouTube Studio"
+        self._schritte(3)
+        self.assertEqual(self.typen(), ["rule_hit"])
+        self.assertEqual(self.ereignisse[0]["regel_id"], 7)
+        # Weg und zurück innerhalb der Ruhezeit: kein zweites Angebot.
+        self.vorn["titel"] = "Gmail"
+        self._schritte(1)
+        self.vorn["titel"] = "Inhalte - YouTube Studio"
+        self._schritte(1)
+        self.assertEqual(self.typen(), ["rule_hit"])
+        # Nach der Ruhezeit wieder.
+        self.vorn["titel"] = "Gmail"
+        self._schritte(1, sekunden=bridge.ScreenObserver.REGEL_RUHE_SECS)
+        self.vorn["titel"] = "Inhalte - YouTube Studio"
+        self._schritte(1)
+        self.assertEqual(self.typen(), ["rule_hit", "rule_hit"])
+
+    def test_gestoppt_bietet_nichts_an(self):
+        self.o.konfigurieren({"beobachten": True, "mitdenken": True, "gestoppt": True, "regeln": [
+            {"id": 1, "wenn_app": "Chrome", "angebot": "x"}]})
+        self._schritte(30)
+        self.assertEqual(self.ereignisse, [])
+
+    def test_ohne_mitdenken_keine_bilder(self):
+        self.o.konfigurieren({"beobachten": True, "mitdenken": False})
+        geholt = []
+        self.o._bild_holen = lambda: geholt.append(1) or self.bild
+        self._schritte(30)
+        self.assertEqual(self.ereignisse, [])
+        self.assertEqual(geholt, [], "Ohne Mitdenken wird nicht einmal fotografiert")
+
+    def test_mitdenken_erst_wenn_das_bild_ruhig_ist(self):
+        self.o.konfigurieren({"beobachten": True, "mitdenken": True})
+        # Takt 3 s, Ruhe 4 s: nach dem ersten Blick erst im dritten Takt.
+        self._schritte(2)
+        self.assertEqual(self.ereignisse, [], "Bild noch nicht lange genug ruhig")
+        self._schritte(1)
+        self.assertEqual(self.typen(), ["observation"])
+        blick = self.ereignisse[0]
+        self.assertEqual(blick["media_type"], "image/jpeg")
+        self.assertTrue(blick["bild_b64"])
+        # Neuer Inhalt kurz danach: Mindestabstand hält zurück.
+        self.bild = _bild((0, 0, 0))
+        self._schritte(5)
+        self.assertEqual(self.typen(), ["observation"])
+        self._schritte(1, sekunden=bridge.ScreenObserver.MIN_ABSTAND_SECS)
+        self.assertEqual(self.typen(), ["observation", "observation"])
+
+    def test_gleiches_bild_kein_zweiter_blick(self):
+        self.o.konfigurieren({"beobachten": True, "mitdenken": True})
+        self._schritte(2)
+        self._schritte(10, sekunden=bridge.ScreenObserver.MIN_ABSTAND_SECS)
+        self.assertEqual(self.typen(), ["observation"])
+
+    def test_mitdenken_braucht_beobachten(self):
+        self.o.konfigurieren({"beobachten": False, "mitdenken": True})
+        self.assertFalse(self.o.mitdenken)
+
+
+class OverlayKanal(unittest.TestCase):
+    def test_nur_bekannte_antworten(self):
+        b = bridge.Bridge("wss://example.invalid", "t", "s")
+        self.assertTrue(b.overlay_antwort({"type": "vorschlag_antwort", "id": "x", "antwort": "ja"}))
+        self.assertFalse(b.overlay_antwort({"type": "command", "command": {"action": "shell_run"}}))
+        self.assertEqual(b._ausgang.qsize(), 1)
+
+    def test_stopp_wirkt_sofort_lokal(self):
+        b = bridge.Bridge("wss://example.invalid", "t", "s")
+        b.overlay_antwort({"type": "overlay_stopp"})
+        self.assertTrue(b.observer.gestoppt)
+
+
+class OverlayAnzeige(unittest.TestCase):
+    """Was das Overlay zeigt und was ein Klick schickt — für Mac und Windows gleich."""
+
+    def setUp(self):
+        import tray_app
+
+        self.m = tray_app.OverlayModell()
+
+    def test_angebot_ja_mit_text(self):
+        self.assertTrue(self.m.verarbeiten({"type": "vorschlag", "id": "v1", "text": "Soll ich vergleichen?"}))
+        self.assertTrue(self.m.sichtbar and self.m.mit_eingabe)
+        self.assertEqual([k for k, _ in self.m.knoepfe()], ["ja", "nein", "stopp", "chat", "aus"])
+        self.assertEqual(self.m.klick("ja", "  nur  Akkus "),
+                         {"type": "vorschlag_antwort", "id": "v1", "antwort": "ja", "text": "nur Akkus"})
+        self.assertEqual(self.m.art, "arbeitet")
+        # Doppelklick schickt nichts zweites.
+        self.assertIsNone(self.m.klick("ja"))
+
+    def test_nein_schliesst(self):
+        self.m.verarbeiten({"type": "vorschlag", "id": "v1", "text": "x"})
+        self.assertEqual(self.m.klick("nein")["antwort"], "nein")
+        self.assertFalse(self.m.sichtbar)
+
+    def test_schritte_im_titel(self):
+        self.m.verarbeiten({"type": "overlay_status", "zustand": "arbeitet", "schritte": 3, "aktion": "click"})
+        self.assertEqual(self.m.titel, "Arbeitet · 3 Schritte")
+        self.assertIn("click", self.m.text)
+
+    def test_status_verdraengt_offenes_angebot_nicht(self):
+        self.m.verarbeiten({"type": "vorschlag", "id": "v1", "text": "Soll ich?"})
+        self.assertFalse(self.m.verarbeiten({"type": "overlay_status", "zustand": "arbeitet", "schritte": 1}))
+        self.assertEqual(self.m.art, "frage")
+
+    def test_ausblenden_haelt_bis_zum_ergebnis(self):
+        self.m.verarbeiten({"type": "overlay_status", "zustand": "arbeitet", "schritte": 1})
+        self.m.klick("aus")
+        self.assertFalse(self.m.verarbeiten({"type": "overlay_status", "zustand": "arbeitet", "schritte": 2}))
+        self.assertFalse(self.m.sichtbar)
+        self.assertTrue(self.m.verarbeiten({"type": "overlay_status", "zustand": "fertig", "text": "Erledigt."}))
+        self.assertTrue(self.m.sichtbar)
+        self.assertEqual(self.m.art, "ergebnis")
+
+    def test_stopp_und_freigeben(self):
+        self.m.verarbeiten({"type": "overlay_status", "zustand": "arbeitet", "schritte": 1})
+        self.assertEqual(self.m.klick("stopp"), {"type": "overlay_stopp"})
+        self.assertEqual([k for k, _ in self.m.knoepfe()], ["weiter", "chat", "aus"])
+        self.assertEqual(self.m.klick("weiter"), {"type": "overlay_weiter"})
+        self.assertFalse(self.m.gestoppt)
+
+    def test_gestoppt_aus_der_konfiguration(self):
+        self.assertTrue(self.m.verarbeiten({"type": "observer_config", "gestoppt": True, "agent_id": "a1"}))
+        self.assertEqual(self.m.art, "gestoppt")
+        self.assertEqual(self.m.agent_id, "a1")
+
+    def test_mitdenken_geht_an_den_server(self):
+        import tray_app
+
+        self.assertNotIn("mitdenken", tray_app._scope_payload({}))
+        self.assertIs(tray_app._scope_payload({"mitdenken": True})["mitdenken"], True)
+
+
+if __name__ == "__main__":
+    unittest.main()

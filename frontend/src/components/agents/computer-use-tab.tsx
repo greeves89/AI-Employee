@@ -34,6 +34,7 @@ import {
   Circle,
   Square,
   Sparkles,
+  ScanEye,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -47,6 +48,11 @@ import {
   stopRecording,
   getRecording,
   recordingToSkill,
+  listBridgeRegeln,
+  createBridgeRegel,
+  updateBridgeRegel,
+  deleteBridgeRegel,
+  type BridgeRegel,
   type ComputerUseSession,
 } from "@/lib/api";
 import { getApiUrl, getBase } from "@/lib/config";
@@ -131,6 +137,14 @@ const CAPABILITY_META: CapabilityMeta[] = [
     label: "Eingaben mitschneiden",
     description: "Zeichnet deine eigenen Klicks und Tastatureingaben auf (nur während einer Aufnahme)",
     icon: <Keyboard className="h-3.5 w-3.5" />,
+    risk: "high",
+    defaultOn: false,
+  },
+  {
+    id: "observe",
+    label: "Mitsehen",
+    description: "Die Bridge sieht von sich aus hin, prüft deine Regeln und bietet oben am Bildschirm Hilfe an",
+    icon: <ScanEye className="h-3.5 w-3.5" />,
     risk: "high",
     defaultOn: false,
   },
@@ -391,6 +405,11 @@ export function ComputerUseTab({ agentId, browserMode: initialBrowserMode = fals
                 expectedBridgeVersion={bridgeVersion}
                 onDelete={handleDelete}
                 onCapabilitiesChange={handleCapabilitiesChange}
+                onSessionChange={(patch) =>
+                  setSessions((prev) =>
+                    prev.map((s) => (s.session_id === session.session_id ? { ...s, ...patch } : s)),
+                  )
+                }
               />
             ))}
           </AnimatePresence>
@@ -469,12 +488,14 @@ function SessionCard({
   expectedBridgeVersion,
   onDelete,
   onCapabilitiesChange,
+  onSessionChange,
 }: {
   session: ComputerUseSession;
   browserWsBase: string;
   expectedBridgeVersion: string | null;
   onDelete: (id: string) => void;
   onCapabilitiesChange: (id: string, caps: string[]) => void;
+  onSessionChange: (patch: Partial<ComputerUseSession>) => void;
 }) {
   const bridgeStale = session.bridge_last_seen_at !== null && (Date.now() / 1000 - session.bridge_last_seen_at) > 20;
   const isConnected = session.status === "connected" && !bridgeStale;
@@ -800,7 +821,235 @@ function SessionCard({
         isConnected={isConnected}
         humanCaptureAllowed={allowedSet.has("input_capture")}
       />
+
+      <MitdenkerPanel session={session} onChange={onSessionChange} />
     </motion.div>
+  );
+}
+
+// ── Mitdenker (#1019) ─────────────────────────────────────────────────────────
+
+function fehlerText(e: unknown): string {
+  const roh = e instanceof Error ? e.message : String(e);
+  const json = roh.indexOf("{");
+  if (json >= 0) {
+    try {
+      const detail = JSON.parse(roh.slice(json)).detail;
+      if (typeof detail === "string") return detail;
+    } catch {
+      // kein JSON — Rohtext zeigen
+    }
+  }
+  return roh;
+}
+
+const LEERE_REGEL = { name: "", wenn_app: "", wenn_titel: "", angebot: "", auftrag: "" };
+
+/** Die Bridge sieht mit und bietet im Overlay Hilfe an: Regeln wirken lokal und
+ *  kosten nichts; Mitdenken schickt bei deutlichen Wechseln ein Bild an den
+ *  Agenten, begrenzt durch den Tagesdeckel. */
+function MitdenkerPanel({ session, onChange }: {
+  session: ComputerUseSession;
+  onChange: (patch: Partial<ComputerUseSession>) => void;
+}) {
+  const beobachten = (session.allowed_capabilities ?? []).includes("observe");
+  const [offen, setOffen] = useState(false);
+  const [regeln, setRegeln] = useState<BridgeRegel[]>([]);
+  const [laeufeHeute, setLaeufeHeute] = useState(0);
+  const [neu, setNeu] = useState(LEERE_REGEL);
+  const [fehler, setFehler] = useState<string | null>(null);
+  const [speichert, setSpeichert] = useState(false);
+  const [deckel, setDeckel] = useState(String(session.deckel ?? 40));
+
+  const laden = useCallback(async () => {
+    try {
+      const d = await listBridgeRegeln();
+      setRegeln(d.regeln);
+      setLaeufeHeute(d.laeufe_heute);
+    } catch (e) {
+      setFehler(fehlerText(e));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (offen) laden();
+  }, [offen, laden]);
+
+  const mitdenkerSetzen = async (patch: { mitdenken?: boolean; deckel?: number }) => {
+    setFehler(null);
+    try {
+      const r = await updateSessionCapabilities(session.session_id, session.allowed_capabilities ?? [], patch);
+      onChange({ mitdenken: r.mitdenken, deckel: r.deckel });
+    } catch (e) {
+      setFehler(fehlerText(e));
+    }
+  };
+
+  const anlegen = async () => {
+    setSpeichert(true);
+    setFehler(null);
+    try {
+      await createBridgeRegel(neu);
+      setNeu(LEERE_REGEL);
+      await laden();
+    } catch (e) {
+      setFehler(fehlerText(e));
+    } finally {
+      setSpeichert(false);
+    }
+  };
+
+  const umschalten = async (r: BridgeRegel) => {
+    try {
+      const neuR = await updateBridgeRegel(r.id, { aktiv: !r.aktiv });
+      setRegeln((alt) => alt.map((x) => (x.id === r.id ? neuR : x)));
+    } catch (e) {
+      setFehler(fehlerText(e));
+    }
+  };
+
+  const loeschen = async (r: BridgeRegel) => {
+    try {
+      await deleteBridgeRegel(r.id);
+      setRegeln((alt) => alt.filter((x) => x.id !== r.id));
+    } catch (e) {
+      setFehler(fehlerText(e));
+    }
+  };
+
+  const feld = "w-full rounded-lg bg-foreground/[0.04] border border-foreground/[0.08] px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-violet-500/40";
+
+  return (
+    <div className="px-4 pb-4 border-t border-foreground/[0.04]">
+      <button
+        onClick={() => setOffen((v) => !v)}
+        className="flex w-full items-center justify-between pt-3 text-left"
+      >
+        <span className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+          <ScanEye className="h-3 w-3" />
+          Mitsehen und Mitdenken
+        </span>
+        <span className="flex items-center gap-2 text-[10px] text-muted-foreground/60">
+          {beobachten ? (session.mitdenken ? "Mitdenken an" : "nur Regeln") : "aus"}
+          {offen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        </span>
+      </button>
+
+      {offen && (
+        <div className="mt-3 space-y-3">
+          {!beobachten && (
+            <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400/80">
+              Schalte unter Berechtigungen „Mitsehen“ ein. Erst dann prüft die Bridge Regeln und bietet im Overlay Hilfe an.
+            </p>
+          )}
+
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-foreground">Mitdenken</p>
+              <p className="text-[10px] text-muted-foreground/60">
+                Bei deutlichen Bildschirmwechseln sieht der Agent ein Bild und bietet von sich aus an, was er abnehmen kann.
+                {session.agent_id ? "" : " Dafür muss der Sitzung ein Agent zugeordnet sein."}
+              </p>
+            </div>
+            <button
+              disabled={!beobachten}
+              onClick={() => mitdenkerSetzen({ mitdenken: !session.mitdenken })}
+              className={cn(
+                "relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors disabled:opacity-40",
+                session.mitdenken ? "bg-red-500" : "bg-foreground/[0.12]",
+              )}
+              role="switch"
+              aria-checked={!!session.mitdenken}
+              aria-label="Mitdenken"
+            >
+              <span className={cn(
+                "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform",
+                session.mitdenken ? "translate-x-4" : "translate-x-0",
+              )} />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+            <span>Höchstens</span>
+            <input
+              type="number"
+              min={0}
+              max={500}
+              value={deckel}
+              onChange={(e) => setDeckel(e.target.value)}
+              onBlur={() => mitdenkerSetzen({ deckel: Number(deckel) || 0 })}
+              className="w-16 rounded-md bg-foreground/[0.04] border border-foreground/[0.08] px-2 py-1 text-xs text-foreground"
+              aria-label="Tagesdeckel"
+            />
+            <span>Blicke am Tag · heute {laeufeHeute}</span>
+          </div>
+
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Regeln</p>
+            {regeln.length === 0 && (
+              <p className="text-[11px] text-muted-foreground/60">
+                Noch keine Regeln. Du kannst deinem Agenten auch sagen: „Wenn ich in YouTube Studio bin, biete mir Titel an.“
+              </p>
+            )}
+            {regeln.map((r) => (
+              <div key={r.id} className="flex items-start justify-between gap-3 rounded-lg border border-foreground/[0.06] px-3 py-2">
+                <div className="min-w-0">
+                  <p className={cn("text-xs font-medium truncate", r.aktiv ? "text-foreground" : "text-muted-foreground/50")}>{r.name}</p>
+                  <p className="text-[10px] text-muted-foreground/60 truncate">
+                    Wenn {[r.wenn_app && `App enthält „${r.wenn_app}“`, r.wenn_titel && `Titel enthält „${r.wenn_titel}“`].filter(Boolean).join(" und ")}
+                    {" → „"}{r.angebot}{"“"}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground/40">
+                    {r.treffer} Treffer · {r.von === "nutzer" ? "von dir" : "vom Agenten"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => umschalten(r)}
+                    className="rounded px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground border border-foreground/[0.08]"
+                  >
+                    {r.aktiv ? "Ausschalten" : "Einschalten"}
+                  </button>
+                  <button
+                    onClick={() => loeschen(r)}
+                    className="p-1 rounded text-muted-foreground hover:text-red-400"
+                    aria-label="Regel löschen"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-1.5 rounded-lg border border-dashed border-foreground/[0.1] p-3">
+            <p className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Neue Regel</p>
+            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+              <input className={feld} placeholder="Wenn die App … enthält (z. B. Chrome)" value={neu.wenn_app}
+                onChange={(e) => setNeu({ ...neu, wenn_app: e.target.value })} />
+              <input className={feld} placeholder="Wenn der Fenstertitel … enthält (z. B. YouTube Studio)" value={neu.wenn_titel}
+                onChange={(e) => setNeu({ ...neu, wenn_titel: e.target.value })} />
+            </div>
+            <input className={feld} placeholder="Angebot im Overlay (z. B. Soll ich dir Titel vorschlagen?)" value={neu.angebot}
+              onChange={(e) => setNeu({ ...neu, angebot: e.target.value })} />
+            <textarea className={cn(feld, "min-h-[56px]")} placeholder="Auftrag nach einem Ja (was der Agent dann tun soll)" value={neu.auftrag}
+              onChange={(e) => setNeu({ ...neu, auftrag: e.target.value })} />
+            <input className={feld} placeholder="Name (optional)" value={neu.name}
+              onChange={(e) => setNeu({ ...neu, name: e.target.value })} />
+            <button
+              onClick={anlegen}
+              disabled={speichert || !neu.angebot.trim() || !neu.auftrag.trim() || (!neu.wenn_app.trim() && !neu.wenn_titel.trim())}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-violet-500/10 border border-violet-500/20 px-3 py-1.5 text-[11px] font-medium text-violet-400 disabled:opacity-40"
+            >
+              {speichert ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+              Regel anlegen
+            </button>
+          </div>
+
+          {fehler && <p className="text-[11px] text-red-400">{fehler}</p>}
+        </div>
+      )}
+    </div>
   );
 }
 

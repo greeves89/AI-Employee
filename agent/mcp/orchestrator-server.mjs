@@ -761,6 +761,40 @@ export function buildServer() {
         },
       },
       {
+        name: "bildschirm_regel_anlegen",
+        description:
+          "Remember a screen rule for your human's computer (Bridge, capability 'Mitsehen'): when the active app " +
+          "and/or window title contains the given text, the Bridge offers 'angebot' in an overlay at the top of " +
+          "the screen; only after your human clicks Yes you get 'auftrag' plus a screenshot. Use it when your human " +
+          "says e.g. 'Whenever I'm in YouTube Studio, offer me title ideas'. Matching is local (no tokens), " +
+          "case-insensitive 'contains'. At least one of wenn_app / wenn_titel is required.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "Short name, German." },
+            wenn_app: { type: "string", description: "App name contains, e.g. 'Chrome', 'Excel'." },
+            wenn_titel: { type: "string", description: "Window title contains, e.g. 'YouTube Studio'." },
+            angebot: { type: "string", description: "Question shown in the overlay, German, Du-Form, max 300 chars." },
+            auftrag: { type: "string", description: "What you will do after a Yes." },
+          },
+          required: ["angebot", "auftrag"],
+        },
+      },
+      {
+        name: "bildschirm_regeln",
+        description: "List your human's screen rules (Bridge overlay offers) with id, conditions, hits and who created them.",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
+        name: "bildschirm_regel_loeschen",
+        description: "Delete a screen rule YOU created (by id). Rules your human created are theirs — ask them instead.",
+        inputSchema: {
+          type: "object",
+          properties: { regel_id: { type: "integer" } },
+          required: ["regel_id"],
+        },
+      },
+      {
         name: "projekt_termin_anlegen",
         description:
           "Lead only: schedule a meeting of the project's agents — art=daily (Mon–Fri at uhrzeit), art=weekly " +
@@ -1886,6 +1920,27 @@ export function buildServer() {
           body: JSON.stringify({ text: args.text, faellig: args.faellig }),
         });
         return { content: [{ type: "text", text: `Erinnerung angelegt für ${e.faellig}: ${e.text}` }] };
+      }
+
+      case "bildschirm_regel_anlegen": {
+        const body = {};
+        for (const f of ["name", "wenn_app", "wenn_titel", "angebot", "auftrag"]) {
+          if (args[f] !== undefined && args[f] !== null) body[f] = args[f];
+        }
+        const r = await apiCall("/computer-use/regeln", { method: "POST", body: JSON.stringify(body) });
+        return { content: [{ type: "text", text: `Regel ${r.id} angelegt: wenn ${[r.wenn_app && "App enthält „" + r.wenn_app + "“", r.wenn_titel && "Titel enthält „" + r.wenn_titel + "“"].filter(Boolean).join(" und ")} → „${r.angebot}“` }] };
+      }
+
+      case "bildschirm_regeln": {
+        const d = await apiCall("/computer-use/regeln");
+        const zeilen = (d.regeln || []).map((r) =>
+          `- ${r.id}: ${r.name} (${r.aktiv ? "aktiv" : "aus"}; App „${r.wenn_app || "—"}“, Titel „${r.wenn_titel || "—"}“; ${r.treffer} Treffer; von ${r.von}) → „${r.angebot}“`);
+        return { content: [{ type: "text", text: (zeilen.join("\n") || "Keine Regeln.") + `\nMitdenk-Läufe heute: ${d.laeufe_heute ?? 0}` }] };
+      }
+
+      case "bildschirm_regel_loeschen": {
+        await apiCall(`/computer-use/regeln/${encodeURIComponent(args.regel_id)}`, { method: "DELETE" });
+        return { content: [{ type: "text", text: `Regel ${args.regel_id} gelöscht.` }] };
       }
 
       case "projekt_gespraech_lesen":

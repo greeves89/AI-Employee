@@ -84,6 +84,9 @@ DELEGIERT = frozenset({
     # Erinnerung an den eigenen Menschen (Sekretariat): legt der Agent an, die
     # Sprachfront bittet ihn darum.
     "erinnerung_anlegen",
+    # Regeln fuers Bridge-Overlay (#1019): legt der Agent an, der sie nach dem Ja
+    # auch ausfuehrt — die Sprachfront bittet ihn darum.
+    "bildschirm_regel_anlegen", "bildschirm_regeln", "bildschirm_regel_loeschen",
 })
 
 #: Andere Namen für dieselbe Sache. Die Sprachfront ist historisch gewachsen und

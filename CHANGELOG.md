@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.378.0] - 2026-10-26
+
+### Neu
+- **Die Computer-Use-Bridge sieht mit und bietet von sich aus Hilfe an (#1019, Stufe 1 von Epic #1024).** Bisher führte die Bridge nur aus, was ein Agent ihr schickte. Mit der neuen Freigabe **„Mitsehen“** (Berechtigungen der Bridge oder Computer-Use-Reiter, standardmäßig aus) schaut sie auf macOS und Windows selbst hin: aktive Anwendung, Fenstertitel und – mit **„Mitdenken“** – das Bildschirmbild.
+  - **Overlay oben in der Bildschirmmitte:** Angebote („Soll ich …?“) mit Antwortfeld und den Knöpfen Ja, Nein, Stopp, Chat und Ausblenden; während der Agent auf dem Rechner arbeitet, zeigt es die Zahl seiner Schritte.
+  - **Regeln:** „Wenn ich in YouTube Studio bin, biete mir Titel an.“ Die Bridge gleicht Anwendung und Fenstertitel lokal ab – ein Treffer kostet kein Token. Regeln legt man im Computer-Use-Reiter an oder sagt sie dem Agenten (neue Werkzeuge `bildschirm_regel_anlegen`, `bildschirm_regeln`, `bildschirm_regel_loeschen` in allen Laufzeiten).
+  - **Mitdenken:** Bei deutlichen Bildschirmwechseln sieht der zugeordnete Agent ein Bild und bietet an, was er abnehmen kann – höchstens einmal je Minute und innerhalb eines Tagesdeckels (Standard 40 Blicke). Ausgeführt wird erst nach einem Ja.
+  - **Stopp:** Ein Klick auf Stopp sperrt jede weitere Aktion des Agenten auf diesem Rechner, bis der Mensch im Overlay wieder freigibt.
+- Bridge 1.58.0 mit Overlay und Menüpunkt „Mitdenken“ (Mac und Windows).
+
 ## [1.377.6] - 2026-10-22
 
 ### Geändert
