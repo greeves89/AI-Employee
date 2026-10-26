@@ -487,7 +487,7 @@ class OverlayAnzeige(unittest.TestCase):
     def test_schritte_im_titel(self):
         self.m.verarbeiten({"type": "overlay_status", "zustand": "arbeitet", "schritte": 3, "aktion": "click"})
         self.assertEqual(self.m.titel, "Arbeitet · 3 Schritte")
-        self.assertIn("click", self.m.text)
+        self.assertEqual(self.m.text, "Klickt …", "Klartext statt Befehlsname")
 
     def test_status_verdraengt_offenes_angebot_nicht(self):
         self.m.verarbeiten({"type": "vorschlag", "id": "v1", "text": "Soll ich?"})

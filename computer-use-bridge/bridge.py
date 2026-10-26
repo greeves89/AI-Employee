@@ -2936,7 +2936,7 @@ class Bridge:
             self.observer.konfigurieren(msg)
             self._overlay_melden(msg)
 
-        elif msg_type in ("vorschlag", "overlay_status"):
+        elif msg_type in ("vorschlag", "overlay_status", "mitdenken"):
             self._overlay_melden(msg)
 
 

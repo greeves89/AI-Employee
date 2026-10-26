@@ -2778,6 +2778,19 @@ _OVERLAY_TITEL = {
 }
 
 
+#: Was der Agent gerade tut — in Worten statt Befehlsnamen.
+_AKTION_TEXT = {
+    "click": "Klickt …", "mouse_click": "Klickt …", "type": "Tippt …", "key": "Drückt Tasten …",
+    "hotkey": "Drückt Tasten …", "scroll": "Scrollt …", "mouse_scroll": "Scrollt …",
+    "move": "Bewegt die Maus …", "mouse_move": "Bewegt die Maus …", "drag": "Zieht …",
+    "screenshot": "Schaut auf den Bildschirm …", "ax_tree": "Liest die Oberfläche …",
+    "find_element": "Sucht ein Element …", "wait_for_element": "Wartet auf die Anwendung …",
+    "open_app": "Öffnet ein Programm …", "close_app": "Schließt ein Programm …",
+    "open_url": "Öffnet eine Seite …", "focus_window": "Wechselt das Fenster …",
+    "list_windows": "Schaut, welche Fenster offen sind …", "shell_run": "Führt einen Befehl aus …",
+}
+
+
 class OverlayModell:
     """Zustand des Overlays. Reine Logik — testbar ohne Fenster."""
 
@@ -2795,6 +2808,8 @@ class OverlayModell:
         # „Ausblenden“ gilt bis zum naechsten Angebot oder Stopp — Statusmeldungen
         # eines laufenden Auftrags holen das Fenster nicht zurueck.
         self.ausgeblendet = False
+        # Der Agent prueft gerade einen Blick (Mitdenken) — zeigt die Menueleiste.
+        self.denkt = False
 
     @property
     def titel(self) -> str:
@@ -2819,6 +2834,10 @@ class OverlayModell:
     def verarbeiten(self, nachricht: dict) -> bool:
         """Nachricht der Bridge einarbeiten. True = neu zeichnen."""
         art = nachricht.get("type")
+        if art == "mitdenken":
+            # Nur fuer das Menueleisten-Symbol („schaut hin“) — das Overlay bleibt zu.
+            self.denkt = nachricht.get("zustand") == "laeuft"
+            return False
         if art == "observer_config":
             self.agent_id = nachricht.get("agent_id") or self.agent_id
             if nachricht.get("gestoppt") and not self.gestoppt:
@@ -2845,7 +2864,7 @@ class OverlayModell:
             if self.art == "frage" and self.sichtbar:
                 return False
             aktion = str(nachricht.get("aktion") or "")
-            self._zeigen("arbeitet", text or (f"Agent arbeitet … ({aktion})" if aktion else "Agent arbeitet …"))
+            self._zeigen("arbeitet", text or _AKTION_TEXT.get(aktion, "Arbeitet auf deinem Rechner …"))
             return not self.ausgeblendet
         if zustand in ("fertig", "fehler"):
             self._zeigen("ergebnis" if zustand == "fertig" else "fehler", text or "Fertig.")
@@ -2952,10 +2971,13 @@ def _on_overlay(nachricht: dict) -> None:
 
 
 class _MacOverlay:
-    """Schwebendes Panel oben mittig, ueber allen Fenstern, ohne die aktive
-    Anwendung zu verdraengen. AppKit nur auf dem Hauptthread."""
+    """Schwebende Leiste oben mittig, ueber allen Fenstern, ohne der aktiven
+    Anwendung den Fokus zu nehmen. Dunkel und kompakt: Kopfzeile mit Symbol und
+    Schritten, Text, Auftrag, Antwortfeld mit Hauptknoepfen, darunter kleine
+    Symbolknoepfe (Stopp, Chat, Ausblenden). AppKit nur auf dem Hauptthread."""
 
-    W, H = 640, 184
+    W = 560
+    HAUPT = ("ja", "nein", "weiter")
 
     def __init__(self, cfg: dict) -> None:
         self.cfg = cfg
@@ -2966,9 +2988,9 @@ class _MacOverlay:
         AppHelper.callAfter(self._zeichnen_haupt)
 
     def _bauen(self) -> None:
-        from AppKit import (NSBackingStoreBuffered, NSButton, NSColor, NSFont, NSMakeRect,
-                            NSObject, NSPanel, NSTextField, NSVisualEffectView,
-                            NSWindowStyleMaskBorderless)
+        from AppKit import (NSAppearance, NSBackingStoreBuffered, NSButton, NSColor, NSFont, NSImage,
+                            NSImageView, NSMakeRect, NSObject, NSPanel, NSTextField, NSView,
+                            NSVisualEffectView, NSWindowStyleMaskBorderless)
 
         global _OverlayPanelKlasse, _OverlayHandlerKlasse
         if _OverlayPanelKlasse is None:
@@ -2992,9 +3014,10 @@ class _MacOverlay:
         def farbe(r, g, b, a=1.0):
             return NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, a)
 
-        W, H = self.W, self.H
-        # 1<<7 = NSWindowStyleMaskNonactivatingPanel: Das Overlay erscheint, ohne
-        # der Anwendung, in der der Mensch gerade arbeitet, den Fokus zu nehmen.
+        self._farbe = farbe
+        W, H = self.W, 160
+        # 1<<7 = NSWindowStyleMaskNonactivatingPanel: erscheint, ohne der Anwendung,
+        # in der der Mensch gerade arbeitet, den Fokus zu nehmen.
         panel = _OverlayPanelKlasse.alloc().initWithContentRect_styleMask_backing_defer_(
             NSMakeRect(0, 0, W, H), NSWindowStyleMaskBorderless | (1 << 7), NSBackingStoreBuffered, False)
         panel.setReleasedWhenClosed_(False)
@@ -3002,65 +3025,105 @@ class _MacOverlay:
         panel.setOpaque_(False)
         panel.setBackgroundColor_(NSColor.clearColor())
         panel.setHasShadow_(True)
-        # NSWindowSharingNone: Das Overlay fehlt in jeder Bildschirmaufnahme — der
-        # Agent sieht sein eigenes „Ja“ nicht, und Mitdenken fotografiert es nicht mit.
+        panel.setAppearance_(NSAppearance.appearanceNamed_("NSAppearanceNameDarkAqua"))
+        # NSWindowSharingNone: fehlt in jeder Bildschirmaufnahme (Agent und Mitdenken).
         panel.setSharingType_(0)
         # Auf jedem Schreibtisch (Spaces) und ueber Vollbild-Apps.
         panel.setCollectionBehavior_((1 << 0) | (1 << 8))
-        try:
-            f = panel.screen().visibleFrame()
-            panel.setFrameOrigin_((f.origin.x + (f.size.width - W) / 2, f.origin.y + f.size.height - H - 8))
-        except Exception:  # noqa: BLE001
-            panel.center()
         cv = panel.contentView()
+
         hinten = NSVisualEffectView.alloc().initWithFrame_(NSMakeRect(0, 0, W, H))
-        hinten.setMaterial_(3)
+        hinten.setMaterial_(13)              # HUD — dunkel, leicht durchscheinend
         hinten.setState_(1)
         hinten.setWantsLayer_(True)
-        hinten.layer().setCornerRadius_(18)
+        hinten.layer().setCornerRadius_(16)
+        hinten.layer().setMasksToBounds_(True)
         hinten.layer().setBorderWidth_(1)
-        hinten.layer().setBorderColor_(farbe(0.92, 0.36, 0.04, 0.55).CGColor())
+        hinten.layer().setBorderColor_(farbe(*_ACCENT_RGB, 0.75).CGColor())
         cv.addSubview_(hinten)
-        self.hinten = hinten
+        toenung = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, W, H))
+        toenung.setWantsLayer_(True)
+        toenung.layer().setBackgroundColor_(farbe(0.04, 0.06, 0.11, 0.72).CGColor())
+        hinten.addSubview_(toenung)
+        self.hinten, self.toenung = hinten, toenung
 
-        def label(text, x, y, w, h, groesse, fett=False, alpha=0.92):
-            lbl = NSTextField.labelWithString_(text)
-            lbl.setFont_(NSFont.boldSystemFontOfSize_(groesse) if fett else NSFont.systemFontOfSize_(groesse))
+        def label(groesse, gewicht=0.0, alpha=0.95, zeilen=0):
+            lbl = NSTextField.labelWithString_("")
+            lbl.setFont_(NSFont.systemFontOfSize_weight_(groesse, gewicht))
             lbl.setTextColor_(farbe(1, 1, 1, alpha))
-            lbl.setFrame_(((x, y), (w, h)))
             lbl.setLineBreakMode_(0)
-            # Keine Zeilengrenze: die Hoehe richtet sich nach dem Text (_anordnen) —
-            # abgeschnitten wird nichts, das Ja gilt dem ganzen Text.
-            lbl.setMaximumNumberOfLines_(0)
+            lbl.setMaximumNumberOfLines_(zeilen)
             cv.addSubview_(lbl)
             return lbl
 
-        self.kopf = label("", 20, H - 30, W - 200, 18, 12, fett=True)
-        self.marke = label("AI Employee", W - 120, H - 30, 100, 18, 11, alpha=0.5)
-        self.text = label("", 20, H - 74, W - 40, 40, 13)
-        self.detail = label("", 20, 50, W - 40, 56, 11, alpha=0.62)
-        self.eingabe = NSTextField.alloc().initWithFrame_(((20, 14), (W - 420, 26)))
-        self.eingabe.cell().setPlaceholderString_("Optional: Antwort oder Hinweis")
-        self.eingabe.setFont_(NSFont.systemFontOfSize_(12))
-        cv.addSubview_(self.eingabe)
+        self.symbol = NSImageView.alloc().initWithFrame_(NSMakeRect(16, 0, 18, 18))
+        bild = _app_symbol_bild(18)
+        if bild is not None:
+            self.symbol.setImage_(bild)
+        cv.addSubview_(self.symbol)
+        self.kopf = label(12, 0.4, 0.95)
+        self.schritte = label(11, 0.0, 0.5)
+        self.text = label(14, 0.0, 0.96)
+        self.detail = label(11.5, 0.0, 0.58)
+
+        # Eigene runde Flaeche statt des System-Rahmens (der zeigte im Dunkeln
+        # einen doppelten Rand).
+        self.feld = NSView.alloc().initWithFrame_(NSMakeRect(16, 0, 200, 30))
+        self.feld.setWantsLayer_(True)
+        self.feld.layer().setCornerRadius_(15)
+        self.feld.layer().setBackgroundColor_(farbe(1, 1, 1, 0.07).CGColor())
+        self.feld.layer().setBorderWidth_(1)
+        self.feld.layer().setBorderColor_(farbe(1, 1, 1, 0.12).CGColor())
+        cv.addSubview_(self.feld)
+        self.eingabe = NSTextField.alloc().initWithFrame_(NSMakeRect(12, 6, 176, 18))
+        self.eingabe.setBezeled_(False)
+        self.eingabe.setDrawsBackground_(False)
+        self.eingabe.setFocusRingType_(1)   # kein blauer Rahmen um die runde Flaeche
+        self.eingabe.cell().setPlaceholderString_("Antwort oder Hinweis (optional)")
+        self.eingabe.setFont_(NSFont.systemFontOfSize_(12.5))
+        self.eingabe.setTextColor_(farbe(1, 1, 1, 0.95))
+        self.feld.addSubview_(self.eingabe)
+
         self.handler = _OverlayHandlerKlasse.alloc().init()
-        self.knoepfe = []
-        for i in range(5):
-            btn = NSButton.alloc().initWithFrame_(NSMakeRect(0, 12, 74, 30))
-            btn.setBordered_(False)
-            btn.setWantsLayer_(True)
-            btn.layer().setCornerRadius_(14)
-            btn.setTag_(i)
-            btn.setTarget_(self.handler)
-            btn.setAction_("klick:")
-            cv.addSubview_(btn)
-            self.knoepfe.append(btn)
+
+        def knopf(tag, chip=False):
+            b = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, 80, 24 if chip else 30))
+            b.setBordered_(False)
+            b.setWantsLayer_(True)
+            b.layer().setCornerRadius_(12 if chip else 15)
+            b.setTag_(tag)
+            b.setTarget_(self.handler)
+            b.setAction_("klick:")
+            b.setFont_(NSFont.systemFontOfSize_weight_(11 if chip else 13, 0.0 if chip else 0.3))
+            cv.addSubview_(b)
+            return b
+
+        self.haupt_knoepfe = [knopf(i) for i in range(2)]
+        self.chips = [knopf(10 + i, chip=True) for i in range(4)]
+        self.marke = label(10.5, 0.0, 0.35)
+        self.marke.setStringValue_("AI Employee")
         self.tag_zu_knopf: dict[int, str] = {}
-        self._farbe = farbe
         self.panel = panel
+
+    def _knopf_stil(self, b, art: str) -> None:
+        f = self._farbe
+        if art == "haupt":
+            b.layer().setBackgroundColor_(f(*_ACCENT_RGB, 1).CGColor())
+            b.setContentTintColor_(f(1, 1, 1, 1))
+            b.layer().setBorderWidth_(0)
+        elif art == "warn":
+            b.layer().setBackgroundColor_(f(0.86, 0.2, 0.2, 0.18).CGColor())
+            b.setContentTintColor_(f(1, 0.55, 0.55, 1))
+            b.layer().setBorderWidth_(0)
+        else:
+            b.layer().setBackgroundColor_(f(1, 1, 1, 0.08).CGColor())
+            b.layer().setBorderWidth_(1)
+            b.layer().setBorderColor_(f(1, 1, 1, 0.12).CGColor())
+            b.setContentTintColor_(f(1, 1, 1, 0.85))
 
     def _zeichnen_haupt(self) -> None:
         try:
+            from AppKit import NSImage
             if self.panel is None:
                 self._bauen()
             m = _overlay["modell"]
@@ -3068,36 +3131,44 @@ class _MacOverlay:
                 self.panel.orderOut_(None)
                 _sperrzone(None)
                 return
-            self.kopf.setStringValue_(m.titel)
+            self.kopf.setStringValue_(_OVERLAY_TITEL.get(m.art, ""))
+            self.schritte.setStringValue_(
+                f"{m.schritte} Schritt{'e' if m.schritte != 1 else ''}" if m.art == "arbeitet" and m.schritte else "")
             self.text.setStringValue_(m.text)
             self.detail.setStringValue_(m.detail)
-            self._anordnen()
-            self.eingabe.setHidden_(not m.mit_eingabe)
+            self.feld.setHidden_(not m.mit_eingabe)
             if m.mit_eingabe:
                 self.eingabe.setStringValue_("")
-            knoepfe = m.knoepfe()
+            alle = m.knoepfe()
+            haupt = [(k, t) for k, t in alle if k in self.HAUPT]
+            chips = [(k, t) for k, t in alle if k not in self.HAUPT]
             self.tag_zu_knopf = {}
-            x = self.W - 20
-            for i, btn in enumerate(self.knoepfe):
-                if i >= len(knoepfe):
-                    btn.setHidden_(True)
-                    continue
-                schluessel, beschriftung = knoepfe[len(knoepfe) - 1 - i]
-                breite = 64 if len(beschriftung) <= 5 else 92
-                x -= breite
-                btn.setFrame_(((x, 12), (breite, 30)))
-                x -= 6
-                btn.setTitle_(beschriftung)
-                btn.setTag_(i)
-                self.tag_zu_knopf[i] = schluessel
-                hauptknopf = schluessel in ("ja", "weiter")
-                warnknopf = schluessel == "stopp"
-                btn.layer().setBackgroundColor_(
-                    (self._farbe(0.92, 0.36, 0.04, 1) if hauptknopf else
-                     self._farbe(0.75, 0.15, 0.15, 0.9) if warnknopf else
-                     self._farbe(1, 1, 1, 0.14)).CGColor())
-                btn.setContentTintColor_(self._farbe(1, 1, 1, 1))
-                btn.setHidden_(False)
+            symbole = {"stopp": "stop.fill", "chat": "bubble.left", "aus": "eye.slash"}
+            for i, b in enumerate(self.haupt_knoepfe):
+                if i < len(haupt):
+                    k, t = haupt[i]
+                    b.setTitle_(t)
+                    self.tag_zu_knopf[i] = k
+                    self._knopf_stil(b, "haupt" if k in ("ja", "weiter") else "neben")
+                b.setHidden_(i >= len(haupt))
+            for i, b in enumerate(self.chips):
+                if i < len(chips):
+                    k, t = chips[i]
+                    b.setTitle_(t)
+                    try:
+                        from AppKit import NSImageSymbolConfiguration
+                        sym = NSImage.imageWithSystemSymbolName_accessibilityDescription_(symbole.get(k, ""), t)
+                        sym = sym.imageWithSymbolConfiguration_(
+                            NSImageSymbolConfiguration.configurationWithPointSize_weight_(9.5, 0.0))
+                        b.setImage_(sym)
+                        b.setImagePosition_(2)
+                        b.setImageHugsTitle_(True)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    self.tag_zu_knopf[10 + i] = k
+                    self._knopf_stil(b, "warn" if k == "stopp" else "neben")
+                b.setHidden_(i >= len(chips))
+            self._anordnen(len(haupt), m.mit_eingabe)
             # Kein makeKeyWindow: Tasten, die der Agent gerade tippt, sollen nicht im
             # Overlay landen. Der Mensch klickt ins Feld, wenn er etwas schreiben will.
             self.panel.orderFrontRegardless()
@@ -3105,27 +3176,68 @@ class _MacOverlay:
         except Exception:  # noqa: BLE001 — ein Zeichenfehler darf die Bridge nicht stoeren
             app_log.warning("Overlay nicht zeichenbar", exc_info=True)
 
-
-    def _anordnen(self) -> None:
-        """Hoehe nach dem Inhalt: Kopf, Text, Auftrag, Knoepfe — oben bleibt oben."""
-        breite = self.W - 40
+    def _anordnen(self, haupt_anzahl: int, mit_eingabe: bool) -> None:
+        """Hoehe nach dem Inhalt, von unten nach oben — nichts wird abgeschnitten."""
+        W, rand = self.W, 16
+        breite = W - 2 * rand
 
         def hoehe(lbl) -> float:
             if not str(lbl.stringValue()):
                 return 0.0
             return float(lbl.cell().cellSizeForBounds_(((0, 0), (breite, 10000))).height)
 
-        th, dh = hoehe(self.text), hoehe(self.detail)
-        H = 12 + 30 + th + (8 + dh if dh else 0) + 14 + 30 + 12
-        alt = self.panel.frame()
-        oben = alt.origin.y + alt.size.height
-        self.panel.setFrame_display_(((alt.origin.x, oben - H), (self.W, H)), True)
-        self.hinten.setFrame_(((0, 0), (self.W, H)))
-        self.kopf.setFrameOrigin_((20, H - 30))
-        self.marke.setFrameOrigin_((self.W - 120, H - 30))
-        self.text.setFrame_(((20, H - 30 - 8 - th), (breite, th)))
-        self.detail.setFrame_(((20, 56), (breite, dh)))
+        y = 10
+        # Fusszeile: Chips links, Marke rechts
+        x = rand
+        for b in self.chips:
+            if b.isHidden():
+                continue
+            b.sizeToFit()
+            w = b.frame().size.width + 18
+            b.setFrame_(((x, y), (w, 24)))
+            x += w + 6
+        self.marke.setFrame_(((W - rand - 80, y + 4), (80, 14)))
+        self.marke.setAlignment_(2)
+        y += 24 + 10
+        # Antwortzeile: Feld + Hauptknoepfe
+        if haupt_anzahl or mit_eingabe:
+            x_rechts = W - rand
+            for b in reversed(self.haupt_knoepfe):
+                if b.isHidden():
+                    continue
+                b.sizeToFit()
+                w = max(64, b.frame().size.width + 24)
+                x_rechts -= w
+                b.setFrame_(((x_rechts, y), (w, 30)))
+                x_rechts -= 8
+            if mit_eingabe:
+                self.feld.setFrame_(((rand, y), (x_rechts - rand, 30)))
+                self.eingabe.setFrame_(((12, 6), (x_rechts - rand - 24, 18)))
+            y += 30 + 12
+        dh, th = hoehe(self.detail), hoehe(self.text)
+        if dh:
+            self.detail.setFrame_(((rand, y), (breite, dh)))
+            y += dh + 6
         self.detail.setHidden_(not dh)
+        self.text.setFrame_(((rand, y), (breite, th)))
+        y += th + 10
+        self.symbol.setFrame_(((rand, y), (18, 18)))
+        self.kopf.setFrame_(((rand + 26, y + 1), (300, 16)))
+        self.schritte.setFrame_(((W - rand - 120, y + 2), (120, 14)))
+        self.schritte.setAlignment_(2)
+        H = y + 18 + 12
+        alt = self.panel.frame()
+        try:
+            f = self.panel.screen().visibleFrame() if self.panel.screen() else None
+        except Exception:  # noqa: BLE001
+            f = None
+        if f is not None:
+            ox, oben = f.origin.x + (f.size.width - W) / 2, f.origin.y + f.size.height - 8
+        else:
+            ox, oben = alt.origin.x, alt.origin.y + alt.size.height
+        self.panel.setFrame_display_(((ox, oben - H), (W, H)), True)
+        self.hinten.setFrame_(((0, 0), (W, H)))
+        self.toenung.setFrame_(((0, 0), (W, H)))
 
     def _sperrzone_setzen(self) -> None:
         """Rahmen in Bridge-Koordinaten (logische Punkte, oben links) umrechnen."""
@@ -3155,7 +3267,7 @@ class _TkOverlay:
     Vordergrund. Laeuft in EINEM eigenen Thread mit eigener Schleife; die Bridge
     stoesst nur ueber eine Warteschlange an — tkinter fasst kein fremder Thread an."""
 
-    W, H = 640, 150
+    W = 560
 
     def __init__(self, cfg: dict) -> None:
         import queue as _queue
@@ -3181,23 +3293,44 @@ class _TkOverlay:
             root.attributes("-alpha", 0.97)
         except Exception:  # noqa: BLE001
             pass
-        hinten, vorne, akzent = "#14161c", "#f2f2f2", "#ea5b0b"
+        # Dieselbe Gestalt wie auf dem Mac: dunkle Leiste mit Markenrand, Kopfzeile
+        # mit Symbol und Schritten, Text, Auftrag, Antwortzeile, kleine Knoepfe unten.
+        hinten, vorne, gedimmt, akzent = "#141a24", "#f2f4f7", "#8f97a3", "#0378c7"
         rahmen = tk.Frame(root, bg=hinten, highlightthickness=1, highlightbackground=akzent)
         rahmen.pack(fill="both", expand=True)
-        kopf = tk.Label(rahmen, text="", bg=hinten, fg=vorne, font=("Segoe UI", 10, "bold"), anchor="w")
-        kopf.pack(fill="x", padx=16, pady=(10, 0))
-        text = tk.Label(rahmen, text="", bg=hinten, fg=vorne, font=("Segoe UI", 10), anchor="w",
+        kopfzeile = tk.Frame(rahmen, bg=hinten)
+        kopfzeile.pack(fill="x", padx=16, pady=(12, 0))
+        self._symbol_bild = None
+        pfad = _asset_pfad("app-symbol-1024.png")
+        if pfad:
+            try:
+                from PIL import Image, ImageTk
+                self._symbol_bild = ImageTk.PhotoImage(Image.open(pfad).resize((18, 18)), master=root)
+                tk.Label(kopfzeile, image=self._symbol_bild, bg=hinten).pack(side="left", padx=(0, 8))
+            except Exception:  # noqa: BLE001
+                pass
+        kopf = tk.Label(kopfzeile, text="", bg=hinten, fg=vorne, font=("Segoe UI Semibold", 10), anchor="w")
+        kopf.pack(side="left")
+        schritte = tk.Label(kopfzeile, text="", bg=hinten, fg=gedimmt, font=("Segoe UI", 9))
+        schritte.pack(side="right")
+        text = tk.Label(rahmen, text="", bg=hinten, fg=vorne, font=("Segoe UI", 11), anchor="w",
                         justify="left", wraplength=self.W - 32)
-        text.pack(fill="x", padx=16, pady=(4, 2))
-        detail = tk.Label(rahmen, text="", bg=hinten, fg="#9aa0aa", font=("Segoe UI", 9), anchor="w",
+        text.pack(fill="x", padx=16, pady=(8, 2))
+        detail = tk.Label(rahmen, text="", bg=hinten, fg=gedimmt, font=("Segoe UI", 9), anchor="w",
                           justify="left", wraplength=self.W - 32)
-        detail.pack(fill="x", padx=16, pady=(0, 6))
-        unten = tk.Frame(rahmen, bg=hinten)
-        unten.pack(fill="x", padx=16, pady=(0, 10))
-        eingabe = tk.Entry(unten, bg="#222631", fg=vorne, insertbackground=vorne, relief="flat",
-                           font=("Segoe UI", 10))
-        knopf_rahmen = tk.Frame(unten, bg=hinten)
-        knopf_rahmen.pack(side="right")
+        detail.pack(fill="x", padx=16, pady=(0, 8))
+        antwortzeile = tk.Frame(rahmen, bg=hinten)
+        antwortzeile.pack(fill="x", padx=16, pady=(0, 8))
+        eingabe = tk.Entry(antwortzeile, bg="#222a36", fg=vorne, insertbackground=vorne, relief="flat",
+                           font=("Segoe UI", 10), highlightthickness=1, highlightbackground="#2f3846",
+                           highlightcolor=akzent)
+        haupt_rahmen = tk.Frame(antwortzeile, bg=hinten)
+        haupt_rahmen.pack(side="right")
+        fuss = tk.Frame(rahmen, bg=hinten)
+        fuss.pack(fill="x", padx=16, pady=(0, 12))
+        chip_rahmen = tk.Frame(fuss, bg=hinten)
+        chip_rahmen.pack(side="left")
+        tk.Label(fuss, text="AI Employee", bg=hinten, fg="#5c6470", font=("Segoe UI", 8)).pack(side="right")
 
         def klick(schluessel):
             _overlay_klick(self.cfg, schluessel, eingabe.get())
@@ -3208,25 +3341,44 @@ class _TkOverlay:
                 root.withdraw()
                 _sperrzone(None)
                 return
-            kopf.configure(text=m.titel)
+            kopf.configure(text=_OVERLAY_TITEL.get(m.art, ""))
+            schritte.configure(text=(f"{m.schritte} Schritt{'e' if m.schritte != 1 else ''}"
+                                     if m.art == "arbeitet" and m.schritte else ""))
             text.configure(text=m.text)
             detail.configure(text=m.detail)
+            if m.detail:
+                detail.pack(fill="x", padx=16, pady=(0, 8), after=text)
+            else:
+                detail.pack_forget()
             if m.mit_eingabe:
                 eingabe.delete(0, "end")
-                eingabe.pack(side="left", fill="x", expand=True, padx=(0, 8))
+                eingabe.pack(side="left", fill="x", expand=True, padx=(0, 10), ipady=5)
             else:
                 eingabe.pack_forget()
-            for kind in knopf_rahmen.winfo_children():
+            for kind in list(haupt_rahmen.winfo_children()) + list(chip_rahmen.winfo_children()):
                 kind.destroy()
-            for schluessel, beschriftung in m.knoepfe():
-                farbe = akzent if schluessel in ("ja", "weiter") else "#b42828" if schluessel == "stopp" else "#2a2e39"
-                tk.Button(knopf_rahmen, text=beschriftung, bg=farbe, fg="white", relief="flat",
-                          activebackground=farbe, activeforeground="white", padx=10, takefocus=0,
-                          font=("Segoe UI", 9, "bold"), command=lambda s=schluessel: klick(s)
-                          ).pack(side="left", padx=(6, 0))
+            haupt = [(k, b) for k, b in m.knoepfe() if k in ("ja", "nein", "weiter")]
+            chips = [(k, b) for k, b in m.knoepfe() if k not in ("ja", "nein", "weiter")]
+            for schluessel, beschriftung in haupt:
+                farbe = akzent if schluessel in ("ja", "weiter") else "#2a3240"
+                tk.Button(haupt_rahmen, text=beschriftung, bg=farbe, fg="white", relief="flat", bd=0,
+                          activebackground=farbe, activeforeground="white", padx=16, pady=4, takefocus=0,
+                          font=("Segoe UI Semibold", 10), command=lambda s=schluessel: klick(s)
+                          ).pack(side="left", padx=(8, 0))
+            if haupt:
+                antwortzeile.pack(fill="x", padx=16, pady=(0, 8), before=fuss)
+            elif not m.mit_eingabe:
+                antwortzeile.pack_forget()
+            for schluessel, beschriftung in chips:
+                rot = schluessel == "stopp"
+                tk.Button(chip_rahmen, text=("■  " if rot else "") + beschriftung,
+                          bg="#3a1f24" if rot else "#222a36", fg="#ff8f8f" if rot else "#d6dbe2",
+                          activebackground="#4a252b" if rot else "#2c3542", relief="flat", bd=0,
+                          padx=10, pady=2, takefocus=0, font=("Segoe UI", 9),
+                          command=lambda s=schluessel: klick(s)).pack(side="left", padx=(0, 6))
             root.update_idletasks()
             x = (root.winfo_screenwidth() - self.W) // 2
-            root.geometry(f"{self.W}x{max(self.H, root.winfo_reqheight())}+{x}+8")
+            root.geometry(f"{self.W}x{root.winfo_reqheight()}+{x}+8")
             root.deiconify()
             root.lift()
             root.attributes("-topmost", True)
@@ -3273,14 +3425,17 @@ def _aus_aufnahmen_nehmen(root) -> None:
 
 # ── Symbole (Menueleiste / Tray) ──────────────────────────────────────────────
 
-SYMBOL_ZUSTAENDE = ("getrennt", "verbindet", "verbunden", "sieht_mit")
-_TEXT_SYMBOL = {"getrennt": "○", "verbindet": "◐", "verbunden": "●", "sieht_mit": "◉"}
+SYMBOL_ZUSTAENDE = ("getrennt", "verbindet", "verbunden", "sieht_mit", "denkt")
+_TEXT_SYMBOL = {"getrennt": "○", "verbindet": "◐", "verbunden": "●", "sieht_mit": "◉", "denkt": "◉"}
 
 
-def tray_zustand(status: str, verbindet: bool, sieht_mit: bool) -> str:
+def tray_zustand(status: str, verbindet: bool, sieht_mit: bool, denkt: bool = False) -> str:
     """Welches Symbol gerade gilt. „sieht_mit“ nur bei stehender Verbindung — der
-    Mensch soll auf einen Blick sehen, dass die Bridge gerade selbst hinschaut."""
+    Mensch soll auf einen Blick sehen, dass die Bridge gerade selbst hinschaut;
+    „denkt“, solange der Agent einen Blick prueft (Mitdenken)."""
     if status == "connected":
+        if sieht_mit and denkt:
+            return "denkt"
         return "sieht_mit" if sieht_mit else "verbunden"
     if verbindet or status == "connecting":
         return "verbindet"
@@ -3357,7 +3512,7 @@ def run_macos(cfg: dict) -> None:
             show_main_window(self.cfg)
 
         def _update_icon(self):
-            zustand = tray_zustand(_status, self._connecting, _sieht_mit())
+            zustand = tray_zustand(_status, self._connecting, _sieht_mit(), _overlay["modell"].denkt)
             pfad = _asset_pfad(f"menueleiste-{zustand}.png")
             if pfad:
                 # Template: macOS faerbt das Symbol selbst fuer helle und dunkle Leisten.
@@ -3595,12 +3750,13 @@ def run_tray(cfg: dict) -> None:
         zuletzt = None
         while True:
             token_frisch_halten(cfg)
-            zustand = tray_zustand(_status, False, _sieht_mit())
+            zustand = tray_zustand(_status, False, _sieht_mit(), _overlay["modell"].denkt)
             if zustand != zuletzt:
                 icon.icon = make_icon(zustand)
                 icon.title = {"getrennt": "AI-Employee Bridge — getrennt", "verbindet": "AI-Employee Bridge — verbindet",
                               "verbunden": "AI-Employee Bridge — verbunden",
-                              "sieht_mit": "AI-Employee Bridge — sieht mit"}[zustand]
+                              "sieht_mit": "AI-Employee Bridge — sieht mit",
+                              "denkt": "AI-Employee Bridge — Agent schaut hin"}[zustand]
                 zuletzt = zustand
             time.sleep(3)
 

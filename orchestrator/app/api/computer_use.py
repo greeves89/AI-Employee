@@ -1426,6 +1426,11 @@ async def _mitdenken(session_id: str, blick: dict) -> None:
     session = _sessions.get(session_id)
     if not session:
         return
+    beginn = time.time()
+    ergebnis = "Fehler"
+    # Die Bridge zeigt „schaut hin“ (Menueleiste), solange der Agent nachdenkt —
+    # sonst sieht der Mensch nicht, DASS etwas passiert.
+    await _an_bridge(session, {"type": "mitdenken", "zustand": "laeuft"})
     try:
         agent_id = str(session.get("agent_id") or "")
         antwort = await ask_agent_via_chat(
@@ -1437,14 +1442,23 @@ async def _mitdenken(session_id: str, blick: dict) -> None:
             nur_ansehen=True,
         )
         angebot = bm.angebot_lesen(antwort)
-        if angebot and not session.get("gestoppt"):
+        if str(antwort or "").startswith("[Fehler"):
+            ergebnis = "Fehler im Agenten"
+        elif angebot and not session.get("gestoppt"):
             await _vorschlag_zeigen(session, angebot=angebot["angebot"], auftrag=angebot["auftrag"],
                                     agent_id=agent_id, quelle="mitdenken",
                                     app=blick["app"], titel=blick["titel"])
+            ergebnis = "Angebot"
+        else:
+            ergebnis = "nichts anzubieten"
     except Exception:  # noqa: BLE001 — ein Blick, der scheitert, ist kein Fehler fuer den Menschen
         logger.warning("[Mitdenker] Blick fehlgeschlagen", exc_info=True)
     finally:
         session["mitdenken_laeuft"] = False
+        # Ohne Inhalte (keine Fensternamen, kein Bild) — nur, dass und wie es lief.
+        logger.info("[Mitdenker] Blick fuer Agent %s: %s nach %.0f s",
+                    scrub_log(str(session.get("agent_id") or "")), ergebnis, time.time() - beginn)
+        await _an_bridge(session, {"type": "mitdenken", "zustand": "fertig", "ergebnis": ergebnis})
 
 
 async def _regel_treffer(session: dict, msg: dict) -> None:

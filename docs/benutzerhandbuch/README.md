@@ -2499,7 +2499,7 @@ gesetzten Berechtigungen.
 Du erkennst die Bridge am Symbol mit Bildschirm und Auge. In der Menüleiste (macOS) bzw. im
 Infobereich der Taskleiste (Windows) zeigt sie ihren Zustand:
 
-![App-Symbol der Bridge und die vier Zustände: getrennt, verbindet, verbunden, sieht mit](screenshots/23-bridge-symbole.png)
+![App-Symbol der Bridge und die fünf Zustände: getrennt, verbindet, verbunden, sieht mit, schaut hin](screenshots/23-bridge-symbole.png)
 
 | Symbol | Bedeutung |
 |---|---|
@@ -2507,6 +2507,7 @@ Infobereich der Taskleiste (Windows) zeigt sie ihren Zustand:
 | Bildschirm mit drei Punkten / orange | verbindet |
 | Bildschirm mit Punkt / blau | verbunden |
 | Bildschirm mit Auge | verbunden **und sieht mit** (Freigabe „Mitsehen“, siehe 23.3) |
+| Auge mit Punkt | der Agent **schaut gerade hin** (Mitdenken prüft einen Bildschirmblick) |
 
 **Schritt 2 — Anmelden.** App starten → **Einstellungen/Anmelden**. Felder:
 - **Server-Adresse** — Adresse deiner Instanz.

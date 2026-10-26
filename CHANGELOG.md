@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.378.5] - 2026-10-26
+
+### Geändert
+- **Neues Overlay der Bridge (macOS und Windows):** dunkle, kompakte Leiste oben in der Bildschirmmitte mit Markenrand — Kopfzeile mit App-Symbol, Art und Schrittzähler, darunter Angebot und der Auftrag, den das Ja freigibt, ein rundes Antwortfeld mit klaren Hauptknöpfen und kleine Symbolknöpfe für Stopp, Chat und Ausblenden. Während der Agent arbeitet, steht dort in Worten, was er tut („Klickt …“, „Tippt …“) statt Befehlsnamen.
+- **Zustand „schaut hin“:** Solange der Agent beim Mitdenken einen Bildschirmblick prüft, zeigt das Symbol in der Menüleiste bzw. im Infobereich einen Punkt am Auge — man sieht, dass etwas passiert.
+
+### Behoben
+- Jeder Mitdenk-Blick wird jetzt im Server-Protokoll mit Ergebnis (Angebot, nichts anzubieten, Fehler) und Dauer festgehalten — ohne Fensternamen oder Bildinhalt. Vorher war nicht nachvollziehbar, ob ein Blick ankam und was der Agent daraus machte.
+
 ## [1.378.4] - 2026-10-26
 
 ### Behoben

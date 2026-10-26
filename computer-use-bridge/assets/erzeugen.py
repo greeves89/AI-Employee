@@ -25,7 +25,7 @@ HIER = Path(__file__).resolve().parent
 UEBER = 4                       # Zeichnen in vierfacher Groesse, dann glatt verkleinern
 CYAN = (78, 230, 230)
 WEISS = (255, 255, 255)
-ZUSTAENDE = ("getrennt", "verbindet", "verbunden", "sieht_mit")
+ZUSTAENDE = ("getrennt", "verbindet", "verbunden", "sieht_mit", "denkt")
 
 
 def _verlauf(groesse: int) -> Image.Image:
@@ -158,8 +158,11 @@ def menueleiste(zustand: str, groesse: int = 44) -> Image.Image:
             d.ellipse((*_p(x - 1.1, 8.9, s, 0, 0), *_p(x + 1.1, 11.1, s, 0, 0)), fill=farbe)
     elif zustand == "verbunden":
         d.ellipse((*_p(9.2, 7.2, s, 0, 0), *_p(14.8, 12.8, s, 0, 0)), fill=farbe)
-    elif zustand == "sieht_mit":
+    elif zustand in ("sieht_mit", "denkt"):
         _auge(bild, s, 0, 0, farbe, farbe, 1.6 * s, w=12, h=6.4)
+    if zustand == "denkt":
+        # Punkt oben rechts: der Agent prueft gerade einen Blick.
+        d.ellipse((*_p(18.2, 0.2, s, 0, 0), *_p(23.8, 5.8, s, 0, 0)), fill=(0, 0, 0, 255))
     return bild.resize((groesse, groesse), Image.LANCZOS)
 
 
@@ -167,15 +170,18 @@ def tray(zustand: str, groesse: int = 64) -> Image.Image:
     """Windows-Tray: farbige Kachel je Zustand, weisser Bildschirm."""
     G = groesse * UEBER
     kachel = {"getrennt": (110, 116, 128), "verbindet": (217, 119, 6),
-              "verbunden": (2, 112, 170), "sieht_mit": (2, 112, 170)}[zustand]
+              "verbunden": (2, 112, 170), "sieht_mit": (2, 112, 170), "denkt": (2, 112, 170)}[zustand]
     bild = Image.new("RGBA", (G, G), (0, 0, 0, 0))
     d = ImageDraw.Draw(bild)
     d.rounded_rectangle((0, 0, G - 1, G - 1), radius=G * 0.22, fill=kachel)
     s = G / 30
     ox, oy = G / 2 - 12 * s, G / 2 - 12 * s
     _monitor(d, s, ox, oy, WEISS, 2.3 * s)
-    if zustand == "sieht_mit":
+    if zustand in ("sieht_mit", "denkt"):
         _auge(bild, s, ox, oy, WEISS, CYAN, 1.9 * s, w=12, h=6.4)
+    if zustand == "denkt":
+        r = G * 0.13
+        d.ellipse((G - 2.2 * r, 0.2 * r, G - 0.2 * r, 2.2 * r), fill=CYAN, outline=WEISS, width=max(1, G // 40))
     elif zustand == "verbunden":
         d.ellipse((*_p(9.6, 7.6, s, ox, oy), *_p(14.4, 12.4, s, ox, oy)), fill=WEISS)
     return bild.resize((groesse, groesse), Image.LANCZOS)
