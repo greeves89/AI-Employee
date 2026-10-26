@@ -1,0 +1,2 @@
+# Nur fuer die Bridge-Tests im Build (build-bridge.yml), nicht Teil der App.
+pytest>=8.0

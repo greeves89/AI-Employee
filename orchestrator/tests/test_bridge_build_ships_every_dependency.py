@@ -45,13 +45,14 @@ class BridgeBuildDependencyTests(unittest.TestCase):
             f"installieren. Gefunden: {installs}",
         )
 
-        # Alles ausser pyinstaller/pip selbst gehoert in requirements.txt.
+        # Alles ausser pyinstaller/pip selbst gehoert in requirements.txt —
+        # Testwerkzeuge in requirements-test.txt (eine Datei, keine Liste im Workflow).
         for line in installs:
             if "-r requirements.txt" in line:
                 continue
             rest = line.replace("pip install", "").strip()
             self.assertIn(
-                rest, {"pyinstaller", "--upgrade pip", "-U pip"},
+                rest, {"pyinstaller", "--upgrade pip", "-U pip", "-r requirements-test.txt"},
                 f"Handgepflegte Paketliste im Workflow: '{line}'. Neue "
                 "Abhaengigkeiten gehoeren in requirements.txt, sonst laufen "
                 "beide Listen wieder auseinander.",

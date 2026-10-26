@@ -57,7 +57,7 @@ jobs:
       - name: Bridge tests
         working-directory: computer-use-bridge
         run: |
-          pip install pytest
+          pip install -r requirements-test.txt
           python -m pytest -q tests
 
       - name: Set bridge artifact version
@@ -271,7 +271,7 @@ jobs:
       - name: Bridge tests
         working-directory: computer-use-bridge
         run: |
-          pip install pytest
+          pip install -r requirements-test.txt
           python -m pytest -q tests
 
       - name: Set bridge version
