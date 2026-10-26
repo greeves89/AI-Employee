@@ -931,6 +931,12 @@ class ChatConsumer:
         # handler can't take inline images, so save them to the workspace and
         # point the agent at the files.
         handle_kwargs: dict = {}
+        if msg.get("nur_ansehen"):
+            # Bridge-Beobachter (#1019): Bild ansehen und hoechstens etwas
+            # ANBIETEN — jede Laufzeit setzt die Grenze selbst (nur Lesen im
+            # Gedaechtnis, kein Handeln). Strenger als ein normaler Zug, deshalb
+            # ohne weitere Pruefung uebernommen.
+            handle_kwargs["nur_ansehen"] = True
         if images:
             if settings.agent_mode == "custom_llm":
                 handle_kwargs["images"] = images

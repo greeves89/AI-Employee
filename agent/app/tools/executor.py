@@ -100,6 +100,9 @@ ALWAYS_ALLOWED_TOOLS = frozenset({
     # Erinnerung an den eigenen Menschen (Sekretariat) — der Server prueft, dass der
     # Agent zu dessen Sekretariat gehoert.
     "erinnerung_anlegen",
+    # Regeln fuers Bridge-Overlay: bieten nur AN — ausgefuehrt wird erst nach dem
+    # Ja des Menschen im Overlay. Loeschen nur eigener Regeln (Server prueft).
+    "bildschirm_regel_anlegen", "bildschirm_regeln", "bildschirm_regel_loeschen",
     # Presents something TO the user — same class as present_view, no effect
     # beyond display.
     "present_file", "present_image",

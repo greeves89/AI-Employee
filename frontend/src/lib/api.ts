@@ -3783,6 +3783,11 @@ export interface ComputerUseSession {
   last_disconnected_at: number | null;
   bridge_last_seen_at: number | null;
   recording?: boolean;
+  agent_id?: string | null;
+  /** Mitdenker (#1019): Bilder an den Agenten bei deutlichen Bildschirmwechseln. */
+  mitdenken?: boolean;
+  /** Höchstzahl Mitdenk-Läufe am Tag. */
+  deckel?: number;
 }
 
 /* Replay-Modus: record a workflow once (agent actions and/or the human
@@ -3868,11 +3873,48 @@ export async function getComputerUseScreenshot(sessionId: string): Promise<{ scr
 export async function updateSessionCapabilities(
   sessionId: string,
   allowedCapabilities: string[],
-): Promise<{ session_id: string; allowed_capabilities: string[] }> {
+  mitdenker?: { mitdenken?: boolean; deckel?: number },
+): Promise<{ session_id: string; allowed_capabilities: string[]; mitdenken?: boolean; deckel?: number }> {
   return fetchJSON(`${getBase()}/computer-use/sessions/${sessionId}/capabilities`, {
     method: "PATCH",
-    body: JSON.stringify({ allowed_capabilities: allowedCapabilities }),
+    body: JSON.stringify({ allowed_capabilities: allowedCapabilities, ...(mitdenker ?? {}) }),
   });
+}
+
+/* Mitdenker (#1019): Regeln „Wenn ich in X bin, biete Y an“ — die Bridge
+   gleicht sie lokal ab und zeigt das Angebot im Overlay. */
+
+export interface BridgeRegel {
+  id: number;
+  name: string;
+  agent_id: string | null;
+  wenn_app: string;
+  wenn_titel: string;
+  angebot: string;
+  auftrag: string;
+  aktiv: boolean;
+  von: string;
+  treffer: number;
+  zuletzt: string | null;
+}
+
+export type BridgeRegelEingabe = Partial<Pick<BridgeRegel,
+  "name" | "agent_id" | "wenn_app" | "wenn_titel" | "angebot" | "auftrag" | "aktiv">>;
+
+export async function listBridgeRegeln(): Promise<{ regeln: BridgeRegel[]; laeufe_heute: number }> {
+  return fetchJSON(`${getBase()}/computer-use/regeln`);
+}
+
+export async function createBridgeRegel(regel: BridgeRegelEingabe): Promise<BridgeRegel> {
+  return fetchJSON(`${getBase()}/computer-use/regeln`, { method: "POST", body: JSON.stringify(regel) });
+}
+
+export async function updateBridgeRegel(id: number, regel: BridgeRegelEingabe): Promise<BridgeRegel> {
+  return fetchJSON(`${getBase()}/computer-use/regeln/${id}`, { method: "PATCH", body: JSON.stringify(regel) });
+}
+
+export async function deleteBridgeRegel(id: number): Promise<void> {
+  return fetchJSON(`${getBase()}/computer-use/regeln/${id}`, { method: "DELETE" });
 }
 
 export async function getCapabilityGroups(): Promise<{ groups: CapabilityGroup[] }> {

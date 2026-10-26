@@ -2553,6 +2553,71 @@ Für Browser-Aufgaben gibt es zwei Wege, die unterschiedliche Dinge wollen:
 > Fähigkeit nicht freigegeben, meldet der Agent das mit klarem Grund statt es stillschweigend
 > zu versuchen.
 
+### 23.3 Mitsehen und Mitdenken: die Bridge bietet von sich aus Hilfe an
+
+Normalerweise wartet die Bridge, bis ein Agent ihr etwas aufträgt. Mit **Mitsehen** schaut
+sie selbst hin und meldet sich oben in der Bildschirmmitte mit einem **Overlay**, wenn sie
+helfen kann — zum Beispiel „Soll ich dir Titel vorschlagen?“, sobald du YouTube Studio
+öffnest. **Ausgeführt wird nichts, bevor du auf Ja klickst.** Gilt für macOS und Windows
+(Bridge ab 1.378.0).
+
+**Schritt 1 — Mitsehen einschalten.**
+1. Linke Seitenleiste → **Agenten** → deinen Agenten öffnen → Reiter **Computer-Use**.
+2. In der Sitzungskarte auf **Berechtigungen** klicken.
+3. Den Schalter **Mitsehen** einschalten (Risiko „hoch“, standardmäßig aus).
+
+![Berechtigungen der Sitzung mit dem Schalter Mitsehen](screenshots/23-3-mitsehen-schalter.png)
+
+Alternativ in der Bridge-App: Tray-Symbol → **Berechtigungen…** → **Mitsehen** anhaken →
+**Speichern**.
+
+**Schritt 2 — Regeln anlegen** (kosten nichts: die Bridge prüft sie auf deinem Rechner).
+1. In derselben Sitzungskarte **Mitsehen und Mitdenken** aufklappen.
+2. Unter **Neue Regel** ausfüllen:
+   - **Wenn die App … enthält** — z. B. `Chrome` (Groß-/Kleinschreibung egal),
+   - und/oder **Wenn der Fenstertitel … enthält** — z. B. `YouTube Studio`,
+   - **Angebot im Overlay** — die Frage, die du sehen willst,
+   - **Auftrag nach einem Ja** — was der Agent dann tun soll.
+3. **Regel anlegen** klicken. Die Regel erscheint darüber in der Liste, mit
+   **Ausschalten** und dem Papierkorb zum Löschen.
+
+![Bereich Mitsehen und Mitdenken mit Regelliste und Formular Neue Regel](screenshots/23-3-regeln.png)
+
+Einfacher geht es im Chat: „Merk dir: Wenn ich in YouTube Studio bin, biete mir Titel an.“ —
+der Agent legt die Regel selbst an (in der Liste steht dann „vom Agenten“).
+
+**Schritt 3 — Mitdenken (optional).** Mit dem Schalter **Mitdenken** schickt die Bridge bei
+deutlichen Bildschirmwechseln ein Bild an den Agenten der Sitzung; er bietet dann von sich
+aus an, was er dir abnehmen kann — auch ohne Regel. Höchstens ein Blick je Minute, dazu ein
+**Tagesdeckel** (Feld „Höchstens … Blicke am Tag“, Standard 40). Jeder Blick ist ein
+Modellaufruf und kostet wie eine Chatnachricht. Voraussetzung: der Sitzung ist ein Agent
+zugeordnet. In der Bridge-App geht es auch über den Menüpunkt **Mitdenken** (Haken).
+
+**Das Overlay.**
+
+![Overlay oben am Bildschirm mit Angebot, Antwortfeld und den Knöpfen Ja, Nein, Stopp, Chat, Ausblenden](screenshots/23-3-overlay.png)
+
+- **Ja** — der Agent übernimmt; ins Feld daneben kannst du vorher einen Hinweis schreiben
+  („nur Akkus unter 100 €“). Während er arbeitet, zählt das Overlay seine Schritte, am Ende
+  steht sein Ergebnis.
+- **Nein** — das Angebot verschwindet.
+- **Stopp** — der Agent darf auf diesem Rechner **nichts** mehr tun, auch nicht aus einem
+  laufenden Auftrag heraus. Erst **Freigeben** im Overlay (oder ein neues Ja) hebt das auf.
+- **Chat** — öffnet den Chat deines Agenten im Browser.
+- **Ausblenden** — blendet Statusmeldungen aus; ein neues Angebot oder ein Ergebnis kommt
+  trotzdem.
+
+Unter dem Angebot steht klein „Danach tut der Agent: …“ — das ist genau der Auftrag, den
+dein Ja freigibt.
+
+> Datenschutz und Sicherheit: Ohne **Mitsehen** schaut die Bridge nie selbst hin. Mit
+> Mitsehen allein verlassen nur Anwendungsname und Fenstertitel bei einem Regeltreffer den
+> Rechner; Bilder gehen ausschließlich mit **Mitdenken** an den Agenten — nie aus
+> Passwortmanagern, Anmelde- oder Bankfenstern. Beim Ansehen eines Bildes kann der Agent nur
+> in seinem Gedächtnis lesen, nicht handeln. Das Overlay selbst fehlt in jeder
+> Bildschirmaufnahme, und der Agent kann nicht hineinklicken. Mitdenken braucht einen Agenten
+> ab Version 1.378.0 — sonst meldet das Overlay „bitte den Agenten aktualisieren“.
+
 ---
 
 ## 24. Skills herunterladen & installieren

@@ -863,6 +863,44 @@ ORCHESTRATOR_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "bildschirm_regel_anlegen",
+            "description": "Remember a screen rule for your human's computer (Bridge, capability 'Mitsehen'): when the active app and/or window title contains the given text, the Bridge offers 'angebot' in an overlay at the top of the screen; only after your human clicks Yes you get 'auftrag' plus a screenshot. Use it when your human says e.g. 'Whenever I'm in YouTube Studio, offer me title ideas'. Matching is local (no tokens), case-insensitive 'contains'. At least one of wenn_app / wenn_titel is required.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Short name, German."},
+                    "wenn_app": {"type": "string", "description": "App name contains, e.g. 'Chrome', 'Excel'."},
+                    "wenn_titel": {"type": "string", "description": "Window title contains, e.g. 'YouTube Studio'."},
+                    "angebot": {"type": "string", "description": "Question shown in the overlay, German, Du-Form, max 300 chars."},
+                    "auftrag": {"type": "string", "description": "What you will do after a Yes — one sentence, max 300 chars (shown in full in the overlay)."}
+                },
+                "required": ["angebot", "auftrag"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "bildschirm_regeln",
+            "description": "List your human's screen rules (Bridge overlay offers) with id, conditions, hits and who created them.",
+            "parameters": {"type": "object", "properties": {}}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "bildschirm_regel_loeschen",
+            "description": "Delete a screen rule YOU created (by id). Rules your human created are theirs — ask them instead.",
+            "parameters": {
+                "type": "object",
+                "properties": {"regel_id": {"type": "integer"}},
+                "required": ["regel_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "projekt_termin_anlegen",
             "description": "Lead only: schedule a meeting of the project's agents — art=daily (Mon–Fri at uhrzeit), art=weekly (wochentag + uhrzeit) or art=einmalig (datum YYYY-MM-DD + uhrzeit). Minutes go to the project knowledge, action items become cards in 'bereit'.",
             "parameters": {

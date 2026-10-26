@@ -166,6 +166,7 @@ Database migrations run on start. Data lives in named Docker volumes and survive
 - **Skills** — reusable capability modules with attached files, a marketplace and your own skill sources.
 - **Browser automation** — agents drive a headless browser, in all three runtimes.
 - **Computer Bridge** — a tray app for macOS and Windows that lets an agent work on your desktop, with granular permissions and folder restrictions.
+  It can also watch along (opt-in "Mitsehen"): local rules and, with "Mitdenken", screenshots let the agent offer help in an overlay at the top of the screen — nothing runs before you click Yes, and Stop locks the agent out of your machine.
 - **Single sign-on** — Microsoft Entra, Google, OIDC and SAML 2.0 with group mapping.
 - **Two-factor sign-in** — authenticator app (TOTP) with recovery codes for password accounts; administrators can enforce it.
 - **Ticket systems** — Matrix42 and a generic REST profile.

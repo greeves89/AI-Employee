@@ -254,7 +254,7 @@ class CodexAgentRunner:
         common = [
             "--json",
             "--skip-git-repo-check",
-            "--dangerously-bypass-approvals-and-sandbox",
+            *codex_rechte(getattr(self, "_nur_ansehen", False)),
             "-m", model,
         ]
         # Der PreToolUse-Hook (config.toml, CODEX_HOOK_SKRIPT) stammt aus dem
@@ -490,6 +490,20 @@ class CodexAgentRunner:
                 self._process.kill()
 
 
+def codex_rechte(nur_ansehen: bool) -> list[str]:
+    """Was ein Codex-Zug darf.
+
+    Normal: alles (der Container ist die Grenze, die Gates sitzen in den
+    MCP-Servern und im PreToolUse-Hook). Nur ansehen (#1019, Bridge-Beobachter):
+    Sandbox nur lesend, keine Rueckfragen, und KEIN MCP-Server — sonst koennte ein
+    Bildschirm voller fremder Inhalte den Agenten Mails senden oder klicken lassen.
+    Gleiche Grenze wie Claude Code (``--tools Read``) und Custom-LLM.
+    """
+    if nur_ansehen:
+        return ["--sandbox", "read-only", "-c", 'approval_policy="never"', "-c", "mcp_servers={}"]
+    return ["--dangerously-bypass-approvals-and-sandbox"]
+
+
 class CodexChatHandler:
     """Chat ueber Codex CLI — EIN Faden je Kanal, ueber Nachrichten hinweg.
 
@@ -514,13 +528,18 @@ class CodexChatHandler:
         self._nutzung_stand: dict = {}
 
     async def handle_message(self, message_id: str, text: str, model: str | None = None,
-                             reasoning: str = "") -> dict:
+                             reasoning: str = "", nur_ansehen: bool = False) -> dict:
         """Run a Codex chat turn with live steering.
 
         A message that arrives on this channel mid-turn interrupts the run (SIGINT,
         handled gracefully) and is folded into a follow-up turn that resumes the same
         thread. See steering.py.
+
+        ``nur_ansehen`` (#1019, Bridge-Beobachter): frischer Faden je Blick, Sandbox
+        nur lesend, keine MCP-Server — siehe ``_run_codex``.
         """
+        if nur_ansehen:
+            self.session_id = None
         from app.chat_uebertrag import mit_uebertrag
         from app.steering import run_turns_with_steering
         # Held for this turn (incl. steering follow-ups); read when the CLI args
@@ -531,6 +550,7 @@ class CodexChatHandler:
         # ONE runner for the whole (possibly multi-fold) exchange so interrupt() hits
         # the live process.
         self._runner = CodexAgentRunner(self.log_publisher)
+        self._runner._nur_ansehen = nur_ansehen
         if self.session_id:
             self._runner._nutzung_stand = dict(self._nutzung_stand or {})
 
@@ -589,6 +609,9 @@ class CodexChatHandler:
             self.is_running = False
             self._runner = None
             self._process = None
+            if nur_ansehen:
+                # Kein Blick setzt fort, was der vorige gesehen hat.
+                self.session_id = None
 
         await report_result_status(result)
         await self.log_publisher.publish_chat(message_id, "done", result)

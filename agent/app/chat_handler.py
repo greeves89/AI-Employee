@@ -266,12 +266,34 @@ class _StillerPublisher:
         setattr(self._laut, name, value)
 
 
+def eingebaute_werkzeuge(nur_gedaechtnis: bool, nur_ansehen: bool) -> str:
+    """Eingebaute Werkzeuge eines eingeschraenkten Zugs (``--tools``).
+
+    Uebergabe-Zug: keine. Nur ansehen (#1019): ``Read`` — die CLI nimmt Bilder nur
+    als Datei, ohne Read saehe der Agent das Bildschirmfoto gar nicht. Schreiben,
+    Bash und Web bleiben aus; als MCP gibt es in beiden Faellen nur das Gedaechtnis.
+    """
+    return "Read" if nur_ansehen and not nur_gedaechtnis else ""
+
+
+#: Im Nur-ansehen-Zug ist das Gedaechtnis nur zum Lesen da — sonst koennte sich
+#: eine praeparierte Seite dauerhaft hineinschreiben.
+GEDAECHTNIS_SCHREIBEN = ("mcp__memory__memory_save", "mcp__memory__memory_delete")
+
+
+def gesperrte_werkzeuge(nur_ansehen: bool) -> list[str]:
+    """Werte fuer ``--disallowedTools`` (siehe AskUserQuestion unten)."""
+    return ["AskUserQuestion", *(GEDAECHTNIS_SCHREIBEN if nur_ansehen else ())]
+
+
 class ChatHandler:
     """Handles interactive chat sessions using Claude Code CLI with --resume."""
 
     def __init__(self, log_publisher: LogPublisher):
         self.log_publisher = log_publisher
         self.session_id: str | None = None
+        # Nur-ansehen-Zug (#1019): siehe handle_message.
+        self._nur_ansehen = False
         # Fuellstand des Kontexts nach dem letzten Zug (Token) und ob Claude Code
         # den Verlauf zwischendurch verdichtet hat — siehe _execute_cli.
         self._kontext_tokens = 0
@@ -394,14 +416,21 @@ class ChatHandler:
 
     async def handle_message(
         self, message_id: str, text: str, model: str | None = None,
-        reasoning: str = "",
+        reasoning: str = "", nur_ansehen: bool = False,
     ) -> dict:
         """Send a chat message to Claude CLI and stream the response.
 
         Live steering: if a new message arrives on this channel while the turn runs,
         it interrupts (SIGINT → -2, graceful) and folds the message into a follow-up
         turn that resumes the same session (--resume). See steering.py.
+
+        ``nur_ansehen`` (#1019, Bridge-Beobachter): eigene, frische Sitzung je Blick,
+        eingebaut nur ``Read`` (fuer das Bild), als MCP nur das Gedaechtnis — ein
+        Bildschirm voller fremder Inhalte darf den Agenten nicht handeln lassen.
         """
+        self._nur_ansehen = nur_ansehen
+        if nur_ansehen:
+            self.session_id = None
         from app.steering import run_turns_with_steering
         model = model or settings.default_model
         # Held on the instance for this turn (incl. steering follow-ups) instead of
@@ -433,11 +462,15 @@ class ChatHandler:
             # Vor dem Abschluss-Marker: ist der Kontext voll, wird JETZT uebergeben
             # (stiller Zug in derselben Sitzung), statt die Verdichtung von Claude
             # Code oder den harten Neustart abzuwarten. Kosten zaehlen zum Zug.
-            if result.get("status") == "completed" and self._uebergabe_faellig(model):
+            if result.get("status") == "completed" and not nur_ansehen and self._uebergabe_faellig(model):
                 await self._uebergeben(message_id, model, result)
         finally:
             self.is_running = False
             self._process = None
+            if nur_ansehen:
+                # Kein Blick setzt fort, was der vorige gesehen hat.
+                self.session_id = None
+                self._nur_ansehen = False
 
         # Send completion marker
         await self.log_publisher.publish_chat(message_id, "done", result)
@@ -526,11 +559,11 @@ class ChatHandler:
             # JSON in the chat and cannot answer at all. Taking it away makes
             # the agent ask in plain text, which the chat (incl. live steering)
             # already handles properly.
-            "--disallowedTools", "AskUserQuestion",
+            "--disallowedTools", *gesperrte_werkzeuge(self._nur_ansehen),
             "--model", model,
         ])
         mcp_datei = None
-        if nur_gedaechtnis:
+        if nur_gedaechtnis or self._nur_ansehen:
             import tempfile
 
             from app.config import stdio_mcp_server
@@ -539,7 +572,8 @@ class ChatHandler:
             fd, mcp_datei = tempfile.mkstemp(prefix="uebergabe-mcp-", suffix=".json")
             with os.fdopen(fd, "w") as fh:
                 json.dump({"mcpServers": {"memory": stdio_mcp_server("memory-server.mjs")}}, fh)
-            cmd.extend(["--tools", "", "--strict-mcp-config", "--mcp-config", mcp_datei])
+            cmd.extend(["--tools", eingebaute_werkzeuge(nur_gedaechtnis, self._nur_ansehen),
+                        "--strict-mcp-config", "--mcp-config", mcp_datei])
 
         env = os.environ.copy()
         reasoning = getattr(self, "_reasoning", "")

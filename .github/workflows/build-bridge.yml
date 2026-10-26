@@ -18,6 +18,9 @@ on:
   # 2026-09-16).
   release:
     types: [published]
+  # Von einem Branch gestartet (z. B. zum Ausprobieren vor dem Merge) entsteht
+  # nur das Artefakt — der oeffentliche Download bridge-latest kommt
+  # ausschliesslich von main oder einem Release (siehe `if:` an den Schritten).
   workflow_dispatch:
 
 jobs:
@@ -47,6 +50,15 @@ jobs:
         run: |
           pip install pyinstaller
           pip install -r requirements.txt
+
+      # Die Bridge-Tests auf der ECHTEN Plattform (AppKit/Quartz hier, Win32 im
+      # Windows-Job) und mit den echten Abhaengigkeiten — vorher wurde gebaut,
+      # ohne dass ein einziger Test lief.
+      - name: Bridge tests
+        working-directory: computer-use-bridge
+        run: |
+          pip install -r requirements-test.txt
+          python -m pytest -q tests
 
       - name: Set bridge artifact version
         id: bridge_version
@@ -213,6 +225,7 @@ jobs:
           retention-days: 30
 
       - name: Remove stale bridge release assets
+        if: github.ref == 'refs/heads/main' || github.event_name == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -220,6 +233,7 @@ jobs:
           gh release delete-asset bridge-latest "AI-Employee-Bridge.dmg" --repo "$GITHUB_REPOSITORY" -y || true
 
       - name: Publish to bridge-latest release
+        if: github.ref == 'refs/heads/main' || github.event_name == 'release'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: bridge-latest
@@ -254,6 +268,12 @@ jobs:
           pip install pyinstaller
           pip install -r requirements.txt
 
+      - name: Bridge tests
+        working-directory: computer-use-bridge
+        run: |
+          pip install -r requirements-test.txt
+          python -m pytest -q tests
+
       - name: Set bridge version
         shell: pwsh
         run: |
@@ -285,6 +305,7 @@ jobs:
           retention-days: 30
 
       - name: Remove stale bridge release assets
+        if: github.ref == 'refs/heads/main' || github.event_name == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -296,6 +317,7 @@ jobs:
         shell: pwsh
 
       - name: Publish to bridge-latest release
+        if: github.ref == 'refs/heads/main' || github.event_name == 'release'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: bridge-latest

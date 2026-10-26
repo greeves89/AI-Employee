@@ -34,6 +34,7 @@ async def ask_agent_via_chat(
     chat_session_id: str | None = None,
     images: list[dict] | None = None,
     on_event=None,
+    nur_ansehen: bool = False,
 ) -> str:
     """Send ``text`` to the agent and return its full text answer (or an error marker).
 
@@ -52,6 +53,10 @@ async def ask_agent_via_chat(
     }
     if chat_session_id:
         payload["chat_session_id"] = chat_session_id
+    if nur_ansehen:
+        # Bridge-Beobachter (#1019): jede Laufzeit laesst den Agenten dann nur
+        # ansehen und im Gedaechtnis lesen, nicht handeln.
+        payload["nur_ansehen"] = True
 
     from app.core.chat_auftrag import einreihen
 

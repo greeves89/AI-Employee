@@ -23,6 +23,7 @@ const LABELS: Record<string, { label: string; icon: React.ElementType }> = {
   voice_capture: { label: "Sprachmitschnitt", icon: Monitor },
   browser: { label: "Browser-Steuerung", icon: Monitor },
   ego_browser: { label: "Browser-Steuerung (Ego)", icon: Monitor },
+  observe: { label: "Mitsehen (Hilfe von sich aus anbieten)", icon: Eye },
 };
 
 export function ComputerUseDefaultPanel({ agentId }: { agentId: string }) {

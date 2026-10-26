@@ -34,7 +34,9 @@ class InProcessCaptureTests(unittest.TestCase):
     def test_macos_tries_quartz_first(self):
         # Die eigentliche Aufnahme liegt seit dem Retina-Klick-Fix in
         # capture_screenshot; take_screenshot ist nur noch ein duenner Wrapper.
-        code = _fn("capture_screenshot")
+        # Seit #1019 nutzen Screenshot und Beobachter denselben Rohbild-Weg.
+        self.assertIn("_bildschirm_rohbild(", _fn("capture_screenshot"))
+        code = _fn("_bildschirm_rohbild")
         # Seit der Mehrbildschirm-Unterstuetzung bekommt die Aufnahme die
         # Bildschirmkennung mit — der Aufruf hat also ein Argument.
         self.assertIn("_capture_macos_inprocess(", code)
@@ -45,7 +47,7 @@ class InProcessCaptureTests(unittest.TestCase):
 
     def test_pyautogui_remains_as_fallback(self):
         """Linux/Windows und ein fehlendes Quartz duerfen nicht ohne Screenshot dastehen."""
-        self.assertIn("pyautogui.screenshot()", _fn("capture_screenshot"))
+        self.assertIn("pyautogui.screenshot()", _fn("_bildschirm_rohbild"))
 
     def test_row_padding_is_honoured(self):
         """Ohne CGImageGetBytesPerRow verscheert das Bild — der klassische Fehler
