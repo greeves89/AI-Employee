@@ -53,13 +53,12 @@ class GedaechtnisNurLesen(unittest.TestCase):
         self.assertIn("mcp__memory__memory_save", gesperrt)
         self.assertIn("mcp__memory__memory_delete", gesperrt)
 
-    def test_custom_llm_liest_nur(self):
+    def test_custom_llm_liest_nur_das_gedaechtnis(self):
+        """view_image holt auch Adressen, grep/glob reichen Muster an Programme weiter —
+        beides gehoert nicht in einen Zug, den fremder Bildschirminhalt steuern kann."""
         from app.llm_chat_handler import NUR_ANSEHEN_WERKZEUGE
 
-        self.assertIn("read_file", NUR_ANSEHEN_WERKZEUGE)
-        for verboten in ("memory_save", "memory_delete", "write_file", "edit_file", "bash",
-                         "web_fetch", "computer_use", "send_message"):
-            self.assertNotIn(verboten, NUR_ANSEHEN_WERKZEUGE)
+        self.assertEqual(NUR_ANSEHEN_WERKZEUGE, {"memory_search", "memory_list"})
 
 
 class _Publisher:

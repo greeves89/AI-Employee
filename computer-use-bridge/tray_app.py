@@ -2724,6 +2724,7 @@ class _MacOverlay:
         hinten.layer().setBorderWidth_(1)
         hinten.layer().setBorderColor_(farbe(0.92, 0.36, 0.04, 0.55).CGColor())
         cv.addSubview_(hinten)
+        self.hinten = hinten
 
         def label(text, x, y, w, h, groesse, fett=False, alpha=0.92):
             lbl = NSTextField.labelWithString_(text)
@@ -2731,15 +2732,16 @@ class _MacOverlay:
             lbl.setTextColor_(farbe(1, 1, 1, alpha))
             lbl.setFrame_(((x, y), (w, h)))
             lbl.setLineBreakMode_(0)
-            lbl.setMaximumNumberOfLines_(3)
+            # Keine Zeilengrenze: die Hoehe richtet sich nach dem Text (_anordnen) —
+            # abgeschnitten wird nichts, das Ja gilt dem ganzen Text.
+            lbl.setMaximumNumberOfLines_(0)
             cv.addSubview_(lbl)
             return lbl
 
         self.kopf = label("", 20, H - 30, W - 200, 18, 12, fett=True)
-        label("AI Employee", W - 120, H - 30, 100, 18, 11, alpha=0.5)
+        self.marke = label("AI Employee", W - 120, H - 30, 100, 18, 11, alpha=0.5)
         self.text = label("", 20, H - 74, W - 40, 40, 13)
         self.detail = label("", 20, 50, W - 40, 56, 11, alpha=0.62)
-        self.detail.setMaximumNumberOfLines_(5)
         self.eingabe = NSTextField.alloc().initWithFrame_(((20, 14), (W - 420, 26)))
         self.eingabe.cell().setPlaceholderString_("Optional: Antwort oder Hinweis")
         self.eingabe.setFont_(NSFont.systemFontOfSize_(12))
@@ -2772,6 +2774,7 @@ class _MacOverlay:
             self.kopf.setStringValue_(m.titel)
             self.text.setStringValue_(m.text)
             self.detail.setStringValue_(m.detail)
+            self._anordnen()
             self.eingabe.setHidden_(not m.mit_eingabe)
             if m.mit_eingabe:
                 self.eingabe.setStringValue_("")
@@ -2805,6 +2808,27 @@ class _MacOverlay:
         except Exception:  # noqa: BLE001 — ein Zeichenfehler darf die Bridge nicht stoeren
             app_log.warning("Overlay nicht zeichenbar", exc_info=True)
 
+
+    def _anordnen(self) -> None:
+        """Hoehe nach dem Inhalt: Kopf, Text, Auftrag, Knoepfe — oben bleibt oben."""
+        breite = self.W - 40
+
+        def hoehe(lbl) -> float:
+            if not str(lbl.stringValue()):
+                return 0.0
+            return float(lbl.cell().cellSizeForBounds_(((0, 0), (breite, 10000))).height)
+
+        th, dh = hoehe(self.text), hoehe(self.detail)
+        H = 12 + 30 + th + (8 + dh if dh else 0) + 14 + 30 + 12
+        alt = self.panel.frame()
+        oben = alt.origin.y + alt.size.height
+        self.panel.setFrame_display_(((alt.origin.x, oben - H), (self.W, H)), True)
+        self.hinten.setFrame_(((0, 0), (self.W, H)))
+        self.kopf.setFrameOrigin_((20, H - 30))
+        self.marke.setFrameOrigin_((self.W - 120, H - 30))
+        self.text.setFrame_(((20, H - 30 - 8 - th), (breite, th)))
+        self.detail.setFrame_(((20, 56), (breite, dh)))
+        self.detail.setHidden_(not dh)
 
     def _sperrzone_setzen(self) -> None:
         """Rahmen in Bridge-Koordinaten (logische Punkte, oben links) umrechnen."""

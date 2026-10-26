@@ -138,14 +138,13 @@ SEARCH_TOOLS_DEF = {
 
 
 #: Nur-ansehen-Zug (#1019, Bridge-Beobachter): Der Agent sieht ein Bildschirmfoto und
-#: soll nur ANBIETEN, nicht handeln — lesen ja (Dateien im Arbeitsbereich, das
-#: Gedaechtnis), schreiben, senden, klicken nein. Eine Webseite auf dem Bildschirm
-#: darf ihn weder handeln lassen noch sich ins Gedaechtnis schreiben. Gleiche Grenze
-#: in Claude Code (``Read`` + Gedaechtnis nur lesend) und Codex (Sandbox nur lesend,
-#: ohne Netz und MCP-Server).
-NUR_ANSEHEN_WERKZEUGE = frozenset({
-    "memory_search", "memory_list", "read_file", "view_image", "list_files", "grep", "glob",
-})
+#: soll nur ANBIETEN, nicht handeln. Hier nur lesendes Gedaechtnis — das Bild sieht
+#: dieses Modell direkt. Bewusst OHNE read_file/view_image/grep/glob: view_image
+#: holt auch Adressen (ein Weg nach draussen), grep/glob reichen Muster an
+#: Programme weiter. Die CLIs bekommen nur, was sie fuer das Bild brauchen (Claude
+#: Code ``Read``, Codex Sandbox nur lesend ohne Netz) — nirgends Schreiben, Senden,
+#: Klicken; was der Agent sieht, landet nur im Angebot, das der Mensch ganz liest.
+NUR_ANSEHEN_WERKZEUGE = frozenset({"memory_search", "memory_list"})
 
 
 def _tokenize(text: str) -> list[str]:
