@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.378.7] - 2026-10-26
+
+### Sicherheit
+- **Next.js im Frontend von 16.4.0 auf 16.4.3 angehoben.** Drei öffentlich gemeldete Next.js-Schwachstellen (zwei als kritisch eingestuft) betrafen die eingesetzte Version; die zugehörige `sharp`-Bibliothek für die Bild-Optimierung steht jetzt ebenfalls auf dem gepatchten Stand (0.35.5). Reiner Versionssprung, kein Verhaltensunterschied im Frontend (Build und Typecheck unverändert grün).
+
 ## [1.378.6] - 2026-10-26
 
 ### Geändert
