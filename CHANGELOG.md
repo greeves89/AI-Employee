@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.378.4] - 2026-10-26
+
+### Behoben
+- **Die Bridge musste nach 30 Minuten neu angemeldet werden.** Sie speicherte nur das kurzlebige Zugangstoken und verwarf das Erneuerungstoken, das der Server bei der Anmeldung mitschickt. Nach jedem Neuaufbau der Verbindung — Server-Update, WLAN-Wechsel, Ruhezustand — kam deshalb „neu anmelden“. Jetzt erneuert die Bridge ihr Zugangstoken selbst: kurz vor Ablauf still im Hintergrund, und nach einer Ablehnung durch den Server einmal mit anschließendem Neuverbinden. Neu anmelden muss man sich erst, wenn die Bridge länger als sieben Tage nicht lief oder die Anmeldung beim Server widerrufen wurde. Das Erneuerungstoken liegt wie das Zugangstoken in der nur für den eigenen Nutzer lesbaren Konfiguration.
+
 ## [1.378.3] - 2026-10-26
 
 ### Behoben

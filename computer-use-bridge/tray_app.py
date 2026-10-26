@@ -238,7 +238,94 @@ def _api(method, base_url, path, token, body=None):
         return json.loads(r.read())
 
 
+def _erneuerung_aus_antwort(antwort) -> str:
+    """Das Erneuerungstoken aus den Set-Cookie-Kopfzeilen der Server-Antwort.
+
+    Der Server legt es bei Anmeldung und Erneuerung als Cookie ``refresh_token``
+    ab (7 Tage gueltig) — die Web-App nutzt es von selbst, die Bridge hat es bis
+    1.378.3 schlicht verworfen und stand nach 30 Minuten ohne gueltige Anmeldung da.
+    """
+    try:
+        zeilen = antwort.headers.get_all("Set-Cookie") or []
+    except Exception:  # noqa: BLE001
+        zeilen = []
+    for zeile in zeilen:
+        kopf = zeile.split(";", 1)[0].strip()
+        if kopf.startswith("refresh_token="):
+            return kopf.split("=", 1)[1].strip().strip('"')
+    return ""
+
+
+def _token_laeuft_ab(token: str, puffer_s: int = 300) -> bool:
+    """Laeuft das Zugangstoken in den naechsten ``puffer_s`` Sekunden ab?
+    Liest nur den Ablauf aus dem JWT (ohne Pruefung — das macht der Server).
+    Unlesbar zaehlt als abgelaufen."""
+    import time as _time
+    try:
+        nutzlast = token.split(".")[1]
+        nutzlast += "=" * (-len(nutzlast) % 4)
+        ablauf = int(json.loads(base64.urlsafe_b64decode(nutzlast)).get("exp", 0))
+    except Exception:  # noqa: BLE001
+        return True
+    return ablauf - _time.time() < puffer_s
+
+
+def api_auffrischen(base_url: str, erneuerung: str) -> tuple[str, str]:
+    """Neues Zugangstoken (und neues Erneuerungstoken) ueber /auth/refresh —
+    derselbe Weg, den die iOS-App nach SSO nutzt (Bearer statt Cookie)."""
+    url = base_url.rstrip("/") + "/api/v1/auth/refresh"
+    req = urllib.request.Request(url, data=b"{}", method="POST",
+                                 headers={"Content-Type": "application/json",
+                                          "Authorization": f"Bearer {erneuerung}",
+                                          "User-Agent": f"AI-Employee-Bridge/{BRIDGE_VERSION}"})
+    with urllib.request.urlopen(req, timeout=10, context=_tls_context(base_url)) as r:
+        antwort = json.loads(r.read())
+        neu = _erneuerung_aus_antwort(r)
+    return antwort["access_token"], (neu or erneuerung)
+
+
+_erneuerung_sperre = threading.Lock()
+
+
+def token_erneuern(cfg: dict) -> bool:
+    """Zugangstoken mit dem gespeicherten Erneuerungstoken auffrischen und
+    speichern. False = keins da oder vom Server abgelehnt (dann: neu anmelden)."""
+    with _erneuerung_sperre:
+        erneuerung = str(cfg.get("refresh") or "")
+        if not erneuerung or not cfg.get("url"):
+            return False
+        try:
+            zugang, neu = api_auffrischen(cfg["url"], erneuerung)
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403):
+                # Abgelaufen oder widerrufen — ein Weiterprobieren hilft nicht.
+                cfg["refresh"] = ""
+                save_config(cfg)
+            app_log.warning("Token-Erneuerung abgelehnt: HTTP %s", e.code)
+            return False
+        except Exception as e:  # noqa: BLE001 — Netz weg: spaeter erneut
+            app_log.warning("Token-Erneuerung fehlgeschlagen: %s: %s", type(e).__name__, e)
+            return False
+        cfg["token"], cfg["refresh"] = zugang, neu
+        save_config(cfg)
+        app_log.info("Zugangstoken erneuert")
+        return True
+
+
+def token_frisch_halten(cfg: dict | None) -> None:
+    """Kurz vor Ablauf still erneuern. Billig, solange nichts faellig ist:
+    nur der Ablauf im Token wird gelesen, ins Netz geht es erst fuenf Minuten vorher."""
+    if cfg and cfg.get("token") and cfg.get("refresh") and _token_laeuft_ab(cfg["token"]):
+        token_erneuern(cfg)
+
+
 def api_login(base_url, email, password):
+    """Zugangstoken (fuer Aufrufer, die nur das brauchen)."""
+    return api_login_tokens(base_url, email, password)[0]
+
+
+def api_login_tokens(base_url, email, password) -> tuple[str, str]:
+    """(Zugangstoken, Erneuerungstoken) — das zweite kommt als Cookie."""
     url = base_url.rstrip("/") + "/api/v1/auth/login"
     data = json.dumps({"email": email, "password": password}).encode()
     req = urllib.request.Request(url, data=data,
@@ -259,6 +346,7 @@ def api_login(base_url, email, password):
         ctx = _tls_context(base_url)
     with urllib.request.urlopen(req, timeout=10, context=ctx) as r:
         antwort = json.loads(r.read())
+        erneuerung = _erneuerung_aus_antwort(r)
     if antwort.get("mfa_required"):
         # Zwei-Faktor (#915): die Bridge kann den Code-Schritt nicht. Statt mit
         # KeyError abzubrechen, klar sagen, was zu tun ist.
@@ -267,7 +355,7 @@ def api_login(base_url, email, password):
             "noch nicht anmelden — bitte ein eigenes Konto ohne zweiten Faktor für die "
             "Bridge verwenden oder den Administrator fragen."
         )
-    return antwort["access_token"]
+    return antwort["access_token"], erneuerung
 
 
 class ZweiFaktorNichtUnterstuetzt(RuntimeError):
@@ -369,8 +457,11 @@ ENSURE_ERROR     = "error"
 
 def ensure_session(cfg: dict) -> str:
     """Verify session is still alive; create new one if gone. Returns ENSURE_* constant."""
+    token_frisch_halten(cfg)
     url, token = cfg.get("url", ""), cfg.get("token", "")
     if not url or not token:
+        if token_erneuern(cfg):
+            return ensure_session(cfg)
         return ENSURE_NEEDS_LOGIN
     sid = cfg.get("session", "")
     caps = cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES))
@@ -382,7 +473,10 @@ def ensure_session(cfg: dict) -> str:
             save_config(cfg)
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
+            # Erst erneuern — neu anmelden nur, wenn auch das nicht geht.
             cfg["token"] = ""
+            if token_erneuern(cfg):
+                return ensure_session(cfg)
             cfg["session"] = ""
             save_config(cfg)
             return ENSURE_NEEDS_LOGIN
@@ -419,7 +513,11 @@ def ensure_session(cfg: dict) -> str:
 
 
 def login_and_prepare(base_url, email, password, caps, requested_session_id=None, cfg=None):
-    token = api_login(base_url, email, password)
+    token, erneuerung = api_login_tokens(base_url, email, password)
+    if cfg is not None:
+        # Fuer die automatische Erneuerung (token_erneuern) — ohne das stuende
+        # die Bridge nach 30 Minuten wieder ohne gueltige Anmeldung da.
+        cfg["refresh"] = erneuerung
     if requested_session_id and api_session_exists(base_url, token, requested_session_id):
         session_id = requested_session_id
         try:
@@ -439,11 +537,18 @@ _bridge_lock   = threading.Lock()
 _status        = "disconnected"
 
 
+_bridge_cfg: dict | None = None
+
+
 def start_bridge(cfg):
-    global _bridge_thread, _status
+    global _bridge_thread, _status, _bridge_cfg
     with _bridge_lock:
         if _bridge_thread and _bridge_thread.is_alive():
             return True
+        # Dieselbe Konfiguration, die die App haelt — die Erneuerung schreibt das
+        # neue Token hinein, und alle API-Aufrufe der App sehen es sofort.
+        _bridge_cfg = cfg
+        token_frisch_halten(cfg)
         if not cfg.get("url") or not cfg.get("token") or not cfg.get("session"):
             _status = "error: nicht eingerichtet"
             return False
@@ -504,10 +609,34 @@ def _run_bridge_thread(url, token, session_id):
             else:
                 _status = "connecting"
 
-        asyncio.run(bridge_module.run(url=url, token=token,
-                                      session_id=session_id, stop_event=_bridge_stop,
-                                      on_state=_on_state, on_overlay=_on_overlay,
-                                      on_bridge=_on_bridge))
+        versuche = 0
+        while True:
+            abgewiesen = {"unauth": False}
+            _vorher = _on_state
+
+            def _beobachten(state: str, detail: str = "", _v=_vorher, _a=abgewiesen) -> None:
+                if state == "rejected" and "unauthor" in (detail or "").lower():
+                    _a["unauth"] = True
+                    if _bridge_cfg is not None and _bridge_cfg.get("refresh"):
+                        # Wird gleich still erneuert — keine Meldung „neu anmelden“.
+                        return
+                _v(state, detail)
+
+            asyncio.run(bridge_module.run(url=url, token=token,
+                                          session_id=session_id, stop_event=_bridge_stop,
+                                          on_state=_beobachten, on_overlay=_on_overlay,
+                                          on_bridge=_on_bridge))
+            # Abgelaufenes Zugangstoken (z. B. nach einem Server-Neustart): einmal
+            # still erneuern und neu verbinden, statt den Menschen zum Anmelden zu
+            # schicken. Mehr als zwei Versuche in Folge heisst: wirklich abgemeldet.
+            if (abgewiesen["unauth"] and not _bridge_stop.is_set() and versuche < 2
+                    and _bridge_cfg is not None and token_erneuern(_bridge_cfg)):
+                versuche += 1
+                token = _bridge_cfg["token"]
+                _status = "connecting"
+                app_log.info("Bridge verbindet mit erneuertem Token neu")
+                continue
+            break
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
             _status = "error: neu anmelden"
@@ -569,6 +698,7 @@ def _appkit_handlers_init():
                         token, sid = login_and_prepare(url, email, pw, caps, requested_session, cfg)
                         st["result_box"][0] = {
                             "url": url, "token": token, "session": sid,
+                            "refresh": cfg.get("refresh", ""),
                             # Adresse merken, damit das Feld beim naechsten Mal
                             # vorbelegt ist. Das Passwort NICHT — es wird
                             # nirgends gespeichert.
@@ -2340,6 +2470,7 @@ def _show_setup_tkinter(cfg):
             try:
                 token, sid = login_and_prepare(url, email, pw, caps, requested_session, cfg)
                 result.update({"url":url,"token":token,"session":sid,"email":email,
+                               "refresh":cfg.get("refresh",""),
                                "auto_connect":bool(auto_var.get()),
                                "allowed_capabilities":caps,"allowed_paths":cfg.get("allowed_paths",[])})
                 root.after(0, root.destroy)
@@ -2573,7 +2704,7 @@ def _show_setup_plain_tkinter(cfg):
         def _do():
             try:
                 t, s = login_and_prepare(url, em, pw, cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES)), requested_session, cfg)
-                result.update({"url":url,"token":t,"session":s,"email":em,"auto_connect":auto_v.get(),"allowed_capabilities":cfg.get("allowed_capabilities",sorted(DEFAULT_CAPABILITIES)),"allowed_paths":cfg.get("allowed_paths",[])})
+                result.update({"url":url,"token":t,"session":s,"email":em,"refresh":cfg.get("refresh",""),"auto_connect":auto_v.get(),"allowed_capabilities":cfg.get("allowed_capabilities",sorted(DEFAULT_CAPABILITIES)),"allowed_paths":cfg.get("allowed_paths",[])})
                 root.after(0, root.destroy)
             except Exception as e:
                 root.after(0, lambda e=e: sv.set(f"Fehler: {e}"))
@@ -3354,6 +3485,9 @@ def run_macos(cfg: dict) -> None:
 
         @rumps.timer(3)
         def refresh(self, _):
+            # Zugangstoken kurz vor Ablauf still erneuern (sonst 401 nach 30 Minuten
+            # bei allen Aufrufen der App: Berechtigungen, Mitdenken, Sitzung).
+            threading.Thread(target=token_frisch_halten, args=(self.cfg,), daemon=True).start()
             self._update_icon()
             if not self._main_shown:
                 self._main_shown = True
@@ -3460,6 +3594,7 @@ def run_tray(cfg: dict) -> None:
         import time
         zuletzt = None
         while True:
+            token_frisch_halten(cfg)
             zustand = tray_zustand(_status, False, _sieht_mit())
             if zustand != zuletzt:
                 icon.icon = make_icon(zustand)
