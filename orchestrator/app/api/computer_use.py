@@ -324,7 +324,7 @@ _PERSISTED_FIELDS = (
     "user_id", "created_at", "agent_id", "allowed_capabilities",
     "allowed_apps", "allowed_domains",
     "action_count", "last_activity_at", "platform", "bridge_version",
-    "mitdenken", "deckel",
+    "mitdenken", "deckel", "gestoppt",
 )
 
 
@@ -400,6 +400,8 @@ async def _restore_session(session_id: str) -> dict | None:
         "capture_human": False,
         "mitdenken": bool(stored.get("mitdenken")),
         "deckel": stored.get("deckel"),
+        # Ein Stopp ueberlebt den Neustart — sonst waere er nach jedem Deploy weg.
+        "gestoppt": bool(stored.get("gestoppt")),
     }
     _sessions[session_id] = session
     logger.info("Restored computer-use session %s from Redis", scrub_log(session_id))
@@ -1185,6 +1187,8 @@ _VORSCHLAG_LEBT_SECS = 600
 _VORSCHLAG_SPERRT_SECS = 120
 # Eine Pause von einer Minute beginnt im Overlay einen neuen Schrittzaehler.
 _LAUF_PAUSE_SECS = 60
+# Dieselbe Regel loest serverseitig hoechstens einmal je Minute ein Angebot aus.
+_REGEL_SERVER_RUHE_SECS = 60
 
 
 def _deckel(session: dict) -> int:
@@ -1237,6 +1241,34 @@ async def _schritt_melden(session: dict, action: str) -> None:
     })
 
 
+# Wie lange das Ergebnis der Versionspruefung gilt.
+_ABBILD_PRUEFUNG_SECS = 300
+
+
+async def _agent_kann_ansehen(session: dict) -> bool:
+    """Kennt das Abbild des Sitzungs-Agenten den Nur-ansehen-Zug? Sonst bekommt er
+    keine Bilder — ein aelteres Abbild saehe sie mit allen Werkzeugen."""
+    from app.core import bridge_mitdenker as bm
+    from app.db.session import async_session_factory
+    from app.models.agent import Agent
+
+    agent_id = session.get("agent_id")
+    if not agent_id:
+        return False
+    gemerkt = session.get("_abbild_ok")
+    if gemerkt and gemerkt[0] == agent_id and time.time() - gemerkt[1] < _ABBILD_PRUEFUNG_SECS:
+        return gemerkt[2]
+    try:
+        async with async_session_factory() as db:
+            agent = await db.get(Agent, str(agent_id))
+        ok = bool(agent) and bm.kann_nur_ansehen((agent.config or {}).get("agent_version"))
+    except Exception:  # noqa: BLE001 — im Zweifel keine Bilder
+        logger.debug("Abbildversion nicht lesbar", exc_info=True)
+        ok = False
+    session["_abbild_ok"] = (agent_id, time.time(), ok)
+    return ok
+
+
 async def _regeln_fuer_bridge(user_id: str) -> list[dict]:
     from app.core import bridge_mitdenker as bm
     from app.db.session import async_session_factory
@@ -1257,11 +1289,18 @@ async def _beobachter_konfig_senden(session_id: str) -> None:
             regeln = await _regeln_fuer_bridge(session["user_id"])
         except Exception:  # noqa: BLE001 — ohne Regeln beobachtet sie trotzdem
             logger.warning("Bridge-Regeln nicht ladbar", exc_info=True)
+    mitdenken = beobachten and bool(session.get("mitdenken")) and bool(session.get("agent_id"))
+    if mitdenken and not await _agent_kann_ansehen(session):
+        mitdenken = False
+        await _an_bridge(session, {
+            "type": "overlay_status", "zustand": "hinweis",
+            "text": "Mitdenken braucht ein aktuelles Abbild des Agenten — bitte den Agenten aktualisieren.",
+        })
     await _an_bridge(session, {
         "type": "observer_config",
         "beobachten": beobachten,
         # Bilder schickt die Bridge nur, wenn sie auch jemand ansieht.
-        "mitdenken": beobachten and bool(session.get("mitdenken")) and bool(session.get("agent_id")),
+        "mitdenken": mitdenken,
         "regeln": regeln,
         "gestoppt": bool(session.get("gestoppt")),
         # Fuer den Knopf „Chat“ im Overlay — der eigene Agent des Menschen.
@@ -1281,16 +1320,24 @@ def _offenes_angebot(session: dict) -> bool:
     return any(jetzt - v["ts"] < _VORSCHLAG_SPERRT_SECS for v in (session.get("vorschlaege") or {}).values())
 
 
+def _auftrag_kurz(auftrag: str, laenge: int = 300) -> str:
+    text = " ".join(str(auftrag or "").split())
+    return text if len(text) <= laenge else text[: laenge - 1] + "…"
+
+
 async def _vorschlag_zeigen(session: dict, *, angebot: str, auftrag: str, agent_id: str,
-                            quelle: str, app: str, titel: str) -> str | None:
+                            quelle: str, app: str, titel: str, regel_id: int | None = None) -> str | None:
     jetzt = time.time()
     offen = {k: v for k, v in (session.get("vorschlaege") or {}).items()
              if jetzt - v["ts"] < _VORSCHLAG_LEBT_SECS}
     vid = uuid.uuid4().hex[:10]
     offen[vid] = {"angebot": angebot, "auftrag": auftrag, "agent_id": agent_id,
-                  "quelle": quelle, "app": app, "titel": titel, "ts": jetzt}
+                  "quelle": quelle, "app": app, "titel": titel, "ts": jetzt, "regel_id": regel_id}
     session["vorschlaege"] = dict(sorted(offen.items(), key=lambda kv: kv[1]["ts"])[-5:])
-    if await _an_bridge(session, {"type": "vorschlag", "id": vid, "text": angebot, "quelle": quelle}):
+    # Das Ja gilt dem, was der Agent dann TUT — deshalb steht der Auftrag mit im
+    # Overlay, nicht nur die freundliche Frage davor.
+    if await _an_bridge(session, {"type": "vorschlag", "id": vid, "text": angebot,
+                                  "auftrag": _auftrag_kurz(auftrag), "quelle": quelle}):
         return vid
     session["vorschlaege"].pop(vid, None)
     return None
@@ -1301,6 +1348,13 @@ def _blick_lesen(msg: dict) -> dict:
     media_type = msg.get("media_type") or "image/jpeg"
     if not isinstance(bild, str) or media_type not in _BILDTYPEN or len(bild) > _MAX_BILD_B64:
         bild = ""
+    elif bild:
+        import base64
+        import binascii
+        try:
+            base64.b64decode(bild, validate=True)
+        except (binascii.Error, ValueError):
+            bild = ""
     return {
         "app": str(msg.get("app") or "")[:120],
         "titel": str(msg.get("titel") or "")[:300],
@@ -1322,6 +1376,8 @@ async def _beobachtung(session_id: str, session: dict, msg: dict) -> None:
     if session.get("mitdenken_laeuft") or session.get("auftrag_laeuft") or session.get("gestoppt"):
         return
     if _offenes_angebot(session):
+        return
+    if not await _agent_kann_ansehen(session):
         return
     if not await bm.lauf_erlaubt(_redis.client if _redis else None, session["user_id"], _deckel(session)):
         heute = time.strftime("%Y-%m-%d")
@@ -1351,6 +1407,7 @@ async def _mitdenken(session_id: str, blick: dict) -> None:
             # Eigener Faden: Die Blicke sollen den Hauptchat nicht fluten.
             chat_session_id="bridge-beobachter",
             images=[{"media_type": blick["media_type"], "data": blick["bild"]}],
+            nur_ansehen=True,
         )
         angebot = bm.angebot_lesen(antwort)
         if angebot and not session.get("gestoppt"):
@@ -1375,6 +1432,13 @@ async def _regel_treffer(session: dict, msg: dict) -> None:
         regel_id = int(msg.get("regel_id"))
     except (TypeError, ValueError):
         return
+    if not 0 < regel_id < 2**31:
+        return
+    # Eine Bridge, die denselben Treffer im Sekundentakt meldet, schreibt nicht
+    # jedes Mal in die Datenbank.
+    zuletzt = session.setdefault("_regel_zuletzt", {})
+    if time.time() - zuletzt.get(regel_id, 0) < _REGEL_SERVER_RUHE_SECS:
+        return
     app = str(msg.get("app") or "")[:120]
     titel = str(msg.get("titel") or "")[:300]
     async with async_session_factory() as db:
@@ -1383,18 +1447,23 @@ async def _regel_treffer(session: dict, msg: dict) -> None:
         if r is None or not bm.regel_passt(bm.regel_dict(r), app, titel):
             return
         agent_id = r.agent_id or session.get("agent_id")
+        if agent_id and not await bm._agent_gehoert(db, session["user_id"], str(agent_id)):
+            return
         if not agent_id:
             await _an_bridge(session, {
                 "type": "overlay_status", "zustand": "hinweis",
                 "text": "Regel passt, aber der Bridge ist kein Agent zugeordnet.",
             })
             return
+        # Erst ein nachgeprueft echter Treffer zaehlt fuer die Ruhezeit — ein
+        # falscher darf den naechsten echten nicht blockieren.
+        zuletzt[regel_id] = time.time()
         r.treffer = int(r.treffer or 0) + 1
         r.zuletzt_at = datetime.now(timezone.utc)
         angebot, auftrag = r.angebot, r.auftrag
         await db.commit()
     await _vorschlag_zeigen(session, angebot=angebot, auftrag=auftrag, agent_id=str(agent_id),
-                            quelle="regel", app=app, titel=titel)
+                            quelle="regel", app=app, titel=titel, regel_id=regel_id)
 
 
 async def _vorschlag_antwort(session_id: str, session: dict, msg: dict) -> None:
@@ -1409,6 +1478,7 @@ async def _vorschlag_antwort(session_id: str, session: dict, msg: dict) -> None:
     # Ein Ja ist auch die Freigabe nach einem Stopp.
     session["gestoppt"] = False
     session["auftrag_laeuft"] = True
+    session["auftrag_agent"] = vorschlag["agent_id"]
     session["lauf"] = {"schritte": 0, "zuletzt": time.time()}
     await _an_bridge(session, {"type": "overlay_status", "zustand": "arbeitet", "schritte": 0,
                                "text": "Agent übernimmt …"})
@@ -1451,16 +1521,36 @@ async def _auftrag_ausfuehren(session_id: str, vorschlag: dict, zusatz: str) -> 
         session["auftrag_laeuft"] = False
 
 
-async def _overlay_stopp(session: dict) -> None:
+async def _overlay_stopp(session_id: str, session: dict) -> None:
     session["gestoppt"] = True
     session["vorschlaege"] = {}
+    await _persist_session(session_id)
+    # Nicht nur den Rechner sperren, auch den laufenden Zug des Agenten abbrechen —
+    # derselbe Kanal wie der Stopp-Knopf im Web-Chat.
+    for agent_id in {session.get("agent_id"), session.get("auftrag_agent")} - {None, ""}:
+        try:
+            if _redis is not None and _redis.client is not None:
+                await _redis.client.publish(f"agent:{agent_id}:chat:cancel", "stop")
+        except Exception:  # noqa: BLE001 — die Sperre oben gilt trotzdem
+            logger.warning("Stopp an den Agenten nicht zustellbar", exc_info=True)
     await _an_bridge(session, {"type": "overlay_status", "zustand": "gestoppt",
                                "text": "Gestoppt. Der Agent darf nichts mehr auf diesem Rechner tun, bis du freigibst."})
 
 
-async def _overlay_weiter(session: dict) -> None:
+async def _overlay_weiter(session_id: str, session: dict) -> None:
     session["gestoppt"] = False
+    await _persist_session(session_id)
     await _an_bridge(session, {"type": "overlay_status", "zustand": "bereit", "text": "Freigegeben."})
+
+
+def _angebote_der_regel_verwerfen(user_id: str, regel_id: int) -> None:
+    """Regel geloescht oder ausgeschaltet: ihr offenes Angebot darf kein Ja mehr bekommen."""
+    for s in list(_sessions.values()):
+        if s.get("user_id") != str(user_id):
+            continue
+        offen = s.get("vorschlaege") or {}
+        for vid in [k for k, v in offen.items() if v.get("regel_id") == regel_id]:
+            offen.pop(vid, None)
 
 
 class RegelEingabe(BaseModel):
@@ -1528,6 +1618,8 @@ async def regel_aendern(regel_id: int, body: RegelEingabe, user=Depends(require_
         raise HTTPException(status_code=404, detail="Regel nicht gefunden.")
     await db.commit()
     await db.refresh(r)
+    # Geaendert ist geaendert: ein offenes Angebot mit dem alten Auftrag verfaellt.
+    _angebote_der_regel_verwerfen(str(user.id), regel_id)
     await beobachter_konfig_an_nutzer(str(user.id))
     return bm.regel_dict(r)
 
@@ -1545,6 +1637,7 @@ async def regel_loeschen(regel_id: int, caller=Depends(require_auth_or_agent),
         raise HTTPException(status_code=404, detail="Regel nicht gefunden.")
     await db.delete(r)
     await db.commit()
+    _angebote_der_regel_verwerfen(user_id, regel_id)
     await beobachter_konfig_an_nutzer(user_id)
     return {"ok": True}
 
@@ -1675,10 +1768,10 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
                 await _vorschlag_antwort(session_id, session, msg)
 
             elif msg_type == "overlay_stopp":
-                await _overlay_stopp(session)
+                await _overlay_stopp(session_id, session)
 
             elif msg_type == "overlay_weiter":
-                await _overlay_weiter(session)
+                await _overlay_weiter(session_id, session)
 
             elif msg_type == "pong":
                 pass  # bridge_last_seen_at already updated above

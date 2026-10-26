@@ -2046,6 +2046,8 @@ class CommandDispatcher:
 
             elif action in ("click", "mouse_click"):
                 cx, cy = self._to_click_space(params["x"], params["y"], params.get("display"))
+                if in_overlay(cx, cy):
+                    return {"ok": False, "error": "Hier steht das Overlay deines Menschen — das bedient nur er selbst."}
                 self._ctrl.click(
                     cx, cy,
                     button=params.get("button", "left"),
@@ -2067,6 +2069,8 @@ class CommandDispatcher:
 
             elif action in ("scroll", "mouse_scroll"):
                 sx, sy = self._to_click_space(params["x"], params["y"], params.get("display"))
+                if in_overlay(sx, sy):
+                    return {"ok": False, "error": "Hier steht das Overlay deines Menschen — das bedient nur er selbst."}
                 self._ctrl.scroll(sx, sy, params.get("amount", 3))
                 return {"ok": True}
 
@@ -2078,6 +2082,8 @@ class CommandDispatcher:
             elif action == "drag":
                 x1, y1 = self._to_click_space(params["x1"], params["y1"], params.get("display"))
                 x2, y2 = self._to_click_space(params["x2"], params["y2"], params.get("display"))
+                if in_overlay(x1, y1) or in_overlay(x2, y2):
+                    return {"ok": False, "error": "Hier steht das Overlay deines Menschen — das bedient nur er selbst."}
                 self._ctrl.drag(x1, y1, x2, y2, params.get("duration", 0.3))
                 return {"ok": True}
 
@@ -2475,6 +2481,35 @@ def _bild_als_jpeg(img, breite: int = 1280, qualitaet: int = 60) -> str:
 #: Was das Overlay an den Server schicken darf.
 _OVERLAY_ANTWORTEN = {"vorschlag_antwort", "overlay_stopp", "overlay_weiter"}
 
+#: Wo das Overlay gerade steht (logische Punkte, Ursprung oben links: x, y, w, h)
+#: — die Tray-App traegt es ein. Der Agent bedient denselben Bildschirm; in diese
+#: Flaeche klickt er nicht, sonst koennte er sein eigenes „Ja“ druecken.
+OVERLAY_SPERRZONE: tuple[float, float, float, float] | None = None
+
+
+def in_overlay(x: float, y: float) -> bool:
+    zone = OVERLAY_SPERRZONE
+    if not zone:
+        return False
+    zx, zy, zw, zh = zone
+    return zx <= x <= zx + zw and zy <= y <= zy + zh
+
+
+#: Hier macht der Beobachter kein Bild — Passwortmanager, Anmelde- und
+#: Bankfenster. Regeln (nur Name und Titel) wirken trotzdem. Vergleich wie bei
+#: Regeln: „enthält“, ohne Gross-/Kleinschreibung.
+PRIVATE_FENSTER = (
+    "1password", "bitwarden", "keepass", "dashlane", "lastpass", "enpass", "proton pass",
+    "schlüsselbund", "keychain", "passwörter", "passwords", "passwort", "password", "kennwort",
+    "anmelden", "anmeldung", "sign in", "sign-in", "log in", "login", "einloggen",
+    "online-banking", "onlinebanking", "banking", "tan-", "pushtan", "2fa", "zwei-faktor",
+)
+
+
+def privates_fenster(app, titel) -> bool:
+    text = f"{_norm(app)} {_norm(titel)}"
+    return any(wort in text for wort in PRIVATE_FENSTER)
+
 
 class ScreenObserver:
     """Schaut selbst hin, solange der Server es erlaubt (``observer_config``).
@@ -2562,6 +2597,10 @@ class ScreenObserver:
                 break
 
         if not self.mitdenken or self.gestoppt:
+            return
+        if privates_fenster(app, titel):
+            # Kein Bild, und was davor unruhig war, gilt als erledigt.
+            self._unruhig_seit = None
             return
         img = self._bild_holen()
         if img is None:
@@ -2662,8 +2701,8 @@ class Bridge:
             elif zustand in ("bereit", "arbeitet"):
                 self.observer.gestoppt = False
         if not self.on_overlay:
-            log.info("Overlay: %s %s", nachricht.get("type"),
-                     nachricht.get("text") or nachricht.get("zustand") or "")
+            # Nur Art und Zustand: Angebotstexte koennen Persoenliches enthalten.
+            log.debug("Overlay: %s %s", nachricht.get("type"), nachricht.get("zustand") or "")
             return
         try:
             self.on_overlay(nachricht)

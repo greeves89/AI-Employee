@@ -137,6 +137,14 @@ SEARCH_TOOLS_DEF = {
 }
 
 
+#: Nur-ansehen-Zug (#1019, Bridge-Beobachter): Der Agent sieht ein Bildschirmfoto und
+#: soll nur ANBIETEN, nicht handeln. Er bekommt ausschliesslich lesende
+#: Gedaechtniswerkzeuge — eine Webseite auf dem Bildschirm darf ihn nicht dazu
+#: bringen, Mails zu senden oder Befehle auszufuehren. Gleiche Grenze in Claude Code
+#: (``--tools Read`` + nur Gedaechtnis) und Codex (Sandbox nur lesend, keine MCP-Server).
+NUR_ANSEHEN_WERKZEUGE = frozenset({"memory_search", "memory_list"})
+
+
 def _tokenize(text: str) -> list[str]:
     cleaned = "".join(c if c.isalnum() else " " for c in str(text).lower())
     return cleaned.split()
@@ -178,6 +186,7 @@ class LLMChatHandler:
     def __init__(self, log_publisher: LogPublisher):
         self.log_publisher = log_publisher
         self.is_running = False
+        self._nur_ansehen = False
         self._provider: BaseLLMProvider | None = None
         # Modelle, die in dieser Sitzung schon ausgefallen sind (#200).
         self._models_tried: set[str] = set()
@@ -426,6 +435,8 @@ class LLMChatHandler:
         if not settings.llm_tools_enabled:
             return None
         catalog = await self._get_catalog()
+        if getattr(self, "_nur_ansehen", False):
+            return [t for t in catalog if t["function"]["name"] in NUR_ANSEHEN_WERKZEUGE]
         active = set(self._activated)
         core_names = _core_tool_names()
         sent = [t for t in catalog if t["function"]["name"] in core_names]
@@ -595,13 +606,21 @@ class LLMChatHandler:
         model: str | None = None,
         images: list[dict] | None = None,
         reasoning: str = "",
+        nur_ansehen: bool = False,
     ) -> dict:
         """Process a chat message with the custom LLM provider.
 
         ``images`` is an optional list of ``{"media_type", "data"}`` dicts
         (base64) — e.g. a photo pasted in the Web UI or sent via Telegram.
         Multimodal models see them directly.
+
+        ``nur_ansehen``: Blick des Bridge-Beobachters — ohne Verlauf, nur lesende
+        Gedaechtniswerkzeuge (``NUR_ANSEHEN_WERKZEUGE``).
         """
+        self._nur_ansehen = nur_ansehen
+        if nur_ansehen:
+            # Jeder Blick fuer sich: Bilder sammeln sich nicht im Verlauf an.
+            self._history = []
         self.is_running = True
         self._stopping = False
         start_time = time.time()
@@ -922,7 +941,11 @@ class LLMChatHandler:
                 for tc in turn_tool_calls:
                     if tc["name"] == "search_tools":
                         results_map[tc["id"]] = self._handle_search_tools(tc["input"].get("query", ""))
-                _dispatch = [tc for tc in turn_tool_calls if tc["name"] != "search_tools"]
+                    elif self._nur_ansehen and tc["name"] not in NUR_ANSEHEN_WERKZEUGE:
+                        # Auch ein erfundener Aufruf erreicht den Ausfuehrer nicht.
+                        results_map[tc["id"]] = ("Error: Beim Ansehen des Bildschirms ist nur Lesen im "
+                                                 "Gedaechtnis erlaubt — erst nach dem Ja des Menschen handeln.")
+                _dispatch = [tc for tc in turn_tool_calls if tc["id"] not in results_map]
 
                 read_only = [tc for tc in _dispatch if tc["name"] in _CACHEABLE_TOOLS]
                 write_ops = [tc for tc in _dispatch if tc["name"] in _WRITE_TOOLS]

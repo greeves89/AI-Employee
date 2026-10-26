@@ -2490,6 +2490,9 @@ class OverlayModell:
         self.text = ""
         self.schritte = 0
         self.vorschlag_id: str | None = None
+        # Was der Agent nach einem Ja tut — steht mit im Overlay, damit das Ja
+        # nicht einer freundlichen Frage gilt, hinter der etwas anderes steckt.
+        self.auftrag = ""
         self.agent_id: str | None = None
         self.gestoppt = False
         # „Ausblenden“ gilt bis zum naechsten Angebot oder Stopp — Statusmeldungen
@@ -2531,6 +2534,7 @@ class OverlayModell:
             self.vorschlag_id = str(nachricht.get("id") or "")
             self.ausgeblendet = False
             self._zeigen("frage", str(nachricht.get("text") or ""))
+            self.auftrag = str(nachricht.get("auftrag") or "")[:300]
             return True
         if art != "overlay_status":
             return False
@@ -2563,7 +2567,15 @@ class OverlayModell:
             return not self.ausgeblendet
         return False
 
+    @property
+    def detail(self) -> str:
+        if self.art == "frage" and self.auftrag:
+            return f"Danach tut der Agent: {self.auftrag}"
+        return ""
+
     def _zeigen(self, art: str, text: str) -> None:
+        if art != "frage":
+            self.auftrag = ""
         self.art = art
         self.text = text[:600]
         self.sichtbar = not self.ausgeblendet or art in ("frage", "gestoppt", "ergebnis", "fehler")
@@ -2645,7 +2657,7 @@ class _MacOverlay:
     """Schwebendes Panel oben mittig, ueber allen Fenstern, ohne die aktive
     Anwendung zu verdraengen. AppKit nur auf dem Hauptthread."""
 
-    W, H = 640, 132
+    W, H = 640, 160
 
     def __init__(self, cfg: dict) -> None:
         self.cfg = cfg
@@ -2692,6 +2704,9 @@ class _MacOverlay:
         panel.setOpaque_(False)
         panel.setBackgroundColor_(NSColor.clearColor())
         panel.setHasShadow_(True)
+        # NSWindowSharingNone: Das Overlay fehlt in jeder Bildschirmaufnahme — der
+        # Agent sieht sein eigenes „Ja“ nicht, und Mitdenken fotografiert es nicht mit.
+        panel.setSharingType_(0)
         # Auf jedem Schreibtisch (Spaces) und ueber Vollbild-Apps.
         panel.setCollectionBehavior_((1 << 0) | (1 << 8))
         try:
@@ -2721,7 +2736,8 @@ class _MacOverlay:
 
         self.kopf = label("", 20, H - 30, W - 200, 18, 12, fett=True)
         label("AI Employee", W - 120, H - 30, 100, 18, 11, alpha=0.5)
-        self.text = label("", 20, 50, W - 40, H - 84, 13)
+        self.text = label("", 20, H - 74, W - 40, 40, 13)
+        self.detail = label("", 20, 50, W - 40, 30, 11, alpha=0.62)
         self.eingabe = NSTextField.alloc().initWithFrame_(((20, 14), (W - 420, 26)))
         self.eingabe.cell().setPlaceholderString_("Optional: Antwort oder Hinweis")
         self.eingabe.setFont_(NSFont.systemFontOfSize_(12))
@@ -2749,9 +2765,11 @@ class _MacOverlay:
             m = _overlay["modell"]
             if not m.sichtbar:
                 self.panel.orderOut_(None)
+                _sperrzone(None)
                 return
             self.kopf.setStringValue_(m.titel)
             self.text.setStringValue_(m.text)
+            self.detail.setStringValue_(m.detail)
             self.eingabe.setHidden_(not m.mit_eingabe)
             if m.mit_eingabe:
                 self.eingabe.setStringValue_("")
@@ -2778,15 +2796,35 @@ class _MacOverlay:
                      self._farbe(1, 1, 1, 0.14)).CGColor())
                 btn.setContentTintColor_(self._farbe(1, 1, 1, 1))
                 btn.setHidden_(False)
+            # Kein makeKeyWindow: Tasten, die der Agent gerade tippt, sollen nicht im
+            # Overlay landen. Der Mensch klickt ins Feld, wenn er etwas schreiben will.
             self.panel.orderFrontRegardless()
-            if m.mit_eingabe:
-                self.panel.makeKeyWindow()
+            self._sperrzone_setzen()
         except Exception:  # noqa: BLE001 — ein Zeichenfehler darf die Bridge nicht stoeren
             app_log.warning("Overlay nicht zeichenbar", exc_info=True)
 
 
+    def _sperrzone_setzen(self) -> None:
+        """Rahmen in Bridge-Koordinaten (logische Punkte, oben links) umrechnen."""
+        from AppKit import NSScreen
+        f = self.panel.frame()
+        hoehe = NSScreen.screens()[0].frame().size.height
+        _sperrzone((f.origin.x, hoehe - (f.origin.y + f.size.height), f.size.width, f.size.height))
+
+
 _OverlayPanelKlasse = None
 _OverlayHandlerKlasse = None
+
+
+def _sperrzone(rahmen) -> None:
+    """Dem Bridge-Dispatcher sagen, wohin der Agent nicht klicken darf."""
+    try:
+        if rahmen is not None:
+            x, y, w, h = rahmen
+            rahmen = (x - 8, y - 8, w + 16, h + 16)
+        _bridge_module().OVERLAY_SPERRZONE = rahmen
+    except Exception:  # noqa: BLE001
+        app_log.debug("Sperrzone nicht gesetzt", exc_info=True)
 
 
 class _TkOverlay:
@@ -2827,7 +2865,10 @@ class _TkOverlay:
         kopf.pack(fill="x", padx=16, pady=(10, 0))
         text = tk.Label(rahmen, text="", bg=hinten, fg=vorne, font=("Segoe UI", 10), anchor="w",
                         justify="left", wraplength=self.W - 32)
-        text.pack(fill="x", padx=16, pady=(4, 6))
+        text.pack(fill="x", padx=16, pady=(4, 2))
+        detail = tk.Label(rahmen, text="", bg=hinten, fg="#9aa0aa", font=("Segoe UI", 9), anchor="w",
+                          justify="left", wraplength=self.W - 32)
+        detail.pack(fill="x", padx=16, pady=(0, 6))
         unten = tk.Frame(rahmen, bg=hinten)
         unten.pack(fill="x", padx=16, pady=(0, 10))
         eingabe = tk.Entry(unten, bg="#222631", fg=vorne, insertbackground=vorne, relief="flat",
@@ -2842,9 +2883,11 @@ class _TkOverlay:
             m = _overlay["modell"]
             if not m.sichtbar:
                 root.withdraw()
+                _sperrzone(None)
                 return
             kopf.configure(text=m.titel)
             text.configure(text=m.text)
+            detail.configure(text=m.detail)
             if m.mit_eingabe:
                 eingabe.delete(0, "end")
                 eingabe.pack(side="left", fill="x", expand=True, padx=(0, 8))
@@ -2855,7 +2898,7 @@ class _TkOverlay:
             for schluessel, beschriftung in m.knoepfe():
                 farbe = akzent if schluessel in ("ja", "weiter") else "#b42828" if schluessel == "stopp" else "#2a2e39"
                 tk.Button(knopf_rahmen, text=beschriftung, bg=farbe, fg="white", relief="flat",
-                          activebackground=farbe, activeforeground="white", padx=10,
+                          activebackground=farbe, activeforeground="white", padx=10, takefocus=0,
                           font=("Segoe UI", 9, "bold"), command=lambda s=schluessel: klick(s)
                           ).pack(side="left", padx=(6, 0))
             root.update_idletasks()
@@ -2864,6 +2907,9 @@ class _TkOverlay:
             root.deiconify()
             root.lift()
             root.attributes("-topmost", True)
+            root.update_idletasks()
+            _aus_aufnahmen_nehmen(root)
+            _sperrzone((root.winfo_rootx(), root.winfo_rooty(), root.winfo_width(), root.winfo_height()))
 
         def abholen():
             import queue as _queue
@@ -2879,6 +2925,20 @@ class _TkOverlay:
 
         root.after(150, abholen)
         root.mainloop()
+
+
+def _aus_aufnahmen_nehmen(root) -> None:
+    """Windows 10 (2004) und neuer: WDA_EXCLUDEFROMCAPTURE — das Overlay fehlt in
+    jeder Bildschirmaufnahme, wie NSWindowSharingNone auf dem Mac."""
+    if not IS_WIN:
+        return
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        hwnd = user32.GetParent(root.winfo_id()) or root.winfo_id()
+        user32.SetWindowDisplayAffinity(hwnd, 0x11)
+    except Exception:  # noqa: BLE001 — aeltere Windows-Version: Sperrzone gilt trotzdem
+        app_log.debug("Overlay nicht aus Aufnahmen nehmbar", exc_info=True)
 
 
 def mitdenken_umschalten(cfg: dict) -> bool:

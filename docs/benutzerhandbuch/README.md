@@ -2607,9 +2607,16 @@ zugeordnet. In der Bridge-App geht es auch über den Menüpunkt **Mitdenken** (H
 - **Ausblenden** — blendet Statusmeldungen aus; ein neues Angebot oder ein Ergebnis kommt
   trotzdem.
 
-> Datenschutz: Ohne **Mitsehen** schaut die Bridge nie selbst hin. Mit Mitsehen allein
-> verlassen nur Anwendungsname und Fenstertitel bei einem Regeltreffer den Rechner; Bilder
-> gehen ausschließlich mit **Mitdenken** an den Agenten.
+Unter dem Angebot steht klein „Danach tut der Agent: …“ — das ist genau der Auftrag, den
+dein Ja freigibt.
+
+> Datenschutz und Sicherheit: Ohne **Mitsehen** schaut die Bridge nie selbst hin. Mit
+> Mitsehen allein verlassen nur Anwendungsname und Fenstertitel bei einem Regeltreffer den
+> Rechner; Bilder gehen ausschließlich mit **Mitdenken** an den Agenten — nie aus
+> Passwortmanagern, Anmelde- oder Bankfenstern. Beim Ansehen eines Bildes kann der Agent nur
+> in seinem Gedächtnis lesen, nicht handeln. Das Overlay selbst fehlt in jeder
+> Bildschirmaufnahme, und der Agent kann nicht hineinklicken. Mitdenken braucht einen Agenten
+> ab Version 1.378.0 — sonst meldet das Overlay „bitte den Agenten aktualisieren“.
 
 ---
 
