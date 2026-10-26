@@ -2559,7 +2559,7 @@ Normalerweise wartet die Bridge, bis ein Agent ihr etwas aufträgt. Mit **Mitseh
 sie selbst hin und meldet sich oben in der Bildschirmmitte mit einem **Overlay**, wenn sie
 helfen kann — zum Beispiel „Soll ich dir Titel vorschlagen?“, sobald du YouTube Studio
 öffnest. **Ausgeführt wird nichts, bevor du auf Ja klickst.** Gilt für macOS und Windows
-(Bridge ab 1.58.0).
+(Bridge ab 1.378.0).
 
 **Schritt 1 — Mitsehen einschalten.**
 1. Linke Seitenleiste → **Agenten** → deinen Agenten öffnen → Reiter **Computer-Use**.

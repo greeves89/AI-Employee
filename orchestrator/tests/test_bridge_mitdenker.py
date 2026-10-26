@@ -1,6 +1,7 @@
 """Bridge als Mitdenker (#1019): Regeln, Tagesdeckel, Overlay-Nachrichten.
 
-Was hier festgehalten wird:
+Was hier festgehalten wird (der Beobachter selbst — mit echten Bildern — wird in
+``computer-use-bridge/tests/test_mitsehen.py`` geprüft, auf macOS und Windows):
 * Regeln gehören einem Menschen — fremde sieht, ändert und löscht niemand; ein
   Agent legt Regeln nur für sich an und löscht nur seine eigenen.
 * Die Bridge gleicht Regeln lokal ab (``bridge.regel_passt``), der Server prüft
@@ -438,104 +439,6 @@ class Overlay(_Mit):
             self.konfig_mock = self.konfig.start()
 
 
-class _Uhr:
-    def __init__(self):
-        self.t = 1000.0
-
-    def __call__(self):
-        return self.t
-
-
-def _bild(farbe):
-    from PIL import Image, ImageDraw
-
-    img = Image.new("RGB", (320, 200), (255, 255, 255))
-    if farbe:
-        ImageDraw.Draw(img).rectangle((0, 0, 160, 200), fill=farbe)
-    return img
-
-
-class Beobachter(unittest.TestCase):
-    """Der Beobachter in der Bridge — ohne Thread, mit gestellter Uhr."""
-
-    def setUp(self):
-        self.ereignisse = []
-        self.uhr = _Uhr()
-        self.vorn = {"app": "Google Chrome", "titel": "Start"}
-        self.bild = _bild(None)
-        self.o = bridge.ScreenObserver(self.ereignisse.append, bild_holen=lambda: self.bild,
-                                       vordergrund_holen=lambda: dict(self.vorn), uhr=self.uhr)
-
-    def _schritte(self, n, sekunden=3.0):
-        for _ in range(n):
-            self.uhr.t += sekunden
-            self.o.schritt()
-
-    def typen(self):
-        return [e["type"] for e in self.ereignisse]
-
-    def test_regel_trifft_einmal_je_fenster(self):
-        self.o.konfigurieren({"beobachten": True, "regeln": [
-            {"id": 7, "wenn_titel": "YouTube Studio", "angebot": "x", "aktiv": True}]})
-        self.vorn["titel"] = "Inhalte - YouTube Studio"
-        self._schritte(3)
-        self.assertEqual(self.typen(), ["rule_hit"])
-        self.assertEqual(self.ereignisse[0]["regel_id"], 7)
-        # Weg und zurück innerhalb der Ruhezeit: kein zweites Angebot.
-        self.vorn["titel"] = "Gmail"
-        self._schritte(1)
-        self.vorn["titel"] = "Inhalte - YouTube Studio"
-        self._schritte(1)
-        self.assertEqual(self.typen(), ["rule_hit"])
-        # Nach der Ruhezeit wieder.
-        self.vorn["titel"] = "Gmail"
-        self._schritte(1, sekunden=bridge.ScreenObserver.REGEL_RUHE_SECS)
-        self.vorn["titel"] = "Inhalte - YouTube Studio"
-        self._schritte(1)
-        self.assertEqual(self.typen(), ["rule_hit", "rule_hit"])
-
-    def test_gestoppt_bietet_nichts_an(self):
-        self.o.konfigurieren({"beobachten": True, "mitdenken": True, "gestoppt": True, "regeln": [
-            {"id": 1, "wenn_app": "Chrome", "angebot": "x"}]})
-        self._schritte(30)
-        self.assertEqual(self.ereignisse, [])
-
-    def test_ohne_mitdenken_keine_bilder(self):
-        self.o.konfigurieren({"beobachten": True, "mitdenken": False})
-        geholt = []
-        self.o._bild_holen = lambda: geholt.append(1) or self.bild
-        self._schritte(30)
-        self.assertEqual(self.ereignisse, [])
-        self.assertEqual(geholt, [], "Ohne Mitdenken wird nicht einmal fotografiert")
-
-    def test_mitdenken_erst_wenn_das_bild_ruhig_ist(self):
-        self.o.konfigurieren({"beobachten": True, "mitdenken": True})
-        # Takt 3 s, Ruhe 4 s: nach dem ersten Blick erst im dritten Takt.
-        self._schritte(2)
-        self.assertEqual(self.ereignisse, [], "Bild noch nicht lange genug ruhig")
-        self._schritte(1)
-        self.assertEqual(self.typen(), ["observation"])
-        blick = self.ereignisse[0]
-        self.assertEqual(blick["media_type"], "image/jpeg")
-        self.assertTrue(blick["bild_b64"])
-        # Neuer Inhalt kurz danach: Mindestabstand hält zurück.
-        self.bild = _bild((0, 0, 0))
-        self._schritte(5)
-        self.assertEqual(self.typen(), ["observation"])
-        self._schritte(1, sekunden=bridge.ScreenObserver.MIN_ABSTAND_SECS)
-        self.assertEqual(self.typen(), ["observation", "observation"])
-
-    def test_gleiches_bild_kein_zweiter_blick(self):
-        self.o.konfigurieren({"beobachten": True, "mitdenken": True})
-        self._schritte(2)
-        self._schritte(10, sekunden=bridge.ScreenObserver.MIN_ABSTAND_SECS)
-        self.assertEqual(self.typen(), ["observation"])
-
-    def test_mitdenken_braucht_beobachten(self):
-        self.o.konfigurieren({"beobachten": False, "mitdenken": True})
-        self.assertFalse(self.o.mitdenken)
-
-
 class OverlayKanal(unittest.TestCase):
     def test_nur_bekannte_antworten(self):
         b = bridge.Bridge("wss://example.invalid", "t", "s")
@@ -664,17 +567,6 @@ class Schutzzonen(unittest.TestCase):
             with self.subTest(app=app, titel=titel):
                 self.assertTrue(bridge.privates_fenster(app, titel))
         self.assertFalse(bridge.privates_fenster("Google Chrome", "YouTube Studio"))
-
-    def test_kein_bild_in_privaten_fenstern(self):
-        geholt = []
-        uhr = _Uhr()
-        o = bridge.ScreenObserver(lambda e: None, bild_holen=lambda: geholt.append(1) or _bild(None),
-                                  vordergrund_holen=lambda: {"app": "Bitwarden", "titel": "Tresor"}, uhr=uhr)
-        o.konfigurieren({"beobachten": True, "mitdenken": True})
-        for _ in range(10):
-            uhr.t += 30
-            o.schritt()
-        self.assertEqual(geholt, [])
 
 
 class OverlayZeigtAuftrag(unittest.TestCase):

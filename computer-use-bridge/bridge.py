@@ -2452,20 +2452,21 @@ def vordergrund() -> dict:
     return {"app": "", "titel": ""}
 
 
-def bild_fingerabdruck(img) -> int:
-    """Durchschnitts-Hash 16x16: 256 Bit, die sich bei kleinen Aenderungen
-    (Mauszeiger, Uhrzeit) kaum, bei einem neuen Bildschirminhalt stark aendern."""
+def bild_fingerabdruck(img) -> bytes:
+    """16x16 Graufelder, in 16 Stufen: klein genug fuer jeden Takt, grob genug,
+    dass Mauszeiger und Uhrzeit kaum zaehlen.
+
+    Bewusst KEIN Durchschnitts-Hash: Der kippt bei fast einfarbigen Flaechen ganz
+    — ein einziges dunkles Pixel auf weisser Seite drehte 255 von 256 Bits, und
+    der Mauszeiger haette laufend „neuer Bildschirm“ gemeldet.
+    """
     klein = img.convert("L").resize((16, 16))
-    werte = list(klein.getdata())
-    schnitt = sum(werte) / len(werte)
-    bits = 0
-    for w in werte:
-        bits = (bits << 1) | (1 if w > schnitt else 0)
-    return bits
+    return bytes(w // 16 for w in klein.getdata())
 
 
-def bild_abstand(a: int, b: int) -> int:
-    return bin(a ^ b).count("1")
+def bild_abstand(a: bytes, b: bytes) -> int:
+    """Wie viele der 256 Felder sich spuerbar (um mehr als eine Stufe) geaendert haben."""
+    return sum(1 for x, y in zip(a, b) if abs(x - y) > 1)
 
 
 def _bild_als_jpeg(img, breite: int = 1280, qualitaet: int = 60) -> str:
@@ -2519,7 +2520,7 @@ class ScreenObserver:
     """
 
     TAKT_SECS = 3.0
-    # Ab so vielen abweichenden Bits (von 256) gilt das Bild als neu.
+    # Ab so vielen veraenderten Feldern (von 256) gilt das Bild als neu.
     SCHWELLE_BITS = 40
     # So lange muss das Bild ruhig sein, bevor ein Blick an den Agenten geht.
     RUHE_SECS = 4.0
@@ -2538,7 +2539,7 @@ class ScreenObserver:
         self.gestoppt = False
         self.regeln: list[dict] = []
         self._kontext: tuple[str, str] | None = None
-        self._abdruck: int | None = None
+        self._abdruck: bytes | None = None
         self._unruhig_seit: float | None = None
         self._letzter_blick = -1e9
         self._regel_zuletzt: dict[tuple, float] = {}

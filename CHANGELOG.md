@@ -13,7 +13,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   - **Regeln:** „Wenn ich in YouTube Studio bin, biete mir Titel an.“ Die Bridge gleicht Anwendung und Fenstertitel lokal ab – ein Treffer kostet kein Token. Regeln legt man im Computer-Use-Reiter an oder sagt sie dem Agenten (neue Werkzeuge `bildschirm_regel_anlegen`, `bildschirm_regeln`, `bildschirm_regel_loeschen` in allen Laufzeiten).
   - **Mitdenken:** Bei deutlichen Bildschirmwechseln sieht der zugeordnete Agent ein Bild und bietet an, was er abnehmen kann – höchstens einmal je Minute und innerhalb eines Tagesdeckels (Standard 40 Blicke). Ausgeführt wird erst nach einem Ja.
   - **Stopp:** Ein Klick auf Stopp sperrt jede weitere Aktion des Agenten auf diesem Rechner und bricht seinen laufenden Zug ab, bis der Mensch im Overlay wieder freigibt. Der Stopp übersteht auch einen Neustart des Servers.
-- Bridge 1.58.0 mit Overlay und Menüpunkt „Mitdenken“ (Mac und Windows).
+- Bridge 1.378.0 mit Overlay und Menüpunkt „Mitdenken“ (Mac und Windows); ihr Build führt jetzt vor dem Bau die Bridge-Tests auf macOS und Windows aus, und nur `main` oder ein Release veröffentlicht den Download.
 
 ### Sicherheit
 - **Nur-ansehen-Zug in allen drei Laufzeiten:** Beim Blick auf den Bildschirm darf der Agent nur im eigenen Gedächtnis lesen und anbieten, aber nicht handeln — Claude Code nur mit `Read` und dem Gedächtnis, Codex mit nur lesender Sandbox und ohne MCP-Server, Custom-LLM nur mit lesenden Gedächtniswerkzeugen. Ein Bildschirm voller fremder Inhalte kann den Agenten so nicht zu Mails oder Klicks verleiten. Agenten mit älterem Abbild bekommen keine Bilder, bis sie aktualisiert sind.
