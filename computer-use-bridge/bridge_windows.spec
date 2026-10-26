@@ -25,7 +25,7 @@ a = Analysis(
     ['tray_app.py'],
     pathex=['.'],
     binaries=ctk_binaries + pw_binaries,
-    datas=[('bridge.py', '.'), ('_version.py', '.')] + ctk_datas + pw_datas + certifi_datas,
+    datas=[('bridge.py', '.'), ('_version.py', '.'), ('assets/tray-*.png', 'assets')] + ctk_datas + pw_datas + certifi_datas,
     hiddenimports=[
         'pystray',
         'pystray._win32',
@@ -85,7 +85,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,
+    icon='assets/app-symbol.ico',
     version=None,
     uac_admin=False,
 )
