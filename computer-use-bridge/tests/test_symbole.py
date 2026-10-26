@@ -68,3 +68,42 @@ class Hauptfenster(unittest.TestCase):
         self.assertFalse(i["sieht_mit"], "Ohne Freigabe zeigt das Fenster nie „sieht mit“")
         self.assertIn("Berechtigungen", i["sehen"])
         self.assertEqual(i["freigaben"], "1 Freigabe")
+
+
+@unittest.skipUnless(sys.platform == "win32", "Tk-Overlay ist die Windows-Oberflaeche")
+class WindowsOverlay(unittest.TestCase):
+    """Das echte Tk-Overlay auf dem Windows-Runner: zeichnen ohne Fehler."""
+
+    def test_zeichnet_alle_zustaende(self):
+        import time
+        from unittest.mock import patch
+
+        warnungen = []
+        with patch.object(tray_app.app_log, "warning", side_effect=lambda *a, **k: warnungen.append(a)):
+            tray_app._overlay["modell"] = tray_app.OverlayModell()
+            ui = tray_app._TkOverlay({})
+            for nachricht in ({"type": "vorschlag", "id": "v", "text": "Soll ich?", "auftrag": "Etwas tun."},
+                              {"type": "overlay_status", "zustand": "arbeitet", "schritte": 2, "aktion": "click"},
+                              {"type": "overlay_status", "zustand": "gestoppt"}):
+                tray_app._overlay["modell"].verarbeiten(nachricht)
+                ui.zeichnen()
+                time.sleep(1.0)
+        self.assertEqual(warnungen, [])
+
+
+class Aktionstext(unittest.TestCase):
+    def test_klartext_statt_befehlsname(self):
+        m = tray_app.OverlayModell()
+        m.verarbeiten({"type": "overlay_status", "zustand": "arbeitet", "schritte": 1, "aktion": "click"})
+        self.assertEqual(m.text, "Klickt …")
+        m.verarbeiten({"type": "overlay_status", "zustand": "arbeitet", "schritte": 2, "aktion": "unbekannt"})
+        self.assertEqual(m.text, "Arbeitet auf deinem Rechner …")
+
+    def test_denkt_nur_fuer_die_menueleiste(self):
+        m = tray_app.OverlayModell()
+        self.assertFalse(m.verarbeiten({"type": "mitdenken", "zustand": "laeuft"}))
+        self.assertTrue(m.denkt)
+        self.assertFalse(m.sichtbar)
+        self.assertEqual(tray_app.tray_zustand("connected", False, True, m.denkt), "denkt")
+        m.verarbeiten({"type": "mitdenken", "zustand": "fertig"})
+        self.assertEqual(tray_app.tray_zustand("connected", False, True, m.denkt), "sieht_mit")
