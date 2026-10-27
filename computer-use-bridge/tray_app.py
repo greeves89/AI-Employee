@@ -35,7 +35,7 @@ from pathlib import Path
 IS_MAC = platform.system() == "Darwin"
 IS_WIN = platform.system() == "Windows"
 
-CONFIG_FILE = Path.home() / ".ai_employee_bridge.json"
+CONFIG_FILE = Path(os.environ.get("AI_EMPLOYEE_BRIDGE_CONFIG") or (Path.home() / ".ai_employee_bridge.json"))
 
 _bridge_mod = None
 
@@ -89,8 +89,8 @@ def _setup_app_logging() -> logging.Logger:
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
     try:
-        log_dir = os.path.expanduser("~/Library/Logs/ai-employee")
-        if sys.platform != "darwin":
+        log_dir = os.environ.get("AI_EMPLOYEE_BRIDGE_LOG_DIR") or os.path.expanduser("~/Library/Logs/ai-employee")
+        if sys.platform != "darwin" and not os.environ.get("AI_EMPLOYEE_BRIDGE_LOG_DIR"):
             log_dir = os.path.join(os.path.expanduser("~"), ".ai-employee", "logs")
         os.makedirs(log_dir, exist_ok=True)
         handler = logging.FileHandler(os.path.join(log_dir, "bridge.log"))
@@ -1149,11 +1149,14 @@ def show_setup_dialog(cfg: dict) -> dict | None:
     haupt_sichtbar = bool(haupt is not None and haupt.isVisible())
     if haupt_sichtbar:
         haupt.orderOut_(None)
+    _im_dock(True)
     NSApp.activateIgnoringOtherApps_(True)
     NSApp.runModalForWindow_(panel)
     panel.close()
     if haupt_sichtbar:
         haupt.makeKeyAndOrderFront_(None)
+    else:
+        _im_dock(False)
     return result_box[0]
 
 
@@ -1491,6 +1494,35 @@ def _regel_anzahl() -> int | None:
     return len(observer.regeln) if observer is not None and observer.beobachten else None
 
 
+def _im_dock(sichtbar: bool) -> None:
+    """Solange ein Fenster der Bridge offen ist, steht sie im Dock und in Cmd+Tab —
+    sonst ist ein Fenster hinter anderen „einfach weg“ (Menueleisten-Apps fehlen im
+    App-Umschalter). Danach wieder nur Menueleiste."""
+    try:
+        from AppKit import NSApplication
+        NSApplication.sharedApplication().setActivationPolicy_(0 if sichtbar else 1)
+    except Exception:  # noqa: BLE001
+        app_log.debug("Aktivierungsart nicht umschaltbar", exc_info=True)
+
+
+_AIEFensterDelegate = None
+
+
+def _dock_beim_schliessen_verlassen(fenster) -> None:
+    """Beim Schliessen des Fensters wieder aus Dock und Cmd+Tab verschwinden."""
+    global _AIEFensterDelegate
+    from AppKit import NSObject
+    if _AIEFensterDelegate is None:
+        class AIEFensterDelegate(NSObject):
+            def windowWillClose_(self, _notification):
+                _im_dock(False)
+
+        _AIEFensterDelegate = AIEFensterDelegate
+    delegat = _AIEFensterDelegate.alloc().init()
+    _main_state["delegat"] = delegat           # festhalten, sonst raeumt PyObjC ihn ab
+    fenster.setDelegate_(delegat)
+
+
 _STATUS_FARBEN = {"green": (0.13, 0.76, 0.37), "amber": (1.0, 0.62, 0.04),
                   "red": (1.0, 0.27, 0.23), "gray": (0.55, 0.55, 0.58)}
 _AIEMainHandler = None
@@ -1506,6 +1538,7 @@ def show_main_window(cfg: dict) -> None:
     existing = _main_state.get("panel")
     if existing is not None:
         try:
+            _im_dock(True)
             NSApp.activateIgnoringOtherApps_(True)
             existing.orderFrontRegardless()
             existing.makeKeyAndOrderFront_(None)
@@ -1642,6 +1675,8 @@ def show_main_window(cfg: dict) -> None:
         "aktion_btn": aktion_btn, "sehen_lbl": sehen_lbl, "mitdenken_btn": mitdenken_btn,
         "freigaben_lbl": freigaben_lbl, "agent_popup": agent_popup,
     })
+    _dock_beim_schliessen_verlassen(panel)
+    _im_dock(True)
     NSApp.activateIgnoringOtherApps_(True)
     panel.orderFrontRegardless()
     panel.makeKeyAndOrderFront_(None)
@@ -1742,10 +1777,14 @@ def _main_window_refresh(cfg: dict) -> None:
                             if inhalt["sieht_mit"] else NSColor.labelColor())
         _main_state["mitdenken_btn"].setTitle_(inhalt["mitdenken_knopf"])
         _main_state["freigaben_lbl"].setStringValue_(inhalt["freigaben"])
-    except Exception:  # noqa: BLE001 — ein kaputtes Fenster darf das Tray nicht mitreissen
-        app_log.debug("Hauptfenster nicht aktualisierbar", exc_info=True)
-        # Nur das Fenster vergessen — die Rueckrufe connect/settings gehoeren der App.
-        _main_state.pop("panel", None)
+    except Exception as e:  # noqa: BLE001 — ein Fehler darf das Fenster nicht einfrieren
+        # Sichtbar protokollieren (einmal je Fehlerart) und das Fenster BEHALTEN:
+        # vorher fiel es nach dem ersten Fehler aus der Aktualisierung und blieb
+        # fuer immer auf dem alten Stand stehen (z. B. „Verbinde…“ trotz Verbindung).
+        art = f"{type(e).__name__}: {e}"
+        if _main_state.get("_letzter_fehler") != art:
+            _main_state["_letzter_fehler"] = art
+            app_log.warning("Hauptfenster nicht vollstaendig aktualisierbar: %s", art, exc_info=True)
 
 
 _CTK_MARKE = "#0378c7"          # Blau des App-Symbols
@@ -3788,7 +3827,10 @@ def run_macos(cfg: dict) -> None:
             # Zugangstoken kurz vor Ablauf still erneuern (sonst 401 nach 30 Minuten
             # bei allen Aufrufen der App: Berechtigungen, Mitdenken, Sitzung).
             threading.Thread(target=token_frisch_halten, args=(self.cfg,), daemon=True).start()
-            self._update_icon()
+            try:
+                self._update_icon()
+            except Exception:  # noqa: BLE001 — das Symbol darf das Fenster nicht aufhalten
+                app_log.warning("Menueleisten-Symbol nicht aktualisierbar", exc_info=True)
             if not self._main_shown:
                 self._main_shown = True
                 show_main_window(self.cfg)

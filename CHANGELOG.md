@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.378.12] - 2026-10-27
+
+### Behoben
+- **Das Bridge-Fenster war über Cmd+Tab nicht zu finden.** Als reine Menüleisten-App fehlte die Bridge im App-Umschalter und im Dock; ein Fenster hinter anderen war damit „einfach weg“. Solange ein Fenster der Bridge offen ist, steht sie jetzt im Dock und in Cmd+Tab (mit dem App-Symbol) und verschwindet beim Schließen wieder dorthin, wo sie hingehört: in die Menüleiste.
+- **Das Hauptfenster konnte auf einem alten Stand stehen bleiben** (z. B. „Verbinde…“, obwohl die Bridge verbunden war). Ein Fehler beim Aktualisieren nahm das Fenster bisher dauerhaft aus der Aktualisierung, und ein Fehler beim Menüleisten-Symbol übersprang sie ganz. Beides ist jetzt getrennt; Fehler stehen sichtbar im Protokoll.
+- Die automatischen Tests der Bridge schreiben nicht mehr in Protokoll und Konfiguration einer auf demselben Rechner installierten Bridge.
+
 ## [1.378.11] - 2026-10-27
 
 ### Neu
