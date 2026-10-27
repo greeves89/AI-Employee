@@ -847,6 +847,10 @@ def _make_panel(title, w, h):
     p.setTitle_(title)
     p.center()
     p.setReleasedWhenClosed_(False)
+    # NSPanel versteckt sich sonst bei jedem App-Wechsel (hidesOnDeactivate) —
+    # nach Cmd+Tab war das Fenster „einfach weg“, und weil es als unsichtbar galt,
+    # blieb seine Anzeige auf dem alten Stand stehen (z. B. „Verbinde…“).
+    p.setHidesOnDeactivate_(False)
     return p
 
 
@@ -1745,8 +1749,8 @@ def _main_window_refresh(cfg: dict) -> None:
     if panel is None:
         return
     try:
-        if not panel.isVisible():
-            return
+        # Bewusst auch im Hintergrund aktualisieren: billig, und ein Fenster, das
+        # wieder auftaucht, zeigt sofort den echten Stand.
         from AppKit import NSColor
         _main_state["cfg"] = cfg
         inhalt = hauptfenster_inhalt(cfg, _main_status_parts(), is_running() or _status == "connecting",
