@@ -451,6 +451,43 @@ def api_list_agents(base_url, token) -> list[dict]:
     return agents if isinstance(agents, list) else []
 
 
+def api_agent_zuordnen(base_url, token, session_id, agent_id) -> dict:
+    return _api("PATCH", base_url, f"/api/v1/computer-use/sessions/{session_id}/agent", token,
+                {"agent_id": agent_id})
+
+
+def agent_zuordnen(cfg: dict) -> bool:
+    """Den in der Bridge gewaehlten Agenten der Sitzung zuordnen — er sieht mit,
+    hilft und darf auf diesem Rechner arbeiten. Nach jeder neuen Sitzung erneut,
+    sonst waere die Wahl nach einem Neustart des Servers still verloren."""
+    aid, url, token, sid = (cfg.get("agent_id"), cfg.get("url"), cfg.get("token"), cfg.get("session"))
+    if not (aid and url and token and sid):
+        return False
+    try:
+        ansicht = _api("GET", url, f"/api/v1/computer-use/sessions/{sid}", token)
+        if str(ansicht.get("agent_id") or "") != str(aid):
+            api_agent_zuordnen(url, token, sid, aid)
+            # Das Zuordnen kuerzt auf den Agenten-Standard — die eigenen Freigaben
+            # (z. B. Mitsehen) noch einmal anfragen; was der Server nicht erlaubt,
+            # lehnt er ab.
+            try:
+                api_update_capabilities(url, token, sid,
+                                        cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES)), cfg)
+            except Exception as e:  # noqa: BLE001
+                app_log.info("Freigaben nach Zuordnung teils abgelehnt: %s", e)
+        return True
+    except Exception as e:  # noqa: BLE001
+        app_log.warning("Agent nicht zuordenbar: %s: %s", type(e).__name__, e)
+        return False
+
+
+def agent_waehlen(cfg: dict, agent_id: str | None) -> bool:
+    """Auswahl im Hauptfenster: merken und sofort zuordnen."""
+    cfg["agent_id"] = agent_id or ""
+    save_config(cfg)
+    return agent_zuordnen(cfg) if agent_id else True
+
+
 ENSURE_OK        = "ok"
 ENSURE_NEEDS_LOGIN = "needs_login"
 ENSURE_ERROR     = "error"
@@ -492,12 +529,14 @@ def ensure_session(cfg: dict) -> str:
             api_update_capabilities(url, token, sid, caps, cfg)
         except Exception as e:  # noqa: BLE001
             app_log.warning("api_update_capabilities failed (non-fatal): %s: %s", type(e).__name__, e)
+        agent_zuordnen(cfg)
         return ENSURE_OK
     # Session gone — try to create a fresh one
     try:
         new_sid, _ = api_create_session(url, token, caps, cfg)
         cfg["session"] = new_sid
         save_config(cfg)
+        agent_zuordnen(cfg)
         return ENSURE_OK
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
@@ -1415,6 +1454,10 @@ def hauptfenster_inhalt(cfg: dict, status: tuple[str, str], beschaeftigt: bool,
 
     ``status`` ist ``_main_status_parts()``, ``beschaeftigt`` = verbunden oder
     beim Verbinden (dann heisst der Hauptknopf „Trennen“)."""
+    if not cfg.get("token"):
+        # Ohne Anmeldung ist der Rechner fuer den Server gar nicht da — das muss
+        # man sofort sehen, nicht als unauffaelliges „Nicht verbunden“.
+        status, beschaeftigt = ("Nicht angemeldet", "amber"), False
     url = str(cfg.get("url") or "")
     host = urllib.parse.urlparse(url).hostname or url or "kein Server eingetragen"
     teile = [host]
@@ -1434,7 +1477,7 @@ def hauptfenster_inhalt(cfg: dict, status: tuple[str, str], beschaeftigt: bool,
         "status": status[0],
         "farbe": status[1],
         "meta": " · ".join(teile),
-        "aktion": "Trennen" if beschaeftigt else "Verbinden",
+        "aktion": ("Anmelden" if not cfg.get("token") else "Trennen" if beschaeftigt else "Verbinden"),
         "sehen": sehen,
         "sieht_mit": bool(darf_sehen and sieht_mit),
         "mitdenken_knopf": "Mitdenken ausschalten" if cfg.get("mitdenken") else "Mitdenken einschalten",
@@ -1507,9 +1550,15 @@ def show_main_window(cfg: dict) -> None:
     _card(cv, card_x, seh_y, card_w, seh_h)
     _label(cv, "MITSEHEN", card_x + 22, seh_y + seh_h - 30, 200, 14, size=10, bold=True, muted=True)
     sehen_lbl = _label(cv, "", card_x + 22, seh_y + seh_h - 58, card_w - 44, 20, size=13)
-    mitdenken_btn = _pill_button(cv, "Mitdenken einschalten", card_x + 20, seh_y + 16, 190)
-    perms_btn = _pill_button(cv, "Berechtigungen…", card_x + 222, seh_y + 16, 150)
-    freigaben_lbl = _label(cv, "", card_x + 386, seh_y + 24, card_w - 400, 18, size=12, muted=True)
+    # WELCHER Agent mitsieht, hilft und auf diesem Rechner arbeiten darf.
+    from AppKit import NSPopUpButton
+    agent_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(NSMakeRect(card_x + 18, seh_y + 18, 190, 30), False)
+    agent_popup.addItemWithTitle_("Agent wählen …")
+    cv.addSubview_(agent_popup)
+    mitdenken_btn = _pill_button(cv, "Mitdenken einschalten", card_x + 220, seh_y + 16, 180)
+    perms_btn = _pill_button(cv, "Berechtigungen…", card_x + 410, seh_y + 16, 134)
+    freigaben_lbl = _label(cv, "", 0, 0, 1, 1, size=1, muted=True)
+    freigaben_lbl.setHidden_(True)
 
     # ── Weitere Aktionen ─────────────────────────────────────────────────
     zeile_y = seh_y - 16 - 34
@@ -1534,6 +1583,12 @@ def show_main_window(cfg: dict) -> None:
     if _AIEMainHandler is None:
         class AIEMainHandler(NSObject):
             def doaktion_(self, _s):
+                c = _main_state.get("cfg") or {}
+                if not c.get("token"):
+                    cb = _main_state.get("settings")
+                    if cb:
+                        cb()
+                    return
                 if is_running() or _status == "connecting":
                     stop_bridge()
                 else:
@@ -1541,6 +1596,13 @@ def show_main_window(cfg: dict) -> None:
                     if cb:
                         cb()
                 _main_window_refresh(_main_state.get("cfg") or {})
+
+            def dowahl_(self, sender):
+                c = _main_state.get("cfg") or {}
+                agenten = _main_state.get("agenten") or []
+                idx = int(sender.indexOfSelectedItem()) - 1     # Eintrag 0 = „Agent wählen …“
+                aid = agenten[idx][0] if 0 <= idx < len(agenten) else ""
+                threading.Thread(target=agent_waehlen, args=(c, aid), daemon=True).start()
 
             def domitdenken_(self, _s):
                 c = _main_state.get("cfg") or {}
@@ -1568,6 +1630,8 @@ def show_main_window(cfg: dict) -> None:
 
         _AIEMainHandler = AIEMainHandler
     handler = _AIEMainHandler.alloc().init()
+    agent_popup.setTarget_(handler)
+    agent_popup.setAction_("dowahl:")
     for btn, action in ((aktion_btn, "doaktion:"), (mitdenken_btn, "domitdenken:"), (perms_btn, "doperms:"),
                         (knoepfe[0], "dovoice:"), (knoepfe[1], "dosettings:"), (knoepfe[2], "doweb:")):
         btn.setTarget_(handler)
@@ -1576,7 +1640,7 @@ def show_main_window(cfg: dict) -> None:
     _main_state.update({
         "panel": panel, "handler": handler, "cfg": cfg, "status_lbl": status_lbl, "meta_lbl": meta_lbl,
         "aktion_btn": aktion_btn, "sehen_lbl": sehen_lbl, "mitdenken_btn": mitdenken_btn,
-        "freigaben_lbl": freigaben_lbl,
+        "freigaben_lbl": freigaben_lbl, "agent_popup": agent_popup,
     })
     NSApp.activateIgnoringOtherApps_(True)
     panel.orderFrontRegardless()
@@ -1584,6 +1648,59 @@ def show_main_window(cfg: dict) -> None:
     # Erst NACH dem Anzeigen fuellen — die Aktualisierung arbeitet nur an
     # sichtbaren Fenstern; sonst stuende bis zum naechsten Takt alles leer.
     _main_window_refresh(cfg)
+
+
+_agenten_zuletzt = [0.0]
+
+
+def agenten_laden(cfg: dict) -> list[tuple[str, str]]:
+    """(id, Name) der eigenen Agenten — fuer die Auswahl im Hauptfenster.
+    Hoechstens alle 30 s vom Server; dazwischen der gemerkte Stand."""
+    import time as _time
+    if not (cfg.get("url") and cfg.get("token")):
+        return []
+    if _time.time() - _agenten_zuletzt[0] < 30 and _main_state.get("agenten") is not None:
+        return _main_state["agenten"]
+    _agenten_zuletzt[0] = _time.time()
+    try:
+        liste = [(str(a.get("id") or ""), str(a.get("name") or a.get("id") or "")[:40])
+                 for a in api_list_agents(cfg["url"], cfg["token"])]
+    except Exception as e:  # noqa: BLE001
+        app_log.info("Agentenliste nicht ladbar: %s", e)
+        return _main_state.get("agenten") or []
+    _main_state["agenten"] = [x for x in liste if x[0]]
+    return _main_state["agenten"]
+
+
+def agenten_titel(agenten: list[tuple[str, str]]) -> list[str]:
+    """Eindeutige Anzeigenamen — Auswahllisten verschlucken doppelte Titel still,
+    dann zeigte die Liste 3 von 4 Agenten und die Zuordnung verrutschte."""
+    titel: list[str] = []
+    for aid, name in agenten:
+        t = name or aid[:8]
+        if t in titel:
+            t = f"{t} ({aid[:6]})"
+        titel.append(t)
+    return titel
+
+
+def _agenten_im_popup(cfg: dict) -> None:
+    """Auswahlliste des Mac-Fensters nachziehen (Laden im Hintergrund)."""
+    popup = _main_state.get("agent_popup")
+    if popup is None:
+        return
+    agenten = _main_state.get("agenten")
+    if not agenten:
+        # Laedt im Hintergrund (gedrosselt) — z. B. sobald nach der Anmeldung ein Token da ist.
+        threading.Thread(target=agenten_laden, args=(cfg,), daemon=True).start()
+    agenten = agenten or []
+    titel = ["Agent wählen …"] + agenten_titel(agenten)
+    if [str(popup.itemTitleAtIndex_(i)) for i in range(popup.numberOfItems())] != titel:
+        popup.removeAllItems()
+        popup.addItemsWithTitles_(titel)
+    gewaehlt = str(cfg.get("agent_id") or "")
+    ids = [aid for aid, _ in agenten]
+    popup.selectItemAtIndex_(ids.index(gewaehlt) + 1 if gewaehlt in ids else 0)
 
 
 def _main_window_refresh(cfg: dict) -> None:
@@ -1604,11 +1721,12 @@ def _main_window_refresh(cfg: dict) -> None:
         lbl.setStringValue_(f"● {inhalt['status']}")
         lbl.setTextColor_(NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, 1))
         _main_state["meta_lbl"].setStringValue_(inhalt["meta"])
+        _agenten_im_popup(cfg)
         knopf = _main_state["aktion_btn"]
         if knopf.title() != inhalt["aktion"]:
             knopf.setTitle_(inhalt["aktion"])
-            # Verbinden = Hauptaktion in Markenfarbe, Trennen = dezent.
-            if inhalt["aktion"] == "Verbinden":
+            # Verbinden/Anmelden = Hauptaktion in Markenfarbe, Trennen = dezent.
+            if inhalt["aktion"] in ("Verbinden", "Anmelden"):
                 knopf.layer().setBackgroundColor_(NSColor.colorWithSRGBRed_green_blue_alpha_(*_ACCENT_RGB, 1).CGColor())
                 knopf.setContentTintColor_(NSColor.whiteColor())
                 knopf.layer().setBorderWidth_(0)
@@ -1698,6 +1816,11 @@ def _show_main_window_ctk(cfg: dict) -> None:
     meta_lbl.pack(anchor="w")
 
     def _aktion():
+        if not cfg.get("token"):
+            cb = _main_state.get("settings")
+            if cb:
+                cb()
+            return
         if is_running() or _status == "connecting":
             stop_bridge()
         else:
@@ -1722,7 +1845,19 @@ def _show_main_window_ctk(cfg: dict) -> None:
         mitdenken_umschalten(cfg)
         _tick(einmal=True)
 
-    mitdenken_btn = ctk.CTkButton(reihe, text="Mitdenken einschalten", width=190, command=_mitdenken, **zweit)
+    # WELCHER Agent mitsieht, hilft und auf diesem Rechner arbeiten darf.
+    agent_wahl = {"titel": [], "ids": []}
+
+    def _gewaehlt(titel):
+        if titel in agent_wahl["titel"]:
+            aid = agent_wahl["ids"][agent_wahl["titel"].index(titel)]
+            threading.Thread(target=agent_waehlen, args=(cfg, aid), daemon=True).start()
+
+    agent_menue = ctk.CTkOptionMenu(reihe, values=["Agent wählen …"], width=180, height=34, corner_radius=12,
+                                    command=_gewaehlt, fg_color=("gray85", "#2a2f39"),
+                                    button_color=("gray78", "#353b47"), text_color=("gray10", "gray90"))
+    agent_menue.pack(side="left", padx=(0, 10))
+    mitdenken_btn = ctk.CTkButton(reihe, text="Mitdenken einschalten", width=180, command=_mitdenken, **zweit)
     mitdenken_btn.pack(side="left")
     ctk.CTkButton(reihe, text="Berechtigungen…", width=150, command=lambda: show_permissions_dialog(cfg),
                   **zweit).pack(side="left", padx=10)
@@ -1751,14 +1886,24 @@ def _show_main_window_ctk(cfg: dict) -> None:
                                      _sieht_mit(), _regel_anzahl())
         status_lbl.configure(text=f"● {inhalt['status']}", text_color=_CTK_STATUS.get(inhalt["farbe"], "#8b919c"))
         meta_lbl.configure(text=inhalt["meta"])
-        if inhalt["aktion"] == "Verbinden":
-            aktion_btn.configure(text="Verbinden", fg_color=_CTK_MARKE, text_color="white", border_width=0)
+        if inhalt["aktion"] in ("Verbinden", "Anmelden"):
+            aktion_btn.configure(text=inhalt["aktion"], fg_color=_CTK_MARKE, text_color="white", border_width=0)
         else:
             aktion_btn.configure(text="Trennen", fg_color=("gray85", "#2a2f39"), text_color=("gray10", "gray90"),
                                  border_width=1)
         sehen_lbl.configure(text=inhalt["sehen"], text_color="#4ee6e6" if inhalt["sieht_mit"] else ("gray10", "gray90"))
         mitdenken_btn.configure(text=inhalt["mitdenken_knopf"])
-        freigaben_lbl.configure(text=inhalt["freigaben"])
+        freigaben_lbl.configure(text="")
+        agenten = _main_state.get("agenten") or []
+        if not agenten:
+            threading.Thread(target=agenten_laden, args=(cfg,), daemon=True).start()
+        titel = agenten_titel(agenten)
+        if titel != agent_wahl["titel"]:
+            agent_wahl["titel"], agent_wahl["ids"] = titel, [a for a, _ in agenten]
+            agent_menue.configure(values=titel or ["Agent wählen …"])
+        ids = agent_wahl["ids"]
+        gewaehlt = str(cfg.get("agent_id") or "")
+        agent_menue.set(titel[ids.index(gewaehlt)] if gewaehlt in ids else "Agent wählen …")
         if not einmal:
             root.after(2000, _tick)
 

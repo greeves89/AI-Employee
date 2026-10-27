@@ -2521,8 +2521,9 @@ abgemeldet hast.
   falls der Button verdeckt ist.)*
 
 Danach zeigt das Hauptfenster der Bridge den Verbindungsstatus mit **einem** Knopf
-(Verbinden bzw. Trennen), darunter den Bereich **Mitsehen** und die Knöpfe Sprechen,
-Einstellungen und „Im Browser öffnen“:
+(Anmelden, Verbinden bzw. Trennen), darunter den Bereich **Mitsehen** mit der Auswahl
+**welcher Agent** mitsieht, hilft und auf diesem Rechner arbeiten darf, und die Knöpfe
+Sprechen, Einstellungen und „Im Browser öffnen“:
 
 ![Hauptfenster der Bridge: Status Verbunden, Bereich Mitsehen, Aktionen](screenshots/23-bridge-hauptfenster.png)
 
