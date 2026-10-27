@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.379.4] - 2026-10-27
+
+### Behoben
+- Einstiegskarte: An iPhone-App und Bridge kam man erst heran, wenn alle Schritte davor erledigt waren — die beiden Schritte hatten keinen Knopf. Jetzt klappt „Anzeigen“ QR-Code bzw. Downloads jederzeit in der Karte auf.
+
 ## [1.379.3] - 2026-10-27
 
 ### Neu

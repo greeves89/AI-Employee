@@ -49,6 +49,8 @@ export function ErsteSchritteKarte() {
   const uid = useAuthStore((s) => s.user?.id);
   const [stand, setStand] = useState<ErsteSchritte | null>(null);
   const [zu, setZu] = useState(true);
+  // iPhone-App und Bridge haben keine Zielseite: ihr Inhalt klappt in der Karte auf.
+  const [auf, setAuf] = useState<string | null>(null);
 
   useEffect(() => {
     setZu(ausgeblendet(uid));
@@ -142,17 +144,27 @@ export function ErsteSchritteKarte() {
                     {s.hinweis && <span className="block mt-1 italic">{s.hinweis}</span>}
                   </p>
                 )}
-                {!s.erledigt && s.id === "iphone_app" && istNaechster && (
+                {!s.erledigt && s.id === "iphone_app" && (istNaechster || auf === s.id) && (
                   <div className="mt-3">
                     <IphoneApp kompakt />
                   </div>
                 )}
-                {!s.erledigt && s.id === "bridge" && istNaechster && (
+                {!s.erledigt && s.id === "bridge" && (istNaechster || auf === s.id) && (
                   <div className="mt-3">
                     <BridgeDownload />
                   </div>
                 )}
               </div>
+              {!s.erledigt && !s.link && !istNaechster && (
+                <button
+                  type="button"
+                  onClick={() => setAuf(auf === s.id ? null : s.id)}
+                  aria-expanded={auf === s.id}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium text-primary hover:bg-primary/10 transition-colors"
+                >
+                  {auf === s.id ? "Zuklappen" : "Anzeigen"}
+                </button>
+              )}
               {!s.erledigt && s.link && (
                 <Link
                   href={s.link}
