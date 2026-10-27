@@ -2990,7 +2990,7 @@ def collect_extra_headers(header_args: list[str] | None) -> dict[str, str]:
     except FileNotFoundError:
         pass
     except (OSError, ValueError) as e:
-        log.warning(f"Could not read {BRIDGE_CONFIG_PATH}: {e}")
+        log.warning("Konfiguration nicht lesbar (%s)", type(e).__name__)
 
     for raw in header_args or []:
         try:

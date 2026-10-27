@@ -172,7 +172,8 @@ def save_config(cfg: dict) -> str | None:
         tmp.replace(CONFIG_FILE)
         return None
     except Exception as e:  # noqa: BLE001 — surfaced to the user, never fatal
-        msg = f"Einstellungen konnten nicht gespeichert werden ({CONFIG_FILE}): {e}"
+        # Ohne Pfad und ohne Fehlertext (der den Pfad enthaelt) — nur die Art.
+        msg = f"Einstellungen konnten nicht gespeichert werden ({type(e).__name__})."
         try:
             print(msg, file=sys.stderr)
         except Exception:  # noqa: BLE001 — no console in a windowed build
