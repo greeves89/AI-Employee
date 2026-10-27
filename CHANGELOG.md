@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.380.1] - 2026-10-27
+
+### Behoben
+- **Sprachmodus brach nach einer Sekunde ab, man hörte nichts.** Bedrock nimmt höchstens 127 Werkzeuge an; die Sprachfront schickte bei Agenten mit vielen angebundenen MCP-Werkzeugen genau 128 und bekam „Invalid input request“, sobald das Modell zu sprechen begann. Direkt gegen Bedrock gemessen: 127 gehen, 128 nicht — unabhängig von der Länge der Beschreibungen. Jetzt werden höchstens 120 direkt mitgegeben; alle weiteren bleiben wie bisher über die Werkzeugsuche erreichbar.
+- **Bridge: blecherner Ton mit AirPods und anderen Bluetooth-Headsets im Sprachmodus.** Öffnet man ihr Mikrofon, schaltet macOS sie in den Headset-Modus — der Ton für den ganzen Mac wird blechern und abgehackt. Ist ein Bluetooth-Headset das Standardmikrofon, nimmt die Sprachleiste jetzt das eingebaute Mikrofon des Rechners; die Kopfhörer bleiben in guter Wiedergabequalität.
+
 ## [1.380.0] - 2026-10-27
 
 ### Neu

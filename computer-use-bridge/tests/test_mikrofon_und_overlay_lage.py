@@ -100,5 +100,59 @@ class Abtastrate(unittest.TestCase):
         self.assertEqual(len(gesendet[0]), 1600 * 2, "100 ms bei 16 kHz an die Sitzung")
 
 
+class MikrofonWahl(unittest.TestCase):
+    """AirPods-Mikrofon offen = Headset-Modus = blecherner Ton für alles (27.10.2026)."""
+
+    def _sd(self, standard, geraete):
+        sd = type(sys)("sounddevice")
+        sd.query_devices = lambda kind=None: {"name": standard} if kind else geraete
+        return sd
+
+    GERAETE = [
+        {"name": "AirPods Pro", "max_input_channels": 1, "default_samplerate": 24000},
+        {"name": "MacBook Pro-Lautsprecher", "max_input_channels": 0, "default_samplerate": 48000},
+        {"name": "MacBook Pro-Mikrofon", "max_input_channels": 1, "default_samplerate": 48000},
+    ]
+
+    def test_headset_als_standard_nimmt_eingebautes(self):
+        self.assertEqual(tray_app._mikrofon_waehlen(self._sd("AirPods Pro", self.GERAETE)),
+                         (2, "MacBook Pro-Mikrofon", 48000))
+
+    def test_ohne_headset_bleibt_der_standard(self):
+        self.assertIsNone(tray_app._mikrofon_waehlen(self._sd("MacBook Pro-Mikrofon", self.GERAETE)))
+
+    def test_headset_ohne_eingebautes_bleibt_der_standard(self):
+        self.assertIsNone(tray_app._mikrofon_waehlen(self._sd("AirPods Pro", self.GERAETE[:1])))
+
+    def test_unlesbare_liste_bricht_nichts(self):
+        sd = type(sys)("sounddevice")
+        sd.query_devices = lambda kind=None: (_ for _ in ()).throw(RuntimeError("weg"))
+        self.assertIsNone(tray_app._mikrofon_waehlen(sd))
+
+    def test_stream_wird_mit_dem_eingebauten_geoeffnet(self):
+        geoeffnet = []
+
+        class Strom:
+            def __init__(self, samplerate, callback, device=None, **_k):
+                geoeffnet.append((samplerate, device))
+
+            def start(self):
+                pass
+
+            def stop(self):
+                pass
+
+            def close(self):
+                pass
+
+        sd = self._sd("AirPods Pro", self.GERAETE)
+        sd.InputStream = Strom
+        with patch.dict(sys.modules, {"sounddevice": sd}):
+            mic = tray_app._MicStreamer()
+            self.assertEqual(mic.start(lambda _b: None), "")
+            mic.stop()
+        self.assertEqual(geoeffnet, [(16000, 2)])
+        self.assertEqual(mic.geraet, "MacBook Pro-Mikrofon")
+
 if __name__ == "__main__":
     unittest.main()

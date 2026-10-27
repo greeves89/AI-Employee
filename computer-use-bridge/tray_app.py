@@ -2421,6 +2421,33 @@ def _geraete_rate(sd, art: str) -> int:
         return 48000
 
 
+# Bluetooth-Headsets erkennt man nur am Namen — PortAudio nennt die Verbindungsart nicht.
+_BLUETOOTH_NAMEN = ("airpods", "bluetooth", "headset", "hands-free", "freisprech", "beats", "buds")
+_EINGEBAUT_NAMEN = ("macbook", "built-in", "integriert", "internal", "eingebaut", "imac")
+
+
+def _mikrofon_waehlen(sd):
+    """Eingebautes Mikrofon statt des Headsets, wenn der Standard ein Bluetooth-Headset ist.
+
+    Öffnet man das Mikrofon von AirPods & Co., schaltet macOS sie in den
+    Headset-Modus: Ton für ALLES auf dem Mac wird blechern und abgehackt (gemeldet
+    am 27.10.2026 — mit Sprachleiste „sehr blechern“, ohne normal). Mit dem
+    eingebauten Mikrofon bleiben sie im guten Wiedergabemodus.
+
+    Rückgabe ``(index, name, rate)`` oder ``None`` (dann gilt das Standardgerät)."""
+    try:
+        standard = str(sd.query_devices(kind="input")["name"]).lower()
+        if not any(b in standard for b in _BLUETOOTH_NAMEN):
+            return None
+        for i, d in enumerate(sd.query_devices()):
+            name = str(d.get("name", ""))
+            if int(d.get("max_input_channels", 0) or 0) > 0 and any(e in name.lower() for e in _EINGEBAUT_NAMEN):
+                return i, name, int(d.get("default_samplerate") or 48000)
+    except Exception:  # noqa: BLE001 — Geräteliste nicht lesbar: Standard nehmen
+        return None
+    return None
+
+
 class _MicStreamer:
     """Mikrofon LIVE in die Sprachsitzung streamen — 16 kHz/16-bit/mono PCM.
 
@@ -2462,6 +2489,8 @@ class _MicStreamer:
         self.bloecke, self.spitze, self.lautest = 0, 0, 0
         ZIEL = 16000
 
+        wahl = _mikrofon_waehlen(sd)
+
         def _oeffnen(rate: int):
             def _cb(indata, _frames, _time, _status):
                 try:
@@ -2475,7 +2504,8 @@ class _MicStreamer:
                     pass
 
             st = sd.InputStream(samplerate=rate, channels=1, dtype="int16",
-                                blocksize=rate // 10, callback=_cb)    # 100 ms
+                                blocksize=rate // 10, callback=_cb,     # 100 ms
+                                device=wahl[0] if wahl else None)
             st.start()
             return st
 
@@ -2483,7 +2513,8 @@ class _MicStreamer:
             stream, rate = _oeffnen(ZIEL), ZIEL
         except Exception as e:  # noqa: BLE001 — Geraeteliste veraltet oder 16 kHz abgelehnt
             _geraete_neu_einlesen(sd)
-            rate = _geraete_rate(sd, "input")
+            wahl = _mikrofon_waehlen(sd)     # Indizes können sich geändert haben
+            rate = wahl[2] if wahl else _geraete_rate(sd, "input")
             try:
                 stream = _oeffnen(rate)
                 app_log.info("Sprachleiste: Mikrofon lehnt 16 kHz ab (%s), nehme %s Hz", e, rate)
@@ -2491,9 +2522,12 @@ class _MicStreamer:
                 app_log.warning("Sprachleiste: Mikrofon nicht zu öffnen: %s / %s", e, e2)
                 return f"Mikrofon ließ sich nicht öffnen: {e2}"
         try:
-            self.geraet = str(sd.query_devices(kind="input")["name"])
+            self.geraet = wahl[1] if wahl else str(sd.query_devices(kind="input")["name"])
         except Exception:  # noqa: BLE001
             self.geraet = "?"
+        if wahl:
+            app_log.info("Sprachleiste: Headset als Standard — nehme eingebautes Mikrofon %s, "
+                         "damit der Kopfhörer-Ton nicht blechern wird", wahl[1])
         self._stream = stream
         return ""
 
