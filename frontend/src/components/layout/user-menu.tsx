@@ -6,7 +6,9 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { LogOut, Settings, Shield, Sun, Moon, Star, Info, Bot, X, UserRound } from "lucide-react";
+import { LogOut, Settings, Shield, Sun, Moon, Star, Info, Bot, X, UserRound, Smartphone } from "lucide-react";
+import { Fenster } from "@/components/ui/fenster";
+import { IphoneApp } from "@/components/iphone-app";
 import { cn } from "@/lib/utils";
 import { logout, useAuthStore } from "@/lib/auth";
 import { useTheme } from "@/components/theme-provider";
@@ -25,6 +27,7 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
   const menuRef = useRef<HTMLDivElement>(null);
 
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [iphoneOpen, setIphoneOpen] = useState(false);
   const [aboutVersion, setAboutVersion] = useState<string | null>(null);
   const [aboutChangelog, setAboutChangelog] = useState<string | null>(null);
   // GitHub-star nudge: highlight the Star link at most once per calendar day.
@@ -149,6 +152,13 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
               <span className="text-[13px] font-medium">Auf GitHub mit Stern markieren</span>
             </a>}
             <button
+              onClick={() => { setIsOpen(false); setIphoneOpen(true); }}
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all duration-150"
+            >
+              <Smartphone className="h-4 w-4" />
+              <span className="text-[13px] font-medium">App fürs iPhone</span>
+            </button>
+            <button
               onClick={() => setAboutOpen(true)}
               className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all duration-150"
             >
@@ -193,6 +203,12 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
           </div>
         </div>
       )}
+
+      <Fenster offen={iphoneOpen} schliessen={() => setIphoneOpen(false)} titel="App fürs iPhone" breite="max-w-md">
+        <div className="p-5">
+          <IphoneApp />
+        </div>
+      </Fenster>
 
       {/* About Modal — portal to document.body to escape any transform context */}
       {aboutOpen && typeof document !== "undefined" && createPortal(

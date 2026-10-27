@@ -11,8 +11,10 @@ import {
   KeyRound,
   Laptop,
   Mail,
+  Smartphone,
   X,
 } from "lucide-react";
+import { IphoneApp } from "@/components/iphone-app";
 import { BridgeDownload } from "@/components/agents/bridge-download";
 import { getErsteSchritte, type ErsteSchritte, type ErsterSchritt } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth";
@@ -24,6 +26,7 @@ const SYMBOL: Record<ErsterSchritt["id"], typeof Bot> = {
   wissen: BookOpen,
   mail_kalender: Mail,
   alltag: CalendarClock,
+  iphone_app: Smartphone,
   bridge: Laptop,
 };
 
@@ -138,6 +141,11 @@ export function ErsteSchritteKarte() {
                     {s.text}
                     {s.hinweis && <span className="block mt-1 italic">{s.hinweis}</span>}
                   </p>
+                )}
+                {!s.erledigt && s.id === "iphone_app" && istNaechster && (
+                  <div className="mt-3">
+                    <IphoneApp kompakt />
+                  </div>
                 )}
                 {!s.erledigt && s.id === "bridge" && istNaechster && (
                   <div className="mt-3">

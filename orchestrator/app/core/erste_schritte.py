@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import Agent
 from app.models.ai_account import AIAccount
+from app.models.device_token import DeviceToken
 from app.models.knowledge import KnowledgeEntry
 from app.models.memory import AgentMemory
 from app.models.oauth_integration import OAuthIntegration, OAuthProvider
@@ -86,6 +87,11 @@ async def _mail_kalender(db: AsyncSession, uid: str) -> bool:
     return bool(await db.scalar(select(exists().where(
         OAuthIntegration.provider.in_(_WERKZEUGE),
         or_(OAuthIntegration.user_id == uid, OAuthIntegration.user_id.is_(None))))))
+
+
+async def _iphone(db: AsyncSession, uid: str) -> bool:
+    """Ein iPhone mit der App hat sich für Benachrichtigungen angemeldet."""
+    return bool(await db.scalar(select(exists().where(DeviceToken.user_id == uid))))
 
 
 async def _bridge(uid: str, redis) -> bool:
@@ -159,6 +165,15 @@ async def stand(db: AsyncSession, user, redis=None) -> dict:
                      "einmal am Tag auf „Heute“ und in die Freigaben."),
             "link": "/schedules",
             "erledigt": await _alltag(db, user),
+            "hinweis": None,
+        },
+        {
+            "id": "iphone_app",
+            "titel": "App aufs iPhone holen",
+            "text": ("Lade „AI Employee Hub“ aus dem App Store und melde dich an. Dann sprichst du "
+                     "unterwegs mit deinem Agenten und gibst Freigaben direkt am Handy."),
+            "link": "",          # die Oberfläche zeigt hier QR-Code und App-Store-Link
+            "erledigt": await _iphone(db, uid),
             "hinweis": None,
         },
         {
