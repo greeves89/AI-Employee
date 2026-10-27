@@ -7,6 +7,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ## [1.378.12] - 2026-10-27
 
+### Neu
+- **Die Bridge ist auf dem Mac eine echte App.** Sie steht immer im Dock und in Cmd+Tab (mit App-Symbol), hat ein vollständiges App-Menü — „Über AI-Employee Bridge“, Ausblenden (⌘H), Beenden (⌘Q), Bearbeiten mit Kopieren und Einsetzen, Fenster mit „Hauptfenster“ (⌘0), Minimieren (⌘M) und Schließen (⌘W) — und ein normales Hauptfenster, das sich seine Lage merkt. Ein Klick aufs Dock-Symbol holt das Hauptfenster zurück. Das Symbol in der Menüleiste bleibt als Statusanzeige und Schnellzugriff.
+
 ### Behoben
 - **Das Bridge-Fenster verschwand beim App-Wechsel und war über Cmd+Tab nicht zu finden.** Die Fenster versteckten sich als macOS-Panels bei jedem Wechsel zu einer anderen App von selbst, und als reine Menüleisten-App fehlte die Bridge im App-Umschalter und im Dock; das Fenster war damit „einfach weg“. Die Fenster bleiben jetzt stehen. Solange ein Fenster der Bridge offen ist, steht sie jetzt im Dock und in Cmd+Tab (mit dem App-Symbol) und verschwindet beim Schließen wieder dorthin, wo sie hingehört: in die Menüleiste.
 - **Das Hauptfenster konnte auf einem alten Stand stehen bleiben** (z. B. „Verbinde…“, obwohl die Bridge verbunden war). Ein verstecktes Fenster galt als unsichtbar und wurde nicht mehr aktualisiert; ein Fehler beim Aktualisieren nahm es zudem dauerhaft aus der Aktualisierung, und ein Fehler beim Menüleisten-Symbol übersprang sie ganz. Das Fenster wird jetzt auch im Hintergrund aktuell gehalten. Beides ist jetzt getrennt; Fehler stehen sichtbar im Protokoll.

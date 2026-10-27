@@ -854,6 +854,22 @@ def _make_panel(title, w, h):
     return p
 
 
+def _make_fenster(title, w, h):
+    """Ein normales App-Fenster (kein Panel): minimierbar, merkt sich seine Lage,
+    bleibt beim App-Wechsel stehen."""
+    from AppKit import (NSBackingStoreBuffered, NSMakeRect, NSWindow, NSWindowStyleMaskClosable,
+                        NSWindowStyleMaskMiniaturizable, NSWindowStyleMaskTitled)
+    f = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
+        NSMakeRect(0, 0, w, h),
+        NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable,
+        NSBackingStoreBuffered, False)
+    f.setTitle_(title)
+    f.center()
+    f.setReleasedWhenClosed_(False)
+    f.setFrameAutosaveName_("AIEBridgeHauptfenster")
+    return f
+
+
 def _label(cv, text, x, y, w, h, size=13, bold=False, muted=False, color=None):
     from AppKit import NSTextField, NSFont, NSColor
     lbl = NSTextField.labelWithString_(text)
@@ -880,41 +896,82 @@ def _input(cv, x, y, w, placeholder="", secure=False, value=""):
     return f
 
 
+_AIEMenueZiel = None
+
+
 def _install_edit_menu() -> None:
-    """Install a minimal hidden Edit menu so Cmd+V/C/X/A/Z work in modal dialogs.
+    """Das Menue einer echten Mac-App: App-Menue (Ueber, Ausblenden, Beenden),
+    Bearbeiten (Cmd+C/V/X/A/Z in allen Feldern) und Fenster (Hauptfenster,
+    Minimieren, Schliessen). Dazu Dock und Cmd+Tab (Aktivierungsart „regulaer“).
 
-    An LSUIElement app has no menu bar, so NSApp never translates Cmd+key into
-    responder-chain actions. A main menu that's invisible-to-the-user but present
-    in NSApplication fixes this for all modal NSWindow dialogs at once.
-
-    Note: this runs BEFORE rumps starts its run loop, so the shared NSApplication
-    may not exist yet — the bare `NSApp` global would still be nil here and the
-    menu would silently never install. We call `NSApplication.sharedApplication()`
-    to obtain (creating if needed) the singleton rumps will reuse, so the menu
-    actually sticks.
+    Laeuft VOR rumps (main → vor dem ersten Dialog, #437): ``NSApp`` waere hier
+    noch nil, deshalb ``NSApplication.sharedApplication()`` — dieselbe Instanz,
+    die rumps danach weiterverwendet.
     """
     if not IS_MAC:
         return
     try:
-        from AppKit import NSApplication, NSMenu, NSMenuItem
+        from AppKit import NSApplication, NSMenu, NSMenuItem, NSObject
         app = NSApplication.sharedApplication()
-        main_menu = NSMenu.alloc().init()
-        app_slot = NSMenuItem.alloc().init()
-        main_menu.addItem_(app_slot)
+        # Eine echte App: im Dock und in Cmd+Tab, nicht nur in der Menueleiste.
+        app.setActivationPolicy_(0)
 
-        edit_menu = NSMenu.alloc().initWithTitle_("Edit")
-        for title, sel, key in (
-            ("Undo",       "undo:",       "z"),
-            ("Redo",       "redo:",       "Z"),   # Cmd+Shift+Z
-            ("Cut",        "cut:",        "x"),
-            ("Copy",       "copy:",       "c"),
-            ("Paste",      "paste:",      "v"),
-            ("Select All", "selectAll:",  "a"),
-        ):
-            # target=None -> action travels down the responder chain to the focused field
-            edit_menu.addItemWithTitle_action_keyEquivalent_(title, sel, key)
-        app_slot.setSubmenu_(edit_menu)
+        global _AIEMenueZiel
+        if _AIEMenueZiel is None:
+            class AIEMenueZiel(NSObject):
+                def zeigeHauptfenster_(self, _s):
+                    show_main_window(_main_state.get("cfg") or load_config())
+
+            _AIEMenueZiel = AIEMenueZiel
+        ziel = _AIEMenueZiel.alloc().init()
+        _main_state["menue_ziel"] = ziel        # festhalten, sonst raeumt PyObjC es ab
+
+        main_menu = NSMenu.alloc().init()
+
+        def untermenue(titel, eintraege):
+            slot = NSMenuItem.alloc().init()
+            main_menu.addItem_(slot)
+            menue = NSMenu.alloc().initWithTitle_(titel)
+            for eintrag in eintraege:
+                if eintrag is None:
+                    menue.addItem_(NSMenuItem.separatorItem())
+                    continue
+                text, aktion, taste, *rest = eintrag
+                item = menue.addItemWithTitle_action_keyEquivalent_(text, aktion, taste)
+                if rest and rest[0] == "ziel":
+                    item.setTarget_(ziel)
+                elif rest and rest[0] == "option":
+                    item.setKeyEquivalentModifierMask_((1 << 19) | (1 << 20))   # ⌥⌘
+            slot.setSubmenu_(menue)
+            return menue
+
+        untermenue("AI-Employee Bridge", [
+            ("Über AI-Employee Bridge", "orderFrontStandardAboutPanel:", ""),
+            None,
+            ("AI-Employee Bridge ausblenden", "hide:", "h"),
+            ("Andere ausblenden", "hideOtherApplications:", "h", "option"),
+            ("Alle einblenden", "unhideAllApplications:", ""),
+            None,
+            ("AI-Employee Bridge beenden", "terminate:", "q"),
+        ])
+        # target=None → die Aktion laeuft ueber die Responder-Kette zum aktiven Feld.
+        untermenue("Bearbeiten", [
+            ("Widerrufen", "undo:", "z"),
+            ("Wiederholen", "redo:", "Z"),          # Cmd+Shift+Z
+            None,
+            ("Ausschneiden", "cut:", "x"),
+            ("Kopieren", "copy:", "c"),
+            ("Einsetzen", "paste:", "v"),
+            ("Alles auswählen", "selectAll:", "a"),
+        ])
+        fenster = untermenue("Fenster", [
+            ("Hauptfenster", "zeigeHauptfenster:", "0", "ziel"),
+            None,
+            ("Im Dock ablegen", "performMiniaturize:", "m"),
+            ("Schließen", "performClose:", "w"),
+        ])
         app.setMainMenu_(main_menu)
+        app.setWindowsMenu_(fenster)
     except Exception as e:
         # AppKit unavailable or menu install failed. Don't crash the tray app,
         # but make it traceable — a silent no-op here is what re-breaks Cmd+V.
@@ -1159,8 +1216,6 @@ def show_setup_dialog(cfg: dict) -> dict | None:
     panel.close()
     if haupt_sichtbar:
         haupt.makeKeyAndOrderFront_(None)
-    else:
-        _im_dock(False)
     return result_box[0]
 
 
@@ -1499,32 +1554,16 @@ def _regel_anzahl() -> int | None:
 
 
 def _im_dock(sichtbar: bool) -> None:
-    """Solange ein Fenster der Bridge offen ist, steht sie im Dock und in Cmd+Tab —
-    sonst ist ein Fenster hinter anderen „einfach weg“ (Menueleisten-Apps fehlen im
-    App-Umschalter). Danach wieder nur Menueleiste."""
+    """Die Bridge ist eine echte App: immer im Dock und in Cmd+Tab. Beim Oeffnen
+    eines Fensters sicherstellen (falls etwas die Aktivierungsart geaendert hat);
+    beim Schliessen bleibt sie im Dock — ein Klick darauf holt das Fenster zurueck."""
+    if not sichtbar:
+        return
     try:
         from AppKit import NSApplication
-        NSApplication.sharedApplication().setActivationPolicy_(0 if sichtbar else 1)
+        NSApplication.sharedApplication().setActivationPolicy_(0)
     except Exception:  # noqa: BLE001
         app_log.debug("Aktivierungsart nicht umschaltbar", exc_info=True)
-
-
-_AIEFensterDelegate = None
-
-
-def _dock_beim_schliessen_verlassen(fenster) -> None:
-    """Beim Schliessen des Fensters wieder aus Dock und Cmd+Tab verschwinden."""
-    global _AIEFensterDelegate
-    from AppKit import NSObject
-    if _AIEFensterDelegate is None:
-        class AIEFensterDelegate(NSObject):
-            def windowWillClose_(self, _notification):
-                _im_dock(False)
-
-        _AIEFensterDelegate = AIEFensterDelegate
-    delegat = _AIEFensterDelegate.alloc().init()
-    _main_state["delegat"] = delegat           # festhalten, sonst raeumt PyObjC ihn ab
-    fenster.setDelegate_(delegat)
 
 
 _STATUS_FARBEN = {"green": (0.13, 0.76, 0.37), "amber": (1.0, 0.62, 0.04),
@@ -1554,7 +1593,7 @@ def show_main_window(cfg: dict) -> None:
     _appkit_handlers_init()
     W, H = 620, 480
     PAD = 28
-    panel = _make_panel("AI Employee Bridge", W, H)
+    panel = _make_fenster("AI Employee Bridge", W, H)
     cv = panel.contentView()
     try:
         panel.setTitlebarAppearsTransparent_(True)
@@ -1679,7 +1718,6 @@ def show_main_window(cfg: dict) -> None:
         "aktion_btn": aktion_btn, "sehen_lbl": sehen_lbl, "mitdenken_btn": mitdenken_btn,
         "freigaben_lbl": freigaben_lbl, "agent_popup": agent_popup,
     })
-    _dock_beim_schliessen_verlassen(panel)
     _im_dock(True)
     NSApp.activateIgnoringOtherApps_(True)
     panel.orderFrontRegardless()
@@ -3670,11 +3708,32 @@ def mitdenken_umschalten(cfg: dict) -> bool:
 
 # ── macOS menu bar (rumps) ─────────────────────────────────────────────────────
 
+def _dock_klick_einrichten(rumps) -> None:
+    """Klick aufs Dock-Symbol holt das Hauptfenster zurueck — wie bei jeder Mac-App.
+    rumps stellt den App-Delegate; ihm wird die eine Methode nachgereicht."""
+    try:
+        import objc  # type: ignore
+
+        def applicationShouldHandleReopen_hasVisibleWindows_(self, _app, sichtbar):
+            if not sichtbar:
+                show_main_window(_main_state.get("cfg") or load_config())
+            return True
+
+        objc.classAddMethods(rumps.rumps.NSApp, [objc.selector(
+            applicationShouldHandleReopen_hasVisibleWindows_,
+            selector=b"applicationShouldHandleReopen:hasVisibleWindows:", signature=b"Z@:@Z")])
+    except Exception:  # noqa: BLE001 — ohne das bleibt nur das Menue „Fenster → Hauptfenster“
+        app_log.warning("Dock-Klick nicht einrichtbar", exc_info=True)
+
+
+
 def run_macos(cfg: dict) -> None:
     try:
         import rumps
     except ImportError:
         print("Install rumps: pip install rumps"); sys.exit(1)
+
+    _dock_klick_einrichten(rumps)
 
     class BridgeApp(rumps.App):
         def __init__(self):
