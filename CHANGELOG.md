@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.378.11] - 2026-10-27
+
+### Neu
+- **Agent in der Bridge wählen.** Im Hauptfenster der Bridge (macOS und Windows) steht im Bereich „Mitsehen“ eine Auswahl deiner Agenten. Der gewählte Agent sieht mit, bietet Hilfe an und darf auf diesem Rechner arbeiten. Die Wahl wird gemerkt und nach jeder neuen Sitzung — etwa nach einem Neustart des Servers — automatisch wieder gesetzt; bisher ging das nur über die Weboberfläche und war danach still verloren.
+
+### Behoben
+- **Eine abgemeldete Bridge sah aus wie eine getrennte.** Ohne gültige Anmeldung ist der Rechner für den Server gar nicht da — kein Agent kann dann darauf arbeiten. Das Hauptfenster zeigt jetzt „Nicht angemeldet“, und der Hauptknopf heißt „Anmelden“.
+
 ## [1.378.10] - 2026-10-27
 
 ### Geändert

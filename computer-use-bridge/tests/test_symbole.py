@@ -49,7 +49,7 @@ if __name__ == "__main__":
 class Hauptfenster(unittest.TestCase):
     """Was Mac- und Windows-Hauptfenster zeigen — eine Ableitung fuer beide."""
 
-    CFG = {"url": "https://agents.example.com", "session": "a29e61c61b6c",
+    CFG = {"url": "https://agents.example.com", "session": "a29e61c61b6c", "token": "t",
            "allowed_capabilities": ["screenshots", "observe"], "mitdenken": False}
 
     def test_verbunden_mit_mitsehen(self):
