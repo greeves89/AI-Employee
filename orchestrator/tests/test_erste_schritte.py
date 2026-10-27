@@ -18,6 +18,7 @@ from app.core import erste_schritte as es
 from app.dependencies import get_db, get_redis_service, require_auth
 from app.models.agent import Agent
 from app.models.ai_account import AIAccount
+from app.models.device_token import DeviceToken
 from app.models.knowledge import KnowledgeEntry
 from app.models.oauth_integration import OAuthIntegration, OAuthProvider
 from app.models.schedule import Schedule
@@ -37,7 +38,8 @@ def _sid():
     return f"s{next(_zaehler)}"
 
 TABELLEN = [User.__table__, Agent.__table__, AIAccount.__table__, KnowledgeEntry.__table__,
-            OAuthIntegration.__table__, Schedule.__table__, UserAiCredential.__table__]
+            OAuthIntegration.__table__, Schedule.__table__, UserAiCredential.__table__,
+            DeviceToken.__table__]
 
 
 class _Redis:
@@ -94,9 +96,10 @@ class ErsteSchritte(unittest.IsolatedAsyncioTestCase):
     async def test_neu_ist_alles_offen(self):
         erledigt, s = await self._stand()
         self.assertEqual(s["erledigt"], 0)
-        self.assertEqual(s["gesamt"], 6, "ohne KI-Zugang sieht auch ein Mitglied diesen Schritt")
+        self.assertEqual(s["gesamt"], 7, "ohne KI-Zugang sieht auch ein Mitglied diesen Schritt")
         self.assertFalse(any(erledigt.values()))
-        self.assertEqual(s["schritte"][-1]["id"], "bridge", "die Bridge kommt zuletzt")
+        self.assertEqual([x["id"] for x in s["schritte"]][-2:], ["iphone_app", "bridge"],
+                         "iPhone-App vor der Bridge, die Bridge zuletzt")
 
     async def test_fremde_belege_zaehlen_nicht(self):
         await self._add(
@@ -107,6 +110,7 @@ class ErsteSchritte(unittest.IsolatedAsyncioTestCase):
             Schedule(name="s", agent_id="fremd", enabled=True, prompt="p", interval_seconds=60,
                      id=_sid(), next_run_at=JETZT),
             UserAiCredential(user_id=ANDERE, harness="claude_code", secret_encrypted="x"),
+            DeviceToken(user_id=ANDERE, token="fremd", platform="ios"),
         )
         self.redis.daten[es.BRIDGE_MERKER.format(user_id=ANDERE)] = 1
         erledigt, _ = await self._alles()
@@ -125,13 +129,14 @@ class ErsteSchritte(unittest.IsolatedAsyncioTestCase):
         )
         self.redis.daten[es.BRIDGE_MERKER.format(user_id=ICH.id)] = 1
         await self._add(OAuthIntegration(provider=OAuthProvider.MICROSOFT, user_id=ICH.id,
-                                         access_token_encrypted="x"))
+                                         access_token_encrypted="x"),
+                        DeviceToken(user_id=ICH.id, token="meins", platform="ios"))
         erledigt, s = await self._stand()
         self.assertEqual(erledigt, {k: True for k in erledigt})
         self.assertNotIn("ki_zugang", erledigt, "vorhandener KI-Zugang gehört nicht in die Mitgliederliste")
-        self.assertEqual((s["erledigt"], s["gesamt"]), (5, 5))
+        self.assertEqual((s["erledigt"], s["gesamt"]), (6, 6))
         _, s_admin = await self._stand(ADMIN)
-        self.assertEqual(s_admin["gesamt"], 6, "Admins sehen den KI-Zugang immer")
+        self.assertEqual(s_admin["gesamt"], 7, "Admins sehen den KI-Zugang immer")
 
     async def test_ki_zugang_abgelaufen_oder_gesperrt(self):
         await self._add(UserAiCredential(user_id=ICH.id, harness="claude_code",

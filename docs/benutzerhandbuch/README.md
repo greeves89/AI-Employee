@@ -38,14 +38,14 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 
 ---
 
-## In 5 Schritten startklar
+## In 6 Schritten startklar
 
 Mit diesen Schritten nutzt du AI-Employee sauber. Auf dem **Dashboard** steht dafür die
-Karte **„In 5 Schritten startklar“**: Sie zeigt, was erledigt ist, und hakt jeden Schritt
+Karte **„In 6 Schritten startklar“**: Sie zeigt, was erledigt ist, und hakt jeden Schritt
 **von selbst** ab, sobald er eingerichtet ist. Der nächste offene Schritt hat den Knopf
 **Jetzt machen**, der direkt auf die richtige Seite führt.
 
-![Karte „In 5 Schritten startklar“ auf dem Dashboard: erledigte Schritte abgehakt, der nächste mit dem Knopf „Jetzt machen“](screenshots/00-erste-schritte.png)
+![Karte „In 6 Schritten startklar“ auf dem Dashboard: erledigte Schritte abgehakt, der nächste mit dem Knopf „Jetzt machen“](screenshots/00-erste-schritte.png)
 
 1. **Agenten aus einer Vorlage anlegen.** Vorlage wählen, Name und in einem Satz, wobei er
    helfen soll (siehe [Onboarding](#2-onboarding) und [Agenten anlegen](#42-einen-agenten-anlegen--schritt-für-schritt)).
@@ -56,7 +56,12 @@ Karte **„In 5 Schritten startklar“**: Sie zeigt, was erledigt ist, und hakt 
 4. **In den Alltag holen.** Einen [Zeitplan](#12-schedules) für deinen Agenten anlegen (etwa
    morgens den Tag vorbereiten) oder das Sekretariat einrichten, und einmal am Tag auf **Heute**
    und in die **Freigaben** schauen.
-5. **Auf deinem Rechner mithelfen lassen.** Zum Schluss die
+5. **App aufs iPhone holen.** „AI Employee Hub“ aus dem App Store laden und mit denselben
+   Zugangsdaten anmelden. Die Karte zeigt dafür einen **QR-Code**: am Rechner die Kamera des
+   iPhones daraufhalten. Dann sprichst du unterwegs mit deinem Agenten und gibst Freigaben am
+   Handy. Der Schritt hakt sich ab, sobald die App auf deinem iPhone Benachrichtigungen
+   empfangen darf. Den QR-Code findest du jederzeit im Benutzermenü unter **App fürs iPhone**.
+6. **Auf deinem Rechner mithelfen lassen.** Zum Schluss die
    [Computer-Use Bridge](#23-computer-use-bridge-desktop-steuern) installieren — die Karte zeigt
    dafür die Download-Knöpfe für Mac und Windows direkt an. Danach sieht dein Agent, woran du
    gerade arbeitest, bietet Hilfe an und fragt, bevor er etwas tut.
@@ -290,8 +295,8 @@ Agenten, ihre Auslastung, Kosten und letzte Aktivität. Seitenleiste → **Dashb
 
 **Aufbau der Seite, Element für Element:**
 
-- **In 5 Schritten startklar** (nur solange noch etwas offen ist) — die Einstiegskarte mit
-  Fortschritt; siehe [In 5 Schritten startklar](#in-5-schritten-startklar).
+- **In 6 Schritten startklar** (nur solange noch etwas offen ist) — die Einstiegskarte mit
+  Fortschritt; siehe [In 6 Schritten startklar](#in-6-schritten-startklar).
 - **System-Status-Leiste** (oben) — zeigt mit grünen Punkten, dass die Plattform-Bausteine
   laufen: **All Systems Go**, **API**, **DB**, **Redis** und die **Anzahl Agenten**. Ist
   hier etwas rot, lohnt ein Blick auf **Health** (Kap. 19).
@@ -3001,10 +3006,10 @@ Kurze Videos mit Sprecher und Einblendungen zu jedem Schritt zeigen die wichtigs
 **Rechte eines Agenten einstellen**, **Dateien und Ergebnisse finden**.
 
 **Beim ersten Start** öffnet sich das Fenster **„Willkommen — so funktioniert AI Employee“**
-von selbst. Oben stehen die [fünf Schritte](#in-5-schritten-startklar), mit denen du
+von selbst. Oben stehen die [sechs Schritte](#in-6-schritten-startklar), mit denen du
 startklar wirst (erledigte sind grün abgehakt); darunter wählst du links ein Tutorial, rechts
 läuft das Video. Mit **„Los geht's“** oder dem **X** schließt du es — es kommt danach nicht
-mehr von selbst. Die fünf Schritte begleiten dich weiter auf dem **Dashboard**.
+mehr von selbst. Die Schritte begleiten dich weiter auf dem **Dashboard**.
 
 ![Willkommensfenster mit den Klick-Tutorials](screenshots/40-tutorials-fenster.png)
 

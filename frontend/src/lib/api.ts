@@ -4751,7 +4751,7 @@ export interface Heute {
 }
 
 export interface ErsterSchritt {
-  id: "ki_zugang" | "agent" | "wissen" | "mail_kalender" | "alltag" | "bridge";
+  id: "ki_zugang" | "agent" | "wissen" | "mail_kalender" | "alltag" | "iphone_app" | "bridge";
   titel: string;
   text: string;
   link: string;

@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.379.3] - 2026-10-27
+
+### Neu
+- **Link zur iPhone-App in der Web-App.** Im Benutzermenü steht „App fürs iPhone“: ein Fenster mit QR-Code (am Rechner mit dem iPhone abfotografieren) und dem Link zu „AI Employee Hub“ im App Store.
+- **Einstiegskarte: neuer Schritt „App aufs iPhone holen“** vor der Bridge, mit QR-Code direkt in der Karte. Er hakt sich ab, sobald ein iPhone mit der App für Benachrichtigungen angemeldet ist. Mitglieder haben damit sechs Schritte: Agent, Wissen, Mail und Kalender, Alltag, iPhone-App, Bridge.
+
 ## [1.379.2] - 2026-10-27
 
 ### Geändert
