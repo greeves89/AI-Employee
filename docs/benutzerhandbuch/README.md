@@ -45,7 +45,7 @@ Karte **„In 6 Schritten startklar“**: Sie zeigt, was erledigt ist, und hakt 
 **von selbst** ab, sobald er eingerichtet ist. Der nächste offene Schritt hat den Knopf
 **Jetzt machen**, der direkt auf die richtige Seite führt.
 
-![Karte „In 6 Schritten startklar“ auf dem Dashboard: erledigte Schritte abgehakt, der nächste mit dem Knopf „Jetzt machen“](screenshots/00-erste-schritte.png)
+![Karte „In 6 Schritten startklar“: drei Schritte abgehakt, der nächste mit „Jetzt machen“, iPhone-App und Bridge mit „Anzeigen“](screenshots/00-erste-schritte.png)
 
 1. **Agenten aus einer Vorlage anlegen.** Vorlage wählen, Name und in einem Satz, wobei er
    helfen soll (siehe [Onboarding](#2-onboarding) und [Agenten anlegen](#42-einen-agenten-anlegen--schritt-für-schritt)).
