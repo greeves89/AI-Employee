@@ -7,6 +7,7 @@ Mitglieder 403, eine fremde Person lässt sich weder zählen noch abfragen.
 """
 import unittest
 from datetime import date, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -39,6 +40,18 @@ class BereichAusPfad(unittest.TestCase):
         for roh in (None, "", "agents", "/", "/<script>", "javascript:alert(1)", "/" + "a" * 400):
             self.assertIsNone(nutzung.bereich_aus_pfad(roh), roh)
 
+    def test_erfundene_bereiche_zaehlen_nicht(self):
+        for roh in ("/aaa1", "/login", "/register", "/agentsx"):
+            self.assertIsNone(nutzung.bereich_aus_pfad(roh), roh)
+
+    def test_liste_passt_zu_den_seiten_der_oberflaeche(self):
+        app = Path(__file__).resolve().parents[2] / "frontend" / "src" / "app"
+        if not app.is_dir():
+            self.skipTest("Frontend liegt nicht neben dem Orchestrator")
+        seiten = {d.name for d in app.iterdir() if d.is_dir() and not d.name.startswith(("_", "("))}
+        self.assertEqual(seiten - {"login", "register", "p"}, set(nutzung.BEREICHE),
+                         "neue Seite? In nutzung.BEREICHE eintragen")
+
 
 class Zaehlen(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -70,10 +83,19 @@ class Zaehlen(unittest.IsolatedAsyncioTestCase):
 
     async def test_tagesdeckel_gegen_beliebige_bereiche(self):
         with patch.object(nutzung, "MAX_BEREICHE_JE_TAG", 2):
-            self.assertEqual(await self._zaehle("m1", "/a"), "/a")
-            self.assertEqual(await self._zaehle("m1", "/b"), "/b")
-            self.assertIsNone(await self._zaehle("m1", "/c"), "dritter neuer Bereich am Tag")
-            self.assertEqual(await self._zaehle("m1", "/a"), "/a", "Vorhandenes zählt weiter")
+            self.assertEqual(await self._zaehle("m1", "/agents"), "/agents")
+            self.assertEqual(await self._zaehle("m1", "/tasks"), "/tasks")
+            self.assertIsNone(await self._zaehle("m1", "/apps"), "dritter neuer Bereich am Tag")
+            self.assertEqual(await self._zaehle("m1", "/agents"), "/agents", "Vorhandenes zählt weiter")
+
+    async def test_geht_mit_dem_konto(self):
+        await self._zaehle("m1", "/agents")
+        await self._zaehle("m2", "/agents")
+        async with self.sessions() as db:
+            await nutzung.von_person_loeschen(db, "m1")
+            await db.commit()
+            self.assertEqual(await nutzung.meine(db, "m1", heute=HEUTE), {})
+            self.assertEqual(await nutzung.meine(db, "m2", heute=HEUTE), {"/agents": 1})
 
     async def test_zeitraum_und_frist(self):
         alt = HEUTE - timedelta(days=nutzung.AUFBEWAHRUNG_TAGE + 1)

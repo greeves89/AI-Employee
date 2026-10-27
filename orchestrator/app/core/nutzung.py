@@ -8,8 +8,9 @@ Zwei Abnehmer, beide an derselben Zählung:
   Nur Summen je Bereich: Aufrufe und wie viele Personen, nie WER.
 
 Gezählt wird der erste Pfadteil („/agents/abc“ → „/agents“), bei selbst
-angelegten Seiten „/p/<kurzname>“. Was nicht wie ein Pfad der Oberfläche
-aussieht, wird verworfen — die Tabelle ist kein Ablageplatz für beliebigen Text.
+angelegten Seiten „/p/<kurzname>“. Nur Bereiche, die es in der Oberfläche
+gibt (``BEREICHE``) — sonst ließen sich beliebige Namen erfinden, die Tabelle
+füllen und die Übersicht der Verwaltung verfälschen.
 """
 
 from __future__ import annotations
@@ -32,6 +33,18 @@ OFT_GENUTZT = 3
 #: Mehr verschiedene Bereiche an einem Tag gibt die Oberfläche nicht her.
 MAX_BEREICHE_JE_TAG = 60
 
+#: Erste Pfadteile der Oberfläche (``frontend/src/app/*``). Ein Test hält die
+#: Liste mit den Seitenordnern gleich; ``login``/``register`` zählen nicht.
+BEREICHE = frozenset({
+    "activity", "admin", "agents", "ai-accounts", "analytics", "approvals", "apps", "audit",
+    "chat", "dashboard", "evals", "files", "finanzen", "health", "help", "heute",
+    "integrations", "kiosk", "knowledge", "learning", "meeting-rooms", "onboarding",
+    "projekte", "schedules", "second-brains", "secrets", "settings", "skills", "tasks",
+    "triggers", "workflows",
+})
+#: Höchstens so viele Zeilen liefert die Übersicht.
+MAX_UEBERSICHT = 200
+
 _SEGMENT = r"[a-z0-9][a-z0-9-]{0,39}"
 _PFAD = re.compile(rf"^/({_SEGMENT})(?:/({_SEGMENT}))?")
 
@@ -48,7 +61,7 @@ def bereich_aus_pfad(pfad: str | None) -> str | None:
     erster, zweiter = treffer.group(1), treffer.group(2)
     if erster == "p":
         return f"/p/{zweiter}" if zweiter else None
-    return f"/{erster}"
+    return f"/{erster}" if erster in BEREICHE else None
 
 
 def _heute() -> date:
@@ -60,9 +73,11 @@ async def _alte_loeschen(db: AsyncSession, heute: date) -> None:
     global _letzte_bereinigung
     if _letzte_bereinigung == heute:
         return
-    _letzte_bereinigung = heute
     await db.execute(delete(BereichAufruf).where(
         BereichAufruf.tag < heute - timedelta(days=AUFBEWAHRUNG_TAGE)))
+    await db.commit()
+    # Erst nach dem Festschreiben: scheitert es, versucht es der nächste Aufruf.
+    _letzte_bereinigung = heute
 
 
 def _einfuegen(db: AsyncSession):
@@ -117,7 +132,9 @@ async def uebersicht(db: AsyncSession, tage: int = 30, heute: date | None = None
                func.count(func.distinct(BereichAufruf.user_id)),
                func.max(BereichAufruf.tag))
         .where(BereichAufruf.tag > heute - timedelta(days=tage))
-        .group_by(BereichAufruf.bereich))
+        .group_by(BereichAufruf.bereich)
+        .order_by(func.sum(BereichAufruf.anzahl).desc())
+        .limit(MAX_UEBERSICHT))
     ergebnis = [
         {"bereich": b, "aufrufe": int(n or 0), "personen": int(p or 0),
          "zuletzt": z.isoformat() if z else None}
@@ -125,3 +142,8 @@ async def uebersicht(db: AsyncSession, tage: int = 30, heute: date | None = None
     ]
     ergebnis.sort(key=lambda e: (-e["aufrufe"], e["bereich"]))
     return ergebnis
+
+
+async def von_person_loeschen(db: AsyncSession, user_id: str) -> None:
+    """Beim Löschen eines Kontos: seine Zählungen gehen mit (kein Fremdschlüssel)."""
+    await db.execute(delete(BereichAufruf).where(BereichAufruf.user_id == user_id))

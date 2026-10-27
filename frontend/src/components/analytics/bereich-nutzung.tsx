@@ -46,7 +46,8 @@ export function BereichNutzung({ tage }: { tage: number }) {
         <h3 className="text-sm font-semibold">Genutzte Bereiche</h3>
       </div>
       <p className="mb-4 text-[12px] text-muted-foreground">
-        Wie oft jeder Bereich in den letzten {tage} Tagen geöffnet wurde, ohne Namen.
+        Wie oft jeder Bereich in den letzten {tage} Tagen geöffnet wurde — ohne Namen, kleine
+        Personenzahlen nur als „unter 3“.
         {ungenutzt > 0 &&
           ` ${ungenutzt} ${ungenutzt === 1 ? "Bereich wurde" : "Bereiche wurden"} von niemandem geöffnet — die lassen sich Rollen über Admin → Rechte gar nicht erst anbieten.`}
       </p>
@@ -78,7 +79,10 @@ export function BereichNutzung({ tage }: { tage: number }) {
                     <span className="w-10 text-right text-[12px] tabular-nums">{z.aufrufe}</span>
                   </div>
                 </td>
-                <td className="py-2 px-3 text-right text-[12px] tabular-nums text-muted-foreground">{z.personen}</td>
+                <td className="py-2 px-3 text-right text-[12px] tabular-nums text-muted-foreground">
+                  {/* 1 oder 2 hieße auf kleinen Anlagen praktisch „diese Person“. */}
+                  {z.personen === 0 ? 0 : z.personen < 3 ? "unter 3" : z.personen}
+                </td>
                 <td className="py-2 pl-3 text-right text-[12px] text-muted-foreground">
                   {z.zuletzt ? new Date(z.zuletzt).toLocaleDateString("de-DE") : z.aufrufe === 0 ? "nie" : "—"}
                 </td>

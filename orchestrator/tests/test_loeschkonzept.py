@@ -32,6 +32,7 @@ from app.models.agent_template import AgentTemplate
 from app.models.agent_todo import AgentTodo
 from app.models.ai_account import AIAccount
 from app.models.audit_log import AuditLog
+from app.models.bereich_aufruf import BereichAufruf
 from app.models.chat_message import ChatMessage
 from app.models.chat_session import ChatSession
 from app.models.custom_role import CustomRole
@@ -49,6 +50,7 @@ TABELLEN = [
     AgentMemoryTag.__table__, AgentMemoryLink.__table__, AgentTodo.__table__,
     AgentMessage.__table__, AIAccount.__table__, CustomRole.__table__,
     AgentPlanItem.__table__, Notification.__table__, AuditLog.__table__,
+    BereichAufruf.__table__,
 ]
 
 
