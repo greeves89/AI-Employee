@@ -4750,6 +4750,26 @@ export interface Heute {
   briefing: { text: string; task_id: string; erstellt: string | null } | null;
 }
 
+export interface ErsterSchritt {
+  id: "ki_zugang" | "agent" | "wissen" | "werkzeuge" | "alltag";
+  titel: string;
+  text: string;
+  link: string;
+  erledigt: boolean;
+  hinweis: string | null;
+}
+
+export interface ErsteSchritte {
+  schritte: ErsterSchritt[];
+  erledigt: number;
+  gesamt: number;
+}
+
+/** Der eigene Stand der fünf Einstiegsschritte (#1047). */
+export async function getErsteSchritte(): Promise<ErsteSchritte> {
+  return fetchJSON(`${getBase()}/erste-schritte`);
+}
+
 export async function getHeute(): Promise<Heute> {
   return fetchJSON(`${getBase()}/sekretariat/heute`);
 }

@@ -14,6 +14,7 @@ import { RecentTasks } from "@/components/dashboard/recent-tasks";
 import { CostAttribution } from "@/components/dashboard/cost-attribution";
 import { ReflectionCard } from "@/components/dashboard/reflection-card";
 import { SystemStatusBar } from "@/components/dashboard/system-status-bar";
+import { ErsteSchritteKarte } from "@/components/dashboard/erste-schritte-karte";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
 
 // Derselbe Anlege-Dialog wie auf /agents — „Neuer Agent“ öffnet ihn hier direkt,
@@ -70,6 +71,9 @@ export default function DashboardPage() {
       >
         {/* System Status — API/DB/Redis sind Betreibersache */}
         {!simpleMode && <SystemStatusBar />}
+
+        {/* Einstieg: verschwindet, sobald alles eingerichtet ist (#1047) */}
+        <ErsteSchritteKarte />
 
         {/* Stats */}
         <StatsOverview agents={agents} tasks={tasks} />

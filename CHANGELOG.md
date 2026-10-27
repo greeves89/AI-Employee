@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.379.0] - 2026-10-27
+
+### Neu
+- **„In 5 Schritten startklar“ auf dem Dashboard.** Eine Karte führt neue Nutzer durch die fünf Schritte, mit denen AI-Employee sauber läuft: KI-Zugang verbinden, Agenten anlegen, Wissen geben, Werkzeuge anschließen (Mail/Kalender oder Bridge), in den Alltag holen (Zeitplan oder Sekretariat). Jeder Schritt hakt sich anhand echter Daten selbst ab, der nächste offene Schritt führt mit „Jetzt machen“ direkt auf die richtige Seite. Gezählt wird nur Eigenes. Die Karte lässt sich für zwei Wochen ausblenden und verschwindet, sobald alles erledigt ist. Mitglieder ohne Admin-Rolle sehen beim KI-Zugang den Hinweis, dass ihn meist die Verwaltung einrichtet.
+- Neue Schnittstelle `GET /api/v1/erste-schritte` (nur der eigene Stand). Die Bridge hinterlässt beim ersten Verbinden einen dauerhaften Merker, damit „Werkzeuge anschließen“ auch nach Ablauf der Sitzung erledigt bleibt.
+- Handbuch: neues Kapitel „In 5 Schritten startklar“ ganz vorne.
+
 ## [1.378.16] - 2026-10-27
 
 ### Behoben
