@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.378.8] - 2026-10-27
+
+### Geändert
+- Frontend-Abhängigkeiten aufgefrischt (15 Pakete, alle innerhalb ihrer Hauptversion): Radix-UI-Bausteine, framer-motion, lucide-react, mermaid, React 19.3.1, zustand, postcss. Keine sichtbare Änderung an der Oberfläche; schließt laufende Patch-Stände nach.
+
 ## [1.378.7] - 2026-10-26
 
 ### Sicherheit
