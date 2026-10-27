@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.378.9] - 2026-10-27
+
+### Geändert
+- Embedding-Dienst: fastapi auf 0.161.0 angehoben. Verhalten der Endpunkte gegen den alten Stand gemessen und unveraendert (Statuscodes, Antwortkoerper, Validierungsfehler, OpenAPI-Schema); es wird keine weitere Bibliothek mitgezogen.
+
 ## [1.378.8] - 2026-10-27
 
 ### Geändert
