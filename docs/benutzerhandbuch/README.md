@@ -45,6 +45,8 @@ Karte **„In 5 Schritten startklar“**: Sie zeigt, was erledigt ist, und hakt 
 **von selbst** ab, sobald er eingerichtet ist. Der nächste offene Schritt hat den Knopf
 **Jetzt machen**, der direkt auf die richtige Seite führt.
 
+![Karte „In 5 Schritten startklar“ auf dem Dashboard: vier Schritte erledigt, der fünfte mit dem Knopf „Jetzt machen“](screenshots/00-erste-schritte.png)
+
 1. **KI-Zugang verbinden.** Ein Claude-, ChatGPT- oder Azure-Konto hinterlegen
    (Administratoren unter **AI-Accounts**, sonst unter **Einstellungen**). Ohne Zugang kann kein
    Agent denken; ein Konto reicht für alle. Bei Mitgliedern richtet das meist die Verwaltung ein.
