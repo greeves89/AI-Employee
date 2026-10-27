@@ -25,6 +25,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from app.core.agent_mcp_servers import (
+    NOVA_SONIC_HOECHSTENS,
     WERKZEUG_BUDGET,
     MCPZiel,
     call_agent_tool,
@@ -65,7 +66,9 @@ class EveryToolReachesTheVoiceTests(unittest.TestCase):
         self.assertEqual(len(katalog), 300, "nicht mehr alle auffindbar")
 
     def test_the_budget_stays_under_the_engine_limit(self):
-        self.assertLessEqual(WERKZEUG_BUDGET, 128)
+        # 128 Werkzeuge weist Bedrock ab (gemessen 2026-10-27), 127 gehen.
+        self.assertLess(WERKZEUG_BUDGET, 128)
+        self.assertLessEqual(WERKZEUG_BUDGET, NOVA_SONIC_HOECHSTENS)
 
     def test_several_servers_are_all_included(self):
         werkzeuge, _, _ = voice_toolspecs([

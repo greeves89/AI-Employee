@@ -1,3 +1,3 @@
 """Build-time version for the Computer-Use Bridge."""
 
-BRIDGE_VERSION = "1.380.0"
+BRIDGE_VERSION = "1.380.1"

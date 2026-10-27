@@ -37,7 +37,16 @@ logger = logging.getLogger(__name__)
 #: erreichbar. Damit ist NICHTS unerreichbar, und die Grenze wird trotzdem
 #: eingehalten. Eine stille Kuerzung waere genau das Verhalten, ueber das er
 #: sich beschwert hat — nur an anderer Stelle.
-WERKZEUG_BUDGET = 128
+#:
+#: Gemessen am 2026-10-27 direkt gegen Bedrock: 127 Werkzeuge gehen, 128 nicht
+#: — unabhaengig von der Groesse (128 mit gekuerzten Beschreibungen scheitern
+#: genauso). Abgewiesen wird erst, wenn das Modell zu sprechen beginnt, mit
+#: „Invalid input request“; die Sitzung bricht nach etwa einer Sekunde ab, der
+#: Nutzer hoert nichts. Bis v1.380.0 stand hier 128 — genau die Grenze, die
+#: nicht geht; sobald ein Agent genug MCP-Werkzeuge hatte, fiel JEDE
+#: Sprachsitzung aus. Daher Abstand statt Punktlandung.
+NOVA_SONIC_HOECHSTENS = 127
+WERKZEUG_BUDGET = 120
 
 
 async def servers_for_agent(
