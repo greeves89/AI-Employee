@@ -1,6 +1,6 @@
 fastapi==0.161.0
 uvicorn[standard]==0.54.0
-sentence-transformers==6.1.0
+sentence-transformers==6.2.0
 # transformers kommt sonst ungepinnt ueber sentence-transformers und zieht bei jedem
 # frischen Bau die neueste Version -- 5.19 setzte ein neueres torch voraus als das
 # damals gepinnte 2.6.0 und brach beim Import ab ("Cannot access accelerator device
