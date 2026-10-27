@@ -2087,6 +2087,9 @@ def _start_voice_ws(cfg: dict, agent_id: str, on_event) -> None:
             _voice_state["ws"] = ws
             _voice_state["loop"] = asyncio.get_running_loop()
             on_event("ready", "Bereit")
+            app_log.info("Sprachleiste: Sitzung verbunden")
+            zaehler = {"audio": 0, "transcript": 0, "response": 0}
+            _voice_state["zaehler"] = zaehler
             async for raw in ws:
                 try:
                     evt = json.loads(raw)
@@ -2097,8 +2100,12 @@ def _start_voice_ws(cfg: dict, agent_id: str, on_event) -> None:
                 if typ == "ready":
                     on_event("ready", "Bereit")
                 elif typ == "transcript":
+                    zaehler["transcript"] += 1
+                    if zaehler["transcript"] == 1:
+                        app_log.info("Sprachleiste: erste Mitschrift von dir erkannt")
                     on_event("processing", f"Du: {data.get('text', '')}")
                 elif typ == "response":
+                    zaehler["response"] += 1
                     on_event("response", str(data.get("text", "")))
                 elif typ == "tts_start":
                     on_event("speaking", "Antwort wird gesprochen")
@@ -2106,6 +2113,10 @@ def _start_voice_ws(cfg: dict, agent_id: str, on_event) -> None:
                     if _voice_state.get("local_edge_tts"):
                         continue
                     mime = str(data.get("mime") or "audio/mpeg")
+                    zaehler["audio"] += 1
+                    if zaehler["audio"] == 1:
+                        app_log.info("Sprachleiste: erster Ton vom Agenten (%s, %s Hz)",
+                                     mime, data.get("rate") or "?")
                     if "pcm" in mime:
                         # Realtime-Front (Nova Sonic): rohes PCM, sofort in den
                         # Streaming-Player — DAS ist die direkte Interaktion
@@ -2118,20 +2129,29 @@ def _start_voice_ws(cfg: dict, agent_id: str, on_event) -> None:
                             player.feed(base64.b64decode(str(data.get("b64") or "")),
                                         int(data.get("rate") or 24000))
                         except Exception:  # noqa: BLE001
-                            pass
+                            app_log.warning("Sprachleiste: Ton nicht abspielbar", exc_info=True)
                         continue
                     suffix = ".mp3" if "mpeg" in mime or "mp3" in mime else ".audio"
                     _play_audio_b64(str(data.get("b64") or ""), suffix=suffix)
                 elif typ == "done":
                     on_event("ready", "Bereit")
                 elif typ == "error":
+                    app_log.warning("Sprachleiste: Fehler vom Server: %s", str(data.get("message") or "")[:200])
                     on_event("error", str(data.get("message") or "Voice-Fehler"))
+                elif typ == "status" and data.get("level") == "warning":
+                    app_log.warning("Sprachleiste: Hinweis vom Server: %s", str(data.get("message") or "")[:200])
+                    on_event("error", str(data.get("message") or ""))
 
     def _thread():
         try:
             asyncio.run(_runner())
         except Exception as e:
+            app_log.warning("Sprachleiste: Sitzung abgebrochen: %s", e)
             on_event("error", str(e).strip() or e.__class__.__name__)
+        finally:
+            z = _voice_state.get("zaehler") or {}
+            app_log.info("Sprachleiste: Sitzung beendet (Ton-Blöcke %s, Mitschriften %s, Antworten %s)",
+                         z.get("audio", 0), z.get("transcript", 0), z.get("response", 0))
 
     _voice_state["thread"] = threading.Thread(target=_thread, daemon=True)
     _voice_state["thread"].start()
@@ -2367,6 +2387,40 @@ def show_interaction_bar(cfg: dict) -> None:
     panel.makeKeyAndOrderFront_(None)
 
 
+def pcm_umrechnen(pcm, von: int, nach: int):
+    """PCM16 (numpy int16, mono) von einer Abtastrate in eine andere umrechnen.
+
+    Bluetooth-Headsets (AirPods im Headset-Modus: 16/24 kHz, sonst 48 kHz) lehnen
+    oft genau die Rate ab, die die Sprachsitzung braucht. Dann oeffnet die Bridge
+    das Geraet mit SEINER Rate und rechnet selbst um — lineare Interpolation
+    reicht fuer Sprache."""
+    import numpy as np
+    if von == nach or len(pcm) == 0:
+        return pcm
+    n = max(1, int(round(len(pcm) * nach / von)))
+    x_alt = np.arange(len(pcm), dtype=np.float64)
+    x_neu = np.linspace(0, len(pcm) - 1, n)
+    return np.interp(x_neu, x_alt, pcm.astype(np.float64)).astype(np.int16)
+
+
+def _geraete_neu_einlesen(sd) -> None:
+    """PortAudio liest die Geraeteliste nur beim Start. Kopfhoerer, die danach
+    verbunden wurden (oder der Wechsel des Standardgeraets), fuehren sonst zu
+    „Error opening …“. Neu initialisieren, dann sieht es die aktuellen Geraete."""
+    try:
+        sd._terminate()
+        sd._initialize()
+    except Exception:  # noqa: BLE001
+        app_log.debug("Audiogeraete nicht neu einlesbar", exc_info=True)
+
+
+def _geraete_rate(sd, art: str) -> int:
+    try:
+        return int(sd.query_devices(kind=art)["default_samplerate"])
+    except Exception:  # noqa: BLE001
+        return 48000
+
+
 class _MicStreamer:
     """Mikrofon LIVE in die Sprachsitzung streamen — 16 kHz/16-bit/mono PCM.
 
@@ -2381,6 +2435,8 @@ class _MicStreamer:
         self._stream = None
         self.bloecke = 0
         self.spitze = 0
+        self.lautest = 0
+        self.geraet = ""
 
     @property
     def active(self) -> bool:
@@ -2403,32 +2459,51 @@ class _MicStreamer:
         except ImportError:
             return "sounddevice fehlt — Mikrofon nicht nutzbar"
 
-        self.bloecke, self.spitze = 0, 0
+        self.bloecke, self.spitze, self.lautest = 0, 0, 0
+        ZIEL = 16000
 
-        def _cb(indata, _frames, _time, _status):
-            try:
-                self.bloecke += 1
-                if self.spitze == 0:
-                    self.spitze = int(abs(indata).max()) if len(indata) else 0
-                send_chunk(bytes(indata))
-            except Exception:  # noqa: BLE001 — Verbindung weg; Stopp kommt von aussen
-                pass
+        def _oeffnen(rate: int):
+            def _cb(indata, _frames, _time, _status):
+                try:
+                    self.bloecke += 1
+                    pegel = int(abs(indata).max()) if len(indata) else 0
+                    if self.spitze == 0:
+                        self.spitze = pegel
+                    self.lautest = max(self.lautest, pegel)
+                    send_chunk(pcm_umrechnen(indata[:, 0], rate, ZIEL).tobytes())
+                except Exception:  # noqa: BLE001 — Verbindung weg; Stopp kommt von aussen
+                    pass
+
+            st = sd.InputStream(samplerate=rate, channels=1, dtype="int16",
+                                blocksize=rate // 10, callback=_cb)    # 100 ms
+            st.start()
+            return st
 
         try:
-            stream = sd.InputStream(
-                samplerate=16000, channels=1, dtype="int16",
-                blocksize=1600,  # 100 ms
-                callback=_cb,
-            )
-            stream.start()
-        except Exception as e:  # noqa: BLE001 — kein Mikro / belegt / Freigabe fehlt
-            return f"Mikrofon ließ sich nicht öffnen: {e}"
+            stream, rate = _oeffnen(ZIEL), ZIEL
+        except Exception as e:  # noqa: BLE001 — Geraeteliste veraltet oder 16 kHz abgelehnt
+            _geraete_neu_einlesen(sd)
+            rate = _geraete_rate(sd, "input")
+            try:
+                stream = _oeffnen(rate)
+                app_log.info("Sprachleiste: Mikrofon lehnt 16 kHz ab (%s), nehme %s Hz", e, rate)
+            except Exception as e2:  # noqa: BLE001 — kein Mikro / belegt / Freigabe fehlt
+                app_log.warning("Sprachleiste: Mikrofon nicht zu öffnen: %s / %s", e, e2)
+                return f"Mikrofon ließ sich nicht öffnen: {e2}"
+        try:
+            self.geraet = str(sd.query_devices(kind="input")["name"])
+        except Exception:  # noqa: BLE001
+            self.geraet = "?"
         self._stream = stream
         return ""
 
     def stop(self) -> None:
         if self._stream is None:
             return
+        # Nur Zahlen, kein Ton: Gerät, Dauer, lautester Ausschlag (Sprechen liegt
+        # typisch über 1000, Raumrauschen um 10–50).
+        app_log.info("Sprachleiste: Mikrofon aus (Gerät %s, %.1f s, lautester Pegel %s)",
+                     getattr(self, "geraet", "?"), self.bloecke / 10, self.lautest)
         try:
             self._stream.stop()
             self._stream.close()
@@ -2465,9 +2540,11 @@ class _PcmPlayer:
             import numpy as np
             import sounddevice as sd
         except ImportError:
+            app_log.warning("Sprachleiste: Wiedergabe unmöglich, sounddevice/numpy fehlen")
             return
         stream = None
         current_rate = 0
+        geraet_rate = 0
         while True:
             item = self._queue.get()
             if item is None:
@@ -2477,11 +2554,26 @@ class _PcmPlayer:
                 if stream is None or rate != current_rate:
                     if stream is not None:
                         stream.stop(); stream.close()
-                    stream = sd.OutputStream(samplerate=rate, channels=1, dtype="int16")
+                    try:
+                        stream = sd.OutputStream(samplerate=rate, channels=1, dtype="int16")
+                        geraet_rate = rate
+                    except Exception as e:  # noqa: BLE001 — Geraeteliste veraltet / Rate abgelehnt
+                        _geraete_neu_einlesen(sd)
+                        geraet_rate = _geraete_rate(sd, "output")
+                        app_log.info("Sprachleiste: Ausgabe lehnt %s Hz ab (%s), nehme %s Hz",
+                                     rate, e, geraet_rate)
+                        stream = sd.OutputStream(samplerate=geraet_rate, channels=1, dtype="int16")
                     stream.start()
                     current_rate = rate
-                stream.write(np.frombuffer(pcm, dtype=np.int16).reshape(-1, 1))
-            except Exception:  # noqa: BLE001 — Audiogeraet weg: leise aufgeben
+                    try:
+                        geraet = str(sd.query_devices(kind="output")["name"])
+                    except Exception:  # noqa: BLE001
+                        geraet = "?"
+                    app_log.info("Sprachleiste: Wiedergabe über %s (%s Hz)", geraet, geraet_rate)
+                ton = pcm_umrechnen(np.frombuffer(pcm, dtype=np.int16), rate, geraet_rate)
+                stream.write(ton.reshape(-1, 1))
+            except Exception:  # noqa: BLE001 — Audiogeraet weg: aufgeben, aber sichtbar
+                app_log.warning("Sprachleiste: Wiedergabe abgebrochen", exc_info=True)
                 break
         if stream is not None:
             try:
