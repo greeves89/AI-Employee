@@ -106,7 +106,9 @@ app = BUNDLE(
     info_plist={
         'NSPrincipalClass': 'NSApplication',
         'NSAppleScriptEnabled': False,
-        'LSUIElement': True,           # hide from Dock (menu bar only)
+        # Eine echte App: im Dock und in Cmd+Tab (vorher reine Menueleisten-App,
+        # deren Fenster nach einem App-Wechsel „weg“ war).
+        'LSUIElement': False,
         'NSHighResolutionCapable': True,
         'CFBundleShortVersionString': bridge_version,
         'CFBundleVersion': bridge_version,

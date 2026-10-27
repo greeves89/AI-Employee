@@ -2496,8 +2496,10 @@ gesetzten Berechtigungen.
 **Schritt 1 — App holen.** Aus dem Release `bridge-latest` herunterladen:
 `AI-Employee-Bridge-Windows.zip` (Windows) bzw. `AI-Employee-Bridge.dmg` (macOS).
 
-Du erkennst die Bridge am Symbol mit Bildschirm und Auge. In der Menüleiste (macOS) bzw. im
-Infobereich der Taskleiste (Windows) zeigt sie ihren Zustand:
+Du erkennst die Bridge am Symbol mit Bildschirm und Auge. Auf dem Mac ist sie eine normale
+App: im Dock und in Cmd+Tab, mit App-Menü (Beenden mit ⌘Q, Hauptfenster mit ⌘0); ein Klick
+aufs Dock-Symbol öffnet das Hauptfenster. In der Menüleiste (macOS) bzw. im Infobereich der
+Taskleiste (Windows) zeigt sie zusätzlich ihren Zustand:
 
 ![App-Symbol der Bridge und die fünf Zustände: getrennt, verbindet, verbunden, sieht mit, schaut hin](screenshots/23-bridge-symbole.png)
 

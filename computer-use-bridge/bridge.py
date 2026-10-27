@@ -67,8 +67,10 @@ def _setup_logging() -> logging.Logger:
         logging.getLogger().setLevel(logging.INFO)
 
     try:
-        log_dir = os.path.expanduser("~/Library/Logs/ai-employee")
-        if platform.system() != "Darwin":
+        # AI_EMPLOYEE_BRIDGE_LOG_DIR: Tests schreiben sonst ins echte Protokoll der
+        # installierten Bridge (gesehen 2026-10-26: Testzeilen mitten im Nutzerlog).
+        log_dir = os.environ.get("AI_EMPLOYEE_BRIDGE_LOG_DIR") or os.path.expanduser("~/Library/Logs/ai-employee")
+        if platform.system() != "Darwin" and not os.environ.get("AI_EMPLOYEE_BRIDGE_LOG_DIR"):
             log_dir = os.path.join(os.path.expanduser("~"), ".ai-employee", "logs")
         os.makedirs(log_dir, exist_ok=True)
         file_handler = logging.FileHandler(os.path.join(log_dir, "bridge.log"))
@@ -2942,7 +2944,9 @@ class Bridge:
 
 # ── Extra headers (identity-aware proxy support, issue #374) ──────────────────
 
-BRIDGE_CONFIG_PATH = os.path.expanduser("~/.ai_employee_bridge.json")
+# AI_EMPLOYEE_BRIDGE_CONFIG: eigene Ablage fuer Tests — sonst pinnen sie Zertifikate
+# in die Konfiguration der echten Bridge.
+BRIDGE_CONFIG_PATH = os.environ.get("AI_EMPLOYEE_BRIDGE_CONFIG") or os.path.expanduser("~/.ai_employee_bridge.json")
 
 
 def _parse_header_arg(raw: str) -> tuple[str, str]:
@@ -2986,7 +2990,7 @@ def collect_extra_headers(header_args: list[str] | None) -> dict[str, str]:
     except FileNotFoundError:
         pass
     except (OSError, ValueError) as e:
-        log.warning(f"Could not read {BRIDGE_CONFIG_PATH}: {e}")
+        log.warning("Konfiguration nicht lesbar (%s)", type(e).__name__)
 
     for raw in header_args or []:
         try:
