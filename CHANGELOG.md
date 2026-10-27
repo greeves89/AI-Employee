@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.378.13] - 2026-10-27
+
+### Geändert
+- Embedding-Dienst: transformers auf 5.20.2 angehoben. Die Abhängigkeitsschranken (torch, numpy) bleiben unverändert gegenüber 5.19.0, die vorher nötige Einschränkung auf eine torch-Version bleibt damit gültig.
+
 ## [1.378.12] - 2026-10-27
 
 ### Neu
