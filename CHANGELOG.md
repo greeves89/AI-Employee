@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.378.10] - 2026-10-27
+
+### Geändert
+- Embedding-Dienst: sentence-transformers auf 6.2.0 angehoben (Modell-Merging, schnelleres Laden, verteilte Auswertung — alles neue optionale Fähigkeiten). Bei uns nur Inferenz über `SentenceTransformer.encode` im Einsatz, unverändert.
+
 ## [1.378.9] - 2026-10-27
 
 ### Geändert
