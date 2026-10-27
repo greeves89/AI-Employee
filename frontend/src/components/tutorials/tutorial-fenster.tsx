@@ -81,11 +81,11 @@ export function TutorialFenster() {
     <Fenster offen={offen} schliessen={zu} titel={automatisch ? "Willkommen — so funktioniert AI Employee" : "Klick-Tutorials"} breite="max-w-5xl">
       {automatisch && weg && (
         <div className="border-b border-foreground/[0.06] px-5 pt-5 pb-4">
-          <div className="text-sm font-medium">In 5 Schritten startklar</div>
+          <div className="text-sm font-medium">In {weg.gesamt} Schritten startklar</div>
           <p className="mt-0.5 text-xs text-muted-foreground">
             Diese Schritte stehen auch auf deinem Dashboard und haken sich dort von selbst ab.
           </p>
-          <ol className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-5">
+          <ol className="mt-3 grid grid-cols-1 gap-2 sm:grid-flow-col sm:auto-cols-fr">
             {weg.schritte.map((s, i) => (
               <li
                 key={s.id}

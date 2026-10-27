@@ -81,6 +81,11 @@ class ErsteSchritte(unittest.IsolatedAsyncioTestCase):
             s = await es.stand(db, user, self.redis)
         return {x["id"]: x["erledigt"] for x in s["schritte"]}, s
 
+    async def _alles(self, user=ICH):
+        """Wie _stand, aber den KI-Zugang immer mit auswerten (Mitglieder sehen ihn sonst nicht)."""
+        with patch.object(es, "_ist_admin", return_value=True):
+            return await self._stand(user)
+
     async def _add(self, *objs):
         async with self.sessions() as db:
             db.add_all(objs)
@@ -89,8 +94,9 @@ class ErsteSchritte(unittest.IsolatedAsyncioTestCase):
     async def test_neu_ist_alles_offen(self):
         erledigt, s = await self._stand()
         self.assertEqual(s["erledigt"], 0)
-        self.assertEqual(s["gesamt"], 5)
+        self.assertEqual(s["gesamt"], 6, "ohne KI-Zugang sieht auch ein Mitglied diesen Schritt")
         self.assertFalse(any(erledigt.values()))
+        self.assertEqual(s["schritte"][-1]["id"], "bridge", "die Bridge kommt zuletzt")
 
     async def test_fremde_belege_zaehlen_nicht(self):
         await self._add(
@@ -103,7 +109,7 @@ class ErsteSchritte(unittest.IsolatedAsyncioTestCase):
             UserAiCredential(user_id=ANDERE, harness="claude_code", secret_encrypted="x"),
         )
         self.redis.daten[es.BRIDGE_MERKER.format(user_id=ANDERE)] = 1
-        erledigt, _ = await self._stand()
+        erledigt, _ = await self._alles()
         self.assertFalse(any(erledigt.values()), erledigt)
         erledigt_admin, _ = await self._stand(ADMIN)
         self.assertFalse(erledigt_admin["agent"], "Admin bekommt fremde Agenten nicht angerechnet")
@@ -118,37 +124,51 @@ class ErsteSchritte(unittest.IsolatedAsyncioTestCase):
                              last_status="ok"),
         )
         self.redis.daten[es.BRIDGE_MERKER.format(user_id=ICH.id)] = 1
+        await self._add(OAuthIntegration(provider=OAuthProvider.MICROSOFT, user_id=ICH.id,
+                                         access_token_encrypted="x"))
         erledigt, s = await self._stand()
         self.assertEqual(erledigt, {k: True for k in erledigt})
-        self.assertEqual(s["erledigt"], 5)
+        self.assertNotIn("ki_zugang", erledigt, "vorhandener KI-Zugang gehört nicht in die Mitgliederliste")
+        self.assertEqual((s["erledigt"], s["gesamt"]), (5, 5))
+        _, s_admin = await self._stand(ADMIN)
+        self.assertEqual(s_admin["gesamt"], 6, "Admins sehen den KI-Zugang immer")
 
     async def test_ki_zugang_abgelaufen_oder_gesperrt(self):
         await self._add(UserAiCredential(user_id=ICH.id, harness="claude_code",
                                          secret_encrypted="x", last_status="auth_failed"))
-        self.assertFalse((await self._stand())[0]["ki_zugang"], "abgelehnter Zugang zählt nicht")
+        self.assertFalse((await self._alles())[0]["ki_zugang"], "abgelehnter Zugang zählt nicht")
         gesperrt = SimpleNamespace(**{**vars(ICH), "allow_personal_credentials": False})
         async with self.sessions() as db:
             await db.execute(UserAiCredential.__table__.update().values(last_status="ok"))
             await db.commit()
         with patch("app.core.agent_credentials.personal_credentials_allowed", return_value=False):
-            self.assertFalse((await self._stand(gesperrt))[0]["ki_zugang"],
+            self.assertFalse((await self._alles(gesperrt))[0]["ki_zugang"],
                              "eigener Zugang zählt nicht, wenn eigene Zugänge gesperrt sind")
 
     async def test_ki_zugang_ueber_team_oder_freigegebenes_konto(self):
         with patch("app.core.agent_credentials.team_secret", AsyncMock(return_value="geheim")):
-            self.assertTrue((await self._stand())[0]["ki_zugang"])
+            self.assertTrue((await self._alles())[0]["ki_zugang"])
         await self._add(AIAccount(id=7, name="Konto", provider_type="anthropic", is_active=True))
-        self.assertFalse((await self._stand())[0]["ki_zugang"], "nicht freigegeben")
+        self.assertFalse((await self._alles())[0]["ki_zugang"], "nicht freigegeben")
         with patch("app.api.ai_accounts._allowed_account_ids", AsyncMock(return_value={7})):
-            self.assertTrue((await self._stand())[0]["ki_zugang"])
+            self.assertTrue((await self._alles())[0]["ki_zugang"])
 
     async def test_geteiltes_microsoft_zaehlt_ki_anbindung_nicht(self):
         await self._add(OAuthIntegration(provider=OAuthProvider.ANTHROPIC, user_id=ICH.id,
                                          access_token_encrypted="x"))
-        self.assertFalse((await self._stand())[0]["werkzeuge"], "KI-Zugang ist kein Werkzeug")
+        self.assertFalse((await self._stand())[0]["mail_kalender"], "KI-Zugang ist kein Werkzeug")
         await self._add(OAuthIntegration(provider=OAuthProvider.MICROSOFT, user_id=None,
                                          access_token_encrypted="x"))
-        self.assertTrue((await self._stand())[0]["werkzeuge"], "von der Verwaltung geteilt")
+        erledigt, _ = await self._stand()
+        self.assertTrue(erledigt["mail_kalender"], "von der Verwaltung geteilt")
+        self.assertFalse(erledigt["bridge"], "Mail ersetzt die Bridge nicht")
+
+    async def test_bridge_nur_ueber_eigenen_merker(self):
+        self.assertFalse((await self._stand())[0]["bridge"])
+        self.redis.daten[es.BRIDGE_MERKER.format(user_id=ICH.id)] = 1
+        erledigt, _ = await self._stand()
+        self.assertTrue(erledigt["bridge"])
+        self.assertFalse(erledigt["mail_kalender"], "die Bridge ersetzt Mail und Kalender nicht")
 
     async def test_ausgeschalteter_zeitplan_zaehlt_nicht(self):
         await self._add(Agent(id="meiner", name="Meiner", user_id=ICH.id),
@@ -158,6 +178,7 @@ class ErsteSchritte(unittest.IsolatedAsyncioTestCase):
 
     async def test_mitglied_bekommt_hinweis_admin_nicht(self):
         _, s = await self._stand()
+        self.assertEqual(s["schritte"][0]["id"], "ki_zugang", "fehlt der Zugang, sieht ihn auch ein Mitglied")
         self.assertTrue(s["schritte"][0]["hinweis"])
         _, s = await self._stand(ADMIN)
         self.assertIsNone(s["schritte"][0]["hinweis"])
