@@ -51,6 +51,7 @@ import {
   Brain,
   ChevronDown,
 } from "lucide-react";
+import { RechteStufen, RECHTE_STUFEN } from "@/components/agents/rechte-stufen";
 import * as api from "@/lib/api";
 import { apiFehlertext } from "@/lib/api-fehler";
 import type { AgentMode, AgentTemplate, AIAccount, AIAccountProviderType, LLMConfig, LLMProviderType, PermissionPackage, Settings as AppSettings } from "@/lib/types";
@@ -184,19 +185,6 @@ interface CreateAgentModalProps {
 }
 
 type Step = "template" | "configure";
-
-// Ehrliche Stufen-Texte (#910): L3 arbeitet im eigenen Container OHNE Rückfrage
-// (Dateien, Befehle, Pakete) und fragt erst vor Außenwirkung.
-const STUFEN_OPTIONEN = [
-  { value: "l1", label: "L1 — Nur lesen & suchen", text: "Agent kann nur lesen und suchen — keine Aktionen." },
-  { value: "l2", label: "L2 — Empfehlungen erstellen", text: "Agent erstellt Empfehlungen und Entwürfe als Dateien — führt sonst nichts aus." },
-  {
-    value: "l3",
-    label: "L3 — Selbstständig im eigenen Bereich (Standard)",
-    text: "Arbeitet selbstständig im eigenen Bereich (Dateien, Befehle, Pakete im Container), fragt vor Außenwirkung wie E-Mail, externen Diensten, Git-Push oder Käufen.",
-  },
-  { value: "l4", label: "L4 — Vollständig autonom", text: "Agent handelt vollständig eigenständig — auch nach außen, ohne Rückfragen." },
-];
 
 const ROOT_WARNUNG =
   "Der Agent darf im Container alles als Administrator (sudo ohne Einschränkung): Software, Systemdateien, Sicherheitseinstellungen. Nur für Entwicklung und Tests.";
@@ -364,7 +352,11 @@ export function CreateAgentModal({
 
   // Die Vorgabe L3 gilt höchstens bis zur Grenze der eigenen Rolle.
   useEffect(() => {
-    if (open && grenze && ueber(autonomyLevel)) setAutonomyLevel(grenze);
+    if (open && grenze && ueber(autonomyLevel)) {
+      // Die höchste der drei Stufen, die die Rolle zulässt (L1 ist immer erlaubt).
+      const erlaubt = [...RECHTE_STUFEN].reverse().find((s) => !ueber(s.stufe));
+      setAutonomyLevel(erlaubt?.stufe ?? "l1");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, grenze]);
 
@@ -1310,29 +1302,17 @@ export function CreateAgentModal({
                             </div>
                           )}
 
-                          {/* Autonomy Level */}
+                          {/* Rechte in drei Stufen (#1047); L2 und die Matrix
+                              stehen danach in den Agenten-Einstellungen. */}
                           <div>
                             <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                              Autonomie-Level
+                              Was darf der Agent?
                             </label>
-                            <select
-                              value={autonomyLevel}
-                              onChange={(e) => setAutonomyLevel(e.target.value)}
-                              className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
-                            >
-                              {STUFEN_OPTIONEN.map((o) => (
-                                <option key={o.value} value={o.value} disabled={ueber(o.value)}>
-                                  {o.label}{ueber(o.value) ? " (nicht für deine Rolle)" : ""}
-                                </option>
-                              ))}
-                            </select>
-                            <p className="mt-1 text-[11px] text-muted-foreground/60">
-                              {STUFEN_OPTIONEN.find((o) => o.value === autonomyLevel)?.text}
-                            </p>
+                            <RechteStufen wert={autonomyLevel} setWert={setAutonomyLevel} gesperrt={ueber} />
                             {grenze && (
-                              <p className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground/60">
+                              <p className="mt-1.5 flex items-center gap-1 text-[11px] text-muted-foreground/60">
                                 <Lock className="h-3 w-3" />
-                                Deine Rolle erlaubt höchstens Stufe {grenze.toUpperCase()}.
+                                Deine Rolle begrenzt, wie viel ein Agent selbst darf.
                               </p>
                             )}
                           </div>

@@ -421,6 +421,38 @@ export async function patchUiPreferences(
   });
 }
 
+// Nutzungsmessung (#1047): je Bereich und Tag gezählt, nur für sich selbst.
+export async function zaehleAufruf(pfad: string): Promise<void> {
+  await fetchJSON(`${getBase()}/nutzung/aufruf`, {
+    method: "POST",
+    body: JSON.stringify({ pfad }),
+    keepalive: true,
+  });
+}
+
+export interface MeineNutzung {
+  tage: number;
+  /** Ab so vielen Aufrufen holt das Menü einen Bereich nach oben. */
+  oft_ab: number;
+  bereiche: Record<string, number>;
+}
+
+export async function getMeineNutzung(): Promise<MeineNutzung> {
+  return fetchJSON(`${getBase()}/nutzung/meine`);
+}
+
+export interface BereichNutzung {
+  bereich: string;
+  aufrufe: number;
+  personen: number;
+  zuletzt: string | null;
+}
+
+/** Nur für Admins: Summen je Bereich, ohne Namen. */
+export async function getNutzungUebersicht(tage = 30): Promise<{ tage: number; bereiche: BereichNutzung[] }> {
+  return fetchJSON(`${getBase()}/nutzung/uebersicht?tage=${tage}`);
+}
+
 export async function stopAgent(id: string): Promise<void> {
   await fetchJSON(`${getBase()}/agents/${id}/stop`, { method: "POST" });
 }

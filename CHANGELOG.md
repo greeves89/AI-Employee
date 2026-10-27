@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.380.0] - 2026-10-27
+
+### Neu
+- **Rechte in drei Stufen.** Beim Anlegen eines Agenten und in seinen Einstellungen („Was darf der Agent?“) stehen drei Karten statt L1–L4: „Nur zuschauen“ (liest und sucht), „Fragt vorher“ (arbeitet im eigenen Bereich selbst, fragt vor allem, was nach außen geht — empfohlen) und „Darf selbst“. Die bisherige Matrix steht unverändert darunter unter „Feineinstellung“; L2 und angepasste Matrizen erscheinen dort als „Eigene Einstellung“. Die Grenze der eigenen Rolle gilt weiter.
+- **Aufgeräumtes Menü für Administratoren.** Seltener gebrauchte Bereiche (Aktivität, Auswertung, Gelerntes, Besprechungsräume, Apps, Workflows, Skill-Marktplatz, Auslöser, Golden-Tests) stehen unter „Weitere Bereiche“ am Ende der Seitenleiste. Offen oder zu wird am Konto gemerkt. Wer einen dieser Bereiche oft öffnet (ab drei Aufrufen in 30 Tagen) oder gerade darin ist, sieht ihn wieder an seinem gewohnten Platz. Die einfache Ansicht für Mitglieder bleibt, wie sie ist.
+- **Nutzungsmessung je Bereich.** Gezählt wird, wie oft jemand einen Bereich öffnet — je Bereich und Tag, ohne Uhrzeit, Reihenfolge oder Seiteninhalt; Zählungen älter als 180 Tage werden gelöscht. Administratoren sehen unter Auswertung → „Genutzte Bereiche“ die Summen (Aufrufe, Anzahl Personen, zuletzt), nie wer; nie geöffnete Bereiche stehen mit „nie“ in der Liste.
+
+### Technik
+- Neue Tabelle `bereich_aufrufe` (Migration `b7c8d9e0f1a2`), Endpunkte `POST /nutzung/aufruf`, `GET /nutzung/meine` (nur eigene), `GET /nutzung/uebersicht` (nur Admins). Oberflächen-Einstellung `menue` in `ui_preferences` erlaubt.
+
 ## [1.379.4] - 2026-10-27
 
 ### Behoben

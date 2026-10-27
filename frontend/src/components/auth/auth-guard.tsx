@@ -8,6 +8,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { BetreiberHinweis } from "@/components/layout/betreiber-hinweis";
 import { VoiceSessionProvider } from "@/components/agents/voice-session-provider";
 import { SidebarProvider, useSidebarCollapsed } from "@/hooks/use-sidebar";
+import { useBereichMessung } from "@/hooks/use-nutzung";
 import { cn } from "@/lib/utils";
 
 const PUBLIC_PATHS = ["/login", "/register"];
@@ -22,6 +23,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     initAuth();
   }, []);
+
+  // Welche Bereiche werden geöffnet (#1047)? Hier statt in der App-Hülle, damit
+  // auch Seiten mit eigenem Layout (/chat) mitzählen. Ohne Anmeldung: nichts.
+  useBereichMessung();
 
   // Währung und Kurs EINMAL laden, sobald jemand angemeldet ist. Muss vor der
   // ersten Geldzahl stehen: sonst rendert eine Seite erst in Dollar und springt

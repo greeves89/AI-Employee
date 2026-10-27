@@ -29,6 +29,7 @@ from app.models.projekt_karte import ProjektKarte
 from app.models.projekt_nachricht import ProjektNachricht
 from app.models.erinnerung import Erinnerung
 from app.models.bridge_regel import BridgeRegel
+from app.models.bereich_aufruf import BereichAufruf
 from app.models.test_run import TestRun
 from app.models.meeting import Meeting
 from app.models.meeting_room import MeetingRoom
@@ -72,6 +73,7 @@ __all__ = [
     "ProjektNachricht",
     "Erinnerung",
     "BridgeRegel",
+    "BereichAufruf",
     "TestRun",
     "Meeting",
     "MeetingRoom",
