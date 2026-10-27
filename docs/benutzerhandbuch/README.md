@@ -2642,6 +2642,10 @@ Menüpunkt **Mitdenken** (Haken) oder den Knopf im Hauptfenster.
 - **Ausblenden** — blendet Statusmeldungen aus; ein neues Angebot oder ein Ergebnis kommt
   trotzdem.
 
+Liegt das Overlay im Weg, greif es am dunklen Hintergrund (nicht an einem Knopf) und zieh es
+woandershin. Die Bridge merkt sich die Stelle, auch nach einem Neustart; dorthin klickt
+auch der Agent nicht.
+
 Unter dem Angebot steht klein „Danach tut der Agent: …“ — das ist genau der Auftrag, den
 dein Ja freigibt.
 

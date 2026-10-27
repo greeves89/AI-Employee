@@ -2320,6 +2320,16 @@ def show_interaction_bar(cfg: dict) -> None:
                 sender.setTitle_("Stop")
                 status.setStringValue_("Live — sprich einfach")
                 transcript.setStringValue_("Ich höre.")
+                app_log.info("Sprachleiste: Mikrofon an")
+
+                def _pruefen(mic=state["mic"]):
+                    if mic.active and mic.stumm():
+                        app_log.warning("Sprachleiste: Mikrofon liefert nur Stille (Freigabe fehlt?)")
+                        status.performSelectorOnMainThread_withObject_waitUntilDone_(
+                            "setStringValue:", "Mikrofon liefert nur Stille — Freigabe prüfen: "
+                            "Systemeinstellungen → Datenschutz → Mikrofon", False)
+
+                threading.Timer(2.5, _pruefen).start()
             else:
                 state["mic"].stop()
                 _voice_send_commit("de")
@@ -2369,10 +2379,20 @@ class _MicStreamer:
 
     def __init__(self) -> None:
         self._stream = None
+        self.bloecke = 0
+        self.spitze = 0
 
     @property
     def active(self) -> bool:
         return self._stream is not None
+
+    def stumm(self) -> bool:
+        """Mindestens 1,5 s Ton und davon kein einziges Sample ungleich null.
+
+        So sieht es aus, wenn macOS den Zugriff still verweigert (Hardened Runtime
+        ohne audio-input-Berechtigung, Freigabe entzogen): KEIN Fehler, nur Nullen.
+        Echte Stille im Raum hat immer etwas Rauschen."""
+        return self.bloecke >= 15 and self.spitze == 0
 
     def start(self, send_chunk) -> str:
         """``send_chunk(bytes)`` bekommt rohe PCM16-Bloecke. '' = ok, sonst Fehlertext."""
@@ -2383,8 +2403,13 @@ class _MicStreamer:
         except ImportError:
             return "sounddevice fehlt — Mikrofon nicht nutzbar"
 
+        self.bloecke, self.spitze = 0, 0
+
         def _cb(indata, _frames, _time, _status):
             try:
+                self.bloecke += 1
+                if self.spitze == 0:
+                    self.spitze = int(abs(indata).max()) if len(indata) else 0
                 send_chunk(bytes(indata))
             except Exception:  # noqa: BLE001 — Verbindung weg; Stopp kommt von aussen
                 pass
@@ -2607,6 +2632,15 @@ def _show_interaction_bar_ctk(cfg: dict) -> None:
             speech_btn.configure(text="Stop")
             status_lbl.configure(text="Live — sprich einfach")
             transcript_lbl.configure(text="Ich höre.")
+            app_log.info("Sprachleiste: Mikrofon an")
+
+            def _pruefen(mic=state["mic"]):
+                if mic.active and mic.stumm():
+                    app_log.warning("Sprachleiste: Mikrofon liefert nur Stille (Freigabe fehlt?)")
+                    status_lbl.configure(text="Mikrofon liefert nur Stille — Freigabe prüfen: "
+                                              "Einstellungen → Datenschutz → Mikrofon")
+
+            root.after(2500, _pruefen)
         else:
             state["mic"].stop()
             _voice_send_commit("de")
@@ -3260,6 +3294,11 @@ class _MacOverlay:
                     eingabe = str(ui.eingabe.stringValue()) if ui.eingabe is not None else ""
                     _overlay_klick(ui.cfg, knopf, eingabe)
 
+                def windowDidMove_(self, _note):
+                    ui = _overlay.get("ui")
+                    if ui is not None:
+                        ui._verschoben()
+
             _OverlayPanelKlasse, _OverlayHandlerKlasse = AIEOverlayPanel, AIEOverlayHandler
 
         def farbe(r, g, b, a=1.0):
@@ -3281,6 +3320,9 @@ class _MacOverlay:
         panel.setSharingType_(0)
         # Auf jedem Schreibtisch (Spaces) und ueber Vollbild-Apps.
         panel.setCollectionBehavior_((1 << 0) | (1 << 8))
+        # Am Hintergrund greifen und verschieben — die Leiste lag oft genau ueber
+        # dem, woran man arbeitet. Die Lage bleibt gemerkt (overlay_lage).
+        panel.setMovableByWindowBackground_(True)
         cv = panel.contentView()
 
         hinten = NSVisualEffectView.alloc().initWithFrame_(NSMakeRect(0, 0, W, H))
@@ -3336,6 +3378,7 @@ class _MacOverlay:
         self.feld.addSubview_(self.eingabe)
 
         self.handler = _OverlayHandlerKlasse.alloc().init()
+        panel.setDelegate_(self.handler)
 
         def knopf(tag, chip=False):
             b = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, 80, 24 if chip else 30))
@@ -3482,13 +3525,30 @@ class _MacOverlay:
             f = self.panel.screen().visibleFrame() if self.panel.screen() else None
         except Exception:  # noqa: BLE001
             f = None
-        if f is not None:
+        gemerkt = overlay_lage_lesen(self.cfg)
+        from AppKit import NSMakeRect
+        if gemerkt and _auf_einem_bildschirm(NSMakeRect(gemerkt[0], gemerkt[1] - H, W, H)):
+            # Oberkante bleibt, wo der Mensch die Leiste hingezogen hat; sie waechst nach unten.
+            ox, oben = gemerkt
+        elif f is not None:
             ox, oben = f.origin.x + (f.size.width - W) / 2, f.origin.y + f.size.height - 8
         else:
             ox, oben = alt.origin.x, alt.origin.y + alt.size.height
-        self.panel.setFrame_display_(((ox, oben - H), (W, H)), True)
+        self._setzt = True
+        try:
+            self.panel.setFrame_display_(((ox, oben - H), (W, H)), True)
+        finally:
+            self._setzt = False
         self.hinten.setFrame_(((0, 0), (W, H)))
         self.toenung.setFrame_(((0, 0), (W, H)))
+
+    def _verschoben(self) -> None:
+        """Vom Menschen verschoben: Lage merken, Klick-Sperrzone mitziehen."""
+        if getattr(self, "_setzt", False) or self.panel is None:
+            return
+        f = self.panel.frame()
+        overlay_lage_merken(self.cfg, (f.origin.x, f.origin.y + f.size.height))
+        self._sperrzone_setzen()
 
     def _sperrzone_setzen(self) -> None:
         """Rahmen in Bridge-Koordinaten (logische Punkte, oben links) umrechnen."""
@@ -3500,6 +3560,25 @@ class _MacOverlay:
 
 _OverlayPanelKlasse = None
 _OverlayHandlerKlasse = None
+
+
+def overlay_lage_lesen(cfg: dict) -> tuple[float, float] | None:
+    """Gemerkte Lage des Overlays (x, Oberkante) — oder None (oben mittig)."""
+    lage = cfg.get("overlay_lage")
+    try:
+        x, y = float(lage[0]), float(lage[1])
+    except (TypeError, ValueError, IndexError, KeyError):
+        return None
+    return x, y
+
+
+def overlay_lage_merken(cfg: dict, lage) -> None:
+    """Nur bei echter Aenderung speichern — Verschieben meldet viele Zwischenschritte."""
+    neu = [round(float(lage[0])), round(float(lage[1]))]
+    if cfg.get("overlay_lage") == neu:
+        return
+    cfg["overlay_lage"] = neu
+    save_config(cfg)
 
 
 def _sperrzone(rahmen) -> None:
@@ -3549,6 +3628,27 @@ class _TkOverlay:
         hinten, vorne, gedimmt, akzent = "#141a24", "#f2f4f7", "#8f97a3", "#0378c7"
         rahmen = tk.Frame(root, bg=hinten, highlightthickness=1, highlightbackground=akzent)
         rahmen.pack(fill="both", expand=True)
+        # Ohne Titelleiste (overrideredirect) selbst verschieben: am Hintergrund
+        # greifen und ziehen; die Lage bleibt gemerkt, die Klick-Sperrzone zieht mit.
+        greif = {"dx": 0, "dy": 0}
+
+        def _greifen(e):
+            greif["dx"], greif["dy"] = e.x_root - root.winfo_x(), e.y_root - root.winfo_y()
+
+        def _ziehen(e):
+            root.geometry(f"+{e.x_root - greif['dx']}+{e.y_root - greif['dy']}")
+
+        def _loslassen(_e):
+            overlay_lage_merken(self.cfg, (root.winfo_x(), root.winfo_y()))
+            _sperrzone((root.winfo_rootx(), root.winfo_rooty(), root.winfo_width(), root.winfo_height()))
+
+        def _ziehbar(w):
+            w.bind("<ButtonPress-1>", _greifen)
+            w.bind("<B1-Motion>", _ziehen)
+            w.bind("<ButtonRelease-1>", _loslassen)
+
+        self._ziehbar = _ziehbar
+        _ziehbar(rahmen)
         kopfzeile = tk.Frame(rahmen, bg=hinten)
         kopfzeile.pack(fill="x", padx=16, pady=(12, 0))
         self._symbol_bild = None
@@ -3628,8 +3728,20 @@ class _TkOverlay:
                           padx=10, pady=2, takefocus=0, font=("Segoe UI", 9),
                           command=lambda s=schluessel: klick(s)).pack(side="left", padx=(0, 6))
             root.update_idletasks()
-            x = (root.winfo_screenwidth() - self.W) // 2
-            root.geometry(f"{self.W}x{root.winfo_reqheight()}+{x}+8")
+            x, y = (root.winfo_screenwidth() - self.W) // 2, 8
+            gemerkt = overlay_lage_lesen(self.cfg)
+            if gemerkt and _tk_auf_bildschirm(root, gemerkt, self.W):
+                x, y = int(gemerkt[0]), int(gemerkt[1])
+            root.geometry(f"{self.W}x{root.winfo_reqheight()}+{x}+{y}")
+
+            def _alle_ziehbar(w):
+                # Rahmen und Beschriftungen greifen; Knoepfe und Eingabefeld bleiben bedienbar.
+                if w.winfo_class() in ("Frame", "Label"):
+                    _ziehbar(w)
+                for kind in w.winfo_children():
+                    _alle_ziehbar(kind)
+
+            _alle_ziehbar(rahmen)
             root.deiconify()
             root.lift()
             root.attributes("-topmost", True)
@@ -3651,6 +3763,18 @@ class _TkOverlay:
 
         root.after(150, abholen)
         root.mainloop()
+
+
+def _tk_auf_bildschirm(root, lage, breite) -> bool:
+    """Liegt die gemerkte Lage noch auf dem (virtuellen) Schreibtisch? Sonst oben mittig."""
+    try:
+        vx, vy = root.winfo_vrootx(), root.winfo_vrooty()
+        vw = root.winfo_vrootwidth() or root.winfo_screenwidth()
+        vh = root.winfo_vrootheight() or root.winfo_screenheight()
+        mx, my = lage[0] + breite / 2, lage[1] + 20
+        return vx <= mx <= vx + vw and vy <= my <= vy + vh
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _aus_aufnahmen_nehmen(root) -> None:
