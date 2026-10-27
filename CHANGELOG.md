@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.378.14] - 2026-10-27
+
+### Neu
+- **Die Sprachleiste der Bridge lässt sich auf dem Mac verschieben.** Einfach am Hintergrund greifen und ziehen; die Bridge merkt sich die Lage. Ist der Bildschirm von damals nicht mehr angeschlossen, erscheint die Leiste wieder unten in der Mitte.
+
+### Behoben
+- **„Trennen“ in der Bridge trennte nicht.** Der Stopp setzte nur einen Wert, den niemand las; die Verbindung lief weiter, und das Hauptfenster blieb danach für immer auf „Verbinde…“ stehen. Jetzt wird die Verbindung wirklich beendet (Mikrofon, Tastenmitschnitt und Mitsehen werden dabei abgeschaltet), das Fenster zeigt kurz „Trenne…“ und dann „Nicht verbunden“.
+- Der Verbindungsstatus wird beim Start gesetzt, bevor die Verbindung aufgebaut wird; ein schneller Aufbau konnte „Verbunden“ sonst wieder mit „Verbinde…“ überschreiben. Jeder Zustandswechsel steht jetzt im Protokoll.
+
 ## [1.378.13] - 2026-10-27
 
 ### Geändert
