@@ -2906,7 +2906,8 @@ class Bridge:
         try:
             self.on_state(state, detail)
         except Exception:  # noqa: BLE001 — a broken callback must not kill the bridge
-            log.debug("on_state callback failed", exc_info=True)
+            # Sichtbar: ein stiller Fehler hier laesst die App auf „Verbinde…“ stehen.
+            log.warning("on_state callback failed", exc_info=True)
 
     async def _handle_message(self, ws, raw: str) -> None:
         try:
@@ -3096,15 +3097,28 @@ async def run(
                     on_overlay=on_overlay)
     if on_bridge:
         on_bridge(bridge)
+    verbindung = asyncio.ensure_future(bridge.connect())
     if stop_event:
         async def _watch_stop():
-            while not stop_event.is_set():
-                await asyncio.sleep(0.5)
-            bridge.running = False
+            while not stop_event.is_set() and not verbindung.done():
+                await asyncio.sleep(0.2)
+            if verbindung.done():
+                return
             # Getrennt heisst: niemand sieht mehr hin.
             bridge.observer.anhalten()
+            # Vorher setzte das hier nur ein Attribut, das niemand las — „Trennen“
+            # trennte nie, der Socket lief weiter und die App zeigte für immer
+            # „Verbinde…“. Jetzt wird die Verbindung wirklich beendet; die
+            # finally-Bloecke in connect() raeumen Mikrofon, Tastenmitschnitt und
+            # Mitsehen auf.
+            verbindung.cancel()
         asyncio.create_task(_watch_stop())
-    await bridge.connect()
+    try:
+        await verbindung
+    except asyncio.CancelledError:
+        if not (stop_event and stop_event.is_set()):
+            raise
+        log.info("Getrennt auf Nutzerwunsch")
 
 
 if __name__ == "__main__":

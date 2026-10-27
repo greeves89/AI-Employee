@@ -2529,6 +2529,11 @@ Sprechen, Einstellungen und „Im Browser öffnen“:
 
 ![Hauptfenster der Bridge: Status Verbunden, Bereich Mitsehen, Aktionen](screenshots/23-bridge-hauptfenster.png)
 
+**Trennen** beendet die Verbindung sofort: Das Fenster zeigt kurz „Trenne…“, dann „Nicht
+verbunden“; Mikrofon und Mitsehen sind damit aus. **Sprechen** öffnet die Sprachleiste
+unten am Bildschirm. Auf dem Mac greifst du sie am Hintergrund und ziehst sie dorthin, wo
+sie nicht stört; die Bridge merkt sich die Lage.
+
 **Schritt 3 — Berechtigungen festlegen.** Im Dialog wählst du pro Fähigkeit (Screenshot,
 Klick, Tippen, App öffnen, Shell, Zwischenablage, Browser-Steuerung, ego lite …), **was der
 Agent darf** — jeweils mit **Risiko-Einstufung** (gering/mittel/hoch). Nur Freigegebenes ist

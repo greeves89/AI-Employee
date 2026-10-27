@@ -593,12 +593,14 @@ def start_bridge(cfg):
             _status = "error: nicht eingerichtet"
             return False
         _bridge_stop.clear()
+        # VOR dem Start: sonst kann ein schneller Verbindungsaufbau sein
+        # „connected“ melden und danach hier wieder mit „connecting“ ueberschrieben werden.
+        _status = "connecting"
         _bridge_thread = threading.Thread(
             target=_run_bridge_thread,
             args=(cfg["url"], cfg["token"], cfg["session"]),
             daemon=True)
         _bridge_thread.start()
-        _status = "connecting"
         return True
 
 
@@ -626,6 +628,7 @@ def _run_bridge_thread(url, token, session_id):
             # can only learn the real state through this callback. Without it the
             # status window sat on "Verbinde…" forever.
             global _status
+            app_log.info("Verbindungszustand: %s", state)
             if state == "connected":
                 _status = "connected"
             elif state == "rejected":
@@ -869,6 +872,18 @@ def _make_fenster(title, w, h):
     f.setReleasedWhenClosed_(False)
     f.setFrameAutosaveName_("AIEBridgeHauptfenster")
     return f
+
+
+def _auf_einem_bildschirm(rahmen) -> bool:
+    """Liegt die Fenstermitte auf einem angeschlossenen Bildschirm?"""
+    from AppKit import NSScreen
+    mx = rahmen.origin.x + rahmen.size.width / 2
+    my = rahmen.origin.y + rahmen.size.height / 2
+    for s in NSScreen.screens() or []:
+        f = s.frame()
+        if f.origin.x <= mx <= f.origin.x + f.size.width and f.origin.y <= my <= f.origin.y + f.size.height:
+            return True
+    return False
 
 
 def _label(cv, text, x, y, w, h, size=13, bold=False, muted=False, color=None):
@@ -1502,6 +1517,8 @@ _main_state: dict = {}
 def _main_status_parts() -> tuple[str, str]:
     """(Text, Farbname) fuer den Verbindungs-Badge — EINE Ableitung fuer beide
     Plattformen, damit Hauptfenster und Tray nie zweierlei behaupten."""
+    if is_running() and _bridge_stop.is_set():
+        return "Trenne…", "amber"
     if is_running() and _status == "connected":
         return "Verbunden", "green"
     if is_running() or _status == "connecting":
@@ -2191,6 +2208,13 @@ def show_interaction_bar(cfg: dict) -> None:
         panel.setFrameOrigin_((frame.origin.x + (frame.size.width - W) / 2, frame.origin.y + 24))
     except Exception:
         panel.center()
+    # Ohne Titelleiste war die Leiste festgenagelt — sie lag oft genau ueber dem,
+    # woran man arbeitet. Jetzt am Hintergrund ziehen; die Lage bleibt gemerkt.
+    panel.setMovableByWindowBackground_(True)
+    standard = panel.frame()
+    if panel.setFrameUsingName_("AIEVoiceLeiste") and not _auf_einem_bildschirm(panel.frame()):
+        panel.setFrame_display_(standard, False)    # Bildschirm von damals ist abgesteckt
+    panel.setFrameAutosaveName_("AIEVoiceLeiste")
 
     cv = panel.contentView()
     backdrop = NSVisualEffectView.alloc().initWithFrame_(NSMakeRect(0, 0, W, H))
