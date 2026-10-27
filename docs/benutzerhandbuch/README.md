@@ -2994,8 +2994,10 @@ Kurze Videos mit Sprecher und Einblendungen zu jedem Schritt zeigen die wichtigs
 **Rechte eines Agenten einstellen**, **Dateien und Ergebnisse finden**.
 
 **Beim ersten Start** öffnet sich das Fenster **„Willkommen — so funktioniert AI Employee“**
-von selbst. Links wählst du ein Tutorial, rechts läuft das Video. Mit **„Los geht's“**
-oder dem **X** schließt du es — es kommt danach nicht mehr von selbst.
+von selbst. Oben stehen die [fünf Schritte](#in-5-schritten-startklar), mit denen du
+startklar wirst (erledigte sind grün abgehakt); darunter wählst du links ein Tutorial, rechts
+läuft das Video. Mit **„Los geht's“** oder dem **X** schließt du es — es kommt danach nicht
+mehr von selbst. Die fünf Schritte begleiten dich weiter auf dem **Dashboard**.
 
 ![Willkommensfenster mit den Klick-Tutorials](screenshots/40-tutorials-fenster.png)
 

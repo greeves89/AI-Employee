@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.379.1] - 2026-10-27
+
+### Neu
+- **Willkommensfenster zeigt die fünf Schritte.** Beim ersten Start steht oben „In 5 Schritten startklar“ mit dem eigenen Stand (erledigte Schritte grün abgehakt), darunter wie bisher die Klick-Tutorials. Die Schritte kommen aus derselben Quelle wie die Karte auf dem Dashboard.
+
 ## [1.379.0] - 2026-10-27
 
 ### Neu

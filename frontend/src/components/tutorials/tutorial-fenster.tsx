@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { create } from "zustand";
-import { PlayCircle } from "lucide-react";
+import { Check, PlayCircle } from "lucide-react";
+import { getErsteSchritte, type ErsteSchritte } from "@/lib/api";
 import { Fenster } from "@/components/ui/fenster";
 import { markTutorialSeen, useAuthStore } from "@/lib/auth";
 import { TUTORIALS, tutorialFinden } from "@/lib/tutorials";
@@ -45,6 +46,19 @@ export function TutorialFenster() {
   const setUser = useAuthStore((s) => s.setUser);
   const pathname = usePathname();
   const schonGeoeffnet = useRef(false);
+  // Beim ersten Start derselbe Weg wie auf dem Dashboard (#1047) — eine Quelle: der Server.
+  const [weg, setWeg] = useState<ErsteSchritte | null>(null);
+
+  useEffect(() => {
+    if (!offen || !automatisch) return;
+    let aktiv = true;
+    getErsteSchritte()
+      .then((s) => aktiv && setWeg(s))
+      .catch(() => aktiv && setWeg(null));
+    return () => {
+      aktiv = false;
+    };
+  }, [offen, automatisch]);
 
   useEffect(() => {
     if (schonGeoeffnet.current || !user || user.tutorial_seen_at) return;
@@ -65,6 +79,35 @@ export function TutorialFenster() {
   const t = tutorialFinden(aktiv) ?? TUTORIALS[0];
   return (
     <Fenster offen={offen} schliessen={zu} titel={automatisch ? "Willkommen — so funktioniert AI Employee" : "Klick-Tutorials"} breite="max-w-5xl">
+      {automatisch && weg && (
+        <div className="border-b border-foreground/[0.06] px-5 pt-5 pb-4">
+          <div className="text-sm font-medium">In 5 Schritten startklar</div>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Diese Schritte stehen auch auf deinem Dashboard und haken sich dort von selbst ab.
+          </p>
+          <ol className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-5">
+            {weg.schritte.map((s, i) => (
+              <li
+                key={s.id}
+                className={cn(
+                  "flex items-start gap-2 rounded-lg border px-2.5 py-2 text-xs",
+                  s.erledigt ? "border-emerald-500/30 bg-emerald-500/[0.06]" : "border-foreground/[0.08]",
+                )}
+              >
+                <span
+                  className={cn(
+                    "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-medium",
+                    s.erledigt ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-foreground/[0.06]",
+                  )}
+                >
+                  {s.erledigt ? <Check className="h-3 w-3" /> : i + 1}
+                </span>
+                <span className="font-medium leading-snug">{s.titel}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
       <div className="flex flex-col gap-4 p-5 md:flex-row">
         <nav className="flex shrink-0 flex-col gap-1.5 md:w-64">
           {TUTORIALS.map((x, i) => (
