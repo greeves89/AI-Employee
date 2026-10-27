@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.379.2] - 2026-10-27
+
+### Geändert
+- **Einstiegskarte: die Bridge ist der letzte Schritt.** „Werkzeuge anschließen“ ist aufgeteilt in „Mail und Kalender verbinden“ und, zum Schluss, „Auf deinem Rechner mithelfen lassen“ mit den Download-Knöpfen für Mac und Windows direkt in der Karte. Mail ersetzt die Bridge nicht mehr und umgekehrt.
+- **KI-Zugang nur, wo er hingehört:** Administratoren sehen den Schritt immer. Bei Mitgliedern richtet ihn die Verwaltung ein; er erscheint in ihrer Liste nur, solange er fehlt. Ein Mitglied hat damit fünf Schritte: Agent, Wissen, Mail und Kalender, Alltag, Bridge.
+- Texte der Schritte einfacher formuliert; die Überschrift nennt die tatsächliche Zahl der Schritte.
+
 ## [1.379.1] - 2026-10-27
 
 ### Neu

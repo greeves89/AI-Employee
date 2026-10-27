@@ -40,30 +40,35 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 
 ## In 5 Schritten startklar
 
-Mit diesen fünf Schritten nutzt du AI-Employee sauber. Auf dem **Dashboard** steht dafür die
+Mit diesen Schritten nutzt du AI-Employee sauber. Auf dem **Dashboard** steht dafür die
 Karte **„In 5 Schritten startklar“**: Sie zeigt, was erledigt ist, und hakt jeden Schritt
 **von selbst** ab, sobald er eingerichtet ist. Der nächste offene Schritt hat den Knopf
 **Jetzt machen**, der direkt auf die richtige Seite führt.
 
-![Karte „In 5 Schritten startklar“ auf dem Dashboard: vier Schritte erledigt, der fünfte mit dem Knopf „Jetzt machen“](screenshots/00-erste-schritte.png)
+![Karte „In 5 Schritten startklar“ auf dem Dashboard: erledigte Schritte abgehakt, der nächste mit dem Knopf „Jetzt machen“](screenshots/00-erste-schritte.png)
 
-1. **KI-Zugang verbinden.** Ein Claude-, ChatGPT- oder Azure-Konto hinterlegen
-   (Administratoren unter **AI-Accounts**, sonst unter **Einstellungen**). Ohne Zugang kann kein
-   Agent denken; ein Konto reicht für alle. Bei Mitgliedern richtet das meist die Verwaltung ein.
-2. **Agenten aus einer Vorlage anlegen.** Vorlage wählen, Name und Aufgabe in einem Satz
-   (siehe [Onboarding](#2-onboarding) und [Agenten anlegen](#42-einen-agenten-anlegen--schritt-für-schritt)).
-3. **Wissen geben.** Unter **Knowledge Base** ablegen, was ein neuer Kollege am ersten Tag
+1. **Agenten aus einer Vorlage anlegen.** Vorlage wählen, Name und in einem Satz, wobei er
+   helfen soll (siehe [Onboarding](#2-onboarding) und [Agenten anlegen](#42-einen-agenten-anlegen--schritt-für-schritt)).
+2. **Wissen geben.** Unter **Knowledge Base** ablegen, was ein neuer Kollege am ersten Tag
    bekäme: Abläufe, Vorlagen, wichtige Kontakte. Auch was sich dein Agent selbst merkt, zählt.
-4. **Werkzeuge anschließen.** Unter **Integrationen** Mail und Kalender verbinden (Microsoft 365,
-   Google) oder die [Computer-Use Bridge](#23-computer-use-bridge-desktop-steuern) installieren. Ein von der
-   Verwaltung geteilter Zugang zählt ebenfalls.
-5. **In den Alltag holen.** Einen [Zeitplan](#12-schedules) für deinen Agenten anlegen (etwa
+3. **Mail und Kalender verbinden.** Unter **Integrationen** einmal mit dem Microsoft- oder
+   Google-Konto anmelden. Ein von der Verwaltung geteilter Zugang zählt ebenfalls.
+4. **In den Alltag holen.** Einen [Zeitplan](#12-schedules) für deinen Agenten anlegen (etwa
    morgens den Tag vorbereiten) oder das Sekretariat einrichten, und einmal am Tag auf **Heute**
    und in die **Freigaben** schauen.
+5. **Auf deinem Rechner mithelfen lassen.** Zum Schluss die
+   [Computer-Use Bridge](#23-computer-use-bridge-desktop-steuern) installieren — die Karte zeigt
+   dafür die Download-Knöpfe für Mac und Windows direkt an. Danach sieht dein Agent, woran du
+   gerade arbeitest, bietet Hilfe an und fragt, bevor er etwas tut.
+
+**Davor, nur falls nötig: KI-Zugang verbinden.** Ohne Claude-, ChatGPT- oder Azure-Konto kann
+kein Agent denken. Administratoren sehen diesen Schritt immer (unter **AI-Accounts**). Bei
+Mitgliedern richtet ihn die Verwaltung ein; er erscheint in ihrer Liste nur, solange er fehlt.
 
 Gezählt wird nur, was **dir** gehört: Agenten, Wissen und Zeitpläne anderer Personen haken bei
 dir nichts ab. Mit dem **×** oben rechts blendest du die Karte für zwei Wochen aus; sind alle
-fünf Schritte erledigt, verschwindet sie ganz.
+Schritte erledigt, verschwindet sie ganz. Wie die Karte für Mitglieder aussieht, prüfen
+Administratoren mit dem Schalter **Mitglieder-Ansicht** im Benutzermenü.
 
 ---
 

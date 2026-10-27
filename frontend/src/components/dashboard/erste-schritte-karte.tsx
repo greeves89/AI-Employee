@@ -9,9 +9,11 @@ import {
   CalendarClock,
   Check,
   KeyRound,
-  Plug,
+  Laptop,
+  Mail,
   X,
 } from "lucide-react";
+import { BridgeDownload } from "@/components/agents/bridge-download";
 import { getErsteSchritte, type ErsteSchritte, type ErsterSchritt } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth";
 import { cn } from "@/lib/utils";
@@ -20,8 +22,9 @@ const SYMBOL: Record<ErsterSchritt["id"], typeof Bot> = {
   ki_zugang: KeyRound,
   agent: Bot,
   wissen: BookOpen,
-  werkzeuge: Plug,
+  mail_kalender: Mail,
   alltag: CalendarClock,
+  bridge: Laptop,
 };
 
 const AUSGEBLENDET = "erste_schritte_ausgeblendet";
@@ -37,7 +40,8 @@ function ausgeblendet(uid: string | undefined): boolean {
   }
 }
 
-/** „Erste Schritte“ (#1047): fünf Schritte, die sich anhand echter Daten selbst abhaken. */
+/** „Erste Schritte“ (#1047): Schritte, die sich anhand echter Daten selbst abhaken.
+ *  Die Bridge kommt zuletzt und bringt ihre Downloads gleich mit. */
 export function ErsteSchritteKarte() {
   const uid = useAuthStore((s) => s.user?.id);
   const [stand, setStand] = useState<ErsteSchritte | null>(null);
@@ -77,7 +81,7 @@ export function ErsteSchritteKarte() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 id="erste-schritte-titel" className="text-lg font-semibold tracking-tight">
-            In 5 Schritten startklar
+            In {stand.gesamt} Schritten startklar
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
             {stand.erledigt} von {stand.gesamt} erledigt. Jeder Schritt hakt sich selbst ab, sobald er
@@ -135,8 +139,13 @@ export function ErsteSchritteKarte() {
                     {s.hinweis && <span className="block mt-1 italic">{s.hinweis}</span>}
                   </p>
                 )}
+                {!s.erledigt && s.id === "bridge" && istNaechster && (
+                  <div className="mt-3">
+                    <BridgeDownload />
+                  </div>
+                )}
               </div>
-              {!s.erledigt && (
+              {!s.erledigt && s.link && (
                 <Link
                   href={s.link}
                   className={cn(

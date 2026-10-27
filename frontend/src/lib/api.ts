@@ -4751,7 +4751,7 @@ export interface Heute {
 }
 
 export interface ErsterSchritt {
-  id: "ki_zugang" | "agent" | "wissen" | "werkzeuge" | "alltag";
+  id: "ki_zugang" | "agent" | "wissen" | "mail_kalender" | "alltag" | "bridge";
   titel: string;
   text: string;
   link: string;
@@ -4765,7 +4765,7 @@ export interface ErsteSchritte {
   gesamt: number;
 }
 
-/** Der eigene Stand der fünf Einstiegsschritte (#1047). */
+/** Der eigene Stand der Einstiegsschritte (#1047). */
 export async function getErsteSchritte(): Promise<ErsteSchritte> {
   return fetchJSON(`${getBase()}/erste-schritte`);
 }

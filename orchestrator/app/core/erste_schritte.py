@@ -1,4 +1,4 @@
-"""Erste Schritte: fünf Schritte, mit denen ein Mensch AI-Employee sauber nutzt (#1047).
+"""Erste Schritte: die Schritte, mit denen ein Mensch AI-Employee sauber nutzt (#1047).
 
 Jeder Schritt gilt als erledigt, wenn es im System den Beleg dafür gibt — nicht,
 weil jemand ein Häkchen gesetzt hat. So bleibt die Liste ehrlich: wer seinen
@@ -81,11 +81,14 @@ async def _wissen(db: AsyncSession, uid: str) -> bool:
     return await _gedaechtnis(db, uid)
 
 
-async def _werkzeuge(db: AsyncSession, uid: str, redis) -> bool:
-    if await db.scalar(select(exists().where(
-            OAuthIntegration.provider.in_(_WERKZEUGE),
-            or_(OAuthIntegration.user_id == uid, OAuthIntegration.user_id.is_(None))))):
-        return True
+async def _mail_kalender(db: AsyncSession, uid: str) -> bool:
+    """Eigene oder von der Verwaltung geteilte Anbindung (Microsoft 365, Google, Exchange, GitHub)."""
+    return bool(await db.scalar(select(exists().where(
+        OAuthIntegration.provider.in_(_WERKZEUGE),
+        or_(OAuthIntegration.user_id == uid, OAuthIntegration.user_id.is_(None))))))
+
+
+async def _bridge(uid: str, redis) -> bool:
     client = getattr(redis, "client", None)
     if client is None:
         return False
@@ -107,9 +110,10 @@ async def _alltag(db: AsyncSession, user) -> bool:
 
 
 async def stand(db: AsyncSession, user, redis=None) -> dict:
-    """Die fünf Schritte für diesen Nutzer, mit Beleg aus dem System."""
+    """Die Einstiegsschritte für diesen Nutzer, mit Beleg aus dem System."""
     uid = str(user.id)
     admin = _ist_admin(user)
+    ki = await _ki_zugang(db, user)
     schritte = [
         {
             "id": "ki_zugang",
@@ -117,15 +121,15 @@ async def stand(db: AsyncSession, user, redis=None) -> dict:
             "text": ("Hinterlege ein Claude-, ChatGPT- oder Azure-Konto. Ohne Zugang kann kein "
                      "Agent denken; ein Konto reicht für alle Agenten."),
             "link": "/ai-accounts" if admin else "/settings",
-            "erledigt": await _ki_zugang(db, user),
+            "erledigt": ki,
             # Für Mitglieder richtet das meist die Verwaltung ein.
             "hinweis": None if admin else "Das richtet meist deine Verwaltung ein.",
         },
         {
             "id": "agent",
             "titel": "Agenten aus einer Vorlage anlegen",
-            "text": ("Wähle eine Vorlage, gib ihm einen Namen und eine Aufgabe in einem Satz. "
-                     "Am Anfang fragt er, bevor er etwas Folgenreiches tut."),
+            "text": ("Wähle eine Vorlage, gib ihm einen Namen und sag in einem Satz, wobei er dir "
+                     "helfen soll. Am Anfang fragt er, bevor er etwas Wichtiges tut."),
             "link": "/onboarding" if admin else "/agents",
             "erledigt": await _agent(db, uid),
             "hinweis": None,
@@ -140,12 +144,12 @@ async def stand(db: AsyncSession, user, redis=None) -> dict:
             "hinweis": None,
         },
         {
-            "id": "werkzeuge",
-            "titel": "Werkzeuge anschließen",
-            "text": ("Verbinde Mail und Kalender oder installiere die Bridge, damit er auf deinem "
-                     "Rechner mithilft. Erst dann erledigt er Dinge, statt nur zu antworten."),
+            "id": "mail_kalender",
+            "titel": "Mail und Kalender verbinden",
+            "text": ("Melde dich einmal mit deinem Microsoft- oder Google-Konto an. Dann kann er "
+                     "Mails vorbereiten und Termine im Blick behalten."),
             "link": "/integrations",
-            "erledigt": await _werkzeuge(db, uid, redis),
+            "erledigt": await _mail_kalender(db, uid),
             "hinweis": None,
         },
         {
@@ -157,6 +161,20 @@ async def stand(db: AsyncSession, user, redis=None) -> dict:
             "erledigt": await _alltag(db, user),
             "hinweis": None,
         },
+        {
+            # Zuletzt: der große Schritt — der Agent hilft direkt auf dem eigenen Rechner.
+            "id": "bridge",
+            "titel": "Auf deinem Rechner mithelfen lassen",
+            "text": ("Installiere die Bridge auf deinem Mac oder Windows-PC. Dann sieht dein Agent, "
+                     "woran du gerade arbeitest, bietet Hilfe an und fragt, bevor er etwas tut."),
+            "link": "",          # die Oberfläche zeigt hier direkt die Downloads
+            "erledigt": await _bridge(uid, redis),
+            "hinweis": None,
+        },
     ]
+    # Den KI-Zugang richtet bei Mitgliedern die Verwaltung ein: ist er da, gehört er
+    # nicht in ihre Liste. Fehlt er, bleibt er sichtbar — ohne ihn geht nichts.
+    if not admin and ki:
+        schritte = [s for s in schritte if s["id"] != "ki_zugang"]
     erledigt = sum(1 for s in schritte if s["erledigt"])
     return {"schritte": schritte, "erledigt": erledigt, "gesamt": len(schritte)}
