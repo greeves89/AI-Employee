@@ -1737,6 +1737,13 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
     # stays alive for days would eventually hit the cap and 429 forever.
     session["action_count"] = 0
     await _touch_session(session_id)
+    # Dauerhafter Merker für „Erste Schritte“ (#1047): Sitzungen laufen nach 7 Tagen ab.
+    if _redis is not None and getattr(_redis, "client", None) is not None:
+        try:
+            from app.core.erste_schritte import BRIDGE_MERKER
+            await _redis.client.set(BRIDGE_MERKER.format(user_id=user_id), int(time.time()))
+        except Exception:  # noqa: BLE001 — ein Merker darf das Verbinden nie aufhalten
+            logger.debug("Bridge-Merker nicht gesetzt", exc_info=True)
     logger.info(f"Bridge connected for session {scrub_log(session_id)} (user {scrub_log(user_id)})")
 
     await websocket.send_text(json.dumps({

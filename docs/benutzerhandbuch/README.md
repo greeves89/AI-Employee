@@ -38,6 +38,33 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 
 ---
 
+## In 5 Schritten startklar
+
+Mit diesen fünf Schritten nutzt du AI-Employee sauber. Auf dem **Dashboard** steht dafür die
+Karte **„In 5 Schritten startklar“**: Sie zeigt, was erledigt ist, und hakt jeden Schritt
+**von selbst** ab, sobald er eingerichtet ist. Der nächste offene Schritt hat den Knopf
+**Jetzt machen**, der direkt auf die richtige Seite führt.
+
+1. **KI-Zugang verbinden.** Ein Claude-, ChatGPT- oder Azure-Konto hinterlegen
+   (Administratoren unter **AI-Accounts**, sonst unter **Einstellungen**). Ohne Zugang kann kein
+   Agent denken; ein Konto reicht für alle. Bei Mitgliedern richtet das meist die Verwaltung ein.
+2. **Agenten aus einer Vorlage anlegen.** Vorlage wählen, Name und Aufgabe in einem Satz
+   (siehe [Onboarding](#2-onboarding) und [Agenten anlegen](#42-einen-agenten-anlegen--schritt-für-schritt)).
+3. **Wissen geben.** Unter **Knowledge Base** ablegen, was ein neuer Kollege am ersten Tag
+   bekäme: Abläufe, Vorlagen, wichtige Kontakte. Auch was sich dein Agent selbst merkt, zählt.
+4. **Werkzeuge anschließen.** Unter **Integrationen** Mail und Kalender verbinden (Microsoft 365,
+   Google) oder die [Computer-Use Bridge](#23-computer-use-bridge-desktop-steuern) installieren. Ein von der
+   Verwaltung geteilter Zugang zählt ebenfalls.
+5. **In den Alltag holen.** Einen [Zeitplan](#12-schedules) für deinen Agenten anlegen (etwa
+   morgens den Tag vorbereiten) oder das Sekretariat einrichten, und einmal am Tag auf **Heute**
+   und in die **Freigaben** schauen.
+
+Gezählt wird nur, was **dir** gehört: Agenten, Wissen und Zeitpläne anderer Personen haken bei
+dir nichts ab. Mit dem **×** oben rechts blendest du die Karte für zwei Wochen aus; sind alle
+fünf Schritte erledigt, verschwindet sie ganz.
+
+---
+
 ## Inhalt
 1. [Grundlagen: Navigation & Login](#1-grundlagen-navigation--login)
 2. [Onboarding](#2-onboarding)
@@ -256,6 +283,8 @@ Agenten, ihre Auslastung, Kosten und letzte Aktivität. Seitenleiste → **Dashb
 
 **Aufbau der Seite, Element für Element:**
 
+- **In 5 Schritten startklar** (nur solange noch etwas offen ist) — die Einstiegskarte mit
+  Fortschritt; siehe [In 5 Schritten startklar](#in-5-schritten-startklar).
 - **System-Status-Leiste** (oben) — zeigt mit grünen Punkten, dass die Plattform-Bausteine
   laufen: **All Systems Go**, **API**, **DB**, **Redis** und die **Anzahl Agenten**. Ist
   hier etwas rot, lohnt ein Blick auf **Health** (Kap. 19).
