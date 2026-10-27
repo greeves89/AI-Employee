@@ -32,6 +32,7 @@ import { LiveTerminal } from "@/components/terminal/live-terminal";
 import { AgentChat } from "@/components/agents/chat";
 import { ChatSymbolKnopf } from "@/components/agents/chat-symbol-knopf";
 import { AutonomyMatrix } from "@/components/agents/autonomy-matrix";
+import { rechteStufeName } from "@/components/agents/rechte-stufen";
 import { InteractionModelCard } from "@/components/agents/interaction-model-card";
 import { AgentSpeechTab } from "@/components/agents/agent-speech-tab";
 import { IntegrationSelector } from "@/components/agents/integration-selector";
@@ -2970,7 +2971,7 @@ function AgentSettings({
         <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
           <div className="flex items-center gap-2">
             <ShieldAlert className="h-4 w-4 text-amber-700 dark:text-amber-400" />
-            <span className="text-sm font-medium">Autonomie-Level</span>
+            <span className="text-sm font-medium">Was darf der Agent?</span>
             <span className={cn(
               "text-[10px] px-2 py-0.5 rounded-full border font-medium",
               autonomyLevel === "l1" && "bg-blue-500/10 text-blue-400 border-blue-500/20",
@@ -2978,7 +2979,7 @@ function AgentSettings({
               autonomyLevel === "l3" && "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
               autonomyLevel === "l4" && "bg-red-500/10 text-red-400 border-red-500/20",
             )}>
-              {autonomyLevel.toUpperCase()}
+              {rechteStufeName(autonomyLevel)}
             </span>
           </div>
         </div>

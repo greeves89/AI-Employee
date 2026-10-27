@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, HelpCircle, Ban, Loader2, Save, Container, Globe, ShieldCheck, Lock } from "lucide-react";
+import { Check, HelpCircle, Ban, Loader2, Save, Container, Globe, ShieldCheck, Lock, ChevronDown, SlidersHorizontal } from "lucide-react";
+import { RechteStufen, RECHTE_STUFEN } from "@/components/agents/rechte-stufen";
 import * as api from "@/lib/api";
 import type { AutonomyState, AutonomyTaxonomy } from "@/lib/api";
 import { apiFehlertext } from "@/lib/api-fehler";
@@ -21,9 +22,10 @@ const LEVEL_LABEL: Record<string, string> = {
 const RANG: Record<AutonomyState, number> = { deny: 0, ask: 1, allow: 2 };
 
 /**
- * 3-state autonomy capability matrix. Lx preset buttons fill the matrix; each
- * capability can then be fine-tuned to Erlaubt / Freigabe / Verboten. The matrix
- * is the single source that drives the agent's approval behaviour server-side.
+ * Oben die drei Stufen für alle (#1047), darunter zugeklappt die Feineinstellung:
+ * Lx-Vorlagen füllen die Matrix, jede Fähigkeit lässt sich dann auf Erlaubt /
+ * Freigabe / Verboten stellen. Die Matrix bleibt die einzige Quelle, aus der der
+ * Server das Freigabeverhalten des Agenten ableitet.
  */
 export function AutonomyMatrix({
   agentId,
@@ -42,6 +44,9 @@ export function AutonomyMatrix({
   // Rollen-Grenze (#910): darüber ist ausgegraut. Bestandsschutz — was der Agent
   // schon hat (aktive Stufe, gespeicherte Zelle), bleibt wählbar.
   const { grenze, ueber } = useAutonomieGrenze();
+  // Zu, solange eine der drei Stufen gilt; L2 oder eine angepasste Matrix zeigt
+  // sich sonst nirgends — dann gleich offen.
+  const [fein, setFein] = useState<boolean | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -106,8 +111,38 @@ export function AutonomyMatrix({
   }
   if (!taxonomy) return null;
 
+  const eineDerDrei = RECHTE_STUFEN.some((s) => s.stufe === level);
+  const feinOffen = fein ?? !eineDerDrei;
+
   return (
     <div className="space-y-4">
+      <RechteStufen
+        wert={level}
+        setWert={(lvl) => { if (lvl !== level) applyPreset(lvl); }}
+        gesperrt={ueber}
+        disabled={busy}
+      />
+      {!eineDerDrei && (
+        <p className="text-[12px] text-muted-foreground">
+          Gerade gilt eine eigene Einstellung — Details in der Feineinstellung.
+        </p>
+      )}
+      {fehler && !feinOffen && (
+        <p className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-[11px] text-red-400">{fehler}</p>
+      )}
+
+      <button
+        type="button"
+        onClick={() => setFein(!feinOffen)}
+        aria-expanded={feinOffen}
+        className="flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <SlidersHorizontal className="h-3.5 w-3.5" />
+        Feineinstellung
+        <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", feinOffen ? "rotate-0" : "-rotate-90")} />
+      </button>
+
+      {feinOffen && (<>
       {/* Preset buttons */}
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="mr-1 text-[11px] font-medium text-muted-foreground/70">Vorlage:</span>
@@ -212,6 +247,7 @@ export function AutonomyMatrix({
           </button>
         )}
       </div>
+      </>)}
     </div>
   );
 }

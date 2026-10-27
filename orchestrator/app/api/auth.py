@@ -1311,6 +1311,9 @@ async def delete_user(
     # gewährt hat. Der Eintrag selbst bleibt, nur der Urheber wird vergessen.
     await db.execute(sql_update(AgentTemplate).where(AgentTemplate.created_by == user_id).values(created_by=None))
     await db.execute(sql_update(AgentAccess).where(AgentAccess.granted_by == user_id).values(granted_by=None))
+    # Nutzungszählung (#1047) gehört der Person — sie geht mit.
+    from app.core import nutzung
+    await nutzung.von_person_loeschen(db, user_id)
 
     await _verwaltung(db, AuditEventType.USER_DELETED, current, target, name=target.name,
                       agenten=agenten if eigene else None, agenten_anzahl=len(eigene))

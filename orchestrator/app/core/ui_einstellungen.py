@@ -1,7 +1,7 @@
 """Persoenliche Oberflaechen-Einstellungen am Konto (``users.ui_preferences``).
 
 Ein JSON-Objekt je Person, aufgeteilt in Schluessel je Bereich der Oberflaeche
-(vorerst nur ``agents_page``). Ein Schreibvorgang ersetzt immer genau die
+(``agents_page``, ``menue``). Ein Schreibvorgang ersetzt immer genau die
 uebergebenen Schluessel und laesst alle anderen stehen — so koennen spaetere
 Bereiche ihre Einstellungen ablegen, ohne sich gegenseitig zu ueberschreiben.
 
@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 
 #: Bereiche, die Einstellungen ablegen duerfen.
-ERLAUBTE_SCHLUESSEL = frozenset({"agents_page"})
+ERLAUBTE_SCHLUESSEL = frozenset({"agents_page", "menue"})
 
 #: Obergrenze fuer das gesamte gespeicherte Objekt, serialisiert in Bytes.
 MAX_BYTES = 32 * 1024

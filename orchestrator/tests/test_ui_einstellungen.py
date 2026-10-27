@@ -52,6 +52,11 @@ class ZusammenfuehrenTests(unittest.TestCase):
         with self.assertRaises(ui.UngueltigeEinstellungen):
             ui.zusammenfuehren({}, {"agents_page": {}, "fremd": {}})
 
+    def test_menue_ist_erlaubt(self):
+        # Seitenleiste merkt sich „Weitere Bereiche“ offen/zu am Konto (#1047).
+        self.assertEqual(ui.zusammenfuehren({}, {"menue": {"weitere_offen": True}}),
+                         {"menue": {"weitere_offen": True}})
+
     def test_wert_muss_ein_objekt_sein(self):
         for wert in (None, [], "list", 3):
             with self.assertRaises(ui.UngueltigeEinstellungen):

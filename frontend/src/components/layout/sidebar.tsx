@@ -30,6 +30,7 @@ import {
   ChevronDown,
   BarChart3,
   HelpCircle,
+  LayoutGrid,
 } from "lucide-react";
 import { UpdateBanner } from "./update-banner";
 import { StopReasonAlert } from "./stop-reason-alert";
@@ -37,10 +38,13 @@ import { UserMenu } from "./user-menu";
 import { useAuthStore } from "@/lib/auth";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
+import { useOftGenutzt } from "@/hooks/use-nutzung";
 import {
   getMyPermissions,
   getPendingApprovalCount,
+  getUiPreferences,
   listMyCustomPages,
+  patchUiPreferences,
   type CustomPage,
   type RolePermissions,
 } from "@/lib/api";
@@ -52,6 +56,9 @@ type NavItem = {
   label: string;
   icon: React.ElementType;
   simpleVisible: boolean;
+  /** Für Einsteiger zu viel (#1047): steht in der vollen Ansicht unter „Weitere
+   *  Bereiche“ — außer jemand öffnet ihn oft, dann steht er bei ihm wieder oben. */
+  weitere?: boolean;
   /** Gesetzt bei selbst angelegten Menuepunkten der Art "Link": der Eintrag
    *  öffnet die Adresse direkt in einem neuen Tab, statt erst unsere Seite zu
    *  laden, die nur einen Knopf dorthin zeigt. */
@@ -136,9 +143,9 @@ const navGroups: NavGroup[] = [
       { href: "/tasks", label: "Aufgaben", icon: ListTodo, simpleVisible: true },
       { href: "/projekte", label: "Projekte", icon: FolderKanban, simpleVisible: true },
       { href: "/finanzen", label: "Finanzen", icon: Wallet, simpleVisible: true },
-      { href: "/activity", label: "Aktivität", icon: Activity, simpleVisible: false },
-      { href: "/analytics", label: "Auswertung", icon: BarChart3, simpleVisible: false },
-      { href: "/learning", label: "Gelerntes", icon: Sparkles, simpleVisible: false },
+      { href: "/activity", label: "Aktivität", icon: Activity, simpleVisible: false, weitere: true },
+      { href: "/analytics", label: "Auswertung", icon: BarChart3, simpleVisible: false, weitere: true },
+      { href: "/learning", label: "Gelerntes", icon: Sparkles, simpleVisible: false, weitere: true },
     ],
   },
   {
@@ -146,18 +153,18 @@ const navGroups: NavGroup[] = [
     key: "collab",
     items: [
       { href: "/knowledge", label: "Wissen", icon: BookOpen, simpleVisible: false },
-      { href: "/meeting-rooms", label: "Besprechungsräume", icon: Users, simpleVisible: false },
-      { href: "/apps", label: "Apps", icon: AppWindow, simpleVisible: false },
+      { href: "/meeting-rooms", label: "Besprechungsräume", icon: Users, simpleVisible: false, weitere: true },
+      { href: "/apps", label: "Apps", icon: AppWindow, simpleVisible: false, weitere: true },
     ],
   },
   {
     label: "Automatisierung",
     key: "automation",
     items: [
-      { href: "/workflows", label: "Workflows", icon: Workflow, simpleVisible: false },
-      { href: "/skills", label: "Skill-Marktplatz", icon: Sparkles, simpleVisible: false },
-      { href: "/triggers", label: "Auslöser", icon: Zap, simpleVisible: false },
-      { href: "/evals", label: "Golden-Tests", icon: ClipboardCheck, simpleVisible: false },
+      { href: "/workflows", label: "Workflows", icon: Workflow, simpleVisible: false, weitere: true },
+      { href: "/skills", label: "Skill-Marktplatz", icon: Sparkles, simpleVisible: false, weitere: true },
+      { href: "/triggers", label: "Auslöser", icon: Zap, simpleVisible: false, weitere: true },
+      { href: "/evals", label: "Golden-Tests", icon: ClipboardCheck, simpleVisible: false, weitere: true },
     ],
   },
   {
@@ -191,12 +198,19 @@ const navGroups: NavGroup[] = [
   },
 ];
 
+/** Alle festen Menüpunkte mit Gruppe — für die Nutzungsübersicht der
+ *  Verwaltung (#1047), damit auch nie geöffnete Bereiche dort auftauchen. */
+export const MENUE_PUNKTE = navGroups.flatMap((g) =>
+  g.items.map((i) => ({ href: i.href, label: i.label, gruppe: g.label, weitere: !!i.weitere })),
+);
+
 export function Sidebar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === "admin";
   const { simpleMode } = useSimpleMode();
+  const oftGenutzt = useOftGenutzt();
   const { collapsed, toggle, mobileOpen, setMobileOpen } = useSidebarCollapsed();
   // The desktop icon-rail (collapsed) must NOT apply on mobile — there the sidebar is
   // an off-canvas drawer that always shows the full menu. Track the lg breakpoint.
@@ -248,6 +262,20 @@ export function Sidebar() {
     setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  // „Weitere Bereiche“ offen oder zu — am Konto gemerkt, gilt auf jedem Gerät.
+  const [weitereOffen, setWeitereOffen] = useState(false);
+  useEffect(() => {
+    if (!user) return;
+    getUiPreferences()
+      .then((p) => setWeitereOffen(Boolean((p.menue as { weitere_offen?: boolean } | undefined)?.weitere_offen)))
+      .catch(() => {});
+  }, [user?.id]);
+  const weitereUmschalten = () => {
+    const neu = !weitereOffen;
+    setWeitereOffen(neu);
+    patchUiPreferences({ menue: { weitere_offen: neu } }).catch(() => {});
+  };
+
   // Offene Freigaben als Abzeichen am Menuepunkt. Eigener Zaehl-Endpunkt statt der
   // vollen Liste: das hier fragt im Takt, und die Liste kann Hunderte Eintraege samt
   // Begruendungstexten haben.
@@ -287,17 +315,29 @@ export function Sidebar() {
   // Administrator der Rolle ausdruecklich Menuepunkte zugeteilt, gilt seine
   // Liste — sonst verschwaende hier, was er bewusst freigegeben hat.
   const einfach = simpleMode && !permissions?.menu_paths;
-  const visibleGroups = navGroups
+  const erlaubteGruppen = navGroups
     .filter((group) => !group.adminOnly || isAdmin)
     .map((group) => ({
       ...group,
       items: [...group.items, ...extraItemsFor(group.key)]
         .filter((item) => canSeePath(item.href) && (!einfach || item.simpleVisible)),
-    }))
+    }));
+
+  // Volle Ansicht, aufgeräumt (#1047): Selteneres wandert nach „Weitere
+  // Bereiche“. Oben bleibt es, wenn man es oft öffnet oder gerade dort ist.
+  const istHier = (href: string) => {
+    const ziel = href.split("?")[0];
+    return pathname === ziel || pathname.startsWith(`${ziel}/`);
+  };
+  const zurueckgestellt = (item: NavItem) =>
+    !einfach && !!item.weitere && !oftGenutzt(item.href) && !istHier(item.href);
+  const weitereItems = erlaubteGruppen.flatMap((g) => g.items.filter(zurueckgestellt));
+  const visibleGroups = erlaubteGruppen
+    .map((group) => ({ ...group, items: group.items.filter((item) => !zurueckgestellt(item)) }))
     .filter((group) => group.items.length > 0);
 
   // In collapsed mode, show all visible items (groups are irrelevant)
-  const allItems = visibleGroups.flatMap((g) => g.items);
+  const allItems = [...visibleGroups.flatMap((g) => g.items), ...(weitereOffen ? weitereItems : [])];
 
   // Genauer Pfad oder ein Unterpfad davon — nicht blosses startsWith. Sonst
   // faerbte /p/kunde auch /p/kunden-portal mit ein, sobald zwei angelegte Seiten
@@ -329,6 +369,43 @@ export function Sidebar() {
 
   // Check if any item in a group is active
   const isGroupActive = (group: NavGroup) => group.items.some(isItemActive);
+
+  // Ein Eintrag der ausgeklappten Leiste — in den Gruppen wie unter „Weitere Bereiche“.
+  const eintrag = (item: NavItem) => {
+    const Icon = item.icon;
+    const isActive = isItemActive(item);
+    return (
+      <NavShell
+        key={item.href}
+        item={item}
+        onClick={closeMobile}
+        className={cn(
+          "group flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium transition-all duration-150",
+          isActive
+            ? "bg-accent text-foreground shadow-sm"
+            : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+        )}
+      >
+        <Icon
+          className={cn(
+            "h-4 w-4 shrink-0 transition-colors",
+            isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
+          )}
+        />
+        <span className="truncate">{item.label}</span>
+        {item.href === "/approvals" && pendingApprovals > 0 ? (
+          <span
+            title={`${pendingApprovals} offene Freigabe(n)`}
+            className="ml-auto shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-700 dark:text-amber-400"
+          >
+            {pendingApprovals > 99 ? "99+" : pendingApprovals}
+          </span>
+        ) : isActive ? (
+          <div className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-primary shadow-[0_0_6px_rgba(59,130,246,0.5)]" />
+        ) : null}
+      </NavShell>
+    );
+  };
 
   return (
     <aside
@@ -421,10 +498,25 @@ export function Sidebar() {
                 </span>
               </NavShell>
             );
-          })
+          }).concat(weitereItems.length > 0 ? [
+            <button
+              key="weitere-bereiche"
+              onClick={weitereUmschalten}
+              title={weitereOffen ? "Weitere Bereiche ausblenden" : "Weitere Bereiche zeigen"}
+              aria-label={weitereOffen ? "Weitere Bereiche ausblenden" : "Weitere Bereiche zeigen"}
+              aria-expanded={weitereOffen}
+              className={cn(
+                "flex items-center justify-center h-9 w-9 mx-auto rounded-xl transition-all duration-150",
+                weitereOffen ? "bg-accent/60 text-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+              )}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>,
+          ] : [])
         ) : (
           // Expanded: grouped
-          visibleGroups.map((group) => {
+          <>
+          {visibleGroups.map((group) => {
             const isOpen = openGroups[group.key] ?? true;
             const hasActive = isGroupActive(group);
             return (
@@ -449,46 +541,28 @@ export function Sidebar() {
 
                 {isOpen && (
                   <div className="mt-0.5 space-y-0.5">
-                    {group.items.map((item) => {
-                      const Icon = item.icon;
-                      const isActive = isItemActive(item);
-                      return (
-                        <NavShell
-                          key={item.href}
-                          item={item}
-                          onClick={closeMobile}
-                          className={cn(
-                            "group flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium transition-all duration-150",
-                            isActive
-                              ? "bg-accent text-foreground shadow-sm"
-                              : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-                          )}
-                        >
-                          <Icon
-                            className={cn(
-                              "h-4 w-4 shrink-0 transition-colors",
-                              isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
-                            )}
-                          />
-                          <span className="truncate">{item.label}</span>
-                          {item.href === "/approvals" && pendingApprovals > 0 ? (
-                            <span
-                              title={`${pendingApprovals} offene Freigabe(n)`}
-                              className="ml-auto shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-700 dark:text-amber-400"
-                            >
-                              {pendingApprovals > 99 ? "99+" : pendingApprovals}
-                            </span>
-                          ) : isActive ? (
-                            <div className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-primary shadow-[0_0_6px_rgba(59,130,246,0.5)]" />
-                          ) : null}
-                        </NavShell>
-                      );
-                    })}
+                    {group.items.map(eintrag)}
                   </div>
                 )}
               </div>
             );
-          })
+          })}
+          {weitereItems.length > 0 && (
+            <div className="mt-2 border-t border-border/60 pt-2">
+              <button
+                onClick={weitereUmschalten}
+                aria-expanded={weitereOffen}
+                className="flex w-full items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent/30 transition-colors"
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                <span className="flex-1 text-left">Weitere Bereiche</span>
+                <span className="text-[10px] tabular-nums text-muted-foreground/60">{weitereItems.length}</span>
+                <ChevronDown className={cn("h-3 w-3 transition-transform duration-200", weitereOffen ? "rotate-0" : "-rotate-90")} />
+              </button>
+              {weitereOffen && <div className="mt-0.5 space-y-0.5">{weitereItems.map(eintrag)}</div>}
+            </div>
+          )}
+          </>
         )}
       </nav>
 

@@ -16,6 +16,8 @@ import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
 import { getAnalyticsOverview, getAnalyticsSkills, getAnalyticsAgents, getAnalyticsAgentDetail } from "@/lib/api";
 import { formatMoney } from "@/lib/money";
+import { useAuthStore } from "@/lib/auth";
+import { BereichNutzung } from "@/components/analytics/bereich-nutzung";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -252,6 +254,7 @@ export default function AnalyticsPage() {
   const [sortKey, setSortKey] = useState<SortKey>("total_time_saved_seconds");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const isAdmin = useAuthStore((st) => st.user?.role === "admin");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -589,6 +592,8 @@ export default function AnalyticsPage() {
                 )}
               </AnimatePresence>
             </Dialog.Root>
+
+            {isAdmin && <BereichNutzung tage={days} />}
           </>
         )}
       </main>
