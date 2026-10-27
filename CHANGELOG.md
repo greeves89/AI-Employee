@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.378.16] - 2026-10-27
+
+### Behoben
+- **Sprachleiste der Bridge mit Bluetooth-Kopfhörern:** Mikrofon und Wiedergabe öffneten fest mit 16 bzw. 24 kHz. Kopfhörer wie AirPods lehnen das je nach Modus ab: Das Mikrofon meldete „Error opening …“, die Wiedergabe brach still ab, und die Antwort kam nur als Text. Lehnt ein Gerät die Rate ab, öffnet die Bridge es jetzt mit seiner eigenen Rate und rechnet den Ton selbst um.
+- Kopfhörer, die erst nach dem Start der Bridge verbunden wurden, waren für die Sprachleiste unsichtbar (die Geräteliste wurde nur beim Start gelesen). Bei einem Fehler liest die Bridge die Geräte jetzt neu ein.
+- Die Sprachleiste schreibt ins Protokoll, was passiert: verwendetes Mikrofon und Ausgabegerät, Abtastrate, lautester Pegel, ob Mitschriften und Ton vom Agenten ankamen, und Fehler, die vorher verschluckt wurden. Inhalte des Gesprächs stehen dort nicht.
+
 ## [1.378.15] - 2026-10-27
 
 ### Neu
