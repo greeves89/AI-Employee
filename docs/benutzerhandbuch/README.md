@@ -70,6 +70,9 @@ Karte **„In 6 Schritten startklar“**: Sie zeigt, was erledigt ist, und hakt 
 kein Agent denken. Administratoren sehen diesen Schritt immer (unter **AI-Accounts**). Bei
 Mitgliedern richtet ihn die Verwaltung ein; er erscheint in ihrer Liste nur, solange er fehlt.
 
+Die Schritte musst du nicht der Reihe nach erledigen: Bei **App aufs iPhone holen** und **Auf
+deinem Rechner mithelfen lassen** klappt **Anzeigen** QR-Code bzw. Downloads jederzeit auf.
+
 Gezählt wird nur, was **dir** gehört: Agenten, Wissen und Zeitpläne anderer Personen haken bei
 dir nichts ab. Mit dem **×** oben rechts blendest du die Karte für zwei Wochen aus; sind alle
 Schritte erledigt, verschwindet sie ganz. Wie die Karte für Mitglieder aussieht, prüfen
