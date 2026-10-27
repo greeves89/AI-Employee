@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.378.15] - 2026-10-27
+
+### Neu
+- **Das Mitdenker-Overlay lässt sich verschieben** (Mac und Windows). Am Hintergrund greifen und ziehen; die Bridge merkt sich die Lage, auch über Neustarts. Die Fläche, in die der Agent nicht klicken darf, wandert mit. Ist der Bildschirm von damals abgesteckt, erscheint das Overlay wieder oben in der Mitte.
+
+### Behoben
+- **Die Sprachleiste der Mac-Bridge hörte nichts.** Die signierte App lief mit Hardened Runtime, aber ohne die Mikrofon-Berechtigung (`com.apple.security.device.audio-input`); macOS lieferte ihr deshalb nur Stille, ohne Fehlermeldung, auch bei erteilter Freigabe. Die Berechtigung ist jetzt im Bundle.
+- Liefert das Mikrofon trotzdem nur Stille, sagt die Sprachleiste das nach 2,5 Sekunden und nennt, wo die Freigabe zu prüfen ist; Mikrofon an und Stille stehen im Protokoll.
+
 ## [1.378.14] - 2026-10-27
 
 ### Neu
