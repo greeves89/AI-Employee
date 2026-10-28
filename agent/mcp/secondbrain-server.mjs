@@ -47,7 +47,7 @@ const RUECKFALL_HINWEIS =
   "Eine so geschriebene Datei steht allerdings erst nach dem naechsten " +
   "Re-Index-Durchlauf (alle 5 Minuten) im Suchindex.";
 
-const BRAINS_ROOT = "/mnt/brains";
+export const BRAINS_ROOT = "/mnt/brains";
 
 /** Vault-relativen Pfad auf eine echte Datei unter /mnt/brains aufloesen.
  *
@@ -56,14 +56,17 @@ const BRAINS_ROOT = "/mnt/brains";
  * ``..``-Segment oder ein Verweis am Jail vorbei. Der Mount selbst ist hier die
  * Berechtigung: gemountet ist nur, was dem Agenten zugewiesen wurde.
  */
-function vaultPfad(eingabe) {
-  const root = fs.realpathSync.native
-    ? fs.realpathSync(BRAINS_ROOT)
-    : BRAINS_ROOT;
+export function vaultPfad(eingabe, wurzel = BRAINS_ROOT) {
+  let root;
+  try {
+    root = fs.realpathSync(wurzel);
+  } catch {
+    root = nodePath.resolve(wurzel);
+  }
   const roh = String(eingabe || "").trim();
   if (!roh) throw new Error("'path' is required");
-  const basis = roh.startsWith(BRAINS_ROOT)
-    ? roh
+  const basis = roh.startsWith(wurzel)
+    ? nodePath.join(root, roh.slice(wurzel.length).replace(/^\/+/, ""))
     : nodePath.join(root, roh.replace(/^\/+/, ""));
   // realpath nur, wenn es existiert — sonst normalisieren und danach pruefen.
   let ziel;
@@ -79,19 +82,19 @@ function vaultPfad(eingabe) {
 }
 
 /** Die gemounteten Vaults — ein Verzeichnis je zugewiesenem Brain. */
-function vaultVerzeichnisse() {
+export function vaultVerzeichnisse(wurzel = BRAINS_ROOT) {
   try {
     return fs
-      .readdirSync(BRAINS_ROOT, { withFileTypes: true })
+      .readdirSync(wurzel, { withFileTypes: true })
       .filter((e) => e.isDirectory())
-      .map((e) => nodePath.join(BRAINS_ROOT, e.name))
+      .map((e) => nodePath.join(wurzel, e.name))
       .sort();
   } catch {
     return [];
   }
 }
 
-function dateienVon(wurzel) {
+export function dateienVon(wurzel) {
   const out = [];
   const lauf = (dir) => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -103,6 +106,42 @@ function dateienVon(wurzel) {
   };
   lauf(wurzel);
   return out.sort();
+}
+
+
+/** Eine Vault-Datei lesen — mit EINEM Zugriff, nicht drei.
+ *
+ * Pruefen-dann-benutzen (``existsSync``, dann ``statSync``, dann
+ * ``readFileSync``) ist eine Wettlaufsituation: zwischen Pruefung und Lesen
+ * kann der Pfad ein anderer sein. CodeQL meldet das zu Recht als
+ * ``js/file-system-race``. Deshalb wird die Datei EINMAL geoeffnet und alles
+ * weitere an der geoeffneten Kennung entschieden (``fstat`` statt ``stat``).
+ */
+export function leseVaultDatei(ziel, angezeigterPfad = ziel, maxBytes = 2_000_000) {
+  let kennung;
+  try {
+    kennung = fs.openSync(ziel, "r");
+  } catch (e) {
+    if (e.code === "ENOENT" || e.code === "EISDIR" || e.code === "ENOTDIR") {
+      throw new Error(`File not found: ${angezeigterPfad}`);
+    }
+    throw e;
+  }
+  try {
+    const info = fs.fstatSync(kennung);
+    if (!info.isFile()) throw new Error(`File not found: ${angezeigterPfad}`);
+    if (info.size > maxBytes) throw new Error("file too large to read");
+    const puffer = Buffer.allocUnsafe(info.size);
+    let gelesen = 0;
+    while (gelesen < info.size) {
+      const n = fs.readSync(kennung, puffer, gelesen, info.size - gelesen, gelesen);
+      if (n === 0) break;   // Datei wurde unter uns kuerzer
+      gelesen += n;
+    }
+    return puffer.subarray(0, gelesen).toString("utf8");
+  } finally {
+    fs.closeSync(kennung);
+  }
 }
 
 export function buildServer() {
@@ -282,14 +321,8 @@ export function buildServer() {
 
       if (name === "secondbrain_read") {
         const ziel = vaultPfad(args?.path);
-        if (!fs.existsSync(ziel) || !fs.statSync(ziel).isFile()) {
-          throw new Error(`File not found: ${args?.path}`);
-        }
-        if (fs.statSync(ziel).size > 2_000_000) {
-          throw new Error("file too large to read");
-        }
         return {
-          content: [{ type: "text", text: fs.readFileSync(ziel, "utf8") }],
+          content: [{ type: "text", text: leseVaultDatei(ziel, args?.path) }],
         };
       }
 
