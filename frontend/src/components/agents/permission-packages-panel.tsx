@@ -2,6 +2,7 @@
 
 import { Check, Loader2, Package, Settings, ShieldOff } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { InfoHint } from "@/components/ui/info-hint";
 import type { PermissionPackage } from "@/lib/types";
 
 // Vorher an ZWEI Stellen fast identisch codiert: der Erstellungs-Dialog
@@ -43,6 +44,7 @@ export function PermissionPackagesPanel({
         <div className="flex items-center gap-2">
           <Package className="h-4 w-4 text-primary" />
           <span className="text-sm font-medium">Berechtigungen (Sudo-Pakete)</span>
+          <InfoHint text="Sudo erlaubt dem Agenten, im Container Software und Systemdateien mit Administratorrechten zu ändern. Mehr ausgewählte Pakete = mehr Möglichkeiten für den Agenten, aber auch mehr Risiko bei Fehlern." />
         </div>
         <button
           type="button"

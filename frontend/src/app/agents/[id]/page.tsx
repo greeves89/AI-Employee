@@ -38,6 +38,7 @@ import { AgentSpeechTab } from "@/components/agents/agent-speech-tab";
 import { IntegrationSelector } from "@/components/agents/integration-selector";
 import { KontoVerbindungen } from "@/components/agents/konto-verbindungen";
 import { BridgeDownload } from "@/components/agents/bridge-download";
+import { InfoHint } from "@/components/ui/info-hint";
 import { MemoryTab } from "@/components/agents/memory-tab";
 import { TodoTab } from "@/components/agents/todo-tab";
 import { McpInfo } from "@/components/agents/mcp-info";
@@ -2908,6 +2909,7 @@ function AgentSettings({
               <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
             </svg>
             <span className="text-sm font-medium">MCP-Endpunkt</span>
+            <InfoHint text="MCP (Model Context Protocol) ist eine offene Schnittstelle, über die externe Programme — z. B. ein eigenes Tool oder ein anderer KI-Assistent — mit diesem Agenten sprechen können. Nur relevant, wenn du eine solche Anbindung selbst einrichtest." />
             <span className="ml-auto inline-flex items-center rounded-full border border-violet-500/20 bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-400">
               2025-06-18
             </span>
