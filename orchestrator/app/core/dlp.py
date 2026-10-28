@@ -4,7 +4,7 @@ Two layers:
   * a **pure scanner** (``classify`` / ``mask``) — deterministic, no I/O, fully
     unit-testable. Reuses the credential patterns from ``log_redaction`` for the
     ``secret`` class and adds PII classes (IBAN, credit card w/ Luhn, e-mail,
-    11-digit German tax-id style number).
+    11-digit German tax-id style number, BIP-39 crypto-wallet seed phrase).
   * a **DB-aware evaluator** (``evaluate_egress``) — resolves the per-class action
     from ``DlpRule`` (agent-specific > global > built-in default), applies it
     (allow/log/mask/block), and writes an ``AuditLog`` record that records the
@@ -22,12 +22,14 @@ import logging
 import re
 from dataclasses import dataclass
 
+from app.core.bip39_wordlist import BIP39_ENGLISH_WORDS
 from app.core.log_redaction import _PATTERNS as _SECRET_PATTERNS
+from app.core.log_redaction import ZUSATZ_PATTERNS as _FORMAT_PATTERNS
 from app.core.log_redaction import redact_logs
 
 logger = logging.getLogger(__name__)
 
-CLASSES = ("secret", "iban", "credit_card", "email", "de_tax_id")
+CLASSES = ("secret", "secret_format", "iban", "credit_card", "email", "de_tax_id", "seed_phrase")
 
 # Built-in default action per class when no DB rule overrides it.
 DEFAULT_ACTIONS: dict[str, str] = {
@@ -36,6 +38,13 @@ DEFAULT_ACTIONS: dict[str, str] = {
     "credit_card": "mask",
     "de_tax_id": "log",      # 11-digit numbers are false-positive prone -> log only
     "email": "allow",        # e-mails are usually legitimate to send
+    # #703: weitere Anbieter-Formate. Schwaerzen statt sperren, solange die
+    # Fehlalarmrate im Betrieb unbekannt ist -- ``secret`` (block) wuerde bei
+    # jedem Treffer die ganze Antwort unterdruecken.
+    "secret_format": "mask",
+    # Eine Seed-Phrase ist selten ein Fehlalarm; im Klartext hinausgehen
+    # lassen ("log") hiesse, sie zu erkennen und trotzdem zu verschenken.
+    "seed_phrase": "mask",
 }
 ACTION_SEVERITY = {"allow": 0, "log": 1, "mask": 2, "block": 3}
 VALID_ACTIONS = set(ACTION_SEVERITY)
@@ -44,6 +53,79 @@ _IBAN = re.compile(r"\b[A-Z]{2}\d{2}(?:[ ]?[A-Za-z0-9]){11,30}\b")
 _EMAIL = re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")
 _CC = re.compile(r"\b(?:\d[ -]?){13,19}\b")
 _DE_TAX = re.compile(r"\b\d{11}\b")
+# Buchstaben samt unsichtbarer Zeichen, damit ein Zero-Width-Zeichen ein Wort
+# nicht in zwei zerlegt; beim Vergleich mit der Liste fallen sie heraus.
+_WORD_TOKEN = re.compile(r"(?:[^\W\d_]|[\u200b-\u200d\u2060\ufeff])+")
+_UNSICHTBAR = re.compile(r"[\u200b-\u200d\u2060\ufeff]")
+# Zwischen zwei Woertern einer Phrase steht nur Leerraum oder ein Komma,
+# hoechstens mit einer Nummerierung ("3. ", "3) "). ``margin_left + margin_right``
+# oder ``green.apple(`` ist Code, keine Phrase.
+_SEED_TRENNER = re.compile(r"[\s,]*(?:\d{1,2}[.):]?\s+)?[\s,]*")
+# BIP-39 mnemonics are always 12/15/18/21/24 words -- 12 is the real-world floor.
+_SEED_FENSTER = 12
+# Ein Fuellwort je sechs Woerter reicht nicht, um eine Phrase zu verstecken.
+_SEED_MIN_TREFFER = 10
+
+
+def _im_wortschatz(wort: str) -> bool:
+    import unicodedata
+
+    return unicodedata.normalize("NFKC", _UNSICHTBAR.sub("", wort)).lower() in BIP39_ENGLISH_WORDS
+
+
+def _bip39_spans(text: str) -> list[tuple[int, int]]:
+    """Textstellen, die wie eine BIP-39-Seed-Phrase aussehen (#703).
+
+    Gleitendes Fenster: 12 aufeinanderfolgende Woerter, davon mindestens 10
+    aus der festen Liste mit 2048 Woertern. Keine Pruefsumme -- ein
+    Format-Signal wie die anderen Muster, kein Validator. Gedacht gegen das
+    versehentliche Weitergeben (Phrase in Chat, Ticket oder Protokoll), nicht
+    gegen jemanden, der sie absichtlich verstecken will (kyrillische
+    Doppelgaenger, Base64, Aufteilen auf zwei Nachrichten erkennt es nicht).
+    """
+    tokens = list(_WORD_TOKEN.finditer(text))
+    spans: list[tuple[int, int]] = []
+    # In Abschnitte zerlegen, in denen nur erlaubte Trenner zwischen den Woertern stehen.
+    abschnitt: list[re.Match] = []
+
+    def auswerten(teil: list[re.Match]) -> None:
+        if len(teil) < _SEED_FENSTER:
+            return
+        treffer = [_im_wortschatz(t.group()) for t in teil]
+        # Jedes Fenster mit genug Treffern ganz markieren -- auch Fuellwoerter
+        # darin, sonst bliebe die Phrase um sie herum in Stuecken stehen.
+        markiert = [False] * len(teil)
+        for i in range(len(teil) - _SEED_FENSTER + 1):
+            if sum(treffer[i:i + _SEED_FENSTER]) >= _SEED_MIN_TREFFER:
+                markiert[i:i + _SEED_FENSTER] = [True] * _SEED_FENSTER
+        k = 0
+        while k < len(teil):
+            if not markiert[k]:
+                k += 1
+                continue
+            ende = k
+            while ende + 1 < len(teil) and markiert[ende + 1]:
+                ende += 1
+            # Raender auf Listenwoerter kuerzen: umgebender Text bleibt stehen.
+            von, bis = k, ende
+            while not treffer[von]:
+                von += 1
+            while not treffer[bis]:
+                bis -= 1
+            spans.append((teil[von].start(), teil[bis].end()))
+            k = ende + 1
+
+    for t in tokens:
+        if abschnitt and not _SEED_TRENNER.fullmatch(text, abschnitt[-1].end(), t.start()):
+            auswerten(abschnitt)
+            abschnitt = []
+        abschnitt.append(t)
+    auswerten(abschnitt)
+    return spans
+
+
+def _bip39_matches(text: str) -> list[str]:
+    return [text[a:b] for a, b in _bip39_spans(text)]
 
 
 def _luhn_ok(s: str) -> bool:
@@ -76,6 +158,11 @@ def scan_matches(text: str) -> dict[str, list[str]]:
         secret += _finds(pat, text)
     if secret:
         out["secret"] = secret
+    formate: list[str] = []
+    for pat, _ in _FORMAT_PATTERNS:
+        formate += _finds(pat, text)
+    if formate:
+        out["secret_format"] = formate
     iban = _finds(_IBAN, text)
     if iban:
         out["iban"] = iban
@@ -88,6 +175,9 @@ def scan_matches(text: str) -> dict[str, list[str]]:
     tax = _finds(_DE_TAX, text)
     if tax:
         out["de_tax_id"] = tax
+    seed = _bip39_matches(text)
+    if seed:
+        out["seed_phrase"] = seed
     return out
 
 
@@ -105,6 +195,12 @@ def scan_matches(text: str) -> dict[str, list[str]]:
 #: der Sentinel den Hauptagenten an — wegen einer Zeichenkette, die mit „GH"
 #: anfing. Maskieren und Anhalten sind verschiedene Eingriffe und brauchen
 #: verschiedene Schwellen.
+#:
+#: Die #703-Ergaenzungen (``ZUSATZ_PATTERNS`` in log_redaction.py, Klasse
+#: ``secret_format``, und ``seed_phrase``) stehen deshalb ABSICHTLICH NICHT in
+#: dieser Menge: sie sind frisch und ihre Fehlalarmrate in diesem Betrieb ist
+#: unbestaetigt. Sie schwaerzen ab sofort, loesen aber KEINEN Agenten-Stopp
+#: aus, bis jemand die Fehlalarmrate gemessen und sie hier bewusst ergaenzt hat.
 HIGH_CONFIDENCE_SECRET_MARKERS = frozenset({
     "[REDACTED_KEY_BLOCK]",
     "[REDACTED_API_KEY]",
@@ -157,6 +253,9 @@ def mask(text: str, classes: set[str]) -> str:
     out = text
     if "secret" in classes:
         out = redact_logs(out)
+    if "secret_format" in classes:
+        for pat, repl in _FORMAT_PATTERNS:
+            out = pat.sub(repl, out)
     if "iban" in classes:
         out = _IBAN.sub("[REDACTED_IBAN]", out)
     if "credit_card" in classes:
@@ -165,6 +264,15 @@ def mask(text: str, classes: set[str]) -> str:
         out = _EMAIL.sub("[REDACTED_EMAIL]", out)
     if "de_tax_id" in classes:
         out = _DE_TAX.sub("[REDACTED_ID]", out)
+    if "seed_phrase" in classes:
+        # In einem Durchgang ueber die Fundstellen neu aufbauen: ``replace`` je
+        # Fund liess bei sich wiederholenden Phrasen die Haelfte stehen und war
+        # quadratisch langsam.
+        teile, pos = [], 0
+        for a, b in _bip39_spans(out):
+            teile += [out[pos:a], "[REDACTED_SEED_PHRASE]"]
+            pos = b
+        out = "".join(teile) + out[pos:]
     return out
 
 
