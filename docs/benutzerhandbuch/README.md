@@ -1189,7 +1189,8 @@ können bei GitHub-Repos stattdessen die GitHub-Verbindung der Anlage nutzen. Oh
 Projektseite den Hinweis „Kein Git-Repo verbunden“ mit dem Knopf **Repo verbinden**.
 
 Hinweis zu eigenen Servern: Die Plattform fragt sie nur über **https** ab und nie im internen Netz
-der Anlage. Verlangt der Server für jedes Repo eine Anmeldung, braucht auch ein „öffentliches“ Repo
+der Anlage. Als Schlüssel geht nur ein **eigener** Schlüssel des Projekt-Erstellers — ein Schlüssel,
+der dir nur zur Nutzung geteilt wurde, wird nicht an einen selbst eingetragenen Server geschickt. Verlangt der Server für jedes Repo eine Anmeldung, braucht auch ein „öffentliches“ Repo
 einen Schlüssel. Den CI-Stand eines Pull Requests liest sie aus dem Commit-Status, den Forgejo
 Actions (bzw. Gitea Actions) setzen.
 

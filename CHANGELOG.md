@@ -8,7 +8,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 ## [1.384.0] - 2026-10-28
 
 ### Neu
-- **Projekte mit Forgejo- und Gitea-Repos.** Neben GitHub lässt sich ein Projekt jetzt mit einem Repo auf einem eigenen Forgejo- oder Gitea-Server verbinden; eingetragen wird die volle Adresse, z. B. `https://git.example.com/team/repo`. Offene Issues kommen in den Eingang, Pull Requests mit ihrem CI-Stand (aus dem Commit-Status von Forgejo/Gitea Actions) in die Prüfung, gemergte und geschlossene werden nachgezogen — wie bei GitHub. Private Repos brauchen einen Token des Servers aus der Schlüsselverwaltung. Eigene Server werden nur über https und nie im internen Netz der Anlage abgefragt.
+- **Projekte mit Forgejo- und Gitea-Repos.** Neben GitHub lässt sich ein Projekt jetzt mit einem Repo auf einem eigenen Forgejo- oder Gitea-Server verbinden; eingetragen wird die volle Adresse, z. B. `https://git.example.com/team/repo`. Offene Issues kommen in den Eingang, Pull Requests mit ihrem CI-Stand (aus dem Commit-Status von Forgejo/Gitea Actions) in die Prüfung, gemergte und geschlossene werden nachgezogen — wie bei GitHub. Private Repos brauchen einen Token des Servers aus der Schlüsselverwaltung — und zwar einen eigenen: Ein nur zur Nutzung geteilter Schlüssel wird nicht an einen selbst eingetragenen Server geschickt. Eigene Server werden nur über https und nie im internen Netz der Anlage abgefragt.
 
 ### Geändert
 - Ein GitHub-Zugang der Anlage, der als Forgejo/Gitea mit eigener Server-Adresse eingetragen ist, gibt Agenten jetzt die passenden Variablen (`GITEA_TOKEN`, `GITEA_SERVER_URL` …) statt der GitHub-Variablen.

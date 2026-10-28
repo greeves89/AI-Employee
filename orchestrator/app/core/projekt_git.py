@@ -123,8 +123,14 @@ async def _ersteller(db: AsyncSession, team: Team):
     )).scalars().first()
 
 
-async def schluessel_token(db: AsyncSession, team: Team) -> str | None:
-    """Token aus dem Schlüssel des Projekts — None ohne Schlüssel, GitFehler ohne Zugriff."""
+async def schluessel_token(db: AsyncSession, team: Team, *, nur_eigener: bool = False) -> str | None:
+    """Token aus dem Schlüssel des Projekts — None ohne Schlüssel, GitFehler ohne Zugriff.
+
+    ``nur_eigener``: nur ein Schlüssel, der dem Ersteller GEHÖRT. Für eigene
+    Git-Server: dort bestimmt der Ersteller den Zielserver selbst — ein ihm nur
+    zur Nutzung geteilter Schlüssel ginge sonst an einen Server seiner Wahl und
+    wäre abgegriffen. Bei GitHub geht ein Schlüssel ohnehin nur an GitHub.
+    """
     if not team.repo_secret_id:
         return None
     from app.core import secret_zugriff
@@ -136,6 +142,9 @@ async def schluessel_token(db: AsyncSession, team: Team) -> str | None:
     if secret is None or not secret.is_active or ersteller is None \
             or await secret_zugriff.zugang(db, ersteller, secret) is None:
         raise GitFehler("Der Schlüssel des Projekts fehlt oder ist für den Ersteller nicht mehr freigegeben.")
+    if nur_eigener and str(secret.owner_id or "") != str(ersteller.id):
+        raise GitFehler("Für eigene Git-Server nur einen eigenen Schlüssel wählen — ein geteilter Schlüssel "
+                        "wird nicht an einen frei eingetragenen Server geschickt.")
     return decrypt_token(secret.value_encrypted).strip()
 
 
@@ -159,7 +168,7 @@ async def zugang(db: AsyncSession, redis, team: Team | None = None):
         erlaubt, grund = check_outbound_url(ziel.basis or "")
         if not erlaubt:
             raise GitFehler(f"Server {ziel.basis} wird nicht abgefragt: {grund}.")
-        return (await schluessel_token(db, team)) or "", ForgejoHostProvider(ziel.basis or "")
+        return (await schluessel_token(db, team, nur_eigener=True)) or "", ForgejoHostProvider(ziel.basis or "")
 
     token = await schluessel_token(db, team) if team is not None else None
     if token is None:
