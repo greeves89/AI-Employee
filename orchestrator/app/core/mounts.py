@@ -195,3 +195,18 @@ async def fremde_privatablagen(db, labels, user) -> set[str]:
         elif r.slug in projekte and str(projekte[r.slug] or "") != uid:
             fremd.add(r.label)
     return fremd
+
+
+async def mounts_des_agenten(db, agent) -> list[str]:
+    """Die Mount-Labels, die ein Agent WIRKLICH bekommt.
+
+    Ohne privates Wissen, das nicht seinem Besitzer gehört (Bridge-Ordner,
+    fremdes Projektwissen, #1092) — auch wenn es (von früher oder durch einen
+    Administrator) in seiner Konfiguration steht. Gilt für Container, Anleitung
+    und Sprachfront gleichermaßen.
+    """
+    from types import SimpleNamespace
+
+    labels = [str(x) for x in ((getattr(agent, "config", None) or {}).get("mounts") or []) if x]
+    fremd = await fremde_privatablagen(db, labels, SimpleNamespace(id=getattr(agent, "user_id", None) or ""))
+    return [x for x in labels if x not in fremd]

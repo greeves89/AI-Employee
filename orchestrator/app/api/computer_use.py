@@ -1864,7 +1864,7 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
             pass
 
     ping_task = asyncio.create_task(_ping_loop())
-    wissen_task = _bridge_wissen_starten(session, user_id)
+    _bridge_wissen_starten(user_id)
 
     try:
         while True:
@@ -1932,8 +1932,6 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
         logger.info(f"Bridge disconnected for session {scrub_log(session_id)}")
     finally:
         ping_task.cancel()
-        if wissen_task is not None:
-            wissen_task.cancel()
         session["bridge_connected"] = False
         session["bridge_ws"] = None
         session["bridge_host"] = None
@@ -1963,12 +1961,17 @@ async def bridge_befehl(user_id: str, action: str, params: dict, timeout: float 
         raise HTTPException(status_code=409, detail="Die Bridge hat die Verbindung getrennt.")
 
 
-def _bridge_wissen_starten(session: dict, user_id: str) -> asyncio.Task | None:
-    """Gespiegelte Ordner (#1092) abgleichen, solange diese Bridge verbunden ist."""
+def _bridge_wissen_starten(user_id: str) -> None:
+    """Gespiegelte Ordner (#1092) abgleichen, solange eine Bridge des Nutzers verbunden ist.
+
+    Eine Schleife je Nutzer (``bridge_wissen.schleife_starten``); sie spricht
+    jeweils die gerade verbundene Bridge an und endet, wenn keine mehr da ist.
+    """
     from app.core import bridge_wissen
 
     async def befehl(action: str, params: dict, timeout: float) -> dict:
-        if not session.get("bridge_connected"):
+        session = verbundene_bridge(user_id)
+        if session is None:
             raise bridge_wissen.SyncFehler("Die Bridge hat die Verbindung getrennt.")
         try:
             return await _send_bridge_action(session, action, timeout=timeout, params=params)
@@ -1978,10 +1981,11 @@ def _bridge_wissen_starten(session: dict, user_id: str) -> asyncio.Task | None:
             raise bridge_wissen.SyncFehler("Die Bridge hat die Verbindung getrennt.")
 
     try:
-        return asyncio.create_task(bridge_wissen.schleife(user_id, befehl))
+        bridge_wissen.schleife_starten(user_id, befehl, lambda: verbundene_bridge(user_id) is not None)
+        # Wartet eine Schleife noch vom letzten Mal (neu verbunden): gleich loslegen.
+        bridge_wissen.anstossen(user_id)
     except Exception:  # noqa: BLE001 — der Abgleich darf das Verbinden nie aufhalten
         logger.warning("Bridge-Wissen nicht gestartet", exc_info=True)
-        return None
 
 
 async def _authenticate_ws(websocket: WebSocket, token: str) -> str | None:

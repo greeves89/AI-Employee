@@ -144,7 +144,9 @@ async def _audit(db: AsyncSession, event: AuditEventType, brain: SecondBrain, us
             command=brain.label,
             outcome="success",
             user_id=str(user_id),
-            meta={"name": brain.name, "slug": brain.slug, "mode": brain.default_mode},
+            # Der Name eines gespiegelten Bridge-Ordners ist privat (#1092) — Admins lesen das Protokoll.
+            meta={"name": "(privat)" if getattr(brain, "bridge_ordner", None) else brain.name,
+                  "slug": brain.slug, "mode": brain.default_mode},
         ))
         await db.commit()
     except Exception:  # auditing must never break the operation
@@ -284,8 +286,8 @@ async def bridge_brain_anlegen(body: BridgeBrainCreate, user=Depends(require_aut
     vorhanden = await bridge_wissen.bridge_brains(db, str(user.id))
     if any(b.bridge_ordner == ordner for b in vorhanden):
         raise HTTPException(status_code=409, detail="Dieser Ordner wird schon gespiegelt.")
-    if len(vorhanden) >= 20:
-        raise HTTPException(status_code=409, detail="Höchstens 20 gespiegelte Ordner je Nutzer.")
+    if len(vorhanden) >= bridge_wissen.MAX_JE_NUTZER:
+        raise HTTPException(status_code=409, detail=f"Höchstens {bridge_wissen.MAX_JE_NUTZER} gespiegelte Ordner je Nutzer.")
     brain = await bridge_wissen.anlegen(db, user, body.name, ordner)
     await _audit(db, AuditEventType.BRAIN_CREATED, brain, user.id)
     await db.refresh(brain)  # nach einem gescheiterten Protokolleintrag (Rollback) neu laden
@@ -298,8 +300,10 @@ async def bridge_brain_sync(brain_id: int, user=Depends(require_auth), db: Async
     """Jetzt abgleichen (sonst alle 10 Minuten, solange die Bridge verbunden ist)."""
     from app.core import bridge_wissen
 
+    from app.api.computer_use import verbundene_bridge
+
     await _eigenes_bridge_brain(db, brain_id, user)
-    if not bridge_wissen.anstossen(str(user.id)):
+    if verbundene_bridge(str(user.id)) is None or not bridge_wissen.anstossen(str(user.id)):
         raise HTTPException(status_code=409, detail="Die Bridge ist nicht verbunden — abgeglichen wird, sobald sie es ist.")
     return {"ok": True}
 

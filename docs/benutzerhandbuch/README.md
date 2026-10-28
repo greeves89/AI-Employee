@@ -2784,8 +2784,10 @@ bleibt nutzbar, wenn dein Rechner aus ist.
 Was übernommen wird:
 - **Markdown und Text** (`.md`, `.markdown`, `.txt`, bis 2 MB) so, wie sie sind.
 - **PDF, Word, Excel** (bis 10 MB) als ausgelesener Text unter `<Dateiname>.md`.
-- Versteckte Ordner wie `.obsidian`, `.git` oder `.trash` und Verknüpfungen (Links) bleiben
-  außen vor; höchstens 5.000 Dateien je Ordner.
+- Versteckte Ordner wie `.obsidian`, `.git` oder `.trash`, `node_modules` und Verknüpfungen
+  (Links) bleiben außen vor.
+- Grenzen: höchstens **5 Ordner** je Nutzer, **5.000 Dateien** und **200 MB** je Ordner. Was
+  darüber liegt, wird übergangen und unter dem Ordner gemeldet.
 
 Abgeglichen wird, solange die Bridge verbunden ist: beim Verbinden und danach alle zehn
 Minuten, mit **Jetzt abgleichen** (Pfeil-Symbol) sofort. Übertragen werden nur geänderte
@@ -2796,7 +2798,11 @@ Gut zu wissen:
 - **Nur in eine Richtung, nur lesend.** Geändert wird im Ordner auf deinem Rechner, nicht in
   der Plattform. Agenten lesen das Brain, schreiben aber nicht hinein.
 - **Nur für dich.** Kein anderer Nutzer sieht den Spiegel, auch kein Administrator. Hängst du
-  ihn an ein Projekt, das du mit anderen teilst, sehen die anderen ihn dort nicht.
+  ihn an ein Projekt, das du mit anderen teilst, sehen die anderen ihn dort nicht. Einhängen
+  lässt er sich nur in deine eigenen Agenten — aber wer einen deiner Agenten mitbenutzen darf,
+  kann über ihn auch nach dem Inhalt fragen.
+- **Leerer Ordner:** Ist der Ordner plötzlich leer (z. B. ein nicht eingehängtes Laufwerk),
+  löscht die Plattform vorsichtshalber nichts und meldet das am Ordner.
 - **Löschen** (Papierkorb-Symbol) entfernt nur die Kopie auf dem Server; der Ordner auf
   deinem Rechner bleibt unberührt.
 - Dafür braucht es die Bridge ab Version 1.387.0. Eine ältere meldet sich am Ordner mit

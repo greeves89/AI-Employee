@@ -224,3 +224,63 @@ class BridgeWissen(Basis):
         alle = set(_ACTION_TO_GROUP.values())
         for aktion in ("wissen_ordner", "wissen_liste", "wissen_datei"):
             self.assertFalse(_action_allowed(aktion, alle), aktion)
+
+    async def test_gescheiterte_datei_wird_erst_nach_aenderung_neu_geholt(self):
+        brain = await self._brain()
+        bridge = FalscheBridge({"a.md": b"a", "kaputt.md": b"k"})
+        echt = bridge.__call__
+
+        async def verweigert(action, params, timeout):
+            if action == "wissen_datei" and params["pfad"] == "kaputt.md":
+                bridge.geholt.append("kaputt.md")
+                return {"ok": False, "error": "Datei nicht gefunden"}
+            return await echt(action, params, timeout)
+
+        await self._sync(brain, verweigert)
+        bridge.geholt.clear()
+        await self._sync(brain, verweigert)
+        self.assertEqual(bridge.geholt, [])          # nicht jedes Mal wieder
+        bridge.dateien["kaputt.md"] = b"neu"
+        await self._sync(brain, verweigert)
+        self.assertEqual(bridge.geholt, ["kaputt.md"])  # geändert: neuer Versuch
+
+    async def test_leerer_ordner_loescht_den_spiegel_nicht(self):
+        brain = await self._brain()
+        await self._sync(brain, FalscheBridge({"a.md": b"a"}))
+        with self.assertRaises(bridge_wissen.SyncFehler):
+            await self._sync(brain, FalscheBridge({}))
+        self.assertEqual(vault.read_file(brain.host_path, "a.md"), "a")
+        async with self.Session() as db:
+            self.assertIn("nichts gelöscht", (await db.get(SecondBrain, brain.id)).sync_fehler)
+
+    async def test_obergrenze_je_brain(self):
+        brain = await self._brain()
+        with patch.object(bridge_wissen, "MAX_BRAIN_BYTES", 5):
+            r, b = await self._sync(brain, FalscheBridge({"klein.md": b"abc", "gross.md": b"abcdef"}))
+        self.assertEqual(r["geholt"], 1)
+        self.assertEqual([e["path"] for e in vault.list_entries(brain.host_path)], ["klein.md"])
+        self.assertIn("Grenze", b.sync_fehler)
+
+    async def test_geloeschtes_brain_wird_nicht_wieder_angelegt(self):
+        brain = await self._brain()
+        async with self.Session() as db:
+            await bridge_wissen.entfernen(db, await db.get(SecondBrain, brain.id))
+        # Ein Lauf, der das Brain noch vor dem Löschen geladen hatte:
+        async with self.Session() as db:
+            r = await bridge_wissen.synchronisieren(db, brain, FalscheBridge({"a.md": b"a"}))
+        self.assertEqual(r["geholt"], 0)
+        self.assertFalse(os.path.exists(brain.host_path))
+
+    async def test_agent_bekommt_nur_privates_wissen_seines_besitzers(self):
+        from app.core.mounts import mounts_des_agenten
+        from app.models.agent import Agent
+
+        brain = await self._brain()
+        async with self.Session() as db:
+            for agent_id in ("a1", "b1"):   # a1 gehört dem Besitzer (ua), b1 nicht (ub)
+                agent = await db.get(Agent, agent_id)
+                agent.config = {"mounts": [brain.label, "downloads"]}
+            await db.commit()
+            self.assertEqual(await mounts_des_agenten(db, await db.get(Agent, "a1")), [brain.label, "downloads"])
+            self.assertEqual(await mounts_des_agenten(db, await db.get(Agent, "b1")), ["downloads"])
+

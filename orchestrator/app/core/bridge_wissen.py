@@ -55,6 +55,10 @@ MAX_TEXT_BYTES = vault.MAX_FILE_BYTES
 MAX_DOKUMENT_BYTES = 10 * 1024 * 1024
 #: So viele Dateien holt ein Lauf höchstens; der Rest kommt im nächsten.
 JE_LAUF = 300
+#: Summe der gespiegelten Quelldateien je Brain — die Platte des Servers ist endlich.
+MAX_BRAIN_BYTES = 200 * 1024 * 1024
+#: Gespiegelte Ordner je Nutzer.
+MAX_JE_NUTZER = 5
 #: Abstand der Läufe, solange die Bridge verbunden ist.
 ABSTAND_SEKUNDEN = 600
 
@@ -123,21 +127,30 @@ async def entfernen(db: AsyncSession, brain: SecondBrain) -> None:
     Anders als bei Abteilungs-Brains bleibt hier nichts liegen: die Quelle ist
     der Rechner des Besitzers, auf dem Server ist es nur eine Kopie.
     """
+    await db.refresh(brain)  # kann nach einem Rollback (z. B. Protokolleintrag) abgelaufen sein
+    brain_id, label, ablage, stand = brain.id, brain.label, os.path.realpath(brain.host_path), _stand_datei(brain)
+    # Nicht mitten in einen Lauf hinein löschen — der legte die Ablage sonst neu an.
+    async with _SPERREN.setdefault(f"brain:{brain_id}", asyncio.Lock()):
+        await _entfernen(db, brain_id, label, ablage, stand)
+    _SPERREN.pop(f"brain:{brain_id}", None)
+
+
+async def _entfernen(db: AsyncSession, brain_id: int, label: str, ablage: str, stand: str) -> None:
     import shutil
 
     from sqlalchemy import delete, text
 
     from app.models.user_mount_access import UserMountAccess
 
-    await db.refresh(brain)  # kann nach einem Rollback (z. B. Protokolleintrag) abgelaufen sein
-    brain_id, label, ablage, stand = brain.id, brain.label, os.path.realpath(brain.host_path), _stand_datei(brain)
     try:
         await db.execute(text("DELETE FROM vault_chunks WHERE brain_label = :b"), {"b": label})
         await db.commit()
     except Exception:  # noqa: BLE001 — ohne Suchindex-Tabelle (Tests, frische Anlage) nichts zu tun
         await db.rollback()
     await db.execute(delete(UserMountAccess).where(UserMountAccess.mount_label == label))
-    await db.delete(await db.get(SecondBrain, brain_id))
+    vorhanden = await db.get(SecondBrain, brain_id)
+    if vorhanden is not None:
+        await db.delete(vorhanden)
     await db.commit()
     basis = os.path.realpath(settings.secondbrain_base)
     if ablage.startswith(basis + os.sep):
@@ -231,6 +244,17 @@ def _liste_pruefen(antwort: dict) -> tuple[dict[str, dict], int]:
     return gueltig, uebergangen + max(0, len(roh) - MAX_DATEIEN)
 
 
+def _deckeln(neu: dict[str, dict]) -> tuple[dict[str, dict], int]:
+    """Höchstens ``MAX_BRAIN_BYTES`` — kleine Dateien zuerst, damit möglichst viele passen."""
+    summe, behalten = 0, {}
+    for pfad in sorted(neu, key=lambda p: neu[p]["bytes"]):
+        if summe + neu[pfad]["bytes"] > MAX_BRAIN_BYTES:
+            continue
+        summe += neu[pfad]["bytes"]
+        behalten[pfad] = neu[pfad]
+    return behalten, len(neu) - len(behalten)
+
+
 async def _seite_entfernen(db: AsyncSession, brain: SecondBrain, seite: str) -> None:
     from app.services import vault_indexer
 
@@ -261,29 +285,49 @@ async def synchronisieren(db: AsyncSession, brain: SecondBrain, befehl: Befehl) 
     """Ein Lauf für ein Brain. ``befehl(aktion, parameter, frist)`` spricht mit der Bridge."""
     from app.services import vault_indexer
 
-    sperre = _SPERREN.setdefault(f"brain:{brain.id}", asyncio.Lock())
+    brain_id = brain.id
+    sperre = _SPERREN.setdefault(f"brain:{brain_id}", asyncio.Lock())
     async with sperre:
+        # Während des Wartens auf die Sperre gelöscht? Dann nichts mehr anlegen.
+        if await db.scalar(select(SecondBrain.id).where(SecondBrain.id == brain_id)) is None:
+            return {"dateien": 0, "geholt": 0, "entfernt": 0, "uebergangen": 0, "offen": 0}
         try:
-            neu, uebergangen = _liste_pruefen(await befehl("wissen_liste", {"ordner": brain.bridge_ordner}, 60))
+            # Großzügige Frist: beim ersten Lauf bildet die Bridge alle Prüfsummen.
+            neu, uebergangen = _liste_pruefen(await befehl("wissen_liste", {"ordner": brain.bridge_ordner}, 300))
+            neu, zu_viel = _deckeln(neu)
             stand = _stand_lesen(brain)
+            if not neu and stand:
+                # Leere Liste bei vorhandenem Spiegel: eher ein nicht eingehängtes
+                # Laufwerk oder ein umbenannter Ordner als ein geleerter Vault.
+                raise SyncFehler("Der Ordner ist leer oder nicht erreichbar — vorsichtshalber nichts gelöscht.")
             entfernt = 0
             for pfad in [p for p in stand if p not in neu]:
-                await _seite_entfernen(db, brain, stand.pop(pfad).get("seite") or seite_fuer(pfad))
+                alt = stand.pop(pfad)
+                if alt.get("seite"):
+                    await _seite_entfernen(db, brain, alt["seite"])
                 entfernt += 1
             # Klein vor groß: eine einzelne große Datei, die an der Verbindung
             # scheitert, hält so nicht alle anderen auf.
             offen = sorted((p for p, e in neu.items() if stand.get(p, {}).get("sha") != e["sha"]),
                            key=lambda p: neu[p]["bytes"])
             geholt = 0
+
+            def gescheitert(pfad: str) -> None:
+                # Mit Prüfsumme merken: erst eine geänderte Datei wird erneut versucht —
+                # sonst holte jeder Lauf dieselben kaputten 10 MB wieder.
+                nonlocal uebergangen
+                uebergangen += 1
+                stand[pfad] = {"sha": neu[pfad]["sha"], "seite": None, "fehler": True}
+
             for pfad in offen[:JE_LAUF]:
                 antwort = await befehl("wissen_datei", {"ordner": brain.bridge_ordner, "pfad": pfad}, 60)
                 if not isinstance(antwort, dict) or not antwort.get("ok"):
-                    uebergangen += 1
+                    gescheitert(pfad)
                     continue
                 try:
                     roh = base64.b64decode(str(antwort.get("inhalt_b64") or ""), validate=True)
                 except ValueError:
-                    uebergangen += 1
+                    gescheitert(pfad)
                     continue
                 # Zwischen Liste und Abholen geändert (oder falsch gemeldet): nächster Lauf.
                 if len(roh) != neu[pfad]["bytes"] or hashlib.sha256(roh).hexdigest() != neu[pfad]["sha"]:
@@ -291,8 +335,8 @@ async def synchronisieren(db: AsyncSession, brain: SecondBrain, befehl: Befehl) 
                 seite = seite_fuer(pfad)
                 try:
                     vault.write_file(brain.host_path, seite, await _inhalt(pfad, roh))
-                except ValueError:
-                    uebergangen += 1
+                except (ValueError, OSError):
+                    gescheitert(pfad)
                     continue
                 try:
                     await vault_indexer.index_file(db, brain.label, brain.host_path, seite)
@@ -310,7 +354,9 @@ async def synchronisieren(db: AsyncSession, brain: SecondBrain, befehl: Befehl) 
         rest = max(0, len(offen) - JE_LAUF)
         hinweis = []
         if uebergangen:
-            hinweis.append(f"{uebergangen} Dateien übergangen (Art, Größe oder Name)")
+            hinweis.append(f"{uebergangen} Dateien übergangen (Art, Größe, Name oder nicht lesbar)")
+        if zu_viel:
+            hinweis.append(f"{zu_viel} Dateien über der Grenze von {MAX_BRAIN_BYTES // 1024 // 1024} MB je Brain")
         if rest:
             hinweis.append(f"{rest} Dateien folgen im nächsten Lauf")
         await _vermerken(db, brain, "; ".join(hinweis) or None, erfolgreich=True)
@@ -351,12 +397,29 @@ async def lauf_fuer_nutzer(user_id: str, befehl: Befehl) -> None:
                 log.warning("Bridge-Wissen %s fehlgeschlagen", brain.id, exc_info=True)
 
 
-async def schleife(user_id: str, befehl: Befehl) -> None:
-    """Läuft, solange die Bridge verbunden ist (``computer_use.bridge_websocket``)."""
+_SCHLEIFEN: dict[str, asyncio.Task] = {}
+
+
+def schleife_starten(user_id: str, befehl: Befehl, verbunden: Callable[[], bool]) -> None:
+    """Höchstens EINE Schleife je Nutzer, auch bei zwei verbundenen Bridges.
+
+    ``befehl`` muss die gerade verbundene Bridge des Nutzers ansprechen (nicht
+    eine feste Sitzung); ``verbunden`` sagt, ob noch eine da ist. Die Schleife
+    endet von selbst, sobald keine Bridge mehr verbunden ist.
+    """
+    user_id = str(user_id)
+    laufend = _SCHLEIFEN.get(user_id)
+    if laufend is not None and not laufend.done():
+        return
+    _SCHLEIFEN[user_id] = asyncio.create_task(schleife(user_id, befehl, verbunden))
+
+
+async def schleife(user_id: str, befehl: Befehl, verbunden: Callable[[], bool] = lambda: True) -> None:
+    """Läuft, solange eine Bridge des Nutzers verbunden ist (``computer_use.bridge_websocket``)."""
     user_id = str(user_id)
     wecker = _WECKER.setdefault(user_id, asyncio.Event())
     try:
-        while True:
+        while verbunden():
             wecker.clear()
             try:
                 await lauf_fuer_nutzer(user_id, befehl)
@@ -369,3 +432,4 @@ async def schleife(user_id: str, befehl: Befehl) -> None:
     finally:
         if _WECKER.get(user_id) is wecker:
             _WECKER.pop(user_id, None)
+        _SPERREN.pop(f"nutzer:{user_id}", None)

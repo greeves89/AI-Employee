@@ -33,6 +33,7 @@ class WissenSpiegel(unittest.TestCase):
             ("vault/.obsidian/workspace.json", b"{}"),
             ("vault/.git/config", b"[core]"),
             ("vault/.versteckt.md", b"nein"),
+            ("vault/node_modules/paket/README.md", b"fremd"),
             ("geheim/passwoerter.md", b"nur lokal"),
         ):
             ziel = os.path.join(basis, pfad)
@@ -57,9 +58,10 @@ class WissenSpiegel(unittest.TestCase):
         self.assertEqual(index["sha"], hashlib.sha256(b"# Start").hexdigest())
         self.assertEqual(index["bytes"], 7)
 
-    def test_unterordner_einer_freigabe_geht_fremder_nicht(self):
-        self.assertTrue(bridge.wissen_liste(os.path.join(self.vault, "Kunden"))["ok"])
-        for ordner in (self.geheim, os.path.join(self.vault, "ordnerlink"), "", None, "/"):
+    def test_nur_genau_der_freigegebene_ordner(self):
+        # Auch kein Unterordner: der koennte ein versteckter sein (~/.ssh unter ~).
+        for ordner in (self.geheim, os.path.join(self.vault, "Kunden"), os.path.join(self.vault, ".obsidian"),
+                       os.path.join(self.vault, "ordnerlink"), "", None, "/"):
             with self.subTest(ordner=ordner):
                 self.assertFalse(bridge.wissen_liste(ordner)["ok"])
                 self.assertFalse(bridge.wissen_datei(ordner, "passwoerter.md")["ok"])
@@ -75,6 +77,7 @@ class WissenSpiegel(unittest.TestCase):
 
     def test_datei_bleibt_im_ordner(self):
         for pfad in ("../geheim/passwoerter.md", "link.md", "ordnerlink/passwoerter.md", ".obsidian/workspace.json",
+                     "node_modules/paket/README.md",
                      ".git/config", os.path.join(self.geheim, "passwoerter.md"), "bild.png", "fehlt.md", "a\x00.md"):
             with self.subTest(pfad=pfad):
                 self.assertFalse(bridge.wissen_datei(self.vault, pfad)["ok"])
@@ -90,6 +93,16 @@ class WissenSpiegel(unittest.TestCase):
         d = bridge.CommandDispatcher.__new__(bridge.CommandDispatcher)
         r = d.dispatch({"action": "wissen_liste", "params": {"ordner": self.vault}})
         self.assertTrue(r["ok"])
+
+
+    def test_getauschte_datei_wird_nicht_gelesen(self):
+        """Zwischen Liste und Abholen gegen einen Link getauscht: nicht lesen."""
+        ziel = os.path.join(self.vault, "index.md")
+        os.remove(ziel)
+        os.symlink(os.path.join(self.geheim, "passwoerter.md"), ziel)
+        self.assertFalse(bridge.wissen_datei(self.vault, "index.md")["ok"])
+        with self.assertRaises(OSError):
+            os.close(bridge._wissen_oeffnen(ziel))
 
 
 if __name__ == "__main__":

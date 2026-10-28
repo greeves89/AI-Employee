@@ -23,6 +23,7 @@ import os
 import platform
 import queue
 import ssl
+import stat
 import sys
 import threading
 import time
@@ -1494,22 +1495,37 @@ WISSEN_ENDUNGEN = WISSEN_TEXT_ENDUNGEN + (".pdf", ".docx", ".xlsx")
 WISSEN_MAX_DATEIEN = 5000
 WISSEN_MAX_TEXT_BYTES = 2_000_000
 WISSEN_MAX_DOKUMENT_BYTES = 10 * 1024 * 1024
+# Neben versteckten Ordnern: Ablagen von Werkzeugen, kein Wissen.
+WISSEN_AUSGELASSEN = {"node_modules", "__pycache__"}
 # (Pfad, Groesse, Aenderungszeit) -> Pruefsumme: der Abgleich laeuft alle zehn
 # Minuten, ohne Merker laese er jedes Mal jede Datei ganz.
 _wissen_pruefsummen: dict[tuple[str, int, int], str] = {}
 
 
 def _wissen_wurzel(ordner) -> str | None:
-    """Der Ordner (aufgeloest), wenn er freigegeben ist oder darin liegt — sonst None."""
+    """Der Ordner, wenn er GENAU so freigegeben ist — sonst None.
+
+    Kein Unterordner: der Server spiegelt nur, was ``wissen_ordner`` nennt, und
+    ein Unterordner koennte ein versteckter sein (``~/.ssh`` unter ``~``).
+    """
     if not isinstance(ordner, str) or not ordner.strip():
         return None
     echt = os.path.realpath(os.path.expanduser(ordner.strip()))
-    if not os.path.isdir(echt):
-        return None
-    for d in allowed_shell_dirs():
-        if echt == d or echt.startswith(d + os.sep):
-            return echt
-    return None
+    return echt if echt in allowed_shell_dirs() and os.path.isdir(echt) else None
+
+
+def _wissen_oeffnen(pfad: str) -> int:
+    """Datei oeffnen, OHNE einem Link zu folgen, und pruefen, dass sie eine
+    gewoehnliche Datei ist — zwischen Pruefung und Lesen kann sie sonst gegen
+    einen Link getauscht werden. Liefert den Dateideskriptor."""
+    fd = os.open(pfad, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0))
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError("keine gewoehnliche Datei")
+    except Exception:
+        os.close(fd)
+        raise
+    return fd
 
 
 def _wissen_grenze(name: str) -> int:
@@ -1522,7 +1538,7 @@ def _wissen_pruefsumme(pfad: str, st: os.stat_result) -> str:
     if bekannt:
         return bekannt
     h = hashlib.sha256()
-    with open(pfad, "rb") as fh:
+    with os.fdopen(_wissen_oeffnen(pfad), "rb") as fh:
         for stueck in iter(lambda: fh.read(1024 * 1024), b""):
             h.update(stueck)
     if len(_wissen_pruefsummen) > 4 * WISSEN_MAX_DATEIEN:
@@ -1542,7 +1558,7 @@ def wissen_liste(ordner) -> dict:
         return {"ok": False, "error": "Der Ordner ist in der Bridge nicht (mehr) freigegeben."}
     dateien: list[dict] = []
     for root, dirs, files in os.walk(wurzel, followlinks=False):
-        dirs[:] = sorted(d for d in dirs if not d.startswith("."))
+        dirs[:] = sorted(d for d in dirs if not d.startswith(".") and d not in WISSEN_AUSGELASSEN)
         for name in sorted(files):
             if name.startswith(".") or not name.lower().endswith(WISSEN_ENDUNGEN):
                 continue
@@ -1577,15 +1593,20 @@ def wissen_datei(ordner, pfad) -> dict:
         return {"ok": False, "error": "Ungueltiger Pfad"}
     if not pfad.lower().endswith(WISSEN_ENDUNGEN):
         return {"ok": False, "error": "Diese Dateiart wird nicht gespiegelt"}
+    if any(t in WISSEN_AUSGELASSEN for t in teile):
+        return {"ok": False, "error": "Ungueltiger Pfad"}
     ziel = os.path.join(wurzel, *teile)
     echt = os.path.realpath(ziel)
-    if not echt.startswith(wurzel + os.sep) or os.path.islink(ziel) or not os.path.isfile(echt):
+    # realpath loest Links in Zwischenordnern auf: zeigt einer hinaus, endet es hier.
+    if echt != ziel or not echt.startswith(wurzel + os.sep):
         return {"ok": False, "error": "Datei nicht gefunden"}
-    if os.path.getsize(echt) > _wissen_grenze(echt):
-        return {"ok": False, "error": "Datei zu gross"}
-    with open(echt, "rb") as fh:
-        roh = fh.read(_wissen_grenze(echt) + 1)
-    if len(roh) > _wissen_grenze(echt):
+    grenze = _wissen_grenze(echt)
+    try:
+        with os.fdopen(_wissen_oeffnen(echt), "rb") as fh:
+            roh = fh.read(grenze + 1)
+    except OSError:
+        return {"ok": False, "error": "Datei nicht gefunden"}
+    if len(roh) > grenze:
         return {"ok": False, "error": "Datei zu gross"}
     return {"ok": True, "inhalt_b64": base64.b64encode(roh).decode("ascii")}
 

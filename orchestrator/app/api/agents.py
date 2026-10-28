@@ -3839,7 +3839,13 @@ async def update_agent_mounts(
     # auch Administratoren verschlossen (#1092).
     from app.core.mounts import fremde_privatablagen
 
-    fremd = sorted(await fremde_privatablagen(db, new_mounts, user))
+    # Gegen den Aufrufer UND den Besitzer des Agenten: sonst hängte ein Admin
+    # sein privates Brain in den Agenten eines anderen (oder umgekehrt).
+    from types import SimpleNamespace
+
+    ziel = await db.get(Agent, agent_id)
+    besitzer = SimpleNamespace(id=(ziel.user_id if ziel else None) or "")
+    fremd = sorted(await fremde_privatablagen(db, new_mounts, user) | await fremde_privatablagen(db, new_mounts, besitzer))
     if fremd:
         raise HTTPException(status_code=403, detail=f"Not authorized for mount(s): {fremd}")
 
