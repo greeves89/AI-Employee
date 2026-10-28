@@ -105,6 +105,12 @@ def write_file(host_path: str, rel_path: str, content: str, *, overwrite: bool =
     Raises ``ValueError`` (bad path/suffix/size) or ``FileExistsError`` (overwrite=False).
     """
     target = resolve_path(host_path, rel_path)
+    # Die Schranke steht zusätzlich HIER: ``resolve_path`` prüft schon, aber eine
+    # Prüfung in einer anderen Funktion erkennt die Code-Analyse nicht als Schranke.
+    basis = os.path.realpath(host_path)
+    target = os.path.realpath(target)
+    if not target.startswith(basis + os.sep):
+        raise ValueError("path escapes the vault")
     if not target.lower().endswith(_WRITABLE_SUFFIXES):
         raise ValueError("only .md/.markdown/.txt files can be written")
     if len(content.encode("utf-8")) > MAX_FILE_BYTES:
@@ -112,17 +118,42 @@ def write_file(host_path: str, rel_path: str, content: str, *, overwrite: bool =
     existed = os.path.isfile(target)
     if existed and not overwrite:
         raise FileExistsError(rel_path)
-    os.makedirs(os.path.dirname(target) or os.path.realpath(host_path), exist_ok=True)
+    ordner = os.path.dirname(target)
+    neue_ordner = []
+    pruefen = ordner
+    while pruefen.startswith(basis + os.sep) and not os.path.isdir(pruefen):
+        neue_ordner.append(pruefen)
+        pruefen = os.path.dirname(pruefen)
+    os.makedirs(ordner, exist_ok=True)
     tmp = target + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
         fh.write(content)
     os.replace(tmp, target)
+    # Neue Datei und neue Ordner dem Agenten-Nutzer geben (siehe ``AGENT_UID``).
+    # Bewusst hier und nicht in einer Hilfsfunktion: die Pfadschranke oben gilt
+    # für die Code-Analyse nur innerhalb dieser Funktion.
+    for pfad in [*neue_ordner, target]:
+        if pfad.startswith(basis + os.sep):
+            try:
+                os.chown(pfad, AGENT_UID, AGENT_UID)
+            except (PermissionError, OSError, AttributeError):
+                pass
     return {"path": rel_path, "created": not existed, "bytes": len(content.encode("utf-8"))}
+
+
+#: Nutzer, unter dem die Agenten-Container laufen (``agent`` im Abbild).
+#: Der Orchestrator schreibt als root. Ohne Übergabe gehörte eine Notiz, die der
+#: Agent über ``secondbrain_write`` anlegt, root (Datei 0644, Ordner 0755) — und
+#: der Agent konnte sie danach im eingebundenen Vault weder ändern noch daneben
+#: schreiben. Wo der Orchestrator nicht root ist (Tests), bleibt alles so.
+AGENT_UID = 1000
 
 
 def delete_file(host_path: str, rel_path: str) -> None:
     """Delete a vault file (jailed). Raises ``FileNotFoundError`` / ``ValueError``."""
-    target = resolve_path(host_path, rel_path)
+    target = os.path.realpath(resolve_path(host_path, rel_path))
+    if not target.startswith(os.path.realpath(host_path) + os.sep):
+        raise ValueError("path escapes the vault")
     if not os.path.isfile(target):
         raise FileNotFoundError(rel_path)
     os.remove(target)

@@ -106,9 +106,14 @@ below as "Zusätzliche Anweisungen".
 0. **Read /workspace/.agent_state.md** — your cross-run working memory. Shows what you did
    last run, active work, user directives, and planned next steps. Read this FIRST.
 1. Read /workspace/knowledge.md for your role, skills, and learned patterns
-2. Use brain_search(q: "") to check the shared knowledge base for recent entries
+2. Use brain_search(q: "") to check the user's knowledge base for recent entries
 3. Use memory_search(query: "") to recall recent memories and context
 4. Use list_todos to see pending work
+5. If the run touches a documented topic (a support question, a procedure, an error code):
+   `secondbrain_search(query: "...")` — the shared department Second Brain under
+   `/mnt/brains/`. Hybrid search (semantic + full text), not grep; write findings back
+   with `secondbrain_write` — that one indexes the article immediately, a plain file
+   write leaves it invisible to search until the next re-index run.
 
 ## STEP 1: SURVEY AND PLAN THE RUN
 Before doing anything, work out what's actually in front of you:
@@ -583,8 +588,10 @@ TODOs are persistent and displayed in the "Todos" tab for the user to see.
 - **complete_todo** - Mark a single TODO as completed by ID
 **When starting a real task: `list_todos` first → work on existing ones → only add NEW if needed!** (Skip for trivial questions.)
 
-### Knowledge Base Tools (mcp-knowledge) — SHARED ACROSS ALL AGENTS!
-All agents share a central knowledge base. **USE THIS ACTIVELY!**
+### Knowledge Base Tools (mcp-knowledge) — shared across YOUR OWN agents
+This knowledge base belongs to your user's account: every agent of **this user** reads and
+writes the same graph. It is NOT shared with other users' agents, and it is NOT the shared
+department Second Brain (that is `secondbrain_*`, see below). **USE THIS ACTIVELY!**
 - **brain_search** - Search the shared knowledge base by keyword and/or tag
   - **ALWAYS search BEFORE asking the user** for information you might already know!
   - Search when you encounter a problem, need context, or start a new topic
@@ -610,7 +617,14 @@ The `ai-team` bash command still works for all the above operations.
 Run `ai-team help` for usage. Prefer MCP tools over CLI when possible.
 
 ## Knowledge Access (for real work — NOT every reply)
-I have TWO knowledge sources. Use them when a task actually needs context (see "Effort proportional" above) — NOT before trivial questions.
+I have THREE knowledge sources, and they are different things. Use them when a task actually
+needs context (see "Effort proportional" above) — NOT before trivial questions.
+- **`memory_search`** — MY OWN memory (this agent, across all its runs).
+- **`brain_search`** — this USER'S personal knowledge base (the Knowledge tab; shared across
+  this user's own agents, not with anyone else's).
+- **`secondbrain_search`** — the shared DEPARTMENT Second Brain: real Markdown files under
+  `/mnt/brains/<slug>/`, used by many people. First stop for support / how-to /
+  troubleshooting questions (error codes, devices, procedures).
 
 ### 1. Personal knowledge file: `/workspace/knowledge.md`
 - **When starting a substantial task**, skim it once to recall my role, skills, and past learnings
@@ -855,13 +869,15 @@ def _build_mounts_section(mount_labels: list[str], catalog: dict | None = None) 
             "\n### Second Brain lookup (IMPORTANT)\n"
             "A shared department knowledge base is mounted above (a `brain-*` path under "
             "`/mnt/brains/`). For support, how-to or troubleshooting questions (e.g. error "
-            "codes like `x17137`), **search it FIRST** before answering: use `grep` for "
-            "keywords/error codes and `read_file` on the matches, then answer from the found "
-            "`.md` content and cite the file. If you learn something new and have read-write "
-            "access, **write it back**: use your normal file/Write tool to create or update a "
-            "concise `.md` article directly at `/mnt/brains/<slug>/<Ordner>/<thema>.md` "
-            "(Markdown, `[[wikilinks]]` between topics). No special tool needed — the vault is "
-            "mounted read-write, so a plain file write preserves the knowledge for the whole department."
+            "codes like `x17137`), **search it FIRST** before answering: call "
+            "**`secondbrain_search(query=...)`** — that runs the real hybrid search (semantic + "
+            "full text, ranked), so it also finds paraphrases and German/English crossovers that "
+            "`grep` misses. Then `secondbrain_read(path=...)` the best match and answer from its "
+            "content, citing the file. If you learn something new, **write it back** with "
+            "**`secondbrain_write(path='<slug>/<Ordner>/<thema>.md', content=...)`** — one topic "
+            "per file, `[[wikilinks]]` between them. That call also puts the article into the "
+            "search index immediately; a plain file write does not. Only if the orchestrator is "
+            "unreachable fall back to `grep` over `/mnt/brains/*/` and a plain file write."
         )
     return "\n".join(lines)
 

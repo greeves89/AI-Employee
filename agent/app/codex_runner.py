@@ -721,6 +721,8 @@ def _ensure_codex_mcp_config(codex_home: str, env: dict) -> bool:
     # Built-in AI Employee MCP servers (stdio)
     builtin_servers = {
         "brain": "/opt/mcp/brain-server.mjs",
+        # Geteilter Abteilungs-Vault (#727), nicht zu verwechseln mit "brain".
+        "secondbrain": "/opt/mcp/secondbrain-server.mjs",
         "skill": "/opt/mcp/skill-server.mjs",
         "memory": "/opt/mcp/memory-server.mjs",
         "notification": "/opt/mcp/notification-server.mjs",

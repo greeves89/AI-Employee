@@ -172,6 +172,9 @@ CONCURRENT_SAFE_TOOLS = frozenset({
     "web_search", "news_search", "web_fetch",
     "memory_search", "brain_search", "brain_get", "brain_list", "brain_related", "list_team",
     "list_tasks", "list_todos", "list_schedules", "trigger_list",
+    # Seit #727 ein API-Aufruf (Hybrid-Suche im Orchestrator) statt eines Walks
+    # ueber alle Dateien — fachlich dieselbe Klasse wie ``brain_search``.
+    "secondbrain_search",
     # Nicht in _CACHEABLE_TOOLS: der Schluessel dort kennt das Gespraech nicht.
     "chat_search",
 })
@@ -181,6 +184,11 @@ _CACHEABLE_TOOLS = frozenset({
     "read_file", "list_files", "glob", "grep",
     "memory_search", "brain_search", "brain_list", "list_team",
     "list_tasks", "list_todos", "list_schedules", "trigger_list",
+    # Zwingend zusammen mit der Invalidierung durch ``secondbrain_write`` unten
+    # (#727): sonst schreibt der Agent einen Artikel, sucht ihn unmittelbar
+    # danach und bekommt 120 Sekunden lang den zwischengespeicherten
+    # "nicht gefunden"-Stand.
+    "secondbrain_search",
 })
 _CACHE_TTL_SECONDS = 120  # 2 minutes (tool result cache)
 _AUTONOMY_CACHE_TTL = 10  # 10s — fast enough for level changes to propagate
@@ -446,7 +454,10 @@ class ToolExecutor:
             # Cache read-only results; invalidate cache on write operations
             if tool_name in _CACHEABLE_TOOLS:
                 self._cache.put(tool_name, tool_input, result)
-            elif tool_name in ("write_file", "edit_file", "multi_edit", "bash"):
+            elif tool_name in ("write_file", "edit_file", "multi_edit", "bash",
+                               # Schreibt in den geteilten Vault, den
+                               # ``secondbrain_search`` zwischenspeichert (#727).
+                               "secondbrain_write"):
                 self._cache.invalidate()
             return result
         except Exception as e:
@@ -1091,6 +1102,35 @@ class ToolExecutor:
         return "\n\n".join(out)
 
     async def _tool_secondbrain_search(self, params: dict) -> str:
+        """Hybrid-Suche ueber den Orchestrator; lokaler Walk nur als Rueckfall (#727).
+
+        Der Orchestrator hat den Index (Vektor + Volltext, RRF) und kennt die
+        Zuweisung des Agenten. Nur wenn er NICHT erreichbar ist, sucht der Agent
+        lokal im gemounteten Vault weiter — der liegt ja im Container und bleibt
+        ohne Orchestrator lesbar. Eine 4xx-Antwort ist dagegen eine Aussage und
+        wird durchgereicht (siehe ``ORCHESTRATOR_UNREACHABLE``).
+        """
+        from app.tools.api_client import ORCHESTRATOR_UNREACHABLE
+
+        query = (params.get("query") or "").strip()
+        if not query:
+            return "Error: 'query' is required"
+        try:
+            ergebnis = await self._get_api_client().secondbrain_search_remote(params)
+        except Exception as e:
+            logger.info("[SecondBrain] API-Suche fehlgeschlagen (%s) — lokale Suche", e)
+            ergebnis = ORCHESTRATOR_UNREACHABLE
+        if ergebnis != ORCHESTRATOR_UNREACHABLE:
+            return ergebnis
+        return await self._secondbrain_search_local(params)
+
+    async def _secondbrain_search_local(self, params: dict) -> str:
+        """Rueckfallebene: Substring-Walk ueber die gemounteten Vaults.
+
+        Das war bis #727 der einzige Weg. Kein Ranking, keine Semantik, und
+        neu geschriebene Dateien sind hier sofort sichtbar — genau deshalb
+        taugt er als Notnagel bei Orchestrator-Ausfall.
+        """
         query = (params.get("query") or "").strip()
         if not query:
             return "Error: 'query' is required"
@@ -1123,8 +1163,9 @@ class ToolExecutor:
                     results.append((score, slug, rel, snips))
         results.sort(key=lambda r: r[0], reverse=True)
         if not results:
-            return f"No matches for '{query}' in any Second Brain."
-        lines = []
+            return (f"No matches for '{query}' in any Second Brain. "
+                    "(lokale Suche — Orchestrator nicht erreichbar)")
+        lines = ["[SECOND BRAIN — lokal, Orchestrator nicht erreichbar]"]
         for _score, slug, rel, snips in results[:limit]:
             lines.append(f"## {slug}/{rel}")
             lines.extend(f"  · {s}" for s in snips)
@@ -1143,6 +1184,31 @@ class ToolExecutor:
             return fh.read()
 
     async def _tool_secondbrain_write(self, params: dict) -> str:
+        """Schreiben ueber den Orchestrator, damit der Artikel SOFORT im Index steht.
+
+        Der Agent war bis #727 der einzige Schreibweg ohne Indexierung — Admin-UI,
+        externer MCP und Sprach-Sitzung machen den Zweischritt (schreiben +
+        ``index_file``) alle. Rueckfall bei Orchestrator-Ausfall: lokal schreiben.
+        Die Datei ist dann geschrieben, aber noch nicht indiziert — das faengt der
+        Re-Index-Durchlauf im Scheduler (alle 5 Minuten).
+        """
+        from app.tools.api_client import ORCHESTRATOR_UNREACHABLE
+
+        path = (params.get("path") or "").strip()
+        content = params.get("content")
+        if not path or content is None:
+            return "Error: 'path' and 'content' are required (e.g. path='it_operations/Drucker/HP-Fax.md')"
+        try:
+            ergebnis = await self._get_api_client().secondbrain_write_remote(params)
+        except Exception as e:
+            logger.info("[SecondBrain] API-Schreiben fehlgeschlagen (%s) — lokaler Weg", e)
+            ergebnis = ORCHESTRATOR_UNREACHABLE
+        if ergebnis != ORCHESTRATOR_UNREACHABLE:
+            return ergebnis
+        return await self._secondbrain_write_local(params)
+
+    async def _secondbrain_write_local(self, params: dict) -> str:
+        """Rueckfallebene: direkt in den gemounteten Vault schreiben (ohne Index)."""
         path = (params.get("path") or "").strip()
         content = params.get("content")
         if not path or content is None:
@@ -1169,7 +1235,9 @@ class ToolExecutor:
             os.chmod(target, 0o666)
         except OSError:
             pass
-        return f"Saved to Second Brain: {os.path.relpath(target, root)} ({len(content)} chars)."
+        return (f"Saved to Second Brain: {os.path.relpath(target, root)} ({len(content)} chars). "
+                "Hinweis: lokal geschrieben (Orchestrator nicht erreichbar) — noch NICHT im "
+                "Suchindex; der Re-Index-Durchlauf holt das innerhalb von 5 Minuten nach.")
 
     async def _tool_news_search(self, params: dict) -> str:
         """Nachrichtensuche ueber den Orchestrator. Eigenes Werkzeug statt eines

@@ -150,6 +150,15 @@ _GC_INTERVAL_SECONDS = 60
 # (heuristic, no LLM cost). Gated by the dreaming_enabled setting (default off).
 _DREAMING_INTERVAL_SECONDS = 3600
 
+# Second-Brain-Index nachziehen (#727). Sicherheitsnetz, nicht Hauptweg: der
+# Schreibendpunkt indexiert selbst sofort. Dieser Durchlauf faengt, was daran
+# vorbeigeht — den lokalen Rueckfall des Agenten bei Orchestrator-Ausfall,
+# direkte Schreibzugriffe auf /mnt/brains und Dateien, die jemand per SSH auf
+# dem Host ablegt. Gleiche Taktung wie der Git-Autocommit, damit Index und
+# Verlauf im Gleichschritt laufen. ``reindex_vault`` ist inkrementell und
+# hash-basiert: unveraenderte Dateien kosten Datei-IO, keinen Embedding-Aufruf.
+_VAULT_REINDEX_INTERVAL = timedelta(minutes=5)
+
 
 class SchedulerService:
     """Background service that checks for due schedules and spawns tasks."""
@@ -162,6 +171,8 @@ class SchedulerService:
         self._git_counter = 0
         self._idle_stop_counter = 0
         self._failure_watchdog_last_run: datetime | None = None
+        self._vault_reindex_last_run: datetime | None = None
+        self._vault_reindex_task: asyncio.Task | None = None
         self._dreaming_counter = 0
         self._reflection_counter = 0
         self._reflection_service = None
@@ -396,6 +407,15 @@ class SchedulerService:
                     await self._tick_failure_watchdog()
                 except Exception as e:
                     logger.warning("[Scheduler] FailureWatchdog error: %s", e)
+                # Second-Brain-Index nachziehen (#727). Selbstgedrosselt auf 5 Min
+                # und NEBENLAEUFIG: der Durchlauf liest jede Datei jedes Vaults
+                # und stellt pro Datei zwei Abfragen. Inline erwartet waere das
+                # eine Pause der ganzen Schleife — faellige Zeitplaene wuerden
+                # genau so lange nicht verteilt, wie das Indexieren dauert.
+                try:
+                    self._starte_vault_reindex()
+                except Exception as e:
+                    logger.warning("[Scheduler] VaultReindex error: %s", e)
                 # Trend scan: runs daily (TrendService.tick() self-throttles)
                 try:
                     result = await trend_service.tick()
@@ -2115,6 +2135,90 @@ class SchedulerService:
             return
         if schedule is not None:
             schedule.fail_count += 1
+
+    def _starte_vault_reindex(self) -> bool:
+        """Den Durchlauf nebenlaeufig anstossen; ``False`` = laeuft schon.
+
+        Der Zeitstempel allein genuegt dafuer NICHT: er sperrt 5 Minuten, ein
+        Durchlauf ueber einen grossen Vault kann laenger dauern. Dann liefen zwei
+        Indexierungen desselben Vaults gleichzeitig. Die Aufgabe wird festgehalten
+        (sonst kann der Sammler sie mitten im Lauf einziehen) und der Ausgang
+        protokolliert — eine Ausnahme in einer losgelassenen Aufgabe waere sonst
+        unsichtbar.
+        """
+        laufende = getattr(self, "_vault_reindex_task", None)
+        if laufende is not None and not laufende.done():
+            return False
+        now = datetime.now(timezone.utc)
+        if (
+            self._vault_reindex_last_run is not None
+            and (now - self._vault_reindex_last_run) < _VAULT_REINDEX_INTERVAL
+        ):
+            return False
+
+        def _fertig(aufgabe: asyncio.Task) -> None:
+            self._vault_reindex_task = None
+            if aufgabe.cancelled():
+                return
+            fehler = aufgabe.exception()
+            if fehler is not None:
+                logger.warning("[VaultReindex] Durchlauf abgebrochen: %s", fehler)
+
+        self._vault_reindex_task = asyncio.create_task(self._tick_vault_reindex())
+        self._vault_reindex_task.add_done_callback(_fertig)
+        return True
+
+    async def _tick_vault_reindex(self) -> dict[str, int]:
+        """Second-Brain-Vaults inkrementell nachindexieren (alle 5 Minuten).
+
+        Drosselung nach dem Muster von :meth:`_tick_failure_watchdog`: fauler
+        Aufruf aus der Hauptschleife, eigener Zeitstempel, eigenes Intervall.
+        Der Zeitstempel wird VOR der Arbeit gesetzt — ein langer Durchlauf
+        startet dadurch keinen zweiten gleich hinterher.
+
+        Gibt die Summe der Statistiken zurueck (fuer Tests und Protokoll); ein
+        uebersprungener Lauf liefert ``{"skipped": 1}``.
+        """
+        now = datetime.now(timezone.utc)
+        if (
+            self._vault_reindex_last_run is not None
+            and (now - self._vault_reindex_last_run) < _VAULT_REINDEX_INTERVAL
+        ):
+            return {"skipped": 1}
+        self._vault_reindex_last_run = now
+
+        from app.models.second_brain import SecondBrain
+        from app.services import vault_indexer
+
+        gesamt = {"brains": 0, "files": 0, "chunks": 0, "pruned": 0, "errors": 0}
+        async with resilient_session() as db:
+            # Werte vorab lesen: Nach einem Rollback sind die ORM-Objekte verfallen,
+            # und ein Zugriff darauf lüde nach (MissingGreenlet).
+            brains = (
+                await db.execute(
+                    select(SecondBrain.label, SecondBrain.host_path).where(SecondBrain.is_active.is_(True))
+                )
+            ).all()
+            for label, host_path in brains:
+                try:
+                    stats = await vault_indexer.reindex_vault(db, label, host_path)
+                except Exception as e:
+                    # Ein kaputter Vault darf die uebrigen nicht mitreissen — auch
+                    # nicht über eine abgebrochene Sitzung.
+                    logger.warning("[VaultReindex] brain=%s: %s", label, e)
+                    await db.rollback()
+                    gesamt["errors"] += 1
+                    continue
+                gesamt["brains"] += 1
+                for k in ("files", "chunks", "pruned", "errors"):
+                    gesamt[k] += int(stats.get(k, 0) or 0)
+        if gesamt["files"] or gesamt["pruned"] or gesamt["errors"]:
+            logger.info(
+                "[VaultReindex] brains=%s files=%s chunks=%s pruned=%s errors=%s",
+                gesamt["brains"], gesamt["files"], gesamt["chunks"],
+                gesamt["pruned"], gesamt["errors"],
+            )
+        return gesamt
 
     async def _tick_stale_task_watchdog(self) -> None:
         """Mark RUNNING tasks that stopped heart-beating as stale.

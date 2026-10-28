@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.394.0] - 2026-10-28
+
+### Neu
+- **Der Agent findet jetzt wirklich, was im Abteilungswissen steht.** Bisher hat er beim Durchsuchen des gemeinsamen Second Brain nur nach wörtlichen Treffern gezählt — wer auf Deutsch fragte, fand einen englisch abgelegten Artikel nicht, und eine Umschreibung („Drucker spuckt Fehler aus“ statt des Codes) fand gar nichts. Die bessere Suche (Bedeutung + Volltext, zusammengeführt und sortiert) lief längst, aber nur für die Oberfläche und den Sprachmodus. Jetzt nimmt der Agent denselben Weg. Fragt man ihn nach einem Fehlercode, nennt er den Artikel und zitiert die Datei.
+- **Was der Agent ins Abteilungswissen schreibt, ist sofort auffindbar.** Sein Schreibweg war der einzige, der den Suchindex nicht nachgezogen hat: ein gerade angelegter Artikel blieb unsichtbar, auch für ihn selbst. Jetzt wird beim Speichern mitindiziert.
+- **Ein Nachlauf alle fünf Minuten hält den Index aktuell.** Dateien, die sich nicht geändert haben, werden übersprungen; gelöschte verschwinden aus dem Index. Wer eine Datei direkt in den gemounteten Ordner legt, findet sie damit spätestens nach fünf Minuten über die Suche.
+- **Die Verwaltung zeigt den Stand des Suchindex.** Unter Wissen → Second Brain steht je Vault, wie viele Dateien im Index liegen und wann zuletzt indiziert wurde — oder „noch nicht indiziert", solange die Suche über den Dateiweg läuft. Vorher war von außen nicht zu sehen, ob die bessere Suche in einem Vault überhaupt etwas zu arbeiten hat.
+- **Der Agent sieht, was überhaupt im Vault liegt.** Zu Beginn jeder Arbeit bekommt er eine knappe Landkarte der Vault-Dateien (bei großen Vaults eine Ordner-Übersicht mit Zählern). Ordnernamen tragen Bedeutung, die in der Volltextsuche verloren geht.
+- **Claude-Code-Agenten haben jetzt auch Zugang zum Abteilungswissen.** Der am häufigsten genutzte Agententyp war der einzige ohne `secondbrain_search`/`secondbrain_write` — er musste sich mit Dateisuche behelfen.
+
+### Behoben
+- **Irreführender Hinweis im Agenten-Startblock.** Dort stand, die persönliche Wissensdatenbank sei „über alle Agenten geteilt“. Sie gehört zum Konto des Nutzers. Geteilt ist der Second Brain — und der war an dieser Stelle gar nicht erwähnt.
+- **Eine kaputte Suche sagt das, statt „nichts gefunden" zu melden.** Konnte in keinem zugewiesenen Vault gesucht werden, antwortet der Server jetzt mit einem Fehler — nur so greift der Rückfall auf den Dateiweg. Vorher wäre ein defekter Index beim Agenten als ehrliches Leerergebnis angekommen. Außerdem reißt ein einzelner kaputter Vault die übrigen nicht mehr mit.
+- **Antwortet der Orchestrator nicht, sucht der Agent weiter.** Der Vault liegt im Container, also bleibt die einfache Dateisuche als Notnagel erhalten — auch während einer Aktualisierung, bei der die Agenten schon neu und der Orchestrator noch alt ist. Lehnt der Server eine Anfrage dagegen bewusst ab (fremder Vault, nur lesend eingebunden), sagt der Agent das, statt still am Verbot vorbei zu suchen.
+
+### Technik
+- Neue agenten-authentifizierte Endpunkte `GET /brains/agent/search` und `POST /brains/agent/write`. Der Umfang kommt ausschließlich aus dem Token; ein mitgeschicktes Label kann ihn nur verkleinern, ein fremdes ergibt 404 (kein stilles Leerergebnis), ein nur lesend eingebundener Vault 403. `hybrid_search_with_mode()` meldet, ob aus dem Index oder vom Dateiweg geantwortet wurde; ein Dateiweg-Treffer trotz vorhandener Chunks wird als Index-Drift protokolliert. Re-Index-Takt in `SchedulerService._tick_vault_reindex` (5 Minuten, gedrosselt, ein kaputter Vault reißt die übrigen nicht mit). Neuer MCP-Server `secondbrain-server.mjs` mit `secondbrain_search`/`_write` über den Orchestrator und `secondbrain_read`/`_list` direkt auf dem gemounteten Vault (Pfad-Jail wie im Executor), registriert in allen fünf Stellen inkl. Werkzeugkatalog. Der Re-Index-Takt läuft nebenläufig, damit die Scheduler-Schleife während des Indexierens weiter Zeitpläne verteilt. `401/408/429` zählen client-seitig als „nicht erreichbar" (Weg dorthin), nicht als Brain-Befund. Modellwerte werden vor der Vault-Schleife aufgelöst — nach einem `rollback()` wäre jeder Attributzugriff ein Nachladevorgang (`MissingGreenlet`).
+
+### Behoben (aus dem Review)
+- Ohne Embedding-Dienst (oder mit falschem Schlüssel) schrieb der Neuindex alle 5 Minuten jede Datei aller Vaults neu. Unveränderte Dateien bekommen jetzt nur die fehlenden Embeddings nachgetragen; fehlt der Dienst, fragt der Lauf nach dem ersten Versuch nicht weiter.
+- Ein einzelner Datenbankfehler (etwa ein NUL-Byte in einer Notiz) legte den ganzen Neuindex-Lauf lahm. NUL-Bytes werden jetzt entfernt, und nach einem Fehler wird die Sitzung zurückgesetzt, sodass die übrigen Dateien und Vaults weiterlaufen.
+- Notizen, die ein Agent über `secondbrain_write` anlegt, gehörten root. Der Agent konnte sie danach selbst nicht mehr ändern. Neue Dateien und Ordner gehören jetzt dem Agenten-Nutzer.
+
 ## [1.393.7] - 2026-10-28
 
 ### Behoben

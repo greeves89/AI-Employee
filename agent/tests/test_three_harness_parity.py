@@ -45,6 +45,7 @@ CUSTOM_LLM_VIA_HTTP: dict[str, str] = {
     "email": "Wie msgraph — HTTP-MCP, kein stdio.",
     "hyperframes": "HTTP-MCP (Video-Dienst).",
     "brain": "HTTP-MCP (Vault als Bearer-Server).",
+    "secondbrain": "In definitions.py nachgebaut (secondbrain_*, ueber den Executor).",
     "bash-approval": "Kein Werkzeugsatz, nur ein Freigabe-Haken.",
     "computer-use": "Rechnersteuerung — offen, siehe test_computer_use_parity.",
     "read-logs": "Offen, siehe unten.",

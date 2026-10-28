@@ -104,25 +104,63 @@ def _snippets(content: str, query: str, max_lines: int = 3) -> list[str]:
 async def hybrid_search(
     db: AsyncSession, brain_label: str, host_path: str, query: str, limit: int = 10
 ) -> list[dict]:
-    """Hybrid semantic+keyword search over a vault, grep as last-resort fallback."""
+    """Hybrid semantic+keyword search over a vault, grep as last-resort fallback.
+
+    Thin wrapper over :func:`hybrid_search_with_mode` for the callers that only
+    want the hits (external MCP endpoint, voice session).
+    """
+    _mode, results = await hybrid_search_with_mode(db, brain_label, host_path, query, limit)
+    return results
+
+
+async def hybrid_search_with_mode(
+    db: AsyncSession, brain_label: str, host_path: str, query: str, limit: int = 10
+) -> tuple[str, list[dict]]:
+    """Like :func:`hybrid_search`, but also reports WHICH path produced the hits.
+
+    Returns ``("hybrid"|"grep", results)``. The mode is not cosmetic: a vault that
+    HAS chunks and still answers from grep is a drift signal — ``_has_chunks``
+    treats a single chunk row as "indexed", so a partially stale index never
+    degrades visibly on its own. Every grep answer despite existing chunks is
+    therefore logged at warning level (spec section 6), and the mode travels out
+    to the agent endpoint so the drift is readable without digging in the log.
+    """
     query = (query or "").strip()
     if not query:
-        return []
+        return "hybrid", []
 
-    if not await _has_chunks(db, brain_label):
+    indexed = await _has_chunks(db, brain_label)
+    if not indexed:
         # Not indexed yet — keep the vault searchable with plain grep.
-        return vault.search(host_path, query, limit)
+        return "grep", vault.search(host_path, query, limit)
+
+    def _degraded(reason: str) -> tuple[str, list[dict]]:
+        """Grep fallback on an INDEXED vault — warn only when grep beats the index.
+
+        Both empty means the query genuinely matches nothing; that is an honest
+        answer, not drift, and warning on it would bury the real signal. Grep
+        finding files the index did not know about is the drift case: those files
+        exist on disk and are missing from ``vault_chunks``.
+        """
+        hits = vault.search(host_path, query, limit)
+        if hits:
+            logger.warning(
+                "[VaultSearch] brain=%s has chunks but grep found %d file(s) the "
+                "index did not (%s) — index is stale, a re-index run is due",
+                vault.safe_log(brain_label), len(hits), reason,
+            )
+        return "grep", hits
 
     semantic = await _semantic_ids(db, brain_label, query)
     keyword = await _keyword_ids(db, brain_label, query)
 
     if not semantic and not keyword:
-        return vault.search(host_path, query, limit)
+        return _degraded("neither signal returned candidates")
 
     fused = reciprocal_rank_fusion([semantic, keyword], weights=list(_WEIGHTS))
     fused_ids = [cid for cid, _ in fused]
     if not fused_ids:
-        return vault.search(host_path, query, limit)
+        return _degraded("fusion produced no ids")
 
     rows = (
         await db.execute(
@@ -155,4 +193,4 @@ async def hybrid_search(
         if heading and snips:
             snips[0] = heading + snips[0]
         results.append({"path": path, "score": round(score, 6), "snippets": snips})
-    return results
+    return "hybrid", results

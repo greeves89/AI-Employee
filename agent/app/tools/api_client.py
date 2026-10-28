@@ -44,6 +44,17 @@ CHAT_SEARCH_NO_SESSION = (
 CHAT_SESSION_ENV = "AI_CHAT_SESSION"
 
 
+#: Rueckgabe-Marke der ``secondbrain_*_remote``-Aufrufe: der Orchestrator war
+#: NICHT erreichbar, der Aufrufer soll lokal weiterarbeiten (#727).
+#:
+#: Die Unterscheidung ist der ganze Punkt. "Nicht erreichbar" (kein Netz, 5xx)
+#: heisst: lokal weitersuchen, der Vault ist gemountet. Eine 4xx-ANTWORT ist
+#: dagegen eine Aussage des Servers — "dieses Brain ist dir nicht zugewiesen",
+#: "nur lesend eingebunden" — und die darf der lokale Rueckfall nicht
+#: ueberschreiben: sonst sieht eine verweigerte Zuweisung wie ein Treffer aus.
+ORCHESTRATOR_UNREACHABLE = "__orchestrator_unreachable__"
+
+
 def chat_suche_env(env: dict, session: str | None = None) -> dict:
     """``AI_CHAT_SESSION`` in der Umgebung eines CLI-Starts setzen — oder entfernen.
 
@@ -1407,6 +1418,113 @@ class OrchestratorAPIClient:
         return f"Approval {approval_id}: Status is '{status}'."
 
     # ── Second Brain (full CRUD over the user's unified knowledge graph) ──
+
+    # ── Second Brain: der GETEILTE Abteilungs-Vault (#727) ──
+    # Absichtlich mit Suffix ``_remote`` benannt und NICHT wie das Werkzeug:
+    # ``_execute_api_tool`` greift das Werkzeug per ``getattr(client, name)`` ab.
+    # Hiesse die Methode ``secondbrain_search``, wuerde ein spaeteres Zurueckschieben
+    # der Definition in ORCHESTRATOR_TOOLS die Rueckfallebene im Executor still
+    # umgehen — und der Agent waere bei Orchestrator-Ausfall blind, statt lokal
+    # zu suchen.
+
+    async def _secondbrain_request(
+        self, method: str, path: str, *, params: dict | None = None, json: dict | None = None
+    ) -> tuple[str, Any]:
+        """``("ok", daten)`` | ``("fehler", text)`` | ``("unerreichbar", grund)``.
+
+        5xx zaehlt als unerreichbar: eine kaputte Hybrid-Suche soll den Agenten
+        nicht blind machen, solange der gemountete Vault lesbar ist. 4xx ist eine
+        Aussage des Servers und wird durchgereicht.
+        """
+        url = f"{self.base_url}{path}"
+        try:
+            resp = await self._client.request(method, url, params=params, json=json)
+        except Exception as e:
+            return "unerreichbar", f"{type(e).__name__}: {e}"
+        if resp.status_code >= 500:
+            return "unerreichbar", f"HTTP {resp.status_code}"
+        if resp.status_code >= 400:
+            detail = resp.text[:300]
+            try:
+                detail = resp.json().get("detail", detail)
+            except Exception:
+                pass
+            # Ein Routen-404 ist KEINE Aussage ueber ein Brain, sondern ein
+            # Orchestrator OHNE diese Endpunkte: beim Ausrollen ist das
+            # Agenten-Abbild eine Weile neuer als der Orchestrator (oder
+            # umgekehrt). FastAPI liefert fuer eine unbekannte Route genau
+            # ``detail == "Not Found"``; die Scoping-404 dieses Endpunkts
+            # tragen immer einen eigenen deutschen Text. Ohne diese
+            # Unterscheidung wuerde jede Suche waehrend des Rollouts hart
+            # scheitern, statt lokal weiterzusuchen.
+            if resp.status_code == 404 and str(detail).strip() in ("Not Found", "Not found"):
+                return "unerreichbar", "Endpunkt unbekannt (Orchestrator noch ohne #727)"
+            # Diese drei sagen nichts ueber ein Brain, sondern ueber den Weg
+            # dorthin: abgelaufene Anmeldung (401), Zeitueberschreitung (408),
+            # Drosselung der Schnittstelle (429). Behandelte man sie als
+            # Serveraussage, waere der Agent bei einem Token-Problem blind,
+            # obwohl der Vault im Container gemountet und lesbar ist.
+            if resp.status_code in (401, 408, 429):
+                return "unerreichbar", f"HTTP {resp.status_code}: {detail}"
+            return "fehler", f"{resp.status_code}: {detail}"
+        try:
+            return "ok", resp.json()
+        except Exception as e:
+            return "unerreichbar", f"unlesbare Antwort: {e}"
+
+    async def secondbrain_search_remote(self, params: dict) -> str:
+        """Hybrid-Suche ueber den Orchestrator. ``ORCHESTRATOR_UNREACHABLE`` = lokal weiter."""
+        query = (params.get("query") or "").strip()
+        if not query:
+            return "Error: 'query' is required"
+        try:
+            limit = min(max(int(float(str(params.get("limit", 10)))), 1), 50)
+        except (ValueError, TypeError):
+            limit = 10
+        anfrage: dict[str, Any] = {"q": query, "limit": limit}
+        if params.get("label"):
+            anfrage["label"] = params["label"]
+        art, daten = await self._secondbrain_request("GET", "/brains/agent/search", params=anfrage)
+        if art == "unerreichbar":
+            logger.info("[SecondBrain] Orchestrator nicht erreichbar (%s) — lokale Suche", daten)
+            return ORCHESTRATOR_UNREACHABLE
+        if art == "fehler":
+            return f"Error: {daten}"
+        hits = daten.get("hits") or []
+        modus = daten.get("mode", "hybrid")
+        if not hits:
+            return f"No matches for '{query}' in any Second Brain. (Suche: {modus})"
+        zeilen = [f"[SECOND BRAIN — {modus} | {len(hits)} Treffer]"]
+        for h in hits:
+            zeilen.append(f"## {h.get('brain')}/{h.get('path')}")
+            for snip in (h.get("snippets") or [])[:4]:
+                zeilen.append(f"  · {snip}")
+        if modus == "grep":
+            zeilen.append(
+                "(Hinweis: aus dem Dateiweg beantwortet, nicht aus dem Index — "
+                "der Index ist noch nicht vollstaendig.)"
+            )
+        return "\n".join(zeilen)
+
+    async def secondbrain_write_remote(self, params: dict) -> str:
+        """Schreiben + sofortiges Indexieren ueber den Orchestrator."""
+        path = (params.get("path") or "").strip()
+        content = params.get("content")
+        if not path or content is None:
+            return "Error: 'path' and 'content' are required"
+        art, daten = await self._secondbrain_request(
+            "POST", "/brains/agent/write", json={"path": path, "content": content}
+        )
+        if art == "unerreichbar":
+            logger.info("[SecondBrain] Orchestrator nicht erreichbar (%s) — lokaler Schreibweg", daten)
+            return ORCHESTRATOR_UNREACHABLE
+        if art == "fehler":
+            return f"Error: {daten}"
+        return (
+            f"Saved to Second Brain: {daten.get('brain')}/{daten.get('path')} "
+            f"({daten.get('bytes')} bytes, {daten.get('indexed_chunks')} chunks indiziert — "
+            f"sofort auffindbar)."
+        )
 
     async def brain_search(self, params: dict) -> str:
         query: dict[str, Any] = {"q": params.get("q", ""), "limit": params.get("limit", 10)}

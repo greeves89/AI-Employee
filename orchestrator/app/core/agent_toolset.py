@@ -46,6 +46,17 @@ MCP_SERVER_TOOLS: dict[str, list[str]] = {
         # Suche) — siehe app.services.gesetz_crawler.
         "gesetze_search",
     ],
+    # Der GETEILTE Abteilungs-Vault unter /mnt/brains/ — etwas anderes als
+    # "brain" (die persoenliche Wissensdatenbank des Nutzers). Lesen und
+    # Auflisten braucht keinen eigenen MCP-Weg: der Vault ist in den Container
+    # gemountet, und beide Laufzeiten haben dafuer Datei-Werkzeuge (#727).
+    "secondbrain": [
+        "secondbrain_search", "secondbrain_write",
+        # Lesen und Auflisten gehen direkt auf den gemounteten Vault, ohne
+        # Orchestrator — noetig, weil die Prompt-Stellen (und die Datei-Landkarte
+        # im Startkontext) sie fuer ALLE Laufzeiten nennen.
+        "secondbrain_read", "secondbrain_list",
+    ],
     "computer-use": [
         # Browser im eigenen Profil der Bridge — der verlaessliche Weg fuer
         # Seiten LESEN und Formulare AUSFUELLEN, im Gegensatz zum blinden
