@@ -29,14 +29,25 @@ class LogRedactionTests(unittest.TestCase):
         self._assert_gone("AWS AKIAIOSFODNN7EXAMPLE key", "AKIAIOSFODNN7EXAMPLE")
 
     def test_new_provider_api_keys_redacted(self):
-        # #703 (ADAPT from Ishannaik/agent-sweep): providers missed by the
-        # existing sk|pk|rk- rule (which needs a HYPHEN) or by any other rule.
-        stripe = "sk_live_" + "A" * 24
-        google = "AIza" + "B" * 35
-        hf = "hf_" + "C" * 30
-        self._assert_gone(f"STRIPE_KEY={stripe}", stripe)
-        self._assert_gone(f"key={google} sent to maps API", google)
-        self._assert_gone(f"token: {hf}", hf)
+        """Jede Regel einzeln festnageln: am eigenen Marker, ohne Variablennamen
+        davor (sonst schwaerzt schon die KEY=VALUE-Regel und der Test bleibt
+        gruen, auch wenn die neue Regel fehlt)."""
+        faelle = {
+            "sk_live_" + "A" * 24: "[REDACTED_STRIPE_KEY]",
+            "whsec_" + "B" * 32: "[REDACTED_WEBHOOK_SECRET]",
+            "AIza" + "B" * 35: "[REDACTED_GOOGLE_KEY]",
+            "hf_" + "C" * 30: "[REDACTED_HF_TOKEN]",
+            "npm_" + "D" * 36: "[REDACTED_NPM_TOKEN]",
+            "glpat-" + "E" * 20: "[REDACTED_GITLAB_TOKEN]",
+            "SG." + "F" * 22 + "." + "G" * 43: "[REDACTED_SENDGRID_KEY]",
+            "sb_secret_" + "H" * 30: "[REDACTED_SUPABASE_KEY]",
+            "https://hooks.slack.com/services/T000/B000/" + "X" * 24: "[REDACTED_SLACK_WEBHOOK]",
+        }
+        for geheim, marker in faelle.items():
+            with self.subTest(marker=marker):
+                out = redact_logs(f"gefunden in der Ausgabe {geheim} heute")
+                self.assertNotIn(geheim, out)
+                self.assertIn(marker, out)
 
     def test_discord_bot_token_redacted(self):
         # Discord bot tokens are three dot-separated segments, like a JWT, but
@@ -46,11 +57,22 @@ class LogRedactionTests(unittest.TestCase):
 
     def test_bare_db_connection_url_redacted(self):
         # Without a KEY=-style prefix (e.g. inside a stack trace), the
-        # KEY=VALUE rule below never fires -- this needs its own pattern.
-        url = "postgres://appuser:s3cr3t-pw@db.internal:5432/orchestrator"
-        self._assert_gone(
-            f"sqlalchemy.exc.OperationalError: could not connect to server: {url}", url
-        )
+        # KEY=VALUE rule never fires -- this needs its own pattern.
+        for url in (
+            "postgres://appuser:s3cr3t-pw@db.internal:5432/orchestrator",
+            "postgresql+asyncpg://app:s3cr3t-pw@db/aiemployee",  # Format der Plattform selbst
+            "mysql+pymysql://u:s3cr3t-pw@h/d",
+            "rediss://:s3cr3t-pw@redis:6380/0",
+            "amqp://gast:s3cr3t-pw@rabbit//",
+        ):
+            with self.subTest(url=url):
+                out = redact_logs(f"OperationalError: could not connect: {url}")
+                self.assertNotIn("s3cr3t-pw", out)
+                self.assertIn("[REDACTED]@", out)
+
+    def test_adresse_mit_port_und_at_im_pfad_bleibt(self):
+        url = "https://registry.npmjs.org:443/@babel/core"
+        self.assertEqual(url, redact_logs(url))
 
     def test_sensitive_key_value_pairs_redacted(self):
         for line, secret in [

@@ -8,7 +8,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 ## [1.389.0] - 2026-10-28
 
 ### Neu
-- **Erweiterte Geheimnis-Erkennung in Protokollen und DLP-Scan (#703).** Zusätzliche Schlüssel-Formate werden jetzt erkannt und geschwärzt: Stripe, Google, Hugging Face, Discord-Bot-Tokens sowie Datenbank-Verbindungs-URLs mit eingebetteten Zugangsdaten auch ohne sprechenden Variablennamen davor. Neu außerdem die Erkennung von Krypto-Wallet-Seed-Phrasen (BIP-39). Alle neuen Muster schwärzen bzw. loggen zunächst nur — sie lösen bewusst noch KEINEN automatischen Stopp eines Agenten aus, bis ihre Fehlalarmrate im laufenden Betrieb beobachtet wurde.
+- **Erweiterte Geheimnis-Erkennung in Protokollen und im DLP-Filter (#703).** Zusätzlich erkannt werden Schlüssel von Stripe (geheime, nicht die öffentlichen `pk_`), Stripe-Webhooks, Google, Hugging Face, npm, GitLab, SendGrid, Supabase, Discord-Bots, Slack-Webhooks und Zugangsdaten in Adressen jeder Art (`postgresql+asyncpg://…`, `mysql+pymysql://…`, `rediss://:…@`, `amqp://…`), auch ohne sprechenden Variablennamen davor. Im DLP-Filter bilden sie die neue Klasse „Weitere Schlüssel-Formate“ und werden standardmäßig **geschwärzt, nicht gesperrt**: Ein Treffer unterdrückt also nicht die ganze Antwort. Einen Agenten-Stopp lösen sie nicht aus, bis ihre Fehlalarmrate im Betrieb beobachtet ist.
+- **Krypto-Seed-Phrasen (BIP-39) werden geschwärzt.** Erkannt werden 12 Wörter in Folge, von denen mindestens 10 aus der BIP-39-Wortliste stammen, auch mit Nummerierung, Füllwort oder unsichtbaren Zeichen. In Code (`margin_left + margin_right`) und normaler Prosa schlägt die Erkennung nicht an. Gedacht gegen versehentliches Weitergeben, nicht gegen absichtliches Verstecken.
 
 ## [1.387.2] - 2026-10-28
 
