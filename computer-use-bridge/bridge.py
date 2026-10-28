@@ -2536,7 +2536,7 @@ def _bild_als_jpeg(img, breite: int = 1280, qualitaet: int = 60) -> str:
 
 
 #: Was das Overlay an den Server schicken darf.
-_OVERLAY_ANTWORTEN = {"vorschlag_antwort", "overlay_stopp", "overlay_weiter"}
+_OVERLAY_ANTWORTEN = {"vorschlag_antwort", "overlay_stopp", "overlay_weiter", "overlay_chat"}
 
 #: Wo das Overlay gerade steht (logische Punkte, Ursprung oben links: x, y, w, h)
 #: — die Tray-App traegt es ein. Der Agent bedient denselben Bildschirm; in diese
