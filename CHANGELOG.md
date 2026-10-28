@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.387.1] - 2026-10-28
+
+### Behoben
+- **Windows-Bridge wurde für 1.387.0 nicht gebaut.** Windows kennt das Öffnen „ohne Links zu folgen“ (`O_NOFOLLOW`) nicht; ein Test der Bridge schlug dort fehl und hielt den Build an. Die Bridge lehnt unter Windows symbolische Links jetzt ausdrücklich ab, bevor sie eine Datei aus einem gespiegelten Ordner öffnet. Gelesen wurde auch vorher nichts außerhalb des Ordners (die Pfadprüfung griff), die macOS-Bridge ist unverändert.
+
 ## [1.387.0] - 2026-10-28
 
 ### Neu
