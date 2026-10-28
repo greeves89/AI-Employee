@@ -72,6 +72,13 @@ class Settings(BaseSettings):
     # (Settings/DB) bzw. dessen Default. Auf Bedrock volle Id (us.anthropic....).
     feedback_model: str = ""
     max_turns: int = 100
+    # Wie viele zugewiesene Fachanleitungen der Block „DEINE FACHANLEITUNGEN" je
+    # Lauf AUFLISTET (Issue #1044). Gemessen trug ein Agent mit 231 Zuweisungen
+    # 62.060 Zeichen in JEDEN Auftrag, bevor eine Anleitung geladen war; der
+    # Deckel macht daraus unter 15.000. Abgeschnittene Skills bleiben über
+    # skill_search/skill_install vollständig erreichbar. 0 = kein Deckel
+    # (altes Verhalten, falls ein Betreiber zurück muss).
+    fachanleitungen_max_gelistet: int = 40
     # How many DIFFERENT chat sessions one agent processes concurrently. 1 = serial
     # (proven default). >1 lets independent sessions/tasks run in parallel in one
     # container (each its own claude/codex/custom-LLM turn); same session stays serial.

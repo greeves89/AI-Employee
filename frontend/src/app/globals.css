@@ -13,58 +13,70 @@
 @custom-variant can-hover (@media (hover: hover) and (pointer: fine));
 
 :root {
-  --background: 0 0% 100%;
-  --foreground: 224 71% 4%;
+  /* Farben aus der lavalake-Konsole (Redesign 2026-10): Navy-Tinte, Lava-Orange
+     als einziger Akzent, ruhiger heller Grund. Kontraste wie dort gemessen. */
+  --background: 220 33% 97%;      /* #f4f6fa */
+  --foreground: 226 67% 12%;      /* #0a1433 */
   --card: 0 0% 100%;
-  --card-foreground: 224 71% 4%;
-  --primary: 217 91% 60%;
-  --primary-foreground: 210 40% 98%;
-  --secondary: 220 14% 96%;
-  --secondary-foreground: 220 9% 46%;
-  --muted: 220 14% 96%;
-  --muted-foreground: 220 9% 46%;
-  --accent: 220 14% 96%;
-  --accent-foreground: 224 71% 4%;
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 210 40% 98%;
-  --border: 220 13% 91%;
-  --input: 220 13% 91%;
-  --ring: 217 91% 60%;
+  --card-foreground: 226 67% 12%;
+  --primary: 16 88% 47%;          /* Lava-Orange, für Text auf Weiß lesbar */
+  --primary-foreground: 226 67% 12%;
+  --secondary: 218 33% 95%;       /* #eef1f6 */
+  --secondary-foreground: 219 20% 38%;
+  --muted: 218 33% 95%;
+  --muted-foreground: 219 20% 38%; /* #4d5a73 */
+  --accent: 218 33% 94%;
+  --accent-foreground: 226 67% 12%;
+  --destructive: 356 83% 41%;     /* #c1121f */
+  --destructive-foreground: 0 0% 100%;
+  --border: 217 30% 88%;          /* #d8dfea */
+  --input: 218 23% 76%;           /* #b4bfd2 */
+  --ring: 16 100% 56%;
   --radius: 0.75rem;
-  --success: 142 71% 45%;
-  --warning: 38 92% 50%;
-  --info: 199 89% 48%;
+  --success: 150 65% 31%;         /* #1b814c */
+  --warning: 36 88% 34%;          /* #a3650a */
+  --info: 199 84% 37%;            /* #0f7bad */
+  /* Seitenleiste: in beiden Modi dunkelblau, wie die lavalake-Konsole. */
+  --sidebar: 226 64% 15%;         /* #0e1a40 */
+  --sidebar-foreground: 220 33% 97%;
+  --sidebar-muted: 219 25% 71%;   /* #a4b0c6 */
+  --brand: 16 100% 56%;           /* #ff5a1f */
 }
 
 .dark {
-  --background: 222 47% 5%;
-  --foreground: 210 40% 98%;
-  --card: 222 47% 7%;
-  --card-foreground: 210 40% 98%;
-  --primary: 217 91% 60%;
-  --primary-foreground: 210 40% 98%;
-  --secondary: 217 33% 12%;
-  --secondary-foreground: 210 40% 98%;
-  --muted: 217 33% 12%;
-  --muted-foreground: 215 20% 55%;
-  --accent: 217 33% 14%;
-  --accent-foreground: 210 40% 98%;
-  --destructive: 0 72% 51%;
-  --destructive-foreground: 210 40% 98%;
-  --border: 217 33% 15%;
-  --input: 217 33% 15%;
-  --ring: 217 91% 60%;
-  --success: 142 71% 45%;
-  --warning: 38 92% 50%;
-  --info: 199 89% 48%;
+  --background: 227 69% 9%;       /* #070e26 */
+  --foreground: 220 33% 97%;
+  --card: 226 67% 12%;            /* #0a1433 */
+  --card-foreground: 220 33% 97%;
+  --primary: 16 100% 56%;         /* #ff5a1f */
+  --primary-foreground: 226 67% 12%;
+  --secondary: 226 50% 16%;
+  --secondary-foreground: 219 25% 71%;
+  --muted: 226 50% 16%;
+  --muted-foreground: 219 25% 71%; /* #a4b0c6 */
+  --accent: 226 45% 18%;
+  --accent-foreground: 220 33% 97%;
+  --destructive: 358 86% 64%;     /* #f2545b */
+  --destructive-foreground: 226 67% 12%;
+  --border: 221 25% 23%;          /* #2b3448 */
+  --input: 220 22% 32%;           /* #414d64 */
+  --ring: 20 100% 67%;            /* #ff9057 */
+  --success: 147 60% 47%;         /* #2fbf71 */
+  --warning: 34 100% 61%;         /* #ffa93a */
+  --info: 198 86% 57%;            /* #35b9f0 */
+  --sidebar: 227 69% 7%;
+  --sidebar-foreground: 220 33% 97%;
+  --sidebar-muted: 219 25% 71%;
+  --brand: 16 100% 56%;
 }
 
 /* CSS-first theme (replaces tailwind.config.ts theme.extend).
    `inline` makes the generated utilities reference the runtime :root/.dark
    custom properties directly, so class-based dark mode keeps switching. */
 @theme inline {
-  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), monospace;
+  --font-sans: -apple-system, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: var(--font-space-grotesk), -apple-system, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
@@ -90,6 +102,10 @@
   --color-success: hsl(var(--success));
   --color-warning: hsl(var(--warning));
   --color-info: hsl(var(--info));
+  --color-sidebar: hsl(var(--sidebar));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-muted: hsl(var(--sidebar-muted));
+  --color-brand: hsl(var(--brand));
 
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
@@ -129,6 +145,14 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  /* Überschriften in Space Grotesk wie die lavalake-Konsole; Fließtext bleibt
+     in der Systemschrift (lädt nichts nach, liest sich am Bildschirm am besten). */
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
   }
   /* Ein Feld fuer eine 3 oder eine 60 zog sich ueber die halbe Seite, ein
      Schieberegler ueber die ganze — so wirkt eine Oberflaeche wie ein Formular-

@@ -50,12 +50,41 @@ _PATTERNS: list[tuple[re.Pattern, str]] = [
 ]
 
 
+#: Weitere Anbieter-Formate (#703). Eigene Liste, weil der DLP-Filter sie als
+#: eigene Klasse fuehrt: ``secret`` sperrt eine Nachricht ganz, diese hier
+#: werden nur geschwaerzt, solange ihre Fehlalarmrate im Betrieb unbekannt ist.
+#: Fuer Protokolle gilt beides gleich (``redact_logs``).
+ZUSATZ_PATTERNS: list[tuple[re.Pattern, str]] = [
+    # Stripe nutzt einen Unterstrich statt des Bindestrichs, den die
+    # sk|pk|rk-Regel oben erwartet. ``pk_`` ist der oeffentliche Schluessel
+    # und gehoert in Webseiten -- kein Geheimnis.
+    (re.compile(r"\b(sk|rk)_(live|test)_[A-Za-z0-9]{16,}\b"), "[REDACTED_STRIPE_KEY]"),
+    (re.compile(r"\bwhsec_[A-Za-z0-9+/=]{20,}"), "[REDACTED_WEBHOOK_SECRET]"),
+    (re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b"), "[REDACTED_GOOGLE_KEY]"),
+    (re.compile(r"\bhf_[A-Za-z0-9]{20,}\b"), "[REDACTED_HF_TOKEN]"),
+    (re.compile(r"\bnpm_[A-Za-z0-9]{36}\b"), "[REDACTED_NPM_TOKEN]"),
+    (re.compile(r"\bglpat-[A-Za-z0-9_\-]{20,}"), "[REDACTED_GITLAB_TOKEN]"),
+    (re.compile(r"\bSG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}"), "[REDACTED_SENDGRID_KEY]"),
+    (re.compile(r"\bsb_secret_[A-Za-z0-9_\-]{20,}"), "[REDACTED_SUPABASE_KEY]"),
+    (re.compile(r"https://hooks\.slack\.com/services/[A-Za-z0-9/]+"), "[REDACTED_SLACK_WEBHOOK]"),
+    (re.compile(r"\b[MN][A-Za-z0-9_\-]{23,25}\.[A-Za-z0-9_\-]{6}\.[A-Za-z0-9_\-]{27,}\b"), "[REDACTED_DISCORD_TOKEN]"),
+    # Zugangsdaten in einer Adresse, egal welches Schema: postgresql+asyncpg,
+    # mysql+pymysql, rediss, amqp, mssql, https ... Auch ohne Benutzer
+    # (``redis://:pw@host``). Host und Pfad bleiben fuer die Fehlersuche
+    # lesbar. Ein ``/`` im Passwort ist nicht abgedeckt: sonst passt
+    # ``https://host:443/@scope/paket`` auch.
+    (re.compile(r"\b([a-z][a-z0-9+.\-]*://)[^\s:/@]*:[^\s@/]+@"), r"\1[REDACTED]@"),
+]
+
+
 def redact_logs(text: str) -> str:
     """Return ``text`` with credential-like substrings masked."""
     if not text:
         return text
     out = text
     for pattern, repl in _PATTERNS:
+        out = pattern.sub(repl, out)
+    for pattern, repl in ZUSATZ_PATTERNS:
         out = pattern.sub(repl, out)
     return out
 

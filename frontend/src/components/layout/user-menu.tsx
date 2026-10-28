@@ -84,27 +84,25 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
         <button
           onClick={() => setIsOpen(!isOpen)}
           title={user.name}
-          className="relative flex items-center justify-center h-9 w-9 rounded-xl text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all"
+          className="relative flex items-center justify-center h-9 w-9 rounded-xl text-sidebar-muted hover:bg-white/10 hover:text-sidebar-foreground transition-all"
         >
           <UserAvatar name={user.name} className="h-7 w-7" />
           {user.role === "admin" && (
-            <Shield className="absolute -bottom-0.5 -right-0.5 h-3 w-3 text-amber-500 bg-card rounded-full" />
+            <Shield className="absolute -bottom-0.5 -right-0.5 h-3 w-3 text-brand bg-sidebar rounded-full" />
           )}
         </button>
       ) : (
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all duration-150"
+          className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sidebar-muted hover:bg-white/10 hover:text-sidebar-foreground transition-all duration-150"
         >
           <UserAvatar name={user.name} />
           <div className="flex-1 min-w-0 text-left">
-            <p className="text-[12px] font-medium text-foreground truncate">{user.name}</p>
-            <p className="flex items-center gap-1 text-[10px] text-muted-foreground/60 truncate">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" /> Online
-            </p>
+            <p className="text-[13px] font-semibold text-sidebar-foreground truncate">{user.name}</p>
+            <p className="text-[11px] text-sidebar-muted truncate">Mein Konto</p>
           </div>
           {user.role === "admin" && (
-            <Shield className="h-3 w-3 text-amber-500 shrink-0" />
+            <Shield className="h-3 w-3 text-brand shrink-0" />
           )}
         </button>
       )}
@@ -191,7 +189,7 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
               className="flex w-full items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
             >
               <Settings className="h-3.5 w-3.5" />
-              Meine Einstellungen
+              Mein Konto
             </button>
             <button
               onClick={handleLogout}

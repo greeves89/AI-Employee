@@ -61,6 +61,9 @@ class BrowserProfilUndTabs(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         await self.browser.close_browser()
         shutil.rmtree(self.profil, ignore_errors=True)
+        import os
+        if os.path.exists(self.browser.PROFIL_ARCHIV):
+            os.remove(self.browser.PROFIL_ARCHIV)
 
     async def _kontext(self):
         """Kontext bereitstellen und die Testseiten selbst beantworten."""
@@ -85,6 +88,9 @@ class BrowserProfilUndTabs(unittest.IsolatedAsyncioTestCase):
         import app.tools.browser as browser
         browser = importlib.reload(browser)
         browser.PROFIL_DIR = profil
+        # Sonst wuerde jede Sicherung (#828, Schritt 5) den echten
+        # Standardpfad ausserhalb des Wegwerf-Profils beschreiben.
+        browser.PROFIL_ARCHIV = profil + ".tar.enc"
         return browser
 
     # --- Der eigentliche Punkt --------------------------------------------

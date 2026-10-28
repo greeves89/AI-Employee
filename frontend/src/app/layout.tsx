@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { GeistSans } from "geist/font/sans";
-import { GeistMono } from "geist/font/mono";
+import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthGuard } from "@/components/auth/auth-guard";
 import { DialogProvider } from "@/components/ui/dialog-provider";
@@ -10,6 +9,12 @@ import { TutorialFenster } from "@/components/tutorials/tutorial-fenster";
 import { FeedbackWidget } from "@/components/feedback/feedback-widget";
 import { cn } from "@/lib/utils";
 import "./globals.css";
+
+// Schriften der lavalake-Konsole: Space Grotesk für Überschriften, JetBrains Mono
+// für Daten. Next lädt sie beim Bauen herunter und liefert sie selbst aus —
+// zur Laufzeit geht keine Anfrage an Google.
+const display = Space_Grotesk({ subsets: ["latin"], weight: ["500", "600", "700"], variable: "--font-space-grotesk", display: "swap" });
+const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-jetbrains-mono", display: "swap" });
 
 export const metadata: Metadata = {
   title: "AI Employee",
@@ -21,7 +26,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0a0a0a",
+  themeColor: "#0e1a40",
   // Ohne viewport-fit deckt die installierte App auf iPhones die Aussparung nicht ab.
   viewportFit: "cover",
 };
@@ -32,7 +37,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
+    <html lang="de" className="dark" suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{
@@ -42,8 +47,8 @@ export default function RootLayout({
       </head>
       <body
         className={cn(
-          GeistSans.variable,
-          GeistMono.variable,
+          display.variable,
+          mono.variable,
           "min-h-screen bg-background font-sans antialiased"
         )}
       >

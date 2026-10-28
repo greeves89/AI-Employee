@@ -106,7 +106,7 @@ export function ReflectionCard() {
             href="/admin?tab=system"
             className="mt-2 inline-flex text-[12px] text-primary hover:text-primary/80 transition-colors"
           >
-            In der Admin-Konsole aktivieren
+            In des Admin-Bereichs aktivieren
           </Link>
         </div>
       ) : (

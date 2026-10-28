@@ -831,6 +831,10 @@ async def agent_available_skills(
 
 class AgentFachanleitungenBody(BaseModel):
     auftrag: str = ""
+    #: Skill-IDs, die in DIESER Unterhaltung schon gelistet wurden. Der Agent
+    #: führt sie mit; der Block enthält dann nur die neu hinzugekommenen (#1044).
+    #: Fehlt das Feld (älterer Agent), wird wie bisher die volle Auswahl geliefert.
+    schon_gelistet: list[int] = []
 
 
 @router.post("/agent/fachanleitungen")
@@ -845,12 +849,43 @@ async def agent_fachanleitungen(
     einem Auslöser passt, die Anleitung vollständig — für alle Laufzeiten gleich
     (siehe ``core/fachanleitungen``)."""
     from app.core.fachanleitungen import fuer_agent
+    from app.config import settings
 
-    skills = await _skills_des_agenten(db, auth["agent_id"])
+    agent_id = auth["agent_id"]
+    skills = await _skills_des_agenten(db, agent_id)
     return fuer_agent(
         [{"id": s.id, "name": s.name, "description": s.description, "content": s.content} for s in skills],
         (body.auftrag or "")[:4000],
+        await _zuletzt_genutzt(db, agent_id, [s.id for s in skills]),
+        settings.fachanleitungen_max_gelistet,
+        # Was in dieser Unterhaltung schon gelistet wurde — der Agent führt das
+        # mit. Gedeckelt, damit ein fehlerhaft gewachsener Merkersatz nicht zu
+        # einem beliebig großen Rumpf wird.
+        (body.schon_gelistet or [])[:2000],
     )
+
+
+async def _zuletzt_genutzt(db: AsyncSession, agent_id: str, skill_ids: list[int]) -> dict[int, datetime]:
+    """``skill_id -> letzte Nutzung`` dieses Agenten — EINE Abfrage, kein N+1.
+
+    Nur für die Reihenfolge unter dem Deckel (``core/fachanleitungen.auswahl``):
+    wird gekürzt, soll zuletzt Benutztes vorn stehen. Fällt die Abfrage aus, ist
+    das kein Grund, den ganzen Block zu verlieren — dann entscheidet eben nur
+    Auslöser-Treffer und Zuweisungsreihenfolge.
+    """
+    if not skill_ids:
+        return {}
+    try:
+        rows = await db.execute(
+            select(SkillTaskUsage.skill_id, func.max(SkillTaskUsage.created_at))
+            .where(SkillTaskUsage.agent_id == agent_id)
+            .where(SkillTaskUsage.skill_id.in_(skill_ids))
+            .group_by(SkillTaskUsage.skill_id)
+        )
+        return {sid: zeit for sid, zeit in rows.all() if zeit is not None}
+    except Exception as e:  # pragma: no cover - Reihenfolge ist nicht kritisch
+        logger.warning(f"Nutzungsdaten für Fachanleitungen-Reihenfolge nicht lesbar: {e}")
+        return {}
 
 
 async def _skills_des_agenten(db: AsyncSession, agent_id: str) -> list:

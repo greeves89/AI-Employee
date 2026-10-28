@@ -18,6 +18,14 @@ import { alteEinstellungenWeiterleitung } from "@/lib/admin-bereiche";
 import { cn } from "@/lib/utils";
 
 /** Sprungziele der frueheren Reiter, die hier geblieben sind. */
+const KONTO_BEREICHE = [
+  { id: "sicherheit", titel: "Anmeldung & Sicherheit" },
+  { id: "meine-ki-zugaenge", titel: "KI-Zugänge & Modelle" },
+  { id: "integrationen", titel: "Meine Verbindungen" },
+  { id: "bridge-ordner", titel: "Bridge & Ordner" },
+  { id: "anzeige", titel: "Darstellung & Mitteilungen" },
+];
+
 const ABSCHNITT_JE_REITER: Record<string, string> = {
   meine: "meine-ki-zugaenge",
   modelle: "verfuegbare-modelle",
@@ -52,7 +60,7 @@ function Abschnitt({
  * eigene KI-Zugaenge, die fuer ihn freigegebenen Modelle, Benachrichtigungen in
  * diesem Browser und die Anzeige. Fuer jeden gleich, ob Admin oder Mitglied.
  *
- * Alles Anlagenweite steht in der Admin-Konsole. Diese Seite ruft deshalb keine
+ * Alles Anlagenweite steht im Admin-Bereich. Diese Seite ruft deshalb keine
  * Schnittstelle auf, die einem Mitglied verwehrt ist.
  */
 export function MeineEinstellungenView() {
@@ -62,7 +70,7 @@ export function MeineEinstellungenView() {
   const { simpleMode, istAdmin, mitgliederAnsicht, setMitgliederAnsicht } = useSimpleMode();
 
   // Alte Verweise (Lesezeichen, Handbuch, Hinweis-Streifen) auf die frueheren
-  // Reiter: Anlagenweites fuehrt Admins in die Konsole, alles andere springt
+  // Reiter: Anlagenweites fuehrt Admins in den Admin-Bereich, alles andere springt
   // zum passenden Abschnitt dieser Seite.
   useEffect(() => {
     if (!user) return;
@@ -79,66 +87,61 @@ export function MeineEinstellungenView() {
   return (
     <div>
       <Header
-        title="Meine Einstellungen"
-        subtitle="Was nur dich betrifft: eigene KI-Zugänge, Benachrichtigungen und Anzeige"
+        title="Mein Konto"
+        subtitle="Gilt nur für dich. Niemand sonst sieht diese Angaben, auch kein Admin."
       />
 
+      <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6 sm:px-8 lg:flex-row lg:items-start">
+        {/* Unterbereiche wie im Entwurf (Redesign 2026-10): links eine kurze Liste,
+            rechts die Abschnitte. Auf dem Handy eine waagerechte Zeile oben. */}
+        <nav aria-label="Bereiche von Mein Konto" className="flex gap-1 overflow-x-auto lg:sticky lg:top-20 lg:w-52 lg:shrink-0 lg:flex-col">
+          {KONTO_BEREICHE.map((b) => (
+            <a
+              key={b.id}
+              href={`#${b.id}`}
+              className="shrink-0 rounded-lg px-3 py-2 text-[14px] text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+            >
+              {b.titel}
+            </a>
+          ))}
+        </nav>
+
       <motion.div
-        className="mx-auto max-w-4xl space-y-8 px-4 py-6 sm:px-8"
+        className="min-w-0 flex-1 space-y-8"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        {istAdmin && !simpleMode && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-5 py-4">
-            <div className="flex min-w-0 items-start gap-3">
-              <Shield className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-              <p className="text-sm text-muted-foreground">
-                Einstellungen für die ganze Anlage — Modelle &amp; Anbieter, Integrationen der
-                Anlage, Sprache, System &amp; Lizenz — stehen in der Admin-Konsole.
-              </p>
-            </div>
-            <Link
-              href="/admin"
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-foreground/[0.06] px-3 py-1.5 text-sm font-medium transition-colors hover:bg-foreground/[0.1]"
-            >
-              Zur Admin-Konsole
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-        )}
-
-        <Abschnitt id="meine-ki-zugaenge" titel="Meine KI-Zugänge" icon={KeyRound}>
-          <MyAiCredentials />
-        </Abschnitt>
-
         {/* Anmeldesicherheit des eigenen Kontos (#915) — für jeden, nicht nur Admins. */}
         <Abschnitt id="sicherheit" titel="Anmeldung & Sicherheit" icon={ShieldCheck}>
           <ZweiFaktorEinstellungen />
         </Abschnitt>
 
-        <Abschnitt id="verfuegbare-modelle" titel="Verfügbare Modelle" icon={Cpu}>
+        <Abschnitt id="meine-ki-zugaenge" titel="Meine KI-Zugänge" icon={KeyRound}>
+          <MyAiCredentials />
+        </Abschnitt>
+
+        <Abschnitt id="verfuegbare-modelle" titel="Modelle, die du nutzen kannst" icon={Cpu}>
           <AvailableModels />
         </Abschnitt>
 
-        <Abschnitt id="integrationen" titel="Integrationen und Benachrichtigungen" icon={Plug}>
-          <div className="space-y-3">
-            <div className="rounded-xl border border-foreground/[0.06] bg-card/80 p-5 backdrop-blur-sm">
-              <PushToggle />
-            </div>
-            <p className="text-[12px] text-muted-foreground">
-              Eigene Konten wie Microsoft 365, Google oder MCP-Server verbindest du unter{" "}
-              <Link href="/integrations" className="text-primary hover:underline">Integrationen</Link>.
-            </p>
-          </div>
+        <Abschnitt id="integrationen" titel="Meine Verbindungen" icon={Plug}>
+          <p className="rounded-xl border border-border bg-card p-5 text-sm text-muted-foreground">
+            Dein Postfach, deinen Kalender und weitere eigene Konten verbindest du unter{" "}
+            <Link href="/integrations" className="font-medium text-primary hover:underline">Verbindungen</Link>.
+            Dienste für alle richtet ein Admin im Admin-Bereich ein.
+          </p>
         </Abschnitt>
 
-        <Abschnitt id="bridge-ordner" titel="Meine Bridge-Ordner" icon={FolderSync}>
+        <Abschnitt id="bridge-ordner" titel="Bridge & Ordner" icon={FolderSync}>
           <BridgeOrdner />
         </Abschnitt>
 
-        <Abschnitt id="anzeige" titel="Anzeige" icon={Palette}>
-          <div className="divide-y divide-foreground/[0.04] rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm">
+        <Abschnitt id="anzeige" titel="Darstellung & Mitteilungen" icon={Palette}>
+          <div className="rounded-xl border border-border bg-card p-5 mb-3">
+            <PushToggle />
+          </div>
+          <div className="divide-y divide-border rounded-xl border border-border bg-card">
             <div className="flex items-center justify-between gap-3 px-5 py-4">
               <div className="min-w-0">
                 <div className="text-sm font-medium">Erscheinungsbild</div>
@@ -181,6 +184,7 @@ export function MeineEinstellungenView() {
           </div>
         </Abschnitt>
       </motion.div>
+      </div>
     </div>
   );
 }
