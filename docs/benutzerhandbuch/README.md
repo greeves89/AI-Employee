@@ -1090,6 +1090,18 @@ Jedes Projekt hat eine eigene Wissensablage — Reiter **Wissen**:
   bleibt, was einer herausgefunden hat, für alle erhalten.
 - Keine Passwörter oder Zugangsschlüssel hineinschreiben.
 
+**Dateien am Projekt** *(seit 1.385.0)*. Unter den Seiten steht der Bereich **Dateien**:
+1. **Hochladen** klicken oder Dateien in den Bereich ziehen. Erlaubt sind PDF, Word (.docx),
+   Excel (.xlsx), Text, Markdown, CSV, JSON und Bilder (PNG, JPG), je Datei bis 20 MB.
+2. Der Text der Datei wird automatisch ausgelesen und als Seite unter `dateien/` ins
+   Projektwissen gelegt — damit finden ihn die Suche und die Agenten (z. B. die Anforderungen
+   aus einem Lastenheft). Bilder werden abgelegt, aber nicht ausgelesen.
+3. Je Datei: **Text** (Symbol Dokument) zeigt den ausgelesenen Inhalt, **Herunterladen** holt das
+   Original, **Löschen** entfernt Datei und Text.
+
+Gleichnamige Dateien werden nicht überschrieben, sondern bekommen eine Nummer („notiz (2).txt“).
+Die Dateien sieht nur, wer das Projekt sieht; Betrachter können sie lesen, aber nichts hochladen.
+
 ### 6a.7a Projektgespräch *(seit 1.371.0)*
 
 Reiter **Gespräch**: Hier sprechen du und die Agenten des Projekts miteinander.

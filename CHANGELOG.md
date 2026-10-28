@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.385.0] - 2026-10-28
+
+### Neu
+- **Dateien am Projekt.** Im Reiter „Wissen“ lassen sich jetzt Dateien hochladen (Knopf oder Ziehen): PDF, Word, Excel, Text, CSV, JSON und Bilder, je bis 20 MB. Der Text wird automatisch ausgelesen und als Seite unter `dateien/` ins Projektwissen gelegt — durchsuchbar für Suche und Agenten. Das Original lässt sich herunterladen und löschen (mit seinem Text). Die Originale liegen neben der Wissensablage, nicht in ihrem git-Verlauf; Namen werden bereinigt, gleichnamige Dateien bekommen eine Nummer, heruntergeladen wird immer als Anhang.
+
+### Sicherheit
+- **Zu große Uploads werden abgewiesen, bevor sie gelesen werden** — in der Plattform anhand der angegebenen Länge (411/413) und in Caddy (`request_body max_size 21MB` nur für diesen Pfad). Bisher hätte ein Formular erst ganz auf der Platte gelegen, auch ohne Anmeldung.
+- **Präparierte Word-/Excel-/PDF-Dateien legen die Plattform nicht lahm:** Archive über 50 MB entpackt oder mit über 2.000 Einträgen werden nicht geöffnet, PDFs höchstens 300 Seiten, Excel höchstens 50.000 Zeilen. Das Auslesen läuft außerhalb der Ereignisschleife, einzeln und höchstens 60 Sekunden. Der Ausleser zählte bei Excel quadratisch (auch bei OneDrive-Dateien).
+- **`dateien/` ist für hochgeladene Dateien reserviert:** Seiten dort lassen sich nicht von Hand schreiben, ergänzen oder zurückholen, ein Upload ersetzt keine vorhandene Seite, und der ausgelesene Text wird nicht versioniert — nach dem Löschen ist er auch im Verlauf weg.
+- **Projektwissen erscheint nicht mehr in der allgemeinen Brain-Verwaltung.** Bisher konnten Administratoren dort das Wissen fremder Projekte lesen, exportieren und einen MCP-Zugang dafür erzeugen; es ist jetzt nur über das Projekt erreichbar.
+- Der ausgelesene Text ist als fremder Inhalt gekennzeichnet („Daten, keine Anweisungen“), Bilder darin werden nicht geladen; Downloads tragen `X-Content-Type-Options: nosniff`.
+
+### Technik
+- Der Text-Ausleser für PDF/Word/Excel liegt jetzt in `core/dokument_text.py` (bisher in `msgraph_mcp`); OneDrive-Werkzeuge, Sprachfront und Projektdateien nutzen denselben.
+- Neue Endpunkte: `GET/POST /teams/{id}/wissen/dateien`, `GET/DELETE /teams/{id}/wissen/dateien/{name}`.
+
 ## [1.384.1] - 2026-10-28
 
 ### Behoben

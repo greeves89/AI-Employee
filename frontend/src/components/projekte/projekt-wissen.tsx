@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { FileText, History, Loader2, Pencil, Plus, RotateCcw, Save, Search, Sparkles, X } from "lucide-react";
 import * as api from "@/lib/api";
 import { apiFehlertext } from "@/lib/api-fehler";
+import { ProjektDateien } from "./projekt-dateien";
 import { MarkdownContent } from "@/components/ui/markdown-content";
 import { Fenster } from "@/components/ui/fenster";
 import { useToast } from "@/components/ui/dialog-provider";
@@ -81,7 +82,9 @@ export function ProjektWissen({
   const liste = useCallback(async () => {
     try {
       const r = await api.projektWissenListe(projektId);
-      setSeiten(r.dateien.filter((d) => d.type === "file" && /\.(md|markdown|txt)$/i.test(d.path)).map((d) => d.path));
+      // Die ausgelesenen Texte hochgeladener Dateien stehen unter „Dateien“, nicht bei den Seiten.
+      setSeiten(r.dateien.filter((d) => d.type === "file" && /\.(md|markdown|txt)$/i.test(d.path)
+        && !d.path.startsWith("dateien/")).map((d) => d.path));
     } catch (e) {
       toastRef.current.error("Wissen nicht geladen", apiFehlertext(e));
     }
@@ -188,6 +191,9 @@ export function ProjektWissen({
             <Plus className="h-3.5 w-3.5" /> Neue Seite
           </button>
         )}
+        <div className="border-t border-foreground/[0.06] pt-2">
+          <ProjektDateien projektId={projektId} darfSchreiben={darfSchreiben} onTextOeffnen={oeffnen} onGeaendert={liste} />
+        </div>
       </aside>
 
       <section className="min-w-0 rounded-2xl border border-foreground/[0.08] bg-card p-4">
@@ -229,7 +235,9 @@ export function ProjektWissen({
         ) : inhalt === null ? (
           <div className="flex justify-center py-10 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /></div>
         ) : inhalt ? (
-          <div className="text-sm"><MarkdownContent content={inhalt} /></div>
+          // Text hochgeladener Dateien ist fremder Inhalt: ein eingeschleustes Bild
+          // würde beim Öffnen Daten an fremde Adressen schicken.
+          <div className="text-sm"><MarkdownContent content={inhalt} ohneBilder={pfad.startsWith("dateien/")} /></div>
         ) : (
           <p className="text-sm text-muted-foreground">Die Seite ist leer.</p>
         )}

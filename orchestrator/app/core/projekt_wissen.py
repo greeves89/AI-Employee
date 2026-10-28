@@ -196,10 +196,16 @@ async def suchen(db: AsyncSession, brain: SecondBrain, frage: str, limit: int = 
     return await vault_search.hybrid_search(db, brain.label, brain.host_path, frage, limit)
 
 
-async def schreiben(db: AsyncSession, brain: SecondBrain, pfad: str, inhalt: str, *, wer: str = "Projekt") -> dict:
-    """Seite anlegen oder überschreiben, als Version festhalten und für die Suche neu einlesen."""
+async def schreiben(db: AsyncSession, brain: SecondBrain, pfad: str, inhalt: str, *, wer: str = "Projekt",
+                    versionieren: bool = True) -> dict:
+    """Seite anlegen oder überschreiben, als Version festhalten und für die Suche neu einlesen.
+
+    ``versionieren=False`` für Seiten, deren Quelle woanders liegt (ausgelesener
+    Text hochgeladener Dateien): sonst bliebe er nach dem Löschen im Verlauf lesbar.
+    """
     ergebnis = vault.write_file(brain.host_path, pfad, inhalt)
-    _version_festhalten(brain.host_path, pfad, wer)
+    if versionieren:
+        _version_festhalten(brain.host_path, pfad, wer)
     try:
         from app.services import vault_indexer
 
