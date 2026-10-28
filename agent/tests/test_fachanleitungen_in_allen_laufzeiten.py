@@ -46,6 +46,138 @@ class _Orchestrator:
         return resp
 
 
+class _DeltaOrchestrator:
+    """Antwortet wie der Orchestrator MIT Deckel und Nachtrag (#1044).
+
+    Der Vertrag, den dieser Prüfstand abbildet: der Agent meldet mit
+    ``schon_gelistet``, was in dieser Unterhaltung bereits im Verlauf steht, und
+    bekommt NUR die neu hinzugekommenen Einträge — oder gar nichts.
+
+    Der Vorgänger dieses Prüfstands lieferte ohne Stichworttreffer immer dieselben
+    ids und konnte das Umsortieren damit gar nicht erzeugen; der Test darauf war
+    gegen den eigentlichen Fehler blind (gemessen: der ganze Block wanderte bei 11
+    von 14 Nachrichten erneut in den Verlauf, Faktor 1,94 teurer als ohne Deckel).
+    """
+
+    def __init__(self, auswahl_je_auftrag: dict[str, list[int]], standard: list[int]):
+        self.auswahl = auswahl_je_auftrag
+        self.standard = standard
+        self.rumpf: list[dict] = []
+
+    def __call__(self, req, timeout=None):
+        body = json.loads(req.data.decode("utf-8"))
+        self.rumpf.append(body)
+        auftrag = body["auftrag"]
+        schon = set(body.get("schon_gelistet") or [])
+        ids = self.standard
+        for stichwort, auswahl in self.auswahl.items():
+            if stichwort in auftrag.lower():
+                ids = auswahl
+                break
+        neu = [i for i in ids if i not in schon]
+        resp = MagicMock()
+        resp.read.return_value = json.dumps({
+            "prompt": (LISTE if not schon else NACHTRAG) if neu else "",
+            "anleitungen": [],
+            "gelistet_ids": neu,
+        }).encode("utf-8")
+        resp.__enter__.return_value = resp
+        resp.__exit__.return_value = False
+        return resp
+
+
+NACHTRAG = "\n=== WEITERE FACHANLEITUNGEN (zugewiesene Skills) ===\n  • neu\n=== ENDE FACHANLEITUNGEN ===\n"
+
+
+class GedeckelteListeImChatTests(unittest.TestCase):
+    """Der Deckel darf im Chat die Festkosten nicht VERGRÖSSERN.
+
+    Vorher war „Liste einmal je Unterhaltung" harmlos, weil sie vollständig war.
+    Mit Deckel und je Nachricht neu berechneter Reihenfolge wechselt ein Teil der
+    40 ids bei jedem Themenwechsel — den ganzen Block dann erneut zu schicken war
+    schlechter als gar kein Deckel. Die Zusage lautet jetzt: jede Anleitung geht
+    in einer Unterhaltung HÖCHSTENS EINMAL raus.
+    """
+
+    def _mit(self, orch):
+        self.orch = orch
+        self.patches = [
+            patch.object(settings, "orchestrator_url", "http://orchestrator.invalid"),
+            patch.object(settings, "agent_id", "agent-1"),
+            patch.object(settings, "agent_token", "tok"),
+            patch("app.runner_hooks.urllib.request.urlopen", orch),
+        ]
+        for p in self.patches:
+            p.start()
+        self.addCleanup(lambda: [p.stop() for p in self.patches])
+
+    def test_agent_meldet_was_schon_gelistet_wurde(self):
+        # DIE tragende neue Eigenschaft: ohne diese Meldung kann der Orchestrator
+        # den Nachtrag nicht bilden und schickt zwangsläufig immer alles.
+        self._mit(_DeltaOrchestrator({"datev": [7, 8]}, standard=[1, 2]))
+        geladen: set[str] = set()
+        runner_hooks.fachanleitungen("Hallo", geladen)
+        runner_hooks.fachanleitungen("Mach den DATEV-Stapel", geladen)
+        self.assertEqual(self.orch.rumpf[0]["schon_gelistet"], [])
+        self.assertEqual(self.orch.rumpf[1]["schon_gelistet"], [1, 2])
+
+    def test_nachtrag_wird_angehaengt_wenn_etwas_neu_ist(self):
+        self._mit(_DeltaOrchestrator({"datev": [7, 8]}, standard=[1, 2]))
+        geladen: set[str] = set()
+        self.assertIn(LISTE, runner_hooks.fachanleitungen("Hallo", geladen))
+        self.assertIn(NACHTRAG, runner_hooks.fachanleitungen("Mach den DATEV-Stapel", geladen))
+
+    def test_nichts_neues_schickt_nichts(self):
+        # Gegenprobe, ohne die der Fix nur „immer schicken" wäre — und damit genau
+        # die Festkosten zurückbrächte, die der Deckel wegnimmt.
+        self._mit(_DeltaOrchestrator({}, standard=[1, 2]))
+        geladen: set[str] = set()
+        self.assertIn(LISTE, runner_hooks.fachanleitungen("Hallo", geladen))
+        self.assertEqual("", runner_hooks.fachanleitungen("Und noch etwas", geladen))
+        self.assertEqual("", runner_hooks.fachanleitungen("Und noch mehr", geladen))
+
+    def test_jede_anleitung_hoechstens_einmal_in_der_unterhaltung(self):
+        # Die Zusage selbst, über wechselnde Themen gemessen.
+        self._mit(_DeltaOrchestrator(
+            {"datev": [3, 4, 5], "angebot": [5, 6, 7], "lohn": [1, 7, 8]}, standard=[1, 2, 3]))
+        geladen: set[str] = set()
+        for nachricht in ("Hallo", "DATEV bitte", "Ein Angebot", "Lohn buchen",
+                          "DATEV nochmal", "Angebot nochmal", "Hallo nochmal"):
+            runner_hooks.fachanleitungen(nachricht, geladen)
+        # Die ids, die der Orchestrator je Antwort als neu gemeldet hat, dürfen
+        # sich über die Unterhaltung nicht wiederholen.
+        alle: list[int] = []
+        schon: set[int] = set()
+        for body in self.orch.rumpf:
+            gemeldet = set(body.get("schon_gelistet") or [])
+            # monoton wachsend: nichts geht verloren, nichts kommt doppelt
+            self.assertTrue(schon <= gemeldet, "schon_gelistet muss monoton wachsen")
+            alle += sorted(gemeldet - schon)
+            schon = gemeldet
+        self.assertEqual(len(alle), len(set(alle)), f"doppelt gesendet: {alle}")
+        self.assertEqual(sorted(schon), [1, 2, 3, 4, 5, 6, 7, 8])
+
+    def test_nur_zahlen_ids_gehen_in_den_rumpf(self):
+        # ``geladen`` trägt auch Anleitungs-NAMEN und den Listen-Merker. Landeten
+        # die im Rumpf, wäre das Feld für den Orchestrator wertlos (dort sind die
+        # ids ganze Zahlen) — und der Nachtrag fiele still auf „alles schicken".
+        self._mit(_DeltaOrchestrator({}, standard=[1, 2]))
+        geladen = {"Irgendeine Anleitung", runner_hooks._LISTE_GEZEIGT,
+                   runner_hooks._GELISTET + "abc"}
+        runner_hooks.fachanleitungen("Hallo", geladen)
+        self.assertEqual(self.orch.rumpf[0]["schon_gelistet"], [])
+
+    def test_alte_antwort_ohne_gelistet_ids_bleibt_bei_einmal(self):
+        # Abwärtskompatibel: ein Orchestrator-Stand ohne das neue Feld kennt den
+        # Nachtrag nicht und liefert jedes Mal die volle Liste. Dann muss hier
+        # wieder „einmal je Unterhaltung" gelten.
+        self._mit(_Orchestrator())
+        geladen: set[str] = set()
+        self.assertIn(LISTE, runner_hooks.fachanleitungen("Hallo", geladen))
+        self.assertNotIn(LISTE, runner_hooks.fachanleitungen("Noch eine Nachricht", geladen))
+        self.assertNotIn(LISTE, runner_hooks.fachanleitungen("Und noch eine", geladen))
+
+
 class _Umgebung(unittest.TestCase):
     def setUp(self):
         self.orch = _Orchestrator()
