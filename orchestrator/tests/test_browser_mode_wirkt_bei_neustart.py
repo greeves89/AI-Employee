@@ -60,6 +60,40 @@ class BrowserSchalterWirktUeberall(unittest.TestCase):
             with self.subTest(bauweg=weg):
                 self.assertIn("agent.browser_mode", _quelltext(weg))
 
+    def test_jeder_bauweg_setzt_die_freigabeliste(self):
+        """Dieselbe Klasse, diesmal sicherheitsrelevant (#828, Schritt 5).
+
+        Fehlt ``BROWSER_ALLOWED_DOMAINS`` in einem Bauweg, startet der
+        Container dort OHNE die Variable -- und "nicht gesetzt" heisst im
+        Agenten bewusst "unbeschraenkt" (Rueckwaertskompatibilitaet zum
+        Prototyp). Der Besitzer haette also eine Freigabeliste gesetzt, der
+        Agent wuerde sie ignorieren, und auffallen wuerde es nirgends: alles
+        funktioniert weiter, nur die Schranke fehlt. Genau so war es beim
+        Schalter selbst, nur dass es damals nur Bequemlichkeit kostete.
+        """
+        for weg in BAUWEGE:
+            with self.subTest(bauweg=weg):
+                self.assertIn(
+                    "BROWSER_ALLOWED_DOMAINS", _quelltext(weg),
+                    f"{weg}() baut einen Container, gibt die Domain-Freigabeliste "
+                    f"aber nicht mit — der Agenten-Browser duerfte dort ueberall "
+                    f"hin, obwohl der Besitzer das eingeschraenkt hat.",
+                )
+
+    def test_neustart_und_aktualisierung_lesen_die_gespeicherte_freigabeliste(self):
+        """Nicht eine leere Vorgabe, sondern den Stand am Agenten.
+
+        ``create_agent`` MUSS hier leer bleiben: an dieser Stelle gibt es noch
+        kein ``config`` (dasselbe Stolperstein, das im Quelltext an der
+        Modell-Zuordnung eigens kommentiert ist). Die Freigabeliste entsteht
+        erst danach per PATCH. Die beiden anderen Wege dagegen bauen einen
+        Container fuer einen Agenten, der sie schon haben KANN -- lesen sie
+        sie nicht, wirkt ein PATCH nie.
+        """
+        for weg in ("restart_agent", "update_agent"):
+            with self.subTest(bauweg=weg):
+                self.assertIn("browser_allowed_domains", _quelltext(weg))
+
     def test_alle_bauwege_sind_erfasst(self):
         """Wache gegen einen vierten Bauweg, den niemand hier eintraegt.
 

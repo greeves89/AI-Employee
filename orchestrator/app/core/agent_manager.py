@@ -1083,6 +1083,24 @@ def _container_slug(name: str) -> str:
     return slug or "agent"
 
 
+def _browser_geheimnisse(agent_id: str) -> dict[str, str]:
+    """Schluessel fuer den Agenten-Browser (#828, Schritt 5), je Agent abgeleitet.
+
+    * ``BROWSER_PROFIL_KEY`` verschluesselt das gesicherte Browserprofil im
+      Arbeitsbereich. Er liegt NICHT im selben Volume wie das Archiv.
+    * ``BROWSER_ZUGANG`` muss der Orchestrator mitschicken, wenn er Bildstrom
+      oder Pruefprotokoll des Agenten abruft. Alle Agenten haengen im selben
+      Docker-Netz; ohne ihn koennte ein Agent den angemeldeten Browser eines
+      fremden Agenten bedienen.
+    """
+    from app.core.encryption import agent_schluessel
+
+    return {
+        "BROWSER_PROFIL_KEY": agent_schluessel("browser-profil", agent_id),
+        "BROWSER_ZUGANG": agent_schluessel("browser-zugang", agent_id),
+    }
+
+
 class AgentManager:
     """Manages the lifecycle of agent Docker containers."""
 
@@ -1739,6 +1757,12 @@ class AgentManager:
                 "EXTENDED_THINKING": str(settings.extended_thinking).lower(),
                 "COMPUTER_USE_BROWSER": "true" if browser_mode else "false",
                 "COMPUTER_USE_USER_ID": str(user_id) if user_id else "",
+                # Domain-Allowlist fuer den Agenten-Browser (#828, Schritt 5).
+                # Bei der Erstellung noch leer -- es gibt noch kein
+                # ``agent.config``, aus dem eine Freigabeliste kaeme; die
+                # setzt ein Besitzer erst danach per PATCH + Neustart.
+                "BROWSER_ALLOWED_DOMAINS": "",
+                **_browser_geheimnisse(agent_id),
                 "AGENT_WORKSPACE_SIZE_GB": str(settings.agent_workspace_size_gb),
             })
 
@@ -2014,6 +2038,11 @@ class AgentManager:
             # werden, der einen Container baut.
             "COMPUTER_USE_BROWSER": "true" if agent.browser_mode else "false",
             "COMPUTER_USE_USER_ID": str(agent.user_id) if agent.user_id else "",
+            # Domain-Allowlist fuer den Agenten-Browser (#828, Schritt 5) --
+            # muss wie der Browser-Schalter selbst in JEDEM Bauweg gesetzt
+            # werden, sonst greift eine Aenderung erst beim naechsten davon.
+            "BROWSER_ALLOWED_DOMAINS": ",".join(config.get("browser_allowed_domains") or []),
+            **_browser_geheimnisse(agent.id),
             # Standard-Denktiefe aus den Agenten-Einstellungen — die Laufzeit
             # nutzt sie ueberall dort, wo am Lauf keine Stufe haengt.
             "DEFAULT_REASONING": str(config.get("default_reasoning", "") or ""),
@@ -2068,6 +2097,11 @@ class AgentManager:
                 "DEFAULT_MODEL": model,
                 "EXTENDED_THINKING": str(settings.extended_thinking).lower(),
             })
+
+        # Browser-Schluessel ZULETZT: ``secrets_env`` darf sie nicht ueberschreiben,
+        # sonst koennte ein zugewiesener Key ``BROWSER_ZUGANG`` den Browser fuer
+        # einen fremden Agenten im selben Netz oeffnen (#828, Schritt 5).
+        env_vars.update(_browser_geheimnisse(agent.id))
 
         # 3. Create new container with same volumes + any assigned bind mounts
         agent_permissions = autonomy_matrix.effective_permissions(
@@ -2385,6 +2419,11 @@ class AgentManager:
             # werden, der einen Container baut.
             "COMPUTER_USE_BROWSER": "true" if agent.browser_mode else "false",
             "COMPUTER_USE_USER_ID": str(agent.user_id) if agent.user_id else "",
+            # Domain-Allowlist fuer den Agenten-Browser (#828, Schritt 5) --
+            # muss wie der Browser-Schalter selbst in JEDEM Bauweg gesetzt
+            # werden, sonst greift eine Aenderung erst beim naechsten davon.
+            "BROWSER_ALLOWED_DOMAINS": ",".join(config.get("browser_allowed_domains") or []),
+            **_browser_geheimnisse(agent.id),
             # Standard-Denktiefe aus den Agenten-Einstellungen — die Laufzeit
             # nutzt sie ueberall dort, wo am Lauf keine Stufe haengt.
             "DEFAULT_REASONING": str(config.get("default_reasoning", "") or ""),
@@ -2454,6 +2493,11 @@ class AgentManager:
                 "DEFAULT_MODEL": model,
                 "EXTENDED_THINKING": str(settings.extended_thinking).lower(),
             })
+
+        # Browser-Schluessel ZULETZT: ``secrets_env`` darf sie nicht ueberschreiben,
+        # sonst koennte ein zugewiesener Key ``BROWSER_ZUGANG`` den Browser fuer
+        # einen fremden Agenten im selben Netz oeffnen (#828, Schritt 5).
+        env_vars.update(_browser_geheimnisse(agent.id))
 
         # 3. Create new container with same volumes + any assigned bind mounts
         agent_permissions = autonomy_matrix.effective_permissions(

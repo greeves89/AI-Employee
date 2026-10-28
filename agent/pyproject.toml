@@ -34,6 +34,9 @@ dependencies = [
     # schlanke Python-Abbild bringt /usr/share/zoneinfo nicht verlaesslich mit;
     # ohne Daten fiele runner_hooks.zeitkontext() auf UTC zurueck.
     "tzdata>=2024.1",
+    # Browserprofil verschluesselt ablegen (#828, Schritt 5): das persistente
+    # Chromium-Profil enthaelt nach einer Anmeldung faktisch Zugangsdaten.
+    "cryptography>=43.0",
 ]
 
 [build-system]
