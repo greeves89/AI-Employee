@@ -3484,6 +3484,88 @@ async def update_agent_permissions(
         raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
+class BrowserDomainsUpdate(BaseModel):
+    allowed_domains: list[str] | None = None
+
+
+@router.patch("/{agent_id}/browser-domains")
+async def update_agent_browser_domains(
+    agent_id: str,
+    body: BrowserDomainsUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Domain-Allowlist fuer den Agenten-Browser setzen (#828, Schritt 5).
+
+    ``None`` oder eine leere Liste heisst unbeschraenkt -- rueckwaertskompatibel
+    zum bisherigen Prototyp-Stand. Wirkt wie ``browser-mode`` erst nach einem
+    Neustart, weil der Wert als Umgebungsvariable in den Container geht.
+    """
+    await _check_owner(agent_id, user, db)
+
+    # Serverseitig bereinigen, nicht nur vertrauen: der Wert geht als
+    # Umgebungsvariable in den Container und wird dort an Kommas getrennt.
+    from app.core.browser_domains import UngueltigeDomain, bereinigen as _bereinigen
+
+    try:
+        bereinigt = _bereinigen(body.allowed_domains)
+    except UngueltigeDomain as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    try:
+        agent = await manager._get_agent(agent_id)
+        config = dict(agent.config or {})
+        if bereinigt:
+            config["browser_allowed_domains"] = bereinigt
+        else:
+            config.pop("browser_allowed_domains", None)
+        agent.config = config
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(agent, "config")
+        await db.commit()
+        note = " Restart the agent for the change to take effect." if agent.container_id else ""
+        return {"allowed_domains": bereinigt or None, "note": note.strip()}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
+
+
+@router.get("/{agent_id}/browser/audit")
+async def get_agent_browser_audit(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Pruefprotokoll der Browser-Arbeitsflaeche lesen (#828, Schritt 5).
+
+    Derselbe Weg wie beim Bildstrom selbst (``ws.py:ws_agent_browser``):
+    Eigentuemerpruefung HIER, der Agenten-Container ist nur im internen
+    Docker-Netz erreichbar und hat ohnehin keinen Weg nach aussen. Anders als
+    beim Bildstrom wird ein schlafender Agent dafuer NICHT geweckt -- wer nur
+    das bisherige Protokoll lesen will, soll dafuer keinen Container starten.
+    """
+    from app.dependencies import require_agent_access
+    await require_agent_access(agent_id, user, db)
+
+    from app.api.ws import _agent_container_name, BROWSER_STROM_PORT
+
+    name = await _agent_container_name(agent_id)
+    if not name:
+        return {"audit_log": [], "warning": "Agent hat keinen laufenden Container."}
+
+    import aiohttp
+
+    url = f"http://{name}:{BROWSER_STROM_PORT}/browser/audit"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                if resp.status != 200:
+                    return {"audit_log": [], "warning": f"Agent antwortete mit {resp.status}."}
+                return await resp.json()
+    except aiohttp.ClientError as e:
+        return {"audit_log": [], "warning": f"Agent nicht erreichbar: {e}"}
+
+
 class BrowserModeUpdate(BaseModel):
     browser_mode: bool
 

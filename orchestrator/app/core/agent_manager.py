@@ -1739,6 +1739,11 @@ class AgentManager:
                 "EXTENDED_THINKING": str(settings.extended_thinking).lower(),
                 "COMPUTER_USE_BROWSER": "true" if browser_mode else "false",
                 "COMPUTER_USE_USER_ID": str(user_id) if user_id else "",
+                # Domain-Allowlist fuer den Agenten-Browser (#828, Schritt 5).
+                # Bei der Erstellung noch leer -- es gibt noch kein
+                # ``agent.config``, aus dem eine Freigabeliste kaeme; die
+                # setzt ein Besitzer erst danach per PATCH + Neustart.
+                "BROWSER_ALLOWED_DOMAINS": "",
                 "AGENT_WORKSPACE_SIZE_GB": str(settings.agent_workspace_size_gb),
             })
 
@@ -2014,6 +2019,10 @@ class AgentManager:
             # werden, der einen Container baut.
             "COMPUTER_USE_BROWSER": "true" if agent.browser_mode else "false",
             "COMPUTER_USE_USER_ID": str(agent.user_id) if agent.user_id else "",
+            # Domain-Allowlist fuer den Agenten-Browser (#828, Schritt 5) --
+            # muss wie der Browser-Schalter selbst in JEDEM Bauweg gesetzt
+            # werden, sonst greift eine Aenderung erst beim naechsten davon.
+            "BROWSER_ALLOWED_DOMAINS": ",".join(config.get("browser_allowed_domains") or []),
             # Standard-Denktiefe aus den Agenten-Einstellungen — die Laufzeit
             # nutzt sie ueberall dort, wo am Lauf keine Stufe haengt.
             "DEFAULT_REASONING": str(config.get("default_reasoning", "") or ""),
@@ -2384,6 +2393,10 @@ class AgentManager:
             # werden, der einen Container baut.
             "COMPUTER_USE_BROWSER": "true" if agent.browser_mode else "false",
             "COMPUTER_USE_USER_ID": str(agent.user_id) if agent.user_id else "",
+            # Domain-Allowlist fuer den Agenten-Browser (#828, Schritt 5) --
+            # muss wie der Browser-Schalter selbst in JEDEM Bauweg gesetzt
+            # werden, sonst greift eine Aenderung erst beim naechsten davon.
+            "BROWSER_ALLOWED_DOMAINS": ",".join(config.get("browser_allowed_domains") or []),
             # Standard-Denktiefe aus den Agenten-Einstellungen — die Laufzeit
             # nutzt sie ueberall dort, wo am Lauf keine Stufe haengt.
             "DEFAULT_REASONING": str(config.get("default_reasoning", "") or ""),

@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.382.0] - 2026-10-28
+
+### Neu
+- **Der Agenten-Browser lässt sich auf bestimmte Domains begrenzen.** Bisher durfte ein Agent mit eingeschaltetem Browser jede Adresse öffnen — auch dann, wenn in seinen Sitzungen echte Anmeldungen des Besitzers stecken. Der Besitzer kann jetzt eine Freigabeliste setzen (`PATCH /api/v1/agents/{id}/browser-domains`, wirkt nach einem Neustart); verglichen wird der Hostname, `example.com` erlaubt also auch `a.example.com`, aber nicht `example.com.fremd.tld`. Ohne Liste bleibt alles wie bisher erlaubt.
+- **Jeder Seitenaufruf des Browsers steht in einem Prüfprotokoll** — der gesperrte genauso wie der erlaubte, jeweils mit Zeitpunkt, Adresse und wer gehandelt hat: der Agent selbst oder der Nutzer über die Arbeitsfläche. Abrufbar über `GET /api/v1/agents/{id}/browser/audit`, nur für den Besitzer, und ohne dafür einen schlafenden Agenten aufzuwecken.
+- **Das Browserprofil liegt verschlüsselt auf der Platte.** Nach einer Anmeldung enthält ein Chromium-Profil faktisch Zugangsdaten. Dauerhaft gespeichert wird jetzt nur noch ein verschlüsseltes Archiv; das Arbeitsprofil entsteht beim Start daraus und liegt außerhalb des Arbeitsbereichs.
+
+### Behoben
+- **Eine gesperrte Adresse in der Browser-Arbeitsfläche blieb wortlos.** Wer eine nicht freigegebene Adresse eintippte, sah nur, dass nichts passiert. Jetzt nennt die Arbeitsfläche den Grund und die freigegebenen Domains.
+
+### Bekannte Grenze
+- Für `claude_code`-Agenten greift die Freigabeliste nur als **weiche Schranke**: diese Laufzeit bedient den Browser über den Playwright-MCP in einem eigenen Prozess, der ausdrücklich keine Sicherheitsgrenze zusagt und Weiterleitungen nicht prüft; ins Prüfprotokoll kommen seine Aufrufe gar nicht. Hart durchgesetzt und protokolliert wird der Weg über das eigene Browserwerkzeug (Codex, Custom-LLM) und jede Eingabe aus der Arbeitsfläche. Diese Parität ist der nächste Schritt in #828 und braucht eine Richtungsentscheidung.
+- Ein harter Abbruch des Containers (OOM-Kill) zwischen zwei Sicherungspunkten verliert die jüngsten Profiländerungen; gesichert wird nach jeder Navigation und beim geordneten Beenden.
+
 ## [1.380.3] - 2026-10-28
 
 ### Verbessert

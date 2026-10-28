@@ -318,10 +318,35 @@ def register_mcp_servers() -> None:
         # Gleichzeitig benutzen kann beide niemand: Je Agent laeuft genau eine
         # Laufzeit, und ein Chromium-Profil ist ohnehin nur von einem Prozess
         # zur Zeit benutzbar.
+        from app.tools import browser
         from app.tools.browser import PROFIL_DIR as _browser_profil
 
-        if _run_mcp_add(["playwright", "npx", "@playwright/mcp@latest",
-                         "--user-data-dir", _browser_profil]):
+        # Verschluesselt abgelegtes Profil VOR dem MCP-Start entschluesseln
+        # (#828, Schritt 5): dieser Prozess hier ruft nie in ``browser.py``s
+        # ``_ensure_context`` hinein, nur der Pfad wird weitergegeben. Ohne
+        # das hier saehe der Playwright-MCP ein leeres Profil.
+        browser.sicherstellen_profil_entschluesselt()
+
+        mcp_args = ["playwright", "npx", "@playwright/mcp@latest",
+                    "--user-data-dir", _browser_profil]
+
+        # Freigabeliste auch dem MCP mitgeben (#828, Schritt 5) — als WEICHE
+        # Schranke. Die harte Durchsetzung samt Pruefprotokoll sitzt im
+        # Python-Werkzeug (``browser.run``), und an dem laeuft Claude Code
+        # vorbei: es bedient den MCP-Browser in einem eigenen Prozess. Ohne
+        # die Option hier wuerde eine gesetzte Freigabeliste bei einem
+        # ``claude_code``-Agenten komplett WIRKUNGSLOS bleiben, ohne dass
+        # das irgendwo auffaellt. Mit ihr greift sie fuer den geraden Fall.
+        herkuenfte = browser.mcp_erlaubte_herkuenfte()
+        if herkuenfte:
+            mcp_args += ["--allowed-origins", ";".join(herkuenfte)]
+            print("[Agent] WARN: Browser-Freigabeliste gilt fuer den Playwright-MCP "
+                  "nur als weiche Schranke (keine Sicherheitsgrenze, wirkt nicht auf "
+                  "Weiterleitungen) und kennt keine Unterdomaenen-Platzhalter. "
+                  "Harte Durchsetzung samt Pruefprotokoll nur ueber das "
+                  "Python-Browserwerkzeug — siehe #828, Paritaetsluecke.")
+
+        if _run_mcp_add(mcp_args):
             print(f"[Agent] Registered Playwright MCP server (browser control enabled, "
                   f"profile {_browser_profil})")
         else:
@@ -831,6 +856,18 @@ async def shutdown(task_consumer: TaskConsumer, chat_consumer: ChatConsumer, mes
     await health_runner.cleanup()
     if mcp_refresh_task is not None:
         mcp_refresh_task.cancel()
+    # Browserprofil verschluesselt sichern (#828, Schritt 5) -- der letzte
+    # Moment, in dem das noch zuverlaessig geht. Auch im claude_code-Betrieb
+    # noetig: dort schreibt der separate Playwright-MCP-Prozess direkt ins
+    # Profilverzeichnis, ohne dass dieses Modul je einen eigenen Kontext
+    # oeffnet. Ein harter Abbruch (OOM-Kill) erreicht diesen Pfad nicht --
+    # dieselbe Grenze, die hier schon beim Zwischenspeicher gilt.
+    if os.environ.get("COMPUTER_USE_BROWSER", "").lower() == "true":
+        from app.tools import browser
+        try:
+            await browser.close_browser()
+        except Exception as e:  # noqa: BLE001 — Shutdown darf dadurch nicht haengen
+            print(f"[Agent] WARN: Profil-Sicherung beim Beenden fehlgeschlagen: {e}")
 
 
 if __name__ == "__main__":

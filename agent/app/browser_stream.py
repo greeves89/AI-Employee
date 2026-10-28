@@ -18,19 +18,47 @@ Chat noch durch das Modell. Das geht nur, wenn die Ansicht Eingaben annimmt.
 **Abgrenzung:** Das hier steuert den Browser IM Container. Der Bildschirm des
 Nutzers laeuft weiterhin ueber die Computer-Use-Bridge.
 
-Dies ist der Prototyp-Stand aus #828: noch ohne Geltungsbereiche,
-Berechtigungen und Pruefprotokoll. Die Stelle, an der das anzuklemmen ist, ist
-unten markiert.
+Geltungsbereiche (``BROWSER_ALLOWED_DOMAINS``) und das Pruefprotokoll sind in
+``app/tools/browser.py`` angeklemmt — ``eingabe()`` ruft fuer ``navigate``
+in dasselbe ``browser.run`` wie ein eigener Werkzeugaufruf des Modells, es
+gibt also nur EINE Stelle, die beide Faelle durchsetzt (#828, Schritt 5).
 """
 
 import asyncio
 import base64
 import json
 import logging
+import time
+from collections import deque
 
 from aiohttp import web
 
 logger = logging.getLogger(__name__)
+
+#: Pruefprotokoll der Browser-Arbeitsflaeche (#828, Schritt 5) — zuletzt N
+#: Eintraege, per-Prozess wie bei ``computer_use.py``s Sitzungsprotokoll
+#: (dort ausdruecklich "audit is per-process, not restored"). Ueber
+#: ``GET /browser/audit`` erreichbar, der Orchestrator reicht das owner-
+#: geprueft durch, genau wie beim Bildstrom selbst.
+_audit: "deque[dict]" = deque(maxlen=200)
+
+
+def audit_eintrag(aktion: str, url: str, *, erlaubt: bool, akteur: str) -> None:
+    _audit.append({
+        "ts": time.time(),
+        "aktion": aktion,
+        "url": url,
+        "erlaubt": erlaubt,
+        "akteur": akteur,
+    })
+
+
+def audit_log() -> list[dict]:
+    return list(_audit)
+
+
+async def audit_handler(request: web.Request) -> web.Response:
+    return web.json_response({"audit_log": audit_log()})
 
 #: Bilder je Sekunde. Chromium schickt ohnehin nur bei Veraenderung; das hier
 #: ist die Obergrenze, damit eine unruhige Seite nicht die Leitung flutet.
@@ -121,10 +149,13 @@ class BrowserStream:
     async def eingabe(self, ereignis: dict) -> None:
         """Ein Ereignis des Nutzers in die Seite geben.
 
-        HIER kommen spaeter Geltungsbereich und Pruefprotokoll hin (#828):
-        Vor dem Zustellen wird geprueft, ob die Sitzung diese Seite bedienen
-        darf, und der Schritt wird protokolliert. Im Prototyp fehlt beides
-        bewusst -- er laeuft nur an einem Agenten zum Anschauen.
+        Geltungsbereich und Pruefprotokoll fuer ``navigate`` laufen in
+        ``browser.run`` selbst (#828, Schritt 5) — hier wird nur noch
+        durchgereicht und, anders als vorher, der Rueckgabewert tatsaechlich
+        angesehen: ``browser.run`` wirft nie, sondern gibt bei einem Fehler
+        (z. B. "Adresse nicht freigegeben") einen Text zurueck. Ohne diese
+        Pruefung verschwand eine Sperre bisher wortlos — der Nutzer saehe nur,
+        dass sich nichts tut, ohne Grund.
         """
         cdp = await self._cdp_sitzung()
         art = ereignis.get("art")
@@ -158,7 +189,10 @@ class BrowserStream:
             # und "einmal selbst anmelden" faengt genau damit an.
             from app.tools import browser
 
-            await browser.run({"action": "navigate", "url": ereignis.get("url", "")})
+            ergebnis = await browser.run(
+                {"action": "navigate", "url": ereignis.get("url", "")}, akteur="nutzer")
+            if ergebnis.startswith("Error:"):
+                raise ValueError(ergebnis[len("Error: "):])
             await self._cdp_schliessen()      # neue Seite, neue Sitzung
             await self._cdp_sitzung()
             await self._adresse_melden()

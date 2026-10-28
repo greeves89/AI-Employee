@@ -33,17 +33,145 @@ NAV_TIMEOUT_MS = 20_000
 # Mehr als das liest kein Modell sinnvoll, und es fuellt nur das Kontextfenster.
 MAX_TEXT_CHARS = 8_000
 
-#: Wo das Browserprofil liegt.
+#: Wo Chromium das Profil WAEHREND des Laufs sieht — Klartext, Chromium liest
+#: und schreibt SQLite/LevelDB direkt und kann das nicht verschluesselt tun.
 #:
-#: Im Arbeitsbereich, nicht unter /tmp: Das Volume ueberlebt einen Neuaufbau des
-#: Containers, /tmp nicht. Genau darum geht es — wer sich einmal anmeldet, soll
-#: angemeldet bleiben, auch ueber ein Agenten-Update hinweg.
-#:
-#: ACHTUNG Speicherquote: Ein Chromium-Profil waechst mit Zwischenspeicher und
-#: Sitzungsdaten. Es zaehlt auf das Kontingent des Arbeitsbereichs ein
-#: (``services/disk_monitor.py``). Deshalb liegt der Zwischenspeicher bewusst
-#: NICHT im Profil, sondern unter /tmp (siehe ``--disk-cache-dir``).
-PROFIL_DIR = os.environ.get("BROWSER_PROFIL_DIR", "/workspace/.browser-profil")
+#: Bewusst unter /tmp, nicht im Arbeitsbereich: /tmp ueberlebt einen Neuaufbau
+#: des Containers nicht, und genau das ist jetzt gewollt — auf der Platte
+#: liegt dauerhaft nur das verschluesselte Archiv (``PROFIL_ARCHIV``), das
+#: Profil selbst wird bei jedem Start erst daraus entschluesselt (#828,
+#: Schritt 5: "Browserprofil verschluesselt ablegen"). ``main.py`` und dieses
+#: Modul teilen sich denselben Pfad; ohne gemeinsames Entschluesseln VOR dem
+#: ersten Zugriff saehe Claude Code (eigener Prozess, eigenes Chromium) ein
+#: leeres Profil, waehrend das Python-Werkzeug ein volles haette.
+PROFIL_DIR = os.environ.get("BROWSER_PROFIL_DIR", "/tmp/browser-profil")
+
+#: Wo das Profil DAUERHAFT liegt — verschluesselt, das einzige, was einen
+#: Neuaufbau des Containers ueberlebt.
+PROFIL_ARCHIV = os.environ.get("BROWSER_PROFIL_ARCHIV", "/workspace/.browser-profil.tar.enc")
+
+_profil_entschluesselt = False
+
+
+def sicherstellen_profil_entschluesselt() -> None:
+    """Profil einmal pro Laufzeit aus dem Archiv holen — VOR dem ersten Zugriff.
+
+    Zwei Aufrufer brauchen das Klartext-Profil, bevor sie ihr eigenes Chromium
+    starten: dieses Modul selbst (``_ensure_context``, fuer Codex/Custom-LLM)
+    und ``main.py`` — dort gibt es keinen Python-Aufruf in dieses Modul
+    hinein, nur den Pfad ``PROFIL_DIR`` fuer ``--user-data-dir`` des
+    Playwright-MCP. Deshalb muss das Entschluesseln VOR der MCP-Registrierung
+    laufen, nicht erst beim ersten ``navigate`` — sonst startet Claude Code
+    mit einem leeren Profil.
+    """
+    global _profil_entschluesselt
+    if _profil_entschluesselt:
+        return
+    from app import profile_crypto
+
+    profile_crypto.entschluesseln(PROFIL_ARCHIV, PROFIL_DIR)
+    _profil_entschluesselt = True
+
+
+def profil_sichern() -> None:
+    """Klartext-Profil einpacken und verschluesselt zurueckschreiben.
+
+    Synchron und bewusst fehlertolerant (nie eine Ausnahme nach aussen): Wird
+    von ``close_browser`` (geordnetes Beenden) UND nach jeder erfolgreichen
+    Navigation aufgerufen (siehe ``_dispatch``) — Navigation ist der Moment,
+    in dem sich typischerweise etwas Sicherungswuerdiges aendert (Anmeldung,
+    neue Sitzung). Ein harter Container-Abbruch zwischen zwei Aufrufen geht
+    trotzdem verloren — dieselbe Grenze wie beim Zwischenspeicher unter /tmp.
+    """
+    from app import profile_crypto
+
+    try:
+        profile_crypto.verschluesseln(PROFIL_DIR, PROFIL_ARCHIV)
+    except Exception:  # noqa: BLE001 — Sichern darf den Aufrufer nicht mitreissen
+        logger.warning("[Browser] Profil-Sicherung fehlgeschlagen", exc_info=True)
+
+
+#: Domain-Allowlist fuer ``navigate``/``new_tab`` (#828, Schritt 5). ``None``
+#: heisst unbeschraenkt — Rueckwaertskompatibel: ein Agent ohne gesetzte
+#: Freigabeliste verhaelt sich wie vor Schritt 5.
+def _erlaubte_domains() -> list[str] | None:
+    roh = os.environ.get("BROWSER_ALLOWED_DOMAINS", "").strip()
+    if not roh:
+        return None
+    return [d.strip() for d in roh.split(",") if d.strip()]
+
+
+def _url_in_scope(url: str, allowed: list[str]) -> bool:
+    """Spiegelt ``orchestrator/app/api/computer_use.py:_url_in_scope`` --
+
+    Agent und Orchestrator sind getrennte Prozesse ohne gemeinsamen Import,
+    deshalb hier dieselbe Logik noch einmal: verglichen wird der HOST, nicht
+    die Zeichenkette. ``example.com`` erlaubt ``a.example.com``, aber nicht
+    ``example.com.angreifer.tld`` und nicht ``boeseexample.com``.
+    """
+    from urllib.parse import urlparse
+
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return False
+    if not host:
+        return False
+    for entry in allowed:
+        want = (entry or "").strip().lower().lstrip(".")
+        if not want:
+            continue
+        if host == want or host.endswith("." + want):
+            return True
+    return False
+
+
+def _scope_fehler(url: str) -> str | None:
+    """Fehlertext, wenn ``url`` ausserhalb der Freigabeliste liegt -- sonst None."""
+    allowed = _erlaubte_domains()
+    if allowed is None or _url_in_scope(url, allowed):
+        return None
+    return (f"Adresse '{url}' ist fuer diesen Agenten nicht freigegeben. "
+            f"Freigegeben: {', '.join(allowed) or '(keine)'}")
+
+
+def mcp_erlaubte_herkuenfte() -> list[str]:
+    """Freigabeliste in ``--allowed-origins``-Form fuer den Playwright-MCP.
+
+    **Das ist eine weiche Schranke, KEINE Sicherheitsgrenze** — der
+    Playwright-MCP sagt das ueber diese Option ausdruecklich selbst
+    ("does not serve as a security boundary and does not affect
+    redirects"). Sie faengt den geraden Fall ab, nicht den Angriff.
+
+    Deshalb bewusst keine Unterdomaenen-Platzhalter: der MCP kennt nur
+    vollstaendige Herkuenfte (Platzhalter gibt es dort nur fuer den Port).
+    ``example.com`` wird also zu ``https://example.com;http://example.com``
+    — ``a.example.com`` muesste der Besitzer einzeln eintragen. Die harte
+    Durchsetzung samt Pruefprotokoll liegt im Python-Werkzeug (``run``);
+    fuer ``claude_code``-Agenten laeuft die Navigation aber am
+    Python-Werkzeug vorbei, siehe die Paritaetsluecke in #828.
+    """
+    allowed = _erlaubte_domains()
+    if not allowed:
+        return []
+    herkuenfte: list[str] = []
+    for eintrag in allowed:
+        host = (eintrag or "").strip().lower().lstrip(".")
+        if not host:
+            continue
+        for schema in ("https", "http"):
+            herkuenfte.append(f"{schema}://{host}")
+    return herkuenfte
+
+
+def _audit_melden(aktion: str, url: str, *, erlaubt: bool, akteur: str) -> None:
+    """Navigationsversuch protokollieren -- fehlertolerant, nie blockierend."""
+    try:
+        from app import browser_stream
+
+        browser_stream.audit_eintrag(aktion, url, erlaubt=erlaubt, akteur=akteur)
+    except Exception:  # noqa: BLE001
+        logger.debug("[Browser] Audit-Eintrag fehlgeschlagen", exc_info=True)
 
 #: Nur fuer die Entwicklung: sichtbarer Browser. Im Betrieb immer kopflos —
 #: der Bildstrom fuer die Oberflaeche laeuft ueber CDP und braucht kein Fenster.
@@ -126,6 +254,7 @@ async def _ensure_context():
 
     from playwright.async_api import async_playwright
 
+    sicherstellen_profil_entschluesselt()
     os.makedirs(PROFIL_DIR, exist_ok=True)
     _profil_sperre_loesen()
 
@@ -185,7 +314,14 @@ async def _ensure_page():
 
 
 async def close_browser() -> None:
-    """Am Ende eines Laufs aufräumen — ein offener Chromium hält Speicher fest."""
+    """Am Ende eines Laufs aufräumen — ein offener Chromium hält Speicher fest.
+
+    Sichert das Profil IMMER, auch wenn ``_context`` hier None ist: In
+    ``claude_code``-Betrieb schreibt der separate Playwright-MCP-Prozess
+    direkt in ``PROFIL_DIR``, ohne dass dieses Modul je einen eigenen
+    Kontext oeffnet — trotzdem muss derselbe Pfad beim geordneten Beenden
+    gesichert werden (aufgerufen aus ``main.py``s ``shutdown()``).
+    """
     global _context, _pages, _aktiv
     try:
         if _context is not None:
@@ -196,14 +332,19 @@ async def close_browser() -> None:
         _context = None
         _pages = []
         _aktiv = 0
+    await asyncio.to_thread(profil_sichern)
 
 
-async def run(params: dict) -> str:
+async def run(params: dict, *, akteur: str = "agent") -> str:
     """Eine Browser-Aktion ausführen. Gibt immer Text zurück, nie eine Ausnahme.
 
     Ein Fehler wird BENANNT statt verschluckt: Sagt das Werkzeug nur „hat nicht
     geklappt", weicht das Modell auf ``bash`` und ``curl`` aus und holt sich HTML,
     das ohne JavaScript nichts enthält.
+
+    ``akteur`` steht im Pruefprotokoll (#828, Schritt 5): ``"agent"`` fuer
+    einen eigenen Werkzeugaufruf des Modells, ``"nutzer"`` wenn
+    ``browser_stream.py`` eine Eingabe aus der Arbeitsflaeche durchreicht.
     """
     action = (params.get("action") or "").strip().lower()
     if action not in ACTIONS:
@@ -216,7 +357,7 @@ async def run(params: dict) -> str:
     async with _lock:
         try:
             page = await _ensure_page()
-            return await _dispatch(page, action, params)
+            return await _dispatch(page, action, params, akteur)
         except Exception as e:  # noqa: BLE001
             logger.warning("[Browser] %s fehlgeschlagen: %s", action, e)
             return f"Error: browser action '{action}' failed: {e}"
@@ -234,7 +375,7 @@ async def _tab_uebersicht() -> str:
     return "\n".join(zeilen)
 
 
-async def _dispatch(page, action: str, params: dict) -> str:
+async def _dispatch(page, action: str, params: dict, akteur: str = "agent") -> str:
     global _pages, _aktiv
 
     if action == "list_tabs":
@@ -244,16 +385,22 @@ async def _dispatch(page, action: str, params: dict) -> str:
         if len(_pages) >= MAX_TABS:
             return (f"Error: tab limit reached ({MAX_TABS}). Close a tab first "
                     f"(action 'close_tab').")
+        url = (params.get("url") or "").strip()
+        if url:
+            if not url.startswith(("http://", "https://")):
+                url = "https://" + url
+            fehler = _scope_fehler(url)
+            _audit_melden("new_tab", url, erlaubt=fehler is None, akteur=akteur)
+            if fehler:
+                return f"Error: {fehler}"
         context = await _ensure_context()
         neue = await context.new_page()
         neue.set_default_timeout(NAV_TIMEOUT_MS)
         _pages.append(neue)
         _aktiv = len(_pages) - 1
-        url = (params.get("url") or "").strip()
         if url:
-            if not url.startswith(("http://", "https://")):
-                url = "https://" + url
             await neue.goto(url, wait_until="domcontentloaded")
+            await asyncio.to_thread(profil_sichern)
         return f"Opened tab [{_aktiv}]." + (f" At {neue.url}" if url else "")
 
     if action == "switch_tab":
@@ -291,7 +438,15 @@ async def _dispatch(page, action: str, params: dict) -> str:
             return "Error: 'url' is required for navigate."
         if not url.startswith(("http://", "https://")):
             url = "https://" + url
+        fehler = _scope_fehler(url)
+        _audit_melden("navigate", url, erlaubt=fehler is None, akteur=akteur)
+        if fehler:
+            return f"Error: {fehler}"
         await page.goto(url, wait_until="domcontentloaded")
+        # Navigation ist der typische Moment einer Anmeldung -- hier zu
+        # sichern haelt das Verlustfenster bei einem harten Abbruch klein,
+        # ohne bei jedem Klick/Tastendruck ein Profil zu packen.
+        await asyncio.to_thread(profil_sichern)
         return f"Opened {page.url}\nTitle: {await page.title()}"
 
     if action == "click":
