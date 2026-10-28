@@ -59,6 +59,8 @@ JE_LAUF = 300
 MAX_BRAIN_BYTES = 200 * 1024 * 1024
 #: Gespiegelte Ordner je Nutzer.
 MAX_JE_NUTZER = 5
+#: Konto, unter dem die Agenten-Container laufen (siehe ``brains._provision_vault``).
+AGENT_UID = 1000
 #: Abstand der Läufe, solange die Bridge verbunden ist.
 ABSTAND_SEKUNDEN = 600
 
@@ -102,11 +104,13 @@ async def anlegen(db: AsyncSession, user, name: str, ordner: str) -> SecondBrain
     if not ablage.startswith(basis + os.sep):
         raise ValueError("Ablage außerhalb der Second-Brain-Basis")
     os.makedirs(ablage, exist_ok=True)
+    # Agenten laufen als uid 1000 und lesen die Ablage über ihren Mount; andere
+    # Konten auf dem Server haben in einer privaten Kopie nichts verloren.
     try:
-        # Agenten laufen als uid 1000 und lesen die Ablage über ihren Mount.
-        os.chmod(ablage, 0o755)
+        os.chown(ablage, AGENT_UID, AGENT_UID)
     except OSError:
-        pass
+        pass  # ohne root (Tests, Entwicklung): bleibt beim eigenen Konto
+    os.chmod(ablage, 0o750)
     ordnername = posixpath.basename(ordner.replace("\\", "/").rstrip("/")) or ordner
     brain = SecondBrain(
         label=f"brain-{slug}", name=name.strip()[:200], slug=slug, host_path=ablage,
