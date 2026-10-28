@@ -18,7 +18,7 @@ import json
 import logging
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -190,6 +190,34 @@ def _vergleichstext(text: str) -> str:
     return re.sub(r"\W+", " ", (text or "").lower()).strip()[:300]
 
 
+_FUELL = frozenset("der die das und oder mit für fuer von vor nach auf aus ein eine einen einem einer dem den des "
+                   "ist sind wird werden bis bei zum zur als auch noch nicht nur dann dass wenn jede jeden jedes "
+                   "heute morgen danach zuvor mindestens minuten meetingende".split())
+#: Ab so viel Wortüberlappung gilt ein Punkt als schon besprochen. Die Agenten
+#: formulieren denselben Punkt jeden Tag anders — reine Textgleichheit fing nichts.
+AEHNLICH_AB = 0.6
+#: Erledigte Karten, gegen die noch verglichen wird: was vor kurzem erledigt wurde,
+#: soll die nächste Besprechung nicht wieder anlegen.
+ERLEDIGT_FENSTER = timedelta(days=14)
+#: Mehr Karten je Besprechung sind Rauschen, kein Plan.
+MAX_KARTEN = 5
+
+
+def _woerter(text: str) -> frozenset[str]:
+    return frozenset(w for w in _vergleichstext(text).split() if len(w) >= 4 and w not in _FUELL)
+
+
+def _aehnlich(a: frozenset[str], b: frozenset[str]) -> bool:
+    """Überlappung bezogen auf den kürzeren Text: ein knapper Punkt, der ganz in
+    einer längeren Karte steckt, ist derselbe Punkt."""
+    if not a or not b:
+        return False
+    if min(len(a), len(b)) < 3:
+        # Zwei Wörter treffen zu leicht irgendeine lange Karte — dann nur Gleiches.
+        return a == b
+    return len(a & b) / min(len(a), len(b)) >= AEHNLICH_AB
+
+
 def _items(markdown: str) -> list[str]:
     return [z.strip()[5:].strip() for z in (markdown or "").splitlines() if z.strip().startswith("- [ ]")][:MAX_ITEMS]
 
@@ -227,25 +255,43 @@ async def abschluss(room_id: str, team_id: str, raum_name: str, zusammenfassung:
         from app.models.projekt_karte import ProjektKarte
 
         karten = (await db.execute(
-            select(ProjektKarte.quelle, ProjektKarte.extern_nr, ProjektKarte.spalte, ProjektKarte.titel)
+            select(ProjektKarte.quelle, ProjektKarte.extern_nr, ProjektKarte.spalte, ProjektKarte.titel,
+                   ProjektKarte.erledigt_at)
             .where(ProjektKarte.team_id == team.id)
         )).all()
-        geschlossen = {nr for quelle, nr, spalte, _ in karten if quelle == "issue" and spalte == "erledigt" and nr}
-        schon_da = {_vergleichstext(titel) for _, _, spalte, titel in karten if spalte != "erledigt"}
+        geschlossen = {nr for quelle, nr, spalte, _, _ in karten if quelle == "issue" and spalte == "erledigt" and nr}
+        # Verglichen wird mit allem Offenen, mit kürzlich Erledigtem und mit jedem
+        # geschlossenen Issue — per Wortüberlappung. Gemessen 26.–28.10.: Das Daily
+        # legte jeden Morgen bis zu zehn Karten zum längst geschlossenen #961 an,
+        # immer anders formuliert und ohne „#961“ im Text; der Lead räumte sie
+        # jeden Takt wieder ab.
+        grenze = datetime.now(timezone.utc) - ERLEDIGT_FENSTER
+        vergleich = [
+            _woerter(titel) for quelle, _, spalte, titel, erledigt_at in karten
+            if spalte != "erledigt" or quelle == "issue"
+            or (erledigt_at is not None and (erledigt_at if erledigt_at.tzinfo else
+                                             erledigt_at.replace(tzinfo=timezone.utc)) >= grenze)
+        ]
         items, uebersprungen = [], 0
         for item in _items(zusammenfassung):
             nummern = {int(n) for n in _ISSUE_NR.findall(item)}
-            if (nummern and nummern <= geschlossen) or _vergleichstext(item) in schon_da:
+            woerter = _woerter(item)
+            if (nummern and nummern <= geschlossen) or any(_aehnlich(woerter, v) for v in vergleich):
                 uebersprungen += 1
                 continue
-            schon_da.add(_vergleichstext(item))
+            if len(items) >= MAX_KARTEN:
+                uebersprungen += 1
+                continue
+            vergleich.append(woerter)
             items.append(item)
         for item in items:
             # Ohne Ersteller: die Items schreiben Agenten (womöglich nach Issue-Texten) —
             # der Text geht deshalb gerahmt als Material an den Bearbeiter, nicht als
             # Anweisung im Namen des Projekt-Erstellers.
+            # In den Eingang, nicht nach Bereit: Was eine Besprechung vorschlägt, plant
+            # der Lead (oder der Mensch) erst ein — gearbeitet wird nur an Bereitem.
             karte = projekte.neue_karte(team.id, item[:300], f"Aus der Besprechung „{raum_name}“ ({jetzt:%d.%m.%Y}).",
-                                        spalte="bereit", von=f"besprechung:{room_id}", ersteller_user_id=None)
+                                        spalte="eingang", von=f"besprechung:{room_id}", ersteller_user_id=None)
             karte.notiz = "Aus Besprechung"
             db.add(karte)
         kurz = (zusammenfassung or "").strip()
@@ -254,8 +300,9 @@ async def abschluss(room_id: str, team_id: str, raum_name: str, zusammenfassung:
         db.add(ProjektNachricht(
             team_id=team.id, autor_typ="system", autor_id=None, autor_name="Besprechung",
             text=(f"Protokoll „{raum_name}“" + (f" (Projektwissen: {pfad})" if pfad else "") +
-                  (f" — {len(items)} Karte(n) unter „Bereit“ angelegt" if items else "") +
-                  (f", {uebersprungen} Punkt(e) übersprungen (Issue geschlossen oder schon als Karte da)"
+                  (f" — {len(items)} Karte(n) im Eingang angelegt" if items else "") +
+                  (f", {uebersprungen} Punkt(e) übersprungen (schon als Karte da, kürzlich erledigt, Issue "
+                   f"geschlossen oder mehr als {MAX_KARTEN})"
                    if uebersprungen else "") + f"\n\n{kurz}"),
             art="protokoll", an=[],
         ))
