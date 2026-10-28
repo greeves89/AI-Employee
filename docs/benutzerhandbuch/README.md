@@ -155,7 +155,7 @@ Administratoren mit dem Schalter **Mitglieder-Ansicht** im Benutzermenü.
 > aktivem zweiten Faktor, und dessen Einrichtung bleibt der Person selbst vorbehalten.
 
 ### 1.2 Die Seitenleiste — dein Hauptmenü *(neu gestaltet in 1.391.0)*
-Die dunkelblaue **Seitenleiste links** ist auf jeder Seite dein Hauptmenü. Sie hat
+Die **Seitenleiste links** ist auf jeder Seite dein Hauptmenü. Sie hat
 drei Gruppen. Alles, was nur dich betrifft, liegt unten am Konto. Alles, was die
 ganze Anlage betrifft, steht in einem eigenen **Admin-Bereich** (Kap. 1.5).
 
@@ -172,7 +172,7 @@ ganze Anlage betrifft, steht in einem eigenen **Admin-Bereich** (Kap. 1.5).
 
 **Bedienung:**
 - Auf einen **Menüpunkt** klicken → die Seite öffnet sich; der aktive Punkt ist
-  orange hinterlegt.
+  hervorgehoben.
 - Den kleinen **Pfeil** am Rand klicken → Leiste **einklappen** (nur Symbole).
   Erneut klicken = ausklappen.
 - **Ganz unten:** **Hilfe**, dein **Konto** (Name, darunter „Mein Konto“) und — nur
@@ -257,7 +257,7 @@ Oben stehen vier Reiter, darunter je nach Reiter kleine Unterreiter:
 - **Wissen** — Gedächtnis, Wissens-Ablagen (Second Brains), Wissensbasis und Skills.
 - **Einstellungen** — Allgemein, Verbindungen und Befehlsregeln.
 
-Der aktive Reiter ist orange unterstrichen. In der einfachen Ansicht gibt es keine
+Der aktive Reiter ist unterstrichen. In der einfachen Ansicht gibt es keine
 Reiter, nur den Chat (Kap. 1.4).
 
 ### 1.5 Der Admin-Bereich *(seit 1.391.0)*
@@ -265,8 +265,8 @@ Admins arbeiten in derselben Ansicht wie alle anderen. Was für die **ganze Anla
 gilt, verwalten sie in einem eigenen Bereich:
 
 1. Unten links auf **Zum Admin-Bereich** klicken.
-2. Die Leiste wird **hell** und trägt oben die Marke **Admin** — so ist jederzeit
-   sichtbar, dass Änderungen hier alle betreffen.
+2. Die Leiste zeigt jetzt die Bereiche der Anlage und trägt oben die Marke **Admin** — so
+   ist jederzeit sichtbar, dass Änderungen hier alle betreffen.
 3. Links einen Bereich wählen. Die Gruppen:
    - **Menschen** — Nutzer, Rollen & Rechte, SSO-Gruppen
    - **Agenten** — Alle Agenten, Zuweisungen, Vorlagen
@@ -2263,8 +2263,8 @@ Editionen und Preise stehen in der README des Projekts, Abschnitt „License".
 
 ![Admin-Bereich](screenshots/19-admin.png)
 
-Seitenleiste unten → **Zum Admin-Bereich** (nur Administratoren). Die Leiste links wird hell
-und trägt die Marke **Admin**; dort stehen **alle Bereiche**, nach Gruppen überschrieben —
+Seitenleiste unten → **Zum Admin-Bereich** (nur Administratoren). Die Leiste links trägt jetzt
+die Marke **Admin**; dort stehen **alle Bereiche**, nach Gruppen überschrieben —
 jeder mit **einem Klick** erreichbar *(seit 1.391.0)*. Auf dem Handy öffnet das Menü-Symbol
 oben links dieselbe Leiste. **Zurück zur Arbeit** führt in die normale Ansicht.
 

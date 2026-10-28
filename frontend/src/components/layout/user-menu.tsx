@@ -84,17 +84,17 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
         <button
           onClick={() => setIsOpen(!isOpen)}
           title={user.name}
-          className="relative flex items-center justify-center h-9 w-9 rounded-xl text-sidebar-muted hover:bg-white/10 hover:text-sidebar-foreground transition-all"
+          className="relative flex items-center justify-center h-9 w-9 rounded-xl text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-foreground transition-all"
         >
           <UserAvatar name={user.name} className="h-7 w-7" />
           {user.role === "admin" && (
-            <Shield className="absolute -bottom-0.5 -right-0.5 h-3 w-3 text-brand bg-sidebar rounded-full" />
+            <Shield className="absolute -bottom-0.5 -right-0.5 h-3 w-3 text-amber-500 bg-card rounded-full" />
           )}
         </button>
       ) : (
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sidebar-muted hover:bg-white/10 hover:text-sidebar-foreground transition-all duration-150"
+          className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-foreground transition-all duration-150"
         >
           <UserAvatar name={user.name} />
           <div className="flex-1 min-w-0 text-left">
@@ -102,7 +102,7 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
             <p className="text-[11px] text-sidebar-muted truncate">Mein Konto</p>
           </div>
           {user.role === "admin" && (
-            <Shield className="h-3 w-3 text-brand shrink-0" />
+            <Shield className="h-3 w-3 text-amber-500 shrink-0" />
           )}
         </button>
       )}

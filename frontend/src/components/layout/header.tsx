@@ -21,7 +21,7 @@ export function Header({
   actions,
 }: HeaderProps) {
   return (
-    <div className="sticky top-0 z-20 flex flex-col items-start gap-2 border-b border-border bg-card/85 py-2.5 pl-16 pr-6 backdrop-blur-md sm:flex-row sm:items-center sm:justify-between sm:gap-2 lg:pl-7">
+    <div className="sticky top-0 z-20 flex flex-col items-start gap-2 border-b border-foreground/[0.06] bg-background/80 py-2.5 pl-16 pr-6 backdrop-blur-lg sm:flex-row sm:items-center sm:justify-between sm:gap-2 lg:pl-6">
       {/* w-full: In der Handy-Spalte (items-start) war der Block sonst nur so
           breit wie sein Inhalt — der Untertitel lief über den Rand und wurde ohne
           „…" abgeschnitten (#907). */}

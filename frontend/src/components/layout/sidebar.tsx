@@ -362,21 +362,21 @@ export function Sidebar() {
         className={cn(
           "group flex items-center gap-3 rounded-lg px-2.5 py-2 text-[14px] transition-colors duration-150",
           isActive
-            ? "bg-brand/20 text-sidebar-foreground font-medium"
-            : "text-sidebar-foreground/85 hover:bg-white/10 hover:text-sidebar-foreground"
+            ? "bg-sidebar-active text-sidebar-foreground font-medium shadow-sm"
+            : "text-sidebar-foreground/85 hover:bg-sidebar-hover hover:text-sidebar-foreground"
         )}
       >
         <Icon
           className={cn(
             "h-[18px] w-[18px] shrink-0 transition-colors",
-            isActive ? "text-brand" : "text-sidebar-muted group-hover:text-sidebar-foreground"
+            isActive ? "text-primary" : "text-sidebar-muted group-hover:text-sidebar-foreground"
           )}
         />
         <span className="truncate">{item.label}</span>
         {item.href === "/approvals" && pendingApprovals > 0 ? (
           <span
             title={`${pendingApprovals} offene Freigabe(n)`}
-            className="ml-auto shrink-0 rounded-full bg-brand px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-[#0a1433]"
+            className="ml-auto shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-700 dark:text-amber-400"
           >
             {pendingApprovals > 99 ? "99+" : pendingApprovals}
           </span>
@@ -388,7 +388,7 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-40 h-screen bg-sidebar text-sidebar-foreground flex flex-col transition-all duration-300",
+        "fixed left-0 top-0 z-40 h-screen border-r border-border bg-sidebar/80 backdrop-blur-xl text-sidebar-foreground flex flex-col transition-all duration-300",
         effectiveCollapsed ? "w-[64px]" : "w-[240px]",
         // Mobile: off-canvas drawer (hidden unless opened). Desktop (lg+): always shown.
         mobileOpen ? "translate-x-0" : "-translate-x-full",
@@ -397,16 +397,16 @@ export function Sidebar() {
     >
       {/* Logo */}
       <div className={cn(
-        "flex h-14 items-center shrink-0",
+        "flex h-14 items-center border-b border-border shrink-0",
         effectiveCollapsed ? "justify-center px-0" : "gap-3 px-5"
       )}>
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-brand">
-          <Cpu className="h-4 w-4 text-[#0a1433]" />
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-cyan-400 shadow-lg shadow-blue-500/20">
+          <Cpu className="h-4 w-4 text-white" />
         </div>
         {!effectiveCollapsed && (
           <>
             <div className="flex-1 min-w-0">
-              <span className="font-[family-name:var(--font-display)] text-[15px] font-semibold tracking-tight">AI Employee</span>
+              <span className="text-sm font-semibold tracking-tight">AI Employee</span>
             </div>
             {/* Concierge und Feedback wohnen hier oben als Paar — die frueheren
                 schwebenden Knoepfe unten rechts haben Eingabefelder ueberdeckt. */}
@@ -416,7 +416,7 @@ export function Sidebar() {
                   closeMobile();
                   window.dispatchEvent(new CustomEvent("concierge-widget:open"));
                 }}
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-sidebar-muted hover:text-sidebar-foreground hover:bg-white/10 transition-all"
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-hover transition-all"
                 title="Concierge"
                 aria-label="Concierge öffnen"
               >
@@ -429,7 +429,7 @@ export function Sidebar() {
                 closeMobile();
                 window.dispatchEvent(new CustomEvent("feedback-widget:open"));
               }}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-sidebar-muted hover:text-sidebar-foreground hover:bg-white/10 transition-all"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-hover transition-all"
               title="Feedback senden"
               aria-label="Feedback geben"
             >
@@ -455,16 +455,16 @@ export function Sidebar() {
                 className={cn(
                   "flex items-center justify-center h-9 w-9 mx-auto rounded-lg transition-all duration-150",
                   isActive
-                    ? "bg-brand/20 text-sidebar-foreground"
-                    : "text-sidebar-muted hover:bg-white/10 hover:text-sidebar-foreground"
+                    ? "bg-sidebar-active text-sidebar-foreground"
+                    : "text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-foreground"
                 )}
               >
                 <span className="relative">
-                  <Icon className={cn("h-4 w-4", isActive ? "text-brand" : "")} />
+                  <Icon className={cn("h-4 w-4", isActive ? "text-primary" : "")} />
                   {/* Eingeklappt ist kein Platz für eine Zahl — der Punkt sagt
                       trotzdem, dass dort etwas wartet. */}
                   {item.href === "/approvals" && pendingApprovals > 0 && (
-                    <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-brand" />
+                    <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-400" />
                   )}
                 </span>
               </NavShell>
@@ -478,7 +478,7 @@ export function Sidebar() {
               aria-expanded={weitereOffen}
               className={cn(
                 "flex items-center justify-center h-9 w-9 mx-auto rounded-xl transition-all duration-150",
-                weitereOffen ? "bg-white/10 text-sidebar-foreground" : "text-sidebar-muted hover:bg-white/10 hover:text-sidebar-foreground"
+                weitereOffen ? "bg-sidebar-hover text-sidebar-foreground" : "text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-foreground"
               )}
             >
               <LayoutGrid className="h-4 w-4" />
@@ -519,11 +519,11 @@ export function Sidebar() {
             );
           })}
           {weitereItems.length > 0 && (
-            <div className="mt-2 border-t border-white/10 pt-2">
+            <div className="mt-2 border-t border-border/60 pt-2">
               <button
                 onClick={weitereUmschalten}
                 aria-expanded={weitereOffen}
-                className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px] text-sidebar-muted hover:text-sidebar-foreground hover:bg-white/10 transition-colors"
+                className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px] text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-hover transition-colors"
               >
                 <LayoutGrid className="h-3.5 w-3.5" />
                 <span className="flex-1 text-left">Weitere Bereiche</span>
@@ -546,7 +546,7 @@ export function Sidebar() {
           eigenen Admin-Bereich (Redesign 2026-10: Admins arbeiten in derselben
           Ansicht wie alle und verwalten die Anlage in einem getrennten Bereich). */}
       <div className={cn(
-        "border-t border-white/10 shrink-0 mt-auto",
+        "border-t border-border shrink-0 mt-auto",
         effectiveCollapsed ? "flex flex-col items-center gap-1 px-0 py-3" : "px-2 py-2 space-y-1"
       )}>
         <Link
@@ -557,11 +557,11 @@ export function Sidebar() {
             "flex items-center rounded-lg transition-colors",
             effectiveCollapsed ? "h-9 w-9 justify-center" : "gap-3 px-2.5 py-2 text-[14px]",
             pathname.startsWith("/help")
-              ? "bg-brand/20 text-sidebar-foreground"
-              : "text-sidebar-foreground/85 hover:bg-white/10 hover:text-sidebar-foreground"
+              ? "bg-sidebar-active text-sidebar-foreground"
+              : "text-sidebar-foreground/85 hover:bg-sidebar-hover hover:text-sidebar-foreground"
           )}
         >
-          <HelpCircle className={cn("h-[18px] w-[18px] shrink-0", pathname.startsWith("/help") ? "text-brand" : "text-sidebar-muted")} />
+          <HelpCircle className={cn("h-[18px] w-[18px] shrink-0", pathname.startsWith("/help") ? "text-primary" : "text-sidebar-muted")} />
           {!effectiveCollapsed && <span>Hilfe</span>}
         </Link>
         <UserMenu collapsed={effectiveCollapsed} />
@@ -571,7 +571,7 @@ export function Sidebar() {
             onClick={closeMobile}
             title="Zum Admin-Bereich"
             className={cn(
-              "flex items-center justify-center rounded-lg border border-white/25 text-sidebar-foreground transition-colors hover:bg-white/10",
+              "flex items-center justify-center rounded-lg border border-border text-sidebar-foreground transition-colors hover:bg-sidebar-hover",
               effectiveCollapsed ? "h-9 w-9" : "gap-2 px-3 py-2 text-[13px]"
             )}
           >
