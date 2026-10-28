@@ -118,7 +118,7 @@ Administratoren mit dem Schalter **Mitglieder-Ansicht** im Benutzermenü.
 28. [Benachrichtigung → Task-Details öffnen](#28-benachrichtigung--task-details-öffnen)
 29. [Hilfe & FAQ (im Menü) und Klick-Tutorials](#29-hilfe--faq-im-menü)
 30. [Admin: Exchange on-prem, Azure-Stimmen, Dreaming](#30-admin-exchange-on-prem-azure-stimmen-dreaming)
-31. [Nachtschicht (Reflection) — Agenten lernen über Nacht](#31-nachtschicht-reflection--agenten-lernen-über-nacht)
+31. [Nachtschicht — Agenten lernen über Nacht](#31-nachtschicht--agenten-lernen-über-nacht)
 32. [Apps (Ergebnisse deiner Agenten öffnen & freigeben)](#32-apps-ergebnisse-deiner-agenten-öffnen--freigeben)
 33. [Activity — Tageskalender aller Agenten](#33-activity--tageskalender-aller-agenten)
 34. [Kanäle: Telegram, Teams, Slack, WhatsApp, Discord](#34-kanäle-telegram-teams-slack-whatsapp-discord)
@@ -3198,7 +3198,7 @@ ausgeliefert und laufen auch ohne Internetzugang.
 
 ---
 
-## 31. Nachtschicht (Reflection) — Agenten lernen über Nacht
+## 31. Nachtschicht — Agenten lernen über Nacht
 
 Die **Nachtschicht** ist der nächtliche Reflexions-Lauf der Plattform: Sie liest die
 Gespräche, Aufgaben und Meetings des Tages, destilliert daraus **dauerhaftes Wissen**
@@ -3207,7 +3207,7 @@ der Agenten bzw. die Knowledge Base. **Morgens startet jeder Agent schlauer.**
 
 ### 31.1 Aktivieren (Admin)
 
-1. Seitenleiste unten → **Zum Admin-Bereich** → **System & Lizenz** → Karte **„Nachtschicht (Reflection)"**.
+1. Seitenleiste unten → **Zum Admin-Bereich** → **System & Lizenz** → Karte **„Nachtschicht"**.
 2. **Aktiviert** einschalten.
 3. **Uhrzeit** wählen (Standard: **3 Uhr nachts**).
 4. **Modus** wählen:

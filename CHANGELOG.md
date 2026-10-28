@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.393.0] - 2026-10-28
+
+### Verbessert
+- **Besprechungsraum anlegen: Moderator und Besprechungsphasen sind jetzt direkt im Formular zu sehen.** Beide Einstellungen steckten hinter einem zusätzlichen Klick auf „Erweiterte Einstellungen“ — obwohl fast jeder sie beim Anlegen braucht. Vom Öffnen des Formulars bis zu einem einzelnen Phasen-Feld sind es jetzt 1 statt 3 Klicks.
+- **Fachbegriffe in der Seitenleiste und im Agenten-Reiter „Wissen“ zeigen beim Draufhalten eine kurze Erklärung:** Abläufe, Prüfaufgaben und Wissens-Ablagen, jeweils mit dem früheren Namen (Workflows, Golden-Tests, Second Brain) in Klammern, damit man sie wiedererkennt.
+- Die Überschrift „Nachtschicht (Reflection)“ in den Admin-Einstellungen heißt jetzt nur noch „Nachtschicht“ — der englische Klammerzusatz war überflüssig, der deutsche Erklärtext darunter stand schon da.
+
 ## [1.391.0] - 2026-10-28
 
 ### Verbessert
