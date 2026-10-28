@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.383.1] - 2026-10-28
+
+### Behoben
+- **Projekt-Besprechungen griffen immer wieder erledigte Themen auf.** Die Agenten sprachen aus ihrem Gedächtnis, nicht vom Board: Ein seit Tagen geschlossenes Issue kam jeden Morgen erneut ins Daily, und aus jedem offenen Punkt der Zusammenfassung wurde ungeprüft eine Karte (7–9 je Besprechung). Jetzt bekommt jeder Beitrag einer Projekt-Besprechung den Stand des Boards mit (Bereit, In Arbeit, Prüfung mit PR-Stand, kürzlich Erledigtes) — dieselbe Darstellung wie das Werkzeug `projekt_board` —, und Punkte, die nur geschlossene Issues betreffen oder schon als offene Karte dastehen, werden keine Karte; das Protokoll nennt, wie viele übersprungen wurden.
+- **Ein abgebrochener Auftrag stand danach als „erledigt“ da.** Der Agent meldet sein Ende nach dem Abbruch noch nach und überschrieb damit den Status. Er bleibt jetzt „abgebrochen“; Kosten, Tokens und Dauer werden trotzdem gebucht.
+
 ## [1.383.0] - 2026-10-28
 
 ### Neu
