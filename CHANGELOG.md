@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.388.1] - 2026-10-28
+
+### Behoben
+- **Computer-Use-Bridge: ein getipptes Passwort landete im Prüfprotokoll und im Replay-Transkript.** Tippte der Agent über die Steuerung des echten Bildschirms ein Geheimnis, stand der Klartext bisher unverändert im Prüfprotokoll der Sitzung (`GET .../audit`) und, lief gerade eine Aufnahme, im Replay-Transkript; aus einem Transkript lässt sich über „Aufnahme zu Skill“ ein geteilter Skill erzeugen. Betroffen war auch der Mitschnitt, wenn der Mensch beim Vorführen selbst etwas eintippt. Jetzt gilt eine Zulassliste: Sichtbar bleiben nur Koordinaten, Schalter, Selektoren, Ziel-Apps und benannte Tasten. Alles andere wird durch seine Länge ersetzt, auch Shell-Befehle (`curl -u …`), Skripte für den angemeldeten Browser, einzeln getippte Zeichen und jedes Feld, das eine künftige Aktion neu einführt. Adressen verlieren Query, Fragment und Zugangsdaten. Nach einer Tipp-Aktion kommt kein Bildschirmfoto ins Transkript, weil ein Einmalcode im Bild stehen kann.
+
 ## [1.388.0] - 2026-10-28
 
 ### Neu
