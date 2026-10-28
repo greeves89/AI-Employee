@@ -1518,7 +1518,12 @@ def _wissen_oeffnen(pfad: str) -> int:
     """Datei oeffnen, OHNE einem Link zu folgen, und pruefen, dass sie eine
     gewoehnliche Datei ist — zwischen Pruefung und Lesen kann sie sonst gegen
     einen Link getauscht werden. Liefert den Dateideskriptor."""
-    fd = os.open(pfad, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0))
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    # Windows kennt O_NOFOLLOW nicht: dort ausdruecklich pruefen (Links anzulegen
+    # braucht unter Windows ohnehin besondere Rechte).
+    if not nofollow and os.path.islink(pfad):
+        raise OSError("symbolischer Link")
+    fd = os.open(pfad, os.O_RDONLY | nofollow | getattr(os, "O_BINARY", 0))
     try:
         if not stat.S_ISREG(os.fstat(fd).st_mode):
             raise OSError("keine gewoehnliche Datei")
