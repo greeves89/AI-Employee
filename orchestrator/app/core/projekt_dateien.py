@@ -88,6 +88,8 @@ def _pfad(brain: SecondBrain, name: str) -> str:
     """Absoluter Pfad einer vorhandenen Datei — eingesperrt in die Ablage."""
     ordner = os.path.realpath(_ablage(brain))
     ziel = os.path.realpath(os.path.join(ordner, os.path.basename(name or "")))
+    if not ziel.startswith(ordner + os.sep):
+        raise FileNotFoundError(name)
     if os.path.dirname(ziel) != ordner or not os.path.isfile(ziel):
         raise FileNotFoundError(name)
     return ziel
