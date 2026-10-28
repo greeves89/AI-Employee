@@ -88,11 +88,11 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
   const [allSecrets, setAllSecrets] = useState<AgentSecretEntry[]>([]);
   const [agentSecretIds, setAgentSecretIds] = useState<Set<number>>(new Set());
   const [togglingSecret, setTogglingSecret] = useState<number | null>(null);
-  // Eigenen Key an Personen freigeben (gemeinsamer Dialog mit der Admin-Konsole).
+  // Eigenen Key an Personen freigeben (gemeinsamer Dialog mit dem Admin-Bereich).
   const [teilen, setTeilen] = useState<AgentSecretEntry | null>(null);
   const toast = useToast();
   // Eigene Schlüssel direkt hier anlegen: der frühere Link führte in die
-  // Admin-Konsole, in die ein Mitglied gar nicht darf.
+  // Admin-Bereich, in die ein Mitglied gar nicht darf.
   const istAdmin = useAuthStore((st) => st.user?.role) === "admin";
   const confirm = useConfirm();
   const [neuOffen, setNeuOffen] = useState(false);
@@ -446,9 +446,9 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
         {enabledMcpServers.length === 0 && (
           <div className="border-t border-foreground/[0.04] px-5 py-3">
             <p className="text-[11px] text-muted-foreground/50">
-              Externe MCP-Server legst du auf der Seite{" "}
-              <a href="/integrations" className="text-primary hover:underline">Integrationen</a>{" "}
-              an; danach den Agenten neu starten, damit er sie nutzt.
+              Werkzeug-Server (MCP) richtet ein Admin im{" "}
+              <a href="/admin?tab=integrationen-anlage" className="text-primary hover:underline">Admin-Bereich unter Dienste &amp; Konten</a>{" "}
+              ein; danach den Agenten neu starten, damit er sie nutzt.
             </p>
           </div>
         )}

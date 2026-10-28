@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
-// AI-Accounts lebt nur noch in der Admin-Konsole (Issue #787) — diese Seite
+// AI-Accounts lebt nur noch im Admin-Bereich (Issue #787) — diese Seite
 // existierte parallel zum eingebetteten Reiter dort, zwei Mount-Punkte
 // derselben Komponente, die im Verhalten auseinanderlaufen konnten. Statt
 // zwei Implementierungen zu pflegen, leitet diese Route auf den Reiter um.

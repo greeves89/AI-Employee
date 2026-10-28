@@ -48,7 +48,7 @@ import {
   type CustomPage,
   type RolePermissions,
 } from "@/lib/api";
-import { pageIcon } from "@/lib/page-icons";
+import { ALTE_SEITEN_GRUPPEN, pageIcon } from "@/lib/page-icons";
 import { setVisibleInterval } from "@/lib/visible-interval";
 
 type NavItem = {
@@ -130,70 +130,45 @@ type NavGroup = {
 // derselbe (#902). Früher gab es englische Namen plus ``simpleLabel``; wer
 // zwischen den Ansichten wechselte, fand seine Punkte unter anderem Namen.
 
+// Redesign 2026-10 (Vorbild lavalake-Konsole): drei Gruppen fürs Arbeiten. Was
+// die ganze Anlage betrifft, steht NICHT hier, sondern im eigenen Admin-Bereich
+// (``admin-sidebar.tsx``); Persönliches liegt im Konto-Menü unten.
 const navGroups: NavGroup[] = [
   {
-    label: "Übersicht",
+    label: "Arbeiten",
     key: "overview",
     items: [
-      { href: "/heute", label: "Heute", icon: Sun, simpleVisible: true },
-      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, simpleVisible: true },
+      { href: "/heute", label: "Start", icon: Sun, simpleVisible: true },
       { href: "/agents", label: "Agenten", icon: Cpu, simpleVisible: true },
-      // Onboarding vorerst ausgeblendet (Seite bleibt unter /onboarding erreichbar)
-      // { href: "/onboarding", label: "Onboarding", icon: Rocket, simpleVisible: true },
       { href: "/tasks", label: "Aufgaben", icon: ListTodo, simpleVisible: true },
       { href: "/projekte", label: "Projekte", icon: FolderKanban, simpleVisible: true },
-      { href: "/finanzen", label: "Finanzen", icon: Wallet, simpleVisible: true },
+      { href: "/approvals", label: "Freigaben", icon: ShieldCheck, simpleVisible: true },
+      { href: "/dashboard", label: "Übersicht", icon: LayoutDashboard, simpleVisible: true, weitere: true },
+      { href: "/finanzen", label: "Kosten", icon: Wallet, simpleVisible: true, weitere: true },
       { href: "/activity", label: "Aktivität", icon: Activity, simpleVisible: false, weitere: true },
       { href: "/analytics", label: "Auswertung", icon: BarChart3, simpleVisible: false, weitere: true },
       { href: "/learning", label: "Gelerntes", icon: Sparkles, simpleVisible: false, weitere: true },
     ],
   },
   {
-    label: "Zusammenarbeit",
+    label: "Ablage",
     key: "collab",
     items: [
+      { href: "/files", label: "Dateien", icon: FolderOpen, simpleVisible: true },
       { href: "/knowledge", label: "Wissen", icon: BookOpen, simpleVisible: false },
-      { href: "/meeting-rooms", label: "Besprechungsräume", icon: Users, simpleVisible: false, weitere: true },
-      { href: "/apps", label: "Apps", icon: AppWindow, simpleVisible: false, weitere: true },
+      { href: "/integrations", label: "Verbindungen", icon: Plug, simpleVisible: false, weitere: true },
     ],
   },
   {
-    label: "Automatisierung",
+    label: "Automatisieren",
     key: "automation",
     items: [
-      { href: "/workflows", label: "Workflows", icon: Workflow, simpleVisible: false, weitere: true },
-      { href: "/skills", label: "Skill-Marktplatz", icon: Sparkles, simpleVisible: false, weitere: true },
+      { href: "/workflows", label: "Abläufe", icon: Workflow, simpleVisible: false },
+      { href: "/skills", label: "Skills", icon: Sparkles, simpleVisible: false },
+      { href: "/apps", label: "Apps", icon: AppWindow, simpleVisible: false, weitere: true },
+      { href: "/meeting-rooms", label: "Besprechungsräume", icon: Users, simpleVisible: false, weitere: true },
       { href: "/triggers", label: "Auslöser", icon: Zap, simpleVisible: false, weitere: true },
-      { href: "/evals", label: "Golden-Tests", icon: ClipboardCheck, simpleVisible: false, weitere: true },
-    ],
-  },
-  {
-    label: "Arbeitsplatz",
-    key: "system",
-    items: [
-      { href: "/approvals", label: "Freigaben", icon: ShieldCheck, simpleVisible: true },
-      { href: "/files", label: "Dateien", icon: FolderOpen, simpleVisible: true },
-      { href: "/integrations", label: "Integrationen", icon: Plug, simpleVisible: false },
-    ],
-  },
-  {
-    label: "Hilfe",
-    key: "help",
-    items: [
-      { href: "/help", label: "Hilfe & FAQ", icon: HelpCircle, simpleVisible: true },
-    ],
-  },
-  {
-    label: "Verwaltung",
-    key: "admin",
-    adminOnly: true,
-    items: [
-      // EIN Einstieg — Rechte, Audit Log, DLP, Master-Regeln und Gesetze
-      // liegen als Reiter INNERHALB der Admin-Konsole (Gruppe "Compliance"),
-      // nicht als eigene Sidebar-Eintraege. Mehrere Deep-Links hier machten
-      // die Seitenleiste unuebersichtlich, ohne einen echten Vorteil
-      // gegenueber der Reiterleiste in der Ansicht selbst.
-      { href: "/admin", label: "Admin-Konsole", icon: Shield, simpleVisible: false },
+      { href: "/evals", label: "Prüfaufgaben", icon: ClipboardCheck, simpleVisible: false, weitere: true },
     ],
   },
 ];
@@ -302,7 +277,7 @@ export function Sidebar() {
   // im Verwaltungsbereich vergebene Reihenfolge (der Server liefert schon sortiert).
   const extraItemsFor = (groupKey: string): NavItem[] =>
     customPages
-      .filter((p) => p.group_key === groupKey)
+      .filter((p) => (ALTE_SEITEN_GRUPPEN[p.group_key] ?? p.group_key) === groupKey)
       .map((p) => ({
         href: p.menu_path,
         label: p.title,
@@ -356,7 +331,7 @@ export function Sidebar() {
     // (der Pfad allein reicht nicht).
     if (zielQuery) return passtQuery(zielQuery);
     // Eintrag OHNE Query (z.B. "/admin"): nicht blind bei jedem passenden Pfad
-    // aktiv setzen, sonst leuchtet "Admin-Konsole" gleichzeitig mit "Rechte"
+    // aktiv setzen, sonst leuchtet "Admin-Bereich" gleichzeitig mit "Rechte"
     // mit, sobald ?tab=roles in der URL steht. Nur aktiv, wenn kein anderer
     // Eintrag mit demselben Basispfad UND eigenem Query gerade genauer passt.
     const spezifischererEintragPasst = allItems.some((other) => {
@@ -380,28 +355,26 @@ export function Sidebar() {
         item={item}
         onClick={closeMobile}
         className={cn(
-          "group flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium transition-all duration-150",
+          "group flex items-center gap-3 rounded-lg px-2.5 py-2 text-[14px] transition-colors duration-150",
           isActive
-            ? "bg-accent text-foreground shadow-sm"
-            : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+            ? "bg-brand/20 text-sidebar-foreground font-medium"
+            : "text-sidebar-foreground/85 hover:bg-white/10 hover:text-sidebar-foreground"
         )}
       >
         <Icon
           className={cn(
-            "h-4 w-4 shrink-0 transition-colors",
-            isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
+            "h-[18px] w-[18px] shrink-0 transition-colors",
+            isActive ? "text-brand" : "text-sidebar-muted group-hover:text-sidebar-foreground"
           )}
         />
         <span className="truncate">{item.label}</span>
         {item.href === "/approvals" && pendingApprovals > 0 ? (
           <span
             title={`${pendingApprovals} offene Freigabe(n)`}
-            className="ml-auto shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-700 dark:text-amber-400"
+            className="ml-auto shrink-0 rounded-full bg-brand px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-[#0a1433]"
           >
             {pendingApprovals > 99 ? "99+" : pendingApprovals}
           </span>
-        ) : isActive ? (
-          <div className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-primary shadow-[0_0_6px_rgba(59,130,246,0.5)]" />
         ) : null}
       </NavShell>
     );
@@ -410,8 +383,8 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-40 h-screen border-r border-border bg-card/50 backdrop-blur-xl flex flex-col transition-all duration-300",
-        effectiveCollapsed ? "w-[64px]" : "w-[260px]",
+        "fixed left-0 top-0 z-40 h-screen bg-sidebar text-sidebar-foreground flex flex-col transition-all duration-300",
+        effectiveCollapsed ? "w-[64px]" : "w-[240px]",
         // Mobile: off-canvas drawer (hidden unless opened). Desktop (lg+): always shown.
         mobileOpen ? "translate-x-0" : "-translate-x-full",
         "lg:translate-x-0"
@@ -419,23 +392,16 @@ export function Sidebar() {
     >
       {/* Logo */}
       <div className={cn(
-        "flex h-14 items-center border-b border-border shrink-0",
+        "flex h-14 items-center shrink-0",
         effectiveCollapsed ? "justify-center px-0" : "gap-3 px-5"
       )}>
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-cyan-400 shadow-lg shadow-blue-500/20">
-          <Cpu className="h-4 w-4 text-white" />
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-brand">
+          <Cpu className="h-4 w-4 text-[#0a1433]" />
         </div>
         {!effectiveCollapsed && (
           <>
             <div className="flex-1 min-w-0">
-              <span className="text-sm font-semibold tracking-tight">AI Employee</span>
-              <div className="flex items-center gap-1.5">
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                </span>
-                <span className="text-[10px] text-muted-foreground">Online</span>
-              </div>
+              <span className="font-[family-name:var(--font-display)] text-[15px] font-semibold tracking-tight">AI Employee</span>
             </div>
             {/* Concierge und Feedback wohnen hier oben als Paar — die frueheren
                 schwebenden Knoepfe unten rechts haben Eingabefelder ueberdeckt. */}
@@ -445,7 +411,7 @@ export function Sidebar() {
                   closeMobile();
                   window.dispatchEvent(new CustomEvent("concierge-widget:open"));
                 }}
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/50 hover:text-primary hover:bg-primary/10 transition-all"
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-sidebar-muted hover:text-sidebar-foreground hover:bg-white/10 transition-all"
                 title="Concierge"
                 aria-label="Concierge öffnen"
               >
@@ -458,7 +424,7 @@ export function Sidebar() {
                 closeMobile();
                 window.dispatchEvent(new CustomEvent("feedback-widget:open"));
               }}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/50 hover:text-primary hover:bg-primary/10 transition-all"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-sidebar-muted hover:text-sidebar-foreground hover:bg-white/10 transition-all"
               title="Feedback senden"
               aria-label="Feedback geben"
             >
@@ -482,18 +448,18 @@ export function Sidebar() {
                 title={item.label}
                 onClick={closeMobile}
                 className={cn(
-                  "flex items-center justify-center h-9 w-9 mx-auto rounded-xl transition-all duration-150",
+                  "flex items-center justify-center h-9 w-9 mx-auto rounded-lg transition-all duration-150",
                   isActive
-                    ? "bg-accent text-foreground shadow-sm"
-                    : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                    ? "bg-brand/20 text-sidebar-foreground"
+                    : "text-sidebar-muted hover:bg-white/10 hover:text-sidebar-foreground"
                 )}
               >
                 <span className="relative">
-                  <Icon className={cn("h-4 w-4", isActive ? "text-primary" : "")} />
+                  <Icon className={cn("h-4 w-4", isActive ? "text-brand" : "")} />
                   {/* Eingeklappt ist kein Platz für eine Zahl — der Punkt sagt
                       trotzdem, dass dort etwas wartet. */}
                   {item.href === "/approvals" && pendingApprovals > 0 && (
-                    <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-400" />
+                    <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-brand" />
                   )}
                 </span>
               </NavShell>
@@ -507,7 +473,7 @@ export function Sidebar() {
               aria-expanded={weitereOffen}
               className={cn(
                 "flex items-center justify-center h-9 w-9 mx-auto rounded-xl transition-all duration-150",
-                weitereOffen ? "bg-accent/60 text-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                weitereOffen ? "bg-white/10 text-sidebar-foreground" : "text-sidebar-muted hover:bg-white/10 hover:text-sidebar-foreground"
               )}
             >
               <LayoutGrid className="h-4 w-4" />
@@ -524,10 +490,10 @@ export function Sidebar() {
                 <button
                   onClick={() => toggleGroup(group.key)}
                   className={cn(
-                    "flex w-full items-center gap-2 px-3 py-1.5 rounded-lg transition-colors",
-                    "text-[10px] font-semibold uppercase tracking-widest",
-                    hasActive ? "text-primary/80" : "text-muted-foreground/50",
-                    "hover:text-muted-foreground hover:bg-accent/30"
+                    "flex w-full items-center gap-2 px-2.5 pb-1 pt-2 rounded-lg transition-colors",
+                    "text-[11px] font-medium uppercase tracking-[0.06em]",
+                    hasActive ? "text-sidebar-foreground/90" : "text-sidebar-muted",
+                    "hover:text-sidebar-foreground"
                   )}
                 >
                   <span className="flex-1 text-left">{group.label}</span>
@@ -548,15 +514,15 @@ export function Sidebar() {
             );
           })}
           {weitereItems.length > 0 && (
-            <div className="mt-2 border-t border-border/60 pt-2">
+            <div className="mt-2 border-t border-white/10 pt-2">
               <button
                 onClick={weitereUmschalten}
                 aria-expanded={weitereOffen}
-                className="flex w-full items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent/30 transition-colors"
+                className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px] text-sidebar-muted hover:text-sidebar-foreground hover:bg-white/10 transition-colors"
               >
                 <LayoutGrid className="h-3.5 w-3.5" />
                 <span className="flex-1 text-left">Weitere Bereiche</span>
-                <span className="text-[10px] tabular-nums text-muted-foreground/60">{weitereItems.length}</span>
+                <span className="text-[11px] tabular-nums text-sidebar-muted">{weitereItems.length}</span>
                 <ChevronDown className={cn("h-3 w-3 transition-transform duration-200", weitereOffen ? "rotate-0" : "-rotate-90")} />
               </button>
               {weitereOffen && <div className="mt-0.5 space-y-0.5">{weitereItems.map(eintrag)}</div>}
@@ -571,31 +537,42 @@ export function Sidebar() {
       {/* Speicherquote-Stopp-Popup — Portal-Modal, unabhaengig vom Ein-/Ausklappen */}
       <StopReasonAlert />
 
-      {/* Bottom */}
+      {/* Unten: Hilfe, Konto-Menü und — nur für Admins — der Wechsel in den
+          eigenen Admin-Bereich (Redesign 2026-10: Admins arbeiten in derselben
+          Ansicht wie alle und verwalten die Anlage in einem getrennten Bereich). */}
       <div className={cn(
-        "border-t border-border py-2 shrink-0 mt-auto",
-        effectiveCollapsed ? "flex flex-col items-center gap-1 px-0 py-3" : "px-2 space-y-0.5"
+        "border-t border-white/10 shrink-0 mt-auto",
+        effectiveCollapsed ? "flex flex-col items-center gap-1 px-0 py-3" : "px-2 py-2 space-y-1"
       )}>
-        {effectiveCollapsed ? (
-          <>
-            {isAdmin && (
-              <Link
-                href="/admin"
-                title="Admin"
-                className={cn(
-                  "flex items-center justify-center h-9 w-9 rounded-xl transition-all",
-                  pathname.startsWith("/admin")
-                    ? "bg-accent text-amber-500"
-                    : "text-muted-foreground hover:bg-accent/50 hover:text-amber-500"
-                )}
-              >
-                <Shield className="h-4 w-4" />
-              </Link>
+        <Link
+          href="/help"
+          onClick={closeMobile}
+          title="Hilfe & FAQ"
+          className={cn(
+            "flex items-center rounded-lg transition-colors",
+            effectiveCollapsed ? "h-9 w-9 justify-center" : "gap-3 px-2.5 py-2 text-[14px]",
+            pathname.startsWith("/help")
+              ? "bg-brand/20 text-sidebar-foreground"
+              : "text-sidebar-foreground/85 hover:bg-white/10 hover:text-sidebar-foreground"
+          )}
+        >
+          <HelpCircle className={cn("h-[18px] w-[18px] shrink-0", pathname.startsWith("/help") ? "text-brand" : "text-sidebar-muted")} />
+          {!effectiveCollapsed && <span>Hilfe</span>}
+        </Link>
+        <UserMenu collapsed={effectiveCollapsed} />
+        {isAdmin && (
+          <Link
+            href="/admin"
+            onClick={closeMobile}
+            title="Zum Admin-Bereich"
+            className={cn(
+              "flex items-center justify-center rounded-lg border border-white/25 text-sidebar-foreground transition-colors hover:bg-white/10",
+              effectiveCollapsed ? "h-9 w-9" : "gap-2 px-3 py-2 text-[13px]"
             )}
-            <UserMenu collapsed />
-          </>
-        ) : (
-          <UserMenu />
+          >
+            <Shield className="h-4 w-4 shrink-0" />
+            {!effectiveCollapsed && <span>Zum Admin-Bereich</span>}
+          </Link>
         )}
       </div>
 

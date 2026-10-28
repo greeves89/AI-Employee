@@ -10,7 +10,7 @@ import { useConfirm } from "@/components/ui/dialog-provider";
 /**
  * Lizenz der Anlage: Edition, Belegung, Hinweise und das Feld zum Eintragen.
  *
- * Steht in der Admin-Konsole unter „System & Lizenz“ ganz oben, damit der Knopf
+ * Steht im Admin-Bereich unter „System & Lizenz“ ganz oben, damit der Knopf
  * „Lizenzschlüssel eintragen“ ohne Blättern hier ankommt (#899). Bis dahin ein
  * Abschnitt mitten in der grossen Einstellungsseite.
  */

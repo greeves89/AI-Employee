@@ -447,7 +447,7 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
                   </div>
                   <p className="text-[11px] text-muted-foreground/60 mt-0.5 truncate">
                     {b.bridge_ordner
-                      ? `${b.bridge_ordner} — nur für dich, gepflegt unter Meine Einstellungen → Meine Bridge-Ordner`
+                      ? `${b.bridge_ordner} — nur für dich, gepflegt unter Mein Konto → Meine Bridge-Ordner`
                       : `${b.container_path}${b.description ? ` — ${b.description}` : ""}`}
                   </p>
                 </button>

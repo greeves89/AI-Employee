@@ -1,8 +1,8 @@
 /**
- * Die Bereiche der Admin-Konsole und die Weiterleitungen alter Verweise (#899).
+ * Die Bereiche des Admin-Bereichs und die Weiterleitungen alter Verweise (#899).
  *
  * Trennung nach Eigentum: Alles, was der ganzen Anlage gehoert, steht in der
- * Admin-Konsole — in EINER Ebene, eine Seitennavigation mit Gruppenueberschriften.
+ * Admin-Bereich — in EINER Ebene, eine Seitennavigation mit Gruppenueberschriften.
  * `/settings` zeigt nur noch, was dem angemeldeten Nutzer selbst gehoert.
  *
  * Bewusst ohne Importe: Die Datei laeuft auch ausserhalb von Next.js (der Test
@@ -23,39 +23,40 @@ export interface AdminGruppe {
   bereiche: AdminBereich[];
 }
 
-/** Reihenfolge = Reihenfolge in der Seitennavigation. */
+/** Reihenfolge = Reihenfolge in der Leiste des Admin-Bereichs (Redesign 2026-10,
+ *  Vorbild lavalake-Konsole: Menschen, Agenten, KI, Anbindungen, Regeln, Anlage). */
 export const ADMIN_GRUPPEN: AdminGruppe[] = [
-  { id: "people", titel: "Nutzer & Rollen", bereiche: ["users", "roles", "sso-groups"] },
+  { id: "people", titel: "Menschen", bereiche: ["users", "roles", "sso-groups"] },
   { id: "agents", titel: "Agenten", bereiche: ["agents", "assignments", "vorlagen"] },
-  { id: "ki", titel: "KI & Wissen", bereiche: ["modelle", "ai-accounts", "sprache", "second-brains", "web-search"] },
-  { id: "anlage", titel: "Anlage", bereiche: ["integrationen-anlage", "system", "pages"] },
-  { id: "security", titel: "Compliance", bereiche: ["master-rules", "secrets", "dlp", "audit", "gesetze"] },
-  { id: "ops", titel: "Betrieb", bereiche: ["health", "budget", "feedback"] },
+  { id: "ki", titel: "KI", bereiche: ["modelle", "ai-accounts", "sprache", "web-search"] },
+  { id: "anlage", titel: "Anbindungen", bereiche: ["integrationen-anlage", "second-brains", "pages"] },
+  { id: "security", titel: "Regeln", bereiche: ["master-rules", "dlp", "gesetze", "secrets", "audit"] },
+  { id: "ops", titel: "Anlage", bereiche: ["health", "budget", "system", "feedback"] },
 ];
 
 export const ADMIN_BEREICH_NAMEN: Record<AdminBereich, string> = {
   users: "Nutzer",
-  roles: "Rollen",
+  roles: "Rollen & Rechte",
   "sso-groups": "SSO-Gruppen",
   agents: "Alle Agenten",
   assignments: "Zuweisungen",
-  vorlagen: "Agenten-Vorlagen",
+  vorlagen: "Vorlagen",
   modelle: "Modelle & Anbieter",
   "ai-accounts": "KI-Konten",
-  sprache: "Sprache (Voice)",
-  "second-brains": "Second Brains",
+  sprache: "Sprache",
+  "second-brains": "Wissens-Ablagen",
   "web-search": "Websuche",
-  "integrationen-anlage": "Integrationen (Anlage)",
+  "integrationen-anlage": "Dienste & Konten",
   system: "System & Lizenz",
-  pages: "Seiten & Links",
+  pages: "Eigene Menüpunkte",
   "master-rules": "Master-Regeln",
   secrets: "Schlüssel & Zugangsdaten",
-  dlp: "DLP-Filter",
+  dlp: "Datenschutz-Filter",
   audit: "Protokoll",
   gesetze: "Gesetze",
   health: "Systemzustand",
-  budget: "Budget",
-  feedback: "Feedback",
+  budget: "Kosten & Budget",
+  feedback: "Rückmeldungen",
 };
 
 export const STANDARD_BEREICH: AdminBereich = "users";
@@ -83,7 +84,7 @@ export function adminBereichAusTab(tab: string | null | undefined): { bereich: A
   return { bereich: STANDARD_BEREICH };
 }
 
-/** Adresse eines Bereichs der Admin-Konsole. */
+/** Adresse eines Bereichs des Admin-Bereichs. */
 export function adminPfad(bereich: AdminBereich | "lizenz"): string {
   return `/admin?tab=${bereich}`;
 }
@@ -97,7 +98,7 @@ export const LIZENZ_PFAD = adminPfad("lizenz");
  *
  * Bis #899 lagen dort auch die anlagenweiten Reiter (Modelle, Integrationen,
  * Sprachassistent, System). Fuer Administratoren fuehren solche Verweise jetzt in
- * den passenden Bereich der Admin-Konsole. Ein Mitglied bleibt immer hier: Die
+ * den passenden Bereich des Admin-Bereichs. Ein Mitglied bleibt immer hier: Die
  * Konsole wuerde es ohnehin abweisen, und seine eigenen Bereiche stehen hier.
  */
 export function alteEinstellungenWeiterleitung(

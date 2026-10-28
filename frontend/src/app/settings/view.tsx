@@ -129,11 +129,11 @@ const PROVIDERS: {
   },
 ];
 
-/** Anlagenweite Einstellungen, je Bereich der Admin-Konsole (#899).
+/** Anlagenweite Einstellungen, je Bereich des Admin-Bereichs (#899).
  *
  *  Bis #899 eine eigene Seite mit Unterreitern unter /settings, die Admins und
  *  Mitglieder gleichermassen oeffneten — mit leeren oder gesperrten Reitern fuer
- *  Mitglieder. Heute steht jeder Bereich als eigener Eintrag in der Admin-Konsole;
+ *  Mitglieder. Heute steht jeder Bereich als eigener Eintrag im Admin-Bereich;
  *  was dem Nutzer selbst gehoert, liegt unter /settings (MeineEinstellungenView).
  *  Die Bereiche teilen sich Zustand und Speichern, deshalb eine Komponente. */
 export type AnlagenBereich = "modelle" | "integrationen" | "system";
@@ -1059,7 +1059,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
         </div>
         )}
 
-        {/* ─── Bereich: Integrationen (Anlage) ─── */}
+        {/* ─── Bereich: Dienste & Konten ─── */}
         {bereich === "integrationen" && (
         <div className="space-y-6">
         <p className="text-[11px] text-muted-foreground/50">
@@ -1405,7 +1405,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
         </div>
         )}
 
-        {/* ─── Integrationen (Anlage), Fortsetzung — OAuth-Anbindungen ─── */}
+        {/* ─── Dienste & Konten, Fortsetzung — OAuth-Anbindungen ─── */}
         {bereich === "integrationen" && (
         <div className="space-y-6">
         {/* ─── Section 5: OAuth Integrations ─── */}
@@ -2071,7 +2071,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                       Neue Nutzer müssen freigeschaltet werden
                     </div>
                     <p className="mt-0.5 text-[10px] text-muted-foreground/60">
-                      Neu per SSO oder Registrierung angelegte Konten landen auf „Warten auf Freischaltung“ — ein Admin gibt sie unter Admin-Konsole → Nutzer frei (wie OpenWebUI).
+                      Neu per SSO oder Registrierung angelegte Konten landen auf „Warten auf Freischaltung“ — ein Admin gibt sie unter Admin-Bereich → Nutzer frei (wie OpenWebUI).
                     </p>
                   </div>
                   <button
