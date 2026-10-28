@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.385.0] - 2026-10-28
+
+### Neu
+- **Erweiterte Geheimnis-Erkennung in Protokollen und DLP-Scan (#703).** Zusätzliche Schlüssel-Formate werden jetzt erkannt und geschwärzt: Stripe, Google, Hugging Face, Discord-Bot-Tokens sowie Datenbank-Verbindungs-URLs mit eingebetteten Zugangsdaten auch ohne sprechenden Variablennamen davor. Neu außerdem die Erkennung von Krypto-Wallet-Seed-Phrasen (BIP-39). Alle neuen Muster schwärzen bzw. loggen zunächst nur — sie lösen bewusst noch KEINEN automatischen Stopp eines Agenten aus, bis ihre Fehlalarmrate im laufenden Betrieb beobachtet wurde.
+
 ## [1.380.3] - 2026-10-28
 
 ### Verbessert

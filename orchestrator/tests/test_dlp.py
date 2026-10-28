@@ -43,6 +43,27 @@ class ClassifyTests(unittest.TestCase):
         self.assertIn("iban", c)
         self.assertNotIn("credit_card", c)
 
+    def test_seed_phrase_detected(self):
+        # #703: a real 12-word BIP-39 mnemonic (no checksum needed -- this is
+        # a format signal, like every other secret pattern here).
+        phrase = "abandon ability able about above absent absorb abstract absurd abuse access accident"
+        self.assertIn("seed_phrase", dlp.classify(f"hier mein Seed: {phrase}"))
+
+    def test_seed_phrase_needs_twelve_words(self):
+        # Eleven wordlist words in a row is NOT a seed phrase (BIP-39's floor
+        # is 12) -- must not false-positive on a shorter coincidental run.
+        short = "abandon ability able about above absent absorb abstract absurd abuse access"
+        self.assertNotIn("seed_phrase", dlp.classify(short))
+
+    def test_seed_phrase_not_triggered_by_ordinary_prose(self):
+        # German business prose must not accidentally read as a seed phrase.
+        prose = (
+            "Bitte das Angebot bis Freitag pruefen und Rueckmeldung geben, "
+            "danach kuemmern wir uns um die Rechnung und den naechsten Termin "
+            "fuer das Projekt mit dem Kunden und dem Team."
+        )
+        self.assertNotIn("seed_phrase", dlp.classify(prose))
+
 
 class SampleTests(unittest.TestCase):
     def test_mask_sample_format(self):
@@ -82,6 +103,40 @@ class MaskTests(unittest.TestCase):
         out2 = dlp.mask(text, {"email", "iban"})
         self.assertIn("[REDACTED_IBAN]", out2)
         self.assertNotIn("DE89370400440532013000", out2)
+
+    def test_masks_seed_phrase(self):
+        phrase = "abandon ability able about above absent absorb abstract absurd abuse access accident"
+        out = dlp.mask(f"Seed: {phrase} -- nicht weitergeben!", {"seed_phrase"})
+        self.assertNotIn("abandon", out)
+        self.assertIn("[REDACTED_SEED_PHRASE]", out)
+
+
+class HighConfidenceMarkerScopeTests(unittest.TestCase):
+    """#703: new provider/seed-phrase coverage masks and logs, but must not
+    (yet) be able to trigger the Sentinel's secret_in_output agent-stop --
+    their false-positive rate in this operation is unproven. See the comment
+    above HIGH_CONFIDENCE_SECRET_MARKERS in app/core/dlp.py."""
+
+    def test_new_provider_markers_excluded_from_high_confidence(self):
+        for marker in (
+            "[REDACTED_STRIPE_KEY]",
+            "[REDACTED_GOOGLE_KEY]",
+            "[REDACTED_HF_TOKEN]",
+            "[REDACTED_DISCORD_TOKEN]",
+            "[REDACTED_DB_URL]",
+        ):
+            self.assertNotIn(marker, dlp.HIGH_CONFIDENCE_SECRET_MARKERS)
+
+    def test_new_provider_keys_do_not_trigger_high_confidence_scan(self):
+        stripe = "sk_live_" + "A" * 24
+        self.assertEqual(dlp.find_high_confidence_secrets(f"STRIPE_KEY={stripe}"), [])
+
+    def test_seed_phrase_is_not_a_dlp_class_marker_either(self):
+        # seed_phrase isn't produced by a log_redaction pattern at all, so it
+        # cannot leak into find_high_confidence_secrets() by construction --
+        # this pins that invariant down explicitly.
+        phrase = "abandon ability able about above absent absorb abstract absurd abuse access accident"
+        self.assertEqual(dlp.find_high_confidence_secrets(phrase), [])
 
 
 def _rule(pii_class, action, agent_id=None, enabled=True):

@@ -18,7 +18,7 @@ class DlpRule(Base):
     __tablename__ = "dlp_rules"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    # One of app.core.dlp.CLASSES: secret | iban | credit_card | email | de_tax_id
+    # One of app.core.dlp.CLASSES: secret | iban | credit_card | email | de_tax_id | seed_phrase
     pii_class: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     # NULL = global rule; otherwise scoped to one agent.
     agent_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)

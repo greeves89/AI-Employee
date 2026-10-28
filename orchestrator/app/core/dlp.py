@@ -4,7 +4,7 @@ Two layers:
   * a **pure scanner** (``classify`` / ``mask``) — deterministic, no I/O, fully
     unit-testable. Reuses the credential patterns from ``log_redaction`` for the
     ``secret`` class and adds PII classes (IBAN, credit card w/ Luhn, e-mail,
-    11-digit German tax-id style number).
+    11-digit German tax-id style number, BIP-39 crypto-wallet seed phrase).
   * a **DB-aware evaluator** (``evaluate_egress``) — resolves the per-class action
     from ``DlpRule`` (agent-specific > global > built-in default), applies it
     (allow/log/mask/block), and writes an ``AuditLog`` record that records the
@@ -22,12 +22,13 @@ import logging
 import re
 from dataclasses import dataclass
 
+from app.core.bip39_wordlist import BIP39_ENGLISH_WORDS
 from app.core.log_redaction import _PATTERNS as _SECRET_PATTERNS
 from app.core.log_redaction import redact_logs
 
 logger = logging.getLogger(__name__)
 
-CLASSES = ("secret", "iban", "credit_card", "email", "de_tax_id")
+CLASSES = ("secret", "iban", "credit_card", "email", "de_tax_id", "seed_phrase")
 
 # Built-in default action per class when no DB rule overrides it.
 DEFAULT_ACTIONS: dict[str, str] = {
@@ -36,6 +37,7 @@ DEFAULT_ACTIONS: dict[str, str] = {
     "credit_card": "mask",
     "de_tax_id": "log",      # 11-digit numbers are false-positive prone -> log only
     "email": "allow",        # e-mails are usually legitimate to send
+    "seed_phrase": "log",    # #703: new, unproven in production -> log only, see HIGH_CONFIDENCE_SECRET_MARKERS note below
 }
 ACTION_SEVERITY = {"allow": 0, "log": 1, "mask": 2, "block": 3}
 VALID_ACTIONS = set(ACTION_SEVERITY)
@@ -44,6 +46,35 @@ _IBAN = re.compile(r"\b[A-Z]{2}\d{2}(?:[ ]?[A-Za-z0-9]){11,30}\b")
 _EMAIL = re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")
 _CC = re.compile(r"\b(?:\d[ -]?){13,19}\b")
 _DE_TAX = re.compile(r"\b\d{11}\b")
+_WORD_TOKEN = re.compile(r"[A-Za-z]+")
+# BIP-39 mnemonics are always 12/15/18/21/24 words -- 12 is the real-world floor.
+_MIN_SEED_WORDS = 12
+
+
+def _bip39_matches(text: str) -> list[str]:
+    """Maximal runs of >= 12 consecutive BIP-39-wordlist words (#703).
+
+    No checksum check -- this is a FORMAT signal like the other secret
+    patterns, not a validator. A run this long drawn entirely from the fixed
+    2048-word list is exceedingly unlikely in ordinary German or English
+    prose, but exactly the shape of a crypto-wallet seed phrase pasted into a
+    chat, ticket or log line.
+    """
+    tokens = list(_WORD_TOKEN.finditer(text))
+    in_wordlist = [t.group().lower() in BIP39_ENGLISH_WORDS for t in tokens]
+    out: list[str] = []
+    i, n = 0, len(tokens)
+    while i < n:
+        if not in_wordlist[i]:
+            i += 1
+            continue
+        j = i
+        while j < n and in_wordlist[j]:
+            j += 1
+        if j - i >= _MIN_SEED_WORDS:
+            out.append(text[tokens[i].start():tokens[j - 1].end()])
+        i = j
+    return out
 
 
 def _luhn_ok(s: str) -> bool:
@@ -88,6 +119,9 @@ def scan_matches(text: str) -> dict[str, list[str]]:
     tax = _finds(_DE_TAX, text)
     if tax:
         out["de_tax_id"] = tax
+    seed = _bip39_matches(text)
+    if seed:
+        out["seed_phrase"] = seed
     return out
 
 
@@ -105,6 +139,15 @@ def scan_matches(text: str) -> dict[str, list[str]]:
 #: der Sentinel den Hauptagenten an — wegen einer Zeichenkette, die mit „GH"
 #: anfing. Maskieren und Anhalten sind verschiedene Eingriffe und brauchen
 #: verschiedene Schwellen.
+#:
+#: Die #703-Ergaenzungen (Stripe/Google/HuggingFace/Discord/DB-URL-Muster in
+#: log_redaction.py, seed_phrase hier) stehen deshalb ABSICHTLICH NICHT in
+#: dieser Menge: sie sind frisch und ihre Fehlalarmrate in diesem Betrieb ist
+#: unbestaetigt (siehe Integrations-Pruefung zu #703 — "zuerst im
+#: flag/Audit-Modus fahren, bevor sie secret_in_output→halt ausloesen").
+#: Sie maskieren/loggen (scan_matches/DEFAULT_ACTIONS) ab sofort, loesen aber
+#: KEINEN Agenten-Stopp aus, bis jemand die Fehlalarmrate gemessen und sie
+#: hier bewusst ergaenzt hat.
 HIGH_CONFIDENCE_SECRET_MARKERS = frozenset({
     "[REDACTED_KEY_BLOCK]",
     "[REDACTED_API_KEY]",
@@ -165,6 +208,9 @@ def mask(text: str, classes: set[str]) -> str:
         out = _EMAIL.sub("[REDACTED_EMAIL]", out)
     if "de_tax_id" in classes:
         out = _DE_TAX.sub("[REDACTED_ID]", out)
+    if "seed_phrase" in classes:
+        for m in _bip39_matches(out):
+            out = out.replace(m, "[REDACTED_SEED_PHRASE]")
     return out
 
 

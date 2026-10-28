@@ -25,6 +25,18 @@ _PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "[REDACTED_AWS_KEY]"),
     # JWTs (three base64url segments).
     (re.compile(r"\beyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+"), "[REDACTED_JWT]"),
+    # Weitere Anbieter-Formate (#703, Korpus aus Ishannaik/agent-sweep kuratiert
+    # uebernommen). Stripe nutzt einen Unterstrich statt des Bindestrichs, den
+    # die obige sk|pk|rk-Regel erwartet ("sk_live_…" statt "sk-…") -- ohne
+    # eigene Regel faellt ein Stripe-Schluessel komplett durch.
+    (re.compile(r"\b(sk|pk|rk)_(live|test)_[A-Za-z0-9]{16,}\b"), "[REDACTED_STRIPE_KEY]"),
+    (re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b"), "[REDACTED_GOOGLE_KEY]"),
+    (re.compile(r"\bhf_[A-Za-z0-9]{20,}\b"), "[REDACTED_HF_TOKEN]"),
+    (re.compile(r"\b[MN][A-Za-z0-9_\-]{23,25}\.[A-Za-z0-9_\-]{6}\.[A-Za-z0-9_\-]{27,}\b"), "[REDACTED_DISCORD_TOKEN]"),
+    # Verbindungs-URLs mit eingebetteten Zugangsdaten, die OHNE ein sprechendes
+    # KEY=-Praefix auftreten (z.B. in einer Stacktrace-Zeile) -- die bestehende
+    # KEY=VALUE-Regel unten greift nur, wenn ein Variablenname davorsteht.
+    (re.compile(r"\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis)://[^:/\s]+:[^@/\s]+@\S+"), "[REDACTED_DB_URL]"),
     # Telegram bot tokens: <bot_id>:<secret> (e.g. from InvalidToken error text
     # "The token 123456:AA... was rejected by the server"). Not a bearer/JWT, so
     # it needs its own rule.

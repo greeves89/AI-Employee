@@ -28,6 +28,30 @@ class LogRedactionTests(unittest.TestCase):
         self._assert_gone("token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345", "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345")
         self._assert_gone("AWS AKIAIOSFODNN7EXAMPLE key", "AKIAIOSFODNN7EXAMPLE")
 
+    def test_new_provider_api_keys_redacted(self):
+        # #703 (ADAPT from Ishannaik/agent-sweep): providers missed by the
+        # existing sk|pk|rk- rule (which needs a HYPHEN) or by any other rule.
+        stripe = "sk_live_" + "A" * 24
+        google = "AIza" + "B" * 35
+        hf = "hf_" + "C" * 30
+        self._assert_gone(f"STRIPE_KEY={stripe}", stripe)
+        self._assert_gone(f"key={google} sent to maps API", google)
+        self._assert_gone(f"token: {hf}", hf)
+
+    def test_discord_bot_token_redacted(self):
+        # Discord bot tokens are three dot-separated segments, like a JWT, but
+        # the first segment never starts with "eyJ" so the JWT rule misses it.
+        token = "M" + "A" * 24 + "." + "B" * 6 + "." + "C" * 27
+        self._assert_gone(f"discord.Client login with {token}", token)
+
+    def test_bare_db_connection_url_redacted(self):
+        # Without a KEY=-style prefix (e.g. inside a stack trace), the
+        # KEY=VALUE rule below never fires -- this needs its own pattern.
+        url = "postgres://appuser:s3cr3t-pw@db.internal:5432/orchestrator"
+        self._assert_gone(
+            f"sqlalchemy.exc.OperationalError: could not connect to server: {url}", url
+        )
+
     def test_sensitive_key_value_pairs_redacted(self):
         for line, secret in [
             ("ENCRYPTION_KEY=supersecretvalue1234", "supersecretvalue1234"),
