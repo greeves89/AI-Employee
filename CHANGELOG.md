@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.384.1] - 2026-10-28
+
+### Behoben
+- **„Aktualisieren“ im Projekt zeigte bei einem Fehler die Fehlerseite von Cloudflare.** Ein fehlgeschlagener Abgleich wurde als 502 gemeldet — Cloudflare ersetzt solche Antworten durch seine eigene Seite, die eigentliche Meldung kam nie an. Er wird jetzt als 424 gemeldet, die Meldung erscheint im Projekt.
+- **„GitHub 403“ sagte nicht, was fehlt.** Verweigert GitHub den Zugriff, nennt die Meldung jetzt den Grund und das fehlende Recht des Tokens (z. B. „Dem Schlüssel fehlt das Recht Issues: Read — in GitHub beim Token unter Repository permissions setzen“), eine nötige SSO-Freigabe der Organisation oder einen ungültigen Schlüssel. Ein Netzfehler heißt weiter „antwortet nicht“, eine Ablehnung nicht mehr.
+
 ## [1.384.0] - 2026-10-28
 
 ### Neu

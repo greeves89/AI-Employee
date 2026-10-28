@@ -1134,7 +1134,9 @@ async def repo_abgleichen(team_id: str, beim_oeffnen: bool = False, user=Depends
     try:
         return await projekt_git.projekt_abgleichen(db, redis, t)
     except projekt_git.GitFehler as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        # 424 statt 502: Cloudflare ersetzt jede 502-Antwort durch seine eigene
+        # Fehlerseite — die Meldung („dem Schlüssel fehlt …“) kam nie an.
+        raise HTTPException(status_code=424, detail=str(e))
 
 
 # ─── Projektgespräch ───────────────────────────────────────────

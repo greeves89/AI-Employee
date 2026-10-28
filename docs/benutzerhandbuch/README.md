@@ -1188,6 +1188,13 @@ ihn im Projekt unter **Schlüssel für das Repo** (dann alle 10 Minuten). Projek
 können bei GitHub-Repos stattdessen die GitHub-Verbindung der Anlage nutzen. Ohne Repo zeigt die
 Projektseite den Hinweis „Kein Git-Repo verbunden“ mit dem Knopf **Repo verbinden**.
 
+Welche Rechte der Token braucht: Bei einem **fein granulierten GitHub-Token** (`github_pat_…`) unter
+*Repository permissions* **Issues**, **Pull requests**, **Commit statuses** und **Checks** jeweils auf
+**Read** setzen — mit nur „Metadata“ sieht die Plattform das Repo, darf aber keine Issues lesen. Die
+Fehlerzeile im Projekt nennt dann das fehlende Recht („Dem Schlüssel fehlt das Recht Issues: Read“).
+Gehört das Repo einer Organisation, muss sie den Token gegebenenfalls freigeben (bzw. per SSO
+autorisieren). Bei einem klassischen Token genügt der Bereich `repo`.
+
 Hinweis zu eigenen Servern: Die Plattform fragt sie nur über **https** ab und nie im internen Netz
 der Anlage. Als Schlüssel geht nur ein **eigener** Schlüssel des Projekt-Erstellers — ein Schlüssel,
 der dir nur zur Nutzung geteilt wurde, wird nicht an einen selbst eingetragenen Server geschickt. Verlangt der Server für jedes Repo eine Anmeldung, braucht auch ein „öffentliches“ Repo

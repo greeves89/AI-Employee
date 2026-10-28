@@ -10,6 +10,38 @@ import httpx
 from app.core.githost.base import GitHostProvider
 
 
+#: Was GitHub in ``x-accepted-github-permissions`` verlangt → wie es im
+#: Token-Dialog heisst (fein granulierte Tokens, „Repository permissions“).
+_RECHTE = {"issues": "Issues", "pull_requests": "Pull requests", "checks": "Checks",
+           "statuses": "Commit statuses", "contents": "Contents", "metadata": "Metadata"}
+
+
+def _zugriff_verweigert(resp: httpx.Response) -> str:
+    """Verstaendliche Meldung zu 401/403: GitHubs eigener Grund plus das fehlende Recht.
+
+    Ein fein granulierter Token sieht das Repo oft (Metadata), darf aber keine
+    Issues lesen — „GitHub 403“ allein liess offen, was am Token fehlt.
+    """
+    try:
+        grund = str((resp.json() or {}).get("message") or "").strip()
+    except ValueError:
+        grund = ""
+    if resp.status_code == 401:
+        return "GitHub lehnt den Schlüssel ab (ungültig oder abgelaufen)."
+    if resp.headers.get("x-github-sso"):
+        return ("Die Organisation verlangt eine SSO-Freigabe des Schlüssels — "
+                "in GitHub beim Token „Configure SSO“ → Organisation autorisieren.")
+    rechte = []
+    for teil in (resp.headers.get("x-accepted-github-permissions") or "").split(";"):
+        name, _, stufe = teil.strip().partition("=")
+        if name and name in _RECHTE:
+            rechte.append(f"{_RECHTE[name]}: {'Read' if stufe in ('read', '') else stufe}")
+    if rechte:
+        return (f"Dem Schlüssel fehlt das Recht {', '.join(rechte)} — in GitHub beim Token unter "
+                f"„Repository permissions“ setzen.{f' (GitHub: {grund})' if grund else ''}")
+    return f"GitHub verweigert den Zugriff{f': {grund}' if grund else ''}."
+
+
 class GitHubHostProvider(GitHostProvider):
     def __init__(self, api_base: str = "https://api.github.com", host: str | None = None):
         self.api_base = api_base
@@ -101,6 +133,8 @@ class GitHubHostProvider(GitHostProvider):
                 raise LookupError(pfad)
             if resp.status_code in (401, 403) and resp.headers.get("x-ratelimit-remaining") == "0":
                 raise RuntimeError("GitHub-Abfragegrenze erreicht — mit verbundenem GitHub-Zugang ist sie viel höher")
+            if resp.status_code in (401, 403):
+                raise RuntimeError(_zugriff_verweigert(resp))
             if resp.status_code != 200:
                 raise RuntimeError(f"GitHub {resp.status_code} für {pfad}")
             daten = resp.json()

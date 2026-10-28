@@ -242,8 +242,12 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
             raise GitFehler(f"Repo {repo} nicht gefunden — oder der Schlüssel darf es nicht lesen.") from e
         raise GitFehler(f"Repo {repo} nicht gefunden. Ist es privat, braucht das Projekt einen Schlüssel "
                         "(Bearbeiten → Schlüssel für das Repo).") from e
-    except (RuntimeError, httpx.HTTPError) as e:
+    except httpx.HTTPError as e:
         raise GitFehler(f"{server} antwortet nicht für {repo}: {e}") from e
+    except RuntimeError as e:
+        # Der Server hat geantwortet, aber abgelehnt oder Unbrauchbares geliefert —
+        # die Meldung des Anbieters sagt, was fehlt.
+        raise GitFehler(f"{server}, {repo}: {e}") from e
 
     jetzt = datetime.now(timezone.utc)
     vorhanden = {
