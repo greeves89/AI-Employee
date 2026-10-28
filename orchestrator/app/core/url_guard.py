@@ -28,6 +28,32 @@ logger = logging.getLogger(__name__)
 _METADATA_HOSTS = {"169.254.169.254", "metadata.google.internal", "100.100.100.200"}
 
 
+def eindeutiger_host(url: str) -> str | None:
+    """Host einer Adresse — None, wenn Python und Browser ihn verschieden lesen.
+
+    ``urlparse`` und der WHATWG-Parser der Browser sind sich bei ``\\``,
+    Steuer- und Leerzeichen und Prozent-Kodierung im Host nicht einig:
+    ``https://evil.com\\.example.com/`` ist für Python ``evil.com\\.example.com``
+    (endet auf ``.example.com``), für Chromium ``evil.com``. Jede Freigabeliste
+    muss ihren Host HIER holen und ``None`` als „nicht erlaubt“ behandeln.
+    """
+    try:
+        teile = urlparse(url if "://" in url else f"https://{url}")
+    except ValueError:
+        return None
+    # Bis zum ersten "/" nach dem Schema gehört alles zur Authority — auch das,
+    # was ein Browser wegen "\\" schon als Pfad läse.
+    rest = url.split("://", 1)[-1]
+    authority = rest.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0]
+    if any(z == "\\" or z == "%" or ord(z) <= 0x20 or ord(z) == 0x7F for z in authority):
+        return None
+    try:
+        host = (teile.hostname or "").lower().strip(".")
+    except ValueError:
+        return None
+    return host or None
+
+
 def _is_internal(host: str) -> bool:
     """Zeigt dieser Name oder diese Adresse ins eigene Netz?
 
@@ -97,7 +123,10 @@ async def is_allowed_callback(url: str, db=None, agent_id: str | None = None) ->
         )).scalars().all()
         if not entries:
             return True
-        host = (urlparse(url).hostname or "").lower()
+        host = eindeutiger_host(url)
+        if host is None:
+            logger.info("Rueckruf abgelehnt: mehrdeutige Adresse")
+            return False
         for entry in entries:
             pattern = (getattr(entry, "url_pattern", "") or "").lower()
             cleaned = pattern.replace("https://", "").replace("http://", "").strip("/*")

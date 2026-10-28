@@ -153,16 +153,13 @@ def url_matches_pattern(url: str, pattern: str) -> bool:
       - "*.github.com" → matches any subdomain of github.com
       - "*" → matches everything
     """
-    import re
-    from urllib.parse import urlparse
+    from app.core.url_guard import eindeutiger_host
 
     if pattern == "*":
         return True
 
-    try:
-        parsed = urlparse(url if "://" in url else f"https://{url}")
-        host = (parsed.hostname or "").lower().strip(".")
-    except Exception:
+    host = eindeutiger_host(url)
+    if host is None:
         return False
 
     pattern = pattern.lower().strip(".")
