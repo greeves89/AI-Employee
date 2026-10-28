@@ -112,13 +112,30 @@ class FehlerReisstDenLaufNichtMit(unittest.IsolatedAsyncioTestCase):
 class DateirechteBeimSchreiben(unittest.TestCase):
     def test_neue_ordner_und_datei_gehoeren_dem_agenten(self):
         tmp = tempfile.mkdtemp()
-        with mock.patch.object(vault.os, "chown") as chown:
+        with mock.patch.object(vault.os, "chown") as chown, mock.patch.object(vault.os, "fchown") as fchown:
             vault.write_file(tmp, "neu/tief/notiz.md", "Text")
         pfade = [c.args[0] for c in chown.call_args_list]
         self.assertIn(os.path.join(os.path.realpath(tmp), "neu"), pfade)
         self.assertIn(os.path.join(os.path.realpath(tmp), "neu", "tief"), pfade)
-        self.assertIn(os.path.join(os.path.realpath(tmp), "neu", "tief", "notiz.md"), pfade)
-        self.assertTrue(all(c.args[1:] == (vault.AGENT_UID, vault.AGENT_UID) for c in chown.call_args_list))
+        self.assertTrue(all(c.kwargs.get("follow_symlinks") is False for c in chown.call_args_list))
+        # Die Datei selbst über den offenen Handle — kein Pfad, dem ein Link folgen könnte.
+        fchown.assert_called_once()
+        self.assertEqual(fchown.call_args.args[1:], (vault.AGENT_UID, vault.AGENT_UID))
+
+    def test_link_an_der_stelle_der_tempdatei_wird_nicht_beschrieben(self):
+        """Früher hieß die Tempdatei fest ``<ziel>.tmp`` und ``open(…, "w")`` folgte
+        einem Link dort — als root an ein beliebiges Ziel."""
+        tmp = tempfile.mkdtemp()
+        draussen = os.path.join(tempfile.mkdtemp(), "geheim.txt")
+        with open(draussen, "w") as f:
+            f.write("unberührt")
+        os.symlink(draussen, os.path.join(tmp, "notiz.md.tmp"))
+        vault.write_file(tmp, "notiz.md", "Inhalt vom Agenten")
+        with open(draussen) as f:
+            self.assertEqual("unberührt", f.read())
+        with open(os.path.join(tmp, "notiz.md")) as f:
+            self.assertEqual("Inhalt vom Agenten", f.read())
+        self.assertFalse([n for n in os.listdir(tmp) if n.startswith(".schreiben-")])
 
     def test_ohne_root_schlaegt_nichts_fehl(self):
         tmp = tempfile.mkdtemp()

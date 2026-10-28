@@ -591,12 +591,19 @@ async def brain_write_file(brain_id: int, body: BrainFileWrite, user=Depends(req
     if target == os.path.realpath(brain.host_path) or os.path.isdir(target):
         raise HTTPException(status_code=400, detail="path must be a file")
     os.makedirs(os.path.dirname(target), exist_ok=True)
-    with open(target, "w", encoding="utf-8") as fh:
-        fh.write(body.content)
+    # O_NOFOLLOW: Ist die Zieldatei (inzwischen) ein Link, den ein Agent mit
+    # Schreibzugriff auf den Vault angelegt hat, wird nicht durch ihn geschrieben.
     try:
-        os.chmod(target, 0o666)
+        fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0), 0o666)
     except OSError:
-        pass
+        raise HTTPException(status_code=400, detail="path must be a regular file")
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(body.content)
+        # Rechte über den offenen Handle — ``os.chmod(target)`` folgte einem Link.
+        try:
+            os.fchmod(fh.fileno(), 0o666)
+        except OSError:
+            pass
     try:
         await vault_indexer.index_file(db, brain.label, brain.host_path, body.path)
     except Exception as e:

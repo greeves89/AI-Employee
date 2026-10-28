@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.394.1] - 2026-10-28
+
+### Sicherheit
+- **Schreiben in eine Wissens-Ablage folgte symbolischen Links.** Der Orchestrator schrieb Notizen über eine temporäre Datei mit festem Namen (`<ziel>.tmp`) und öffnete sie so, dass ein Link an dieser Stelle verfolgt wurde. Ein Agent mit Schreibzugriff auf die eingebundene Ablage konnte dort einen Link anlegen. Der Orchestrator schrieb dann als root an dessen Ziel. Jetzt:
+  - Die temporäre Datei wird exklusiv mit zufälligem Namen angelegt (`mkstemp`).
+  - Rechte und Eigentümer werden über den offenen Dateihandle gesetzt.
+  - Neue Ordner bekommen ihren Eigentümer, ohne einem Link zu folgen.
+  - Nach dem Anlegen wird der Ordner noch einmal gegen die Ablage geprüft.
+  - Das Schreiben über die Admin-Oberfläche öffnet die Datei mit `O_NOFOLLOW`.
+
 ## [1.394.0] - 2026-10-28
 
 ### Neu
