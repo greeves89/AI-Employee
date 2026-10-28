@@ -1526,11 +1526,46 @@ async def _vorschlag_antwort(session_id: str, session: dict, msg: dict) -> None:
 async def _auftrag_ausfuehren(session_id: str, vorschlag: dict, zusatz: str) -> None:
     from app.core import bridge_mitdenker as bm
 
+    anzeige = f"Ja zu „{vorschlag['angebot']}“" + (f" — {zusatz}" if zusatz else "")
     await _lauf_ausfuehren(session_id, vorschlag["agent_id"], bm.auftrag_text(
-        vorschlag["auftrag"], vorschlag["angebot"], vorschlag["app"], vorschlag["titel"], zusatz))
+        vorschlag["auftrag"], vorschlag["angebot"], vorschlag["app"], vorschlag["titel"], zusatz),
+        anzeige=anzeige)
 
 
-async def _lauf_ausfuehren(session_id: str, agent_id: str, text: str) -> None:
+#: Gespraech im Chat des Agenten, in dem alles aus dem Overlay steht.
+BRIDGE_GESPRAECH = "bridge"
+BRIDGE_GESPRAECH_TITEL = "Bridge (Overlay)"
+
+
+async def _in_den_verlauf(agent_id: str, message_id: str, anzeige: str) -> None:
+    """Eine Overlay-Nachricht in den Chat des Agenten legen (Gespraech „Bridge“).
+
+    Ohne sie verwarf der Lauscher die Antwort („No user message found“): Overlay
+    und Web-Chat wussten nichts voneinander. Mit ihr steht beides — was der
+    Mensch im Overlay schrieb und was der Agent antwortete — auch im Web-Chat.
+    """
+    from sqlalchemy import select
+
+    from app.db.session import async_session_factory
+    from app.models.chat_session import ChatSession
+    from app.services.chat_persistence import upsert_chat_message
+
+    try:
+        # Das Gespraech ZUERST anlegen: sonst benennt der Speicherweg es nach der
+        # ersten Nachricht, und ein vorhandener Titel wird nie ueberschrieben.
+        async with async_session_factory() as db:
+            zeile = await db.scalar(select(ChatSession).where(
+                ChatSession.agent_id == agent_id, ChatSession.session_id == BRIDGE_GESPRAECH))
+            if zeile is None:
+                db.add(ChatSession(agent_id=agent_id, session_id=BRIDGE_GESPRAECH, title=BRIDGE_GESPRAECH_TITEL))
+                await db.commit()
+        await upsert_chat_message(agent_id, BRIDGE_GESPRAECH, message_id, "user",
+                                  content=anzeige, meta={"source": "bridge"})
+    except Exception:  # noqa: BLE001 — der Auftrag laeuft auch ohne Verlaufseintrag
+        logger.warning("Overlay-Nachricht nicht in den Verlauf gelegt", exc_info=True)
+
+
+async def _lauf_ausfuehren(session_id: str, agent_id: str, text: str, *, anzeige: str) -> None:
     """Ein Auftrag aus dem Overlay (Ja zu einem Angebot oder Chat-Nachricht):
     mit aktuellem Bildschirmbild an den Agenten, Ergebnis zurueck ins Overlay.
 
@@ -1551,9 +1586,12 @@ async def _lauf_ausfuehren(session_id: str, agent_id: str, text: str) -> None:
             frisch = await _refresh_screenshot_cache(session_id)
             if frisch:
                 bilder = [{"media_type": "image/png", "data": frisch}]
+        message_id = uuid.uuid4().hex[:12]
+        await _in_den_verlauf(agent_id, message_id, anzeige)
         antwort = await ask_agent_via_chat(
             _redis, agent_id, text,
-            source="bridge", timeout=900.0, chat_session_id="bridge", images=bilder,
+            source="bridge", timeout=900.0, chat_session_id=BRIDGE_GESPRAECH, images=bilder,
+            message_id=message_id,
         )
         fehler = antwort.startswith("[Fehler")
         await _an_bridge(session, {
@@ -1591,9 +1629,11 @@ async def _overlay_chat(session_id: str, session: dict, msg: dict) -> None:
         agent_id = session.get("auftrag_agent") or session.get("agent_id")
         if not agent_id or _redis is None or _redis.client is None:
             return
+        message_id = uuid.uuid4().hex[:12]
+        await _in_den_verlauf(str(agent_id), message_id, text)
         ergebnis = await einreihen(_redis.client, str(agent_id), {
-            "id": uuid.uuid4().hex[:12], "text": bm.chat_text(text, laufender_auftrag=True),
-            "model": None, "images": [], "source": "bridge", "chat_session_id": "bridge",
+            "id": message_id, "text": bm.chat_text(text, laufender_auftrag=True),
+            "model": None, "images": [], "source": "bridge", "chat_session_id": BRIDGE_GESPRAECH,
         })
         await _an_bridge(session, {
             "type": "overlay_status", "zustand": "arbeitet",
@@ -1613,7 +1653,7 @@ async def _overlay_chat(session_id: str, session: dict, msg: dict) -> None:
     await _an_bridge(session, {"type": "overlay_status", "zustand": "arbeitet", "schritte": 0,
                                "text": "Agent übernimmt …"})
     _hintergrund(session, _lauf_ausfuehren(session_id, str(agent_id),
-                                           bm.chat_text(text, laufender_auftrag=False)))
+                                           bm.chat_text(text, laufender_auftrag=False), anzeige=text))
 
 
 async def _overlay_stopp(session_id: str, session: dict) -> None:
