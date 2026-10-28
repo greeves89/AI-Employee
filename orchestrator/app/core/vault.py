@@ -14,6 +14,7 @@ import logging
 import os
 import re
 import subprocess
+import tempfile
 
 # Files larger than this are skipped (search) / refused (read) — vaults are
 # Markdown knowledge bases, not binary stores.
@@ -125,18 +126,39 @@ def write_file(host_path: str, rel_path: str, content: str, *, overwrite: bool =
         neue_ordner.append(pruefen)
         pruefen = os.path.dirname(pruefen)
     os.makedirs(ordner, exist_ok=True)
-    tmp = target + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        fh.write(content)
-    os.replace(tmp, target)
-    # Neue Datei und neue Ordner dem Agenten-Nutzer geben (siehe ``AGENT_UID``).
-    # Bewusst hier und nicht in einer Hilfsfunktion: die Pfadschranke oben gilt
-    # für die Code-Analyse nur innerhalb dieser Funktion.
-    for pfad in [*neue_ordner, target]:
+    # Ordner nach dem Anlegen noch einmal prüfen: Ein Agent mit Schreibzugriff auf
+    # den Vault könnte einen Teil des Pfads inzwischen durch einen Link ersetzt haben.
+    if not os.path.realpath(ordner).startswith(basis + os.sep) and os.path.realpath(ordner) != basis:
+        raise ValueError("path escapes the vault")
+    # Die temporäre Datei EXKLUSIV anlegen (mkstemp: O_CREAT|O_EXCL, zufälliger
+    # Name). Vorher hieß sie fest ``<ziel>.tmp`` und wurde mit ``open(…, "w")``
+    # geöffnet — das folgt symbolischen Links. Ein Agent mit Schreibzugriff auf den
+    # Vault konnte dort einen Link anlegen, und der Orchestrator schrieb als root
+    # an dessen Ziel (Sicherheitsprüfung 28.10.2026).
+    fd, tmp = tempfile.mkstemp(dir=ordner, prefix=".schreiben-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(content)
+            fh.flush()
+            # Rechte über den offenen Handle, nicht über den Pfad (folgt keinem Link).
+            try:
+                os.fchown(fh.fileno(), AGENT_UID, AGENT_UID)
+            except (PermissionError, OSError, AttributeError):
+                pass
+            os.fchmod(fh.fileno(), 0o644)
+        os.replace(tmp, target)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    # Neue Ordner dem Agenten-Nutzer geben — ohne einem Link zu folgen.
+    for pfad in neue_ordner:
         if pfad.startswith(basis + os.sep):
             try:
-                os.chown(pfad, AGENT_UID, AGENT_UID)
-            except (PermissionError, OSError, AttributeError):
+                os.chown(pfad, AGENT_UID, AGENT_UID, follow_symlinks=False)
+            except (PermissionError, OSError, AttributeError, NotImplementedError):
                 pass
     return {"path": rel_path, "created": not existed, "bytes": len(content.encode("utf-8"))}
 
