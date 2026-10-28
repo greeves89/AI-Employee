@@ -12,7 +12,6 @@ import {
   Square,
   MessageCircle,
   Clock,
-  ChevronDown,
   ChevronRight,
   Bot,
   Gavel,
@@ -58,8 +57,8 @@ export default function MeetingRoomsPage() {
   const [creating, setCreating] = useState(false);
   // Taskforce/Deliverable mode: agents build a real artifact together
   const [deliverable, setDeliverable] = useState(false);
-  // Advanced settings
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  // Ablauf-Einstellungen (Moderator, Besprechungsphasen) — direkt im Formular
+  // sichtbar, nicht mehr hinter "Erweiterte Einstellungen" verborgen (#787 Punkt 9)
   const [useStages, setUseStages] = useState(true);
   const [useModerator, setUseModerator] = useState(true);
   const [moderatorAiAccountId, setModeratorAiAccountId] = useState("");
@@ -109,8 +108,8 @@ export default function MeetingRoomsPage() {
   }, [fetchRooms]);
 
   // Lock the page scroll while a modal is open — otherwise touch/trackpad
-  // scrolling (esp. with "Erweiterte Einstellungen" expanded) moves the
-  // background instead of the modal body ("Fenster lässt sich nicht bewegen").
+  // scrolling (das Create-Formular ist lang) moves the background instead
+  // of the modal body ("Fenster lässt sich nicht bewegen").
   useEffect(() => {
     if (!showCreate && !summaryRoom) return;
     const prev = document.body.style.overflow;
@@ -147,7 +146,7 @@ export default function MeetingRoomsPage() {
       setShowCreate(false);
       setName(""); setTopic(""); setSelectedAgents([]);
       setSelectedTeamId(""); setTeamOverflow(false);
-      setMaxRounds(5); setShowAdvanced(false);
+      setMaxRounds(5);
       setCustomStages([{ name: "Eröffnung", rounds: 1 }, { name: "Analyse", rounds: 2 }, { name: "Synthese", rounds: 1 }]);
       router.push(`/meeting-rooms/${room.id}`);
     } catch (e) {
@@ -445,19 +444,12 @@ export default function MeetingRoomsPage() {
                   </div>
                 </div>
 
-                {/* Advanced Settings (collapsible) */}
-                <div className="rounded-xl border border-foreground/[0.06] overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => setShowAdvanced(!showAdvanced)}
-                    className="w-full flex items-center justify-between px-4 py-3 text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/[0.02] transition-colors"
-                  >
-                    <span className="font-medium">Erweiterte Einstellungen</span>
-                    {showAdvanced ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                  </button>
-
-                  {showAdvanced && (
-                    <div className="border-t border-foreground/[0.06] px-4 py-4 space-y-5 bg-foreground/[0.01]">
+                {/* Ablauf: Moderator & Besprechungsphasen — vorher hinter einem Klick auf
+                    "Erweiterte Einstellungen" verborgen, obwohl beides Grundentscheidungen
+                    für fast jedes Meeting sind, keine Nebensache. Jetzt direkt sichtbar:
+                    vom Öffnen des Formulars bis zu einem Phasen-Feld sind es jetzt 1 statt
+                    3 Klicks (#787 Punkt 9). */}
+                <div className="rounded-xl border border-foreground/[0.06] px-4 py-4 space-y-5">
 
                       {/* Moderator toggle */}
                       <div className="flex items-start justify-between gap-4">
@@ -596,8 +588,6 @@ export default function MeetingRoomsPage() {
                           />
                         </div>
                       )}
-                    </div>
-                  )}
                 </div>
               </div>
 

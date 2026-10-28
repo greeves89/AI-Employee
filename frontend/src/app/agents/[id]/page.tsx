@@ -100,7 +100,15 @@ type SubKey =
   | "knowledge" | "memory" | "skills" | "secondbrain"
   | "settings" | "integrations" | "command-policies";
 
-type SubTab = { key: SubKey; label: string; icon: typeof CheckCircle2 };
+type SubTab = {
+  key: SubKey;
+  label: string;
+  icon: typeof CheckCircle2;
+  /** Erklärt einen Unterreiter, dessen Name als Produktbegriff feststeht
+   *  (z.B. an anderer Stelle schon als Entitätsname/API verdrahtet) und sich
+   *  daher nicht einfach übersetzen lässt (#787 Punkt 10). */
+  tooltip?: string;
+};
 type TabGroup = { key: string; label: string; icon: typeof CheckCircle2; subs: SubTab[] };
 
 const tabGroups: TabGroup[] = [
@@ -124,7 +132,7 @@ const tabGroups: TabGroup[] = [
   ] },
   { key: "wissen", label: "Wissen", icon: Brain, subs: [
     { key: "knowledge", label: "Wissensbasis", icon: Brain },
-    { key: "secondbrain", label: "Second Brain", icon: Brain },
+    { key: "secondbrain", label: "Second Brain", icon: Brain, tooltip: "Second Brain: eine geteilte Wissens-Ablage der Abteilung (z.B. IT-Support), die ein Admin diesem Agenten freigibt." },
     { key: "memory", label: "Gedächtnis", icon: MemoryStick },
     { key: "skills", label: "Skills", icon: Sparkles },
   ] },
@@ -580,6 +588,7 @@ export default function AgentDetailPage() {
                   <button
                     key={sub.key}
                     onClick={() => setActiveSub(sub.key)}
+                    title={sub.tooltip}
                     className={cn(
                       "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium transition-all duration-150",
                       activeSub === sub.key

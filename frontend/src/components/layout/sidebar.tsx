@@ -63,6 +63,10 @@ type NavItem = {
    *  öffnet die Adresse direkt in einem neuen Tab, statt erst unsere Seite zu
    *  laden, die nur einen Knopf dorthin zeigt. */
   external?: string;
+  /** Erklärt einen Begriff, der als Seitentitel/Produktname feststeht und
+   *  sich daher nicht einfach übersetzen lässt (#787 Punkt 10) — als native
+   *  Tooltip, ohne den etablierten Namen umzubenennen. */
+  tooltip?: string;
 };
 
 /** Nur echte Webadressen taugen als Ziel eines Menuepunkts.
@@ -161,10 +165,10 @@ const navGroups: NavGroup[] = [
     label: "Automatisierung",
     key: "automation",
     items: [
-      { href: "/workflows", label: "Workflows", icon: Workflow, simpleVisible: false, weitere: true },
+      { href: "/workflows", label: "Workflows", icon: Workflow, simpleVisible: false, weitere: true, tooltip: "Workflows: feste Abläufe aus mehreren Schritten, die automatisch nacheinander laufen." },
       { href: "/skills", label: "Skill-Marktplatz", icon: Sparkles, simpleVisible: false, weitere: true },
       { href: "/triggers", label: "Auslöser", icon: Zap, simpleVisible: false, weitere: true },
-      { href: "/evals", label: "Golden-Tests", icon: ClipboardCheck, simpleVisible: false, weitere: true },
+      { href: "/evals", label: "Golden-Tests", icon: ClipboardCheck, simpleVisible: false, weitere: true, tooltip: "Golden-Tests: automatisierte Prüfaufgaben, die vor jedem Update zeigen, ob ein Agent bekannte Aufgaben noch richtig löst." },
     ],
   },
   {
@@ -378,6 +382,7 @@ export function Sidebar() {
       <NavShell
         key={item.href}
         item={item}
+        title={item.tooltip}
         onClick={closeMobile}
         className={cn(
           "group flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium transition-all duration-150",
@@ -479,7 +484,7 @@ export function Sidebar() {
               <NavShell
                 key={item.href}
                 item={item}
-                title={item.label}
+                title={item.tooltip ?? item.label}
                 onClick={closeMobile}
                 className={cn(
                   "flex items-center justify-center h-9 w-9 mx-auto rounded-xl transition-all duration-150",
