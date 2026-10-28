@@ -1109,10 +1109,25 @@ Mit einem **Arbeitstakt** (Bearbeiten → Arbeitstakt: alle 30 Minuten, stündli
 2. Er sichtet den Eingang: Klares kommt nach Bereit (mit Priorität), Unklares bekommt eine
    **Notiz** mit der offenen Frage (gelb auf der Karte), Doppeltes wird verworfen.
 3. Er vergibt die wichtigsten bereiten Karten — höchstens eine je Kollege, der gerade frei ist.
+   Ist niemand frei oder ist er allein im Projekt, **nimmt er die oberste bereite Karte selbst**.
+   Karten mit „extern dran“ (Kap. 6a.9) lässt er liegen.
 
-Die eigentliche Arbeit passiert in den vergebenen Läufen. **Liegt nichts im Eingang und nichts
-auf Bereit, fällt der Takt-Lauf aus** und kostet nichts. Der Takt braucht einen Lead (oder
-genau ein Mitglied).
+Die eigentliche Arbeit passiert in den vergebenen Läufen. Gearbeitet wird an dem, was in
+**Bereit** liegt: Einplanen ist deine Entscheidung (Knopf **Einplanen** oder im Repo das Tag
+`status/ready`); Klares plant auch der Lead selbst ein.
+
+**Wann der Takt läuft** *(seit 1.393.4)*: wenn etwas in Bereit liegt, neue Karten im Eingang
+angekommen sind, jemand im Projektgespräch geschrieben hat oder der Tagesbericht fällig ist.
+Liegt nur Altes im Eingang, das der Lead schon gesichtet hat, fällt der Lauf aus und kostet nichts.
+
+**Stillstand bemerkt das Projekt selbst** *(seit 1.393.4)*: Arbeitet seit zwei Stunden niemand an
+einer Karte, obwohl Karten offen sind, steht im **Gespräch** eine Meldung und der Lead bekommt
+eine Benachrichtigung — höchstens einmal am Tag:
+- **„Nichts ist bereit“** — plane die nächsten Karten ein, dann nimmt der Lead sie beim
+  nächsten Takt.
+- **„Bereite Karten liegen“** — der Lead vergibt beim nächsten Takt, notfalls an sich selbst.
+
+Der Takt braucht einen Lead (oder genau ein Mitglied).
 
 ### 6a.7 Projektwissen
 
@@ -1281,6 +1296,19 @@ Ab dann, beim Öffnen des Projekts und regelmäßig (siehe oben):
   (z. B. `feat/12-login`), hängt er an der Karte von Issue #12.
 - Ein **gemergter** PR ohne eigenes Issue wird erledigt.
 - **Tags** des Issues stehen als kleine Schilder auf der Karte *(seit 1.392.0)*.
+
+**Wenn das Board ein Ticket vergibt** *(seit 1.393.5)* — es hält sich an dieselben Regeln wie
+Agenten außerhalb (etwa eine `AGENTS.md` im Repo):
+
+- **Vorher fragt es live im Repo**, ob schon jemand dran ist (Zuständiger, Tag
+  **status/in-arbeit** oder ein offener Pull Request zum Ticket). Dann vergibt es nicht, und die
+  Karte zeigt, wer dran ist.
+- **Beim Vergeben** setzt es im Repo das Tag **status/in-arbeit** und schreibt einen
+  Übernahme-Kommentar (welcher Agent, Branch `<nr>-…`, Pull Request mit `Closes #<nr>`).
+- **Nach dem Pull Request** nimmt es das Tag wieder weg; **wird der Lauf abgebrochen**, ebenso —
+  mit einem Kommentar, dass das Ticket wieder frei ist.
+- Darf der Schlüssel des Projekts keine Tags setzen, steht das als Notiz an der Karte; die Arbeit
+  läuft trotzdem.
 
 **Wenn jemand außerhalb des Boards ein Ticket nimmt** *(seit 1.392.0)* — etwa ein Agent einer
 anderen AI-Employee-Anlage, Claude Code oder ein Mensch direkt im Repo:

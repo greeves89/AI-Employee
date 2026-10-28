@@ -279,6 +279,10 @@ def extern_nachziehen(karte, labels: list[str], zustaendige: list[str]) -> bool:
     extern_dran = bool(zustaendige) or stand == "in_arbeit"
     bearbeiter = (", ".join(f"@{z}" for z in zustaendige) or "extern") if extern_dran else None
     vorher = (karte.spalte, karte.extern_bearbeiter)
+    if karte.task_id and not zustaendige:
+        # Arbeitet ein eigener Agent daran, ist ein In-Arbeit-Tag unser eigenes
+        # (``uebernahme_melden``) — kein Fremder.
+        bearbeiter = None
     karte.extern_bearbeiter = bearbeiter
     if karte.task_id or karte.spalte == "erledigt":
         return vorher != (karte.spalte, karte.extern_bearbeiter)
@@ -384,6 +388,14 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
                 if karte.spalte in ("eingang", "bereit") or (karte.spalte == "in_arbeit" and not karte.task_id):
                     # Jemand arbeitet schon daran (außerhalb des Boards): ab in die Prüfung.
                     karte.spalte = "pruefung"
+                if karte.task_id and UEBERNAHME_TAG in (karte.labels or []) and token:
+                    # Eigener Agent hat den PR gestellt: das Ticket ist nicht mehr „in Arbeit“,
+                    # sondern wartet auf Prüfung — wie es die Übernahmeregeln verlangen.
+                    try:
+                        if await anbieter.remove_label(client, token, repo, karte.extern_nr, UEBERNAHME_TAG):
+                            karte.labels = [x for x in karte.labels if x != UEBERNAHME_TAG]
+                    except Exception as e:  # noqa: BLE001 — Beiwerk
+                        log.info("[Projekt] Tag an #%s nicht entfernt: %s", karte.extern_nr, e)
             continue
         karte = vorhanden.get(("pr", nr))
         if karte is None:
@@ -513,3 +525,91 @@ async def alle_abgleichen(redis) -> int:
                 await db.rollback()
                 log.warning("Git-Abgleich %s gescheitert: %s", team_id, e)
         return len(ids)
+
+
+# ── Übernahme ins Repo zurückmelden ───────────────────────────────────────────
+#: Tag, mit dem ein Board außerhalb (andere Anlage, Claude Code, Mensch) sieht, dass
+#: jemand an einem Issue arbeitet. Dieselbe Vereinbarung, die ``_STATUS_TAGS`` liest.
+UEBERNAHME_TAG = "status/in-arbeit"
+
+
+async def extern_dran(db: AsyncSession, redis, team: Team, karte: ProjektKarte) -> str | None:
+    """Arbeitet schon jemand außerhalb des Boards an diesem Issue? Live im Repo gefragt.
+
+    Der Abgleich läuft höchstens alle paar Minuten — in der Zwischenzeit hätte das
+    Board ein Ticket vergeben, das gerade jemand anderes übernommen hat. Liefert
+    den Namen (``@login`` oder „extern“) oder None. Ist das Repo nicht erreichbar,
+    entscheidet der letzte Abgleich.
+    """
+    if karte.quelle != "issue" or not karte.extern_nr or not team.repo:
+        return None
+    # Ein offener PR zum Ticket (aus dem letzten Abgleich) heißt: jemand ist dran.
+    if karte.pr_nr and karte.pr_zustand not in ("gemergt", "geschlossen") and not karte.task_id:
+        return f"PR #{karte.pr_nr}"
+    try:
+        token, anbieter = await zugang(db, redis, team)
+        async with httpx.AsyncClient(timeout=httpx.Timeout(8.0), follow_redirects=False) as client:
+            issue = await anbieter.get_issue(client, token, repo_ziel(team.repo).pfad, karte.extern_nr)
+    except Exception as e:  # noqa: BLE001 — Repo nicht erreichbar: nicht blockieren
+        log.info("[Projekt] Übernahme-Prüfung #%s übersprungen: %s", karte.extern_nr, e)
+        return karte.extern_bearbeiter
+    if not issue:
+        return karte.extern_bearbeiter
+    leute = _zustaendige(issue)
+    if leute:
+        return ", ".join(f"@{z}" for z in leute)
+    if _status_aus_tags(_labels(issue)) == "in_arbeit":
+        return "extern"
+    return None
+
+
+async def uebernahme_melden(team_id: str, karte_id: str, redis, *, agent_name: str | None,
+                            uebernehmen: bool = True) -> None:
+    """Übernahme (oder Rückgabe) eines Issues ins Repo schreiben — im Hintergrund.
+
+    Übernehmen: Tag ``status/in-arbeit`` und ein Kommentar mit Bearbeiter und
+    Vereinbarung (Branch ``<nr>-…``, PR mit ``Closes #<nr>``). Zurückgeben: Tag weg
+    und ein kurzer Kommentar. Scheitert es (etwa ein Schlüssel ohne Schreibrecht),
+    steht das als Notiz an der Karte — die Arbeit selbst läuft trotzdem.
+    """
+    from app.db.session import async_session_factory
+
+    async with async_session_factory() as db:
+        team = await db.get(Team, team_id)
+        karte = await db.get(ProjektKarte, karte_id)
+        if team is None or karte is None or karte.quelle != "issue" or not karte.extern_nr or not team.repo:
+            return
+        nr = karte.extern_nr
+        try:
+            token, anbieter = await zugang(db, redis, team)
+            if not token:
+                raise GitFehler("ohne Schlüssel kann das Board nichts ins Repo schreiben")
+            repo = repo_ziel(team.repo).pfad
+            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0), follow_redirects=False) as client:
+                if uebernehmen:
+                    ok = await anbieter.add_labels(client, token, repo, nr, [UEBERNAHME_TAG])
+                    await anbieter.comment_issue(
+                        client, token, repo, nr,
+                        f"Übernommen vom AI-Employee-Agenten „{agent_name or 'Lead'}“ (Projekt-Board, Projekt "
+                        f"„{team.name}“). Branch `{nr}-…`, Pull Request mit `Closes #{nr}`.")
+                else:
+                    ok = await anbieter.remove_label(client, token, repo, nr, UEBERNAHME_TAG)
+                    await anbieter.comment_issue(
+                        client, token, repo, nr,
+                        "Zurückgegeben: Der AI-Employee-Agent arbeitet nicht mehr daran — das Ticket ist wieder frei.")
+            if not ok:
+                raise GitFehler(f"Tag {UEBERNAHME_TAG} ließ sich nicht setzen (Schreibrecht für Issues?)")
+        except Exception as e:  # noqa: BLE001 — Rückmeldung ist Beiwerk, die Arbeit läuft
+            log.warning("[Projekt] Übernahme #%s nicht ins Repo gemeldet: %s", nr, e)
+            karte.notiz = f"Übernahme nicht ins Repo gemeldet: {str(e)[:200]}"[:500]
+            await db.commit()
+
+
+def uebernahme_im_hintergrund(team_id: str, karte_id: str, redis, *, agent_name: str | None,
+                              uebernehmen: bool = True) -> None:
+    """``uebernahme_melden`` ohne den Aufrufer warten zu lassen."""
+    try:
+        asyncio.get_running_loop().create_task(
+            uebernahme_melden(team_id, karte_id, redis, agent_name=agent_name, uebernehmen=uebernehmen))
+    except RuntimeError:
+        pass

@@ -890,7 +890,7 @@ class TaskRouter:
         try:
             from app.core.projekte import lauf_beendet
 
-            await lauf_beendet(self.db, task)
+            await lauf_beendet(self.db, task, getattr(self, "redis", None))
         except Exception as e:  # noqa: BLE001
             logger.warning("Karte zu abgebrochenem Lauf %s nicht zurueckgelegt: %s", scrub_log(task_id), scrub_log(e))
         await self.db.commit()
@@ -983,7 +983,7 @@ class TaskRouter:
             from app.core.projekte import lauf_beendet
 
             if not abgebrochen:
-                await lauf_beendet(self.db, task)
+                await lauf_beendet(self.db, task, getattr(self, "redis", None))
                 await antwort_aus_lauf(self.db, task)
         except Exception as e:  # noqa: BLE001 — das Board darf das Abschliessen nie stoppen
             logger.warning("Projekt zu Lauf %s nicht nachgezogen: %s", scrub_log(task_id), scrub_log(e))

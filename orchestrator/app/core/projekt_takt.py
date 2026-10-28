@@ -45,7 +45,9 @@ def takt_auftrag(team: Team) -> str:
         "„bereit“ (Priorität 1 hoch, 2 normal, 3 niedrig). Unklares bekommt eine Notiz mit der offenen Frage, "
         "Doppeltes oder Erledigtes kommt nach „erledigt“.\n"
         "4. **Vergeben:** Mit `projekt_karte_vergeben` die wichtigsten bereiten Karten — höchstens eine je Kollege, "
-        "der gerade keine Karte in Arbeit hat. Dir selbst nur, wenn sonst niemand passt.\n"
+        "der gerade keine Karte in Arbeit hat. Ist kein Kollege frei (oder bist du allein im Projekt), vergibst du "
+        "die oberste bereite Karte an dich selbst. Bereite Karten liegen zu lassen, während niemand arbeitet, ist "
+        "ein Fehler. Karten mit „extern in Arbeit“ bearbeitet schon jemand außerhalb — die nimmst du nicht.\n"
         "5. **Termine:** Mit `projekt_termine` prüfen, ob das Projekt einen Rhythmus hat. Gibt es noch keinen und "
         "arbeiten mehrere an Karten, lege mit `projekt_termin_anlegen` ein Daily an (art=daily, z. B. 09:00); für "
         "eine anstehende Entscheidung einen einmaligen Termin.\n"
@@ -101,12 +103,16 @@ async def pruefen(db: AsyncSession, schedule: Schedule) -> tuple[str | None, str
     if team is None or not team.is_active or not team.takt_minuten:
         schedule.enabled = False
         return "Projekt ohne Takt", None
-    offen = await db.scalar(
-        select(func.count(ProjektKarte.id)).where(
-            ProjektKarte.team_id == team.id, ProjektKarte.spalte.in_(("eingang", "bereit")),
-        )
-    )
-    if offen:
+    stand = await _stand(db, team.id)
+    await stillstand_melden(db, team, stand)
+    # Etwas Bereites wird vergeben. Neue Karten im Eingang sichtet der Lead.
+    # Liegt nur Altes im Eingang, das er schon als unklar gesehen hat, bringt ein
+    # weiterer Takt nichts — vorher lief er so alle 30 Minuten ins Leere
+    # (gemessen 28.10.: zehn Takte ohne jede Bewegung). Einplanen ist dann Sache
+    # des Menschen; ``stillstand_melden`` sagt ihm das.
+    if stand["bereit"]:
+        return None, team.id
+    if stand["eingang"] and await _neue_karten(db, team.id, schedule.last_run_at):
         return None, team.id
     if await projekt_gespraech.neu_seit(db, team.id, schedule.last_run_at):
         return None, team.id
@@ -119,3 +125,83 @@ async def pruefen(db: AsyncSession, schedule: Schedule) -> tuple[str | None, str
         if gearbeitet:
             return None, team.id
     return "nichts zu sichten, zu vergeben oder zu berichten", team.id
+
+
+async def _stand(db: AsyncSession, team_id: str) -> dict[str, int]:
+    zeilen = (await db.execute(
+        select(ProjektKarte.spalte, func.count(ProjektKarte.id))
+        .where(ProjektKarte.team_id == team_id, ProjektKarte.spalte.in_(("eingang", "bereit", "in_arbeit")))
+        .group_by(ProjektKarte.spalte)
+    )).all()
+    stand = {"eingang": 0, "bereit": 0, "in_arbeit": 0}
+    stand.update({spalte: int(n) for spalte, n in zeilen})
+    return stand
+
+
+async def _neue_karten(db: AsyncSession, team_id: str, seit: datetime | None) -> bool:
+    abfrage = select(func.count(ProjektKarte.id)).where(
+        ProjektKarte.team_id == team_id, ProjektKarte.spalte == "eingang")
+    if seit is not None:
+        abfrage = abfrage.where(ProjektKarte.created_at > seit)
+    return bool(await db.scalar(abfrage))
+
+
+#: So lange darf ein Projekt mit offenen Karten ohne jeden Lauf an einer Karte sein,
+#: bevor es sich meldet. Höchstens eine Meldung je Art und Tag.
+STILLSTAND_AB = timedelta(hours=2)
+STILLSTAND_PAUSE = timedelta(hours=24)
+_STILLSTAND_TEXT = {
+    "nichts_bereit": ("Stillstand: Nichts ist bereit — die Agenten warten. Im Eingang liegen {eingang} Karten. "
+                      "Plane die nächsten mit „Einplanen“ ein (oder setze im Repo das Tag status/ready), dann "
+                      "nimmt der Lead sie beim nächsten Takt."),
+    "bereit_liegt": ("Stillstand: {bereit} bereite Karten liegen, aber niemand arbeitet daran. Der Lead vergibt "
+                     "beim nächsten Takt — notfalls an sich selbst. Passiert das nicht, bitte im Projekt nachsehen."),
+}
+
+
+async def stillstand_melden(db: AsyncSession, team: Team, stand: dict[str, int] | None = None,
+                            jetzt: datetime | None = None) -> str | None:
+    """Bemerkt selbst, wenn ein Projekt mit offenen Karten nichts tut — und sagt es.
+
+    Stillstand heißt: nichts in Arbeit, aber Karten im Eingang oder in Bereit, und
+    seit ``STILLSTAND_AB`` ist an keiner Karte ein Lauf gestartet. Dann steht eine
+    Systemnachricht im Projektgespräch und eine Benachrichtigung beim Lead —
+    höchstens einmal je Art und Tag. Gibt die Art zurück (oder None).
+    """
+    from app.models.notification import Notification
+    from app.models.projekt_nachricht import ProjektNachricht
+    from app.models.task import Task
+
+    jetzt = jetzt or datetime.now(timezone.utc)
+    stand = stand or await _stand(db, team.id)
+    if stand["in_arbeit"] or not (stand["eingang"] or stand["bereit"]):
+        return None
+    letzter_lauf = await db.scalar(
+        select(func.max(Task.created_at)).where(
+            Task.id.in_(select(ProjektKarte.task_id).where(
+                ProjektKarte.team_id == team.id, ProjektKarte.task_id.isnot(None))))
+    )
+    beginn = letzter_lauf or team.created_at
+    if beginn is not None and beginn.tzinfo is None:
+        beginn = beginn.replace(tzinfo=timezone.utc)
+    if beginn is not None and jetzt - beginn < STILLSTAND_AB:
+        return None
+    art = "bereit_liegt" if stand["bereit"] else "nichts_bereit"
+    text = _STILLSTAND_TEXT[art].format(**stand)
+    kopf = text.split(":", 1)[0] + ":" + text.split(":", 1)[1].split("—", 1)[0]
+    schon = await db.scalar(
+        select(func.count(ProjektNachricht.id)).where(
+            ProjektNachricht.team_id == team.id, ProjektNachricht.autor_typ == "system",
+            ProjektNachricht.text.startswith(kopf), ProjektNachricht.created_at > jetzt - STILLSTAND_PAUSE)
+    )
+    if schon:
+        return None
+    from app.core import projekt_gespraech
+
+    await projekt_gespraech.posten(db, team, autor_typ="system", autor_id=None, autor_name="Projekt",
+                                   text=text, art="nachricht")
+    if team.lead_agent_id:
+        db.add(Notification(agent_id=team.lead_agent_id, type="warning", priority="high",
+                            title=f"Projekt „{team.name}“ steht still", message=text,
+                            action_url=f"/projekte/{team.id}"))
+    return art

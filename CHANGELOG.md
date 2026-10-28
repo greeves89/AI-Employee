@@ -10,6 +10,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 ### Geändert
 - **Die Seitenleiste bleibt schlank.** Punkte unter „Weitere Bereiche“ rückten nach oben, sobald man sie ein paar Mal geöffnet hatte. Bei Admins stand dadurch fast alles oben. Jetzt steht ein Punkt aus „Weitere Bereiche“ nur oben, solange man gerade dort ist. Ob „Weitere Bereiche“ auf- oder zugeklappt ist, merkt sich die Leiste weiter am Konto.
 
+## [1.393.5] - 2026-10-28
+
+### Behoben
+- **Das Board meldete eine Übernahme nicht ins Repo.** Vergab das Board ein Ticket an einen eigenen Agenten, stand im Repo weder ein Tag noch ein Kommentar noch ein Zuständiger. Andere, etwa eine Claude-Code-Sitzung, sahen deshalb nicht, dass jemand daran arbeitet, und übernahmen dasselbe Ticket noch einmal (am 28.10. bei zwei Tickets passiert). Jetzt arbeitet das Board nach denselben Regeln wie Agenten außerhalb:
+  - Vor dem Vergeben fragt es live im Repo nach Zuständigen, dem Tag `status/in-arbeit` oder einem offenen PR zum Ticket. Ist schon jemand dran, vergibt es nicht.
+  - Beim Vergeben setzt es `status/in-arbeit` und schreibt einen Übernahme-Kommentar mit Agent, Branch `<nr>-…` und PR mit `Closes #<nr>`.
+  - Nach dem PR nimmt es das Tag wieder weg, ebenso bei einem abgebrochenen Lauf (mit Kommentar).
+  - Darf der Schlüssel keine Tags setzen, steht das als Notiz an der Karte.
+- Der Auftrag an den Agenten enthält diese Regeln: ein Branch je Issue, PR mit `Closes #<nr>`, die `AGENTS.md` des Repos beachten und bei einem fremden Branch oder PR aufhören statt doppelt zu arbeiten.
+- Das eigene In-Arbeit-Tag zählt nicht mehr als „extern dran“.
+
+## [1.393.4] - 2026-10-28
+
+### Behoben
+- **Projekte blieben stehen, obwohl Arbeit da war.** Der Lead-Takt lief alle 30 Minuten, sichtete aber nur (gemessen: zehn Takte hintereinander ohne jede Bewegung). Er vergab nichts, weil er sich selbst nur nehmen durfte, „wenn sonst niemand passt“, und als einziges Mitglied darin keinen Auftrag sah. Jetzt gilt: Liegt etwas in Bereit und ist kein Kollege frei, nimmt der Lead die oberste Karte selbst. Bereites liegen zu lassen ist ausdrücklich ein Fehler. Karten mit „extern in Arbeit“ nimmt er nicht.
+- **Der Takt lief ins Leere und kostete trotzdem.** Liegen nur Karten im Eingang, die der Lead schon gesichtet und als unklar eingestuft hat, fällt der Lauf jetzt aus. Er läuft wieder bei Bereitem, neuen Karten im Eingang, neuen Nachrichten oder fälligem Tagesbericht.
+
+### Neu
+- **Ein Projekt bemerkt selbst, wenn es stillsteht.** Arbeitet seit zwei Stunden niemand an einer Karte, obwohl Karten offen sind, erscheinen im Projektgespräch eine Meldung und beim Lead eine Benachrichtigung, höchstens einmal am Tag je Art: „Nichts ist bereit — die Agenten warten“ (mit dem Hinweis, Karten einzuplanen oder `status/ready` zu setzen) oder „Bereite Karten liegen, aber niemand arbeitet daran“.
+
 ## [1.393.3] - 2026-10-28
 
 ### Geändert
