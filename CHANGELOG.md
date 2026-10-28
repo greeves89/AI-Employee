@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.385.1] - 2026-10-28
+
+### Verbessert
+- **„Integrationen“, „Apps“ und der Skill-Marktplatz erklären jetzt, was sie von ihrem gleichnamigen Gegenstück unterscheidet.** Alle drei Begriffe bezeichneten je zwei bis drei unterschiedliche Oberflächen ohne Erklärung, welche die richtige ist. Die globale Integrationen-Seite, die globale Apps-Übersicht und der globale Skill-Marktplatz erklären jetzt kurz ihre Reichweite und verlinken zur jeweils anderen Stelle (Einstellungen → Integrationen, Agent-Einstellungen → Workspace → Apps bzw. → Wissen → Skills). Die Apps-Ansicht eines einzelnen Agenten verlinkt jetzt auch zurück zur Gesamtübersicht. Kein Datenmodell geändert — reine Erklärung und Verlinkung.
+
 ## [1.381.0] - 2026-10-28
 
 ### Hinzugefügt

@@ -809,6 +809,14 @@ export default function SkillsPage() {
       <Header title="Skill-Marktplatz" subtitle="Skills für deine Agenten finden, installieren und selbst anlegen" />
 
       <div className="p-6 space-y-6">
+        {/* Abgrenzung zur zweiten Skill-Oberflaeche (#787 Punkt 5): dieselbe
+            Katalog-Quelle (/api/v1/skills/catalog) steht verkuerzt auch in den
+            Agent-Einstellungen → Wissen → Skills, dort ohne Wechsel der Seite. */}
+        <p className="text-[11px] text-muted-foreground/50">
+          Katalog + Installation für jeden Agenten über den Agenten-Wähler
+          unten. Direkt in den Agent-Einstellungen → Wissen → Skills geht das
+          auch — ohne Seitenwechsel, mit demselben Katalog.
+        </p>
         {isAdmin && <SkillSourcesAdmin />}
         {/* Top bar */}
         <div className="flex items-center gap-3 flex-wrap">

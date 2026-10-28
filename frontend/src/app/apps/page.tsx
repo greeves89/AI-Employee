@@ -280,6 +280,14 @@ export default function AppsPage() {
       <Header title="Apps" subtitle="Alle Apps deiner Agenten — laufend, gestoppt und noch nicht gestartet" />
 
       <div className="flex-1 overflow-y-auto p-6">
+        {/* Abgrenzung zur zweiten "Apps"-Oberflaeche (#787 Punkt 4): diese
+            Seite ist die Uebersicht ueber ALLE Agenten. Jeder Agent verwaltet
+            seine eigenen Docker-Apps zusaetzlich direkt im eigenen Workspace. */}
+        <p className="text-[11px] text-muted-foreground/50 mb-4">
+          Alle Agenten zusammen. Die Apps EINES Agenten verwaltest du auch
+          direkt in dessen Agent-Einstellungen → Workspace → Apps — selbe
+          Daten, dort ohne Wechsel der Seite.
+        </p>
         <div className="flex items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-3 min-w-0">
             <p className="text-sm text-muted-foreground whitespace-nowrap">

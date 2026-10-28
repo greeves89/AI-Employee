@@ -16,6 +16,7 @@ import { useConfirm } from "@/components/ui/dialog-provider";
 import type { Integration } from "@/lib/types";
 import type { McpServerInfo, McpTool, McpAgentHealth, McpAgentHealthEntry, McpToolCallResult } from "@/lib/api";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { ClaudeLoginDialog, startClaudeLogin } from "@/components/integrations/claude-login-dialog";
 
 const PROVIDER_ICONS: Record<string, typeof Mail> = {
@@ -390,6 +391,20 @@ export default function IntegrationsPage() {
       )}
 
       <div className="flex-1 overflow-y-auto p-6 space-y-8">
+        {/* Abgrenzung zu den zwei anderen "Integrationen"-Oberflaechen (#787
+            Punkt 3): hier verbindet jeder Nutzer seine EIGENEN Konten/Server.
+            Anlage-weite Anbindungen und welcher Agent eine Verbindung nutzen
+            darf, leben bewusst anderswo. */}
+        <p className="text-[11px] text-muted-foreground/50 -mt-2">
+          Deine eigenen Konten und MCP-Server. Anlage-weite Anbindungen
+          (Benachrichtigungen, SAML, Teams) findest du unter{" "}
+          <Link href="/settings#integrationen" className="text-primary hover:underline">
+            Einstellungen → Integrationen
+          </Link>
+          . Welche dieser Verbindungen ein Agent nutzen darf, legst du in den
+          Agent-Einstellungen → Integrationen fest.
+        </p>
+
         {/* MCP Servers Section */}
         <McpServersSection onToast={setToast} />
 
