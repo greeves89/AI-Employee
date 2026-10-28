@@ -4,6 +4,8 @@ GitHub wird nachgestellt (``_Anbieter``); die Datenbank ist echt (SQLite), weil
 Karten, Spalten und Eindeutigkeit (team, quelle, nummer) mitspielen.
 """
 
+from unittest.mock import patch
+
 from fastapi import HTTPException
 
 from app.api import teams as api
@@ -182,6 +184,35 @@ class Schluessel(Basis):
             team = await db.get(Team, "p1")
             token, _ = await projekt_git.zugang(db, None, team)
         self.assertEqual(token, "ghp_beispiel")
+
+    async def test_eigener_schluessel_geht_an_den_eigenen_server(self):
+        async with self.Session() as db:
+            await api.update_team("p1", api.UpdateTeam(repo="https://git.example.com/team/repo", repo_secret_id=7),
+                                  user=MITGLIED, db=db)
+            team = await db.get(Team, "p1")
+            with patch("app.core.url_guard.check_outbound_url", return_value=(True, "")):
+                token, anbieter = await projekt_git.zugang(db, None, team)
+        self.assertEqual(token, "ghp_beispiel")
+        self.assertEqual(anbieter.api_base, "https://git.example.com/api/v1")
+
+    async def test_geteilter_schluessel_geht_nie_an_einen_frei_gewaehlten_server(self):
+        """Ein nur zur Nutzung geteilter Schlüssel darf nicht an einen Server gehen,
+        den der Nutzer selbst einträgt — dort wäre er abgegriffen."""
+        from unittest.mock import AsyncMock
+
+        async with self.Session() as db:
+            with patch("app.core.secret_zugriff.zugang", new=AsyncMock(return_value=object())):
+                await api.update_team("p1", api.UpdateTeam(repo="https://git.example.com/team/repo",
+                                                           repo_secret_id=8), user=MITGLIED, db=db)
+                team = await db.get(Team, "p1")
+                with patch("app.core.url_guard.check_outbound_url", return_value=(True, "")), \
+                        self.assertRaises(projekt_git.GitFehler) as e:
+                    await projekt_git.zugang(db, None, team)
+                self.assertIn("eigenen Schlüssel", str(e.exception))
+                # Bei GitHub geht derselbe geteilte Schlüssel nur an GitHub — wie bisher erlaubt.
+                await api.update_team("p1", api.UpdateTeam(repo="o/r"), user=MITGLIED, db=db)
+                token, _ = await projekt_git.zugang(db, None, await db.get(Team, "p1"))
+        self.assertEqual(token, "x")
 
     async def test_fremder_schluessel_ist_gesperrt(self):
         from unittest.mock import AsyncMock, patch

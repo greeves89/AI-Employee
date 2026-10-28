@@ -1178,17 +1178,26 @@ für die offenen Punkte aus diesem Protokoll an.“ Abnehmen und Zurückgeben bl
 
 ### 6a.9 Git-Projekte: Issues und Pull Requests auf dem Board *(seit 1.369.0)*
 
-Ein Projekt kann mit einem **GitHub-Repo** verbunden werden — dann kommt die Arbeit von selbst aufs
-Board. Das Repo trägt ein, wer das Projekt angelegt hat. **Öffentliche Repos** gehen ohne weitere
-Einrichtung (abgeglichen alle 30 Minuten). **Private Repos** brauchen einen **Schlüssel**: Lege in
-der Schlüsselverwaltung (Keys) einen GitHub-Zugangsschlüssel mit Leserecht an und wähle ihn im
-Projekt unter **Schlüssel für das Repo** (dann alle 10 Minuten). Projekte von Administratoren
-können stattdessen die GitHub-Verbindung der Anlage nutzen. Ohne Repo zeigt die Projektseite den
-Hinweis „Kein GitHub-Repo verbunden“ mit dem Knopf **Repo verbinden**.
+Ein Projekt kann mit einem **Git-Repo** verbunden werden — auf **GitHub** oder auf einem eigenen
+**Forgejo- oder Gitea-Server** (seit 1.384.0). Dann kommt die Arbeit von selbst aufs Board. Das Repo
+trägt ein, wer das Projekt angelegt hat. **Öffentliche Repos** gehen ohne weitere Einrichtung
+(abgeglichen alle 30 Minuten). **Private Repos** brauchen einen **Schlüssel**: Lege in der
+Schlüsselverwaltung (Keys) einen Zugangsschlüssel mit Leserecht an (bei GitHub ein GitHub-Token, bei
+Forgejo/Gitea ein Token dieses Servers, dort unter *Einstellungen → Anwendungen* erzeugt) und wähle
+ihn im Projekt unter **Schlüssel für das Repo** (dann alle 10 Minuten). Projekte von Administratoren
+können bei GitHub-Repos stattdessen die GitHub-Verbindung der Anlage nutzen. Ohne Repo zeigt die
+Projektseite den Hinweis „Kein Git-Repo verbunden“ mit dem Knopf **Repo verbinden**.
+
+Hinweis zu eigenen Servern: Die Plattform fragt sie nur über **https** ab und nie im internen Netz
+der Anlage. Als Schlüssel geht nur ein **eigener** Schlüssel des Projekt-Erstellers — ein Schlüssel,
+der dir nur zur Nutzung geteilt wurde, wird nicht an einen selbst eingetragenen Server geschickt. Verlangt der Server für jedes Repo eine Anmeldung, braucht auch ein „öffentliches“ Repo
+einen Schlüssel. Den CI-Stand eines Pull Requests liest sie aus dem Commit-Status, den Forgejo
+Actions (bzw. Gitea Actions) setzen.
 
 1. Projekt anlegen oder **Bearbeiten** öffnen.
-2. Unter **GitHub-Repo** `owner/name` eintragen, z. B. `beispiel-org/beispiel-repo` (eine kopierte
-   GitHub-Adresse geht auch).
+2. Unter **Git-Repo** eintragen:
+   - GitHub: `owner/name`, z. B. `beispiel-org/beispiel-repo` (eine kopierte GitHub-Adresse geht auch),
+   - Forgejo/Gitea: die volle Adresse des Repos, z. B. `https://git.example.com/team/repo`.
 3. Bei einem privaten Repo unter **Schlüssel für das Repo** den passenden Schlüssel wählen.
 4. **Speichern**.
 
