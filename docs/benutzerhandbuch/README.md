@@ -248,6 +248,18 @@ Die Wahl gilt nur für diesen Browser; deine Rechte ändern sich dadurch nicht.
 ---
 
 
+### 1.4a Die Seite eines Agenten *(seit 1.391.0)*
+Oben stehen vier Reiter, darunter je nach Reiter kleine Unterreiter:
+
+- **Chat** — **Schreiben** oder **Sprechen** (Sprachsitzung).
+- **Arbeit** — Aufgaben, Kalender, Live, Verlauf, Dateien, Apps, Bildschirm
+  (Steuerung deines Rechners über die Bridge) und Browser.
+- **Wissen** — Gedächtnis, Wissens-Ablagen (Second Brains), Wissensbasis und Skills.
+- **Einstellungen** — Allgemein, Verbindungen und Befehlsregeln.
+
+Der aktive Reiter ist orange unterstrichen. In der einfachen Ansicht gibt es keine
+Reiter, nur den Chat (Kap. 1.4).
+
 ### 1.5 Der Admin-Bereich *(seit 1.391.0)*
 Admins arbeiten in derselben Ansicht wie alle anderen. Was für die **ganze Anlage**
 gilt, verwalten sie in einem eigenen Bereich:
@@ -2717,7 +2729,7 @@ helfen kann — zum Beispiel „Soll ich dir Titel vorschlagen?“, sobald du Yo
 **Schritt 1 — Mitsehen einschalten.**
 1. Linke Seitenleiste → **Agenten** → deinen Agenten öffnen. In der einfachen Ansicht klickst
    du unter dem Chat auf das Symbol **Computer** (Bildschirm); als Admin auf den Reiter
-   **Computer-Steuerung**.
+   **Arbeit** → **Bildschirm**.
 2. In der Sitzungskarte auf **Berechtigungen** klicken.
 3. Den Schalter **Mitsehen** einschalten (Risiko „hoch“, standardmäßig aus).
 
