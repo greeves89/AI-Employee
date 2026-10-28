@@ -13,8 +13,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TABLE projekt_karten ADD COLUMN IF NOT EXISTS extern_bearbeiter VARCHAR(200)")
+    op.execute("ALTER TABLE IF EXISTS projekt_karten ADD COLUMN IF NOT EXISTS extern_bearbeiter VARCHAR(200)")
 
 
 def downgrade() -> None:
-    op.execute("ALTER TABLE projekt_karten DROP COLUMN IF EXISTS extern_bearbeiter")
+    op.execute("ALTER TABLE IF EXISTS projekt_karten DROP COLUMN IF EXISTS extern_bearbeiter")
