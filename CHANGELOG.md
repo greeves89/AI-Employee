@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.391.0] - 2026-10-28
+
+### Verbessert
+- **Neues Erscheinungsbild, schlanker und ruhiger.** Die Oberfläche übernimmt die Gestaltung der lavalake-Konsole: heller, ruhiger Grund, dunkelblaue Seitenleiste, Lava-Orange als einziger Akzent, Überschriften in Space Grotesk. Das dunkle Design ist mitgezogen. Die Farben gelten über die gemeinsamen Farbwerte, deshalb wirkt der Wechsel auf jeder Seite.
+- **Die Seitenleiste hat nur noch drei Gruppen:** Arbeiten (Start, Agenten, Aufgaben, Projekte, Freigaben), Ablage (Dateien, Wissen) und Automatisieren (Abläufe, Skills). Selteneres steht unter „Weitere Bereiche“. Die Namen sind durchgehend deutsch: Start statt Heute, Übersicht statt Dashboard, Kosten statt Finanzen, Abläufe statt Workflows, Prüfaufgaben statt Golden-Tests, Verbindungen statt Integrationen.
+- **Admins haben die normale Ansicht und zusätzlich einen eigenen Admin-Bereich.** Unten in der Leiste führt „Zum Admin-Bereich“ in eine helle Leiste mit „Admin“-Marke. Dort stehen alle Einstellungen der Anlage in sechs Gruppen: Menschen, Agenten, KI, Anbindungen, Regeln, Anlage. „Zurück zur Arbeit“ führt wieder hinaus. Die zweite Bereichsliste innerhalb der Seite entfällt. Die Überschrift zeigt jetzt den gewählten Bereich.
+- **Persönliches heißt „Mein Konto“** und liegt am Namen unten in der Leiste. Bisher hieß es „Meine Einstellungen“.
+- Einige Admin-Bereiche heißen jetzt verständlicher: Dienste & Konten (bisher Integrationen (Anlage)), Wissens-Ablagen (Second Brains), Datenschutz-Filter (DLP-Filter), Kosten & Budget, Eigene Menüpunkte (Seiten & Links), Rückmeldungen (Feedback). Lesezeichen auf die bisherigen Adressen funktionieren weiter.
+- Selbst angelegte Menüpunkte aus den früheren Gruppen „Arbeitsplatz“ und „Hilfe“ erscheinen jetzt unter „Ablage“ beziehungsweise „Arbeiten“, statt aus dem Menü zu verschwinden.
+
 ## [1.389.0] - 2026-10-28
 
 ### Neu
