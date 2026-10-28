@@ -19,6 +19,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 ### Bekannte Grenze
 - Für `claude_code`-Agenten greift die Freigabeliste nur als **weiche Schranke**: diese Laufzeit bedient den Browser über den Playwright-MCP in einem eigenen Prozess, der ausdrücklich keine Sicherheitsgrenze zusagt und Weiterleitungen nicht prüft; ins Prüfprotokoll kommen seine Aufrufe gar nicht. Hart durchgesetzt und protokolliert wird der Weg über das eigene Browserwerkzeug (Codex, Custom-LLM) und jede Eingabe aus der Arbeitsfläche. Diese Parität ist der nächste Schritt in #828 und braucht eine Richtungsentscheidung.
 - Ein harter Abbruch des Containers (OOM-Kill) zwischen zwei Sicherungspunkten verliert die jüngsten Profiländerungen; gesichert wird nach jeder Navigation und beim geordneten Beenden.
+## [1.383.2] - 2026-10-28
+
+### Verbessert
+- **Was im Overlay der Bridge geschrieben wird, steht auch im Web-Chat.** Nachrichten aus dem Chat-Feld des Overlays, Hinweise an einen laufenden Auftrag, ein Ja zu einem Angebot und die Antworten des Agenten erscheinen im Chat des Agenten im Gespräch „Bridge (Overlay)“. Bisher gingen sie am Verlauf vorbei, und die Antwort wurde verworfen, weil zu ihr keine Nutzernachricht gespeichert war.
+
+## [1.383.1] - 2026-10-28
+
+### Behoben
+- **Projekt-Besprechungen griffen immer wieder erledigte Themen auf.** Die Agenten sprachen aus ihrem Gedächtnis, nicht vom Board: Ein seit Tagen geschlossenes Issue kam jeden Morgen erneut ins Daily, und aus jedem offenen Punkt der Zusammenfassung wurde ungeprüft eine Karte (7–9 je Besprechung). Jetzt bekommt jeder Beitrag einer Projekt-Besprechung den Stand des Boards mit (Bereit, In Arbeit, Prüfung mit PR-Stand, kürzlich Erledigtes) — dieselbe Darstellung wie das Werkzeug `projekt_board` —, und Punkte, die nur geschlossene Issues betreffen oder schon als offene Karte dastehen, werden keine Karte; das Protokoll nennt, wie viele übersprungen wurden.
+- **Ein abgebrochener Auftrag stand danach als „erledigt“ da.** Der Agent meldet sein Ende nach dem Abbruch noch nach und überschrieb damit den Status. Er bleibt jetzt „abgebrochen“; Kosten, Tokens und Dauer werden trotzdem gebucht.
+
+## [1.383.0] - 2026-10-28
+
+### Neu
+- **Chat direkt im Overlay der Bridge.** „Chat“ öffnete bisher den Chat im Browser. Jetzt klappt es im Overlay ein Eingabefeld auf, der Cursor steht sofort darin, Enter oder „Senden“ schickt die Nachricht an den Agenten. Arbeitet er gerade an einem Auftrag, arbeitet er den Hinweis sofort in diesen Auftrag ein (Live-Steering in der Bridge-Sitzung); sonst wird die Nachricht ein neuer Auftrag mit einem aktuellen Bild des Bildschirms. Nach dem Senden geht die Tastatur zurück an die Anwendung; tippt der Agent gerade selbst, landen seine Tasten nicht im Overlay. Ist der Agent gestoppt, sagt das Overlay „erst freigeben“. Gilt für macOS und Windows; braucht die Bridge 1.383.0.
+
+### Behoben
+- Eine Statusmeldung des laufenden Auftrags (z. B. der Schrittzähler) leerte das Antwortfeld im Overlay, während man tippte.
+
 ## [1.382.0] - 2026-10-28
 
 ### Neu

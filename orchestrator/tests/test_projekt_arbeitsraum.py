@@ -200,6 +200,71 @@ class Termine(_Arbeitsraum):
             self.assertTrue(any(s.startswith("protokolle/") for s in seiten))
 
 
+class BesprechungKenntDenStand(_Arbeitsraum):
+    """Ein Agent brachte jeden Morgen ein längst geschlossenes Issue ins Daily, und
+    jeder Punkt der Zusammenfassung wurde zur Karte (19.–28.10.2026). Jetzt sieht
+    die Besprechung den Stand des Boards, und erledigte oder doppelte Punkte werden
+    keine Karten mehr."""
+
+    async def _karten_anlegen(self):
+        from app.core import projekte
+
+        async with self.Session() as db:
+            erledigt = projekte.neue_karte("p1", "Takt-Sperre für Sekretariats-Zeitpläne", quelle="issue",
+                                           extern_nr=961, von="github:o/r")
+            erledigt.spalte, erledigt.erledigt_at = "erledigt", datetime.now(timezone.utc) - timedelta(days=2)
+            db.add_all([
+                erledigt,
+                projekte.neue_karte("p1", "Login-Fehler nachstellen", spalte="bereit"),
+                projekte.neue_karte("p1", "Alte Idee aus dem Eingang", spalte="eingang"),
+            ])
+            await db.commit()
+
+    async def _abschluss(self, zusammenfassung):
+        @contextlib.asynccontextmanager
+        async def _sitzung():
+            async with self.Session() as db:
+                yield db
+
+        with patch("app.db.session.async_session_factory", _sitzung):
+            await projekt_termine.abschluss("raum1", "p1", "Daily: Projekt", zusammenfassung, ["a1"])
+        async with self.Session() as db:
+            from sqlalchemy import select
+
+            neu = (await db.execute(select(ProjektKarte).where(
+                ProjektKarte.team_id == "p1", ProjektKarte.notiz == "Aus Besprechung"))).scalars().all()
+            letzte = (await projekt_gespraech.liste(db, "p1"))[-1]
+        return sorted(k.titel for k in neu), letzte.text
+
+    async def test_stand_zeigt_offenes_und_erledigtes_aber_nicht_den_eingang(self):
+        await self._karten_anlegen()
+        async with self.Session() as db:
+            stand = await projekt_termine.stand_jetzt(db, "p1")
+        self.assertIn("Login-Fehler nachstellen", stand)
+        self.assertIn("#961", stand)
+        self.assertIn("Erledigt", stand)
+        self.assertNotIn("Alte Idee aus dem Eingang", stand)   # nur als Kennzahl
+        self.assertIn("Eingang 1", stand)
+
+    async def test_erledigte_und_doppelte_punkte_werden_keine_karten(self):
+        await self._karten_anlegen()
+        titel, text = await self._abschluss(
+            "## Action Items\n"
+            "- [ ] DevBot: Für #961 die AST-Inventur am aktuellen Commit wiederholen\n"
+            "- [ ] Login-Fehler nachstellen\n"
+            "- [ ] Neu: Ladezeit der Projektseite messen\n"
+            "- [ ] Neu: Ladezeit der Projektseite messen\n"
+            "- [ ] #961 und #1063 zusammen prüfen\n")
+        # #961 ist geschlossen; „Login-Fehler …“ steht schon in Bereit; der doppelte
+        # Punkt kommt einmal; wer zusätzlich ein offenes Issue nennt, bleibt.
+        self.assertEqual(titel, ["#961 und #1063 zusammen prüfen", "Neu: Ladezeit der Projektseite messen"])
+        self.assertIn("3 Punkt(e) übersprungen", text)
+
+    async def test_ohne_projekt_kein_stand(self):
+        async with self.Session() as db:
+            self.assertEqual(await projekt_termine.stand_jetzt(db, "gibt-es-nicht"), "")
+
+
 class TerminText(unittest.TestCase):
     def test_lesbar_statt_kuerzel(self):
         self.assertEqual(projekt_termine.beschreibung({"art": "daily", "uhrzeit": "09:00"}), "Daily (Mo–Fr) um 09:00")

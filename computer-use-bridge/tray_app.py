@@ -3221,6 +3221,9 @@ class OverlayModell:
         self.ausgeblendet = False
         # Der Agent prueft gerade einen Blick (Mitdenken) — zeigt die Menueleiste.
         self.denkt = False
+        # „Chat“ geklickt: Eingabefeld offen, der Text geht direkt an den Agenten
+        # (laeuft ein Auftrag, steuert er ihn — siehe Server ``_overlay_chat``).
+        self.chat_offen = False
 
     @property
     def titel(self) -> str:
@@ -3231,16 +3234,20 @@ class OverlayModell:
 
     def knoepfe(self) -> list[tuple[str, str]]:
         if self.art == "frage":
-            return [("ja", "Ja"), ("nein", "Nein"), ("stopp", "Stopp"), ("chat", "Chat"), ("aus", "Ausblenden")]
-        if self.art == "arbeitet":
-            return [("stopp", "Stopp"), ("chat", "Chat"), ("aus", "Ausblenden")]
-        if self.art == "gestoppt":
-            return [("weiter", "Freigeben"), ("chat", "Chat"), ("aus", "Ausblenden")]
-        return [("chat", "Chat"), ("aus", "Schließen")]
+            k = [("ja", "Ja"), ("nein", "Nein"), ("stopp", "Stopp"), ("chat", "Chat"), ("aus", "Ausblenden")]
+        elif self.art == "arbeitet":
+            k = [("stopp", "Stopp"), ("chat", "Chat"), ("aus", "Ausblenden")]
+        elif self.art == "gestoppt":
+            k = [("weiter", "Freigeben"), ("chat", "Chat"), ("aus", "Ausblenden")]
+        else:
+            k = [("chat", "Chat"), ("aus", "Schließen")]
+        if self.chat_offen:
+            k = [("senden", "Senden")] + [(s, "Chat zu" if s == "chat" else t) for s, t in k]
+        return k
 
     @property
     def mit_eingabe(self) -> bool:
-        return self.art == "frage"
+        return self.art == "frage" or self.chat_offen
 
     def verarbeiten(self, nachricht: dict) -> bool:
         """Nachricht der Bridge einarbeiten. True = neu zeichnen."""
@@ -3331,7 +3338,24 @@ class OverlayModell:
             self.gestoppt = False
             self.sichtbar = False
             return {"type": "overlay_weiter"}
+        if knopf == "chat":
+            # Auf und zu — das Feld bekommt beim Aufklappen sofort den Fokus.
+            self.chat_offen = not self.chat_offen
+            if self.chat_offen:
+                self.sichtbar, self.ausgeblendet = True, False
+            return None
+        if knopf == "senden":
+            text = " ".join(eingabe.split())[:2000]
+            if not text:
+                return None
+            self.chat_offen = False
+            if self.art == "arbeitet":
+                self.text = "Hinweis an den Agenten geschickt …"
+            else:
+                self._zeigen("arbeitet", "An den Agenten geschickt …")
+            return {"type": "overlay_chat", "text": text}
         if knopf == "aus":
+            self.chat_offen = False
             self.sichtbar = False
             self.ausgeblendet = self.art in ("arbeitet", "hinweis")
             return None
@@ -3341,21 +3365,8 @@ class OverlayModell:
 _overlay: dict = {"modell": OverlayModell(), "bridge": None, "ui": None}
 
 
-def _overlay_chat_url(cfg: dict) -> str | None:
-    base = str(cfg.get("url") or "").rstrip("/")
-    if not base:
-        return None
-    agent_id = _overlay["modell"].agent_id
-    return f"{base}/agents/{urllib.parse.quote(str(agent_id))}" if agent_id else base
-
-
 def _overlay_klick(cfg: dict, knopf: str, eingabe: str = "") -> None:
     """Gemeinsamer Klick-Weg beider Oberflaechen."""
-    if knopf == "chat":
-        url = _overlay_chat_url(cfg)
-        if url:
-            webbrowser.open(url)
-        return
     nachricht = _overlay["modell"].klick(knopf, eingabe)
     bridge_instanz = _overlay.get("bridge")
     if nachricht and bridge_instanz is not None:
@@ -3388,11 +3399,16 @@ class _MacOverlay:
     Symbolknoepfe (Stopp, Chat, Ausblenden). AppKit nur auf dem Hauptthread."""
 
     W = 560
-    HAUPT = ("ja", "nein", "weiter")
+    HAUPT = ("ja", "nein", "weiter", "senden")
 
     def __init__(self, cfg: dict) -> None:
         self.cfg = cfg
         self.panel = None
+        # Uebergaenge merken: das Feld wird nur beim AUFTAUCHEN geleert (eine
+        # Statusmeldung des laufenden Auftrags darf Getipptes nicht loeschen),
+        # und den Fokus bekommt es nur beim Aufklappen des Chats.
+        self._feld_offen = False
+        self._chat_offen = False
 
     def zeichnen(self) -> None:
         from PyObjCTools import AppHelper  # type: ignore
@@ -3419,6 +3435,14 @@ class _MacOverlay:
                     knopf = ui.tag_zu_knopf.get(int(sender.tag()), "")
                     eingabe = str(ui.eingabe.stringValue()) if ui.eingabe is not None else ""
                     _overlay_klick(ui.cfg, knopf, eingabe)
+
+                def eingabe_(self, sender):
+                    # Enter im Feld: im Chat abschicken; bei einer Frage nichts tun
+                    # (dort entscheidet der Mensch mit Ja oder Nein).
+                    ui = _overlay.get("ui")
+                    if ui is None or not _overlay["modell"].chat_offen:
+                        return
+                    _overlay_klick(ui.cfg, "senden", str(sender.stringValue()))
 
                 def windowDidMove_(self, _note):
                     ui = _overlay.get("ui")
@@ -3505,6 +3529,8 @@ class _MacOverlay:
 
         self.handler = _OverlayHandlerKlasse.alloc().init()
         panel.setDelegate_(self.handler)
+        self.eingabe.setTarget_(self.handler)
+        self.eingabe.setAction_("eingabe:")
 
         def knopf(tag, chip=False):
             b = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, 80, 24 if chip else 30))
@@ -3518,7 +3544,7 @@ class _MacOverlay:
             cv.addSubview_(b)
             return b
 
-        self.haupt_knoepfe = [knopf(i) for i in range(2)]
+        self.haupt_knoepfe = [knopf(i) for i in range(3)]
         self.chips = [knopf(10 + i, chip=True) for i in range(4)]
         self.marke = label(10.5, 0.0, 0.35)
         self.marke.setStringValue_("AI Employee")
@@ -3549,6 +3575,7 @@ class _MacOverlay:
             m = _overlay["modell"]
             if not m.sichtbar:
                 self.panel.orderOut_(None)
+                self._feld_offen = self._chat_offen = False
                 _sperrzone(None)
                 return
             self.kopf.setStringValue_(_OVERLAY_TITEL.get(m.art, ""))
@@ -3557,8 +3584,12 @@ class _MacOverlay:
             self.text.setStringValue_(m.text)
             self.detail.setStringValue_(m.detail)
             self.feld.setHidden_(not m.mit_eingabe)
-            if m.mit_eingabe:
+            if m.mit_eingabe and not self._feld_offen:
                 self.eingabe.setStringValue_("")
+                self.eingabe.cell().setPlaceholderString_(
+                    "Nachricht an den Agenten — Enter schickt sie" if m.chat_offen
+                    else "Antwort oder Hinweis (optional)")
+            self._feld_offen = m.mit_eingabe
             alle = m.knoepfe()
             haupt = [(k, t) for k, t in alle if k in self.HAUPT]
             chips = [(k, t) for k, t in alle if k not in self.HAUPT]
@@ -3569,7 +3600,7 @@ class _MacOverlay:
                     k, t = haupt[i]
                     b.setTitle_(t)
                     self.tag_zu_knopf[i] = k
-                    self._knopf_stil(b, "haupt" if k in ("ja", "weiter") else "neben")
+                    self._knopf_stil(b, "haupt" if k in ("ja", "weiter", "senden") else "neben")
                 b.setHidden_(i >= len(haupt))
             for i, b in enumerate(self.chips):
                 if i < len(chips):
@@ -3589,9 +3620,17 @@ class _MacOverlay:
                     self._knopf_stil(b, "warn" if k == "stopp" else "neben")
                 b.setHidden_(i >= len(chips))
             self._anordnen(len(haupt), m.mit_eingabe)
-            # Kein makeKeyWindow: Tasten, die der Agent gerade tippt, sollen nicht im
-            # Overlay landen. Der Mensch klickt ins Feld, wenn er etwas schreiben will.
+            # Sonst kein makeKeyWindow: Tasten, die der Agent gerade tippt, sollen
+            # nicht im Overlay landen. Nur wenn der Mensch „Chat“ klickt, bekommt
+            # das Feld sofort den Fokus — und gibt ihn nach dem Senden wieder ab.
             self.panel.orderFrontRegardless()
+            if m.chat_offen and not self._chat_offen:
+                self.panel.makeKeyWindow()
+                self.panel.makeFirstResponder_(self.eingabe)
+            elif self._chat_offen and not m.chat_offen and self.panel.isKeyWindow():
+                self.panel.makeFirstResponder_(None)
+                self.panel.resignKeyWindow()
+            self._chat_offen = m.chat_offen
             self._sperrzone_setzen()
         except Exception:  # noqa: BLE001 — ein Zeichenfehler darf die Bridge nicht stoeren
             app_log.warning("Overlay nicht zeichenbar", exc_info=True)
@@ -3812,10 +3851,19 @@ class _TkOverlay:
         def klick(schluessel):
             _overlay_klick(self.cfg, schluessel, eingabe.get())
 
+        def enter(_e=None):
+            # Enter im Feld schickt im Chat ab; bei einer Frage entscheidet der Knopf.
+            if _overlay["modell"].chat_offen:
+                klick("senden")
+
+        eingabe.bind("<Return>", enter)
+        zustand = {"feld": False, "chat": False}
+
         def neu_zeichnen():
             m = _overlay["modell"]
             if not m.sichtbar:
                 root.withdraw()
+                zustand["feld"] = zustand["chat"] = False
                 _sperrzone(None)
                 return
             kopf.configure(text=_OVERLAY_TITEL.get(m.art, ""))
@@ -3828,16 +3876,19 @@ class _TkOverlay:
             else:
                 detail.pack_forget()
             if m.mit_eingabe:
-                eingabe.delete(0, "end")
+                # Nur beim Auftauchen leeren — Statusmeldungen loeschen kein Getipptes.
+                if not zustand["feld"]:
+                    eingabe.delete(0, "end")
                 eingabe.pack(side="left", fill="x", expand=True, padx=(0, 10), ipady=5)
             else:
                 eingabe.pack_forget()
+            zustand["feld"] = m.mit_eingabe
             for kind in list(haupt_rahmen.winfo_children()) + list(chip_rahmen.winfo_children()):
                 kind.destroy()
-            haupt = [(k, b) for k, b in m.knoepfe() if k in ("ja", "nein", "weiter")]
-            chips = [(k, b) for k, b in m.knoepfe() if k not in ("ja", "nein", "weiter")]
+            haupt = [(k, b) for k, b in m.knoepfe() if k in ("ja", "nein", "weiter", "senden")]
+            chips = [(k, b) for k, b in m.knoepfe() if k not in ("ja", "nein", "weiter", "senden")]
             for schluessel, beschriftung in haupt:
-                farbe = akzent if schluessel in ("ja", "weiter") else "#2a3240"
+                farbe = akzent if schluessel in ("ja", "weiter", "senden") else "#2a3240"
                 tk.Button(haupt_rahmen, text=beschriftung, bg=farbe, fg="white", relief="flat", bd=0,
                           activebackground=farbe, activeforeground="white", padx=16, pady=4, takefocus=0,
                           font=("Segoe UI Semibold", 10), command=lambda s=schluessel: klick(s)
@@ -3871,6 +3922,11 @@ class _TkOverlay:
             root.deiconify()
             root.lift()
             root.attributes("-topmost", True)
+            if m.chat_offen and not zustand["chat"]:
+                # „Chat“ geklickt: sofort tippen koennen.
+                root.focus_force()
+                eingabe.focus_set()
+            zustand["chat"] = m.chat_offen
             root.update_idletasks()
             _aus_aufnahmen_nehmen(root)
             _sperrzone((root.winfo_rootx(), root.winfo_rooty(), root.winfo_width(), root.winfo_height()))
