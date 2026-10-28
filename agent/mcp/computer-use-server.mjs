@@ -52,12 +52,13 @@ const TOOLS = [
   {
     name: "computer_screenshot",
     description:
-      "Capture a screenshot of the user's desktop. Returns a base64-encoded PNG. " +
+      "Capture a screenshot of the user's desktop. Returns base64-encoded PNGs. " +
       "Use this to see the current state of the screen before clicking or typing. " +
-      "The reply states the image size in points and, when the user has more than " +
-      "one monitor, which displays exist — click coordinates must lie inside the " +
-      "stated size, with (0,0) at the top left. Pass `display` to look at another " +
-      "monitor.",
+      "Without `display` you get EVERY monitor the user has, one image each, labelled " +
+      "with its display number and size. Click coordinates are per image, (0,0) top " +
+      "left; when clicking, moving, scrolling or dragging on a monitor other than the " +
+      "primary one, pass that image's `display` number. Pass `display` here to capture " +
+      "only one monitor.",
     inputSchema: {
       type: "object",
       properties: {
@@ -69,8 +70,7 @@ const TOOLS = [
         display: {
           type: "number",
           description:
-            "Which monitor to capture (1 = primary). Omit for the primary one. " +
-            "The reply lists the available displays.",
+            "Capture only this monitor (1 = primary). Omit to get all monitors.",
         },
       },
     },
@@ -107,6 +107,7 @@ const TOOLS = [
         y: { type: "integer", description: "Y coordinate in pixels." },
         button: { type: "string", enum: ["left", "right", "middle"], default: "left" },
         double: { type: "boolean", description: "Double-click if true.", default: false },
+        display: { type: "number", description: "Monitor the coordinates refer to (the display number of the screenshot). Omit for the primary monitor." },
       },
     },
   },
@@ -158,6 +159,7 @@ const TOOLS = [
           description: "Scroll clicks. Positive = up/forward, negative = down/backward.",
           default: 3,
         },
+        display: { type: "number", description: "Monitor the coordinates refer to (the display number of the screenshot). Omit for the primary monitor." },
       },
     },
   },
@@ -170,6 +172,7 @@ const TOOLS = [
       properties: {
         x: { type: "integer" },
         y: { type: "integer" },
+        display: { type: "number", description: "Monitor the coordinates refer to (the display number of the screenshot). Omit for the primary monitor." },
       },
     },
   },
@@ -185,6 +188,7 @@ const TOOLS = [
         x2: { type: "integer" },
         y2: { type: "integer" },
         duration: { type: "number", description: "Drag duration in seconds (default 0.3).", default: 0.3 },
+        display: { type: "number", description: "Monitor the coordinates refer to (the display number of the screenshot). Omit for the primary monitor." },
       },
     },
   },
@@ -603,8 +607,10 @@ export function buildServer() {
         case "computer_screenshot": {
           const screenshotParams = { scale: args?.scale ?? 1.0 };
           // Nur mitschicken, wenn wirklich gewaehlt — eine aeltere Bridge kennt
-          // den Parameter nicht.
+          // den Parameter nicht. Ohne Wahl: alle Monitore (eine aeltere Bridge
+          // ignoriert den Wunsch und liefert wie bisher nur den Hauptbildschirm).
           if (args?.display) screenshotParams.display = Number(args.display);
+          else screenshotParams.alle_bildschirme = true;
           result = await sendCommand("screenshot", screenshotParams, 30);
           if (result.screenshot_b64) {
             // Groesse und Bildschirme MITSAGEN. Die Bridge rechnet beides seit
@@ -620,21 +626,30 @@ export function buildServer() {
               );
             }
             const monitore = result.displays || [];
+            const weitere = Array.isArray(result.weitere) ? result.weitere : [];
             if (monitore.length > 1) {
               const liste = monitore
                 .map((d) => `${d.number}${d.primary ? " (primary)" : ""}: ${d.width}x${d.height}`)
                 .join(", ");
               teile.push(
-                `The user has ${monitore.length} displays (${liste}); this is number ` +
-                `${result.display}. Pass display=N to look at another one.`,
+                `The user has ${monitore.length} displays (${liste}). ` +
+                (weitere.length
+                  ? "Each image below is labelled with its display number — pass that number as `display` when clicking on it."
+                  : `This is number ${result.display}. Pass display=N to look at another one.`),
               );
             }
-            return {
-              content: [
-                { type: "text", text: teile.join(" ") },
-                { type: "image", data: result.screenshot_b64, mimeType: "image/png" },
-              ],
-            };
+            const content = [{ type: "text", text: teile.join(" ") }];
+            if (weitere.length) {
+              content.push({ type: "text", text: `Display ${result.display}${groesse.w ? ` (${groesse.w}x${groesse.h})` : ""}:` });
+            }
+            content.push({ type: "image", data: result.screenshot_b64, mimeType: "image/png" });
+            for (const w of weitere) {
+              if (!w?.screenshot_b64) continue;
+              const g = w.image_size || {};
+              content.push({ type: "text", text: `Display ${w.display}${g.w ? ` (${g.w}x${g.h})` : ""}:` });
+              content.push({ type: "image", data: w.screenshot_b64, mimeType: "image/png" });
+            }
+            return { content };
           }
           return {
             content: [{ type: "text", text: `Error: screenshot did not return image data: ${JSON.stringify(result)}` }],
@@ -656,6 +671,7 @@ export function buildServer() {
             x: args.x, y: args.y,
             button: args?.button ?? "left",
             double: args?.double ?? false,
+            ...(args?.display ? { display: Number(args.display) } : {}),
           });
           return { content: [{ type: "text", text: result.ok ? "Clicked." : `Error: ${result.error}` }] };
 
@@ -668,17 +684,18 @@ export function buildServer() {
           return { content: [{ type: "text", text: result.ok ? "Key pressed." : `Error: ${result.error}` }] };
 
         case "computer_scroll":
-          result = await sendCommand("scroll", { x: args.x, y: args.y, amount: args?.amount ?? 3 });
+          result = await sendCommand("scroll", { x: args.x, y: args.y, amount: args?.amount ?? 3, ...(args?.display ? { display: Number(args.display) } : {}) });
           return { content: [{ type: "text", text: result.ok ? "Scrolled." : `Error: ${result.error}` }] };
 
         case "computer_move":
-          result = await sendCommand("move", { x: args.x, y: args.y });
+          result = await sendCommand("move", { x: args.x, y: args.y, ...(args?.display ? { display: Number(args.display) } : {}) });
           return { content: [{ type: "text", text: result.ok ? "Moved." : `Error: ${result.error}` }] };
 
         case "computer_drag":
           result = await sendCommand("drag", {
             x1: args.x1, y1: args.y1, x2: args.x2, y2: args.y2,
             duration: args?.duration ?? 0.3,
+            ...(args?.display ? { display: Number(args.display) } : {}),
           });
           return { content: [{ type: "text", text: result.ok ? "Dragged." : `Error: ${result.error}` }] };
 
