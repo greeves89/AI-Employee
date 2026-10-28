@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.393.4] - 2026-10-28
+
+### Behoben
+- **Projekte blieben stehen, obwohl Arbeit da war.** Der Lead-Takt lief alle 30 Minuten, sichtete aber nur (gemessen: zehn Takte hintereinander ohne jede Bewegung). Er vergab nichts, weil er sich selbst nur nehmen durfte, „wenn sonst niemand passt“, und als einziges Mitglied darin keinen Auftrag sah. Jetzt gilt: Liegt etwas in Bereit und ist kein Kollege frei, nimmt der Lead die oberste Karte selbst. Bereites liegen zu lassen ist ausdrücklich ein Fehler. Karten mit „extern in Arbeit“ nimmt er nicht.
+- **Der Takt lief ins Leere und kostete trotzdem.** Liegen nur Karten im Eingang, die der Lead schon gesichtet und als unklar eingestuft hat, fällt der Lauf jetzt aus. Er läuft wieder bei Bereitem, neuen Karten im Eingang, neuen Nachrichten oder fälligem Tagesbericht.
+
+### Neu
+- **Ein Projekt bemerkt selbst, wenn es stillsteht.** Arbeitet seit zwei Stunden niemand an einer Karte, obwohl Karten offen sind, erscheinen im Projektgespräch eine Meldung und beim Lead eine Benachrichtigung, höchstens einmal am Tag je Art: „Nichts ist bereit — die Agenten warten“ (mit dem Hinweis, Karten einzuplanen oder `status/ready` zu setzen) oder „Bereite Karten liegen, aber niemand arbeitet daran“.
+
 ## [1.393.3] - 2026-10-28
 
 ### Geändert

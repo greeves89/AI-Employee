@@ -1109,10 +1109,25 @@ Mit einem **Arbeitstakt** (Bearbeiten → Arbeitstakt: alle 30 Minuten, stündli
 2. Er sichtet den Eingang: Klares kommt nach Bereit (mit Priorität), Unklares bekommt eine
    **Notiz** mit der offenen Frage (gelb auf der Karte), Doppeltes wird verworfen.
 3. Er vergibt die wichtigsten bereiten Karten — höchstens eine je Kollege, der gerade frei ist.
+   Ist niemand frei oder ist er allein im Projekt, **nimmt er die oberste bereite Karte selbst**.
+   Karten mit „extern dran“ (Kap. 6a.9) lässt er liegen.
 
-Die eigentliche Arbeit passiert in den vergebenen Läufen. **Liegt nichts im Eingang und nichts
-auf Bereit, fällt der Takt-Lauf aus** und kostet nichts. Der Takt braucht einen Lead (oder
-genau ein Mitglied).
+Die eigentliche Arbeit passiert in den vergebenen Läufen. Gearbeitet wird an dem, was in
+**Bereit** liegt: Einplanen ist deine Entscheidung (Knopf **Einplanen** oder im Repo das Tag
+`status/ready`); Klares plant auch der Lead selbst ein.
+
+**Wann der Takt läuft** *(seit 1.393.4)*: wenn etwas in Bereit liegt, neue Karten im Eingang
+angekommen sind, jemand im Projektgespräch geschrieben hat oder der Tagesbericht fällig ist.
+Liegt nur Altes im Eingang, das der Lead schon gesichtet hat, fällt der Lauf aus und kostet nichts.
+
+**Stillstand bemerkt das Projekt selbst** *(seit 1.393.4)*: Arbeitet seit zwei Stunden niemand an
+einer Karte, obwohl Karten offen sind, steht im **Gespräch** eine Meldung und der Lead bekommt
+eine Benachrichtigung — höchstens einmal am Tag:
+- **„Nichts ist bereit“** — plane die nächsten Karten ein, dann nimmt der Lead sie beim
+  nächsten Takt.
+- **„Bereite Karten liegen“** — der Lead vergibt beim nächsten Takt, notfalls an sich selbst.
+
+Der Takt braucht einen Lead (oder genau ein Mitglied).
 
 ### 6a.7 Projektwissen
 
