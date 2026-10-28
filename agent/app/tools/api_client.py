@@ -332,7 +332,7 @@ class OrchestratorAPIClient:
             timeout_value = 15.0
 
         befehl = dict(params.get("params") or {})
-        if action == "screenshot" and not befehl.get("display"):
+        if not befehl.get("display") and action == "screenshot":
             # Ohne Wahl alle Monitore (eine aeltere Bridge ignoriert den Wunsch).
             befehl["alle_bildschirme"] = True
         result = await self._request(
