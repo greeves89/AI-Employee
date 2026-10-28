@@ -13,11 +13,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 - **Das Browserprofil liegt verschlüsselt auf der Platte.** Nach einer Anmeldung enthält ein Chromium-Profil faktisch Zugangsdaten. Dauerhaft gespeichert wird jetzt nur noch ein verschlüsseltes Archiv; das Arbeitsprofil entsteht beim Start daraus und liegt außerhalb des Arbeitsbereichs.
 
 ### Behoben
+- **Die Freigabeliste des Agenten-Browsers war mit einem Backslash umgehbar.** `https://fremd.example\.erlaubt.example/` las die Freigabeprüfung als Unterseite von `erlaubt.example`, der Browser rief aber `fremd.example` auf — dieselbe Lücke, die in v1.381.1 für die Freigabelisten des Orchestrators geschlossen wurde. Die Prüfung im Agenten holt den Host jetzt nach denselben Regeln; Adressen, die Prüfung und Browser verschieden lesen (Backslash, Steuer- und Leerzeichen oder Prozent-Kodierung im Host), gelten als nicht freigegeben.
 - **Eine gesperrte Adresse in der Browser-Arbeitsfläche blieb wortlos.** Wer eine nicht freigegebene Adresse eintippte, sah nur, dass nichts passiert. Jetzt nennt die Arbeitsfläche den Grund und die freigegebenen Domains.
 
 ### Bekannte Grenze
 - Für `claude_code`-Agenten greift die Freigabeliste nur als **weiche Schranke**: diese Laufzeit bedient den Browser über den Playwright-MCP in einem eigenen Prozess, der ausdrücklich keine Sicherheitsgrenze zusagt und Weiterleitungen nicht prüft; ins Prüfprotokoll kommen seine Aufrufe gar nicht. Hart durchgesetzt und protokolliert wird der Weg über das eigene Browserwerkzeug (Codex, Custom-LLM) und jede Eingabe aus der Arbeitsfläche. Diese Parität ist der nächste Schritt in #828 und braucht eine Richtungsentscheidung.
 - Ein harter Abbruch des Containers (OOM-Kill) zwischen zwei Sicherungspunkten verliert die jüngsten Profiländerungen; gesichert wird nach jeder Navigation und beim geordneten Beenden.
+## [1.381.2] - 2026-10-28
+
+### Verbessert
+- **Projekt-Board nutzt die ganze Bildschirmhöhe.** Auf breiten Bildschirmen (fünf Spalten nebeneinander) reichen die Spalten bis zum unteren Rand, statt nach etwa 34rem leeren Platz zu lassen.
+- **Kein „Erledigt“ mehr bei offenem PR.** Der Knopf verschob nur die Karte, der Pull Request blieb offen. Solange der PR offen ist, steht auf der Karte jetzt „Wandert nach dem Merge von selbst nach Erledigt“; zusammengeführt wird über den PR-Link auf GitHub, danach zieht der Abgleich die Karte nach.
+
+## [1.381.1] - 2026-10-28
+
+### Sicherheit
+- **Freigabelisten für Adressen ließen sich mit einem Backslash umgehen.** `https://fremd.example\.erlaubt.example/` las die Plattform als Unterseite von `erlaubt.example`, der Browser rief aber `fremd.example` auf. Betroffen waren die erlaubten Domains einer Bridge-Sitzung, die URL-Freigabeliste der Agenten und die Freigabeliste für Rückrufe. Adressen, die Plattform und Browser verschieden lesen (Backslash, Steuer- und Leerzeichen oder Prozent-Kodierung im Host), werden jetzt überall abgelehnt; alle drei Prüfungen holen den Host an einer gemeinsamen Stelle. Leere Einträge in der URL-Freigabeliste lassen nichts mehr durch.
+
+## [1.381.0] - 2026-10-28
+
+### Hinzugefügt
+- **Erklärung bei zwei technischen Begriffen in den Agent-Einstellungen.** "MCP-Endpunkt" und "Berechtigungen (Sudo-Pakete)" zeigen jetzt ein kleines Hilfe-Symbol mit einer kurzen Erklärung in normaler Sprache. Teil von Issue #787 Punkt 8 ("technische Labels ohne Erklärung für Nicht-Techniker") — die dort ebenfalls geforderte Gliederung der Seite in aufklappbare Abschnitte war bereits seit Ende September umgesetzt.
 
 ## [1.380.3] - 2026-10-28
 

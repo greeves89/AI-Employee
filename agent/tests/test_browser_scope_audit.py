@@ -83,6 +83,46 @@ class ScopeUndAudit(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(f("nicht-mal-eine-url", ["example.com"]))
         self.assertFalse(f("", ["example.com"]))
 
+    def test_mehrdeutiger_host_gilt_nicht_als_freigegeben(self):
+        """Adressen, die Python und Browser verschieden lesen, sind gesperrt.
+
+        Dieselbe Luecke wie in der Freigabeliste des Orchestrators (v1.381.1):
+        ``urlparse`` liest ``https://fremd.example\\.erlaubt.example/`` als Host
+        ``fremd.example\\.erlaubt.example`` -- das endet auf ``.erlaubt.example``
+        und waere damit freigegeben. Chromium ruft aber ``fremd.example`` auf.
+        Ein Host-Vergleich allein genuegt also NICHT; mehrdeutige Adressen
+        muessen abgelehnt werden, sonst ist die Freigabeliste umgehbar.
+        """
+        f = self.browser._url_in_scope
+        erlaubt = ["erlaubt.example"]
+        # Was weiter gehen MUSS (sonst ist die Haertung zu breit):
+        self.assertTrue(f("https://erlaubt.example/x", erlaubt))
+        self.assertTrue(f("https://a.erlaubt.example/x", erlaubt))
+        # Die drei Mehrdeutigkeits-Klassen:
+        self.assertFalse(f("https://fremd.example\\.erlaubt.example/", erlaubt),
+                         "Backslash im Host umgeht die Freigabeliste")
+        self.assertFalse(f("https://fremd.example%2e.erlaubt.example/", erlaubt),
+                         "Prozent-Kodierung im Host umgeht die Freigabeliste")
+        self.assertFalse(f("https://fremd.example\t.erlaubt.example/", erlaubt),
+                         "Steuerzeichen im Host umgeht die Freigabeliste")
+
+    async def test_navigate_mit_backslash_umgehung_laedt_nicht(self):
+        """Verhaltensnachweis: die Seite darf gar nicht geladen werden.
+
+        Der Rueckgabewert allein beweist nichts -- erst ein leeres
+        ``goto_aufrufe`` zeigt, dass die Anfrage den Container nie verlassen hat.
+        """
+        with self._mit_freigabe("erlaubt.example"):
+            ergebnis = await self.browser.run(
+                {"action": "navigate",
+                 "url": "https://fremd.example\\.erlaubt.example/geheim"})
+
+        self.assertTrue(ergebnis.startswith("Error:"), ergebnis)
+        self.assertEqual([], self.seite.goto_aufrufe)
+        eintraege = self.bs.audit_log()
+        self.assertEqual(1, len(eintraege))
+        self.assertFalse(eintraege[0]["erlaubt"])
+
     def test_ohne_freigabeliste_unbeschraenkt(self):
         with mock.patch.dict(os.environ, {"BROWSER_ALLOWED_DOMAINS": ""}):
             self.assertIsNone(self.browser._scope_fehler("https://irgendwo.invalid"))

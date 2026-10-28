@@ -101,20 +101,51 @@ def _erlaubte_domains() -> list[str] | None:
     return [d.strip() for d in roh.split(",") if d.strip()]
 
 
+def _eindeutiger_host(url: str) -> str | None:
+    """Host einer Adresse -- ``None``, wenn Python und Browser ihn verschieden lesen.
+
+    Spiegelt ``orchestrator/app/core/url_guard.py:eindeutiger_host``. Agent und
+    Orchestrator sind getrennte Prozesse ohne gemeinsamen Import, deshalb steht
+    die Logik hier ein zweites Mal -- und muss mit dem Original mitwandern.
+
+    ``urlparse`` und der WHATWG-Parser der Browser sind sich bei ``\\``,
+    Steuer- und Leerzeichen und Prozent-Kodierung im Host nicht einig:
+    ``https://fremd.example\\.erlaubt.example/`` ist fuer Python
+    ``fremd.example\\.erlaubt.example`` (endet auf ``.erlaubt.example``), fuer
+    Chromium aber ``fremd.example``. Eine Freigabeliste, die den Host selbst aus
+    ``urlparse`` zieht, laesst genau diese Adresse durch und schickt den Browser
+    woanders hin. ``None`` ist daher immer als "nicht erlaubt" zu behandeln.
+    """
+    from urllib.parse import urlparse
+
+    try:
+        teile = urlparse(url if "://" in url else f"https://{url}")
+    except ValueError:
+        return None
+    # Bis zum ersten "/" nach dem Schema gehoert alles zur Authority -- auch das,
+    # was ein Browser wegen "\\" schon als Pfad laese.
+    rest = url.split("://", 1)[-1]
+    authority = rest.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0]
+    if any(z == "\\" or z == "%" or ord(z) <= 0x20 or ord(z) == 0x7F for z in authority):
+        return None
+    try:
+        host = (teile.hostname or "").lower().strip(".")
+    except ValueError:
+        return None
+    return host or None
+
+
 def _url_in_scope(url: str, allowed: list[str]) -> bool:
     """Spiegelt ``orchestrator/app/api/computer_use.py:_url_in_scope`` --
 
     Agent und Orchestrator sind getrennte Prozesse ohne gemeinsamen Import,
     deshalb hier dieselbe Logik noch einmal: verglichen wird der HOST, nicht
     die Zeichenkette. ``example.com`` erlaubt ``a.example.com``, aber nicht
-    ``example.com.angreifer.tld`` und nicht ``boeseexample.com``.
+    ``example.com.angreifer.tld`` und nicht ``boeseexample.com``. Mehrdeutige
+    Adressen (Backslash, Steuerzeichen, Prozent-Kodierung im Host) gelten als
+    nicht freigegeben.
     """
-    from urllib.parse import urlparse
-
-    try:
-        host = (urlparse(url).hostname or "").lower()
-    except ValueError:
-        return False
+    host = _eindeutiger_host(url)
     if not host:
         return False
     for entry in allowed:
