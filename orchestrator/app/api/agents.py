@@ -3553,6 +3553,17 @@ async def get_agent_browser_audit(
     if not name:
         return {"audit_log": [], "warning": "Agent hat keinen laufenden Container."}
 
+    # Der Rechnername wird aus dem ANZEIGENAMEN des Agenten und der Kennung
+    # aus der Adresse gebaut -- beides vom Nutzer gesetzt. Hier hart
+    # einklammern statt sich auf die Bereinigung im Namensbauer zu
+    # verlassen: ein ``:``, ``/`` oder ``@`` darin wuerde aus dem internen
+    # Aufruf einen Aufruf an ein fremdes Ziel machen. Die Pruefung steht
+    # bewusst hier und nicht in einem Hilfsmodul -- direkt vor dem Bau der
+    # Adresse ist sie fuer Leser UND fuer die Code-Analyse die Schranke.
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_.-]{0,126}", name):
+        logger.error("[Browser] Unerwarteter Containername fuer %s", scrub_log(agent_id))
+        raise HTTPException(status_code=500, detail="Unerwarteter Containername")
+
     import aiohttp
 
     url = f"http://{name}:{BROWSER_STROM_PORT}/browser/audit"
@@ -3563,7 +3574,11 @@ async def get_agent_browser_audit(
                     return {"audit_log": [], "warning": f"Agent antwortete mit {resp.status}."}
                 return await resp.json()
     except aiohttp.ClientError as e:
-        return {"audit_log": [], "warning": f"Agent nicht erreichbar: {e}"}
+        # Grund ins Protokoll, NICHT in die Antwort: der Text eines
+        # Verbindungsfehlers traegt interne Rechnernamen und Adressen.
+        logger.warning("[Browser] Pruefprotokoll von %s nicht erreichbar: %s",
+                       scrub_log(agent_id), scrub_log(str(e)))
+        return {"audit_log": [], "warning": "Agent nicht erreichbar."}
 
 
 class BrowserModeUpdate(BaseModel):
