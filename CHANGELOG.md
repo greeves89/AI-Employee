@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.393.2] - 2026-10-28
+
+### Behoben
+- **Das Projekt-Board zeigte nicht, wenn jemand außerhalb ein Ticket nahm.** Nahm ein Agent einer anderen Anlage, Claude Code oder ein Mensch ein Issue (Zuständiger im Repo, Status-Tag wie `status/in-arbeit`), blieb die Karte im Eingang. Man sah nicht, dass jemand dran war, und der Arbeitstakt hätte sie noch einem eigenen Agenten gegeben. Jetzt gleicht das Board Zuständige und Status-Tags ab: `status/in-arbeit` (auch „in progress“, „wip“) oder ein Zuständiger führt nach In Arbeit, mit Namen an der Karte (`@name`, sonst „extern dran“). `status/ready` führt nach Bereit, `status/review` in die Prüfung. Fällt beides weg, kommt die Karte zurück. Der Takt vergibt solche Karten nicht, und die Agenten sehen in der Board-Übersicht „extern in Arbeit — nicht übernehmen“. Hat ein eigener Agent die Karte schon, bleibt sie bei ihm, der fremde Name steht daneben.
+- **Pull Requests ohne „Closes #N“ hingen nicht am Issue.** Viele PRs nennen das Issue nur im Branch-Namen (`feat/1044-…`). Diese Nummer zählt jetzt mit. Der PR erscheint dann an der Issue-Karte statt als eigene Karte.
+
+### Verbessert
+- Die Tags eines Issues stehen jetzt als kleine Schilder auf der Karte, höchstens sechs, danach „+N“.
+
 ## [1.393.1] - 2026-10-28
 
 ### Verbessert

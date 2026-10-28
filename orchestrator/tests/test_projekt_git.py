@@ -140,6 +140,85 @@ class Abgleich(Basis):
         self.assertEqual(aufruf["title"], "Issue #4")
 
 
+class ExterneBearbeitung(Abgleich):
+    """Nimmt jemand außerhalb des Boards ein Ticket (andere Anlage, Claude Code,
+    Mensch), steht das im Repo an Zuständigen oder Status-Tags. Das Board zeigt es
+    und gibt die Karte keinem eigenen Agenten mehr."""
+
+    async def test_status_tag_in_arbeit_schiebt_die_karte_und_nennt_extern(self):
+        self.gh.issues = [_issue(91, labels=["status/in-arbeit", "enhancement"])]
+        async with self.Session() as db:
+            await self._lauf(db)
+            k = (await self._karten(db))[("issue", 91)]
+            self.assertEqual((k.spalte, k.extern_bearbeiter), ("in_arbeit", "extern"))
+            self.assertEqual(k.labels, ["status/in-arbeit", "enhancement"])
+
+    async def test_zustaendige_stehen_mit_namen_an_der_karte(self):
+        issue = _issue(92)
+        issue["assignees"] = [{"login": "dev-bot"}, {"login": "anna"}]
+        self.gh.issues = [issue]
+        async with self.Session() as db:
+            await self._lauf(db)
+            k = (await self._karten(db))[("issue", 92)]
+            self.assertEqual((k.spalte, k.extern_bearbeiter), ("in_arbeit", "@dev-bot, @anna"))
+
+    async def test_ready_tag_plant_ein_und_review_tag_geht_in_die_pruefung(self):
+        self.gh.issues = [_issue(93, labels=["status/ready"]), _issue(94, labels=["Status: Review"])]
+        async with self.Session() as db:
+            await self._lauf(db)
+            karten = await self._karten(db)
+            self.assertEqual(karten[("issue", 93)].spalte, "bereit")
+            self.assertEqual(karten[("issue", 94)].spalte, "pruefung")
+
+    async def test_tag_entfernt_karte_kommt_zurueck(self):
+        self.gh.issues = [_issue(95, labels=["status/in-arbeit"])]
+        async with self.Session() as db:
+            await self._lauf(db)
+            self.gh.issues = [_issue(95, labels=["status/ready"])]
+            await self._lauf(db)
+            k = (await self._karten(db))[("issue", 95)]
+            self.assertEqual((k.spalte, k.extern_bearbeiter), ("bereit", None))
+
+    async def test_eigener_lauf_wird_nicht_verschoben_aber_der_name_steht_dran(self):
+        self.gh.issues = [_issue(96)]
+        async with self.Session() as db:
+            await self._lauf(db)
+            k = (await self._karten(db))[("issue", 96)]
+            k.spalte, k.task_id = "in_arbeit", "t-eigen"
+            await db.commit()
+            self.gh.issues[0]["assignees"] = [{"login": "fremd"}]
+            self.gh.issues[0]["labels"] = [{"name": "status/ready"}]
+            await self._lauf(db)
+            k = (await self._karten(db))[("issue", 96)]
+            self.assertEqual((k.spalte, k.task_id, k.extern_bearbeiter), ("in_arbeit", "t-eigen", "@fremd"))
+
+    async def test_pr_ueber_den_branch_namen_haengt_am_issue(self):
+        self.gh.issues = [_issue(1044, labels=["status/in-arbeit"])]
+        pr = _pr(1083, body="Teil 1 von #1044")
+        pr["head"]["ref"] = "feat/1044-fachanleitungen-deckel"
+        self.gh.pulls = [pr]
+        async with self.Session() as db:
+            await self._lauf(db)
+            karten = await self._karten(db)
+            k = karten[("issue", 1044)]
+            self.assertEqual((k.pr_nr, k.spalte), (1083, "pruefung"))
+            self.assertNotIn(("pr", 1083), karten)
+
+    def test_status_aus_tags(self):
+        f = projekt_git._status_aus_tags
+        self.assertEqual(f(["status/in-arbeit"]), "in_arbeit")
+        self.assertEqual(f(["In Progress"]), "in_arbeit")
+        self.assertEqual(f(["status/ready", "status/review"]), "pruefung")
+        self.assertIsNone(f(["bug", "enhancement", "ready-made"]))
+
+    def test_branch_nummer(self):
+        f = lambda ref: projekt_git._BRANCH_NR.findall(ref)  # noqa: E731
+        self.assertEqual(f("feat/1044-deckel"), ["1044"])
+        self.assertEqual(f("issue-91"), ["91"])
+        self.assertEqual(f("fix/bridge-windows-link"), [])
+        self.assertEqual(f("release/v1.391.0"), [])
+
+
 class RepoSetzen(Basis):
     async def test_ersteller_verbindet_ein_repo(self):
         async with self.Session() as db:

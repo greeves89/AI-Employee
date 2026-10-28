@@ -20,6 +20,8 @@ export interface ProjektKarte {
   task_status: string | null;
   stufe: ProjektStufe | null;
   notiz: string | null;
+  /** Wer das Issue außerhalb des Boards bearbeitet („@name“ oder „extern“). */
+  extern_bearbeiter: string | null;
   pr_nr: number | null;
   pr_url: string | null;
   pr_zustand: string | null;

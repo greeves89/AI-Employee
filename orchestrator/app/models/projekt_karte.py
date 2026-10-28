@@ -48,3 +48,6 @@ class ProjektKarte(Base, TimestampMixin):
     # keine Anweisung (gemischte Projekte, core/projekte.karten_auftrag).
     ersteller_user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     erledigt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Wer das Issue AUSSERHALB des Boards bearbeitet: Zuständige im Repo („@name“)
+    # oder „extern“, wenn nur ein Status-Tag gesetzt ist. Leer = niemand von außen.
+    extern_bearbeiter: Mapped[str | None] = mapped_column(String(200), nullable=True)
