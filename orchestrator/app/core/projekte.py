@@ -420,6 +420,17 @@ def karten_auftrag(karte: ProjektKarte, projekt_name: str, *, fremd: bool = Fals
         "- Legst du einen Pull Request an, gib seine Adresse als `pr_url` mit.\n"
         "- Erkenntnisse, die das ganze Projekt betreffen, hältst du mit `projekt_wissen_schreiben` fest.\n"
         "- Bist du fertig, schließ den Lauf mit einem kurzen Ergebnis ab — die Karte geht dann zur Prüfung."
+        + (
+            f"\n\n## Regeln für das Issue #{karte.extern_nr}\n"
+            f"- Das Board hat das Issue im Repo schon als übernommen markiert (Tag `status/in-arbeit` und "
+            "Kommentar) — andere Agenten und Menschen sehen damit, dass du dran bist.\n"
+            f"- Ein Issue, ein Branch: `{karte.extern_nr}-<kurzer-name>`. Pull Request mit `Closes #{karte.extern_nr}` "
+            "im Text, mit Testnachweis und offenen Punkten.\n"
+            "- Gilt im Repo eine `AGENTS.md` oder `CONTRIBUTING.md`, halte dich an ihre Regeln.\n"
+            "- Merkst du, dass schon jemand anderes daran arbeitet (fremder Branch oder PR zur Nummer), hör auf "
+            "und melde das im Ergebnis, statt doppelt zu arbeiten."
+            if karte.quelle == "issue" and karte.extern_nr else ""
+        )
     )
 
 
@@ -431,7 +442,7 @@ def in_arbeit_setzen(karte: ProjektKarte, task: Task, agent_id: str | None) -> N
     karte.erledigt_at = None
 
 
-async def lauf_beendet(db: AsyncSession, task: Task) -> None:
+async def lauf_beendet(db: AsyncSession, task: Task, redis=None) -> None:
     """Ende eines Laufs: seine Karte geht zur Prüfung (abgebrochen: zurück nach Bereit).
 
     Aufgerufen aus ``TaskRouter.handle_task_completion`` und beim Abbrechen. Nur der
@@ -448,6 +459,12 @@ async def lauf_beendet(db: AsyncSession, task: Task) -> None:
         karte.task_id = None
         karte.agent_id = None
         karte.stufe = None
+        if karte.quelle == "issue":
+            # Das Ticket ist wieder frei — auch für Boards außerhalb.
+            from app.core import projekt_git
+
+            projekt_git.uebernahme_im_hintergrund(karte.team_id, karte.id, redis, agent_name=None,
+                                                  uebernehmen=False)
     else:
         karte.spalte = "pruefung"
 

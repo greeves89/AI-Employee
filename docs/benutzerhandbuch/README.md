@@ -1297,6 +1297,19 @@ Ab dann, beim Öffnen des Projekts und regelmäßig (siehe oben):
 - Ein **gemergter** PR ohne eigenes Issue wird erledigt.
 - **Tags** des Issues stehen als kleine Schilder auf der Karte *(seit 1.392.0)*.
 
+**Wenn das Board ein Ticket vergibt** *(seit 1.393.5)* — es hält sich an dieselben Regeln wie
+Agenten außerhalb (etwa eine `AGENTS.md` im Repo):
+
+- **Vorher fragt es live im Repo**, ob schon jemand dran ist (Zuständiger, Tag
+  **status/in-arbeit** oder ein offener Pull Request zum Ticket). Dann vergibt es nicht, und die
+  Karte zeigt, wer dran ist.
+- **Beim Vergeben** setzt es im Repo das Tag **status/in-arbeit** und schreibt einen
+  Übernahme-Kommentar (welcher Agent, Branch `<nr>-…`, Pull Request mit `Closes #<nr>`).
+- **Nach dem Pull Request** nimmt es das Tag wieder weg; **wird der Lauf abgebrochen**, ebenso —
+  mit einem Kommentar, dass das Ticket wieder frei ist.
+- Darf der Schlüssel des Projekts keine Tags setzen, steht das als Notiz an der Karte; die Arbeit
+  läuft trotzdem.
+
 **Wenn jemand außerhalb des Boards ein Ticket nimmt** *(seit 1.392.0)* — etwa ein Agent einer
 anderen AI-Employee-Anlage, Claude Code oder ein Mensch direkt im Repo:
 

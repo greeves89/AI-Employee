@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.393.5] - 2026-10-28
+
+### Behoben
+- **Das Board meldete eine Übernahme nicht ins Repo.** Vergab das Board ein Ticket an einen eigenen Agenten, stand im Repo weder ein Tag noch ein Kommentar noch ein Zuständiger. Andere, etwa eine Claude-Code-Sitzung, sahen deshalb nicht, dass jemand daran arbeitet, und übernahmen dasselbe Ticket noch einmal (am 28.10. bei zwei Tickets passiert). Jetzt arbeitet das Board nach denselben Regeln wie Agenten außerhalb:
+  - Vor dem Vergeben fragt es live im Repo nach Zuständigen, dem Tag `status/in-arbeit` oder einem offenen PR zum Ticket. Ist schon jemand dran, vergibt es nicht.
+  - Beim Vergeben setzt es `status/in-arbeit` und schreibt einen Übernahme-Kommentar mit Agent, Branch `<nr>-…` und PR mit `Closes #<nr>`.
+  - Nach dem PR nimmt es das Tag wieder weg, ebenso bei einem abgebrochenen Lauf (mit Kommentar).
+  - Darf der Schlüssel keine Tags setzen, steht das als Notiz an der Karte.
+- Der Auftrag an den Agenten enthält diese Regeln: ein Branch je Issue, PR mit `Closes #<nr>`, die `AGENTS.md` des Repos beachten und bei einem fremden Branch oder PR aufhören statt doppelt zu arbeiten.
+- Das eigene In-Arbeit-Tag zählt nicht mehr als „extern dran“.
+
 ## [1.393.4] - 2026-10-28
 
 ### Behoben
