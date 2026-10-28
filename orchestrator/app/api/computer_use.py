@@ -1107,8 +1107,14 @@ def _require_owned_session(session_id: str, user) -> dict:
     return session
 
 
-async def _send_bridge_action(session: dict, action: str, timeout: float = 10.0) -> dict:
-    """Send a bare action to the bridge and await its result."""
+async def _send_bridge_action(session: dict, action: str, timeout: float = 10.0,
+                              params: dict | None = None) -> dict:
+    """Send an action to the bridge and await its result.
+
+    Für Aktionen der Plattform selbst (Aufnahme, Bridge-Wissen) — NICHT für
+    Agenten: deren Befehle laufen über ``dispatch_bridge_command`` mit
+    Capability-Gruppen, Scope-Listen und Aktionsbudget.
+    """
     if not session["bridge_connected"] or not session["bridge_ws"]:
         raise HTTPException(status_code=503, detail="Bridge not connected")
     cmd_id = uuid.uuid4().hex[:8]
@@ -1116,7 +1122,7 @@ async def _send_bridge_action(session: dict, action: str, timeout: float = 10.0)
     session["pending_results"][cmd_id] = future
     try:
         await session["bridge_ws"].send_text(json.dumps({
-            "type": "command", "id": cmd_id, "command": {"action": action, "params": {}},
+            "type": "command", "id": cmd_id, "command": {"action": action, "params": params or {}},
         }))
         return await asyncio.wait_for(future, timeout=timeout)
     except asyncio.TimeoutError:
@@ -1900,6 +1906,7 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
             pass
 
     ping_task = asyncio.create_task(_ping_loop())
+    _bridge_wissen_starten(user_id)
 
     try:
         while True:
@@ -1982,6 +1989,52 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
             if not future.done():
                 future.set_exception(RuntimeError("Bridge disconnected"))
         session["pending_results"] = {}
+
+
+def verbundene_bridge(user_id: str) -> dict | None:
+    """Die Sitzung mit verbundener Bridge dieses Nutzers (nur im Speicher)."""
+    for s in _sessions.values():
+        if s.get("user_id") == str(user_id) and s.get("bridge_connected") and s.get("bridge_ws"):
+            return s
+    return None
+
+
+async def bridge_befehl(user_id: str, action: str, params: dict, timeout: float = 30.0) -> dict:
+    """Plattform-Befehl an die verbundene Bridge eines Nutzers (Bridge-Wissen)."""
+    session = verbundene_bridge(user_id)
+    if session is None:
+        raise HTTPException(status_code=409, detail="Die Bridge ist nicht verbunden.")
+    try:
+        return await _send_bridge_action(session, action, timeout=timeout, params=params)
+    except RuntimeError:
+        raise HTTPException(status_code=409, detail="Die Bridge hat die Verbindung getrennt.")
+
+
+def _bridge_wissen_starten(user_id: str) -> None:
+    """Gespiegelte Ordner (#1092) abgleichen, solange eine Bridge des Nutzers verbunden ist.
+
+    Eine Schleife je Nutzer (``bridge_wissen.schleife_starten``); sie spricht
+    jeweils die gerade verbundene Bridge an und endet, wenn keine mehr da ist.
+    """
+    from app.core import bridge_wissen
+
+    async def befehl(action: str, params: dict, timeout: float) -> dict:
+        session = verbundene_bridge(user_id)
+        if session is None:
+            raise bridge_wissen.SyncFehler("Die Bridge hat die Verbindung getrennt.")
+        try:
+            return await _send_bridge_action(session, action, timeout=timeout, params=params)
+        except HTTPException as e:
+            raise bridge_wissen.SyncFehler(str(e.detail))
+        except RuntimeError:
+            raise bridge_wissen.SyncFehler("Die Bridge hat die Verbindung getrennt.")
+
+    try:
+        bridge_wissen.schleife_starten(user_id, befehl, lambda: verbundene_bridge(user_id) is not None)
+        # Wartet eine Schleife noch vom letzten Mal (neu verbunden): gleich loslegen.
+        bridge_wissen.anstossen(user_id)
+    except Exception:  # noqa: BLE001 — der Abgleich darf das Verbinden nie aufhalten
+        logger.warning("Bridge-Wissen nicht gestartet", exc_info=True)
 
 
 async def _authenticate_ws(websocket: WebSocket, token: str) -> str | None:

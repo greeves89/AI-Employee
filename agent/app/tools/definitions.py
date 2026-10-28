@@ -1124,7 +1124,7 @@ ORCHESTRATOR_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "projekt_wissen_suchen",
-            "description": "Search the project's own knowledge base (decisions, conventions, architecture, access notes) for a question. Look things up here before asking or guessing.",
+            "description": "Search the project's own knowledge base (decisions, conventions, architecture, access notes) for a question — plus any Second Brains attached to the project (hits from those are marked [name · brain=<label>]). Look things up here before asking or guessing.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -1148,7 +1148,7 @@ ORCHESTRATOR_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "projekt_wissen_lesen",
-            "description": "Read a page of the project's knowledge base (e.g. index.md). Without pfad: list all pages.",
+            "description": "Read a page of the project's knowledge base (e.g. index.md). Without pfad: list all pages. With brain=<label> (from a search hit) read a page of an attached Second Brain instead — read-only.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -1159,6 +1159,10 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                     "pfad": {
                         "type": "string",
                         "description": "Page path, e.g. 'index.md'."
+                    },
+                    "brain": {
+                        "type": "string",
+                        "description": "Label of an attached Second Brain (from a search hit). Omit for the project's own knowledge."
                     }
                 },
                 "required": [

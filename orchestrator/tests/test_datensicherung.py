@@ -922,3 +922,63 @@ class AbgebrochenerSicherungslaufTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WissensablagenTests(unittest.TestCase):
+    """Second Brains, Projektwissen und Projektdateien liegen in einem Host-Ordner
+    (SECONDBRAIN_BASE) — die Volume-Schleife sah ihn nie: Bis 1.385.1 enthielt keine
+    Sicherung eine einzige Wissensablage."""
+
+    def setUp(self):
+        import os
+        import tempfile
+
+        self.tmp = Path(tempfile.mkdtemp())
+        bin_ = self.tmp / "bin"
+        bin_.mkdir()
+        (bin_ / "docker").write_text(_HILFSCONTAINER_ATTRAPPE)
+        (bin_ / "docker").chmod(0o755)
+        self.log, self.stdin = self.tmp / "docker.log", self.tmp / "docker.stdin"
+        self.env = {**os.environ, "PATH": f"{bin_}:{os.environ['PATH']}",
+                    "ATTRAPPE_LOG": str(self.log), "ATTRAPPE_STDIN": str(self.stdin)}
+
+    def tearDown(self):
+        import shutil
+
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _bash(self, befehl: str, *args: str):
+        return subprocess.run(["bash", "-c", f'source "{HILFSDATEI}"; {befehl}', "_", *args],
+                              env=self.env, capture_output=True, text=True, timeout=30)
+
+    def test_ort_aus_der_env_sonst_vorgabe(self):
+        env = self.tmp / ".env"
+        env.write_text("A=1\n")
+        self.assertEqual(self._bash('brain_basis "$1"', str(env)).stdout.strip(), "/srv/secondbrain")
+        env.write_text("SECONDBRAIN_BASE=/daten/wissen\n")
+        self.assertEqual(self._bash('brain_basis "$1"', str(env)).stdout.strip(), "/daten/wissen")
+        self.assertEqual(self._bash('brain_basis "$1"', str(self.tmp / "fehlt")).stdout.strip(), "/srv/secondbrain")
+
+    def test_einpacken_liest_den_ordner_nur_lesend(self):
+        archiv = self.tmp / "wissensablagen.tar.gz"
+        lauf = self._bash('brains_einpacken "$1" "$2" alpine', str(archiv), "/srv/secondbrain")
+        self.assertEqual(lauf.returncode, 0, lauf.stderr)
+        aufruf = self.log.read_text()
+        self.assertIn("/srv/secondbrain:/quelle:ro", aufruf)
+        self.assertGreater(archiv.stat().st_size, 0)
+
+    def test_auspacken_ersetzt_den_inhalt_im_hilfscontainer(self):
+        archiv = self.tmp / "wissensablagen.tar.gz"
+        archiv.write_bytes(b"archiv-inhalt")
+        lauf = self._bash('brains_auspacken "$1" "$2" alpine', str(archiv), "/srv/secondbrain")
+        self.assertEqual(lauf.returncode, 0, lauf.stderr)
+        aufruf = self.log.read_text()
+        self.assertIn("/srv/secondbrain:/ziel", aufruf)
+        self.assertIn("find /ziel -mindepth 1 -delete", aufruf)
+        self.assertEqual(self.stdin.read_bytes(), b"archiv-inhalt")   # das Archiv kommt per stdin an
+
+    def test_beide_skripte_nutzen_die_funktionen(self):
+        sicherung = (REPO / "scripts" / "backup.sh").read_text()
+        wiederherstellung = (REPO / "scripts" / "restore.sh").read_text()
+        self.assertIn('brains_einpacken "${BACKUP_PATH}/wissensablagen.tar.gz"', sicherung)
+        self.assertIn('brains_auspacken "$BRAIN_ARCHIV"', wiederherstellung)

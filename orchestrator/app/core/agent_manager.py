@@ -2074,9 +2074,9 @@ class AgentManager:
             agent.access_policy, agent.autonomy_level or "l3"
         )
         needs_sudo = len(agent_permissions) > 0
-        from app.core.mounts import get_effective_catalog, resolve_agent_mounts, mounts_to_docker_volumes
+        from app.core.mounts import get_effective_catalog, mounts_des_agenten, resolve_agent_mounts, mounts_to_docker_volumes
         catalog = await get_effective_catalog(self.db)
-        mount_entries = resolve_agent_mounts(config.get("mounts", []), catalog, config.get("mount_modes", {}))
+        mount_entries = resolve_agent_mounts(await mounts_des_agenten(self.db, agent), catalog, config.get("mount_modes", {}))
         bind_mounts = mounts_to_docker_volumes(mount_entries) or None
         def _create_agent_container():
             return self._create_or_adopt(
@@ -2121,7 +2121,8 @@ class AgentManager:
         # 5b. Refresh instructions file with latest DEFAULT_CLAUDE_MD (CLAUDE.md for
         # Claude Code, AGENT.md for Custom LLM — model-agnostic naming).
         try:
-            agent_mounts = config.get("mounts", [])
+            from app.core.mounts import mounts_des_agenten
+            agent_mounts = await mounts_des_agenten(self.db, agent)
             from app.core import master_rules as _mr
             mode = agent.mode or config.get("mode", "claude_code")
             fresh_claude_md = _render_claude_md(
@@ -2293,13 +2294,13 @@ class AgentManager:
         if not agent.container_id:
             return False
         try:
-            from app.core.mounts import get_effective_catalog
+            from app.core.mounts import get_effective_catalog, mounts_des_agenten
             catalog = await get_effective_catalog(self.db)
             mode = agent.mode or (agent.config or {}).get("mode", "claude_code")
             build_tools = await self._build_tools_aktiv(agent.template_id)
             from app.core import master_rules as _mr
             rendered = _render_claude_md(
-                (agent.config or {}).get("mounts", []), catalog,
+                await mounts_des_agenten(self.db, agent), catalog,
                 agent_name=agent.name, agent_role=(agent.config or {}).get("role", ""),
                 master_rules=await _mr.load(self.db), mode=mode,
                 build_tools=build_tools,
@@ -2459,9 +2460,9 @@ class AgentManager:
             agent.access_policy, agent.autonomy_level or "l3"
         )
         needs_sudo = len(agent_permissions) > 0
-        from app.core.mounts import get_effective_catalog, resolve_agent_mounts, mounts_to_docker_volumes
+        from app.core.mounts import get_effective_catalog, mounts_des_agenten, resolve_agent_mounts, mounts_to_docker_volumes
         catalog = await get_effective_catalog(self.db)
-        mount_entries = resolve_agent_mounts(config.get("mounts", []), catalog, config.get("mount_modes", {}))
+        mount_entries = resolve_agent_mounts(await mounts_des_agenten(self.db, agent), catalog, config.get("mount_modes", {}))
         bind_mounts = mounts_to_docker_volumes(mount_entries) or None
         def _create_agent_container():
             # Gleiche Uebernahme wie in `restart_agent`: der Name ist fest, also
@@ -2507,7 +2508,8 @@ class AgentManager:
         #    DEFAULT_CLAUDE_MD silently passed it by, no matter how often it was updated.
         _instructions_files = instructions_paths(mode)
         try:
-            _agent_mounts = (agent.config or {}).get("mounts", [])
+            from app.core.mounts import mounts_des_agenten
+            _agent_mounts = await mounts_des_agenten(self.db, agent)
             from app.core import master_rules as _mr
             _rendered = _render_claude_md(
                 _agent_mounts, catalog,

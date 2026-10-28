@@ -527,7 +527,12 @@ class OrchestratorAPIClient:
         treffer = r.get("treffer") or []
         if not treffer:
             return f"Nichts gefunden zu „{frage}“."
-        text = "\n".join(f"{t.get('path')}: {' … '.join(t.get('snippets') or [])}" for t in treffer)
+        # Treffer aus angebundenen Second Brains nennen ihre Quelle (lesen mit brain=<Label>).
+        text = "\n".join(
+            (f"[{t.get('quelle')} · brain={t.get('brain')}] " if t.get("brain") else "")
+            + f"{t.get('path')}: {' … '.join(t.get('snippets') or [])}"
+            for t in treffer
+        )
         return self._gerahmt("projektwissen", text)
 
     async def projekt_wissen_lesen(self, params: dict) -> str:
@@ -540,7 +545,10 @@ class OrchestratorAPIClient:
                 return r
             seiten = [d["path"] for d in r.get("dateien") or [] if d.get("type") == "file"]
             return "\n".join(seiten) or "Noch keine Seiten."
-        r = await self._request("GET", f"{basis}/datei", params={"pfad": params["pfad"]})
+        abfrage = {"pfad": params["pfad"]}
+        if params.get("brain"):
+            abfrage["brain"] = str(params["brain"])
+        r = await self._request("GET", f"{basis}/datei", params=abfrage)
         if isinstance(r, str):
             return r
         return self._gerahmt("projektwissen", r.get("inhalt", ""))

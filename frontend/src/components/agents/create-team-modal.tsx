@@ -10,7 +10,7 @@ import type { Team } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { useToast } from "@/components/ui/dialog-provider";
-import { PROJEKT_FARBEN, TAKTE } from "@/lib/projekte";
+import { PROJEKT_FARBEN, TAKTE, istGithubRepo } from "@/lib/projekte";
 import { useAuthStore } from "@/lib/auth";
 
 interface CreateTeamModalProps {
@@ -46,6 +46,8 @@ export function CreateTeamModal({
   const [repo, setRepo] = useState("");
   const [schluessel, setSchluessel] = useState<number>(0);
   const [schluesselListe, setSchluesselListe] = useState<{ id: number; name: string; key_name: string }[]>([]);
+  const [brains, setBrains] = useState<string[]>([]);
+  const [brainListe, setBrainListe] = useState<{ label: string; name: string; description: string | null }[]>([]);
   const istAdmin = useAuthStore((s) => s.user?.role) === "admin";
   const [nutzer, setNutzer] = useState<{ id: string; name: string; email?: string }[]>([]);
   const [saving, setSaving] = useState(false);
@@ -63,6 +65,7 @@ export function CreateTeamModal({
       setGeteilt(team?.geteilt_mit ?? []);
       setRepo(team?.repo ?? "");
       setSchluessel(team?.repo_secret_id ?? 0);
+      setBrains(team?.angebundene_brains ?? []);
       setError(null);
     }
   }, [open, team]);
@@ -72,7 +75,13 @@ export function CreateTeamModal({
     if (!open || !projekt) return;
     api.getProjektVerzeichnis().then((r) => setNutzer(r.users)).catch(() => setNutzer([]));
     api.listSecrets().then((s) => setSchluesselListe(s.filter((x) => x.is_active))).catch(() => setSchluesselListe([]));
-  }, [open, projekt]);
+    // Nur Brains, die man selbst nutzen darf (dieselbe Regel wie beim Server); das
+    // eigene Projektwissen nicht — es ist ohnehin dabei.
+    api.listSecondBrains(true)
+      .then((l) => setBrainListe(l.filter((b) => !b.label.startsWith("brain-projekt-") || team?.angebundene_brains?.includes(b.label))
+        .map((b) => ({ label: b.label, name: b.name, description: b.description }))))
+      .catch(() => setBrainListe([]));
+  }, [open, projekt, team]);
 
   const toggleMember = (id: string) => {
     setMemberIds((prev) => {
@@ -100,6 +109,9 @@ export function CreateTeamModal({
         lead_agent_id: leadAgentId || null,
         ...(projekt ? { farbe, takt_minuten: takt, geteilt_mit: geteilt } : {}),
         ...(projekt ? { repo: repo.trim(), repo_secret_id: repo.trim() ? schluessel : 0 } : {}),
+        // Nur bei Änderung mitschicken — sonst blockierte ein inzwischen entzogenes
+        // Brain das Speichern jeder anderen Einstellung.
+        ...(projekt && brains.join("\n") !== (team?.angebundene_brains ?? []).join("\n") ? { angebundene_brains: brains } : {}),
       };
       if (isEdit && team) {
         await api.updateTeam(team.id, body);
@@ -199,17 +211,18 @@ export function CreateTeamModal({
                     {projekt && (
                       <div>
                         <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                          GitHub-Repo <span className="text-muted-foreground/40">(optional)</span>
+                          Git-Repo <span className="text-muted-foreground/40">(optional)</span>
                         </label>
                         <input
                           type="text"
                           value={repo}
                           onChange={(e) => setRepo(e.target.value)}
-                          placeholder="owner/name, z. B. beispiel-org/beispiel-repo"
+                          placeholder="GitHub: owner/name · Forgejo/Gitea: https://git.example.com/team/repo"
                           className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
                         />
                         <p className="text-[11px] text-muted-foreground/50 mt-1">
-                          Offene Issues kommen in den Eingang, Pull Requests mit CI-Stand unter „Wartet auf Merge“.
+                          GitHub als owner/name, ein eigener Forgejo- oder Gitea-Server mit voller Adresse. Offene
+                          Issues kommen in den Eingang, Pull Requests mit CI-Stand unter „Wartet auf Merge“.
                         </p>
                         {repo.trim() && (
                           <div className="mt-2">
@@ -220,18 +233,45 @@ export function CreateTeamModal({
                               className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
                             >
                               <option value={0}>
-                                {istAdmin ? "Kein eigener — GitHub-Verbindung der Anlage bzw. öffentlich" : "Keiner — nur öffentliche Repos"}
+                                {istAdmin && istGithubRepo(repo)
+                                  ? "Kein eigener — GitHub-Verbindung der Anlage bzw. öffentlich"
+                                  : "Keiner — nur öffentliche Repos"}
                               </option>
                               {schluesselListe.map((k) => (
                                 <option key={k.id} value={k.id}>{k.name} ({k.key_name})</option>
                               ))}
                             </select>
                             <p className="text-[11px] text-muted-foreground/50 mt-1">
-                              Für private Repos: einen GitHub-Zugangsschlüssel (Token mit Leserecht) aus der
-                              Schlüsselverwaltung wählen. Öffentliche Repos gehen ohne (abgeglichen alle 30 Min.).
+                              Für private Repos: einen Zugangsschlüssel mit Leserecht aus der Schlüsselverwaltung
+                              wählen, bei GitHub ein GitHub-Token, bei Forgejo/Gitea ein Token dieses Servers.
+                              Öffentliche Repos gehen ohne (abgeglichen alle 30 Min.).
                             </p>
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {projekt && brainListe.length > 0 && (
+                      <div>
+                        <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                          Second Brains anbinden <span className="text-muted-foreground/40">(optional)</span>
+                        </label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {brainListe.map((b) => {
+                            const an = brains.includes(b.label);
+                            return (
+                              <button key={b.label} type="button" title={b.description ?? undefined}
+                                onClick={() => setBrains((alt) => (an ? alt.filter((x) => x !== b.label) : [...alt, b.label]))}
+                                className={cn("inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-colors",
+                                  an ? "border-primary/50 bg-primary/10 text-foreground" : "border-foreground/[0.1] text-muted-foreground hover:text-foreground")}>
+                                {an && <Check className="h-3 w-3" />} {b.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground/50 mt-1">
+                          Die Suche im Projektwissen — auch die der Agenten — sieht dann dort mit nach. Gelesen wird nur, nichts verändert.
+                        </p>
                       </div>
                     )}
 

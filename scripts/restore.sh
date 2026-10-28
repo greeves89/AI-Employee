@@ -120,6 +120,7 @@ if $UNVOLLSTAENDIG; then
     [ -f "$DB_FILE" ] && log "    Datenbank (postgres.sql.gz)"
     [ -f "${BACKUP_PATH}/konfiguration.tar.gz" ] && log "    Konfiguration und Schlüssel (konfiguration.tar.gz)"
     log "    $(find "${BACKUP_PATH}/volumes" -maxdepth 1 -name '*.tar.gz' 2>/dev/null | wc -l | tr -d ' ') Volume-Archiv(e)"
+    [ -f "${BACKUP_PATH}/wissensablagen.tar.gz" ] && log "    Wissensablagen (wissensablagen.tar.gz)"
     if ! $UNVOLLSTAENDIG_ERLAUBEN; then
         die "Unvollständige Sicherung — besser eine vollständige wählen. Nur die vorhandenen Teile zurückspielen: --unvollstaendig-erlauben"
     fi
@@ -328,6 +329,18 @@ if ! $DB_ONLY; then
         fi
     fi
     erledigt "${ANZAHL} Volume(s) zurückgespielt."
+
+    # Wissensablagen (Host-Ordner, seit 1.385.1 in der Sicherung).
+    BRAIN_ARCHIV="${BACKUP_PATH}/wissensablagen.tar.gz"
+    if [ -f "$BRAIN_ARCHIV" ]; then
+        if $UNVOLLSTAENDIG && ! archiv_heil "$BRAIN_ARCHIV"; then
+            log "WARNUNG: wissensablagen.tar.gz ist beschädigt — übersprungen, Ablagen bleiben, wie sie sind."
+        else
+            BRAIN_BASIS=$(brain_basis .env)
+            run brains_auspacken "$BRAIN_ARCHIV" "$BRAIN_BASIS" "$ALPINE_IMAGE"
+            erledigt "Wissensablagen zurückgespielt (${BRAIN_BASIS})."
+        fi
+    fi
 fi
 
 # ─── 6. Starten und Selbsttest ────────────────────────────────────────────────
