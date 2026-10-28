@@ -5029,6 +5029,57 @@ export async function projektWissenListe(id: string): Promise<{ dateien: WissenE
   return fetchJSON(`${getBase()}/teams/${id}/wissen`);
 }
 
+export interface ProjektDatei {
+  name: string;
+  bytes: number;
+  /** Seite im Projektwissen mit dem ausgelesenen Text. */
+  seite: string;
+  geaendert: string;
+}
+
+export async function projektDateien(id: string): Promise<{ dateien: ProjektDatei[]; max_bytes: number; endungen: string[] }> {
+  return fetchJSON(`${getBase()}/teams/${id}/wissen/dateien`);
+}
+
+export async function projektDateiHochladen(
+  id: string,
+  datei: File,
+): Promise<{ name: string; bytes: number; seite: string; text_ausgelesen: boolean }> {
+  const form = new FormData();
+  form.append("datei", datei);
+  const res = await fetch(`${getBase()}/teams/${id}/wissen/dateien`, { method: "POST", body: form, credentials: "include" });
+  if (!res.ok) {
+    let text = `Hochladen fehlgeschlagen (${res.status})`;
+    try {
+      const j = await res.json();
+      if (typeof j?.detail === "string") text = j.detail;
+    } catch {
+      // keine JSON-Antwort — beim allgemeinen Text bleiben
+    }
+    throw new Error(text);
+  }
+  return res.json();
+}
+
+export async function projektDateiHerunterladen(id: string, name: string): Promise<void> {
+  const res = await fetch(`${getBase()}/teams/${id}/wissen/dateien/${encodeURIComponent(name)}`, { credentials: "include" });
+  if (!res.ok) throw new Error(`Herunterladen fehlgeschlagen (${res.status})`);
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+export async function projektDateiLoeschen(id: string, name: string): Promise<void> {
+  const res = await fetch(`${getBase()}/teams/${id}/wissen/dateien/${encodeURIComponent(name)}`,
+    { method: "DELETE", credentials: "include" });
+  if (!res.ok) throw new Error(`Löschen fehlgeschlagen (${res.status})`);
+}
+
 export async function projektWissenLesen(id: string, pfad: string): Promise<{ pfad: string; inhalt: string }> {
   return fetchJSON(`${getBase()}/teams/${id}/wissen/datei?pfad=${encodeURIComponent(pfad)}`);
 }

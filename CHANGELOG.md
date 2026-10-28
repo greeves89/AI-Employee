@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.385.0] - 2026-10-28
+
+### Neu
+- **Dateien am Projekt.** Im Reiter „Wissen“ lassen sich jetzt Dateien hochladen (Knopf oder Ziehen): PDF, Word, Excel, Text, CSV, JSON und Bilder, je bis 20 MB. Der Text wird automatisch ausgelesen und als Seite unter `dateien/` ins Projektwissen gelegt — durchsuchbar für Suche und Agenten. Das Original lässt sich herunterladen und löschen (mit seinem Text). Die Originale liegen neben der Wissensablage, nicht in ihrem git-Verlauf; Namen werden bereinigt, gleichnamige Dateien bekommen eine Nummer, heruntergeladen wird immer als Anhang.
+
+### Technik
+- Der Text-Ausleser für PDF/Word/Excel liegt jetzt in `core/dokument_text.py` (bisher in `msgraph_mcp`); OneDrive-Werkzeuge, Sprachfront und Projektdateien nutzen denselben.
+- Neue Endpunkte: `GET/POST /teams/{id}/wissen/dateien`, `GET/DELETE /teams/{id}/wissen/dateien/{name}`.
+
 ## [1.384.1] - 2026-10-28
 
 ### Behoben

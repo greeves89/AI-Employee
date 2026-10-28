@@ -1119,67 +1119,9 @@ async def _graph_bytes(method: str, path: str, token: str, content: bytes | None
         return resp
 
 
-def _extract_document_text(raw: bytes, filename: str, content_type: str, max_chars: int = 12000) -> str | None:
-    """Extract readable text from a downloaded document (PDF/Word/Excel).
-
-    Returns the text, or None if the format isn't a supported document (caller then
-    falls back to plain-text decoding). Kept dependency-light and fully defensive —
-    a broken/encrypted file must degrade to a clear message, never crash the tool.
-    """
-    name = (filename or "").lower()
-    ct = (content_type or "").lower()
-    import io
-
-    def _clip(t: str) -> str:
-        t = (t or "").strip()
-        return t[:max_chars] if t else ""
-
-    try:
-        if name.endswith(".pdf") or "application/pdf" in ct:
-            from pypdf import PdfReader
-            reader = PdfReader(io.BytesIO(raw))
-            if getattr(reader, "is_encrypted", False):
-                try:
-                    reader.decrypt("")
-                except Exception:  # noqa: BLE001
-                    return "Das PDF ist passwortgeschützt — Inhalt nicht lesbar."
-            parts = []
-            for page in reader.pages:
-                parts.append(page.extract_text() or "")
-                if sum(len(p) for p in parts) > max_chars:
-                    break
-            text = _clip("\n".join(parts))
-            return text or ("Das PDF enthält keinen extrahierbaren Text (evtl. ein "
-                            "gescanntes Bild ohne OCR).")
-
-        if name.endswith(".docx") or "wordprocessingml" in ct:
-            from docx import Document
-            doc = Document(io.BytesIO(raw))
-            parts = [p.text for p in doc.paragraphs if p.text]
-            for table in doc.tables:
-                for row in table.rows:
-                    parts.append("\t".join(c.text for c in row.cells))
-            return _clip("\n".join(parts)) or "Das Word-Dokument enthält keinen Text."
-
-        if name.endswith(".xlsx") or "spreadsheetml" in ct:
-            from openpyxl import load_workbook
-            wb = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
-            parts = []
-            for ws in wb.worksheets:
-                parts.append(f"# {ws.title}")
-                for row in ws.iter_rows(values_only=True):
-                    cells = [str(c) for c in row if c is not None]
-                    if cells:
-                        parts.append("\t".join(cells))
-                    if sum(len(p) for p in parts) > max_chars:
-                        break
-                if sum(len(p) for p in parts) > max_chars:
-                    break
-            return _clip("\n".join(parts)) or "Die Excel-Datei enthält keine Daten."
-    except Exception as e:  # noqa: BLE001
-        logger.warning("document extraction failed for %s: %s", scrub_log(filename), scrub_log(e))
-        return f"Inhalt konnte nicht extrahiert werden ({type(e).__name__})."
-    return None  # not a recognized document format → caller tries plain text
+# Der Ausleser liegt in ``dokument_text`` (gemeinsam mit den Projektdateien);
+# der alte Name bleibt fuer bestehende Aufrufer.
+from app.core.dokument_text import text_auslesen as _extract_document_text  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

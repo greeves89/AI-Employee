@@ -1,8 +1,9 @@
 """Teams API — persistent agent teams with a lead, plus task delegation."""
 import logging
+import os
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1092,6 +1093,66 @@ async def wissen_schreiben(team_id: str, body: WissenSeite, user=Depends(require
         return await projekt_wissen.schreiben(db, brain, body.pfad.strip(), body.inhalt)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ─── Projektdateien (core/projekt_dateien) ─────────────────────
+
+
+@router.get("/{team_id}/wissen/dateien")
+async def dateien_liste(team_id: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
+    from app.core import projekt_dateien
+
+    t = await _projekt(team_id, user, db)
+    return {"projekt_id": t.id, "dateien": projekt_dateien.liste(await _projekt_brain(t, user, db)),
+            "max_bytes": projekt_dateien.MAX_BYTES, "endungen": sorted(projekt_dateien.ENDUNGEN)}
+
+
+@router.post("/{team_id}/wissen/dateien", status_code=201)
+async def datei_hochladen(team_id: str, datei: UploadFile = File(...), user=Depends(require_auth),
+                          db: AsyncSession = Depends(get_db)):
+    """Datei ans Projekt hängen: Original zum Herunterladen, Text ins Projektwissen."""
+    from app.core import projekt_dateien
+
+    _kein_betrachter(user)
+    t = await _projekt(team_id, user, db)
+    brain = await _projekt_brain(t, user, db)
+    # Nicht mehr lesen als erlaubt — eine riesige Datei soll nicht erst ganz im Speicher landen.
+    inhalt = await datei.read(projekt_dateien.MAX_BYTES + 1)
+    if len(inhalt) > projekt_dateien.MAX_BYTES:
+        raise HTTPException(status_code=413, detail=f"Die Datei ist größer als {projekt_dateien.MAX_BYTES // 1024 // 1024} MB.")
+    try:
+        return await projekt_dateien.ablegen(db, brain, datei.filename or "", inhalt, wer=_wer(user))
+    except projekt_dateien.DateiFehler as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{team_id}/wissen/dateien/{name}")
+async def datei_herunterladen(team_id: str, name: str, user=Depends(require_auth_or_agent),
+                              db: AsyncSession = Depends(get_db)):
+    from fastapi.responses import FileResponse
+
+    from app.core import projekt_dateien
+
+    t = await _projekt(team_id, user, db)
+    try:
+        pfad = projekt_dateien.pfad_zum_herunterladen(await _projekt_brain(t, user, db), name)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Datei nicht gefunden.")
+    # Immer als Download, nie im Browser dargestellt — die Datei kommt von Nutzern.
+    return FileResponse(pfad, filename=os.path.basename(pfad), media_type="application/octet-stream",
+                        headers={"X-Content-Type-Options": "nosniff"})
+
+
+@router.delete("/{team_id}/wissen/dateien/{name}", status_code=204)
+async def datei_loeschen(team_id: str, name: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    from app.core import projekt_dateien
+
+    _kein_betrachter(user)
+    t = await _projekt(team_id, user, db)
+    try:
+        await projekt_dateien.loeschen(db, await _projekt_brain(t, user, db), name)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Datei nicht gefunden.")
 
 
 @router.get("/{team_id}/wissen/suche")
