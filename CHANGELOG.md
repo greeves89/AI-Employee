@@ -9,6 +9,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ### Verbessert
 - **„Integrationen“, „Apps“ und der Skill-Marktplatz erklären jetzt, was sie von ihrem gleichnamigen Gegenstück unterscheidet.** Alle drei Begriffe bezeichneten je zwei bis drei unterschiedliche Oberflächen ohne Erklärung, welche die richtige ist. Die globale Integrationen-Seite, die globale Apps-Übersicht und der globale Skill-Marktplatz erklären jetzt kurz ihre Reichweite und verlinken zur jeweils anderen Stelle (Einstellungen → Integrationen, Agent-Einstellungen → Workspace → Apps bzw. → Wissen → Skills). Die Apps-Ansicht eines einzelnen Agenten verlinkt jetzt auch zurück zur Gesamtübersicht. Kein Datenmodell geändert — reine Erklärung und Verlinkung.
+## [1.381.2] - 2026-10-28
+
+### Verbessert
+- **Projekt-Board nutzt die ganze Bildschirmhöhe.** Auf breiten Bildschirmen (fünf Spalten nebeneinander) reichen die Spalten bis zum unteren Rand, statt nach etwa 34rem leeren Platz zu lassen.
+- **Kein „Erledigt“ mehr bei offenem PR.** Der Knopf verschob nur die Karte, der Pull Request blieb offen. Solange der PR offen ist, steht auf der Karte jetzt „Wandert nach dem Merge von selbst nach Erledigt“; zusammengeführt wird über den PR-Link auf GitHub, danach zieht der Abgleich die Karte nach.
+
+## [1.381.1] - 2026-10-28
+
+### Sicherheit
+- **Freigabelisten für Adressen ließen sich mit einem Backslash umgehen.** `https://fremd.example\.erlaubt.example/` las die Plattform als Unterseite von `erlaubt.example`, der Browser rief aber `fremd.example` auf. Betroffen waren die erlaubten Domains einer Bridge-Sitzung, die URL-Freigabeliste der Agenten und die Freigabeliste für Rückrufe. Adressen, die Plattform und Browser verschieden lesen (Backslash, Steuer- und Leerzeichen oder Prozent-Kodierung im Host), werden jetzt überall abgelehnt; alle drei Prüfungen holen den Host an einer gemeinsamen Stelle. Leere Einträge in der URL-Freigabeliste lassen nichts mehr durch.
 
 ## [1.381.0] - 2026-10-28
 
