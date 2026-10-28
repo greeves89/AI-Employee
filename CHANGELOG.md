@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.385.1] - 2026-10-28
+
+### Behoben
+- **Die Datensicherung enthielt die Wissensablagen nicht.** Second Brains, Projektwissen und hochgeladene Projektdateien liegen als Dateien auf der Platte (`SECONDBRAIN_BASE`), nicht in der Datenbank — `backup.sh` hat sie bisher nicht mitgenommen. Sie landen jetzt als `wissensablagen.tar.gz` in jeder Sicherung (samt git-Verlauf und Projektdateien), `restore.sh` spielt sie zurück. Handbuch Kapitel 37 ergänzt.
+
 ## [1.385.0] - 2026-10-28
 
 ### Neu
