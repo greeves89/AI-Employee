@@ -95,8 +95,12 @@ def _pfad(brain: SecondBrain, name: str) -> str:
     return ziel
 
 
-async def _text_mit_frist(inhalt: bytes, name: str) -> str | None:
-    """Auslesen außerhalb der Ereignisschleife, mit Frist und einzeln."""
+async def text_mit_frist(inhalt: bytes, name: str) -> str | None:
+    """Auslesen außerhalb der Ereignisschleife, mit Frist und einzeln.
+
+    Auch für gespiegelte Bridge-Ordner (``bridge_wissen``) — dieselbe Warteschlange,
+    damit nie zwei Dokumente gleichzeitig Speicher fressen.
+    """
     async with _AUSLESEN:
         try:
             return await asyncio.wait_for(asyncio.to_thread(_text, inhalt, name), AUSLESEN_FRIST)
@@ -149,7 +153,7 @@ async def ablegen(db: AsyncSession, brain: SecondBrain, name: str, inhalt: bytes
     os.replace(tmp, ziel)
 
     try:
-        text = await _text_mit_frist(inhalt, name)
+        text = await text_mit_frist(inhalt, name)
         seite = seite_von(name)
         # Ausdrücklich als fremder Inhalt gekennzeichnet: der Text stammt aus einem
         # Dokument, und Agenten lesen ihn — er gibt keine Anweisungen.

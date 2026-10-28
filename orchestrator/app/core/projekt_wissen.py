@@ -205,15 +205,16 @@ async def auszug(db: AsyncSession, team: Team) -> str:
 MAX_ANGEBUNDEN = 10
 
 
-async def _freigabe_des_erstellers(db: AsyncSession, team: Team) -> dict | None | bool:
-    """``None`` = Admin (alles), dict = erlaubte Labels, ``False`` = kein Ersteller."""
+async def _freigabe_des_erstellers(db: AsyncSession, team: Team):
+    """``(ersteller, erlaubt)`` — erlaubt: ``None`` = Admin (alles), dict = erlaubte
+    Labels, ``False`` = kein Ersteller."""
     from app.core.mounts import freigegebene_mounts
     from app.core.projekt_git import _ersteller
 
     ersteller = await _ersteller(db, team)
     if ersteller is None:
-        return False
-    return await freigegebene_mounts(ersteller, db)
+        return None, False
+    return ersteller, await freigegebene_mounts(ersteller, db)
 
 
 async def _projektwissen_slugs(db: AsyncSession) -> set[str]:
@@ -231,7 +232,7 @@ async def brains_pruefen(db: AsyncSession, team: Team, labels: list[str], user) 
     das Speichern des Projekts nicht blockieren — es wirkt ohnehin nicht mehr
     (``angebundene`` prüft bei jedem Zugriff).
     """
-    from app.core.mounts import freigegebene_mounts
+    from app.core.mounts import fremde_privatablagen, freigegebene_mounts
 
     sauber = list(dict.fromkeys(str(x).strip() for x in labels if str(x).strip()))
     if len(sauber) > MAX_ANGEBUNDEN:
@@ -245,9 +246,11 @@ async def brains_pruefen(db: AsyncSession, team: Team, labels: list[str], user) 
     )).scalars()}
     erlaubt = await freigegebene_mounts(user, db)
     projektwissen = await _projektwissen_slugs(db)
+    # Gespiegelte Bridge-Ordner anderer (#1092) — auch für Administratoren tabu.
+    fremd = await fremde_privatablagen(db, neu, user)
     for label in neu:
         brain = vorhanden.get(label)
-        if brain is None or brain.slug in projektwissen or brain.slug.startswith("projekt-"):
+        if brain is None or brain.slug in projektwissen or brain.slug.startswith("projekt-") or label in fremd:
             raise ValueError(f"Second Brain „{label}“ gibt es nicht.")
         if erlaubt is not None and label not in erlaubt:
             # Wie „gibt es nicht“: ein fremdes Brain soll sich nicht verraten.
@@ -268,23 +271,28 @@ async def angebundene(db: AsyncSession, team: Team, fuer=None) -> list[SecondBra
     (bei einem Agenten sein Besitzer): wem der Ersteller sein Projekt freigibt,
     bekommt damit NICHT seine Brain-Freigaben — er sieht nur, was er selbst darf.
     """
-    from app.core.mounts import freigegebene_mounts
+    from app.core.mounts import fremde_privatablagen, freigegebene_mounts
 
     labels = [str(x) for x in (getattr(team, "angebundene_brains", None) or []) if x]
     if not labels or fuer is NIEMAND:
         return []
-    erlaubt = await _freigabe_des_erstellers(db, team)
+    ersteller, erlaubt = await _freigabe_des_erstellers(db, team)
     if erlaubt is False:
         return []
     auch = await freigegebene_mounts(fuer, db) if fuer is not None else None
     projektwissen = await _projektwissen_slugs(db)
+    # Ein gespiegelter Bridge-Ordner (#1092) wirkt nur für seinen Besitzer —
+    # er muss das Projekt angelegt haben UND der Aufrufer sein.
+    fremd = await fremde_privatablagen(db, labels, ersteller)
+    if fuer is not None:
+        fremd |= await fremde_privatablagen(db, labels, fuer)
     brains = (await db.execute(
         select(SecondBrain).where(SecondBrain.label.in_(labels), SecondBrain.is_active.is_(True))
     )).scalars().all()
     reihenfolge = {label: i for i, label in enumerate(labels)}
     return sorted((b for b in brains
                    if (erlaubt is None or b.label in erlaubt) and (auch is None or b.label in auch)
-                   and b.slug not in projektwissen and not b.slug.startswith("projekt-")),
+                   and b.slug not in projektwissen and not b.slug.startswith("projekt-") and b.label not in fremd),
                   key=lambda b: reihenfolge.get(b.label, 0))
 
 

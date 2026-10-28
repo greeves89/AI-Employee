@@ -3835,6 +3835,14 @@ async def update_agent_mounts(
     if unknown:
         raise HTTPException(status_code=422, detail=f"Unknown mount labels: {unknown}")
 
+    # Privates Wissen anderer (Bridge-Ordner, fremdes Projektwissen) bleibt
+    # auch Administratoren verschlossen (#1092).
+    from app.core.mounts import fremde_privatablagen
+
+    fremd = sorted(await fremde_privatablagen(db, new_mounts, user))
+    if fremd:
+        raise HTTPException(status_code=403, detail=f"Not authorized for mount(s): {fremd}")
+
     # Non-admin: a mount is authorized if granted per-user OR via the user's
     # group/role (custom_role.permissions.mount_labels) — a UNION of both.
     effective_modes: dict[str, str] = {}

@@ -18,7 +18,7 @@ import subprocess
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -178,6 +178,10 @@ class BrainResponse(BaseModel):
     is_active: bool
     mcp_enabled: bool = False
     mcp_path: str | None = None  # relative endpoint; UI prepends window.location.origin
+    # Brain aus einem Bridge-Ordner (#1092): Quelle auf dem Rechner, letzter Abgleich, Fehler.
+    bridge_ordner: str | None = None
+    sync_stand: datetime | None = None
+    sync_fehler: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -194,6 +198,8 @@ def _to_response(b: SecondBrain) -> BrainResponse:
         standard=getattr(b, "standard", "freeform") or "freeform",
         description=b.description, is_active=b.is_active,
         mcp_enabled=mcp_on, mcp_path=_mcp_path(b) if mcp_on else None,
+        bridge_ordner=getattr(b, "bridge_ordner", None), sync_stand=getattr(b, "sync_stand", None),
+        sync_fehler=getattr(b, "sync_fehler", None),
         created_at=b.created_at, updated_at=b.updated_at,
     )
 
@@ -204,17 +210,109 @@ async def _ist_projektwissen(db: AsyncSession, slug: str) -> bool:
     return (await db.scalar(select(Team.id).where(Team.wissen_slug == slug).limit(1))) is not None
 
 
-async def _brain_oder_404(db: AsyncSession, brain_id: int) -> SecondBrain:
-    """Das Brain — 404, wenn es fehlt ODER das Wissen eines Projekts ist.
+async def _brain_oder_404(db: AsyncSession, brain_id: int, user=None) -> SecondBrain:
+    """Das Brain — 404, wenn es fehlt, das Wissen eines Projekts ist oder ein
+    gespiegelter Bridge-Ordner eines anderen Nutzers.
 
     Projektwissen (samt ausgelesenem Text hochgeladener Dateien) sieht nur, wer das
     Projekt sieht — über die Projektseite. Die allgemeine Brain-Verwaltung gab es
-    bis 1.385.0 jedem Administrator preis (Sicherheits-Review 28.10.2026).
+    bis 1.385.0 jedem Administrator preis (Sicherheits-Review 28.10.2026). Ein
+    Bridge-Ordner (#1092) spiegelt den Rechner seines Besitzers und gehört nur ihm.
     """
+    from app.core import bridge_wissen
+
     brain = await db.get(SecondBrain, brain_id)
     if not brain or await _ist_projektwissen(db, brain.slug):
         raise HTTPException(status_code=404, detail="Brain not found")
+    if bridge_wissen.ist_bridge_brain(brain) and not bridge_wissen.gehoert(brain, user):
+        raise HTTPException(status_code=404, detail="Brain not found")
     return brain
+
+
+def _nicht_gespiegelt(brain: SecondBrain) -> None:
+    """Ein gespiegelter Bridge-Ordner ist nur lesend — seine Quelle ist der Rechner."""
+    from app.core import bridge_wissen
+
+    if bridge_wissen.ist_bridge_brain(brain):
+        raise HTTPException(status_code=409, detail="Dieses Brain spiegelt einen Bridge-Ordner und ist nur lesend — "
+                                                    "Änderungen bitte im Ordner auf dem Rechner.")
+
+
+# ── Brain aus einem Bridge-Ordner (#1092) — für jeden angemeldeten Nutzer ──
+
+class BridgeBrainCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    ordner: str = Field(min_length=1, max_length=1000)
+
+
+async def _bridge_ordner(user) -> list[str]:
+    """Die in der verbundenen Bridge freigegebenen Ordner des Nutzers."""
+    from app.api.computer_use import bridge_befehl
+
+    antwort = await bridge_befehl(str(user.id), "wissen_ordner", {}, timeout=15)
+    if not isinstance(antwort, dict) or not antwort.get("ok"):
+        if str((antwort or {}).get("error") or "").startswith("Unknown action"):
+            raise HTTPException(status_code=409, detail="Die Bridge ist zu alt für gespiegelte Ordner — bitte aktualisieren.")
+        raise HTTPException(status_code=409, detail="Die Bridge hat ihre Ordner nicht genannt.")
+    return [str(o) for o in antwort.get("ordner") or [] if isinstance(o, str)][:100]
+
+
+async def _eigenes_bridge_brain(db: AsyncSession, brain_id: int, user) -> SecondBrain:
+    from app.core import bridge_wissen
+
+    brain = await db.get(SecondBrain, brain_id)
+    if not brain or not bridge_wissen.ist_bridge_brain(brain) or not bridge_wissen.gehoert(brain, user):
+        raise HTTPException(status_code=404, detail="Brain not found")
+    return brain
+
+
+@router.get("/bridge/ordner")
+async def bridge_ordner_liste(user=Depends(require_auth)):
+    """Ordner, die die Bridge des Nutzers freigegeben hat (Berechtigungen → Ordner-Zugriff)."""
+    return {"ordner": await _bridge_ordner(user)}
+
+
+@router.post("/bridge", response_model=BrainResponse, status_code=201)
+async def bridge_brain_anlegen(body: BridgeBrainCreate, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Second Brain mit einem freigegebenen Bridge-Ordner als Quelle anlegen und abgleichen."""
+    from app.core import bridge_wissen
+
+    ordner = body.ordner.strip()
+    # Nur, was die Bridge JETZT freigibt — der Server übernimmt keinen frei getippten Pfad.
+    if ordner not in await _bridge_ordner(user):
+        raise HTTPException(status_code=422, detail="Dieser Ordner ist in der Bridge nicht freigegeben.")
+    vorhanden = await bridge_wissen.bridge_brains(db, str(user.id))
+    if any(b.bridge_ordner == ordner for b in vorhanden):
+        raise HTTPException(status_code=409, detail="Dieser Ordner wird schon gespiegelt.")
+    if len(vorhanden) >= 20:
+        raise HTTPException(status_code=409, detail="Höchstens 20 gespiegelte Ordner je Nutzer.")
+    brain = await bridge_wissen.anlegen(db, user, body.name, ordner)
+    await _audit(db, AuditEventType.BRAIN_CREATED, brain, user.id)
+    await db.refresh(brain)  # nach einem gescheiterten Protokolleintrag (Rollback) neu laden
+    bridge_wissen.anstossen(str(user.id))
+    return _to_response(brain)
+
+
+@router.post("/bridge/{brain_id}/sync")
+async def bridge_brain_sync(brain_id: int, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Jetzt abgleichen (sonst alle 10 Minuten, solange die Bridge verbunden ist)."""
+    from app.core import bridge_wissen
+
+    await _eigenes_bridge_brain(db, brain_id, user)
+    if not bridge_wissen.anstossen(str(user.id)):
+        raise HTTPException(status_code=409, detail="Die Bridge ist nicht verbunden — abgeglichen wird, sobald sie es ist.")
+    return {"ok": True}
+
+
+@router.delete("/bridge/{brain_id}")
+async def bridge_brain_loeschen(brain_id: int, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Gespiegeltes Brain löschen — die Kopie auf dem Server, nie den Ordner auf dem Rechner."""
+    from app.core import bridge_wissen
+
+    brain = await _eigenes_bridge_brain(db, brain_id, user)
+    await _audit(db, AuditEventType.BRAIN_DELETED, brain, user.id)
+    await bridge_wissen.entfernen(db, brain)
+    return {"ok": True, "id": brain_id}
 
 
 @router.get("/", response_model=list[BrainResponse])
@@ -228,7 +326,7 @@ async def list_brains(
     Bis 29.09.2026 sah jeder angemeldete Nutzer alle Brains samt Beschreibung,
     auch ohne Freigabe — anhaengen durfte er sie ohnehin nicht. Jetzt dieselbe
     Regel wie beim Anhaengen (``freigegebene_mounts``)."""
-    from app.core.mounts import freigegebene_mounts
+    from app.core.mounts import fremde_privatablagen, freigegebene_mounts
 
     stmt = select(SecondBrain).order_by(SecondBrain.name)
     if active_only:
@@ -238,6 +336,9 @@ async def list_brains(
     # Projektwissen gehört zur Projektseite, nicht in die allgemeine Liste.
     projekt_slugs = set((await db.execute(select(Team.wissen_slug).where(Team.wissen_slug.is_not(None)))).scalars())
     rows = [b for b in (await db.execute(stmt)).scalars().all() if b.slug not in projekt_slugs]
+    # Gespiegelte Bridge-Ordner anderer bleiben auch Administratoren verborgen (#1092).
+    fremd = await fremde_privatablagen(db, [b.label for b in rows], user)
+    rows = [b for b in rows if b.label not in fremd]
     erlaubt = await freigegebene_mounts(user, db)
     if erlaubt is not None:
         rows = [b for b in rows if b.label in erlaubt]
@@ -291,12 +392,14 @@ async def update_brain(
 ):
     """Update a Second Brain (admin only). Slug/path are immutable once created."""
     _require_admin(user)
-    brain = await _brain_oder_404(db, brain_id)
+    brain = await _brain_oder_404(db, brain_id, user)
     if body.name is not None:
         brain.name = body.name.strip()
     if body.default_mode is not None:
         if body.default_mode not in ("ro", "rw"):
             raise HTTPException(status_code=422, detail="default_mode must be 'ro' or 'rw'")
+        if body.default_mode == "rw":
+            _nicht_gespiegelt(brain)
         brain.default_mode = body.default_mode
     if body.description is not None:
         brain.description = body.description
@@ -317,8 +420,14 @@ async def delete_brain(
     """Delete a Second Brain (admin only). The vault folder on disk is KEPT
     (data is never destroyed); only the mount registration is removed."""
     _require_admin(user)
-    brain = await _brain_oder_404(db, brain_id)
+    brain = await _brain_oder_404(db, brain_id, user)
     await _audit(db, AuditEventType.BRAIN_DELETED, brain, user.id)
+    from app.core import bridge_wissen
+
+    if bridge_wissen.ist_bridge_brain(brain):
+        # Nur eine Kopie des Rechners — sie geht ganz (siehe bridge_wissen.entfernen).
+        await bridge_wissen.entfernen(db, brain)
+        return {"ok": True, "id": brain_id}
     await db.delete(brain)
     await db.commit()
     return {"ok": True, "id": brain_id}
@@ -344,7 +453,7 @@ async def brain_mcp_generate_token(
     can never be read back. Calling again rotates it (old token stops working).
     """
     _require_admin(user)
-    brain = await _brain_oder_404(db, brain_id)
+    brain = await _brain_oder_404(db, brain_id, user)
     token = secrets.token_urlsafe(32)
     brain.mcp_token_encrypted = encrypt_token(token)
     brain.mcp_enabled = True
@@ -362,7 +471,7 @@ async def brain_mcp_disable(
 ):
     """Disable MCP access for this brain and wipe its token."""
     _require_admin(user)
-    brain = await _brain_oder_404(db, brain_id)
+    brain = await _brain_oder_404(db, brain_id, user)
     brain.mcp_enabled = False
     brain.mcp_token_encrypted = None
     await db.commit()
@@ -390,7 +499,7 @@ class BrainFileWrite(BaseModel):
 async def brain_tree(brain_id: int, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     """Flat, sorted list of folders + files in the vault (excluding .git)."""
     _require_admin(user)
-    brain = await _brain_oder_404(db, brain_id)
+    brain = await _brain_oder_404(db, brain_id, user)
     base = os.path.realpath(brain.host_path)
     entries: list[dict] = []
     if os.path.isdir(base):
@@ -414,7 +523,7 @@ async def brain_graph(brain_id: int, user=Depends(require_auth), db: AsyncSessio
     them. Powers the 3D knowledge-graph view in the vault browser.
     """
     _require_admin(user)
-    brain = await _brain_oder_404(db, brain_id)
+    brain = await _brain_oder_404(db, brain_id, user)
     graph = vault.build_graph(brain.host_path)
     graph["brain"] = {"id": brain.id, "name": brain.name, "slug": brain.slug}
     return graph
@@ -423,7 +532,7 @@ async def brain_graph(brain_id: int, user=Depends(require_auth), db: AsyncSessio
 @router.get("/{brain_id}/file")
 async def brain_read_file(brain_id: int, path: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     _require_admin(user)
-    brain = await _brain_oder_404(db, brain_id)
+    brain = await _brain_oder_404(db, brain_id, user)
     target = _vault_path(brain, path)
     if not os.path.isfile(target):
         raise HTTPException(status_code=404, detail="File not found")
@@ -437,7 +546,8 @@ async def brain_read_file(brain_id: int, path: str, user=Depends(require_auth), 
 @router.put("/{brain_id}/file")
 async def brain_write_file(brain_id: int, body: BrainFileWrite, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     _require_admin(user)
-    brain = await _brain_oder_404(db, brain_id)
+    brain = await _brain_oder_404(db, brain_id, user)
+    _nicht_gespiegelt(brain)
     target = _vault_path(brain, body.path)
     if target == os.path.realpath(brain.host_path) or os.path.isdir(target):
         raise HTTPException(status_code=400, detail="path must be a file")
@@ -458,7 +568,8 @@ async def brain_write_file(brain_id: int, body: BrainFileWrite, user=Depends(req
 @router.delete("/{brain_id}/file")
 async def brain_delete_file(brain_id: int, path: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     _require_admin(user)
-    brain = await _brain_oder_404(db, brain_id)
+    brain = await _brain_oder_404(db, brain_id, user)
+    _nicht_gespiegelt(brain)
     target = _vault_path(brain, path)
     if os.path.isfile(target):
         os.remove(target)
@@ -486,7 +597,7 @@ async def brain_export(brain_id: int, user=Depends(require_auth), db: AsyncSessi
     from fastapi.responses import Response
 
     _require_admin(user)
-    brain = await _brain_oder_404(db, brain_id)
+    brain = await _brain_oder_404(db, brain_id, user)
 
     puffer = io.BytesIO()
     anzahl = vault_transfer.exportiere_zip(brain.host_path, puffer)
@@ -520,7 +631,8 @@ async def brain_import(
     import zipfile
 
     _require_admin(user)
-    brain = await _brain_oder_404(db, brain_id)
+    brain = await _brain_oder_404(db, brain_id, user)
+    _nicht_gespiegelt(brain)
 
     roh = await file.read()
     if len(roh) > vault_transfer.MAX_ARCHIV_BYTES:
@@ -558,6 +670,6 @@ async def brain_reindex(brain_id: int, user=Depends(require_auth), db: AsyncSess
     to backfill an existing vault the first time.
     """
     _require_admin(user)
-    brain = await _brain_oder_404(db, brain_id)
+    brain = await _brain_oder_404(db, brain_id, user)
     stats = await vault_indexer.reindex_vault(db, brain.label, brain.host_path)
     return {"ok": True, "brain": brain.slug, **stats}

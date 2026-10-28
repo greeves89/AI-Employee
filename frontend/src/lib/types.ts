@@ -78,6 +78,10 @@ export interface SecondBrain {
   is_active: boolean;
   mcp_enabled?: boolean;
   mcp_path?: string | null;   // relative MCP endpoint; prepend window.location.origin
+  /** Gespiegelter Bridge-Ordner (#1092): Quelle auf dem Rechner, nur lesend, privat. */
+  bridge_ordner?: string | null;
+  sync_stand?: string | null;
+  sync_fehler?: string | null;
   created_at: string;
   updated_at: string;
 }

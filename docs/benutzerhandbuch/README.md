@@ -1111,6 +1111,8 @@ Preisen oder Abläufen). Zur Auswahl stehen nur Second Brains, die du selbst nut
 - Die **Agenten** des Projekts sehen dieselben Treffer über ihre Projektsuche und lesen die Seiten
   ebenso nur lesend; der Projektauftrag nennt die angebundenen Brains.
 - Wird dir der Zugriff auf ein Brain entzogen, fällt es automatisch aus dem Projekt heraus.
+- Auch ein **gespiegelter Ordner deines Rechners** (Kap. 23.4) steht zur Auswahl. Er wirkt nur
+  für dich: Wer das Projekt mit dir teilt, sieht ihn dort nicht.
 
 ### 6a.7a Projektgespräch *(seit 1.371.0)*
 
@@ -2762,6 +2764,43 @@ dein Ja freigibt.
 > ab Version 1.378.0 — sonst meldet das Overlay „bitte den Agenten aktualisieren“.
 
 ---
+
+
+### 23.4 Einen Ordner deines Rechners als Second Brain spiegeln *(seit 1.387.0)*
+
+Liegt dein Wissen in einem Ordner auf deinem Rechner — zum Beispiel ein **Obsidian-Vault** —,
+kann die Bridge ihn auf den Server spiegeln. Daraus wird ein ganz normales Second Brain: du
+kannst es an Projekte anbinden (Kap. 6a.7, „Second Brains anbinden“) oder einem Agenten zuweisen (Kap. 5.5), die Suche findet darin auch nach Bedeutung, und es
+bleibt nutzbar, wenn dein Rechner aus ist.
+
+1. In der Bridge unter **Berechtigungen → Ordner-Zugriff** den Ordner freigeben (Knopf
+   **Hinzufügen**). Das ist dieselbe Liste wie für Shell-Befehle.
+2. Bridge verbinden.
+3. In der Weboberfläche **Meine Einstellungen → Meine Bridge-Ordner** öffnen und
+   **Ordner spiegeln** klicken. Die Plattform fragt die Bridge nach ihren freigegebenen Ordnern.
+4. Ordner auswählen, einen **Namen** vergeben und **Spiegeln** klicken. Der erste Abgleich
+   startet sofort.
+
+Was übernommen wird:
+- **Markdown und Text** (`.md`, `.markdown`, `.txt`, bis 2 MB) so, wie sie sind.
+- **PDF, Word, Excel** (bis 10 MB) als ausgelesener Text unter `<Dateiname>.md`.
+- Versteckte Ordner wie `.obsidian`, `.git` oder `.trash` und Verknüpfungen (Links) bleiben
+  außen vor; höchstens 5.000 Dateien je Ordner.
+
+Abgeglichen wird, solange die Bridge verbunden ist: beim Verbinden und danach alle zehn
+Minuten, mit **Jetzt abgleichen** (Pfeil-Symbol) sofort. Übertragen werden nur geänderte
+Dateien; was du im Ordner löschst, verschwindet auch auf dem Server. Unter jedem Ordner steht,
+wann zuletzt abgeglichen wurde und ob etwas übergangen wurde.
+
+Gut zu wissen:
+- **Nur in eine Richtung, nur lesend.** Geändert wird im Ordner auf deinem Rechner, nicht in
+  der Plattform. Agenten lesen das Brain, schreiben aber nicht hinein.
+- **Nur für dich.** Kein anderer Nutzer sieht den Spiegel, auch kein Administrator. Hängst du
+  ihn an ein Projekt, das du mit anderen teilst, sehen die anderen ihn dort nicht.
+- **Löschen** (Papierkorb-Symbol) entfernt nur die Kopie auf dem Server; der Ordner auf
+  deinem Rechner bleibt unberührt.
+- Dafür braucht es die Bridge ab Version 1.387.0. Eine ältere meldet sich am Ordner mit
+  „Die Bridge ist zu alt …“.
 
 ## 24. Skills herunterladen & installieren
 
