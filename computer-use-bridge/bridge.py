@@ -1497,9 +1497,6 @@ WISSEN_MAX_TEXT_BYTES = 2_000_000
 WISSEN_MAX_DOKUMENT_BYTES = 10 * 1024 * 1024
 # Neben versteckten Ordnern: Ablagen von Werkzeugen, kein Wissen.
 WISSEN_AUSGELASSEN = {"node_modules", "__pycache__"}
-# (Pfad, Groesse, Aenderungszeit) -> Pruefsumme: der Abgleich laeuft alle zehn
-# Minuten, ohne Merker laese er jedes Mal jede Datei ganz.
-_wissen_pruefsummen: dict[tuple[str, int, int], str] = {}
 
 
 def _wissen_wurzel(ordner) -> str | None:
@@ -1537,27 +1534,19 @@ def _wissen_grenze(name: str) -> int:
     return WISSEN_MAX_TEXT_BYTES if name.lower().endswith(WISSEN_TEXT_ENDUNGEN) else WISSEN_MAX_DOKUMENT_BYTES
 
 
-def _wissen_pruefsumme(pfad: str, st: os.stat_result) -> str:
-    schluessel = (pfad, st.st_size, st.st_mtime_ns)
-    bekannt = _wissen_pruefsummen.get(schluessel)
-    if bekannt:
-        return bekannt
-    h = hashlib.sha256()
-    with os.fdopen(_wissen_oeffnen(pfad), "rb") as fh:
-        for stueck in iter(lambda: fh.read(1024 * 1024), b""):
-            h.update(stueck)
-    if len(_wissen_pruefsummen) > 4 * WISSEN_MAX_DATEIEN:
-        _wissen_pruefsummen.clear()
-    _wissen_pruefsummen[schluessel] = h.hexdigest()
-    return _wissen_pruefsummen[schluessel]
-
-
 def wissen_ordner() -> dict:
     return {"ok": True, "ordner": allowed_shell_dirs()}
 
 
 def wissen_liste(ordner) -> dict:
-    """Pfad (relativ, mit /), Groesse und SHA-256 jeder spiegelbaren Datei."""
+    """Pfad (relativ, mit /), Groesse und Stempel jeder spiegelbaren Datei.
+
+    Der Stempel (Groesse + Aenderungszeit) kommt aus ``stat`` — die Liste oeffnet
+    KEINE Datei. In iCloud- oder OneDrive-Ordnern dauert jedes Oeffnen Sekunden
+    (gemessen: ~5 s je Notiz); mit Pruefsummen in der Liste blockierte der erste
+    Abgleich eines Vaults die Bridge ueber eine Stunde. Gelesen wird nur, was sich
+    geaendert hat, einzeln ueber ``wissen_datei``.
+    """
     wurzel = _wissen_wurzel(ordner)
     if wurzel is None:
         return {"ok": False, "error": "Der Ordner ist in der Bridge nicht (mehr) freigegeben."}
@@ -1576,7 +1565,7 @@ def wissen_liste(ordner) -> dict:
                     continue
                 dateien.append({
                     "pfad": os.path.relpath(pfad, wurzel).replace(os.sep, "/"),
-                    "sha": _wissen_pruefsumme(pfad, st),
+                    "stempel": f"{st.st_size}-{st.st_mtime_ns}",
                     "bytes": st.st_size,
                 })
             except OSError:
@@ -1613,7 +1602,8 @@ def wissen_datei(ordner, pfad) -> dict:
         return {"ok": False, "error": "Datei nicht gefunden"}
     if len(roh) > grenze:
         return {"ok": False, "error": "Datei zu gross"}
-    return {"ok": True, "inhalt_b64": base64.b64encode(roh).decode("ascii")}
+    return {"ok": True, "inhalt_b64": base64.b64encode(roh).decode("ascii"),
+            "sha": hashlib.sha256(roh).hexdigest()}
 
 
 def shell_run(command: str, cwd: str | None = None, timeout: int = 120) -> dict:

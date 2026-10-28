@@ -284,3 +284,30 @@ class BridgeWissen(Basis):
             self.assertEqual(await mounts_des_agenten(db, await db.get(Agent, "a1")), [brain.label, "downloads"])
             self.assertEqual(await mounts_des_agenten(db, await db.get(Agent, "b1")), ["downloads"])
 
+    async def test_stempel_der_neuen_bridge(self):
+        """Ab Bridge 1.387.2: Liste mit Stempel statt Prüfsumme, Prüfsumme kommt mit der Datei."""
+        brain = await self._brain()
+        dateien = {"a.md": b"eins", "b.md": b"zwei"}
+        stempel = {"a.md": "4-100", "b.md": "4-100"}
+        geholt: list[str] = []
+
+        async def neu(action, params, timeout):
+            if action == "wissen_liste":
+                return {"ok": True, "dateien": [{"pfad": p, "stempel": stempel[p], "bytes": len(i)}
+                                                for p, i in dateien.items()]}
+            geholt.append(params["pfad"])
+            roh = dateien[params["pfad"]]
+            sha = hashlib.sha256(b"verfaelscht" if params["pfad"] == "b.md" else roh).hexdigest()
+            return {"ok": True, "inhalt_b64": base64.b64encode(roh).decode(), "sha": sha}
+
+        r, _ = await self._sync(brain, neu)
+        # b.md kam mit falscher Prüfsumme: nicht übernommen (nächster Lauf versucht es neu).
+        self.assertEqual([e["path"] for e in vault.list_entries(brain.host_path)], ["a.md"])
+        geholt.clear()
+        stempel["a.md"] = "4-200"   # nur die Änderungszeit: neu holen
+        await self._sync(brain, neu)
+        self.assertEqual(sorted(geholt), ["a.md", "b.md"])
+        geholt.clear()
+        await self._sync(brain, neu)
+        self.assertEqual(geholt, ["b.md"])   # a.md unverändert — nicht wieder geöffnet
+
