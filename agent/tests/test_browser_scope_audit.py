@@ -249,7 +249,10 @@ class ScopeUndAudit(unittest.IsolatedAsyncioTestCase):
         class Umleitende(SeitenDoppel):
             async def goto(self, url, wait_until=None):
                 self.goto_aufrufe.append(url)
-                self.url = "https://angreifer.invalid/x" if url.startswith("https://example.com") else url
+                from urllib.parse import urlsplit
+
+                umleiten = urlsplit(url).hostname == "example.com"
+                self.url = "https://angreifer.invalid/x" if umleiten else url
 
         self.seite = Umleitende()
         with self._mit_freigabe("example.com"):

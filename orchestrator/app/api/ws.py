@@ -1544,6 +1544,13 @@ async def ws_agent_browser(
 
     import aiohttp
 
+    # Der Rechnername entsteht aus dem Anzeigenamen des Agenten und der Kennung
+    # aus der Adresse -- hier direkt vor dem Bau der Adresse klammern (wie beim
+    # Pruefprotokoll in ``agents.py``), damit daraus nie ein fremdes Ziel wird.
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_.-]{0,126}", name):
+        logger.error("[Browser] Unerwarteter Containername fuer %s", scrub_log(agent_id))
+        await websocket.close(code=1011, reason="unexpected container name")
+        return
     ziel = f"ws://{name}:{BROWSER_STROM_PORT}/browser/stream"
     # Ausweis gegenueber dem Agenten: Alle Agenten haengen im selben Netz, der
     # Agent laesst nur den Orchestrator an seinen Browser (#828, Schritt 5).
