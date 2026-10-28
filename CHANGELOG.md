@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.394.2] - 2026-10-29
+
+### Dokumentation
+- Benutzerhandbuch: neue Bildschirmfotos der Oberfläche seit 1.391.0 bis 1.394.1 (Seitenleiste und Startseite, Mein Konto, Verbindungen, Admin-Bereich mit eigener Leiste, Systemzustand), PDF neu erzeugt. Mailadressen und Lizenzhinweise sind in den Bildern unkenntlich.
+
 ## [1.394.1] - 2026-10-28
 
 ### Sicherheit
