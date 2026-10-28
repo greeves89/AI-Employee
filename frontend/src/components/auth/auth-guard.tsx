@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Menu, ShieldAlert } from "lucide-react";
 import { initAuth, useAuthStore } from "@/lib/auth";
 import { Sidebar } from "@/components/layout/sidebar";
+import { AdminSidebar } from "@/components/layout/admin-sidebar";
 import { BetreiberHinweis } from "@/components/layout/betreiber-hinweis";
 import { VoiceSessionProvider } from "@/components/agents/voice-session-provider";
 import { SidebarProvider, useSidebarCollapsed } from "@/hooks/use-sidebar";
@@ -143,9 +144,14 @@ function ShellOrBare({ children }: { children: React.ReactNode }) {
  *  is full-width on mobile (no left margin) and offset by the sidebar width on lg+. */
 function AppShell({ children }: { children: React.ReactNode }) {
   const { collapsed, mobileOpen, setMobileOpen } = useSidebarCollapsed();
+  const pfad = usePathname();
+  const istAdmin = useAuthStore((st) => st.user?.role === "admin");
+  // Admins haben die normale Ansicht UND einen eigenen Admin-Bereich mit eigener
+  // Leiste (Redesign 2026-10). Mitglieder leitet /admin ohnehin weiter.
+  const imAdminBereich = istAdmin && (pfad === "/admin" || pfad.startsWith("/admin/"));
   return (
     <div className="min-h-screen">
-      <Sidebar />
+      {imAdminBereich ? <AdminSidebar /> : <Sidebar />}
 
       {/* Mobile backdrop — tap to close the drawer */}
       {mobileOpen && (
@@ -170,7 +176,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
       <main
         className={cn(
           "min-h-screen min-w-0 overflow-x-hidden transition-[margin] duration-300",
-          collapsed ? "lg:ml-[64px]" : "lg:ml-[260px]"
+          collapsed ? "lg:ml-[64px]" : "lg:ml-[240px]"
         )}
         // Platz fuer den Hinweis des Anbieters, falls er angezeigt wird.
         style={{ paddingBottom: "var(--betreiber-hinweis-h, 0px)" }}

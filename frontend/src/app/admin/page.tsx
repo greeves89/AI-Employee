@@ -499,8 +499,8 @@ export default function AdminPage() {
   return (
     <div>
       <Header
-        title="Administration"
-        subtitle="Nutzer, Rollen, Agenten und Systemeinstellungen verwalten"
+        title={ADMIN_BEREICH_NAMEN[tab]}
+        subtitle="Admin-Bereich · Einstellungen hier gelten für die ganze Anlage"
       />
 
       <motion.div
@@ -509,76 +509,10 @@ export default function AdminPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        {/* Eine Ebene (#899): links alle Bereiche, nach Gruppen ueberschrieben —
-            jeder Bereich mit einem Klick. Auf schmalen Bildschirmen dieselbe
-            Liste als Auswahlfeld. */}
-        <div className="lg:grid lg:grid-cols-[13.5rem_minmax(0,1fr)] lg:gap-8">
-        <nav aria-label="Bereiche der Admin-Konsole" className="mb-5 lg:mb-0">
-          <label className="lg:hidden">
-            <span className="sr-only">Bereich wählen</span>
-            <select
-              value={tab}
-              onChange={(e) => waehleBereich(e.target.value as Tab)}
-              className="w-full rounded-xl border border-border/50 bg-card/50 px-3.5 py-2.5 text-sm font-medium outline-none focus:border-primary/50"
-            >
-              {ADMIN_GRUPPEN.map((g) => (
-                <optgroup key={g.id} label={g.titel}>
-                  {g.bereiche.map((id) => (
-                    <option key={id} value={id}>
-                      {ADMIN_BEREICH_NAMEN[id]}
-                      {anzahl[id] ? ` (${anzahl[id]})` : ""}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          </label>
+        {/* Die Bereiche stehen in der Leiste des Admin-Bereichs
+            (``components/layout/admin-sidebar.tsx``, Redesign 2026-10). */}
+        <div>
 
-          <div className="hidden lg:sticky lg:top-6 lg:block space-y-4">
-            {ADMIN_GRUPPEN.map((g) => (
-              <div key={g.id}>
-                <h2 className="mb-1 px-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-                  {g.titel}
-                </h2>
-                <ul className="space-y-0.5">
-                  {g.bereiche.map((id) => {
-                    const Icon = BEREICH_SYMBOLE[id];
-                    const zahl = anzahl[id];
-                    const aktiv = tab === id;
-                    return (
-                      <li key={id}>
-                        <button
-                          type="button"
-                          onClick={() => waehleBereich(id)}
-                          aria-current={aktiv ? "page" : undefined}
-                          className={cn(
-                            "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] font-medium transition-colors",
-                            aktiv
-                              ? "bg-accent text-foreground"
-                              : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground"
-                          )}
-                        >
-                          <Icon className="h-3.5 w-3.5 shrink-0" />
-                          <span className="min-w-0 flex-1 truncate">{ADMIN_BEREICH_NAMEN[id]}</span>
-                          {zahl != null && zahl > 0 && (
-                            <span className={cn(
-                              "rounded px-1.5 py-0.5 text-[10px] tabular-nums",
-                              id === "feedback" ? "bg-amber-500/20 text-amber-700 dark:text-amber-400" : "bg-foreground/10"
-                            )}>
-                              {zahl}
-                            </span>
-                          )}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            ))}
-          </div>
-        </nav>
-
-        <div className="min-w-0">
         {EMBEDDED_TABS.includes(tab) ? (
           <div>
             {/* key: jeder Bereich laedt seine Daten selbst */}
@@ -1188,7 +1122,6 @@ export default function AdminPage() {
             )}
           </>
         )}
-        </div>
         </div>
       </motion.div>
 

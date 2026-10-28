@@ -88,11 +88,11 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
   const [allSecrets, setAllSecrets] = useState<AgentSecretEntry[]>([]);
   const [agentSecretIds, setAgentSecretIds] = useState<Set<number>>(new Set());
   const [togglingSecret, setTogglingSecret] = useState<number | null>(null);
-  // Eigenen Key an Personen freigeben (gemeinsamer Dialog mit der Admin-Konsole).
+  // Eigenen Key an Personen freigeben (gemeinsamer Dialog mit dem Admin-Bereich).
   const [teilen, setTeilen] = useState<AgentSecretEntry | null>(null);
   const toast = useToast();
   // Eigene Schlüssel direkt hier anlegen: der frühere Link führte in die
-  // Admin-Konsole, in die ein Mitglied gar nicht darf.
+  // Admin-Bereich, in die ein Mitglied gar nicht darf.
   const istAdmin = useAuthStore((st) => st.user?.role) === "admin";
   const confirm = useConfirm();
   const [neuOffen, setNeuOffen] = useState(false);

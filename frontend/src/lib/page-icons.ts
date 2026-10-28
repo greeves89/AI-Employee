@@ -77,9 +77,14 @@ export function pageIcon(name: string | null | undefined): React.ElementType {
  *  ``GROUP_KEYS`` im Server. Weicht eine Seite davon ab, faende der Menuepunkt
  *  keine Gruppe und wäre unsichtbar. */
 export const PAGE_GROUPS: { key: string; label: string }[] = [
-  { key: "overview", label: "Übersicht" },
-  { key: "collab", label: "Zusammenarbeit" },
-  { key: "automation", label: "Automatisierung" },
-  { key: "system", label: "Arbeitsplatz" },
-  { key: "help", label: "Hilfe" },
+  { key: "overview", label: "Arbeiten" },
+  { key: "collab", label: "Ablage" },
+  { key: "automation", label: "Automatisieren" },
 ];
+
+/** Gruppen von vor dem Redesign (2026-10): ihre Seiten landen in der nächsten
+ *  heutigen Gruppe, statt aus dem Menü zu verschwinden. */
+export const ALTE_SEITEN_GRUPPEN: Record<string, string> = {
+  system: "collab",
+  help: "overview",
+};

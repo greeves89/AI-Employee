@@ -52,7 +52,7 @@ function Abschnitt({
  * eigene KI-Zugaenge, die fuer ihn freigegebenen Modelle, Benachrichtigungen in
  * diesem Browser und die Anzeige. Fuer jeden gleich, ob Admin oder Mitglied.
  *
- * Alles Anlagenweite steht in der Admin-Konsole. Diese Seite ruft deshalb keine
+ * Alles Anlagenweite steht im Admin-Bereich. Diese Seite ruft deshalb keine
  * Schnittstelle auf, die einem Mitglied verwehrt ist.
  */
 export function MeineEinstellungenView() {
@@ -62,7 +62,7 @@ export function MeineEinstellungenView() {
   const { simpleMode, istAdmin, mitgliederAnsicht, setMitgliederAnsicht } = useSimpleMode();
 
   // Alte Verweise (Lesezeichen, Handbuch, Hinweis-Streifen) auf die frueheren
-  // Reiter: Anlagenweites fuehrt Admins in die Konsole, alles andere springt
+  // Reiter: Anlagenweites fuehrt Admins in den Admin-Bereich, alles andere springt
   // zum passenden Abschnitt dieser Seite.
   useEffect(() => {
     if (!user) return;
@@ -79,8 +79,8 @@ export function MeineEinstellungenView() {
   return (
     <div>
       <Header
-        title="Meine Einstellungen"
-        subtitle="Was nur dich betrifft: eigene KI-Zugänge, Benachrichtigungen und Anzeige"
+        title="Mein Konto"
+        subtitle="Gilt nur für dich. Niemand sonst sieht diese Angaben, auch kein Admin."
       />
 
       <motion.div
@@ -95,14 +95,14 @@ export function MeineEinstellungenView() {
               <Shield className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
               <p className="text-sm text-muted-foreground">
                 Einstellungen für die ganze Anlage — Modelle &amp; Anbieter, Integrationen der
-                Anlage, Sprache, System &amp; Lizenz — stehen in der Admin-Konsole.
+                Anlage, Sprache, System &amp; Lizenz — stehen im Admin-Bereich.
               </p>
             </div>
             <Link
               href="/admin"
               className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-foreground/[0.06] px-3 py-1.5 text-sm font-medium transition-colors hover:bg-foreground/[0.1]"
             >
-              Zur Admin-Konsole
+              Zum Admin-Bereich
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>

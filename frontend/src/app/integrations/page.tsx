@@ -494,7 +494,7 @@ export default function IntegrationsPage() {
                           )}
                           {!integration.available && !integration.connected && integration.auth_type !== "pat" && (
                             <p className="text-[10px] text-yellow-500/80 mt-1.5">
-                              Noch nicht eingerichtet — die Zugangsdaten (Client ID) hinterlegt der Administrator unter Admin-Konsole → Integrationen (Anlage).
+                              Noch nicht eingerichtet — die Zugangsdaten (Client ID) hinterlegt der Administrator unter Admin-Bereich → Dienste & Konten.
                             </p>
                           )}
                           {integration.auth_type === "oauth" && integration.scopes?.trim() && (() => {
@@ -593,7 +593,7 @@ export default function IntegrationsPage() {
                                 <p className="mt-1 text-amber-700 dark:text-amber-400/80">→ Danach auf <strong>„Administratorzustimmung erteilen“</strong> klicken</p>
                               </li>
                               <li>Unter <strong className="text-foreground">Zertifikate &amp; Geheimnisse</strong> einen neuen geheimen Clientschlüssel anlegen</li>
-                              <li><strong className="text-foreground">Client-ID &amp; Secret</strong> unter <strong className="text-foreground">Admin-Konsole → Integrationen (Anlage) → Microsoft 365</strong> eintragen</li>
+                              <li><strong className="text-foreground">Client-ID &amp; Secret</strong> unter <strong className="text-foreground">Admin-Bereich → Dienste & Konten → Microsoft 365</strong> eintragen</li>
                             </ol>
                             <p className="text-[10px] text-muted-foreground/60">
                               Der Administrator richtet das einmal ein. Danach verbindet jeder Nutzer hier sein eigenes Konto — Token werden je Nutzer gespeichert, nicht geteilt.

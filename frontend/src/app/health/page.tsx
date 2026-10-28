@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
-// Health lebt nur noch in der Admin-Konsole (Issue #787) — siehe
+// Health lebt nur noch im Admin-Bereich (Issue #787) — siehe
 // ai-accounts/page.tsx für die Begruendung.
 export default function HealthPage() {
   const router = useRouter();

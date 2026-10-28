@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import * as api from "@/lib/api";
 import type { CustomPage, CustomPageInput, CustomPageOpenMode, CustomPageSichtbarFuer } from "@/lib/api";
-import { PAGE_GROUPS, PAGE_ICON_NAMES, pageIcon } from "@/lib/page-icons";
+import { ALTE_SEITEN_GRUPPEN, PAGE_GROUPS, PAGE_ICON_NAMES, pageIcon } from "@/lib/page-icons";
 import { cn } from "@/lib/utils";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 
@@ -432,7 +432,7 @@ export function PagesPanel() {
         <div className="space-y-2">
           {pages.map((page) => {
             const Icon = pageIcon(page.icon);
-            const group = PAGE_GROUPS.find((g) => g.key === page.group_key);
+            const group = PAGE_GROUPS.find((g) => g.key === (ALTE_SEITEN_GRUPPEN[page.group_key] ?? page.group_key));
             return (
               <div
                 key={page.id}
