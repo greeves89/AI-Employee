@@ -108,7 +108,10 @@ export function CreateTeamModal({
         member_agent_ids: memberIds,
         lead_agent_id: leadAgentId || null,
         ...(projekt ? { farbe, takt_minuten: takt, geteilt_mit: geteilt } : {}),
-        ...(projekt ? { repo: repo.trim(), repo_secret_id: repo.trim() ? schluessel : 0, angebundene_brains: brains } : {}),
+        ...(projekt ? { repo: repo.trim(), repo_secret_id: repo.trim() ? schluessel : 0 } : {}),
+        // Nur bei Änderung mitschicken — sonst blockierte ein inzwischen entzogenes
+        // Brain das Speichern jeder anderen Einstellung.
+        ...(projekt && brains.join("\n") !== (team?.angebundene_brains ?? []).join("\n") ? { angebundene_brains: brains } : {}),
       };
       if (isEdit && team) {
         await api.updateTeam(team.id, body);

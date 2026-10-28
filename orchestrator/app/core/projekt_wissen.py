@@ -216,26 +216,38 @@ async def _freigabe_des_erstellers(db: AsyncSession, team: Team) -> dict | None 
     return await freigegebene_mounts(ersteller, db)
 
 
+async def _projektwissen_slugs(db: AsyncSession) -> set[str]:
+    """Die Wissensablagen ALLER Projekte — sie gehören zu ihrem Projekt und lassen
+    sich nirgends anbinden (auch nicht von Administratoren, die sonst alles dürfen)."""
+    return set((await db.execute(select(Team.wissen_slug).where(Team.wissen_slug.is_not(None)))).scalars())
+
+
 async def brains_pruefen(db: AsyncSession, team: Team, labels: list[str], user) -> list[str]:
     """Labels, die ``user`` an dieses Projekt hängen darf — sonst ``ValueError``.
 
-    Nur aktive Brains, die er selbst nutzen darf, nicht das eigene Projektwissen,
-    höchstens ``MAX_ANGEBUNDEN``.
+    Nur aktive Brains, die er selbst nutzen darf, kein Projektwissen (auch kein
+    fremdes), höchstens ``MAX_ANGEBUNDEN``. Geprüft werden nur NEU hinzugekommene:
+    ein bereits angebundenes Brain, dessen Freigabe inzwischen entzogen ist, darf
+    das Speichern des Projekts nicht blockieren — es wirkt ohnehin nicht mehr
+    (``angebundene`` prüft bei jedem Zugriff).
     """
     from app.core.mounts import freigegebene_mounts
 
     sauber = list(dict.fromkeys(str(x).strip() for x in labels if str(x).strip()))
     if len(sauber) > MAX_ANGEBUNDEN:
         raise ValueError(f"Höchstens {MAX_ANGEBUNDEN} Second Brains je Projekt.")
-    if not sauber:
-        return []
+    bisher = {str(x) for x in (getattr(team, "angebundene_brains", None) or [])}
+    neu = [label for label in sauber if label not in bisher]
+    if not neu:
+        return sauber
     vorhanden = {b.label: b for b in (await db.execute(
-        select(SecondBrain).where(SecondBrain.label.in_(sauber), SecondBrain.is_active.is_(True))
+        select(SecondBrain).where(SecondBrain.label.in_(neu), SecondBrain.is_active.is_(True))
     )).scalars()}
     erlaubt = await freigegebene_mounts(user, db)
-    for label in sauber:
+    projektwissen = await _projektwissen_slugs(db)
+    for label in neu:
         brain = vorhanden.get(label)
-        if brain is None or (team.wissen_slug and brain.slug == team.wissen_slug):
+        if brain is None or brain.slug in projektwissen or brain.slug.startswith("projekt-"):
             raise ValueError(f"Second Brain „{label}“ gibt es nicht.")
         if erlaubt is not None and label not in erlaubt:
             # Wie „gibt es nicht“: ein fremdes Brain soll sich nicht verraten.
@@ -243,30 +255,44 @@ async def brains_pruefen(db: AsyncSession, team: Team, labels: list[str], user) 
     return sauber
 
 
-async def angebundene(db: AsyncSession, team: Team) -> list[SecondBrain]:
-    """Die angebundenen Brains, die der ERSTELLER (noch) nutzen darf.
+#: ``fuer``: kein Nutzer bekannt (z. B. Agent ohne Besitzer) — dann keine angebundenen Brains.
+NIEMAND = object()
 
-    Bei jedem Zugriff neu geprüft: wird ihm ein Brain entzogen, fällt es hier
-    heraus, auch wenn es noch am Projekt steht.
+
+async def angebundene(db: AsyncSession, team: Team, fuer=None) -> list[SecondBrain]:
+    """Die angebundenen Brains, die der ERSTELLER (noch) nutzen darf — und, mit
+    ``fuer``, auch dieser Nutzer.
+
+    Bei jedem Zugriff neu geprüft: wird ein Brain entzogen, fällt es hier heraus,
+    auch wenn es noch am Projekt steht. ``fuer`` ist der Mensch hinter dem Zugriff
+    (bei einem Agenten sein Besitzer): wem der Ersteller sein Projekt freigibt,
+    bekommt damit NICHT seine Brain-Freigaben — er sieht nur, was er selbst darf.
     """
+    from app.core.mounts import freigegebene_mounts
+
     labels = [str(x) for x in (getattr(team, "angebundene_brains", None) or []) if x]
-    if not labels:
+    if not labels or fuer is NIEMAND:
         return []
     erlaubt = await _freigabe_des_erstellers(db, team)
     if erlaubt is False:
         return []
+    auch = await freigegebene_mounts(fuer, db) if fuer is not None else None
+    projektwissen = await _projektwissen_slugs(db)
     brains = (await db.execute(
         select(SecondBrain).where(SecondBrain.label.in_(labels), SecondBrain.is_active.is_(True))
     )).scalars().all()
     reihenfolge = {label: i for i, label in enumerate(labels)}
-    return sorted((b for b in brains if erlaubt is None or b.label in erlaubt),
+    return sorted((b for b in brains
+                   if (erlaubt is None or b.label in erlaubt) and (auch is None or b.label in auch)
+                   and b.slug not in projektwissen and not b.slug.startswith("projekt-")),
                   key=lambda b: reihenfolge.get(b.label, 0))
 
 
-async def suchen_mit_angebundenen(db: AsyncSession, team: Team, eigenes: SecondBrain, frage: str) -> list[dict]:
+async def suchen_mit_angebundenen(db: AsyncSession, team: Team, eigenes: SecondBrain, frage: str,
+                                  fuer=None) -> list[dict]:
     """Projektwissen zuerst, dann jedes angebundene Brain — jeder Treffer mit Quelle."""
     treffer = [{**t, "brain": None, "quelle": "Projektwissen"} for t in await suchen(db, eigenes, frage)]
-    for brain in await angebundene(db, team):
+    for brain in await angebundene(db, team, fuer):
         try:
             for t in await suchen(db, brain, frage, limit=5):
                 treffer.append({**t, "brain": brain.label, "quelle": brain.name})
@@ -275,11 +301,14 @@ async def suchen_mit_angebundenen(db: AsyncSession, team: Team, eigenes: SecondB
     return treffer
 
 
-async def angebunden_lesen(db: AsyncSession, team: Team, label: str, pfad: str) -> str:
+async def angebunden_lesen(db: AsyncSession, team: Team, label: str, pfad: str, fuer=None) -> str:
     """Eine Seite aus einem angebundenen Brain — nur lesend, nur aus angebundenen."""
-    brain = next((b for b in await angebundene(db, team) if b.label == label), None)
+    brain = next((b for b in await angebundene(db, team, fuer) if b.label == label), None)
     if brain is None:
         raise LookupError(label)
+    # Nur Textseiten — wie die Suche; andere Dateien eines Brains bleiben dort.
+    if not pfad.lower().endswith(vault._SEARCHABLE_SUFFIXES):
+        raise FileNotFoundError(pfad)
     return vault.read_file(brain.host_path, pfad)
 
 

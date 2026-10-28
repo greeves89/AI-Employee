@@ -649,6 +649,18 @@ async def _besitzer(user, db: AsyncSession) -> str | None:
     return str(getattr(user, "id", "")) or None
 
 
+async def _person(user, db: AsyncSession):
+    """Der Mensch hinter ``user`` für Brain-Freigaben — bei einem Agenten sein Besitzer,
+    ohne Besitzer ``projekt_wissen.NIEMAND``."""
+    from app.core import projekt_wissen
+    from app.models.user import User
+
+    if not is_agent_principal(user):
+        return user
+    besitzer = await _besitzer(user, db)
+    return (await db.get(User, besitzer) if besitzer else None) or projekt_wissen.NIEMAND
+
+
 async def _fremd_fuer(karte, agent_id: str | None, db: AsyncSession) -> bool:
     """Stammt die Karte von einem anderen Nutzer als dem Besitzer des Ziel-Agenten?
 
@@ -1103,7 +1115,7 @@ async def wissen_lesen(team_id: str, pfad: str, brain: str | None = None, user=D
     try:
         if brain:
             try:
-                inhalt = await projekt_wissen.angebunden_lesen(db, t, brain, pfad)
+                inhalt = await projekt_wissen.angebunden_lesen(db, t, brain, pfad, await _person(user, db))
             except LookupError:
                 raise HTTPException(status_code=404, detail="Dieses Second Brain ist nicht an das Projekt angebunden.")
             return {"pfad": pfad, "brain": brain, "inhalt": inhalt}
@@ -1207,7 +1219,8 @@ async def wissen_suchen(team_id: str, frage: str, user=Depends(require_auth_or_a
         raise HTTPException(status_code=422, detail="Die Suchfrage ist leer.")
     # Mit den angebundenen Second Brains; jeder Treffer nennt seine Quelle
     # (``brain`` = Label, leer fürs Projektwissen) — lesen über ``?brain=``.
-    return {"projekt_id": t.id, "treffer": await projekt_wissen.suchen_mit_angebundenen(db, t, brain, frage)}
+    return {"projekt_id": t.id, "treffer": await projekt_wissen.suchen_mit_angebundenen(
+        db, t, brain, frage, await _person(user, db))}
 
 
 @router.post("/{team_id}/repo/abgleichen")
