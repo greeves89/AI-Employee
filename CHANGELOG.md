@@ -5,11 +5,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.394.1] - 2026-10-28
+## [1.393.3] - 2026-10-28
 
 ### Geändert
 - **Die Oberfläche hat wieder die bisherigen Farben und die bisherige Schrift.** Die Farben aus dem Redesign (1.391.0, dunkelblaue Leiste, Lava-Orange, Space Grotesk) sind zurückgenommen, Aufbau und Navigation bleiben: drei Gruppen in der Leiste, eigener Admin-Bereich mit „Admin“-Marke, vier Reiter beim Agenten, „Mein Konto“.
 - Die Startseite heißt jetzt auch in der Überschrift „Start“, wie in der Leiste. Hinweise, die noch auf „Integrationen“ zeigten, nennen jetzt „Verbindungen“ bzw. „Admin-Bereich → Dienste & Konten“.
+
+## [1.393.2] - 2026-10-28
+
+### Behoben
+- **Das Projekt-Board zeigte nicht, wenn jemand außerhalb ein Ticket nahm.** Nahm ein Agent einer anderen Anlage, Claude Code oder ein Mensch ein Issue (Zuständiger im Repo, Status-Tag wie `status/in-arbeit`), blieb die Karte im Eingang. Man sah nicht, dass jemand dran war, und der Arbeitstakt hätte sie noch einem eigenen Agenten gegeben. Jetzt gleicht das Board Zuständige und Status-Tags ab: `status/in-arbeit` (auch „in progress“, „wip“) oder ein Zuständiger führt nach In Arbeit, mit Namen an der Karte (`@name`, sonst „extern dran“). `status/ready` führt nach Bereit, `status/review` in die Prüfung. Fällt beides weg, kommt die Karte zurück. Der Takt vergibt solche Karten nicht, und die Agenten sehen in der Board-Übersicht „extern in Arbeit — nicht übernehmen“. Hat ein eigener Agent die Karte schon, bleibt sie bei ihm, der fremde Name steht daneben.
+- **Pull Requests ohne „Closes #N“ hingen nicht am Issue.** Viele PRs nennen das Issue nur im Branch-Namen (`feat/1044-…`). Diese Nummer zählt jetzt mit. Der PR erscheint dann an der Issue-Karte statt als eigene Karte.
+
+### Verbessert
+- Die Tags eines Issues stehen jetzt als kleine Schilder auf der Karte, höchstens sechs, danach „+N“.
+
+## [1.393.1] - 2026-10-28
+
+### Verbessert
+- **Verbindungen, Apps und Skills sagen jetzt, wo ihr Gegenstück liegt.** „Verbindungen“ erklärt, dass Dienste der Anlage und Werkzeug-Server (MCP) im Admin-Bereich unter „Dienste & Konten“ stehen; Admins bekommen einen direkten Link. „Apps“ verweist auf Arbeit → Apps beim Agenten, „Skills“ auf Wissen → Skills. Die Agenten-Werkzeugleiste verlinkt „alle Agenten“ zur Apps-Seite.
+
+## [1.393.0] - 2026-10-28
+
+### Verbessert
+- **Besprechungsraum anlegen: Moderator und Besprechungsphasen sind jetzt direkt im Formular zu sehen.** Beide Einstellungen steckten hinter einem zusätzlichen Klick auf „Erweiterte Einstellungen“ — obwohl fast jeder sie beim Anlegen braucht. Vom Öffnen des Formulars bis zu einem einzelnen Phasen-Feld sind es jetzt 1 statt 3 Klicks.
+- **Fachbegriffe in der Seitenleiste und im Agenten-Reiter „Wissen“ zeigen beim Draufhalten eine kurze Erklärung:** Abläufe, Prüfaufgaben und Wissens-Ablagen, jeweils mit dem früheren Namen (Workflows, Golden-Tests, Second Brain) in Klammern, damit man sie wiedererkennt.
+- Die Überschrift „Nachtschicht (Reflection)“ in den Admin-Einstellungen heißt jetzt nur noch „Nachtschicht“ — der englische Klammerzusatz war überflüssig, der deutsche Erklärtext darunter stand schon da.
 
 ## [1.391.0] - 2026-10-28
 

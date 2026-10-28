@@ -11,11 +11,14 @@ import {
 import { Github } from "@/components/icons/github";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/lib/auth";
+import { adminPfad } from "@/lib/admin-bereiche";
 import * as api from "@/lib/api";
 import { useConfirm } from "@/components/ui/dialog-provider";
 import type { Integration } from "@/lib/types";
 import type { McpServerInfo, McpTool, McpAgentHealth, McpAgentHealthEntry, McpToolCallResult } from "@/lib/api";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { ClaudeLoginDialog, startClaudeLogin } from "@/components/integrations/claude-login-dialog";
 
 const PROVIDER_ICONS: Record<string, typeof Mail> = {
@@ -25,6 +28,7 @@ const PROVIDER_ICONS: Record<string, typeof Mail> = {
   Github,
 };
 export default function IntegrationsPage() {
+  const istAdmin = useAuthStore((st) => st.user?.role === "admin");
   const confirm = useConfirm();
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [loading, setLoading] = useState(true);
@@ -176,6 +180,21 @@ export default function IntegrationsPage() {
       <div className="flex-1 overflow-y-auto p-6 space-y-8">
         {/* Die Werkzeug-Server (MCP) der Anlage verwalten Admins im Admin-Bereich unter
             „Dienste & Konten“ (Redesign 2026-10) — hier steht nur, was du selbst verbindest. */}
+        {/* Abgrenzung (#787 Punkt 3): hier verbindet jeder Nutzer seine EIGENEN
+            Konten. Dienste der Anlage und welcher Agent was nutzen darf, liegen anderswo. */}
+        <p className="-mt-2 text-[12px] text-muted-foreground">
+          Hier verbindest du deine eigenen Konten. Dienste für die ganze Anlage und
+          Werkzeug-Server (MCP) richtet ein Admin im Admin-Bereich unter „Dienste &amp;
+          Konten“ ein{istAdmin && (
+            <>
+              {" "}(
+              <Link href={adminPfad("integrationen-anlage")} className="text-primary hover:underline">öffnen</Link>
+              )
+            </>
+          )}. Welche Verbindungen ein Agent nutzen darf, legst du beim Agenten unter
+          Einstellungen → Verbindungen fest.
+        </p>
+
 
         {/* OAuth Integrations Section */}
         <div>
