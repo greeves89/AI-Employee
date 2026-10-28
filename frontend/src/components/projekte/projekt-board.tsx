@@ -107,6 +107,7 @@ function Karte({
   // Leer = an den Lead (er verteilt); ohne Lead muss man wählen (außer bei einem Mitglied).
   const [ziel, setZiel] = useState<string>(!leadId && mitglieder.length === 1 ? mitglieder[0] : "");
   const wann = karte.erledigt ?? karte.aktualisiert ?? karte.erstellt;
+  const prOffen = !!karte.pr_url && !["gemergt", "geschlossen"].includes(karte.pr_zustand ?? "");
 
   return (
     <div className={cn("rounded-xl border bg-card text-sm shadow-sm", karte.spalte === "eingang" ? "p-2.5" : "p-3",
@@ -223,7 +224,12 @@ function Karte({
         )}
         {/* Ohne eigenen Lauf (PR aus dem Repo, Issue mit fremdem PR) gibt es nichts
             abzunehmen oder zurückzugeben — nur „erledigt“, wenn er gemergt ist. */}
-        {karte.spalte === "pruefung" && !karte.task_id && (
+        {/* Bei offenem PR kein „Erledigt“: der Knopf verschob nur die Karte, der PR
+            blieb offen — und nach dem Merge zieht der Abgleich die Karte ohnehin nach. */}
+        {karte.spalte === "pruefung" && !karte.task_id && prOffen && (
+          <span className="text-[11px] text-muted-foreground">Wandert nach dem Merge von selbst nach Erledigt.</span>
+        )}
+        {karte.spalte === "pruefung" && !karte.task_id && !prOffen && (
           <Knopf titel="Nach Erledigt (z. B. nach dem Merge)" onClick={() => aktionen.verschieben(karte, { spalte: "erledigt" })}>
             <Check className="h-3 w-3" /> Erledigt
           </Knopf>
@@ -282,7 +288,9 @@ export function ProjektBoardAnsicht({
                   )}
                 </span>
               </h3>
-              <div className="flex max-h-[34rem] flex-col gap-2 overflow-y-auto">
+              {/* Fünf Spalten nebeneinander: bis zum unteren Rand (nach „Board“-Sprung steht
+                  der Reiter oben), statt bei 34rem leeren Platz zu lassen. */}
+              <div className="flex max-h-[34rem] flex-col gap-2 overflow-y-auto xl:max-h-none xl:h-[calc(100dvh-14rem-var(--betreiber-hinweis-h,0px))] xl:min-h-[24rem]">
                 {karten.length === 0 ? (
                   <p className="px-1 py-3 text-xs text-muted-foreground/70">{sp.leer}</p>
                 ) : (

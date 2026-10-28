@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.381.2] - 2026-10-28
+
+### Verbessert
+- **Projekt-Board nutzt die ganze Bildschirmhöhe.** Auf breiten Bildschirmen (fünf Spalten nebeneinander) reichen die Spalten bis zum unteren Rand, statt nach etwa 34rem leeren Platz zu lassen.
+- **Kein „Erledigt“ mehr bei offenem PR.** Der Knopf verschob nur die Karte, der Pull Request blieb offen. Solange der PR offen ist, steht auf der Karte jetzt „Wandert nach dem Merge von selbst nach Erledigt“; zusammengeführt wird über den PR-Link auf GitHub, danach zieht der Abgleich die Karte nach.
+
 ## [1.381.1] - 2026-10-28
 
 ### Sicherheit
