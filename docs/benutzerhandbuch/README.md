@@ -30,7 +30,7 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 | **Skill** | Eine wiederverwendbare Fähigkeit / ein Slash-Command, den ein Agent installieren kann (z. B. „Präsentation erstellen"). |
 | **Knowledge Base** | Persönliche, durchsuchbare Wissensablage mit Tags. |
 | **Second Brain** | Ein **geteilter** Wissens-Vault (Markdown-Sammlung) für eine ganze Abteilung, der in zugewiesene Agenten eingebunden wird. |
-| **MCP** | Standard, über den Agenten **externe Werkzeuge/Datenquellen** anbinden (z. B. Wiki, DMS). MCP-Server fügst du unter Integrations hinzu. |
+| **MCP** | Standard, über den Agenten **externe Werkzeuge/Datenquellen** anbinden (z. B. Wiki, DMS). Werkzeug-Server richtet ein Admin im Admin-Bereich unter **Dienste & Konten** ein. |
 | **AI-Account** | Ein zentral hinterlegter **Modell-Zugang** (z. B. Azure OpenAI), den Agenten nutzen — statt eigener Schlüssel pro Person. |
 | **Harness / Modus** | Die „Maschine" hinter dem Agenten (z. B. *claude_code* oder *custom_llm/Azure*) — bestimmt, welches Modell/Provider verwendet wird. Im Zweifel die vorgeschlagene Option nehmen. |
 | **Rolle (Gruppe)** | Ein **Rechtebündel** (Admin), das Modelle, Second Brains, AI-Accounts, MCP-Tools usw. zusammenfasst und an Benutzer vergeben wird. |
@@ -95,13 +95,13 @@ Administratoren mit dem Schalter **Mitglieder-Ansicht** im Benutzermenü.
 11. [Triggers](#11-triggers)
 12. [Schedules](#12-schedules)
 13. [Approvals (Freigaben)](#13-approvals-freigaben)
-14. [Integrationen & MCP-Server](#14-integrationen--mcp-server)
+14. [Verbindungen & Werkzeug-Server (MCP)](#14-verbindungen--werkzeug-server-mcp)
 15. [AI-Accounts](#15-ai-accounts)
 16. [Secrets](#16-secrets)
 17. [Explorer (Dateien)](#17-explorer-dateien)
 18. [Audit-Log](#18-audit-log)
 19. [System-Health](#19-system-health)
-20. [Mein Konto](#20-meine-einstellungen)
+20. [Mein Konto](#20-mein-konto)
 21. [Benachrichtigungen](#21-benachrichtigungen)
 22. [Admin-Bereich](#22-admin-konsole)
 22a. [Concierge: was gerade auf dich wartet (nur Admins)](#22a-concierge-was-gerade-auf-dich-wartet-nur-admins)
@@ -1724,21 +1724,24 @@ du alle **bereits entschiedenen** Anfragen — wer wann was entschieden hat:
 
 ---
 
-## 14. Integrationen & MCP-Server
+## 14. Verbindungen & Werkzeug-Server (MCP)
 
-Unter **Integrations** verbindest du externe Werkzeuge und Datenquellen, die deine Agenten
-dann nutzen können. Es gibt zwei Bereiche: **MCP-Server** (Werkzeug-/Datenanbindungen über
-den MCP-Standard) und **OAuth-Integrationen** (Google, Microsoft 365, GitHub).
+Seit 1.391.0 sind die beiden Teile getrennt:
 
-![Integrationen](screenshots/11-integrations.png)
+- **Verbindungen** (Seitenleiste → *Weitere Bereiche* → **Verbindungen**, oder Mein Konto →
+  **Meine Verbindungen**): hier verbindest du **deine eigenen** Konten, etwa Postfach und
+  Kalender (Kap. 14.2).
+- **Werkzeug-Server (MCP)**: gelten für die ganze Anlage und stehen deshalb im
+  **Admin-Bereich** → **Anbindungen** → **Dienste & Konten**, unterhalb der Dienste.
+  Nur Admins richten sie ein (Kap. 14.1).
 
-Seitenleiste → **Integrations**.
+![Verbindungen](screenshots/11-integrations.png)
 
 ### 14.1 MCP-Server hinzufügen — jedes Feld erklärt
 
 Ein **MCP-Server** stellt Agenten zusätzliche **Tools** bereit (z. B. ein Wiki, ein
-Dokumenten-Management, ein Dateisystem). Klicke oben rechts auf **+ MCP Server
-hinzufügen** → das Formular:
+Dokumenten-Management, ein Dateisystem). Im **Admin-Bereich** → **Dienste & Konten** bis
+zum Abschnitt **MCP-Server** scrollen und auf **MCP-Server hinzufügen** klicken → das Formular:
 
 ![MCP-Server hinzufügen](screenshots/f09-mcp-add.png)
 
@@ -1761,7 +1764,7 @@ hinzufügen** → das Formular:
 Ein MCP-Server, den ein Administrator einträgt, nutzen zunächst nur Administratoren und
 Rollen, die ihn ausdrücklich freigeben (Kap. 22.4). Soll **jeder Nutzer** ihn bekommen:
 
-1. **Integrationen** öffnen und beim Server auf das **Personen-Symbol** (*Allen Nutzern
+1. **Admin-Bereich** → **Dienste & Konten** öffnen und beim Server auf das **Personen-Symbol** (*Allen Nutzern
    bereitstellen*) klicken. Beim Anlegen gibt es dafür denselben Haken **Allen Nutzern
    bereitstellen** im Formular.
 2. Die Rückfrage *„Allen Nutzern bereitstellen?“* lesen und **Bereitstellen** klicken. Das
@@ -1985,22 +1988,25 @@ So öffnest du sie:
 
 ![Mein Konto](screenshots/17-settings.png)
 
+Links steht eine kurze Liste der Bereiche *(seit 1.391.0)*; ein Klick springt hin.
+
 **Was du hier einstellst:**
-- **Meine KI-Zugänge** — dein eigenes Claude- oder Codex-Abo verbinden (falls die Anlage
-  das erlaubt).
-- **Verfügbare Modelle** — welche Modelle dir freigegeben sind.
-- **Integrationen und Benachrichtigungen** — Browser-Meldungen für diesen Browser an- oder
-  abschalten; eigene Konten (Microsoft 365, Google, MCP-Server) verbindest du über den Link
-  zu **Integrationen**.
-- **Anzeige** — helles oder dunkles Design; Administratoren zusätzlich die
-  **Mitglieder-Ansicht**.
+- **Anmeldung & Sicherheit** — Zwei-Faktor-Anmeldung einrichten.
+- **KI-Zugänge & Modelle** — dein eigenes Claude- oder Codex-Abo verbinden (falls die Anlage
+  das erlaubt) und sehen, welche Modelle dir freigegeben sind.
+- **Meine Verbindungen** — führt zur Seite **Verbindungen**, auf der du Postfach, Kalender
+  und weitere eigene Konten verbindest.
+- **Bridge & Ordner** — Ordner deines Rechners als private Wissens-Ablage spiegeln
+  (Kap. 23.4).
+- **Darstellung & Mitteilungen** — Mitteilungen in diesem Browser an- oder abschalten,
+  helles oder dunkles Design; Administratoren zusätzlich die **Mitglieder-Ansicht**.
 
 Alles wird sofort übernommen — es gibt keinen Speichern-Knopf.
 
-> Einstellungen für die **ganze Anlage** (Modelle & Anbieter, Integrationen der Anlage,
-> Sprache, System & Lizenz, Rollen, Budgets, Schlüssel) liegen **nicht** hier, sondern in der
-> **Admin-Bereich** (Kap. 22). Administratoren sehen oben auf der Seite einen Hinweis mit dem
-> Knopf **Zur Admin-Bereich**.
+> Einstellungen für die **ganze Anlage** (Modelle & Anbieter, Dienste & Konten, Werkzeug-
+> Server, Sprache, System & Lizenz, Rollen, Budgets, Schlüssel) liegen **nicht** hier,
+> sondern im **Admin-Bereich** (Kap. 1.5 und 22). Admins erreichen ihn unten in der
+> Seitenleiste über **Zum Admin-Bereich**.
 >
 > Alte Lesezeichen wie `/settings?tab=system` führen Administratoren automatisch in den
 > passenden Bereich des Admin-Bereichs.
@@ -2016,8 +2022,8 @@ gleichermaßen** — unabhängig davon, was bei einem einzelnen Agenten eingeste
 *Abbildung 33: Der plattformweite Nur-Lesen-Schalter*
 
 So findest du ihn:
-1. Seitenleiste → **Admin-Bereich**.
-2. Links unter **Anlage** den Bereich **Dienste & Konten** wählen.
+1. Unten in der Seitenleiste auf **Zum Admin-Bereich** klicken.
+2. Links unter **Anbindungen** den Bereich **Dienste & Konten** wählen.
 3. Zum Abschnitt **Microsoft 365** scrollen.
 4. Dort der Schalter **Microsoft nur lesend** — grün = aktiv (nur lesen).
 
@@ -2056,7 +2062,7 @@ fängt eigenständig an — statt dass du jeden neuen Agenten von Hand briefst.
 ![Vorlage · Verantwortungsbereiche](screenshots/36-vorlagen-bereiche.png)
 *Abbildung 36: Derselbe Editor wie beim Agenten — hier in der Vorlage*
 
-1. Seitenleiste → **Admin-Bereich** → links unter **Agenten** den Bereich **Agenten-Vorlagen**.
+1. Seitenleiste unten → **Zum Admin-Bereich** → links unter **Agenten** den Bereich **Vorlagen**.
 2. Die gewünschte Vorlage aufklappen → **Bearbeiten**.
 3. Zum Block **Verantwortungsbereiche** scrollen → **+ Bereich**.
 4. **Titel**, **Takt** (täglich/wöchentlich/monatlich/laufend) und **Priorität** setzen —
@@ -2072,7 +2078,7 @@ Jede der mitgelieferten Vorlagen kommt mit Skills für ihr Fachgebiet — ein Ag
 Vorlage *Buchhaltung* kennt z. B. sofort das Vorkontieren von Belegen, ein *Security
 Auditor* die Sicherheitsprüfung von Code. Du musst nichts einrichten.
 
-1. Seitenleiste → **Admin-Bereich** → **Agenten-Vorlagen** → Vorlage aufklappen.
+1. Seitenleiste unten → **Zum Admin-Bereich** → **Vorlagen** → Vorlage aufklappen.
 2. Unter **Skills** stehen die mitgebrachten Skills.
 
    ![Vorlage mit Skills](screenshots/48-vorlage-skills.png)
@@ -2204,7 +2210,7 @@ Unter **Admin-Bereich → System & Lizenz** steht ganz oben, mit welcher Lizenz 
   Anlage, laufend oder gestoppt.
 
 **Lizenz eintragen — Schritt für Schritt**
-1. Seitenleiste → **Admin-Bereich** → links unter **Anlage** den Bereich **System & Lizenz** wählen.
+1. Seitenleiste unten → **Zum Admin-Bereich** → links unter **Anlage** den Bereich **System & Lizenz** wählen.
 2. Den Schlüssel in das Feld **Lizenzschlüssel** einfügen.
 3. **Lizenz eintragen** klicken. Edition und Belegung erscheinen sofort.
 
@@ -2239,18 +2245,19 @@ Editionen und Preise stehen in der README des Projekts, Abschnitt „License".
 
 ![Admin-Bereich](screenshots/19-admin.png)
 
-Seitenleiste → **Admin-Bereich** (nur Administratoren). Links stehen **alle Bereiche in einer
-Liste**, nach Gruppen überschrieben — jeder Bereich ist mit **einem Klick** erreichbar
-*(seit 1.362.0)*. Auf schmalen Bildschirmen steht dieselbe Liste als Auswahlfeld oben.
+Seitenleiste unten → **Zum Admin-Bereich** (nur Administratoren). Die Leiste links wird hell
+und trägt die Marke **Admin**; dort stehen **alle Bereiche**, nach Gruppen überschrieben —
+jeder mit **einem Klick** erreichbar *(seit 1.391.0)*. Auf dem Handy öffnet das Menü-Symbol
+oben links dieselbe Leiste. **Zurück zur Arbeit** führt in die normale Ansicht.
 
 | Gruppe | Bereiche |
 |---|---|
-| **Nutzer & Rollen** | Nutzer, Rollen, SSO-Gruppen |
-| **Agenten** | Alle Agenten, Zuweisungen, Agenten-Vorlagen |
-| **KI & Wissen** | Modelle & Anbieter, KI-Konten, Sprache, Second Brains, Websuche |
-| **Anlage** | Dienste & Konten, System & Lizenz, Seiten & Links |
-| **Compliance** | Master-Regeln, Schlüssel & Zugangsdaten, DLP-Filter, Protokoll, Gesetze |
-| **Betrieb** | Systemzustand, Budget, Feedback |
+| **Menschen** | Nutzer, Rollen & Rechte, SSO-Gruppen |
+| **Agenten** | Alle Agenten, Zuweisungen, Vorlagen |
+| **KI** | Modelle & Anbieter, KI-Konten, Sprache, Websuche |
+| **Anbindungen** | Dienste & Konten (mit den Werkzeug-Servern), Wissens-Ablagen, Eigene Menüpunkte |
+| **Regeln** | Master-Regeln, Datenschutz-Filter, Gesetze, Schlüssel & Zugangsdaten, Protokoll |
+| **Anlage** | Systemzustand, Kosten & Budget, System & Lizenz, Rückmeldungen |
 
 Jeder Bereich hat eine eigene Adresse, z. B. `/admin?tab=modelle` oder `/admin?tab=lizenz` —
 gut für Lesezeichen. Der frühere Sammelreiter **Einstellungen** ist aufgeteilt in **Modelle &
@@ -3200,7 +3207,7 @@ der Agenten bzw. die Knowledge Base. **Morgens startet jeder Agent schlauer.**
 
 ### 31.1 Aktivieren (Admin)
 
-1. Seitenleiste → **Admin-Bereich** → **System & Lizenz** → Karte **„Nachtschicht (Reflection)"**.
+1. Seitenleiste unten → **Zum Admin-Bereich** → **System & Lizenz** → Karte **„Nachtschicht (Reflection)"**.
 2. **Aktiviert** einschalten.
 3. **Uhrzeit** wählen (Standard: **3 Uhr nachts**).
 4. **Modus** wählen:

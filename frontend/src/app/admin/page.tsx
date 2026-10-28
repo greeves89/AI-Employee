@@ -75,6 +75,7 @@ import { useAuthStore } from "@/lib/auth";
 import { useRouter, useSearchParams } from "next/navigation";
 import * as api from "@/lib/api";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
+import { McpServersSection } from "@/components/integrations/mcp-server-bereich";
 import { MountPermissionsModal } from "@/components/admin/mount-permissions-modal";
 import { ResetPasswordModal } from "@/components/admin/reset-password-modal";
 import { FeedbackDetailModal } from "@/components/admin/feedback-detail-modal";
@@ -521,6 +522,13 @@ export default function AdminPage() {
                 key={tab}
                 bereich={tab === "integrationen-anlage" ? "integrationen" : tab}
               />
+            )}
+            {tab === "integrationen-anlage" && (
+              <div className="mt-8">
+                <McpServersSection
+                  onToast={(t) => (t.type === "success" ? toast.success(t.message) : toast.error(t.message))}
+                />
+              </div>
             )}
             {tab === "sprache" && <VoiceSettings />}
             {tab === "vorlagen" && (

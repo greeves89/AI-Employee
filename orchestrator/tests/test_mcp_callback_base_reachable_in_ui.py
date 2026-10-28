@@ -11,7 +11,8 @@ import unittest
 from pathlib import Path
 
 _WURZEL = Path(__file__).resolve().parents[2]
-_SEITE = (_WURZEL / "frontend" / "src" / "app" / "integrations" / "page.tsx").read_text()
+# Seit dem Redesign 2026-10 im Admin-Bereich (components/integrations/mcp-server-bereich.tsx).
+_SEITE = (_WURZEL / "frontend" / "src" / "components" / "integrations" / "mcp-server-bereich.tsx").read_text()
 _API_TS = (_WURZEL / "frontend" / "src" / "lib" / "api.ts").read_text()
 _API_PY = (_WURZEL / "orchestrator" / "app" / "api" / "mcp_servers.py").read_text()
 
