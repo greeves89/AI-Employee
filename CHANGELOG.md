@@ -28,6 +28,58 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 - Ein einzelner Datenbankfehler (etwa ein NUL-Byte in einer Notiz) legte den ganzen Neuindex-Lauf lahm. NUL-Bytes werden jetzt entfernt, und nach einem Fehler wird die Sitzung zurückgesetzt, sodass die übrigen Dateien und Vaults weiterlaufen.
 - Notizen, die ein Agent über `secondbrain_write` anlegt, gehörten root. Der Agent konnte sie danach selbst nicht mehr ändern. Neue Dateien und Ordner gehören jetzt dem Agenten-Nutzer.
 
+## [1.393.6] - 2026-10-28
+
+### Geändert
+- **Die Seitenleiste bleibt schlank.** Punkte unter „Weitere Bereiche“ rückten nach oben, sobald man sie ein paar Mal geöffnet hatte. Bei Admins stand dadurch fast alles oben. Jetzt steht ein Punkt aus „Weitere Bereiche“ nur oben, solange man gerade dort ist. Ob „Weitere Bereiche“ auf- oder zugeklappt ist, merkt sich die Leiste weiter am Konto.
+
+## [1.393.5] - 2026-10-28
+
+### Behoben
+- **Das Board meldete eine Übernahme nicht ins Repo.** Vergab das Board ein Ticket an einen eigenen Agenten, stand im Repo weder ein Tag noch ein Kommentar noch ein Zuständiger. Andere, etwa eine Claude-Code-Sitzung, sahen deshalb nicht, dass jemand daran arbeitet, und übernahmen dasselbe Ticket noch einmal (am 28.10. bei zwei Tickets passiert). Jetzt arbeitet das Board nach denselben Regeln wie Agenten außerhalb:
+  - Vor dem Vergeben fragt es live im Repo nach Zuständigen, dem Tag `status/in-arbeit` oder einem offenen PR zum Ticket. Ist schon jemand dran, vergibt es nicht.
+  - Beim Vergeben setzt es `status/in-arbeit` und schreibt einen Übernahme-Kommentar mit Agent, Branch `<nr>-…` und PR mit `Closes #<nr>`.
+  - Nach dem PR nimmt es das Tag wieder weg, ebenso bei einem abgebrochenen Lauf (mit Kommentar).
+  - Darf der Schlüssel keine Tags setzen, steht das als Notiz an der Karte.
+- Der Auftrag an den Agenten enthält diese Regeln: ein Branch je Issue, PR mit `Closes #<nr>`, die `AGENTS.md` des Repos beachten und bei einem fremden Branch oder PR aufhören statt doppelt zu arbeiten.
+- Das eigene In-Arbeit-Tag zählt nicht mehr als „extern dran“.
+
+## [1.393.4] - 2026-10-28
+
+### Behoben
+- **Projekte blieben stehen, obwohl Arbeit da war.** Der Lead-Takt lief alle 30 Minuten, sichtete aber nur (gemessen: zehn Takte hintereinander ohne jede Bewegung). Er vergab nichts, weil er sich selbst nur nehmen durfte, „wenn sonst niemand passt“, und als einziges Mitglied darin keinen Auftrag sah. Jetzt gilt: Liegt etwas in Bereit und ist kein Kollege frei, nimmt der Lead die oberste Karte selbst. Bereites liegen zu lassen ist ausdrücklich ein Fehler. Karten mit „extern in Arbeit“ nimmt er nicht.
+- **Der Takt lief ins Leere und kostete trotzdem.** Liegen nur Karten im Eingang, die der Lead schon gesichtet und als unklar eingestuft hat, fällt der Lauf jetzt aus. Er läuft wieder bei Bereitem, neuen Karten im Eingang, neuen Nachrichten oder fälligem Tagesbericht.
+
+### Neu
+- **Ein Projekt bemerkt selbst, wenn es stillsteht.** Arbeitet seit zwei Stunden niemand an einer Karte, obwohl Karten offen sind, erscheinen im Projektgespräch eine Meldung und beim Lead eine Benachrichtigung, höchstens einmal am Tag je Art: „Nichts ist bereit — die Agenten warten“ (mit dem Hinweis, Karten einzuplanen oder `status/ready` zu setzen) oder „Bereite Karten liegen, aber niemand arbeitet daran“.
+
+## [1.393.3] - 2026-10-28
+
+### Geändert
+- **Die Oberfläche hat wieder die bisherigen Farben und die bisherige Schrift.** Die Farben aus dem Redesign (1.391.0, dunkelblaue Leiste, Lava-Orange, Space Grotesk) sind zurückgenommen, Aufbau und Navigation bleiben: drei Gruppen in der Leiste, eigener Admin-Bereich mit „Admin“-Marke, vier Reiter beim Agenten, „Mein Konto“.
+- Die Startseite heißt jetzt auch in der Überschrift „Start“, wie in der Leiste. Hinweise, die noch auf „Integrationen“ zeigten, nennen jetzt „Verbindungen“ bzw. „Admin-Bereich → Dienste & Konten“.
+
+## [1.393.2] - 2026-10-28
+
+### Behoben
+- **Das Projekt-Board zeigte nicht, wenn jemand außerhalb ein Ticket nahm.** Nahm ein Agent einer anderen Anlage, Claude Code oder ein Mensch ein Issue (Zuständiger im Repo, Status-Tag wie `status/in-arbeit`), blieb die Karte im Eingang. Man sah nicht, dass jemand dran war, und der Arbeitstakt hätte sie noch einem eigenen Agenten gegeben. Jetzt gleicht das Board Zuständige und Status-Tags ab: `status/in-arbeit` (auch „in progress“, „wip“) oder ein Zuständiger führt nach In Arbeit, mit Namen an der Karte (`@name`, sonst „extern dran“). `status/ready` führt nach Bereit, `status/review` in die Prüfung. Fällt beides weg, kommt die Karte zurück. Der Takt vergibt solche Karten nicht, und die Agenten sehen in der Board-Übersicht „extern in Arbeit — nicht übernehmen“. Hat ein eigener Agent die Karte schon, bleibt sie bei ihm, der fremde Name steht daneben.
+- **Pull Requests ohne „Closes #N“ hingen nicht am Issue.** Viele PRs nennen das Issue nur im Branch-Namen (`feat/1044-…`). Diese Nummer zählt jetzt mit. Der PR erscheint dann an der Issue-Karte statt als eigene Karte.
+
+### Verbessert
+- Die Tags eines Issues stehen jetzt als kleine Schilder auf der Karte, höchstens sechs, danach „+N“.
+
+## [1.393.1] - 2026-10-28
+
+### Verbessert
+- **Verbindungen, Apps und Skills sagen jetzt, wo ihr Gegenstück liegt.** „Verbindungen“ erklärt, dass Dienste der Anlage und Werkzeug-Server (MCP) im Admin-Bereich unter „Dienste & Konten“ stehen; Admins bekommen einen direkten Link. „Apps“ verweist auf Arbeit → Apps beim Agenten, „Skills“ auf Wissen → Skills. Die Agenten-Werkzeugleiste verlinkt „alle Agenten“ zur Apps-Seite.
+
+## [1.393.0] - 2026-10-28
+
+### Verbessert
+- **Besprechungsraum anlegen: Moderator und Besprechungsphasen sind jetzt direkt im Formular zu sehen.** Beide Einstellungen steckten hinter einem zusätzlichen Klick auf „Erweiterte Einstellungen“ — obwohl fast jeder sie beim Anlegen braucht. Vom Öffnen des Formulars bis zu einem einzelnen Phasen-Feld sind es jetzt 1 statt 3 Klicks.
+- **Fachbegriffe in der Seitenleiste und im Agenten-Reiter „Wissen“ zeigen beim Draufhalten eine kurze Erklärung:** Abläufe, Prüfaufgaben und Wissens-Ablagen, jeweils mit dem früheren Namen (Workflows, Golden-Tests, Second Brain) in Klammern, damit man sie wiedererkennt.
+- Die Überschrift „Nachtschicht (Reflection)“ in den Admin-Einstellungen heißt jetzt nur noch „Nachtschicht“ — der englische Klammerzusatz war überflüssig, der deutsche Erklärtext darunter stand schon da.
+
 ## [1.391.0] - 2026-10-28
 
 ### Verbessert

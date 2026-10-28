@@ -229,6 +229,75 @@ def _labels(issue: dict) -> list[str]:
     return [str(lbl.get("name")) for lbl in issue.get("labels") or [] if isinstance(lbl, dict) and lbl.get("name")][:20]
 
 
+#: Status-Tags, an denen ein Board außerhalb von AI Employee seinen Stand zeigt —
+#: andere Instanzen, Claude Code, Menschen. Verglichen wird ohne ein Präfix wie
+#: ``status/`` und ohne Groß-/Kleinschreibung.
+_STATUS_TAGS = {
+    "in_arbeit": {"in-arbeit", "in arbeit", "in-bearbeitung", "in bearbeitung", "in-progress",
+                  "in progress", "wip", "doing"},
+    "pruefung": {"review", "in-review", "in review", "pruefung", "prüfung", "in-pruefung", "needs-review"},
+    "bereit": {"ready", "bereit", "todo", "to-do", "geplant"},
+}
+_STATUS_PRAEFIX = re.compile(r"^(?:status|state|stand)\s*[/:]\s*", re.I)
+#: Branch-Namen wie ``feat/1044-deckel`` oder ``issue-91`` tragen die Issue-Nummer.
+_BRANCH_NR = re.compile(r"(?:^|[/_-])(?:issue-?|gh-?)?(\d{1,7})(?=[-_/]|$)", re.I)
+
+
+def _status_aus_tags(labels: list[str]) -> str | None:
+    """Stand aus den Tags — der weiteste gewinnt (Prüfung vor In Arbeit vor Bereit)."""
+    gefunden = set()
+    for roh in labels:
+        name = _STATUS_PRAEFIX.sub("", roh.strip()).lower()
+        for stand, namen in _STATUS_TAGS.items():
+            if name in namen:
+                gefunden.add(stand)
+    for stand in ("pruefung", "in_arbeit", "bereit"):
+        if stand in gefunden:
+            return stand
+    return None
+
+
+def _zustaendige(eintrag: dict) -> list[str]:
+    """Logins der Zuständigen im Repo (GitHub und Forgejo nennen das Feld gleich)."""
+    leute = eintrag.get("assignees") or ([eintrag["assignee"]] if eintrag.get("assignee") else [])
+    return [str(p.get("login")) for p in leute if isinstance(p, dict) and p.get("login")][:5]
+
+
+def extern_nachziehen(karte, labels: list[str], zustaendige: list[str]) -> bool:
+    """Stand einer Issue-Karte an das anpassen, was AUSSERHALB des Boards passiert.
+
+    Nimmt ein anderer Agent (eine andere AI-Employee-Anlage, Claude Code) oder ein
+    Mensch ein Ticket, sieht man das im Repo an Zuständigen oder an Status-Tags.
+    Vorher blieb die Karte im Eingang — man sah nicht, dass jemand dran ist, und
+    der Takt hätte sie einem eigenen Agenten noch einmal gegeben.
+
+    Eine Karte mit eigenem Lauf (``task_id``) wird nicht verschoben, sie bekommt
+    nur den Namen dazu: zwei arbeiten am selben Ticket, das soll man sehen.
+    Gibt zurück, ob sich etwas geändert hat.
+    """
+    stand = _status_aus_tags(labels)
+    extern_dran = bool(zustaendige) or stand == "in_arbeit"
+    bearbeiter = (", ".join(f"@{z}" for z in zustaendige) or "extern") if extern_dran else None
+    vorher = (karte.spalte, karte.extern_bearbeiter)
+    if karte.task_id and not zustaendige:
+        # Arbeitet ein eigener Agent daran, ist ein In-Arbeit-Tag unser eigenes
+        # (``uebernahme_melden``) — kein Fremder.
+        bearbeiter = None
+    karte.extern_bearbeiter = bearbeiter
+    if karte.task_id or karte.spalte == "erledigt":
+        return vorher != (karte.spalte, karte.extern_bearbeiter)
+    if stand == "pruefung" and karte.spalte in ("eingang", "bereit", "in_arbeit"):
+        karte.spalte = "pruefung"
+    elif extern_dran and karte.spalte in ("eingang", "bereit"):
+        karte.spalte = "in_arbeit"
+    elif not extern_dran and karte.spalte == "in_arbeit":
+        # Extern niemand mehr dran (Tag entfernt, Zuständigkeit gelöst): zurück.
+        karte.spalte = "bereit" if stand == "bereit" else "eingang"
+    elif stand == "bereit" and karte.spalte == "eingang":
+        karte.spalte = "bereit"
+    return vorher != (karte.spalte, karte.extern_bearbeiter)
+
+
 async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client: httpx.AsyncClient) -> dict:
     """Ein Projekt mit seinem Repo abgleichen. Der Aufrufer committet."""
     repo = repo_ziel(team.repo).pfad
@@ -282,6 +351,8 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
             if karte.spalte == "erledigt" and karte.notiz == "Issue geschlossen":
                 # Wieder geöffnet: zurück in den Eingang.
                 karte.spalte, karte.erledigt_at, karte.notiz = "eingang", None, "Issue wieder geöffnet"
+        if extern_nachziehen(karte, _labels(issue), _zustaendige(issue)) and karte.extern_bearbeiter is not None:
+            aktualisiert += 1
 
     for (quelle, nr), karte in vorhanden.items():
         if quelle != "issue" or nr in offen_issues or karte.spalte == "erledigt":
@@ -304,15 +375,27 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
         offen_prs.add(nr)
         sha = (pr.get("head") or {}).get("sha")
         zustand = await anbieter.checks_state(client, token, repo, sha) if sha else "offen"
-        verknuepft = [vorhanden.get(("issue", int(n))) for n in SCHLIESST_RE.findall(pr.get("body") or "")]
+        # „Closes #N“ im Text — oder die Nummer im Branch-Namen (``feat/1044-…``):
+        # viele PRs nennen das Issue nur dort.
+        nummern = set(SCHLIESST_RE.findall(pr.get("body") or ""))
+        nummern.update(_BRANCH_NR.findall(str((pr.get("head") or {}).get("ref") or "")))
+        verknuepft = [vorhanden.get(("issue", int(n))) for n in nummern]
         verknuepft = [k for k in verknuepft if k is not None]
         if verknuepft:
             for karte in verknuepft:
                 karte.pr_nr, karte.pr_url, karte.pr_zustand = nr, _sichere_url(pr.get("html_url"), anbieter), zustand
                 karte.stufe = projekte.hoehere_stufe(karte.stufe, "ci" if zustand.startswith("ci_") else "pr")
-                if karte.spalte in ("eingang", "bereit"):
+                if karte.spalte in ("eingang", "bereit") or (karte.spalte == "in_arbeit" and not karte.task_id):
                     # Jemand arbeitet schon daran (außerhalb des Boards): ab in die Prüfung.
                     karte.spalte = "pruefung"
+                if karte.task_id and UEBERNAHME_TAG in (karte.labels or []) and token:
+                    # Eigener Agent hat den PR gestellt: das Ticket ist nicht mehr „in Arbeit“,
+                    # sondern wartet auf Prüfung — wie es die Übernahmeregeln verlangen.
+                    try:
+                        if await anbieter.remove_label(client, token, repo, karte.extern_nr, UEBERNAHME_TAG):
+                            karte.labels = [x for x in karte.labels if x != UEBERNAHME_TAG]
+                    except Exception as e:  # noqa: BLE001 — Beiwerk
+                        log.info("[Projekt] Tag an #%s nicht entfernt: %s", karte.extern_nr, e)
             continue
         karte = vorhanden.get(("pr", nr))
         if karte is None:
@@ -442,3 +525,91 @@ async def alle_abgleichen(redis) -> int:
                 await db.rollback()
                 log.warning("Git-Abgleich %s gescheitert: %s", team_id, e)
         return len(ids)
+
+
+# ── Übernahme ins Repo zurückmelden ───────────────────────────────────────────
+#: Tag, mit dem ein Board außerhalb (andere Anlage, Claude Code, Mensch) sieht, dass
+#: jemand an einem Issue arbeitet. Dieselbe Vereinbarung, die ``_STATUS_TAGS`` liest.
+UEBERNAHME_TAG = "status/in-arbeit"
+
+
+async def extern_dran(db: AsyncSession, redis, team: Team, karte: ProjektKarte) -> str | None:
+    """Arbeitet schon jemand außerhalb des Boards an diesem Issue? Live im Repo gefragt.
+
+    Der Abgleich läuft höchstens alle paar Minuten — in der Zwischenzeit hätte das
+    Board ein Ticket vergeben, das gerade jemand anderes übernommen hat. Liefert
+    den Namen (``@login`` oder „extern“) oder None. Ist das Repo nicht erreichbar,
+    entscheidet der letzte Abgleich.
+    """
+    if karte.quelle != "issue" or not karte.extern_nr or not team.repo:
+        return None
+    # Ein offener PR zum Ticket (aus dem letzten Abgleich) heißt: jemand ist dran.
+    if karte.pr_nr and karte.pr_zustand not in ("gemergt", "geschlossen") and not karte.task_id:
+        return f"PR #{karte.pr_nr}"
+    try:
+        token, anbieter = await zugang(db, redis, team)
+        async with httpx.AsyncClient(timeout=httpx.Timeout(8.0), follow_redirects=False) as client:
+            issue = await anbieter.get_issue(client, token, repo_ziel(team.repo).pfad, karte.extern_nr)
+    except Exception as e:  # noqa: BLE001 — Repo nicht erreichbar: nicht blockieren
+        log.info("[Projekt] Übernahme-Prüfung #%s übersprungen: %s", karte.extern_nr, e)
+        return karte.extern_bearbeiter
+    if not issue:
+        return karte.extern_bearbeiter
+    leute = _zustaendige(issue)
+    if leute:
+        return ", ".join(f"@{z}" for z in leute)
+    if _status_aus_tags(_labels(issue)) == "in_arbeit":
+        return "extern"
+    return None
+
+
+async def uebernahme_melden(team_id: str, karte_id: str, redis, *, agent_name: str | None,
+                            uebernehmen: bool = True) -> None:
+    """Übernahme (oder Rückgabe) eines Issues ins Repo schreiben — im Hintergrund.
+
+    Übernehmen: Tag ``status/in-arbeit`` und ein Kommentar mit Bearbeiter und
+    Vereinbarung (Branch ``<nr>-…``, PR mit ``Closes #<nr>``). Zurückgeben: Tag weg
+    und ein kurzer Kommentar. Scheitert es (etwa ein Schlüssel ohne Schreibrecht),
+    steht das als Notiz an der Karte — die Arbeit selbst läuft trotzdem.
+    """
+    from app.db.session import async_session_factory
+
+    async with async_session_factory() as db:
+        team = await db.get(Team, team_id)
+        karte = await db.get(ProjektKarte, karte_id)
+        if team is None or karte is None or karte.quelle != "issue" or not karte.extern_nr or not team.repo:
+            return
+        nr = karte.extern_nr
+        try:
+            token, anbieter = await zugang(db, redis, team)
+            if not token:
+                raise GitFehler("ohne Schlüssel kann das Board nichts ins Repo schreiben")
+            repo = repo_ziel(team.repo).pfad
+            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0), follow_redirects=False) as client:
+                if uebernehmen:
+                    ok = await anbieter.add_labels(client, token, repo, nr, [UEBERNAHME_TAG])
+                    await anbieter.comment_issue(
+                        client, token, repo, nr,
+                        f"Übernommen vom AI-Employee-Agenten „{agent_name or 'Lead'}“ (Projekt-Board, Projekt "
+                        f"„{team.name}“). Branch `{nr}-…`, Pull Request mit `Closes #{nr}`.")
+                else:
+                    ok = await anbieter.remove_label(client, token, repo, nr, UEBERNAHME_TAG)
+                    await anbieter.comment_issue(
+                        client, token, repo, nr,
+                        "Zurückgegeben: Der AI-Employee-Agent arbeitet nicht mehr daran — das Ticket ist wieder frei.")
+            if not ok:
+                raise GitFehler(f"Tag {UEBERNAHME_TAG} ließ sich nicht setzen (Schreibrecht für Issues?)")
+        except Exception as e:  # noqa: BLE001 — Rückmeldung ist Beiwerk, die Arbeit läuft
+            log.warning("[Projekt] Übernahme #%s nicht ins Repo gemeldet: %s", nr, e)
+            karte.notiz = f"Übernahme nicht ins Repo gemeldet: {str(e)[:200]}"[:500]
+            await db.commit()
+
+
+def uebernahme_im_hintergrund(team_id: str, karte_id: str, redis, *, agent_name: str | None,
+                              uebernehmen: bool = True) -> None:
+    """``uebernahme_melden`` ohne den Aufrufer warten zu lassen."""
+    try:
+        asyncio.get_running_loop().create_task(
+            uebernahme_melden(team_id, karte_id, redis, agent_name=agent_name, uebernehmen=uebernehmen))
+    except RuntimeError:
+        pass

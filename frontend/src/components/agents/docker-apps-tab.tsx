@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Box,
@@ -288,7 +289,9 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
             Legt dein Agent ein Projekt mit einer docker-compose.yml an, erscheint
             es hier. Du kannst die App dann direkt von hier starten, stoppen und
             beobachten. (Nur Apps DIESES Agenten — die Übersicht aller
-            Agenten-Apps liegt unter „Apps“ in der Seitenleiste.)
+            Agenten-Apps liegt unter{" "}
+            <Link href="/apps" className="text-primary hover:underline">Apps</Link>
+            {" "}in der Seitenleiste.)
           </p>
           <button
             onClick={() => { setLoading(true); fetchApps(); }}
@@ -313,6 +316,12 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
           <span className="text-[10px] text-muted-foreground/40">
             — nur dieser Agent
           </span>
+          <Link
+            href="/apps"
+            className="text-[10px] text-muted-foreground/50 hover:text-primary hover:underline"
+          >
+            alle Agenten →
+          </Link>
         </div>
         <button
           onClick={() => { setLoading(true); fetchApps(); }}

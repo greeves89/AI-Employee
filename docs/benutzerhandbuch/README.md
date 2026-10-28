@@ -118,7 +118,7 @@ Administratoren mit dem Schalter **Mitglieder-Ansicht** im Benutzermenü.
 28. [Benachrichtigung → Task-Details öffnen](#28-benachrichtigung--task-details-öffnen)
 29. [Hilfe & FAQ (im Menü) und Klick-Tutorials](#29-hilfe--faq-im-menü)
 30. [Admin: Exchange on-prem, Azure-Stimmen, Dreaming](#30-admin-exchange-on-prem-azure-stimmen-dreaming)
-31. [Nachtschicht (Reflection) — Agenten lernen über Nacht](#31-nachtschicht-reflection--agenten-lernen-über-nacht)
+31. [Nachtschicht — Agenten lernen über Nacht](#31-nachtschicht--agenten-lernen-über-nacht)
 32. [Apps (Ergebnisse deiner Agenten öffnen & freigeben)](#32-apps-ergebnisse-deiner-agenten-öffnen--freigeben)
 33. [Activity — Tageskalender aller Agenten](#33-activity--tageskalender-aller-agenten)
 34. [Kanäle: Telegram, Teams, Slack, WhatsApp, Discord](#34-kanäle-telegram-teams-slack-whatsapp-discord)
@@ -155,7 +155,7 @@ Administratoren mit dem Schalter **Mitglieder-Ansicht** im Benutzermenü.
 > aktivem zweiten Faktor, und dessen Einrichtung bleibt der Person selbst vorbehalten.
 
 ### 1.2 Die Seitenleiste — dein Hauptmenü *(neu gestaltet in 1.391.0)*
-Die dunkelblaue **Seitenleiste links** ist auf jeder Seite dein Hauptmenü. Sie hat
+Die **Seitenleiste links** ist auf jeder Seite dein Hauptmenü. Sie hat
 drei Gruppen. Alles, was nur dich betrifft, liegt unten am Konto. Alles, was die
 ganze Anlage betrifft, steht in einem eigenen **Admin-Bereich** (Kap. 1.5).
 
@@ -168,11 +168,11 @@ ganze Anlage betrifft, steht in einem eigenen **Admin-Bereich** (Kap. 1.5).
 - **Automatisieren** — **Abläufe** und **Skills**.
 - **Weitere Bereiche** (aufklappbar) — Übersicht, Kosten, Aktivität (Kap. 33),
   Auswertung, Gelerntes, Verbindungen, Apps, Besprechungsräume, Auslöser und
-  Prüfaufgaben. Was du oft öffnest, rückt von selbst nach oben.
+  Prüfaufgaben. Der Bereich bleibt zugeklappt, bis du ihn öffnest; die Leiste merkt sich das.
 
 **Bedienung:**
 - Auf einen **Menüpunkt** klicken → die Seite öffnet sich; der aktive Punkt ist
-  orange hinterlegt.
+  hervorgehoben.
 - Den kleinen **Pfeil** am Rand klicken → Leiste **einklappen** (nur Symbole).
   Erneut klicken = ausklappen.
 - **Ganz unten:** **Hilfe**, dein **Konto** (Name, darunter „Mein Konto“) und — nur
@@ -257,7 +257,7 @@ Oben stehen vier Reiter, darunter je nach Reiter kleine Unterreiter:
 - **Wissen** — Gedächtnis, Wissens-Ablagen (Second Brains), Wissensbasis und Skills.
 - **Einstellungen** — Allgemein, Verbindungen und Befehlsregeln.
 
-Der aktive Reiter ist orange unterstrichen. In der einfachen Ansicht gibt es keine
+Der aktive Reiter ist unterstrichen. In der einfachen Ansicht gibt es keine
 Reiter, nur den Chat (Kap. 1.4).
 
 ### 1.5 Der Admin-Bereich *(seit 1.391.0)*
@@ -265,8 +265,8 @@ Admins arbeiten in derselben Ansicht wie alle anderen. Was für die **ganze Anla
 gilt, verwalten sie in einem eigenen Bereich:
 
 1. Unten links auf **Zum Admin-Bereich** klicken.
-2. Die Leiste wird **hell** und trägt oben die Marke **Admin** — so ist jederzeit
-   sichtbar, dass Änderungen hier alle betreffen.
+2. Die Leiste zeigt jetzt die Bereiche der Anlage und trägt oben die Marke **Admin** — so
+   ist jederzeit sichtbar, dass Änderungen hier alle betreffen.
 3. Links einen Bereich wählen. Die Gruppen:
    - **Menschen** — Nutzer, Rollen & Rechte, SSO-Gruppen
    - **Agenten** — Alle Agenten, Zuweisungen, Vorlagen
@@ -1109,10 +1109,25 @@ Mit einem **Arbeitstakt** (Bearbeiten → Arbeitstakt: alle 30 Minuten, stündli
 2. Er sichtet den Eingang: Klares kommt nach Bereit (mit Priorität), Unklares bekommt eine
    **Notiz** mit der offenen Frage (gelb auf der Karte), Doppeltes wird verworfen.
 3. Er vergibt die wichtigsten bereiten Karten — höchstens eine je Kollege, der gerade frei ist.
+   Ist niemand frei oder ist er allein im Projekt, **nimmt er die oberste bereite Karte selbst**.
+   Karten mit „extern dran“ (Kap. 6a.9) lässt er liegen.
 
-Die eigentliche Arbeit passiert in den vergebenen Läufen. **Liegt nichts im Eingang und nichts
-auf Bereit, fällt der Takt-Lauf aus** und kostet nichts. Der Takt braucht einen Lead (oder
-genau ein Mitglied).
+Die eigentliche Arbeit passiert in den vergebenen Läufen. Gearbeitet wird an dem, was in
+**Bereit** liegt: Einplanen ist deine Entscheidung (Knopf **Einplanen** oder im Repo das Tag
+`status/ready`); Klares plant auch der Lead selbst ein.
+
+**Wann der Takt läuft** *(seit 1.393.4)*: wenn etwas in Bereit liegt, neue Karten im Eingang
+angekommen sind, jemand im Projektgespräch geschrieben hat oder der Tagesbericht fällig ist.
+Liegt nur Altes im Eingang, das der Lead schon gesichtet hat, fällt der Lauf aus und kostet nichts.
+
+**Stillstand bemerkt das Projekt selbst** *(seit 1.393.4)*: Arbeitet seit zwei Stunden niemand an
+einer Karte, obwohl Karten offen sind, steht im **Gespräch** eine Meldung und der Lead bekommt
+eine Benachrichtigung — höchstens einmal am Tag:
+- **„Nichts ist bereit“** — plane die nächsten Karten ein, dann nimmt der Lead sie beim
+  nächsten Takt.
+- **„Bereite Karten liegen“** — der Lead vergibt beim nächsten Takt, notfalls an sich selbst.
+
+Der Takt braucht einen Lead (oder genau ein Mitglied).
 
 ### 6a.7 Projektwissen
 
@@ -1277,8 +1292,36 @@ Ab dann, beim Öffnen des Projekts und regelmäßig (siehe oben):
 - Wird ein Issue **geschlossen**, wandert seine Karte nach **Erledigt**. Arbeitet gerade ein
   Agent daran, bekommt sie stattdessen eine Notiz.
 - Offene **Pull Requests** erscheinen in der Spalte **Prüfung** und im Leitstand (Reiter Raum) unter **Wartet auf Merge** — mit dem Stand der Prüfungen
-  (CI läuft, CI grün, CI rot). Schreibt der PR „Fixes #12“, hängt er an der Karte von Issue #12.
+  (CI läuft, CI grün, CI rot). Schreibt der PR „Fixes #12“ oder trägt sein Branch die Nummer
+  (z. B. `feat/12-login`), hängt er an der Karte von Issue #12.
 - Ein **gemergter** PR ohne eigenes Issue wird erledigt.
+- **Tags** des Issues stehen als kleine Schilder auf der Karte *(seit 1.392.0)*.
+
+**Wenn das Board ein Ticket vergibt** *(seit 1.393.5)* — es hält sich an dieselben Regeln wie
+Agenten außerhalb (etwa eine `AGENTS.md` im Repo):
+
+- **Vorher fragt es live im Repo**, ob schon jemand dran ist (Zuständiger, Tag
+  **status/in-arbeit** oder ein offener Pull Request zum Ticket). Dann vergibt es nicht, und die
+  Karte zeigt, wer dran ist.
+- **Beim Vergeben** setzt es im Repo das Tag **status/in-arbeit** und schreibt einen
+  Übernahme-Kommentar (welcher Agent, Branch `<nr>-…`, Pull Request mit `Closes #<nr>`).
+- **Nach dem Pull Request** nimmt es das Tag wieder weg; **wird der Lauf abgebrochen**, ebenso —
+  mit einem Kommentar, dass das Ticket wieder frei ist.
+- Darf der Schlüssel des Projekts keine Tags setzen, steht das als Notiz an der Karte; die Arbeit
+  läuft trotzdem.
+
+**Wenn jemand außerhalb des Boards ein Ticket nimmt** *(seit 1.392.0)* — etwa ein Agent einer
+anderen AI-Employee-Anlage, Claude Code oder ein Mensch direkt im Repo:
+
+- Steht beim Issue ein **Zuständiger** oder ein Status-Tag wie **status/in-arbeit**
+  (auch „in progress“, „wip“), wandert die Karte nach **In Arbeit** und zeigt den Namen,
+  z. B. **@dev-bot**, oder **extern dran**, wenn nur das Tag gesetzt ist.
+- **status/ready** plant die Karte ein (Bereit), **status/review** schiebt sie in die
+  **Prüfung**.
+- Fällt Tag und Zuständigkeit wieder weg, kommt die Karte zurück nach Bereit oder Eingang.
+- Solche Karten vergibt der Arbeitstakt **nicht** an eigene Agenten — es arbeitet ja schon
+  jemand daran. Hat ein eigener Agent die Karte bereits, bleibt sie bei ihm; der fremde Name
+  steht dann daneben, damit ihr seht, dass zwei am selben Ticket sitzen.
 
 Über dem Board zeigt eine Leiste das Repo, wann zuletzt abgeglichen wurde und gegebenenfalls einen
 Fehler (z. B. „GitHub ist auf dieser Anlage nicht verbunden“). Beim Öffnen des Projekts gleicht die
@@ -1500,6 +1543,9 @@ Reviewer) zusammen ein Ergebnis erarbeiten sollen. Seitenleiste → **Meeting Ro
 ---
 
 ## 10. Skill Marketplace
+
+> **Zwei Wege zum selben Katalog:** die Seite **Skills** (Seitenleiste → Automatisieren) für
+> alle Agenten, oder auf der Seite eines Agenten **Wissen → Skills** nur für ihn.
 
 Ein **Skill** ist eine wiederverwendbare **Fähigkeit** (ein Slash-Command), die ein Agent
 installieren kann — z. B. „Präsentation erstellen", „Second Brain durchsuchen" oder ein
@@ -2245,8 +2291,8 @@ Editionen und Preise stehen in der README des Projekts, Abschnitt „License".
 
 ![Admin-Bereich](screenshots/19-admin.png)
 
-Seitenleiste unten → **Zum Admin-Bereich** (nur Administratoren). Die Leiste links wird hell
-und trägt die Marke **Admin**; dort stehen **alle Bereiche**, nach Gruppen überschrieben —
+Seitenleiste unten → **Zum Admin-Bereich** (nur Administratoren). Die Leiste links trägt jetzt
+die Marke **Admin**; dort stehen **alle Bereiche**, nach Gruppen überschrieben —
 jeder mit **einem Klick** erreichbar *(seit 1.391.0)*. Auf dem Handy öffnet das Menü-Symbol
 oben links dieselbe Leiste. **Zurück zur Arbeit** führt in die normale Ansicht.
 
@@ -3198,7 +3244,7 @@ ausgeliefert und laufen auch ohne Internetzugang.
 
 ---
 
-## 31. Nachtschicht (Reflection) — Agenten lernen über Nacht
+## 31. Nachtschicht — Agenten lernen über Nacht
 
 Die **Nachtschicht** ist der nächtliche Reflexions-Lauf der Plattform: Sie liest die
 Gespräche, Aufgaben und Meetings des Tages, destilliert daraus **dauerhaftes Wissen**
@@ -3207,7 +3253,7 @@ der Agenten bzw. die Knowledge Base. **Morgens startet jeder Agent schlauer.**
 
 ### 31.1 Aktivieren (Admin)
 
-1. Seitenleiste unten → **Zum Admin-Bereich** → **System & Lizenz** → Karte **„Nachtschicht (Reflection)"**.
+1. Seitenleiste unten → **Zum Admin-Bereich** → **System & Lizenz** → Karte **„Nachtschicht"**.
 2. **Aktiviert** einschalten.
 3. **Uhrzeit** wählen (Standard: **3 Uhr nachts**).
 4. **Modus** wählen:
@@ -3258,6 +3304,9 @@ praktisch zum Ausprobieren, ohne bis 3 Uhr zu warten.
 ---
 
 ## 32. Apps (Ergebnisse deiner Agenten öffnen & freigeben)
+
+> Die Seite **Apps** (Seitenleiste → *Weitere Bereiche*) zeigt die Apps aller deiner Agenten.
+> Die Apps eines einzelnen Agenten findest du auch auf seiner Seite unter **Arbeit → Apps**.
 
 Wenn ein Agent etwas Lauffähiges gebaut hat — eine kleine Web-App, ein Dashboard, einen
 Prototyp —, findest du das unter **Apps** in der linken Seitenleiste. Dort startest du es,
