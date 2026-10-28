@@ -76,7 +76,10 @@ class Aufbewahrungsfrist(Basis):
         vorher = await self.summen()
 
         class Einstellungen:
-            werte = {aufbewahrung.SCHLUESSEL_CHAT: "30"}
+            # 35 statt 30: Die Grundausstattung legt einen Chat auf „Monatsbeginn
+            # minus 3 Tage“ — ab dem 28. eines Monats ist der älter als 30 Tage
+            # und flog mit raus. Er ist höchstens 34 Tage alt, ALT dagegen 40.
+            werte = {aufbewahrung.SCHLUESSEL_CHAT: "35"}
 
             async def get(self, schluessel):
                 return self.werte.get(schluessel)
