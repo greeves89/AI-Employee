@@ -89,3 +89,26 @@ def decrypt_token(ciphertext: str) -> str:
         return f.decrypt(ciphertext.encode("utf-8")).decode("utf-8")
     except InvalidToken:
         raise ValueError("Failed to decrypt token. ENCRYPTION_KEY may have changed.")
+
+
+def agent_schluessel(zweck: str, agent_id: str) -> str:
+    """Eigener Fernet-Schluessel je Agent und Zweck, aus ENCRYPTION_KEY abgeleitet.
+
+    HKDF statt ``ENCRYPTION_KEY`` selbst: Der Wert geht als Umgebungsvariable in
+    den Agenten-Container, und dort kann ihn der Agent lesen. Ein abgeleiteter
+    Schluessel verraet weder ``ENCRYPTION_KEY`` noch den eines anderen Agenten.
+    Bleibt stabil, solange ``ENCRYPTION_KEY`` gleich bleibt.
+    """
+    import base64
+
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
+    stamm = base64.urlsafe_b64decode(_resolve_key())
+    roh = HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=None,
+        info=f"ai-employee/agent/{zweck}/{agent_id}".encode(),
+    ).derive(stamm)
+    return base64.urlsafe_b64encode(roh).decode()
