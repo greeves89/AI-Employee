@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.381.1] - 2026-10-28
+
+### Sicherheit
+- **Freigabelisten für Adressen ließen sich mit einem Backslash umgehen.** `https://fremd.example\.erlaubt.example/` las die Plattform als Unterseite von `erlaubt.example`, der Browser rief aber `fremd.example` auf. Betroffen waren die erlaubten Domains einer Bridge-Sitzung, die URL-Freigabeliste der Agenten und die Freigabeliste für Rückrufe. Adressen, die Plattform und Browser verschieden lesen (Backslash, Steuer- und Leerzeichen oder Prozent-Kodierung im Host), werden jetzt überall abgelehnt; alle drei Prüfungen holen den Host an einer gemeinsamen Stelle. Leere Einträge in der URL-Freigabeliste lassen nichts mehr durch.
+
 ## [1.381.0] - 2026-10-28
 
 ### Hinzugefügt
