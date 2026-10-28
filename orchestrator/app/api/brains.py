@@ -17,20 +17,22 @@ import secrets
 import subprocess
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core import vault, vault_transfer
 from app.core.encryption import encrypt_token
 from app.db.session import get_db
-from app.dependencies import require_auth
+from app.dependencies import require_auth, verify_agent_token
+from app.models.agent import Agent
 from app.models.audit_log import AuditEventType, AuditLog
 from app.models.second_brain import SecondBrain
 from app.models.user import UserRole
-from app.services import vault_indexer
+from app.services import vault_indexer, vault_search
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/brains", tags=["brains"])
@@ -178,6 +180,10 @@ class BrainResponse(BaseModel):
     is_active: bool
     mcp_enabled: bool = False
     mcp_path: str | None = None  # relative endpoint; UI prepends window.location.origin
+    # Index-Sichtbarkeit (#727): ohne diese zwei Zahlen ist am Reindex-Knopf nicht
+    # ablesbar, ob er noetig ist — und ein driftender Index bleibt still.
+    indexed_files: int = 0
+    indexed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -186,7 +192,8 @@ def _mcp_path(b: SecondBrain) -> str:
     return f"/api/v1/mcp/brains/{b.slug}"
 
 
-def _to_response(b: SecondBrain) -> BrainResponse:
+def _to_response(b: SecondBrain, stats: dict[str, tuple[int, datetime | None]] | None = None) -> BrainResponse:
+    files, indexed_at = (stats or {}).get(b.label, (0, None))
     mcp_on = bool(getattr(b, "mcp_enabled", False))
     return BrainResponse(
         id=b.id, label=b.label, name=b.name, slug=b.slug,
@@ -194,8 +201,32 @@ def _to_response(b: SecondBrain) -> BrainResponse:
         standard=getattr(b, "standard", "freeform") or "freeform",
         description=b.description, is_active=b.is_active,
         mcp_enabled=mcp_on, mcp_path=_mcp_path(b) if mcp_on else None,
+        indexed_files=files, indexed_at=indexed_at,
         created_at=b.created_at, updated_at=b.updated_at,
     )
+
+
+async def _index_stats(db: AsyncSession) -> dict[str, tuple[int, datetime | None]]:
+    """Per-Brain: wie viele Dateien im Index stehen und wann zuletzt indiziert.
+
+    Best effort und absichtlich fehlertolerant: ``vault_chunks`` ist eine reine
+    SQL-Tabelle (kein ORM-Modell), es gibt sie in einer SQLite-Testdatenbank also
+    nicht. Eine Anzeige darf das Auflisten der Brains nicht zum Scheitern bringen
+    — fehlt die Tabelle, sind die Zahlen eben 0/leer.
+    """
+    try:
+        rows = (
+            await db.execute(
+                sa_text(
+                    "SELECT brain_label, COUNT(DISTINCT path) AS dateien, "
+                    "MAX(updated_at) AS zuletzt FROM vault_chunks GROUP BY brain_label"
+                )
+            )
+        ).all()
+    except Exception as e:
+        log.debug("Index-Zahlen nicht verfuegbar: %s", vault.safe_log(e))
+        return {}
+    return {r[0]: (int(r[1] or 0), r[2]) for r in rows}
 
 
 @router.get("/", response_model=list[BrainResponse])
@@ -218,7 +249,8 @@ async def list_brains(
     erlaubt = await freigegebene_mounts(user, db)
     if erlaubt is not None:
         rows = [b for b in rows if b.label in erlaubt]
-    return [_to_response(b) for b in rows]
+    stats = await _index_stats(db)
+    return [_to_response(b, stats) for b in rows]
 
 
 @router.post("/", response_model=BrainResponse, status_code=201)
@@ -562,3 +594,168 @@ async def brain_reindex(brain_id: int, user=Depends(require_auth), db: AsyncSess
         raise HTTPException(status_code=404, detail="Brain not found")
     stats = await vault_indexer.reindex_vault(db, brain.label, brain.host_path)
     return {"ok": True, "brain": brain.slug, **stats}
+
+
+# ─────────────────────────── Agenten-Zugang (#727) ───────────────────────────
+# Bis hierher suchte ein Agent seinen Second Brain mit einem Substring-Zaehler
+# ueber die gemounteten Dateien, obwohl die Hybrid-Suche (Vektor + Volltext,
+# RRF) bereits lief — nur fuer den externen MCP-Endpunkt und die Sprach-Sitzung.
+# Diese beiden Endpunkte geben dem Agenten denselben Weg.
+#
+# Sicherheitsinvariante: Der Umfang kommt AUSSCHLIESSLICH aus dem Token. Ein
+# Label aus der Anfrage wird nur noch gegen die ohnehin zugewiesene Menge
+# geprueft, nie zur Erweiterung benutzt.
+
+
+class AgentBrainWrite(BaseModel):
+    path: str
+    content: str
+
+
+async def _agent_brains(
+    db: AsyncSession, agent_id: str, label: str | None = None
+) -> list[tuple[SecondBrain, str]]:
+    """Die Second Brains, die DIESER Agent anfassen darf — plus effektiver Modus.
+
+    Reihenfolge wie beim Containerstart (``agent_manager``): zugewiesene Labels
+    aus ``Agent.config["mounts"]`` gegen den effektiven Katalog schneiden
+    (``resolve_agent_mounts`` setzt dabei die strengere von Katalog- und
+    Agenten-Kappung durch), dann auf aktive ``SecondBrain``-Eintraege filtern.
+
+    ``label`` darf den Umfang nur VERKLEINERN. Ein Label ausserhalb der
+    Zuweisung ergibt 404 und nicht eine leere Trefferliste: ein Tippfehler soll
+    nicht wie „nichts gefunden" aussehen (Spec 3.1).
+    """
+    from app.core.mounts import get_effective_catalog, resolve_agent_mounts
+
+    agent = await db.get(Agent, agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
+    config = agent.config or {}
+    catalog = await get_effective_catalog(db)
+    entries = resolve_agent_mounts(
+        list(config.get("mounts") or []), catalog, dict(config.get("mount_modes") or {})
+    )
+    modi = {e.label: e.mode for e in entries}
+    rows = (
+        await db.execute(select(SecondBrain).where(SecondBrain.is_active.is_(True)).order_by(SecondBrain.slug))
+    ).scalars().all()
+    paare = [(b, modi[b.label]) for b in rows if b.label in modi]
+
+    if label:
+        gewaehlt = [(b, m) for b, m in paare if label in (b.label, b.slug)]
+        if not gewaehlt:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"Kein zugewiesener Second Brain '{label}'. Verfuegbar: "
+                    + (", ".join(b.slug for b, _ in paare) or "(keiner)")
+                ),
+            )
+        return gewaehlt
+    return paare
+
+
+@router.get("/agent/search")
+async def agent_brain_search(
+    q: str = Query(..., min_length=1),
+    limit: int = Query(10, ge=1, le=50),
+    label: str | None = None,
+    auth: dict = Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Hybrid-Suche ueber die dem Agenten zugewiesenen Second Brains.
+
+    ``mode`` ist die Gesamtaussage ueber alle durchsuchten Vaults: „hybrid" nur,
+    wenn JEDER von ihnen aus dem Index geantwortet hat. Faellt einer auf grep
+    zurueck, steht hier „grep" — sonst verdeckt ein gesunder Vault den
+    driftenden. ``brains`` nennt den Modus je Vault.
+    """
+    brains = await _agent_brains(db, auth["agent_id"], label)
+    je_brain: list[dict] = []
+    pro_brain: list[list[dict]] = []
+    for brain, _mode in brains:
+        try:
+            modus, treffer = await vault_search.hybrid_search_with_mode(
+                db, brain.label, brain.host_path, q, limit
+            )
+        except Exception as e:
+            log.warning(
+                "Agenten-Suche in %s fehlgeschlagen: %s", brain.slug, vault.safe_log(e)
+            )
+            je_brain.append({"brain": brain.slug, "mode": "error"})
+            continue
+        je_brain.append({"brain": brain.slug, "mode": modus, "hits": len(treffer)})
+        pro_brain.append([{"brain": brain.slug, **h} for h in treffer])
+
+    # Zusammenfuehren NACH RANG, nicht nach Punktzahl: die Punktzahl aus dem
+    # Index ist ein RRF-Wert (~0,01), die aus grep ein Trefferzaehler (~20).
+    # Nach Punktzahl sortiert draengt sich ein grep-Vault immer vor einen
+    # gesunden Index-Vault. Innerhalb eines Vaults ist die Reihenfolge schon
+    # richtig, also abwechselnd entnehmen.
+    hits: list[dict] = []
+    for i in range(max((len(x) for x in pro_brain), default=0)):
+        for liste in pro_brain:
+            if i < len(liste):
+                hits.append(liste[i])
+    gemessen = [b["mode"] for b in je_brain if b["mode"] != "error"]
+    gesamt = "hybrid" if gemessen and all(m == "hybrid" for m in gemessen) else "grep"
+    return {"mode": gesamt, "brains": je_brain, "hits": hits[:limit]}
+
+
+@router.post("/agent/write")
+async def agent_brain_write(
+    body: AgentBrainWrite,
+    auth: dict = Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Schreibt eine Datei in einen zugewiesenen Second Brain UND indexiert sie.
+
+    Derselbe Zweischritt wie Admin-UI, externer MCP und Sprach-Sitzung:
+    ``vault.write_file()`` (atomar, mit Ausbruchschutz) und direkt danach
+    ``vault_indexer.index_file()``. Der Agent war bis #727 der einzige
+    Schreibweg ohne Index.
+
+    ``path`` traegt den Slug des Ziel-Brains als erstes Segment — genau die
+    Form, die das Agentenwerkzeug schon immer erwartet
+    (``it_operations/Drucker/x17137.md``).
+    """
+    roh = (body.path or "").strip().lstrip("/")
+    if not roh:
+        raise HTTPException(status_code=422, detail="'path' fehlt")
+    slug, _, rest = roh.partition("/")
+    if not rest:
+        raise HTTPException(
+            status_code=422,
+            detail="'path' braucht den Brain-Slug als erstes Segment, z. B. 'it_operations/Drucker/x17137.md'",
+        )
+    brains = await _agent_brains(db, auth["agent_id"], slug)
+    brain, modus = brains[0]
+    if modus == "ro":
+        raise HTTPException(
+            status_code=403,
+            detail=f"Second Brain '{brain.slug}' ist nur lesend eingebunden — Schreiben nicht erlaubt.",
+        )
+    try:
+        ergebnis = vault.write_file(brain.host_path, rest, body.content)
+    except (ValueError, FileNotFoundError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Schreiben fehlgeschlagen: {e}")
+    chunks = 0
+    try:
+        chunks = await vault_indexer.index_file(db, brain.label, brain.host_path, rest)
+    except Exception as e:
+        # Geschrieben ist geschrieben — der 5-Minuten-Durchlauf holt den Index nach.
+        log.warning(
+            "Index nach Agenten-Schreibzugriff fehlgeschlagen brain=%s path=%s: %s",
+            brain.slug, vault.safe_log(rest), vault.safe_log(e),
+        )
+    return {
+        "ok": True,
+        "brain": brain.slug,
+        "path": rest,
+        "created": bool(ergebnis.get("created")),
+        "bytes": ergebnis.get("bytes"),
+        "indexed_chunks": chunks,
+    }

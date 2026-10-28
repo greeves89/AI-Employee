@@ -2298,7 +2298,7 @@ Womit sollen wir starten?
 # Second Brain Lookup Skill
 
 A shared **department knowledge base** may be mounted into this agent as a
-Markdown vault under `/mnt/brains/<name>/` (e.g. `/mnt/brains/it_operations/`).
+Markdown vault under `/mnt/brains/<slug>/` (e.g. `/mnt/brains/it_operations/`).
 It is the single source of truth for department know-how (runbooks, error-code
 fixes, how-tos). Use it whenever a question could be answered from documented
 knowledge — especially support, troubleshooting and "how do I…" questions.
@@ -2307,36 +2307,47 @@ knowledge — especially support, troubleshooting and "how do I…" questions.
 - The user reports an error code (e.g. `x17137`), a device/system problem, or asks "how do I…".
 - Any factual department question that is likely documented.
 
-## 1. Find the vault(s)
-```bash
-ls -d /mnt/brains/*/ 2>/dev/null || echo "(no Second Brain mounted)"
+## 1. Search FIRST (before answering)
 ```
-If none is mounted, answer normally (no department vault assigned to this agent).
-
-## 2. Search FIRST (before answering)
-Grep for the concrete keywords / error code, then read the matches:
-```bash
-Q="x17137"   # the user's error code / keywords
-grep -ril "$Q" /mnt/brains/*/ 2>/dev/null | head
+secondbrain_search(query="x17137")      # the user's error code / keywords
 ```
-Open the best matches with `read_file` and answer **from their content**. Always
-**cite the source file** (e.g. "laut `it_operations/Drucker/x17137.md`"). If grep
-finds nothing, broaden the terms (synonyms, German+English) before giving up.
+This is the real retrieval path: hybrid search over the indexed vault (semantic
+embeddings + full-text, fused). It therefore also finds **paraphrases** and
+crosses language borders (asked in German, filed in English) — things a
+substring `grep` cannot find. Then read the best match in full:
+```
+secondbrain_read(path="it_operations/Drucker/x17137.md")
+```
+Answer **from its content** and always **cite the source file** (e.g. "laut
+`it_operations/Drucker/x17137.md`"). If nothing comes back, broaden the terms
+(synonyms, German + English) before giving up. `secondbrain_list` shows what is
+in the vault at all.
 
-## 3. Contribute back (if you have write access)
+## 2. Contribute back (if you have write access)
 If you learned something new, or fixed a problem that wasn't documented, add or
 update a concise article so the whole department benefits:
-- One `.md` per topic, **Wikimedia-style** folders (`Drucker/`, `Netzwerk/`, `Zugaenge/`).
-- Speaking file names; put error codes / keywords in plain text so grep finds them.
+```
+secondbrain_write(path="it_operations/Drucker/x17137.md", content="# x17137\n\n## Symptom\n…")
+```
+- The path starts with the vault slug, then **Wikimedia-style** folders (`Drucker/`, `Netzwerk/`, `Zugaenge/`).
+- One `.md` per topic, speaking file names; error codes / keywords in plain text.
 - Link related articles with `[[Titel]]`.
 - Update the vault's `index.md` to link the new article.
+
+**Why the tool and not a plain file write:** `secondbrain_write` indexes the
+article immediately, so the very next `secondbrain_search` finds it. A plain
+`write_file` to `/mnt/brains/...` only lands on disk — it stays invisible to
+search until the periodic re-index run catches up.
+
+## 3. Emergency fallback only
+If the orchestrator is unreachable, the tools fall back to a local file walk by
+themselves. If you need to do it by hand:
 ```bash
-# only if the mount is writable (rw)
-mkdir -p /mnt/brains/it_operations/Drucker
-write_file /mnt/brains/it_operations/Drucker/x17137.md  # title + cause + step-by-step fix
+ls -d /mnt/brains/*/ 2>/dev/null || echo "(no Second Brain mounted)"
+grep -ril "x17137" /mnt/brains/*/ 2>/dev/null | head
 ```
-File history is versioned automatically (local git on the server) — just write
-clean Markdown; you don't need to commit.
+This is the notnagel, not the normal path: no ranking, no semantics, and a file
+written this way is not in the index.
 
 ## Rules
 - **Search before you answer** — never guess if the vault might hold the answer.

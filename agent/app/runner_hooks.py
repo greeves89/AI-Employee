@@ -127,7 +127,7 @@ memory_search for solutions BEFORE reporting errors or asking the user.
 # Chat prefix — same full lifecycle as task runner, adapted for interactive chat
 CHAT_STARTUP_PREFIX = """
 You have access to tools: web_search, web_fetch, bash, read_file, write_file, memory_search,
-brain_search, notify_user, send_telegram, request_approval, and more.
+brain_search, secondbrain_search, notify_user, send_telegram, request_approval, and more.
 USE THEM when the user asks for current information or tasks.
 Do NOT just describe what you would do — actually call the tools and deliver results.
 
@@ -158,7 +158,12 @@ STEP 1 — Check your ASSIGNED skills first (listed under "DEINE FACHANLEITUNGEN
           and follow it precisely, including its questions and check steps.
           If no assigned skill fits: call `skill_search` to find new ones from the marketplace.
           Note the skill ID if used — call skill_rate (with task_id=CURRENT_TASK_ID) at the end.
-STEP 2 — Call `memory_search` and `brain_search` to check for relevant past learnings + shared knowledge.
+STEP 2 — Call `memory_search` and `brain_search` to check for relevant past learnings + the
+          user's knowledge base. For a support / how-to / troubleshooting question (error code,
+          device, procedure) ALSO call `secondbrain_search` — the shared department Second Brain
+          under `/mnt/brains/`. It is a hybrid search (semantic + full text), so use it instead of
+          `grep`; cite the `.md` you answer from, and write new findings back with
+          `secondbrain_write` (that one indexes immediately, a plain file write does not).
 STEP 3 — Execute the task. Call tools — never just describe what you would do.
 
 NOTE on TODO tracking: Use the platform's persistent todo system (`create_todo`, `update_todos`)
@@ -839,6 +844,72 @@ def get_marketplace_skill_suggestions(task_hint: str) -> str:
         return ""
 
 
+#: Datei-Landkarte des Second Brain (#727). Struktur traegt Bedeutung — ein
+#: Ordnername ist schon eine Aussage, und genau die geht beim Chunking verloren.
+#: Deshalb sieht der Agent zusaetzlich zur Suche, WAS ueberhaupt da ist.
+#: Die Deckel sind der entscheidende Teil: dieser Block geht in JEDEN Prompt.
+VAULT_MAP_MAX_FILES = 120      # darueber: Verzeichnis-Uebersicht statt Dateiliste
+VAULT_MAP_MAX_CHARS = 6000     # harte Obergrenze ueber ALLE Vaults zusammen
+_VAULT_MAP_SUFFIXES = (".md", ".markdown", ".txt")
+
+
+def _vault_files(vault_dir: str) -> list[str]:
+    """Relative Pfade der durchsuchbaren Dateien eines Vaults, alphabetisch."""
+    out: list[str] = []
+    for root, dirs, files in os.walk(vault_dir):
+        dirs[:] = [d for d in dirs if d != ".git"]
+        for f in files:
+            if f.lower().endswith(_VAULT_MAP_SUFFIXES):
+                out.append(os.path.relpath(os.path.join(root, f), vault_dir))
+    return sorted(out)
+
+
+def get_vault_file_map(brains: list[str]) -> str:
+    """Begrenzte Datei-Landkarte der gemounteten Second Brains.
+
+    Bis ``VAULT_MAP_MAX_FILES`` Dateien je Vault die vollstaendige Liste, darueber
+    eine Verzeichnis-Uebersicht mit Zaehlern (bei einem grossen Vault ist die
+    *Form* nuetzlicher als eine abgeschnittene Liste). Ueber alle Vaults zusammen
+    gilt ``VAULT_MAP_MAX_CHARS``; was darueber liegt, wird abgeschnitten und als
+    abgeschnitten gekennzeichnet. Fehler ergeben "" — der Verzeichnis-Hinweis
+    des Aufrufers bleibt dann allein stehen.
+    """
+    try:
+        blocks: list[str] = []
+        for d in brains:
+            slug = os.path.basename(d)
+            files = _vault_files(d)
+            if not files:
+                blocks.append(f"  `{slug}`: (leer)")
+                continue
+            if len(files) <= VAULT_MAP_MAX_FILES:
+                zeilen = [f"  `{slug}` ({len(files)} Dateien):"]
+                zeilen += [f"    - {f}" for f in files]
+            else:
+                je_ordner: dict[str, int] = {}
+                for f in files:
+                    ordner = os.path.dirname(f) or "."
+                    je_ordner[ordner] = je_ordner.get(ordner, 0) + 1
+                zeilen = [
+                    f"  `{slug}` ({len(files)} Dateien in {len(je_ordner)} Ordnern — "
+                    f"Verzeichnis-Uebersicht, vollstaendige Liste mit `secondbrain_list`):"
+                ]
+                zeilen += [f"    - {o}/  ({n})" for o, n in sorted(je_ordner.items())]
+            blocks.append("\n".join(zeilen))
+        if not blocks:
+            return ""
+        kopf = "\nWas in den Vaults liegt (Landkarte — Ordnernamen tragen Bedeutung):"
+        karte = kopf + "\n" + "\n\n".join(blocks)
+        if len(karte) > VAULT_MAP_MAX_CHARS:
+            karte = (
+                karte[:VAULT_MAP_MAX_CHARS].rstrip()
+                + "\n  […Landkarte gekuerzt — Rest mit `secondbrain_list`]"
+            )
+        return karte
+    except Exception:
+        return ""
+
+
 def get_mounts_context() -> str:
     """Detect host mounts at runtime — especially shared Second Brain vaults under
     /mnt/brains — and describe them in-prompt.
@@ -868,12 +939,20 @@ def get_mounts_context() -> str:
             lines.append("Shared department **Second Brain** vault(s) — Markdown knowledge bases:")
             for d in brains:
                 lines.append(f"  - `{d}`")
+            karte = get_vault_file_map(brains)
+            if karte:
+                lines.append(karte)
             lines.append(
                 "For support / how-to / troubleshooting questions (e.g. an error code like "
-                "x17137), SEARCH the Second Brain FIRST: `grep` the keywords/code across the vault, "
-                "read the matching `.md`, and answer from it WITH a citation of the file. If you "
-                "learn something new and the vault is writable, add or update a concise `.md` "
-                "article (Markdown, `[[wikilinks]]` between topics) so the whole department benefits."
+                "x17137), SEARCH the Second Brain FIRST — with `secondbrain_search(query=...)`, "
+                "NOT with `grep`: it runs the real hybrid search (semantic + full text, ranked), "
+                "so it finds paraphrases and German/English crossovers a substring scan misses. "
+                "Read the best match with `secondbrain_read(path=...)` and answer from it WITH a "
+                "citation of the file. If you learn something new and the vault is writable, add "
+                "or update a concise article with `secondbrain_write(path='<slug>/<Ordner>/<thema>.md', "
+                "content=...)` — that also puts it into the search index right away, which a plain "
+                "file write does not. `grep` over the mount stays available as an emergency "
+                "fallback if the orchestrator is unreachable."
             )
         lines.extend(["=== END HOST MOUNTS ===", ""])
         return "\n".join(lines)

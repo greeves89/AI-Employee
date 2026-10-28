@@ -426,6 +426,64 @@ LOCAL_TOOLS: list[dict] = [
             },
         },
     },
+    # ── Second Brain — der GETEILTE Abteilungs-Vault unter /mnt/brains/<slug>/ ──
+    # Lokale Werkzeuge, KEINE Orchestrator-Werkzeuge: `secondbrain_read`/`_list`
+    # lesen den gemounteten Ordner direkt, und `secondbrain_search`/`_write` rufen
+    # den Orchestrator aus ihrem lokalen Handler heraus auf, damit der Rueckfall auf
+    # den Dateiweg bei Orchestrator-Ausfall an EINER Stelle liegt (#727).
+    # Bis #727 standen sie in ORCHESTRATOR_TOOLS, ohne Gegenstelle im api_client —
+    # jeder Aufruf endete mit "API tool 'secondbrain_search' not implemented",
+    # und die lokalen Handler waren unerreichbar.
+    {
+        "type": "function",
+        "function": {
+            "name": "secondbrain_search",
+            "description": "Search the SHARED Second Brain VAULT(s) — the department's Markdown knowledge base mounted under /mnt/brains/<slug>/, shared by MANY users (what users browse in the UI under Wissen → Second Brain). Use this for support/how-to/troubleshooting (error codes, devices, procedures) BEFORE answering. NOT the personal Knowledge Base (that is brain_search).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Keywords (error codes, device names, topics)."},
+                    "limit": {"type": "number", "description": "Max files (default 10, max 50)."},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "secondbrain_read",
+            "description": "Read the full content of one file in the shared Second Brain vault, by path (as returned by secondbrain_search/secondbrain_list, e.g. 'it_operations/Drucker/x17137.md').",
+            "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string", "description": "Vault-relative path under /mnt/brains."}},
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "secondbrain_write",
+            "description": "Create or overwrite a Markdown file in the SHARED Second Brain vault (department knowledge the whole team sees). USE THIS to 'write into the Second Brain / vault' — NOT brain_contribute. Path is vault-relative, e.g. 'it_operations/Drucker/HP-Fax.md'. Only works if the brain is mounted read-write. Use sensible folders/filenames, [[wikilinks]] between topics, and plain-text error codes/model names so search finds them.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Vault-relative path incl. brain slug, e.g. 'it_operations/Drucker/HP-Fax.md'."},
+                    "content": {"type": "string", "description": "Full Markdown content of the article."},
+                },
+                "required": ["path", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "secondbrain_list",
+            "description": "List the mounted Second Brain vault(s) and their files (with read-only/read-write status), so you can pick what to read or where to write.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
 ]
 
 # Merge marketplace skill tools into LOCAL_TOOLS
@@ -2035,57 +2093,6 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                 },
                 "required": ["approval_id"],
             },
-        },
-    },
-    # ── Second Brain (full CRUD over the user's unified knowledge graph) ──
-    {
-        "type": "function",
-        "function": {
-            "name": "secondbrain_search",
-            "description": "Search the SHARED Second Brain VAULT(s) — the department's Markdown knowledge base mounted under /mnt/brains/<slug>/, shared by MANY users (what users browse in the UI under Wissen → Second Brain). Use this for support/how-to/troubleshooting (error codes, devices, procedures) BEFORE answering. NOT the personal Knowledge Base (that is brain_search).",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Keywords (error codes, device names, topics)."},
-                    "limit": {"type": "number", "description": "Max files (default 10, max 50)."},
-                },
-                "required": ["query"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "secondbrain_read",
-            "description": "Read the full content of one file in the shared Second Brain vault, by path (as returned by secondbrain_search/secondbrain_list, e.g. 'it_operations/Drucker/x17137.md').",
-            "parameters": {
-                "type": "object",
-                "properties": {"path": {"type": "string", "description": "Vault-relative path under /mnt/brains."}},
-                "required": ["path"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "secondbrain_write",
-            "description": "Create or overwrite a Markdown file in the SHARED Second Brain vault (department knowledge the whole team sees). USE THIS to 'write into the Second Brain / vault' — NOT brain_contribute. Path is vault-relative, e.g. 'it_operations/Drucker/HP-Fax.md'. Only works if the brain is mounted read-write. Use sensible folders/filenames, [[wikilinks]] between topics, and plain-text error codes/model names so search finds them.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "Vault-relative path incl. brain slug, e.g. 'it_operations/Drucker/HP-Fax.md'."},
-                    "content": {"type": "string", "description": "Full Markdown content of the article."},
-                },
-                "required": ["path", "content"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "secondbrain_list",
-            "description": "List the mounted Second Brain vault(s) and their files (with read-only/read-write status), so you can pick what to read or where to write.",
-            "parameters": {"type": "object", "properties": {}},
         },
     },
     {
