@@ -10,7 +10,7 @@ from app.api import teams as api
 from app.core import projekt_git
 from app.models.projekt_karte import ProjektKarte
 from app.models.team import Team
-from tests.test_projekte import MITGLIED, Basis
+from tests.test_projekte import BETRACHTER, MITGLIED, Basis
 
 
 class _Anbieter:
@@ -238,3 +238,79 @@ class Anonym(Basis):
             with self.assertRaises(projekt_git.GitFehler) as e:
                 await projekt_git.abgleichen(db, team, "", _Weg(), client=None)
         self.assertIn("privat", str(e.exception))
+
+
+class BeimOeffnen(Basis):
+    """Die Projektseite gleicht beim Aufruf ab — gebremst, damit nicht jeder Seitenaufruf
+    GitHub-Abfragen kostet (anonym teilen sich alle Projekte 60 je Stunde)."""
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        from datetime import timedelta
+        from unittest.mock import AsyncMock, patch
+
+        self.gh = _Anbieter()
+        self.gh.issues = [_issue(1061, "Neu angelegt")]
+        self.token = "token"
+        self.zugang = patch("app.core.projekt_git.zugang",
+                            new=AsyncMock(side_effect=lambda db, redis, team: (self.token, self.gh)))
+        self.zugang.start()
+        self.addCleanup(self.zugang.stop)
+        self.timedelta = timedelta
+        async with self.Session() as db:
+            team = await db.get(Team, "p1")
+            team.repo = "o/r"
+            await db.commit()
+
+    async def _zuletzt_vor(self, sekunden):
+        from datetime import datetime, timezone
+
+        async with self.Session() as db:
+            team = await db.get(Team, "p1")
+            team.repo_abgleich_at = datetime.now(timezone.utc) - self.timedelta(seconds=sekunden)
+            await db.commit()
+
+    async def _oeffnen(self, user=MITGLIED):
+        async with self.Session() as db:
+            return await api.repo_abgleichen("p1", beim_oeffnen=True, user=user, db=db, redis=None)
+
+    async def test_noch_nie_abgeglichen_holt_sofort(self):
+        r = await self._oeffnen()
+        self.assertFalse(r["uebersprungen"])
+        self.assertEqual(r["neu"], 1)
+
+    async def test_mit_schluessel_hoechstens_einmal_je_minute(self):
+        await self._zuletzt_vor(30)
+        self.assertTrue((await self._oeffnen())["uebersprungen"])
+        await self._zuletzt_vor(projekt_git.OEFFNEN_ABSTAND_SEKUNDEN + 1)
+        self.assertFalse((await self._oeffnen())["uebersprungen"])
+
+    async def test_anonym_hoechstens_alle_fuenf_minuten(self):
+        self.token = ""
+        await self._zuletzt_vor(projekt_git.OEFFNEN_ABSTAND_SEKUNDEN + 1)
+        self.assertTrue((await self._oeffnen())["uebersprungen"])
+        await self._zuletzt_vor(projekt_git.OEFFNEN_ABSTAND_ANONYM_SEKUNDEN + 1)
+        self.assertFalse((await self._oeffnen())["uebersprungen"])
+
+    async def test_fehler_bleibt_still_und_steht_am_projekt(self):
+        class _Weg(_Anbieter):
+            async def list_open_issues(self, client, token, repo, hoechstens):
+                raise LookupError(repo)
+
+        self.gh = _Weg()
+        r = await self._oeffnen()
+        self.assertTrue(r["uebersprungen"])
+        async with self.Session() as db:
+            self.assertIn("nicht gefunden", (await db.get(Team, "p1")).repo_fehler)
+
+    async def test_betrachter_und_fremde_duerfen_nicht(self):
+        from types import SimpleNamespace
+
+        from app.models.user import UserRole
+
+        with self.assertRaises(HTTPException) as e:
+            await self._oeffnen(BETRACHTER)
+        self.assertEqual(e.exception.status_code, 403)
+        with self.assertRaises(HTTPException) as e:
+            await self._oeffnen(SimpleNamespace(id="ub", role=UserRole.MEMBER))
+        self.assertIn(e.exception.status_code, (403, 404))

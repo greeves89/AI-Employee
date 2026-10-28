@@ -21,6 +21,9 @@ Zugang je Projekt (``zugang``), in dieser Reihenfolge:
    fremde private Repos);
 3. anonym — nur öffentliche Repos, niedrige Abfragegrenze (60/Stunde); der Takt
    gleicht anonyme Projekte deshalb nur alle 30 Minuten ab.
+
+Beim Öffnen eines Projekts gleicht die Oberfläche zusätzlich ab (``beim_oeffnen``),
+mit Schlüssel höchstens einmal je Minute, anonym höchstens alle fünf Minuten.
 Die Plattform LIEST nur; schreiben (Branches, PRs, Kommentare) tun die Agenten
 mit ihrem eigenen GitHub-Werkzeug.
 """
@@ -48,6 +51,8 @@ MAX_PRS = 30
 TEXT_ZEICHEN = 8000
 TAKT_SEKUNDEN = 600
 ANONYM_ABSTAND_SEKUNDEN = 1800
+OEFFNEN_ABSTAND_SEKUNDEN = 60
+OEFFNEN_ABSTAND_ANONYM_SEKUNDEN = 300
 
 
 class GitFehler(RuntimeError):
@@ -244,6 +249,30 @@ async def projekt_abgleichen(db: AsyncSession, redis, team: Team) -> dict:
         raise
 
 
+def _sekunden_seit(zuletzt: datetime | None, jetzt: datetime) -> float | None:
+    if zuletzt is None:
+        return None
+    return (jetzt - (zuletzt if zuletzt.tzinfo else zuletzt.replace(tzinfo=timezone.utc))).total_seconds()
+
+
+async def beim_oeffnen(db: AsyncSession, redis, team: Team, jetzt: datetime | None = None) -> dict | None:
+    """Abgleich beim Öffnen des Projekts — None, wenn der letzte noch frisch genug ist.
+
+    Ohne diese Bremse kostete jeder Seitenaufruf mehrere GitHub-Abfragen; anonym
+    teilen sich alle Projekte 60 je Stunde.
+    """
+    jetzt = jetzt or datetime.now(timezone.utc)
+    try:
+        anonym = not (await zugang(db, redis, team))[0]
+    except GitFehler:
+        return None  # Schlüssel kaputt: steht schon am Projekt (repo_fehler)
+    abstand = OEFFNEN_ABSTAND_ANONYM_SEKUNDEN if anonym else OEFFNEN_ABSTAND_SEKUNDEN
+    seit = _sekunden_seit(team.repo_abgleich_at, jetzt)
+    if seit is not None and seit < abstand:
+        return None
+    return await projekt_abgleichen(db, redis, team)
+
+
 async def alle_abgleichen(redis) -> int:
     """Alle Projekte mit Repo — aus dem Scheduler-Takt. Liefert die Zahl der Projekte."""
     from app.db.session import resilient_session
@@ -263,8 +292,8 @@ async def alle_abgleichen(redis) -> int:
             except GitFehler:
                 anonym = False  # Schlüssel kaputt: der Abgleich meldet es am Projekt
             # Anonym nur alle 30 Minuten: die Abfragegrenze (60/h) teilen sich alle Projekte.
-            zuletzt = team.repo_abgleich_at
-            if anonym and zuletzt and (jetzt - (zuletzt if zuletzt.tzinfo else zuletzt.replace(tzinfo=timezone.utc))).total_seconds() < ANONYM_ABSTAND_SEKUNDEN:
+            seit = _sekunden_seit(team.repo_abgleich_at, jetzt)
+            if anonym and seit is not None and seit < ANONYM_ABSTAND_SEKUNDEN:
                 continue
             try:
                 await projekt_abgleichen(db, redis, team)
