@@ -2699,7 +2699,9 @@ Menüpunkt **Mitdenken** (Haken) oder den Knopf im Hauptfenster.
   arbeitet er deinen Hinweis sofort in diesen Auftrag ein („nimm lieber die zweite Spalte“);
   sonst wird die Nachricht ein neuer Auftrag, mit einem aktuellen Bild deines Bildschirms.
   Nach dem Senden geht die Tastatur zurück an deine Anwendung. **Chat zu** klappt das Feld
-  wieder ein. Den vollständigen Chat im Browser öffnest du über das Bridge-Menü
+  wieder ein. Alles aus dem Overlay (deine Nachrichten, ein Ja zu einem Angebot und die
+  Antworten des Agenten) steht auch im Chat des Agenten im Browser, im Gespräch
+  **Bridge (Overlay)**. Den vollständigen Chat im Browser öffnest du über das Bridge-Menü
   („Im Browser öffnen“).
 - **Ausblenden** — blendet Statusmeldungen aus; ein neues Angebot oder ein Ergebnis kommt
   trotzdem.
