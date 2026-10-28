@@ -9,6 +9,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ### Behoben
 - **Computer-Use-Bridge: ein getipptes Passwort landete im Prüfprotokoll und im Replay-Transkript.** Tippte der Agent über die Steuerung des echten Bildschirms (`type`, Zwischenablage, Formularfeld ausfüllen) ein Geheimnis, stand der Klartext bisher unverändert im Prüfprotokoll der Sitzung (`GET .../audit`) und — lief gerade eine Aufnahme — im Replay-Transkript samt Screenshot; aus einem Transkript lässt sich über „Aufnahme zu Skill“ ein geteilter Skill erzeugen. Betroffen war auch der Mitschnitt, wenn der Mensch beim Vorführen einer Aufgabe selbst etwas eintippt. Nur der eingetippte/eingefügte Text wird jetzt durch seine Länge ersetzt; alle anderen Angaben (Ziel-Feld, Koordinaten, Tastenname) bleiben wie gewohnt sichtbar.
+## [1.382.0] - 2026-10-28
+
+### Neu
+- **Die Bridge gibt dem Agenten alle Monitore mit.** Hat der Rechner mehrere Bildschirme, liefert ein Screenshot ohne Bildschirmwahl jetzt jeden Monitor als eigenes Bild mit seiner Nummer, statt nur den Hauptbildschirm. Das gilt in allen Laufzeiten: Claude Code und Codex über das Desktop-Werkzeug, eigene Sprachmodelle, der Orchestrator-Zugang und die Sprachfront (die zeigt alle Bilder an und lässt alle auswerten). Wer nur einen Monitor sehen will, nennt ihn wie bisher mit `display`.
+
+### Behoben
+- **Klicks auf dem zweiten Monitor rechneten mit dem falschen Maßstab.** Die Bridge merkte sich nur den Maßstab des zuletzt aufgenommenen Bildes. Haben zwei Monitore unterschiedliche Auflösung, landete ein Klick auf dem anderen Monitor daneben. Maßstab und Lage werden jetzt je Monitor gemerkt. Außerdem gaben die Desktop-Werkzeuge für Klicken, Bewegen, Scrollen und Ziehen die Monitornummer bisher gar nicht an die Bridge weiter.
+
+### Hinweis
+- Für alle Monitore braucht es die Bridge 1.382.0. Eine ältere Bridge ignoriert den Wunsch und liefert wie bisher nur den Hauptbildschirm.
+
+## [1.381.2] - 2026-10-28
+
+### Verbessert
+- **Projekt-Board nutzt die ganze Bildschirmhöhe.** Auf breiten Bildschirmen (fünf Spalten nebeneinander) reichen die Spalten bis zum unteren Rand, statt nach etwa 34rem leeren Platz zu lassen.
+- **Kein „Erledigt“ mehr bei offenem PR.** Der Knopf verschob nur die Karte, der Pull Request blieb offen. Solange der PR offen ist, steht auf der Karte jetzt „Wandert nach dem Merge von selbst nach Erledigt“; zusammengeführt wird über den PR-Link auf GitHub, danach zieht der Abgleich die Karte nach.
+
+## [1.381.1] - 2026-10-28
+
+### Sicherheit
+- **Freigabelisten für Adressen ließen sich mit einem Backslash umgehen.** `https://fremd.example\.erlaubt.example/` las die Plattform als Unterseite von `erlaubt.example`, der Browser rief aber `fremd.example` auf. Betroffen waren die erlaubten Domains einer Bridge-Sitzung, die URL-Freigabeliste der Agenten und die Freigabeliste für Rückrufe. Adressen, die Plattform und Browser verschieden lesen (Backslash, Steuer- und Leerzeichen oder Prozent-Kodierung im Host), werden jetzt überall abgelehnt; alle drei Prüfungen holen den Host an einer gemeinsamen Stelle. Leere Einträge in der URL-Freigabeliste lassen nichts mehr durch.
+
+## [1.381.0] - 2026-10-28
+
+### Hinzugefügt
+- **Erklärung bei zwei technischen Begriffen in den Agent-Einstellungen.** "MCP-Endpunkt" und "Berechtigungen (Sudo-Pakete)" zeigen jetzt ein kleines Hilfe-Symbol mit einer kurzen Erklärung in normaler Sprache. Teil von Issue #787 Punkt 8 ("technische Labels ohne Erklärung für Nicht-Techniker") — die dort ebenfalls geforderte Gliederung der Seite in aufklappbare Abschnitte war bereits seit Ende September umgesetzt.
 
 ## [1.380.3] - 2026-10-28
 

@@ -1927,6 +1927,26 @@ class CommandDispatcher:
         #: ohne diesen Versatz landet jeder Klick auf dem zweiten Monitor auf
         #: dem ersten.
         self._coord_offset: tuple[int, int] = (0, 0)
+        #: Maszstab und Ursprung JE Bildschirm, aus dem jeweils letzten Bild
+        #: dieses Bildschirms. Sieht der Agent mehrere Monitore auf einmal, gilt
+        #: fuer einen Klick mit ``display=N`` der Maszstab von N — nicht der des
+        #: zuletzt aufgenommenen Bildes.
+        self._anzeigen: dict[int, tuple[tuple[float, float], tuple[int, int]]] = {}
+
+    def _anzeige_merken(self, meta: dict, aktiv: bool = True) -> None:
+        """Maszstab und Ursprung eines aufgenommenen Bildschirms festhalten.
+
+        ``aktiv``: dieser Bildschirm gilt fuer Klicks OHNE ``display`` (wie bisher
+        der zuletzt aufgenommene).
+        """
+        gewaehlt = next((b for b in meta["displays"] if b["number"] == meta["display"]), None)
+        massstab = (meta["scale_x"], meta["scale_y"])
+        ursprung = (gewaehlt.get("x", 0), gewaehlt.get("y", 0)) if gewaehlt else (0, 0)
+        if not hasattr(self, "_anzeigen"):
+            self._anzeigen = {}
+        self._anzeigen[int(meta["display"])] = (massstab, ursprung)
+        if aktiv:
+            self._coord_scale, self._coord_offset = massstab, ursprung
 
     def _display_offset(self, display) -> tuple[int, int] | None:
         """Ursprung eines AUSDRUECKLICH genannten Bildschirms.
@@ -1951,6 +1971,14 @@ class CommandDispatcher:
     def _to_click_space(self, x, y, display=None) -> tuple[int, int]:
         """Eine Koordinate aus dem Bildraum (was das Modell sieht) in den
         logischen Klickraum (was pyautogui erwartet) umrechnen."""
+        try:
+            nummer = int(display) if display else None
+        except (TypeError, ValueError):
+            nummer = None
+        anzeigen = getattr(self, "_anzeigen", {})
+        if nummer in anzeigen:
+            (sx, sy), (ox, oy) = anzeigen[nummer]
+            return round(float(x) * sx) + ox, round(float(y) * sy) + oy
         sx, sy = self._coord_scale
         ox, oy = self._display_offset(display) or self._coord_offset
         return round(float(x) * sx) + ox, round(float(y) * sy) + oy
@@ -2020,27 +2048,39 @@ class CommandDispatcher:
                 # Angabe bleibt es beim Hauptbildschirm — so verhaelt sich jeder
                 # bestehende Aufrufer wie bisher.
                 display = params.get("display")
+                # `alle_bildschirme`: ohne `display` zusaetzlich jeden weiteren
+                # Monitor mitliefern (unter `weitere`). Nur auf Wunsch — die
+                # Live-Ansicht fragt im Sekundentakt und braucht nur den Haupt.
+                alle = bool(params.get("alle_bildschirme")) and not display
                 try:
                     b64, meta = capture_screenshot(scale, display)
-                    # Den Maszstab merken: die NAECHSTEN Klicks liegen im Raum
-                    # dieses Bildes und muessen zurueckgerechnet werden.
-                    self._coord_scale = (meta["scale_x"], meta["scale_y"])
-                    # Bei einem Nebenbildschirm liegt der Ursprung NICHT bei 0/0:
-                    # pyautogui klickt ueber alle Bildschirme hinweg in einem
-                    # gemeinsamen Raum. Ohne diesen Versatz landet jeder Klick auf
-                    # dem zweiten Monitor auf dem ersten.
-                    gewaehlt = next(
-                        (b for b in meta["displays"] if b["number"] == meta["display"]), None
-                    )
-                    self._coord_offset = (
-                        (gewaehlt.get("x", 0), gewaehlt.get("y", 0)) if gewaehlt else (0, 0)
-                    )
-                    return {
+                    # Maszstab und Ursprung merken: die NAECHSTEN Klicks liegen im
+                    # Raum dieses Bildes. Bei einem Nebenbildschirm liegt der
+                    # Ursprung NICHT bei 0/0 — pyautogui klickt ueber alle
+                    # Bildschirme in einem gemeinsamen Raum.
+                    self._anzeige_merken(meta)
+                    antwort = {
                         "screenshot_b64": b64,
                         "image_size": {"w": meta["image_w"], "h": meta["image_h"]},
                         "display": meta["display"],
                         "displays": meta["displays"],
                     }
+                    if alle and len(meta["displays"]) > 1:
+                        weitere = []
+                        for b in meta["displays"]:
+                            if b["number"] == meta["display"]:
+                                continue
+                            b64_n, meta_n = capture_screenshot(scale, b["number"])
+                            # Merken, aber NICHT aktiv: ohne `display` klickt der
+                            # Agent weiter auf dem Hauptbildschirm.
+                            self._anzeige_merken(meta_n, aktiv=False)
+                            weitere.append({
+                                "display": meta_n["display"],
+                                "screenshot_b64": b64_n,
+                                "image_size": {"w": meta_n["image_w"], "h": meta_n["image_h"]},
+                            })
+                        antwort["weitere"] = weitere
+                    return antwort
                 except ValueError as e:
                     return {"ok": False, "error": str(e)}
                 except ScreenRecordingPermissionError as e:

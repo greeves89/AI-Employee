@@ -323,12 +323,9 @@ def _url_in_scope(url: str, allowed_domains: list[str] | None) -> bool:
     """
     if allowed_domains is None:
         return True
-    from urllib.parse import urlparse
+    from app.core.url_guard import eindeutiger_host
 
-    try:
-        host = (urlparse(url).hostname or "").lower()
-    except ValueError:
-        return False
+    host = eindeutiger_host(url)
     if not host:
         return False
     for entry in allowed_domains:

@@ -206,3 +206,44 @@ def test_codex_env_marks_desktop_mcp_active(monkeypatch, tmp_path):
     env = codex_runner._codex_env()
 
     assert env[DESKTOP_MCP_ACTIVE_ENV] == "1"
+
+
+@pytest.mark.asyncio
+async def test_screenshot_without_display_asks_for_every_monitor_and_returns_them(monkeypatch):
+    """Ohne ``display`` will der Agent alle Monitore sehen — jedes Bild mit seiner Nummer."""
+    client = OrchestratorAPIClient()
+    gesendet = []
+
+    async def fake_request(method, path, json=None, params=None):
+        gesendet.append(json)
+        return {"result": {
+            "screenshot_b64": "haupt", "image_size": {"w": 1280, "h": 800}, "display": 1,
+            "displays": [{"number": 1, "primary": True, "width": 1440, "height": 900},
+                         {"number": 2, "primary": False, "width": 1920, "height": 1080}],
+            "weitere": [{"display": 2, "screenshot_b64": "zweiter", "image_size": {"w": 1280, "h": 720}}],
+        }}
+
+    monkeypatch.setattr(client, "_request", fake_request)
+    result = await client.computer_use({"action": "screenshot", "session_id": "s1"})
+
+    assert gesendet[0]["params"] == {"alle_bildschirme": True}
+    nachricht = multimodal.tool_message(result, "t1", "computer_use")
+    bilder = [b["data"] for b in nachricht.content if b["type"] == "image"]
+    texte = " ".join(b["text"] for b in nachricht.content if b["type"] == "text")
+    assert bilder == ["haupt", "zweiter"]
+    assert "params.display=2" in texte and "one image per display" in texte
+    assert multimodal.log_summary(result).startswith("[2 images")
+
+
+@pytest.mark.asyncio
+async def test_screenshot_with_display_asks_for_that_monitor_only(monkeypatch):
+    client = OrchestratorAPIClient()
+    gesendet = []
+
+    async def fake_request(method, path, json=None, params=None):
+        gesendet.append(json)
+        return {"result": {"screenshot_b64": "zwei", "display": 2}}
+
+    monkeypatch.setattr(client, "_request", fake_request)
+    await client.computer_use({"action": "screenshot", "session_id": "s1", "params": {"display": 2}})
+    assert gesendet[0]["params"] == {"display": 2}
