@@ -323,7 +323,7 @@ async def bridge_brain_anlegen(body: BridgeBrainCreate, user=Depends(require_aut
     await _audit(db, AuditEventType.BRAIN_CREATED, brain, user.id)
     await db.refresh(brain)  # nach einem gescheiterten Protokolleintrag (Rollback) neu laden
     bridge_wissen.anstossen(str(user.id))
-    return _to_response(brain)
+    return _to_response(brain, await _index_stats(db))
 
 
 @router.post("/bridge/{brain_id}/sync")
