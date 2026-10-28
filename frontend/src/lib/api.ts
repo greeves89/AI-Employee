@@ -4913,8 +4913,10 @@ export interface ProjektUebersicht extends Team {
 
 export async function projektRepoAbgleichen(
   id: string,
-): Promise<{ neu: number; aktualisiert: number; erledigt: number; offene_issues: number; offene_prs: number }> {
-  return fetchJSON(`${getBase()}/teams/${id}/repo/abgleichen`, { method: "POST" });
+  beimOeffnen = false,
+): Promise<{ neu?: number; aktualisiert?: number; erledigt?: number; offene_issues?: number; offene_prs?: number; uebersprungen?: boolean }> {
+  const q = beimOeffnen ? "?beim_oeffnen=true" : "";
+  return fetchJSON(`${getBase()}/teams/${id}/repo/abgleichen${q}`, { method: "POST" });
 }
 
 export async function projektGespraech(id: string, limit = 100): Promise<{ nachrichten: ProjektNachricht[] }> {

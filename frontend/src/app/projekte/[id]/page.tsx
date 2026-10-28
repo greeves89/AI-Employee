@@ -99,6 +99,23 @@ export default function ProjektPage() {
     return setVisibleInterval(laden, 5000);
   }, [laden]);
 
+  // Beim Öffnen neue Issues und PRs holen — der Server bremst (1 bzw. 5 Minuten
+  // ohne Schlüssel) und meldet Fehler am Projekt, hier bleibt es still.
+  const geoeffnet = useRef<string | null>(null);
+  const hatRepo = !!projekt?.repo;
+  useEffect(() => {
+    if (!hatRepo || !darfSchreiben || geoeffnet.current === id) return;
+    geoeffnet.current = id;
+    api.projektRepoAbgleichen(id, true)
+      .then((r) => {
+        if (!r.uebersprungen) {
+          zuletzt.current = "";
+          laden();
+        }
+      })
+      .catch(() => {});
+  }, [id, hatRepo, darfSchreiben, laden]);
+
   const agentById = new Map(agents.map((a) => [a.id, a]));
   const mitgliederIds = projekt?.member_agent_ids ?? [];
   const mitglieder = mitgliederIds.map((mid) => ({ id: mid, agent: agentById.get(mid) }));

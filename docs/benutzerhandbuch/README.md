@@ -964,8 +964,8 @@ geordnet — das Wichtigste zuerst:
    - **Kosten** des Projekts in diesem Monat (mit Budget, falls eins gesetzt ist) — ein Klick
      öffnet die Finanzen,
    - **Takt** — ob der Arbeitstakt läuft und wann der nächste Lauf ist,
-   - bei Git-Projekten das **Repo**, wann es zuletzt abgeglichen wurde, und der Knopf zum
-     sofortigen Abgleich (Pfeilkreis).
+   - bei Git-Projekten das **Repo**, wann es zuletzt abgeglichen wurde, und der Knopf
+     **Aktualisieren**, der neue Issues und Pull Requests sofort holt.
 2. **Auftrag geben** — eine Zeile zum Schreiben, daneben Empfänger und **Abgeben**
    (siehe 6a.4).
 3. **Reiter** — **Board** (Standard), **Raum**, **Gespräch**, **Termine**, **Wissen**, **Team**.
@@ -1190,7 +1190,7 @@ Hinweis „Kein GitHub-Repo verbunden“ mit dem Knopf **Repo verbinden**.
 3. Bei einem privaten Repo unter **Schlüssel für das Repo** den passenden Schlüssel wählen.
 4. **Speichern**.
 
-Ab dann, regelmäßig:
+Ab dann, beim Öffnen des Projekts und regelmäßig (siehe oben):
 - Jedes **offene Issue** erscheint als Karte im **Eingang** (mit Nummer `#12` und Link). Ändert
   sich Titel oder Text im Repo, zieht die Karte nach — ihre Spalte und Priorität bleiben, wie du
   bzw. der Lead sie gesetzt habt.
@@ -1201,8 +1201,10 @@ Ab dann, regelmäßig:
 - Ein **gemergter** PR ohne eigenes Issue wird erledigt.
 
 Über dem Board zeigt eine Leiste das Repo, wann zuletzt abgeglichen wurde und gegebenenfalls einen
-Fehler (z. B. „GitHub ist auf dieser Anlage nicht verbunden“). **Jetzt abgleichen** holt den Stand
-sofort.
+Fehler (z. B. „GitHub ist auf dieser Anlage nicht verbunden“). Beim Öffnen des Projekts gleicht die
+Seite von selbst ab — mit Schlüssel höchstens einmal je Minute, ohne Schlüssel höchstens alle fünf
+Minuten (GitHub erlaubt ohne Schlüssel nur wenige Abfragen je Stunde). **Aktualisieren** holt den
+Stand jederzeit sofort.
 
 > **Agenten aktualisieren:** Die Projekt-Werkzeuge kennen nur Agenten auf aktuellem Stand. Läuft
 > ein Mitglied noch auf einem älteren, zeigt die Projektseite das gelb an — dann beim Agenten

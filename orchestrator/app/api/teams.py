@@ -1108,15 +1108,29 @@ async def wissen_suchen(team_id: str, frage: str, user=Depends(require_auth_or_a
 
 
 @router.post("/{team_id}/repo/abgleichen")
-async def repo_abgleichen(team_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db),
-                          redis=Depends(get_redis_service)):
-    """Issues und PRs des Repos sofort aufs Board holen (sonst alle zehn Minuten)."""
+async def repo_abgleichen(team_id: str, beim_oeffnen: bool = False, user=Depends(require_auth),
+                          db: AsyncSession = Depends(get_db), redis=Depends(get_redis_service)):
+    """Issues und PRs des Repos sofort aufs Board holen (sonst alle zehn Minuten).
+
+    ``beim_oeffnen``: von der Projektseite beim Aufruf — gebremst (siehe
+    ``projekt_git.beim_oeffnen``) und still: Fehler stehen am Projekt, nicht im Aufruf.
+    """
     from app.core import projekt_git
 
     _kein_betrachter(user)
     t = await _projekt(team_id, user, db)
     if not t.repo:
         raise HTTPException(status_code=400, detail="Das Projekt hat kein Repo.")
+    if beim_oeffnen:
+        try:
+            ergebnis = await projekt_git.beim_oeffnen(db, redis, t)
+        except projekt_git.GitFehler:
+            ergebnis = None
+        except Exception as e:  # noqa: BLE001 — z. B. gleichzeitiger Takt-Abgleich derselben Karten
+            await db.rollback()
+            logger.info("Abgleich beim Öffnen %s übersprungen: %s", team_id, e)
+            ergebnis = None
+        return {"uebersprungen": True} if ergebnis is None else {**ergebnis, "uebersprungen": False}
     try:
         return await projekt_git.projekt_abgleichen(db, redis, t)
     except projekt_git.GitFehler as e:
