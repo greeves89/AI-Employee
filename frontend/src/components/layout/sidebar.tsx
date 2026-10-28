@@ -38,7 +38,6 @@ import { UserMenu } from "./user-menu";
 import { useAuthStore } from "@/lib/auth";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
-import { useOftGenutzt } from "@/hooks/use-nutzung";
 import {
   getMyPermissions,
   getPendingApprovalCount,
@@ -189,7 +188,6 @@ export function Sidebar() {
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === "admin";
   const { simpleMode } = useSimpleMode();
-  const oftGenutzt = useOftGenutzt();
   const { collapsed, toggle, mobileOpen, setMobileOpen } = useSidebarCollapsed();
   // The desktop icon-rail (collapsed) must NOT apply on mobile — there the sidebar is
   // an off-canvas drawer that always shows the full menu. Track the lg breakpoint.
@@ -309,7 +307,10 @@ export function Sidebar() {
     return pathname === ziel || pathname.startsWith(`${ziel}/`);
   };
   const zurueckgestellt = (item: NavItem) =>
-    !einfach && !!item.weitere && !oftGenutzt(item.href) && !istHier(item.href);
+    // Nicht mehr nach Häufigkeit nach oben holen: Die Leiste soll schlank bleiben
+    // und immer gleich aussehen (Daniel, 28.10.: „die Sidebar als Admin ist noch
+    // immer voll“). Oben steht ein Punkt nur, solange man gerade dort ist.
+    !einfach && !!item.weitere && !istHier(item.href);
   const weitereItems = erlaubteGruppen.flatMap((g) => g.items.filter(zurueckgestellt));
   const visibleGroups = erlaubteGruppen
     .map((group) => ({ ...group, items: group.items.filter((item) => !zurueckgestellt(item)) }))

@@ -831,6 +831,24 @@ async def _vergeben(t: Team, karte_id: str, agent_id: str | None, user, request:
             raise HTTPException(status_code=400, detail="Dieser Agent gehört nicht zum Projekt.")
         await _darf_beauftragen(ziel, user, db)
 
+    # Arbeitet schon jemand außerhalb des Boards an dem Issue? Live gefragt, VOR der
+    # Sperre (Netzwerk) — der letzte Abgleich kann Minuten alt sein. Sonst arbeiten
+    # zwei am selben Ticket (28.10.: eine Claude-Code-Sitzung und ein Agent).
+    from app.core import projekt_git
+
+    redis = getattr(router_, "redis", None)
+    try:
+        vorab = await projekte.karte_laden(db, t.id, karte_id)
+    except LookupError as e:
+        raise _kartenfehler(e)
+    if vorab.quelle == "issue" and vorab.spalte in ("eingang", "bereit"):
+        wer = await projekt_git.extern_dran(db, redis, t, vorab)
+        if wer:
+            vorab.extern_bearbeiter = wer
+            await db.commit()
+            raise HTTPException(status_code=409, detail=(
+                f"Ticket #{vorab.extern_nr} bearbeitet schon jemand außerhalb des Boards ({wer}) — nicht vergeben."))
+
     # Erst unter Sperre als „in Arbeit“ markieren, dann den Lauf anlegen: der Router
     # committet in derselben Sitzung (Sperre weg) — ein Doppelklick legte sonst zwei an.
     try:
@@ -869,6 +887,11 @@ async def _vergeben(t: Team, karte_id: str, agent_id: str | None, user, request:
     karte = await projekte.karte_laden(db, team_id, karte_id)
     projekte.in_arbeit_setzen(karte, task, ziel or lead_id)
     await db.commit()
+    if karte.quelle == "issue":
+        from app.models.agent import Agent as _Agent
+
+        name = await db.scalar(select(_Agent.name).where(_Agent.id == karte.agent_id)) if karte.agent_id else None
+        projekt_git.uebernahme_im_hintergrund(team_id, karte.id, redis, agent_name=name)
     return projekte.karte_dict(karte, task)
 
 

@@ -167,6 +167,25 @@ class GitHubHostProvider(GitHostProvider):
             return "gemergt"
         return "geschlossen" if daten.get("state") == "closed" else "offen"
 
+    async def get_issue(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int) -> dict | None:
+        """Ein Issue mit Tags und Zuständigen — None, wenn es nicht lesbar ist."""
+        resp = await client.get(f"{self.api_base}/repos/{repo}/issues/{nummer}", headers=self._headers(token))
+        return resp.json() if resp.status_code == 200 else None
+
+    async def add_labels(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int,
+                         labels: list[str]) -> bool:
+        resp = await client.post(f"{self.api_base}/repos/{repo}/issues/{nummer}/labels",
+                                 headers=self._headers(token), json={"labels": labels})
+        return resp.status_code in (200, 201)
+
+    async def remove_label(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int,
+                           label: str) -> bool:
+        from urllib.parse import quote
+
+        resp = await client.delete(f"{self.api_base}/repos/{repo}/issues/{nummer}/labels/{quote(label, safe='')}",
+                                   headers=self._headers(token))
+        return resp.status_code in (200, 204, 404)
+
     async def issue_state(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int) -> str | None:
         resp = await client.get(f"{self.api_base}/repos/{repo}/issues/{nummer}", headers=self._headers(token))
         if resp.status_code != 200:
