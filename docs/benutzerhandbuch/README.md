@@ -1277,8 +1277,23 @@ Ab dann, beim Öffnen des Projekts und regelmäßig (siehe oben):
 - Wird ein Issue **geschlossen**, wandert seine Karte nach **Erledigt**. Arbeitet gerade ein
   Agent daran, bekommt sie stattdessen eine Notiz.
 - Offene **Pull Requests** erscheinen in der Spalte **Prüfung** und im Leitstand (Reiter Raum) unter **Wartet auf Merge** — mit dem Stand der Prüfungen
-  (CI läuft, CI grün, CI rot). Schreibt der PR „Fixes #12“, hängt er an der Karte von Issue #12.
+  (CI läuft, CI grün, CI rot). Schreibt der PR „Fixes #12“ oder trägt sein Branch die Nummer
+  (z. B. `feat/12-login`), hängt er an der Karte von Issue #12.
 - Ein **gemergter** PR ohne eigenes Issue wird erledigt.
+- **Tags** des Issues stehen als kleine Schilder auf der Karte *(seit 1.392.0)*.
+
+**Wenn jemand außerhalb des Boards ein Ticket nimmt** *(seit 1.392.0)* — etwa ein Agent einer
+anderen AI-Employee-Anlage, Claude Code oder ein Mensch direkt im Repo:
+
+- Steht beim Issue ein **Zuständiger** oder ein Status-Tag wie **status/in-arbeit**
+  (auch „in progress“, „wip“), wandert die Karte nach **In Arbeit** und zeigt den Namen,
+  z. B. **@dev-bot**, oder **extern dran**, wenn nur das Tag gesetzt ist.
+- **status/ready** plant die Karte ein (Bereit), **status/review** schiebt sie in die
+  **Prüfung**.
+- Fällt Tag und Zuständigkeit wieder weg, kommt die Karte zurück nach Bereit oder Eingang.
+- Solche Karten vergibt der Arbeitstakt **nicht** an eigene Agenten — es arbeitet ja schon
+  jemand daran. Hat ein eigener Agent die Karte bereits, bleibt sie bei ihm; der fremde Name
+  steht dann daneben, damit ihr seht, dass zwei am selben Ticket sitzen.
 
 Über dem Board zeigt eine Leiste das Repo, wann zuletzt abgeglichen wurde und gegebenenfalls einen
 Fehler (z. B. „GitHub ist auf dieser Anlage nicht verbunden“). Beim Öffnen des Projekts gleicht die

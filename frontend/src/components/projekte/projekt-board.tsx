@@ -8,7 +8,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import {
+import { UserRound,
   ArrowLeft, ArrowRight, Check, CircleDot, CornerUpLeft, ExternalLink, GitPullRequest, Loader2, Play, Plus,
   Trash2, TriangleAlert,
 } from "lucide-react";
@@ -140,11 +140,31 @@ function Karte({
                 {agent.name}
               </span>
             )}
+            {karte.extern_bearbeiter && (
+              <span
+                title="Bearbeitet außerhalb des Boards (Zuständige oder Status-Tag im Repo)"
+                className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-1.5 py-px font-medium text-foreground"
+              >
+                <UserRound className="h-3 w-3 text-primary" />
+                {karte.extern_bearbeiter === "extern" ? "extern dran" : karte.extern_bearbeiter}
+              </span>
+            )}
             {wann && <span>{timeAgo(wann)}</span>}
             {karte.kosten_usd ? <span title={money.title(karte.kosten_usd)}>{money.fmt(karte.kosten_usd)}</span> : null}
           </div>
         </div>
       </div>
+
+      {karte.labels.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {karte.labels.slice(0, 6).map((tag) => (
+            <span key={tag} className="rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground">
+              {tag}
+            </span>
+          ))}
+          {karte.labels.length > 6 && <span className="text-[10px] text-muted-foreground">+{karte.labels.length - 6}</span>}
+        </div>
+      )}
 
       {karte.notiz && <p className="mt-1.5 rounded-md bg-amber-500/10 px-2 py-1 text-[11px] text-amber-700 dark:text-amber-300">{karte.notiz}</p>}
 

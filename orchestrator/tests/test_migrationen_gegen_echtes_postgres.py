@@ -101,6 +101,7 @@ _SPALTEN_NACH_DER_MARKE = (
     ("teams", "repo_secret_id"),
     ("teams", "angebundene_brains"),
     ("second_brains", "bridge_ordner"),
+    ("projekt_karten", "extern_bearbeiter"),
     ("second_brains", "sync_stand"),
     ("second_brains", "sync_fehler"),
     ("teams", "budget_usd"),

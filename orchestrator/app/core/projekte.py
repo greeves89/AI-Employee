@@ -128,6 +128,7 @@ def karte_dict(k: ProjektKarte, task: Task | None = None, *, lauf_sichtbar: bool
         "task_status": (task.status.value if hasattr(task.status, "value") else str(task.status)) if task else None,
         "stufe": stufe_aus(k, task),
         "notiz": k.notiz,
+        "extern_bearbeiter": k.extern_bearbeiter,
         "pr_nr": k.pr_nr,
         "pr_url": k.pr_url,
         "pr_zustand": k.pr_zustand,
@@ -329,7 +330,7 @@ def verschieben(karte: ProjektKarte, *, spalte: str | None = None, prioritaet: i
     if spalte is not None and spalte != karte.spalte:
         if spalte not in VON_HAND:
             raise KartenFehler("In Arbeit kommt eine Karte nur, indem sie vergeben wird.")
-        if karte.spalte == "in_arbeit":
+        if karte.spalte == "in_arbeit" and karte.task_id:
             raise KartenFehler("Die Karte ist gerade in Arbeit. Warte das Ende des Laufs ab.")
         karte.spalte = spalte
         if spalte == "erledigt":
@@ -519,6 +520,10 @@ def board_als_text(projekt: dict, b: dict, namen: dict[str, str], *, je_spalte: 
                 teile.append(f"#{karte['extern_nr']}")
             if karte.get("agent_id") and spalte in ("in_arbeit", "pruefung"):
                 teile.append(f"→ {wer(karte['agent_id'])}")
+            if karte.get("extern_bearbeiter"):
+                # Name kommt aus dem Repo (fremder Text): gekürzt, ohne Zeilenumbruch.
+                bearbeiter = " ".join(str(karte["extern_bearbeiter"]).split())[:80]
+                teile.append(f"(extern in Arbeit: {bearbeiter} — nicht übernehmen)")
             if karte.get("stufe") and spalte == "in_arbeit":
                 teile.append(f"[{karte['stufe']}]")
             if karte.get("pr_url"):
