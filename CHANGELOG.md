@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.393.6] - 2026-10-28
+
+### Geändert
+- **Die Seitenleiste bleibt schlank.** Punkte unter „Weitere Bereiche“ rückten nach oben, sobald man sie ein paar Mal geöffnet hatte. Bei Admins stand dadurch fast alles oben. Jetzt steht ein Punkt aus „Weitere Bereiche“ nur oben, solange man gerade dort ist. Ob „Weitere Bereiche“ auf- oder zugeklappt ist, merkt sich die Leiste weiter am Konto.
+
 ## [1.393.3] - 2026-10-28
 
 ### Geändert
