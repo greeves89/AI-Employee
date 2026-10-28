@@ -1415,11 +1415,18 @@ def _bildschirm_hinweis(result: dict) -> str:
             f"{b['number']}{' (Haupt)' if b.get('primary') else ''}: {b.get('width')}x{b.get('height')}"
             for b in bildschirme
         )
-        teile.append(
-            f" Der Nutzer hat {len(bildschirme)} Bildschirme ({liste}); du siehst gerade "
-            f"Nummer {aktuell}. Sagt er „geh auf Bildschirm 2\", mach einen neuen Screenshot "
-            "mit display=2."
-        )
+        if any(w.get("screenshot_b64") for w in (result.get("weitere") or [])):
+            teile.append(
+                f" Der Nutzer hat {len(bildschirme)} Bildschirme ({liste}); der Screenshot "
+                "zeigt alle. Klickst du auf einem anderen als dem Hauptbildschirm, gib "
+                "dessen Nummer als display mit."
+            )
+        else:
+            teile.append(
+                f" Der Nutzer hat {len(bildschirme)} Bildschirme ({liste}); du siehst gerade "
+                f"Nummer {aktuell}. Sagt er „geh auf Bildschirm 2\", mach einen neuen Screenshot "
+                "mit display=2."
+            )
     return "".join(teile)
 
 
@@ -2264,7 +2271,8 @@ class RealtimeVoiceSession:
             return
         asyncio.create_task(self._notify_files_bg(paths))
 
-    async def _analyse_screenshot_bg(self, b64: str, question: str, platform: str) -> None:
+    async def _analyse_screenshot_bg(self, b64: str, question: str, platform: str,
+                                     weitere: list[str] | None = None) -> None:
         """Screenshot vom gebundenen Agenten auswerten lassen — nebenher.
 
         Der Agent sieht Bilder mit seinem eigenen Zugang. Das dauert seine Zeit, und
@@ -2276,11 +2284,14 @@ class RealtimeVoiceSession:
         try:
             answer = await ask_agent_via_chat(
                 self.redis, self.agent_id,
-                "Das ist ein Screenshot vom Bildschirm des Nutzers"
-                f"{plat_note}. Beantworte KNAPP, hoechstens drei kurze Saetze, weil deine "
+                ("Das ist ein Screenshot vom Bildschirm des Nutzers" if not weitere else
+                 f"Das sind Screenshots aller {1 + len(weitere)} Bildschirme des Nutzers "
+                 "(das erste ist der Hauptbildschirm)")
+                + f"{plat_note}. Beantworte KNAPP, hoechstens drei kurze Saetze, weil deine "
                 "Antwort vorgelesen wird: " + frage +
                 "\nNenne die sichtbaren Fenster und worum es darin geht. Erfinde nichts.",
-                images=[{"media_type": "image/png", "data": b64}],
+                images=[{"media_type": "image/png", "data": b}
+                        for b in [b64, *(weitere or [])]],
                 timeout=120.0,
             )
         except Exception:  # noqa: BLE001 — eine gescheiterte Auswertung darf nichts reissen
@@ -3675,9 +3686,12 @@ class RealtimeVoiceSession:
         elif action == "screenshot":
             act, params = "screenshot", {"scale": 0.5}
             # Bildschirmwahl nur mitgeben, wenn wirklich eine kam — eine
-            # aeltere Bridge kennt den Parameter nicht.
+            # aeltere Bridge kennt den Parameter nicht. Ohne Wahl alle Monitore
+            # (eine aeltere Bridge ignoriert den Wunsch).
             if display:
                 params["display"] = int(display)
+            else:
+                params["alle_bildschirme"] = True
         elif action == "click":
             if x is None or y is None:
                 return "Für einen Klick brauche ich x und y — vorher einen Screenshot machen."
@@ -3793,6 +3807,15 @@ class RealtimeVoiceSession:
                 "kind": "image", "media_type": "image/png", "b64": b64,
                 "caption": beschriftung, "auto_open": True,
             }})
+            weitere = [w for w in (result.get("weitere") or []) if w.get("screenshot_b64")]
+            for w in weitere:
+                g = w.get("image_size") or {}
+                await self._emit({"type": "media", "data": {
+                    "kind": "image", "media_type": "image/png", "b64": w["screenshot_b64"],
+                    "caption": f"Bildschirm {w.get('display')}"
+                               + (f" — {g['w']} x {g['h']}" if g.get("w") and g.get("h") else ""),
+                    "auto_open": False,
+                }})
             # Nova Sonic hat keinen Bildkanal. Aber ICH haenge an einem echten Agenten,
             # und DER sieht Bilder — mit dem Zugang, der fuer ihn ohnehin eingerichtet
             # ist (OAuth-Claude, Bedrock, Azure). Also gebe ich ihm den Screenshot und
@@ -3801,7 +3824,8 @@ class RealtimeVoiceSession:
             # Agenten gewartet — das Gespraech stand solange still, und im Sprachmodus
             # ist eine Pause dieser Laenge nicht auszuhalten. Das Ergebnis wird
             # eingespeist, sobald es da ist und die Stimme gerade nicht spricht.
-            asyncio.create_task(self._analyse_screenshot_bg(b64, text.strip(), plat))
+            asyncio.create_task(self._analyse_screenshot_bg(
+                b64, text.strip(), plat, [w["screenshot_b64"] for w in weitere]))
             return ("Screenshot gemacht und dem Nutzer angezeigt. Sag ihm in EINEM kurzen "
                     "Satz, dass du gerade draufschaust — und beschreibe NICHTS, du kennst "
                     "den Inhalt noch nicht. Die Auswertung kommt gleich von selbst."
