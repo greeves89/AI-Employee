@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.383.0] - 2026-10-28
+
+### Neu
+- **Chat direkt im Overlay der Bridge.** „Chat“ öffnete bisher den Chat im Browser. Jetzt klappt es im Overlay ein Eingabefeld auf, der Cursor steht sofort darin, Enter oder „Senden“ schickt die Nachricht an den Agenten. Arbeitet er gerade an einem Auftrag, arbeitet er den Hinweis sofort in diesen Auftrag ein (Live-Steering in der Bridge-Sitzung); sonst wird die Nachricht ein neuer Auftrag mit einem aktuellen Bild des Bildschirms. Nach dem Senden geht die Tastatur zurück an die Anwendung; tippt der Agent gerade selbst, landen seine Tasten nicht im Overlay. Ist der Agent gestoppt, sagt das Overlay „erst freigeben“. Gilt für macOS und Windows; braucht die Bridge 1.383.0.
+
+### Behoben
+- Eine Statusmeldung des laufenden Auftrags (z. B. der Schrittzähler) leerte das Antwortfeld im Overlay, während man tippte.
+
 ## [1.382.0] - 2026-10-28
 
 ### Neu
