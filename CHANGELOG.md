@@ -22,6 +22,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ### Technik
 - Neue agenten-authentifizierte Endpunkte `GET /brains/agent/search` und `POST /brains/agent/write`. Der Umfang kommt ausschließlich aus dem Token; ein mitgeschicktes Label kann ihn nur verkleinern, ein fremdes ergibt 404 (kein stilles Leerergebnis), ein nur lesend eingebundener Vault 403. `hybrid_search_with_mode()` meldet, ob aus dem Index oder vom Dateiweg geantwortet wurde; ein Dateiweg-Treffer trotz vorhandener Chunks wird als Index-Drift protokolliert. Re-Index-Takt in `SchedulerService._tick_vault_reindex` (5 Minuten, gedrosselt, ein kaputter Vault reißt die übrigen nicht mit). Neuer MCP-Server `secondbrain-server.mjs` mit `secondbrain_search`/`_write` über den Orchestrator und `secondbrain_read`/`_list` direkt auf dem gemounteten Vault (Pfad-Jail wie im Executor), registriert in allen fünf Stellen inkl. Werkzeugkatalog. Der Re-Index-Takt läuft nebenläufig, damit die Scheduler-Schleife während des Indexierens weiter Zeitpläne verteilt. `401/408/429` zählen client-seitig als „nicht erreichbar" (Weg dorthin), nicht als Brain-Befund. Modellwerte werden vor der Vault-Schleife aufgelöst — nach einem `rollback()` wäre jeder Attributzugriff ein Nachladevorgang (`MissingGreenlet`).
+## [1.382.0] - 2026-10-28
+
+### Neu
+- **Die Bridge gibt dem Agenten alle Monitore mit.** Hat der Rechner mehrere Bildschirme, liefert ein Screenshot ohne Bildschirmwahl jetzt jeden Monitor als eigenes Bild mit seiner Nummer, statt nur den Hauptbildschirm. Das gilt in allen Laufzeiten: Claude Code und Codex über das Desktop-Werkzeug, eigene Sprachmodelle, der Orchestrator-Zugang und die Sprachfront (die zeigt alle Bilder an und lässt alle auswerten). Wer nur einen Monitor sehen will, nennt ihn wie bisher mit `display`.
+
+### Behoben
+- **Klicks auf dem zweiten Monitor rechneten mit dem falschen Maßstab.** Die Bridge merkte sich nur den Maßstab des zuletzt aufgenommenen Bildes. Haben zwei Monitore unterschiedliche Auflösung, landete ein Klick auf dem anderen Monitor daneben. Maßstab und Lage werden jetzt je Monitor gemerkt. Außerdem gaben die Desktop-Werkzeuge für Klicken, Bewegen, Scrollen und Ziehen die Monitornummer bisher gar nicht an die Bridge weiter.
+
+### Hinweis
+- Für alle Monitore braucht es die Bridge 1.382.0. Eine ältere Bridge ignoriert den Wunsch und liefert wie bisher nur den Hauptbildschirm.
+
+## [1.381.2] - 2026-10-28
+
+### Verbessert
+- **Projekt-Board nutzt die ganze Bildschirmhöhe.** Auf breiten Bildschirmen (fünf Spalten nebeneinander) reichen die Spalten bis zum unteren Rand, statt nach etwa 34rem leeren Platz zu lassen.
+- **Kein „Erledigt“ mehr bei offenem PR.** Der Knopf verschob nur die Karte, der Pull Request blieb offen. Solange der PR offen ist, steht auf der Karte jetzt „Wandert nach dem Merge von selbst nach Erledigt“; zusammengeführt wird über den PR-Link auf GitHub, danach zieht der Abgleich die Karte nach.
+
+## [1.381.1] - 2026-10-28
+
+### Sicherheit
+- **Freigabelisten für Adressen ließen sich mit einem Backslash umgehen.** `https://fremd.example\.erlaubt.example/` las die Plattform als Unterseite von `erlaubt.example`, der Browser rief aber `fremd.example` auf. Betroffen waren die erlaubten Domains einer Bridge-Sitzung, die URL-Freigabeliste der Agenten und die Freigabeliste für Rückrufe. Adressen, die Plattform und Browser verschieden lesen (Backslash, Steuer- und Leerzeichen oder Prozent-Kodierung im Host), werden jetzt überall abgelehnt; alle drei Prüfungen holen den Host an einer gemeinsamen Stelle. Leere Einträge in der URL-Freigabeliste lassen nichts mehr durch.
+
+## [1.381.0] - 2026-10-28
+
+### Hinzugefügt
+- **Erklärung bei zwei technischen Begriffen in den Agent-Einstellungen.** "MCP-Endpunkt" und "Berechtigungen (Sudo-Pakete)" zeigen jetzt ein kleines Hilfe-Symbol mit einer kurzen Erklärung in normaler Sprache. Teil von Issue #787 Punkt 8 ("technische Labels ohne Erklärung für Nicht-Techniker") — die dort ebenfalls geforderte Gliederung der Seite in aufklappbare Abschnitte war bereits seit Ende September umgesetzt.
 
 ## [1.380.3] - 2026-10-28
 

@@ -234,6 +234,30 @@ async def _get_command_policies() -> list[dict]:
 _get_command_policies._cache = ([], 0.0)
 
 
+def _eindeutiger_host(url: str) -> str | None:
+    """Host einer Adresse — None, wenn Python und Browser ihn verschieden lesen.
+
+    Gegenstück zu ``orchestrator/app/core/url_guard.eindeutiger_host`` (getrennte
+    Prozesse, kein gemeinsamer Import): ``https://evil.com\\.example.com/`` ist
+    für ``urlparse`` ein Host unter ``example.com``, für Chromium ``evil.com``.
+    """
+    from urllib.parse import urlparse
+
+    try:
+        teile = urlparse(url if "://" in url else f"https://{url}")
+    except ValueError:
+        return None
+    rest = url.split("://", 1)[-1]
+    authority = rest.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0]
+    if any(z == "\\" or z == "%" or ord(z) <= 0x20 or ord(z) == 0x7F for z in authority):
+        return None
+    try:
+        host = (teile.hostname or "").lower().strip(".")
+    except ValueError:
+        return None
+    return host or None
+
+
 async def _evaluate_command_policy(command: str) -> tuple[str | None, str | None]:
     """Return (effect, reason) for the first matching policy."""
     for policy in await _get_command_policies():
@@ -1310,22 +1334,19 @@ class ToolExecutor:
         if allowlist is None:
             return None
 
-        from urllib.parse import urlparse
-        try:
-            parsed = urlparse(url if "://" in url else f"https://{url}")
-            host = (parsed.hostname or "").lower().strip(".")
-        except Exception:
-            host = ""
+        host = _eindeutiger_host(url) or ""
 
         for pattern in allowlist:
             pattern = pattern.lower().strip(".")
             if pattern == "*":
                 return None
+            if not host:
+                continue  # mehrdeutige oder leere Adresse: nur "*" lässt sie durch
             if pattern.startswith("*."):
                 suffix = pattern[2:]
-                if host == suffix or host.endswith("." + suffix):
+                if suffix and (host == suffix or host.endswith("." + suffix)):
                     return None
-            elif host == pattern:
+            elif pattern and host == pattern:
                 return None
 
         return (
