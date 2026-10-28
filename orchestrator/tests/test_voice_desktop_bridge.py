@@ -281,6 +281,41 @@ class VoiceAgentScopingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("beschreibe NICHTS", out)
         v._emit.assert_awaited()
 
+    async def test_screenshot_shows_and_analyses_every_monitor(self):
+        """Ohne Bildschirmwahl will die Sprachfront alle Monitore — jeder wird
+        angezeigt und mit ausgewertet."""
+        import asyncio
+        import app.services.realtime_voice_session as rvs
+        v = self._voice()
+        gesendet, bilder = {}, {}
+
+        async def _dispatch(session_id, action, params, **kw):
+            gesendet.update(params)
+            return {"result": {"screenshot_b64": "haupt", "display": 1,
+                               "displays": [{"number": 1, "primary": True}, {"number": 2}],
+                               "weitere": [{"display": 2, "screenshot_b64": "zweiter"}]}}
+
+        async def _frage(*_a, images=None, **_kw):
+            bilder["liste"] = [b["data"] for b in images]
+            return "Zwei Fenster."
+
+        with unittest.mock.patch.object(
+            cu, "_find_user_session", new=AsyncMock(return_value=("s1", _session()))
+        ), unittest.mock.patch.object(cu, "dispatch_bridge_command", new=_dispatch), \
+                unittest.mock.patch.object(rvs, "ask_agent_via_chat", new=_frage):
+            out = await v._desktop("screenshot")
+            for _ in range(20):
+                if "liste" in bilder:
+                    break
+                await asyncio.sleep(0.01)
+
+        self.assertTrue(gesendet.get("alle_bildschirme"))
+        gezeigt = [c.args[0]["data"]["b64"] for c in v._emit.await_args_list
+                   if c.args and c.args[0].get("type") == "media"]
+        self.assertEqual(gezeigt, ["haupt", "zweiter"])
+        self.assertEqual(bilder["liste"], ["haupt", "zweiter"])
+        self.assertIn("zeigt alle", out)
+
     async def test_analysis_result_is_spoken_when_it_arrives(self):
         """Das Ergebnis wird eingespeist, sobald es da ist."""
         import app.services.realtime_voice_session as rvs
