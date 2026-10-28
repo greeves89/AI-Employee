@@ -3484,6 +3484,123 @@ async def update_agent_permissions(
         raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
+class BrowserDomainsUpdate(BaseModel):
+    allowed_domains: list[str] | None = None
+
+
+@router.patch("/{agent_id}/browser-domains")
+async def update_agent_browser_domains(
+    agent_id: str,
+    body: BrowserDomainsUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Domain-Allowlist fuer den Agenten-Browser setzen (#828, Schritt 5).
+
+    ``None`` oder eine leere Liste heisst unbeschraenkt -- rueckwaertskompatibel
+    zum bisherigen Prototyp-Stand. Wirkt wie ``browser-mode`` erst nach einem
+    Neustart, weil der Wert als Umgebungsvariable in den Container geht.
+
+    Nur Besitzer und Admin: Wer den Agenten nur freigegeben bekommen hat, darf
+    die Sicherheitsgrenze seines Browsers nicht verschieben.
+    """
+    await _check_owner(agent_id, user, db)
+    from app.models.user import UserRole
+
+    if getattr(user, "role", None) != UserRole.ADMIN:
+        from app.models.agent import Agent as _Agent
+
+        besitzer = await db.scalar(select(_Agent.user_id).where(_Agent.id == agent_id))
+        if not besitzer or besitzer != user.id:
+            raise HTTPException(
+                status_code=403,
+                detail="Die Browser-Freigabeliste darf nur der Besitzer des Agenten ändern.")
+
+    # Serverseitig bereinigen, nicht nur vertrauen: der Wert geht als
+    # Umgebungsvariable in den Container und wird dort an Kommas getrennt.
+    from app.core.browser_domains import UngueltigeDomain, bereinigen as _bereinigen
+
+    try:
+        bereinigt = _bereinigen(body.allowed_domains)
+    except UngueltigeDomain as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    try:
+        agent = await manager._get_agent(agent_id)
+        config = dict(agent.config or {})
+        if bereinigt:
+            config["browser_allowed_domains"] = bereinigt
+        else:
+            config.pop("browser_allowed_domains", None)
+        agent.config = config
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(agent, "config")
+        await db.commit()
+        note = " Restart the agent for the change to take effect." if agent.container_id else ""
+        return {"allowed_domains": bereinigt or None, "note": note.strip()}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
+
+
+@router.get("/{agent_id}/browser/audit")
+async def get_agent_browser_audit(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Pruefprotokoll der Browser-Arbeitsflaeche lesen (#828, Schritt 5).
+
+    Derselbe Weg wie beim Bildstrom selbst (``ws.py:ws_agent_browser``):
+    Eigentuemerpruefung HIER, der Agenten-Container ist nur im internen
+    Docker-Netz erreichbar und hat ohnehin keinen Weg nach aussen. Anders als
+    beim Bildstrom wird ein schlafender Agent dafuer NICHT geweckt -- wer nur
+    das bisherige Protokoll lesen will, soll dafuer keinen Container starten.
+    """
+    # Nur der Besitzer: Das Protokoll zeigt, welche Seiten in SEINEN Sitzungen
+    # aufgerufen wurden -- auch Admin und Freigaben sehen es nicht.
+    from app.dependencies import require_agent_owner
+    await require_agent_owner(agent_id, user, db)
+
+    from app.api.ws import BROWSER_STROM_PORT, BROWSER_ZUGANG_KOPF, _agent_container_name
+    from app.core.encryption import agent_schluessel
+
+    name = await _agent_container_name(agent_id)
+    if not name:
+        return {"audit_log": [], "warning": "Agent hat keinen laufenden Container."}
+
+    # Der Rechnername wird aus dem ANZEIGENAMEN des Agenten und der Kennung
+    # aus der Adresse gebaut -- beides vom Nutzer gesetzt. Hier hart
+    # einklammern statt sich auf die Bereinigung im Namensbauer zu
+    # verlassen: ein ``:``, ``/`` oder ``@`` darin wuerde aus dem internen
+    # Aufruf einen Aufruf an ein fremdes Ziel machen. Die Pruefung steht
+    # bewusst hier und nicht in einem Hilfsmodul -- direkt vor dem Bau der
+    # Adresse ist sie fuer Leser UND fuer die Code-Analyse die Schranke.
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_.-]{0,126}", name):
+        logger.error("[Browser] Unerwarteter Containername fuer %s", scrub_log(agent_id))
+        raise HTTPException(status_code=500, detail="Unerwarteter Containername")
+
+    import aiohttp
+
+    url = f"http://{name}:{BROWSER_STROM_PORT}/browser/audit"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                url,
+                headers={BROWSER_ZUGANG_KOPF: agent_schluessel("browser-zugang", agent_id)},
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as resp:
+                if resp.status != 200:
+                    return {"audit_log": [], "warning": f"Agent antwortete mit {resp.status}."}
+                return await resp.json()
+    except aiohttp.ClientError as e:
+        # Grund ins Protokoll, NICHT in die Antwort: der Text eines
+        # Verbindungsfehlers traegt interne Rechnernamen und Adressen.
+        logger.warning("[Browser] Pruefprotokoll von %s nicht erreichbar: %s",
+                       scrub_log(agent_id), scrub_log(str(e)))
+        return {"audit_log": [], "warning": "Agent nicht erreichbar."}
+
+
 class BrowserModeUpdate(BaseModel):
     browser_mode: bool
 
@@ -3834,6 +3951,20 @@ async def update_agent_mounts(
     unknown = [m for m in new_mounts if m not in catalog]
     if unknown:
         raise HTTPException(status_code=422, detail=f"Unknown mount labels: {unknown}")
+
+    # Privates Wissen anderer (Bridge-Ordner, fremdes Projektwissen) bleibt
+    # auch Administratoren verschlossen (#1092).
+    from app.core.mounts import fremde_privatablagen
+
+    # Gegen den Aufrufer UND den Besitzer des Agenten: sonst hängte ein Admin
+    # sein privates Brain in den Agenten eines anderen (oder umgekehrt).
+    from types import SimpleNamespace
+
+    ziel = await db.get(Agent, agent_id)
+    besitzer = SimpleNamespace(id=(ziel.user_id if ziel else None) or "")
+    fremd = sorted(await fremde_privatablagen(db, new_mounts, user) | await fremde_privatablagen(db, new_mounts, besitzer))
+    if fremd:
+        raise HTTPException(status_code=403, detail=f"Not authorized for mount(s): {fremd}")
 
     # Non-admin: a mount is authorized if granted per-user OR via the user's
     # group/role (custom_role.permissions.mount_labels) — a UNION of both.

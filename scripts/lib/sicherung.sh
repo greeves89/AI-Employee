@@ -134,6 +134,31 @@ konfiguration_einpacken() {
     docker run --rm -v "${install_dir}:/quelle:ro" "$image" tar czf - -C /quelle "$@" > "$archiv"
 }
 
+# Wissensablagen (Second Brains, Projektwissen, Projektdateien) liegen in einem
+# HOST-Ordner, nicht in einem Volume — die Volume-Schleife erfasst sie nicht.
+# Ort aus der .env (SECONDBRAIN_BASE), sonst die Vorgabe aus docker-compose.yml.
+#   brain_basis <env_datei>
+brain_basis() {
+    local wert
+    wert=$(env_wert "$1" SECONDBRAIN_BASE)
+    echo "${wert:-/srv/secondbrain}"
+}
+
+# Den Ordner einpacken — über einen Hilfscontainer: die Ablagen gehören root.
+#   brains_einpacken <archiv> <basis> <image>
+brains_einpacken() {
+    local archiv="$1" basis="$2" image="$3"
+    docker run --rm -v "${basis}:/quelle:ro" "$image" tar czf - -C /quelle . > "$archiv"
+}
+
+# Zurückspielen: Inhalt ersetzen (wie bei den Volumes), ebenfalls im Hilfscontainer.
+#   brains_auspacken <archiv> <basis> <image>
+brains_auspacken() {
+    local archiv="$1" basis="$2" image="$3"
+    docker run --rm -i -v "${basis}:/ziel" "$image" \
+        sh -c 'find /ziel -mindepth 1 -delete && tar xzf - -C /ziel' < "$archiv"
+}
+
 # Zustand eines Sicherungsordners — für restore.sh (was liegt hier?) und für die
 # Aufbewahrung in backup.sh (was zählt als Sicherung?):
 #   vollstaendig    MANIFEST mit format=2, kein ABGEBROCHEN

@@ -2,7 +2,7 @@
 
 /** Einen Key an einzelne Personen freigeben — an EINER Stelle.
  *
- *  Gebraucht in der Admin-Konsole (Key Management) und beim Agenten (Integrationen
+ *  Gebraucht im Admin-Bereich (Key Management) und beim Agenten (Integrationen
  *  und Keys), wo Mitglieder ihre Keys anlegen. Freigegeben wird an Personen, nie an
  *  Rollen — das macht ein Admin in den Rollen. Der Server prüft das ohnehin
  *  (PUT /secrets/{id}/shares, nur Besitzer oder Admin).

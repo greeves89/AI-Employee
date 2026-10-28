@@ -310,7 +310,9 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
     setDeleting(b.id);
     try {
       await api.deleteSecondBrain(b.id);
-      showToast("success", "Second Brain entfernt (Ordnerdaten bleiben erhalten)");
+      showToast("success", b.bridge_ordner
+        ? "Spiegel gelöscht (der Ordner auf dem Rechner bleibt unberührt)"
+        : "Second Brain entfernt (Ordnerdaten bleiben erhalten)");
       await load();
     } catch {
       showToast("error", "Entfernen fehlgeschlagen");
@@ -440,11 +442,13 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
                       {b.default_mode}
                     </span>
                     <span className="inline-flex items-center rounded-full border border-foreground/[0.1] bg-foreground/[0.04] px-2 py-0.5 text-[10px] text-muted-foreground/70">
-                      {b.standard}
+                      {b.bridge_ordner ? "Bridge-Ordner" : b.standard}
                     </span>
                   </div>
                   <p className="text-[11px] text-muted-foreground/60 mt-0.5 truncate">
-                    {b.container_path}{b.description ? ` — ${b.description}` : ""}
+                    {b.bridge_ordner
+                      ? `${b.bridge_ordner} — nur für dich, gepflegt unter Mein Konto → Meine Bridge-Ordner`
+                      : `${b.container_path}${b.description ? ` — ${b.description}` : ""}`}
                   </p>
                 </button>
                 <button onClick={() => setBrowsing(b)} title="Inhalt ansehen/bearbeiten"
@@ -455,10 +459,13 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
                   className="rounded-lg p-2 text-muted-foreground hover:text-primary hover:bg-foreground/[0.06]">
                   <Download className="h-4 w-4" />
                 </button>
-                <button onClick={() => setImportZiel(b)} title="Vault aus ZIP einspielen"
-                  className="rounded-lg p-2 text-muted-foreground hover:text-primary hover:bg-foreground/[0.06]">
-                  <Upload className="h-4 w-4" />
-                </button>
+                {/* Gespiegelte Bridge-Ordner sind nur lesend — die Quelle ist der Rechner. */}
+                {!b.bridge_ordner && (
+                  <button onClick={() => setImportZiel(b)} title="Vault aus ZIP einspielen"
+                    className="rounded-lg p-2 text-muted-foreground hover:text-primary hover:bg-foreground/[0.06]">
+                    <Upload className="h-4 w-4" />
+                  </button>
+                )}
                 <button onClick={() => setMcpBrain(b)} title={b.mcp_enabled ? "MCP aktiv — verwalten" : "Via MCP erreichbar machen"}
                   className={cn("rounded-lg p-2 hover:bg-foreground/[0.06]", b.mcp_enabled ? "text-emerald-400" : "text-muted-foreground hover:text-primary")}>
                   <Plug className="h-4 w-4" />
@@ -467,9 +474,11 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
                   className={cn("rounded-lg p-2 hover:bg-foreground/[0.06]", b.is_active ? "text-emerald-400" : "text-muted-foreground")}>
                   <Power className="h-4 w-4" />
                 </button>
-                <button onClick={() => openEdit(b)} className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]">
-                  <Pencil className="h-4 w-4" />
-                </button>
+                {!b.bridge_ordner && (
+                  <button onClick={() => openEdit(b)} className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]">
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                )}
                 <button onClick={() => remove(b)} disabled={deleting === b.id}
                   className="rounded-lg p-2 text-muted-foreground hover:text-red-400 hover:bg-red-500/[0.06]">
                   {deleting === b.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}

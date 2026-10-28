@@ -54,6 +54,11 @@ def eindeutiger_host(url: str) -> str | None:
     return host or None
 
 
+#: Carrier-Grade-NAT (100.64.0.0/10) — Overlay-Netze wie Tailscale liegen hier;
+#: ``ipaddress`` zaehlt den Bereich weder als privat noch als reserviert.
+_CGNAT = ipaddress.ip_network("100.64.0.0/10")
+
+
 def _is_internal(host: str) -> bool:
     """Zeigt dieser Name oder diese Adresse ins eigene Netz?
 
@@ -76,7 +81,8 @@ def _is_internal(host: str) -> bool:
         except ValueError:
             return True
         if (addr.is_private or addr.is_loopback or addr.is_link_local
-                or addr.is_reserved or addr.is_multicast or addr.is_unspecified):
+                or addr.is_reserved or addr.is_multicast or addr.is_unspecified
+                or addr in _CGNAT):
             return True
     return False
 

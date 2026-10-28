@@ -5,10 +5,173 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.385.1] - 2026-10-28
+## [1.393.1] - 2026-10-28
 
 ### Verbessert
-- **„Integrationen“, „Apps“ und der Skill-Marktplatz erklären jetzt, was sie von ihrem gleichnamigen Gegenstück unterscheidet.** Alle drei Begriffe bezeichneten je zwei bis drei unterschiedliche Oberflächen ohne Erklärung, welche die richtige ist. Die globale Integrationen-Seite, die globale Apps-Übersicht und der globale Skill-Marktplatz erklären jetzt kurz ihre Reichweite und verlinken zur jeweils anderen Stelle (Einstellungen → Integrationen, Agent-Einstellungen → Workspace → Apps bzw. → Wissen → Skills). Die Apps-Ansicht eines einzelnen Agenten verlinkt jetzt auch zurück zur Gesamtübersicht. Kein Datenmodell geändert — reine Erklärung und Verlinkung.
+- **Verbindungen, Apps und Skills sagen jetzt, wo ihr Gegenstück liegt.** „Verbindungen“ erklärt, dass Dienste der Anlage und Werkzeug-Server (MCP) im Admin-Bereich unter „Dienste & Konten“ stehen; Admins bekommen einen direkten Link. „Apps“ verweist auf Arbeit → Apps beim Agenten, „Skills“ auf Wissen → Skills. Die Agenten-Werkzeugleiste verlinkt „alle Agenten“ zur Apps-Seite.
+
+## [1.391.0] - 2026-10-28
+
+### Verbessert
+- **Neues Erscheinungsbild, schlanker und ruhiger.** Die Oberfläche übernimmt die Gestaltung der lavalake-Konsole: heller, ruhiger Grund, dunkelblaue Seitenleiste, Lava-Orange als einziger Akzent, Überschriften in Space Grotesk. Das dunkle Design ist mitgezogen. Die Farben gelten über die gemeinsamen Farbwerte, deshalb wirkt der Wechsel auf jeder Seite.
+- **Die Seitenleiste hat nur noch drei Gruppen:** Arbeiten (Start, Agenten, Aufgaben, Projekte, Freigaben), Ablage (Dateien, Wissen) und Automatisieren (Abläufe, Skills). Selteneres steht unter „Weitere Bereiche“. Die Namen sind durchgehend deutsch: Start statt Heute, Übersicht statt Dashboard, Kosten statt Finanzen, Abläufe statt Workflows, Prüfaufgaben statt Golden-Tests, Verbindungen statt Integrationen.
+- **Admins haben die normale Ansicht und zusätzlich einen eigenen Admin-Bereich.** Unten in der Leiste führt „Zum Admin-Bereich“ in eine helle Leiste mit „Admin“-Marke. Dort stehen alle Einstellungen der Anlage in sechs Gruppen: Menschen, Agenten, KI, Anbindungen, Regeln, Anlage. „Zurück zur Arbeit“ führt wieder hinaus. Die zweite Bereichsliste innerhalb der Seite entfällt. Die Überschrift zeigt jetzt den gewählten Bereich.
+- **Die Seite eines Agenten hat nur noch vier Reiter:** Chat (Schreiben, Sprechen), Arbeit (Aufgaben, Kalender, Live, Verlauf, Dateien, Apps, Bildschirm, Browser), Wissen (Gedächtnis, Wissens-Ablagen, Wissensbasis, Skills) und Einstellungen (Allgemein, Verbindungen, Befehlsregeln). Bisher waren es sechs Hauptreiter. Der aktive Reiter ist orange unterstrichen, die Unterreiter sind kleine Schaltflächen darunter. Direktverweise wie `?tab=speech` funktionieren weiter.
+- **Persönliches heißt „Mein Konto“** und liegt am Namen unten in der Leiste. Bisher hieß es „Meine Einstellungen“. Links steht jetzt eine kurze Liste der Bereiche: Anmeldung & Sicherheit, KI-Zugänge & Modelle, Meine Verbindungen, Bridge & Ordner, Darstellung & Mitteilungen. Der doppelte Hinweis auf den Admin-Bereich entfällt.
+- **Die Werkzeug-Server (MCP) stehen im Admin-Bereich unter „Dienste & Konten“.** Bisher lagen sie auf der persönlichen Seite „Integrationen“, obwohl nur Admins sie anlegen, ändern oder löschen dürfen. Mitglieder sahen dort Knöpfe, die der Server dann abwies. Die Seite heißt jetzt „Verbindungen“ und zeigt nur noch eigene Konten.
+- Einige Admin-Bereiche heißen jetzt verständlicher: Dienste & Konten (bisher Integrationen (Anlage)), Wissens-Ablagen (Second Brains), Datenschutz-Filter (DLP-Filter), Kosten & Budget, Eigene Menüpunkte (Seiten & Links), Rückmeldungen (Feedback). Lesezeichen auf die bisherigen Adressen funktionieren weiter.
+- Selbst angelegte Menüpunkte aus den früheren Gruppen „Arbeitsplatz“ und „Hilfe“ erscheinen jetzt unter „Ablage“ beziehungsweise „Arbeiten“, statt aus dem Menü zu verschwinden.
+
+## [1.390.0] - 2026-10-28
+
+### Verbessert
+- **Deine Agenten verschwenden ihren Kontext nicht mehr an eine endlose Skill-Liste.** Bisher stand in JEDEM Auftrag und JEDER Chatnachricht die vollständige Liste aller zugewiesenen Fachanleitungen — bei einem produktiven Agenten mit 231 Zuweisungen waren das 62.060 Zeichen (rund 15.500 Token), bevor überhaupt eine Anleitung geladen war. Jetzt listet der Block höchstens 40 Anleitungen: aus denselben 231 Zuweisungen werden rund 11.100 Zeichen (etwa 2.800 statt 15.500 Token), also 82 % weniger Festkosten je Lauf. Das ist Platz, der vorher fehlte — Läufe, die am Kontextlimit mit „Prompt is too long“ starben, haben ihn jetzt für die eigentliche Arbeit.
+- **Die 40 gezeigten Anleitungen sind die, die zum Auftrag passen.** Ausgewählt wird nach Thema (ausdrückliche Auslöser-Angabe, sonst Wortüberlappung von Name und Beschreibung mit dem Auftragstext), danach nach letzter Nutzung, zuletzt nach Reihenfolge der Zuweisung. Über zwölf echte Auftragsarten gemessen steht die passende Anleitung in allen zwölf Fällen auf einem der ersten drei Plätze. Deutsche Wortzusammensetzungen zählen dabei mit: „Mach mir Schulungsunterlagen“ findet die Anleitung „schulung“, „die Lohnabrechnung“ findet „lohn-buchen“.
+- **Im Chat wird nichts wiederholt.** Jede Anleitung erscheint in einer Unterhaltung höchstens einmal; wechselt das Thema, kommt nur ein kurzer Nachtrag mit den neu passenden Anleitungen statt der ganzen Liste. Ohne diese Regel wäre der Deckel im Chat ein Rückschritt gewesen: weil die Reihenfolge je Nachricht neu bestimmt wird, wäre bei jedem Themenwechsel der ganze Block erneut in den Verlauf gewandert — gemessen fast das Doppelte dessen, was die ungedeckelte Liste einmal kostete.
+- **Nichts geht verloren, und der Agent weiß das.** Unter der Liste steht, wie viele Anleitungen nicht aufgeführt sind und wie er sie findet (`skill_search`) und lädt (`skill_install`). Ohne diesen Hinweis hätte er die gekürzte Liste für den ganzen Bestand gehalten und gesagt, es gebe keine Anleitung dazu.
+- **Die Größe des Blocks ist ab jetzt sichtbar.** Die Antwort des Endpunkts nennt Zuweisungen, gelistete, schon gezeigte und abgeschnittene Anleitungen sowie Zeichen und geschätzte Token — wer die Grenze verschieben will, kann vorher nachsehen statt zu schätzen.
+- **Zurückstellbar ohne neues Abbild.** Die Grenze steht in `FACHANLEITUNGEN_MAX_GELISTET` (Standard 40); `0` schaltet den Deckel ab; Zeilengrenze, Entschärfung und Datenrahmen bleiben auch dann aktiv.
+
+### Behoben
+- **Ein einzelner Skill konnte die Anleitungs-Liste eines Agenten unbrauchbar machen.** Name und Beschreibung eines Skills gingen ungeprüft in den Prompt. Eine lange Auslöser-Angabe blähte eine einzige Listenzeile auf über 50.000 Zeichen auf — der Block wurde größer als vorher, und alle anderen Anleitungen fielen aus der Liste. Das passierte auch ohne böse Absicht: es genügte ein selbstgebauter Skill, der seine Auslöser mitten im Text nennt und danach weiterschreibt. Jede Zeile ist jetzt begrenzt.
+- **Ein Skill konnte dem Agenten eine fremde Anleitung vortäuschen.** Über Zeilenumbrüche in Name oder Beschreibung ließen sich im Block eine gefälschte Abschluss-Marke, eine gefälschte Listenzeile mit fremder Skill-Nummer und ein gefälschter „… und 0 weitere“-Hinweis unterbringen — der Agent hätte die fremde Nummer geladen und den Rest des Blocks für gewöhnlichen Text gehalten. Angaben aus dem Skill-Marktplatz werden jetzt entschärft, bevor sie in den Prompt gelangen, auch im Kopf einer eingebetteten Anleitung. Die Liste steht als Datenrahmen (`EXTERNAL-DATA`) im Prompt, und der Agent ist angewiesen, Anweisungen darin nicht zu befolgen.
+- **Wer die meisten Schlagwörter in den Skill-Namen schrieb, stand vorn.** Für die Reihenfolge zählte der vollständige Name, auch der Teil, der gar nicht angezeigt wird. Ein mit Begriffen gefüllter Name verdrängte damit die Anleitung, die wirklich zum Auftrag passte. Bewertet wird jetzt der angezeigte Name, und Namenstreffer zählen nur bis zu einer Obergrenze. Dasselbe gilt für die Beschreibung: bewertet werden ihre ersten 500 Zeichen, Treffer darin zählen höchstens dreimal. Füllwörter in der Beschreibung („auf“, „mit“, „ein“) treffen keine Wortzusammensetzungen im Auftrag mehr („Auftrag“, „Mitarbeiter“, „Einladung“).
+
+### Bekannte Grenze
+- Die Sprachfront bekommt den Fachanleitungen-Block bisher gar nicht (auch vor dieser Version nicht). Angleichen ist in #1097 erfasst.
+
+## [1.389.0] - 2026-10-28
+
+### Neu
+- **Erweiterte Geheimnis-Erkennung in Protokollen und im DLP-Filter (#703).** Zusätzlich erkannt werden Schlüssel von Stripe (geheime, nicht die öffentlichen `pk_`), Stripe-Webhooks, Google, Hugging Face, npm, GitLab, SendGrid, Supabase, Discord-Bots, Slack-Webhooks und Zugangsdaten in Adressen jeder Art (`postgresql+asyncpg://…`, `mysql+pymysql://…`, `rediss://:…@`, `amqp://…`), auch ohne sprechenden Variablennamen davor. Im DLP-Filter bilden sie die neue Klasse „Weitere Schlüssel-Formate“ und werden standardmäßig **geschwärzt, nicht gesperrt**: Ein Treffer unterdrückt also nicht die ganze Antwort. Einen Agenten-Stopp lösen sie nicht aus, bis ihre Fehlalarmrate im Betrieb beobachtet ist.
+- **Krypto-Seed-Phrasen (BIP-39) werden geschwärzt.** Erkannt werden 12 Wörter in Folge, von denen mindestens 10 aus der BIP-39-Wortliste stammen, auch mit Nummerierung, Füllwort oder unsichtbaren Zeichen. In Code (`margin_left + margin_right`) und normaler Prosa schlägt die Erkennung nicht an. Gedacht gegen versehentliches Weitergeben, nicht gegen absichtliches Verstecken.
+
+## [1.388.1] - 2026-10-28
+
+### Behoben
+- **Computer-Use-Bridge: ein getipptes Passwort landete im Prüfprotokoll und im Replay-Transkript.** Tippte der Agent über die Steuerung des echten Bildschirms ein Geheimnis, stand der Klartext bisher unverändert im Prüfprotokoll der Sitzung (`GET .../audit`) und, lief gerade eine Aufnahme, im Replay-Transkript; aus einem Transkript lässt sich über „Aufnahme zu Skill“ ein geteilter Skill erzeugen. Betroffen war auch der Mitschnitt, wenn der Mensch beim Vorführen selbst etwas eintippt. Jetzt gilt eine Zulassliste: Sichtbar bleiben nur Koordinaten, Schalter, Selektoren, Ziel-Apps und benannte Tasten. Alles andere wird durch seine Länge ersetzt, auch Shell-Befehle (`curl -u …`), Skripte für den angemeldeten Browser, einzeln getippte Zeichen und jedes Feld, das eine künftige Aktion neu einführt. Adressen verlieren Query, Fragment und Zugangsdaten. Nach einer Tipp-Aktion kommt kein Bildschirmfoto ins Transkript, weil ein Einmalcode im Bild stehen kann.
+
+## [1.388.0] - 2026-10-28
+
+### Neu
+- **Der Agenten-Browser lässt sich auf bestimmte Domains begrenzen.** Bisher durfte ein Agent mit eingeschaltetem Browser jede Adresse öffnen — auch dann, wenn in seinen Sitzungen echte Anmeldungen des Besitzers stecken. Der Besitzer kann jetzt eine Freigabeliste setzen (`PATCH /api/v1/agents/{id}/browser-domains`, wirkt nach einem Neustart); verglichen wird der Hostname, `example.com` erlaubt also auch `a.example.com`, aber nicht `example.com.fremd.tld`. Ohne Liste bleibt alles wie bisher erlaubt.
+- **Ein Prüfprotokoll zeigt, welche Seiten der Browser aufgerufen hat:** jede Adresse, die der Agent oder der Nutzer in der Arbeitsfläche öffnen lässt (erlaubt oder gesperrt), und jede Sperre einer Navigation durch Klick, Formular, Popup oder Weiterleitung, jeweils mit Zeitpunkt und wer gehandelt hat. Erlaubte Seitenwechsel per Klick und einzelne Eingaben stehen nicht darin. Abrufbar über `GET /api/v1/agents/{id}/browser/audit`, nur für den Besitzer, ohne einen schlafenden Agenten aufzuwecken.
+- **Das Browserprofil liegt verschlüsselt auf der Platte.** Nach einer Anmeldung enthält ein Chromium-Profil faktisch Zugangsdaten. Dauerhaft gespeichert wird jetzt nur noch ein verschlüsseltes Archiv; das Arbeitsprofil entsteht beim Start daraus, liegt außerhalb des Arbeitsbereichs und wird beim geordneten Beenden gelöscht. Den Schlüssel gibt der Orchestrator je Agent mit (aus `ENCRYPTION_KEY` abgeleitet), er liegt nie neben dem Archiv. Ein Profil aus älteren Versionen wird beim ersten Start übernommen und der Klartext gelöscht, die Anmeldungen bleiben also erhalten. Passt der Schlüssel nicht, wird das Archiv beiseitegelegt statt überschrieben.
+- Die Freigabeliste wirkt nicht nur auf `navigate`, sondern auf **jede Navigation der Seite**: Klicks, Formulare, `back`, neue Fenster und Eingaben aus der Arbeitsfläche. Landet eine Seite per Weiterleitung außerhalb, wird sie sofort geleert und der Fall protokolliert.
+
+### Behoben
+- **Die Freigabeliste des Agenten-Browsers war mit einem Backslash umgehbar.** `https://fremd.example\.erlaubt.example/` las die Freigabeprüfung als Unterseite von `erlaubt.example`, der Browser rief aber `fremd.example` auf — dieselbe Lücke, die in v1.381.1 für die Freigabelisten des Orchestrators geschlossen wurde. Die Prüfung im Agenten holt den Host jetzt nach denselben Regeln; Adressen, die Prüfung und Browser verschieden lesen (Backslash, Steuer- und Leerzeichen oder Prozent-Kodierung im Host), gelten als nicht freigegeben.
+- **Den angemeldeten Agenten-Browser konnten auch Admins, Manager und Personen mit Freigabe des Agenten sehen und bedienen.** Bildstrom und Prüfprotokoll stehen jetzt nur noch dem Besitzer offen: Wer den Strom sieht, bedient die Sitzungen des Besitzers (Postfach, Konten).
+- Die Schlüssel des Agenten-Browsers lassen sich nicht über einen zugewiesenen Key überschreiben (`BROWSER_…`, `COMPUTER_USE_…` sind für fremde Keys gesperrt, die Plattform setzt ihre Werte zuletzt).
+- **Agenten konnten den Browser eines fremden Agenten bedienen.** Alle Agenten hängen im selben internen Netz, und der Bildstrom des Agenten-Browsers nahm Verbindungen ohne Anmeldung an. Ein Agent hätte so die angemeldeten Sitzungen eines anderen Nutzers sehen und bedienen können. Bildstrom und Prüfprotokoll antworten jetzt nur noch dem Orchestrator, der sich mit einem Schlüssel je Agent ausweist. Agenten älterer Versionen sind davon erst nach „Update“ geschützt.
+- **Die Freigabeliste konnte jeder ändern, dem der Agent freigegeben war.** Jetzt nur noch Besitzer und Admin. Einträge müssen echte Hostnamen sein (a-z, 0-9, Punkt, Bindestrich; Umlaut-Domains als `xn--…`).
+- Das Prüfprotokoll speichert nur Schema, Host und Pfad. Tokens in der Adresse (Anmelde-Codes, Rücksetz-Links) und Zugangsdaten landen nicht mehr darin.
+- **Eine gesperrte Adresse in der Browser-Arbeitsfläche blieb wortlos.** Wer eine nicht freigegebene Adresse eintippte, sah nur, dass nichts passiert. Jetzt nennt die Arbeitsfläche den Grund und die freigegebenen Domains.
+
+### Bekannte Grenze
+- Die Freigabeliste begrenzt den Browser, nicht den Agenten: Ein Agent mit Shell-Zugriff kann das laufende Profil kopieren und außerhalb des Browserwerkzeugs nutzen. Ein Profil von vor dieser Version bleibt im Klartext liegen, solange der Browser für den Agenten ausgeschaltet ist.
+- Für `claude_code`-Agenten greift die Freigabeliste nur als **weiche Schranke**: diese Laufzeit bedient den Browser über den Playwright-MCP in einem eigenen Prozess, der ausdrücklich keine Sicherheitsgrenze zusagt und Weiterleitungen nicht prüft; ins Prüfprotokoll kommen seine Aufrufe gar nicht. Hart durchgesetzt und protokolliert wird der Weg über das eigene Browserwerkzeug (Codex, Custom-LLM) und jede Eingabe aus der Arbeitsfläche. Diese Parität ist der nächste Schritt in #828 und braucht eine Richtungsentscheidung.
+- Ein harter Abbruch des Containers (OOM-Kill) zwischen zwei Sicherungspunkten verliert die jüngsten Profiländerungen; gesichert wird nach jeder Navigation und beim geordneten Beenden.
+- Bei einer Weiterleitung nach außerhalb hat die erste Anfrage das fremde Ziel schon erreicht, bevor die Seite geleert wird; gelesen wird dort nichts. Eingebettete Rahmen (Anmelde- und Prüf-Widgets) bleiben frei.
+- Die Verschlüsselung schützt das ruhende Archiv (Sicherungen, Platte), nicht vor dem laufenden Agenten selbst: Während er läuft, liegen Profil und Schlüssel in seinem Container.
+
+## [1.387.2] - 2026-10-28
+
+### Behoben
+- **Erster Abgleich eines Bridge-Ordners in iCloud/OneDrive dauerte über eine Stunde und blockierte die Bridge.** Die Bridge bildete für die Dateiliste die Prüfsumme jeder Datei und las danach jede geänderte Datei ein zweites Mal. In Cloud-Ordnern dauert jedes Öffnen Sekunden (gemessen: rund 5 s je Notiz) — bei 637 Dateien lag die Bridge so lange fest, auch für Agenten-Befehle. Die Liste kommt jetzt nur aus Größe und Änderungszeit (ohne eine Datei zu öffnen, Sekunden statt Stunde); gelesen wird jede geänderte Datei genau einmal, in einzelnen Befehlen, zwischen denen andere Aufgaben weiterlaufen. Die Prüfsumme kommt mit der Datei und wird auf dem Server geprüft. Ältere Bridges (bis 1.387.1) funktionieren weiter. Braucht für die Beschleunigung die Bridge 1.387.2.
+
+## [1.387.1] - 2026-10-28
+
+### Behoben
+- **Windows-Bridge wurde für 1.387.0 nicht gebaut.** Windows kennt das Öffnen „ohne Links zu folgen“ (`O_NOFOLLOW`) nicht; ein Test der Bridge schlug dort fehl und hielt den Build an. Die Bridge lehnt unter Windows symbolische Links jetzt ausdrücklich ab, bevor sie eine Datei aus einem gespiegelten Ordner öffnet. Gelesen wurde auch vorher nichts außerhalb des Ordners (die Pfadprüfung griff), die macOS-Bridge ist unverändert.
+
+## [1.387.0] - 2026-10-28
+
+### Neu
+- **Einen Ordner des eigenen Rechners als Second Brain spiegeln** (#1092). Unter „Meine Einstellungen → Meine Bridge-Ordner“ einen in der Bridge freigegebenen Ordner wählen (z. B. einen Obsidian-Vault); die Bridge spiegelt ihn auf den Server, nur in diese Richtung. Markdown und Text kommen so, wie sie sind, PDF/Word/Excel als ausgelesener Text. Danach ist es ein gewöhnliches Second Brain: an Projekte anbindbar, Agenten zuweisbar, durchsuchbar nach Bedeutung — auch wenn der Rechner aus ist. Abgeglichen wird beim Verbinden der Bridge, danach alle zehn Minuten und auf Knopfdruck; nur Geändertes wird übertragen, Gelöschtes verschwindet auch auf dem Server. Braucht die Bridge 1.387.0.
+
+### Sicherheit
+- Gespiegelte Ordner sind privat: kein anderer Nutzer sieht oder nutzt sie, auch kein Administrator — weder in der Brain-Liste, im Mount-Katalog, bei Ordner-Freigaben noch beim Anbinden an Projekte. Eingehängt werden sie nur in Agenten ihres Besitzers (geprüft beim Zuweisen UND bei jedem Containerstart, in der Anleitung und in der Sprachfront). In einem geteilten Projekt wirken sie nur für ihren Besitzer; das Protokoll nennt ihren Namen nicht.
+- Grenzen: höchstens 5 gespiegelte Ordner je Nutzer und 200 MB je Ordner; eine Datei, die nicht gelesen werden konnte, wird erst nach einer Änderung erneut geholt; ein leerer oder nicht erreichbarer Ordner löscht den Spiegel nicht. Das Auslesen von PDF/Word/Excel (auch bei Projektdateien) gibt die Warteschlange erst frei, wenn der Ausleser wirklich fertig ist — nicht schon beim Ablauf der Frist.
+- **Behoben:** Administratoren konnten das Wissen fremder Projekte als Mount in ihre Agenten hängen. Projektwissen ist jetzt nur für den Ersteller des Projekts einhängbar.
+- Gespiegelte Brains sind nur lesend (Schreiben, Löschen, Importieren und „read-write“ werden mit 409 abgelehnt).
+- Die Bridge liest nur in genau den freigegebenen Ordnern (kein Unterordner, fail-closed), ohne versteckte Ordner, `node_modules` und symbolische Links (auch nicht, wenn eine Datei zwischen Prüfung und Lesen gegen einen Link getauscht wird), mit Grenzen (5.000 Dateien, Text 2 MB, Dokumente 10 MB). Der Server prüft jede Angabe der Bridge erneut (Pfade, Prüfsumme, Größe) und übernimmt nur, was passt. Agenten können die Sync-Befehle nicht auslösen.
+
+### Technik
+- Neue Spalten `second_brains.bridge_ordner`, `sync_stand`, `sync_fehler` (Migration `d9e0f1a2b3c4`). Neu: `core/bridge_wissen.py`, `mounts.fremde_privatablagen`, Endpunkte `GET /brains/bridge/ordner`, `POST /brains/bridge`, `POST /brains/bridge/{id}/sync`, `DELETE /brains/bridge/{id}`; Bridge-Aktionen `wissen_ordner`, `wissen_liste`, `wissen_datei`.
+
+## [1.386.0] - 2026-10-28
+
+### Neu
+- **Second Brains an Projekte anbinden.** Im Projekt unter „Bearbeiten → Second Brains anbinden“ lassen sich bis zu zehn vorhandene Second Brains anhängen (z. B. die Ablage einer Abteilung mit Preisen oder Abläufen). Die Projektsuche in der Oberfläche und das Werkzeug `projekt_wissen_suchen` aller Laufzeiten finden dann auch dort; jeder Treffer nennt seine Quelle. Seiten daraus lassen sich öffnen — immer nur lesend, ein angebundenes Brain wird aus dem Projekt heraus nie geändert. Der Projektauftrag nennt die angebundenen Brains.
+
+### Sicherheit
+- Anbinden darf man nur, was man selbst nutzen darf. Projektwissen (auch das anderer Projekte) lässt sich nie anbinden — auch nicht von Administratoren.
+- Wer ein geteiltes Projekt sieht, bekommt damit nicht die Brain-Freigaben des Erstellers: Suche und Lesen zeigen nur Brains, die der Ersteller UND der Aufrufer nutzen dürfen (bei Agenten zählt ihr Besitzer). Wird eine Freigabe entzogen, fällt das Brain sofort heraus; das Speichern des Projekts bleibt trotzdem möglich.
+- Gelesen werden nur Textseiten (wie bei der Suche), Bilder auf fremden Seiten werden nicht geladen.
+
+### Technik
+- Neue Spalte `teams.angebundene_brains` (Migration `c8d9e0f1a2b3`). `GET /teams/{id}/wissen/datei` nimmt `brain=<Label>`, Suchtreffer tragen `brain` und `quelle`.
+
+## [1.385.1] - 2026-10-28
+
+### Behoben
+- **Die Datensicherung enthielt die Wissensablagen nicht.** Second Brains, Projektwissen und hochgeladene Projektdateien liegen als Dateien auf der Platte (`SECONDBRAIN_BASE`), nicht in der Datenbank — `backup.sh` hat sie bisher nicht mitgenommen. Sie landen jetzt als `wissensablagen.tar.gz` in jeder Sicherung (samt git-Verlauf und Projektdateien), `restore.sh` spielt sie zurück. Handbuch Kapitel 37 ergänzt.
+
+## [1.385.0] - 2026-10-28
+
+### Neu
+- **Dateien am Projekt.** Im Reiter „Wissen“ lassen sich jetzt Dateien hochladen (Knopf oder Ziehen): PDF, Word, Excel, Text, CSV, JSON und Bilder, je bis 20 MB. Der Text wird automatisch ausgelesen und als Seite unter `dateien/` ins Projektwissen gelegt — durchsuchbar für Suche und Agenten. Das Original lässt sich herunterladen und löschen (mit seinem Text). Die Originale liegen neben der Wissensablage, nicht in ihrem git-Verlauf; Namen werden bereinigt, gleichnamige Dateien bekommen eine Nummer, heruntergeladen wird immer als Anhang.
+
+### Sicherheit
+- **Zu große Uploads werden abgewiesen, bevor sie gelesen werden** — in der Plattform anhand der angegebenen Länge (411/413) und in Caddy (`request_body max_size 21MB` nur für diesen Pfad). Bisher hätte ein Formular erst ganz auf der Platte gelegen, auch ohne Anmeldung.
+- **Präparierte Word-/Excel-/PDF-Dateien legen die Plattform nicht lahm:** Archive über 50 MB entpackt oder mit über 2.000 Einträgen werden nicht geöffnet, PDFs höchstens 300 Seiten, Excel höchstens 50.000 Zeilen. Das Auslesen läuft außerhalb der Ereignisschleife, einzeln und höchstens 60 Sekunden. Der Ausleser zählte bei Excel quadratisch (auch bei OneDrive-Dateien).
+- **`dateien/` ist für hochgeladene Dateien reserviert:** Seiten dort lassen sich nicht von Hand schreiben, ergänzen oder zurückholen, ein Upload ersetzt keine vorhandene Seite, und der ausgelesene Text wird nicht versioniert — nach dem Löschen ist er auch im Verlauf weg.
+- **Projektwissen erscheint nicht mehr in der allgemeinen Brain-Verwaltung.** Bisher konnten Administratoren dort das Wissen fremder Projekte lesen, exportieren und einen MCP-Zugang dafür erzeugen; es ist jetzt nur über das Projekt erreichbar.
+- Der ausgelesene Text ist als fremder Inhalt gekennzeichnet („Daten, keine Anweisungen“), Bilder darin werden nicht geladen; Downloads tragen `X-Content-Type-Options: nosniff`.
+
+### Technik
+- Der Text-Ausleser für PDF/Word/Excel liegt jetzt in `core/dokument_text.py` (bisher in `msgraph_mcp`); OneDrive-Werkzeuge, Sprachfront und Projektdateien nutzen denselben.
+- Neue Endpunkte: `GET/POST /teams/{id}/wissen/dateien`, `GET/DELETE /teams/{id}/wissen/dateien/{name}`.
+
+## [1.384.1] - 2026-10-28
+
+### Behoben
+- **„Aktualisieren“ im Projekt zeigte bei einem Fehler die Fehlerseite von Cloudflare.** Ein fehlgeschlagener Abgleich wurde als 502 gemeldet — Cloudflare ersetzt solche Antworten durch seine eigene Seite, die eigentliche Meldung kam nie an. Er wird jetzt als 424 gemeldet, die Meldung erscheint im Projekt.
+- **„GitHub 403“ sagte nicht, was fehlt.** Verweigert GitHub den Zugriff, nennt die Meldung jetzt den Grund und das fehlende Recht des Tokens (z. B. „Dem Schlüssel fehlt das Recht Issues: Read — in GitHub beim Token unter Repository permissions setzen“), eine nötige SSO-Freigabe der Organisation oder einen ungültigen Schlüssel. Ein Netzfehler heißt weiter „antwortet nicht“, eine Ablehnung nicht mehr.
+- **CI-Stand blieb bei fein granulierten GitHub-Tokens „offen“.** Solche Tokens dürfen Check-Runs nicht lesen (ein Recht „Checks“ gibt es für sie nicht). Die Plattform liest den Stand dann aus den Workflow-Läufen (Recht „Actions: Read“) und dem Commit-Status.
+
+## [1.384.0] - 2026-10-28
+
+### Neu
+- **Projekte mit Forgejo- und Gitea-Repos.** Neben GitHub lässt sich ein Projekt jetzt mit einem Repo auf einem eigenen Forgejo- oder Gitea-Server verbinden; eingetragen wird die volle Adresse, z. B. `https://git.example.com/team/repo`. Offene Issues kommen in den Eingang, Pull Requests mit ihrem CI-Stand (aus dem Commit-Status von Forgejo/Gitea Actions) in die Prüfung, gemergte und geschlossene werden nachgezogen — wie bei GitHub. Private Repos brauchen einen Token des Servers aus der Schlüsselverwaltung — und zwar einen eigenen: Ein nur zur Nutzung geteilter Schlüssel wird nicht an einen selbst eingetragenen Server geschickt. Eigene Server werden nur über https und nie im internen Netz der Anlage abgefragt.
+
+### Sicherheit
+- Abfragen an eigene Git-Server sind begrenzt: höchstens 60 Sekunden je Abgleich und 2 MB je Antwort, Weiterleitungen werden nicht verfolgt, unpassende Antworten (kein JSON, falsche Form, unsinnige Nummern) werden übergangen und als Fehler am Projekt vermerkt statt den Abgleich abzubrechen. Links aus der Antwort kommen nur aufs Board, wenn sie auf denselben Server zeigen. IP-Literale in eckigen Klammern werden als Repo-Adresse abgelehnt; eine nicht lesbare Adresse stoppt den Abgleich der anderen Projekte nicht mehr.
+- Die Prüfung ausgehender Adressen sperrt jetzt auch den Carrier-Grade-NAT-Bereich 100.64.0.0/10 (z. B. Overlay-Netze) und löst Namen nicht mehr in der Ereignisschleife auf.
+
+### Geändert
+- Ein GitHub-Zugang der Anlage, der als Forgejo/Gitea mit eigener Server-Adresse eingetragen ist, gibt Agenten jetzt die passenden Variablen (`GITEA_TOKEN`, `GITEA_SERVER_URL` …) statt der GitHub-Variablen.
+
+## [1.383.2] - 2026-10-28
+
+### Verbessert
+- **Was im Overlay der Bridge geschrieben wird, steht auch im Web-Chat.** Nachrichten aus dem Chat-Feld des Overlays, Hinweise an einen laufenden Auftrag, ein Ja zu einem Angebot und die Antworten des Agenten erscheinen im Chat des Agenten im Gespräch „Bridge (Overlay)“. Bisher gingen sie am Verlauf vorbei, und die Antwort wurde verworfen, weil zu ihr keine Nutzernachricht gespeichert war.
+
+## [1.383.1] - 2026-10-28
+
+### Behoben
+- **Projekt-Besprechungen griffen immer wieder erledigte Themen auf.** Die Agenten sprachen aus ihrem Gedächtnis, nicht vom Board: Ein seit Tagen geschlossenes Issue kam jeden Morgen erneut ins Daily, und aus jedem offenen Punkt der Zusammenfassung wurde ungeprüft eine Karte (7–9 je Besprechung). Jetzt bekommt jeder Beitrag einer Projekt-Besprechung den Stand des Boards mit (Bereit, In Arbeit, Prüfung mit PR-Stand, kürzlich Erledigtes) — dieselbe Darstellung wie das Werkzeug `projekt_board` —, und Punkte, die nur geschlossene Issues betreffen oder schon als offene Karte dastehen, werden keine Karte; das Protokoll nennt, wie viele übersprungen wurden.
+- **Ein abgebrochener Auftrag stand danach als „erledigt“ da.** Der Agent meldet sein Ende nach dem Abbruch noch nach und überschrieb damit den Status. Er bleibt jetzt „abgebrochen“; Kosten, Tokens und Dauer werden trotzdem gebucht.
+
+## [1.383.0] - 2026-10-28
+
+### Neu
+- **Chat direkt im Overlay der Bridge.** „Chat“ öffnete bisher den Chat im Browser. Jetzt klappt es im Overlay ein Eingabefeld auf, der Cursor steht sofort darin, Enter oder „Senden“ schickt die Nachricht an den Agenten. Arbeitet er gerade an einem Auftrag, arbeitet er den Hinweis sofort in diesen Auftrag ein (Live-Steering in der Bridge-Sitzung); sonst wird die Nachricht ein neuer Auftrag mit einem aktuellen Bild des Bildschirms. Nach dem Senden geht die Tastatur zurück an die Anwendung; tippt der Agent gerade selbst, landen seine Tasten nicht im Overlay. Ist der Agent gestoppt, sagt das Overlay „erst freigeben“. Gilt für macOS und Windows; braucht die Bridge 1.383.0.
+
+### Behoben
+- Eine Statusmeldung des laufenden Auftrags (z. B. der Schrittzähler) leerte das Antwortfeld im Overlay, während man tippte.
+
 ## [1.382.0] - 2026-10-28
 
 ### Neu

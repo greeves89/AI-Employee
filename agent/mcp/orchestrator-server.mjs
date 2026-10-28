@@ -179,7 +179,9 @@ export async function projektWerkzeug(name, args = {}) {
       );
       const treffer = r.treffer || [];
       if (!treffer.length) return { content: [{ type: "text", text: `Nichts gefunden zu „${args.frage}“.` }] };
-      const text = treffer.map((t) => `${t.path || t.pfad}: ${(t.snippets || []).join(" … ") || t.title || ""}`).join("\n");
+      // Treffer aus angebundenen Second Brains nennen ihre Quelle — gelesen werden
+      // sie mit projekt_wissen_lesen und brain=<Label>.
+      const text = treffer.map((t) => `${t.brain ? `[${t.quelle} · brain=${t.brain}] ` : ""}${t.path || t.pfad}: ${(t.snippets || []).join(" … ") || t.title || ""}`).join("\n");
       return { content: [{ type: "text", text: projektGerahmt("projektwissen", text) }] };
     }
 
@@ -190,7 +192,7 @@ export async function projektWerkzeug(name, args = {}) {
         const text = (r.dateien || []).filter((d) => d.type === "file").map((d) => d.path).join("\n");
         return { content: [{ type: "text", text: text || "Noch keine Seiten." }] };
       }
-      const r = await apiCall(`${basis}/datei?pfad=${encodeURIComponent(args.pfad)}`);
+      const r = await apiCall(`${basis}/datei?pfad=${encodeURIComponent(args.pfad)}${args.brain ? `&brain=${encodeURIComponent(args.brain)}` : ""}`);
       return { content: [{ type: "text", text: projektGerahmt("projektwissen", r.inhalt) }] };
     }
 
@@ -653,7 +655,8 @@ export function buildServer() {
         name: "projekt_wissen_suchen",
         description:
           "Search the project's own knowledge base (decisions, conventions, architecture, access notes) for a " +
-          "question. Look things up here before asking or guessing.",
+          "question — plus any Second Brains attached to the project (hits from those are marked " +
+          "[name · brain=<label>]). Look things up here before asking or guessing.",
         inputSchema: {
           type: "object",
           properties: {
@@ -665,12 +668,15 @@ export function buildServer() {
       },
       {
         name: "projekt_wissen_lesen",
-        description: "Read a page of the project's knowledge base (e.g. index.md). Without pfad: list all pages.",
+        description:
+          "Read a page of the project's knowledge base (e.g. index.md). Without pfad: list all pages. " +
+          "With brain=<label> (from a search hit) read a page of an attached Second Brain instead — read-only.",
         inputSchema: {
           type: "object",
           properties: {
             projekt_id: { type: "string" },
             pfad: { type: "string", description: "Page path, e.g. 'index.md' or 'entscheidungen.md'." },
+            brain: { type: "string", description: "Label of an attached Second Brain (from a search hit). Omit for the project's own knowledge." },
           },
           required: ["projekt_id"],
         },

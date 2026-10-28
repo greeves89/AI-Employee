@@ -17,7 +17,7 @@ const VARIABLE = "--betreiber-hinweis-h";
 /** Alle 30 Minuten nachsehen — im selben Takt wie der Versionscheck. */
 const PRUEF_INTERVALL = 30 * 60 * 1000;
 
-/** Direkt zum Eintragen — Admin-Konsole, „System & Lizenz“, Lizenz ganz oben (#899). */
+/** Direkt zum Eintragen — Admin-Bereich, „System & Lizenz“, Lizenz ganz oben (#899). */
 export const LIZENZ_EINTRAGEN_PFAD = LIZENZ_PFAD;
 
 /** Merkt sich das Wegklicken je Text: ein NEUER Hinweis erscheint wieder. */

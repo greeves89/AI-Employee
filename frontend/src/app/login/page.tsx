@@ -98,8 +98,8 @@ export default function LoginPage() {
       <div className="w-full max-w-sm space-y-6">
         {/* Logo */}
         <div className="flex flex-col items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-400 shadow-lg shadow-blue-500/20">
-            <Cpu className="h-6 w-6 text-white" />
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand">
+            <Cpu className="h-6 w-6 text-[#0a1433]" />
           </div>
           <div className="text-center">
             <h1 className="text-xl font-semibold tracking-tight">AI Employee</h1>

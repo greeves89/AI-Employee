@@ -675,3 +675,121 @@ class OverlayZeigtAuftrag(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OverlayChat(_Mit):
+    """Chat-Feld im Overlay: läuft ein Auftrag, steuert die Nachricht ihn (selber
+    Kanal ``bridge`` → Live-Steering); sonst startet sie einen neuen Auftrag."""
+
+    async def asyncTearDown(self):
+        cu._sessions.pop("s1", None)
+        await super().asyncTearDown()
+
+    def _einreihen(self, eingereiht=True):
+        return AsyncMock(return_value=SimpleNamespace(eingereiht=eingereiht, hinweis="Budget aufgebraucht."))
+
+    async def test_laufender_auftrag_wird_gesteuert(self):
+        s = _sitzung(auftrag_laeuft=True, auftrag_agent="a1", lauf={"schritte": 3})
+        cu._sessions["s1"] = s
+        ein = self._einreihen()
+        with patch.object(cu, "_redis", SimpleNamespace(client=object())), \
+             patch("app.core.chat_auftrag.einreihen", ein), \
+             patch.object(cu, "_in_den_verlauf", AsyncMock()) as verlauf, \
+             patch("app.services.agent_chat_bridge.ask_agent_via_chat", AsyncMock()) as ask:
+            await cu._overlay_chat("s1", s, {"text": "  nimm   lieber die  zweite Spalte "})
+        ask.assert_not_called()                      # kein zweiter Auftrag
+        self.assertEqual(verlauf.await_args.args[2], "nimm lieber die zweite Spalte")
+        self.assertEqual(ein.await_args.args[2]["id"], verlauf.await_args.args[1])
+        agent, payload = ein.await_args.args[1], ein.await_args.args[2]
+        self.assertEqual(agent, "a1")
+        self.assertEqual((payload["source"], payload["chat_session_id"]), ("bridge", "bridge"))
+        self.assertIn("nimm lieber die zweite Spalte", payload["text"])
+        self.assertIn("laufenden Auftrag", payload["text"])
+        letzte = s["bridge_ws"].gesendet[-1]
+        self.assertEqual((letzte["zustand"], letzte["schritte"]), ("arbeitet", 3))
+
+    async def test_ohne_auftrag_startet_ein_neuer(self):
+        s = _sitzung()
+        cu._sessions["s1"] = s
+        with patch.object(cu, "_refresh_screenshot_cache", AsyncMock(return_value="QUJD")), \
+             patch.object(cu, "_in_den_verlauf", AsyncMock()) as verlauf, \
+             patch("app.services.agent_chat_bridge.ask_agent_via_chat",
+                   AsyncMock(return_value="Erledigt.")) as ask:
+            await cu._overlay_chat("s1", s, {"text": "öffne die Rechnung von gestern"})
+            for t in list(s["_aufgaben"]):
+                await t
+        # Im Web-Chat steht, was der Mensch schrieb (nicht der Rahmen-Prompt), unter
+        # derselben Kennung, mit der die Antwort gespeichert wird.
+        agent, kennung, anzeige = verlauf.await_args.args
+        self.assertEqual((agent, anzeige), ("a1", "öffne die Rechnung von gestern"))
+        self.assertEqual(ask.await_args.kwargs["message_id"], kennung)
+        self.assertEqual(ask.await_args.args[1], "a1")
+        self.assertIn("öffne die Rechnung von gestern", ask.await_args.args[2])
+        self.assertEqual(ask.await_args.kwargs["chat_session_id"], "bridge")
+        self.assertEqual(ask.await_args.kwargs["images"], [{"media_type": "image/png", "data": "QUJD"}])
+        self.assertEqual(s["bridge_ws"].gesendet[-1]["zustand"], "fertig")
+        self.assertFalse(s["auftrag_laeuft"])
+
+    async def test_gestoppt_leer_und_ohne_agent_tun_nichts(self):
+        ein = self._einreihen()
+        with patch("app.core.chat_auftrag.einreihen", ein), \
+             patch("app.services.agent_chat_bridge.ask_agent_via_chat", AsyncMock()) as ask:
+            gestoppt = _sitzung(gestoppt=True)
+            await cu._overlay_chat("s1", gestoppt, {"text": "mach weiter"})
+            self.assertEqual(gestoppt["bridge_ws"].gesendet[-1]["zustand"], "gestoppt")
+            leer = _sitzung()
+            await cu._overlay_chat("s1", leer, {"text": "   "})
+            self.assertEqual(leer["bridge_ws"].gesendet, [])
+            ohne = _sitzung(agent_id=None)
+            await cu._overlay_chat("s1", ohne, {"text": "hallo"})
+            self.assertEqual(ohne["bridge_ws"].gesendet[-1]["zustand"], "hinweis")
+            self.assertFalse(ohne.get("auftrag_laeuft"))
+        ein.assert_not_called()
+        ask.assert_not_called()
+
+    async def test_budget_sperre_wird_gemeldet(self):
+        s = _sitzung(auftrag_laeuft=True, auftrag_agent="a1")
+        with patch.object(cu, "_redis", SimpleNamespace(client=object())), \
+             patch("app.core.chat_auftrag.einreihen", self._einreihen(eingereiht=False)):
+            await cu._overlay_chat("s1", s, {"text": "stopp das"})
+        self.assertIn("Budget", s["bridge_ws"].gesendet[-1]["text"])
+
+
+class OverlayImChatverlauf(unittest.IsolatedAsyncioTestCase):
+    """Was im Overlay geschrieben wird, steht auch im Web-Chat (Gespräch „Bridge“)."""
+
+    async def asyncSetUp(self):
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+        from app.models.chat_message import ChatMessage
+        from app.models.chat_session import ChatSession
+
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with self.engine.begin() as conn:
+            for m in (ChatMessage, ChatSession):
+                await conn.run_sync(m.metadata.create_all, tables=[m.__table__])
+        self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
+        for ziel in ("app.db.session.async_session_factory",
+                     "app.services.chat_persistence.async_session_factory"):
+            p = patch(ziel, self.Session, create=True)
+            p.start()
+            self.addCleanup(p.stop)
+
+    async def asyncTearDown(self):
+        await self.engine.dispose()
+
+    async def test_nachricht_und_gespraech_entstehen_einmal(self):
+        from sqlalchemy import select
+
+        from app.models.chat_message import ChatMessage
+        from app.models.chat_session import ChatSession
+
+        await cu._in_den_verlauf("a1", "m1", "öffne die Rechnung")
+        await cu._in_den_verlauf("a1", "m2", "und schick sie mir")
+        async with self.Session() as db:
+            zeilen = (await db.execute(select(ChatMessage).order_by(ChatMessage.id))).scalars().all()
+            gespraeche = (await db.execute(select(ChatSession))).scalars().all()
+        self.assertEqual([(z.session_id, z.message_id, z.role, z.content) for z in zeilen],
+                         [("bridge", "m1", "user", "öffne die Rechnung"),
+                          ("bridge", "m2", "user", "und schick sie mir")])
+        self.assertEqual([(g.session_id, g.title) for g in gespraeche], [("bridge", "Bridge (Overlay)")])

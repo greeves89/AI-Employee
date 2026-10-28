@@ -77,7 +77,10 @@ _RESERVIERT = {
 }
 _RESERVIERT_ANFANG = ("ANTHROPIC_", "CLAUDE_", "OPENAI_", "CODEX_", "LLM_", "AGENT_", "ORCHESTRATOR_",
                       "REDIS_", "LD_", "DYLD_", "DOCKER_", "MCP_", "AWS_", "AZURE_OPENAI_", "BEDROCK_", "VERTEX_",
-                      "GOOGLE_", "GEMINI_", "HF_", "GIT_", "NPM_", "PIP_", "UV_", "YARN_", "BASH_")
+                      "GOOGLE_", "GEMINI_", "HF_", "GIT_", "NPM_", "PIP_", "UV_", "YARN_", "BASH_",
+                      # Agenten-Browser: Zugangsschluessel, Profilschluessel, Ablageort,
+                      # Freigabeliste (#828, Schritt 5)
+                      "BROWSER_", "COMPUTER_USE_")
 
 
 def variable_reserviert(name: str) -> bool:

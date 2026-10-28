@@ -439,6 +439,7 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
 const DLP_CLASS_LABEL: Record<string, string> = {
   secret: "Secrets / Keys", iban: "IBAN", credit_card: "Kreditkarte",
   email: "E-Mail-Adresse", de_tax_id: "Steuer-ID (11-stellig)",
+  secret_format: "Weitere Schlüssel-Formate", seed_phrase: "Krypto-Seed-Phrase",
 };
 const DLP_ACTION_LABEL: Record<string, string> = {
   allow: "Erlauben", log: "Nur loggen", mask: "Maskieren", block: "Blockieren",

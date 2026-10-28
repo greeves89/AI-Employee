@@ -12,6 +12,8 @@ const CLASS_LABEL: Record<string, string> = {
   credit_card: "Kreditkarte",
   email: "E-Mail-Adresse",
   de_tax_id: "Steuer-ID (11-stellig)",
+  secret_format: "Weitere Schlüssel-Formate (Stripe, Google, Zugangsdaten in Adressen …)",
+  seed_phrase: "Krypto-Seed-Phrase (BIP-39)",
 };
 const ACTION_LABEL: Record<string, string> = {
   allow: "Erlauben", log: "Nur loggen", mask: "Maskieren", block: "Blockieren",

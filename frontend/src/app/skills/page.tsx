@@ -813,9 +813,9 @@ export default function SkillsPage() {
             Katalog-Quelle (/api/v1/skills/catalog) steht verkuerzt auch in den
             Agent-Einstellungen → Wissen → Skills, dort ohne Wechsel der Seite. */}
         <p className="text-[11px] text-muted-foreground/50">
-          Katalog + Installation für jeden Agenten über den Agenten-Wähler
-          unten. Direkt in den Agent-Einstellungen → Wissen → Skills geht das
-          auch — ohne Seitenwechsel, mit demselben Katalog.
+          Katalog und Installation für jeden Agenten über den Agenten-Wähler unten.
+          Auf der Seite eines Agenten geht das auch unter Wissen → Skills, mit
+          demselben Katalog.
         </p>
         {isAdmin && <SkillSourcesAdmin />}
         {/* Top bar */}

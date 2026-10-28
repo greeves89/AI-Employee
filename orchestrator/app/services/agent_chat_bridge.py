@@ -35,6 +35,7 @@ async def ask_agent_via_chat(
     images: list[dict] | None = None,
     on_event=None,
     nur_ansehen: bool = False,
+    message_id: str | None = None,
 ) -> str:
     """Send ``text`` to the agent and return its full text answer (or an error marker).
 
@@ -43,7 +44,9 @@ async def ask_agent_via_chat(
     if not (redis and redis.client):
         return "[Fehler: Redis nicht verfügbar]"
 
-    message_id = uuid.uuid4().hex[:12]
+    # Eine vorgegebene Kennung erlaubt dem Aufrufer, die Nachricht vorher in den
+    # Verlauf zu legen — dann speichert der Lauscher die Antwort daneben.
+    message_id = message_id or uuid.uuid4().hex[:12]
     payload: dict = {
         "id": message_id,
         "text": text,
