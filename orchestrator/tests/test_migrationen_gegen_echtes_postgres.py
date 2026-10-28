@@ -99,6 +99,7 @@ _SPALTEN_NACH_DER_MARKE = (
     ("teams", "repo_abgleich_at"),
     ("teams", "repo_fehler"),
     ("teams", "repo_secret_id"),
+    ("teams", "angebundene_brains"),
     ("teams", "budget_usd"),
     ("kosten_historie", "team_id"),
     ("teams", "art"),

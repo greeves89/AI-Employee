@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.386.0] - 2026-10-28
+
+### Neu
+- **Second Brains an Projekte anbinden.** Im Projekt unter „Bearbeiten → Second Brains anbinden“ lassen sich bis zu zehn vorhandene Second Brains anhängen (z. B. die Ablage einer Abteilung mit Preisen oder Abläufen). Die Projektsuche in der Oberfläche und das Werkzeug `projekt_wissen_suchen` aller Laufzeiten finden dann auch dort; jeder Treffer nennt seine Quelle. Seiten daraus lassen sich öffnen — immer nur lesend, ein angebundenes Brain wird aus dem Projekt heraus nie geändert. Der Projektauftrag nennt die angebundenen Brains.
+
+### Sicherheit
+- Anbinden darf man nur, was man selbst nutzen darf. Projektwissen (auch das anderer Projekte) lässt sich nie anbinden — auch nicht von Administratoren.
+- Wer ein geteiltes Projekt sieht, bekommt damit nicht die Brain-Freigaben des Erstellers: Suche und Lesen zeigen nur Brains, die der Ersteller UND der Aufrufer nutzen dürfen (bei Agenten zählt ihr Besitzer). Wird eine Freigabe entzogen, fällt das Brain sofort heraus; das Speichern des Projekts bleibt trotzdem möglich.
+- Gelesen werden nur Textseiten (wie bei der Suche), Bilder auf fremden Seiten werden nicht geladen.
+
+### Technik
+- Neue Spalte `teams.angebundene_brains` (Migration `c8d9e0f1a2b3`). `GET /teams/{id}/wissen/datei` nimmt `brain=<Label>`, Suchtreffer tragen `brain` und `quelle`.
+
 ## [1.385.1] - 2026-10-28
 
 ### Behoben

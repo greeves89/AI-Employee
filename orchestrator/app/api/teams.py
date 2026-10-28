@@ -35,6 +35,7 @@ class CreateTeam(BaseModel):
     geteilt_mit: list[str] = []
     repo: str | None = None
     repo_secret_id: int | None = None
+    angebundene_brains: list[str] = []
 
 
 class UpdateTeam(BaseModel):
@@ -51,6 +52,8 @@ class UpdateTeam(BaseModel):
     repo: str | None = None
     # Schlüssel für private Repos (Schlüsselverwaltung); 0 entfernt ihn.
     repo_secret_id: int | None = None
+    # Second Brains (Labels), die die Projektsuche mit durchsucht; [] löst alle.
+    angebundene_brains: list[str] | None = None
 
 
 def _farbe(wert: str | None) -> str | None:
@@ -83,6 +86,7 @@ def _serialize(t: Team) -> dict:
         "repo_abgleich_at": t.repo_abgleich_at.isoformat() if getattr(t, "repo_abgleich_at", None) else None,
         "repo_fehler": getattr(t, "repo_fehler", None),
         "repo_secret_id": getattr(t, "repo_secret_id", None),
+        "angebundene_brains": list(getattr(t, "angebundene_brains", None) or []),
         "budget_usd": getattr(t, "budget_usd", None),
         "art": getattr(t, "art", None) or "projekt",
     }
@@ -183,6 +187,16 @@ def _repo_setzen(t: Team, repo: str, user) -> None:
         t.repo, t.repo_abgleich_at, t.repo_fehler = neu, None, None
 
 
+async def _brains_setzen(db: AsyncSession, t: Team, labels: list[str], user) -> list[str]:
+    """Second Brains anbinden — nur solche, die ``user`` selbst nutzen darf."""
+    from app.core import projekt_wissen
+
+    try:
+        return await projekt_wissen.brains_pruefen(db, t, labels, user)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
 async def _repo_schluessel(db: AsyncSession, secret_id: int, user) -> int | None:
     """Schlüssel fürs Repo: nur einer, den ``user`` selbst nutzen darf (0 = keiner)."""
     if not secret_id:
@@ -238,6 +252,8 @@ async def create_team(body: CreateTeam, user=Depends(require_auth), db: AsyncSes
         _repo_setzen(team, body.repo, user)
     if body.repo_secret_id:
         team.repo_secret_id = await _repo_schluessel(db, body.repo_secret_id, user)
+    if body.angebundene_brains:
+        team.angebundene_brains = await _brains_setzen(db, team, body.angebundene_brains, user)
     db.add(team)
     await db.commit()
     await db.refresh(team)
@@ -411,6 +427,7 @@ async def update_team(team_id: str, body: UpdateTeam, user=Depends(require_auth)
     if body.geteilt_mit is not None: t.geteilt_mit = await _freigabe(db, body.geteilt_mit, user)
     if body.repo is not None: _repo_setzen(t, body.repo, user)
     if body.repo_secret_id is not None: t.repo_secret_id = await _repo_schluessel(db, body.repo_secret_id, user)
+    if body.angebundene_brains is not None: t.angebundene_brains = await _brains_setzen(db, t, body.angebundene_brains, user)
     if body.name is not None: t.name = body.name
     if body.description is not None: t.description = body.description
     if body.member_agent_ids is not None: t.member_agent_ids = body.member_agent_ids
@@ -630,6 +647,18 @@ async def _besitzer(user, db: AsyncSession) -> str | None:
         ich = await db.get(Agent, str(user.id))
         return ich.user_id if ich else None
     return str(getattr(user, "id", "")) or None
+
+
+async def _person(user, db: AsyncSession):
+    """Der Mensch hinter ``user`` für Brain-Freigaben — bei einem Agenten sein Besitzer,
+    ohne Besitzer ``projekt_wissen.NIEMAND``."""
+    from app.core import projekt_wissen
+    from app.models.user import User
+
+    if not is_agent_principal(user):
+        return user
+    besitzer = await _besitzer(user, db)
+    return (await db.get(User, besitzer) if besitzer else None) or projekt_wissen.NIEMAND
 
 
 async def _fremd_fuer(karte, agent_id: str | None, db: AsyncSession) -> bool:
@@ -1077,13 +1106,21 @@ async def wissen_liste(team_id: str, user=Depends(require_auth_or_agent), db: As
 
 
 @router.get("/{team_id}/wissen/datei")
-async def wissen_lesen(team_id: str, pfad: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
-    from app.core import vault
+async def wissen_lesen(team_id: str, pfad: str, brain: str | None = None, user=Depends(require_auth_or_agent),
+                       db: AsyncSession = Depends(get_db)):
+    """Eine Seite lesen — aus dem Projektwissen oder (``brain``) aus einem angebundenen Second Brain."""
+    from app.core import projekt_wissen, vault
 
     t = await _projekt(team_id, user, db)
-    brain = await _projekt_brain(t, user, db)
     try:
-        return {"pfad": pfad, "inhalt": vault.read_file(brain.host_path, pfad)}
+        if brain:
+            try:
+                inhalt = await projekt_wissen.angebunden_lesen(db, t, brain, pfad, await _person(user, db))
+            except LookupError:
+                raise HTTPException(status_code=404, detail="Dieses Second Brain ist nicht an das Projekt angebunden.")
+            return {"pfad": pfad, "brain": brain, "inhalt": inhalt}
+        eigenes = await _projekt_brain(t, user, db)
+        return {"pfad": pfad, "inhalt": vault.read_file(eigenes.host_path, pfad)}
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Seite nicht gefunden.")
     except ValueError as e:
@@ -1180,7 +1217,10 @@ async def wissen_suchen(team_id: str, frage: str, user=Depends(require_auth_or_a
     frage = frage.strip()[:500]
     if not frage:
         raise HTTPException(status_code=422, detail="Die Suchfrage ist leer.")
-    return {"projekt_id": t.id, "treffer": await projekt_wissen.suchen(db, brain, frage)}
+    # Mit den angebundenen Second Brains; jeder Treffer nennt seine Quelle
+    # (``brain`` = Label, leer fürs Projektwissen) — lesen über ``?brain=``.
+    return {"projekt_id": t.id, "treffer": await projekt_wissen.suchen_mit_angebundenen(
+        db, t, brain, frage, await _person(user, db))}
 
 
 @router.post("/{team_id}/repo/abgleichen")

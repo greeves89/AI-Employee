@@ -1102,6 +1102,16 @@ Jedes Projekt hat eine eigene Wissensablage — Reiter **Wissen**:
 Gleichnamige Dateien werden nicht überschrieben, sondern bekommen eine Nummer („notiz (2).txt“).
 Die Dateien sieht nur, wer das Projekt sieht; Betrachter können sie lesen, aber nichts hochladen.
 
+**Second Brains anbinden** *(seit 1.386.0)*. Im Projekt unter **Bearbeiten → Second Brains anbinden**
+die Wissensablagen anklicken, die das Projekt mitnutzen soll (z. B. die Ablage einer Abteilung mit
+Preisen oder Abläufen). Zur Auswahl stehen nur Second Brains, die du selbst nutzen darfst.
+- Die **Suche** im Reiter Wissen findet dann auch dort; solche Treffer tragen ein violettes Symbol
+  und den Namen des Brains. Ein Klick öffnet die Seite **nur zum Lesen** — geändert wird ein
+  angebundenes Brain nie aus dem Projekt heraus.
+- Die **Agenten** des Projekts sehen dieselben Treffer über ihre Projektsuche und lesen die Seiten
+  ebenso nur lesend; der Projektauftrag nennt die angebundenen Brains.
+- Wird dir der Zugriff auf ein Brain entzogen, fällt es automatisch aus dem Projekt heraus.
+
 ### 6a.7a Projektgespräch *(seit 1.371.0)*
 
 Reiter **Gespräch**: Hier sprechen du und die Agenten des Projekts miteinander.

@@ -4648,6 +4648,8 @@ export interface Team {
   repo_fehler?: string | null;
   /** Schlüssel aus der Schlüsselverwaltung für private Repos. */
   repo_secret_id?: number | null;
+  /** Angebundene Second Brains (Labels): die Projektsuche durchsucht sie mit, nur lesend. */
+  angebundene_brains?: string[];
   /** Monatsbudget des Projekts in USD; leer = keins (setzt der Ersteller unter Finanzen). */
   budget_usd?: number | null;
 }
@@ -4840,6 +4842,7 @@ export async function createTeam(body: {
   geteilt_mit?: string[];
   repo?: string;
   repo_secret_id?: number;
+  angebundene_brains?: string[];
 }): Promise<Team> {
   return fetchJSON(`${getBase()}/teams/`, {
     method: "POST",
@@ -4863,6 +4866,7 @@ export async function updateTeam(
     geteilt_mit?: string[];
     repo?: string;
     repo_secret_id?: number;
+    angebundene_brains?: string[];
   },
 ): Promise<Team> {
   return fetchJSON(`${getBase()}/teams/${id}`, {
@@ -5080,8 +5084,10 @@ export async function projektDateiLoeschen(id: string, name: string): Promise<vo
   if (!res.ok) throw new Error(`Löschen fehlgeschlagen (${res.status})`);
 }
 
-export async function projektWissenLesen(id: string, pfad: string): Promise<{ pfad: string; inhalt: string }> {
-  return fetchJSON(`${getBase()}/teams/${id}/wissen/datei?pfad=${encodeURIComponent(pfad)}`);
+/** Eine Seite lesen — mit ``brain`` aus einem angebundenen Second Brain (nur lesend). */
+export async function projektWissenLesen(id: string, pfad: string, brain?: string | null): Promise<{ pfad: string; inhalt: string }> {
+  const b = brain ? `&brain=${encodeURIComponent(brain)}` : "";
+  return fetchJSON(`${getBase()}/teams/${id}/wissen/datei?pfad=${encodeURIComponent(pfad)}${b}`);
 }
 
 // hinweis: der Server meldet hier, dass die Seite ueber die Grenze gewachsen ist,
@@ -5098,10 +5104,18 @@ export async function projektWissenSchreiben(id: string, pfad: string, inhalt: s
   return fetchJSON(`${getBase()}/teams/${id}/wissen/datei`, { method: "PUT", body: JSON.stringify({ pfad, inhalt }) });
 }
 
+/** Treffer der Projektsuche; ``brain`` gesetzt = aus einem angebundenen Second Brain. */
+export interface WissenTreffer {
+  path: string;
+  snippets: string[];
+  brain?: string | null;
+  quelle?: string;
+}
+
 export async function projektWissenSuchen(
   id: string,
   frage: string,
-): Promise<{ treffer: { path: string; snippets: string[] }[] }> {
+): Promise<{ treffer: WissenTreffer[] }> {
   return fetchJSON(`${getBase()}/teams/${id}/wissen/suche?frage=${encodeURIComponent(frage)}`);
 }
 
