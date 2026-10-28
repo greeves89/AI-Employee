@@ -49,3 +49,6 @@ class Team(Base, TimestampMixin):
     budget_usd: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
     # Slug des Second Brain mit dem Projektwissen (core/projekt_wissen.py).
     wissen_slug: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
+    # Angebundene Second Brains (Labels): die Projektsuche durchsucht sie mit,
+    # gelesen werden sie nur (core/projekt_wissen.angebundene).
+    angebundene_brains: Mapped[list] = mapped_column(JSONB, default=list)

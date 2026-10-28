@@ -179,15 +179,108 @@ async def sicherstellen(db: AsyncSession, team: Team, angelegt_von: str | None =
 
 
 async def auszug(db: AsyncSession, team: Team) -> str:
-    """Anfang von index.md für den Vorspann eines Projektauftrags — leer, wenn es keins gibt."""
+    """Anfang von index.md für den Vorspann eines Projektauftrags — leer, wenn es keins gibt.
+
+    Sind Second Brains angebunden, steht ihr Name dahinter: sonst wüsste der Agent
+    nicht, dass die Projektsuche auch dort nachsieht.
+    """
     brain = await brain_des_projekts(db, team)
+    text = ""
+    if brain is not None:
+        try:
+            text = auszug_text(vault.read_file(brain.host_path, "index.md").strip())[0]
+        except (FileNotFoundError, ValueError, OSError):
+            text = ""
+    namen = [b.name for b in await angebundene(db, team)]
+    if namen:
+        zeile = (f"Angebundene Second Brains (nur lesen, über projekt_wissen_suchen durchsuchbar): "
+                 f"{', '.join(namen)}")
+        text = f"{text}\n\n{zeile}" if text else zeile
+    return text
+
+
+# ─── Angebundene Second Brains ──────────────────────────────────
+
+#: Höchstens so viele Brains je Projekt — jede Suche fragt jedes einzeln ab.
+MAX_ANGEBUNDEN = 10
+
+
+async def _freigabe_des_erstellers(db: AsyncSession, team: Team) -> dict | None | bool:
+    """``None`` = Admin (alles), dict = erlaubte Labels, ``False`` = kein Ersteller."""
+    from app.core.mounts import freigegebene_mounts
+    from app.core.projekt_git import _ersteller
+
+    ersteller = await _ersteller(db, team)
+    if ersteller is None:
+        return False
+    return await freigegebene_mounts(ersteller, db)
+
+
+async def brains_pruefen(db: AsyncSession, team: Team, labels: list[str], user) -> list[str]:
+    """Labels, die ``user`` an dieses Projekt hängen darf — sonst ``ValueError``.
+
+    Nur aktive Brains, die er selbst nutzen darf, nicht das eigene Projektwissen,
+    höchstens ``MAX_ANGEBUNDEN``.
+    """
+    from app.core.mounts import freigegebene_mounts
+
+    sauber = list(dict.fromkeys(str(x).strip() for x in labels if str(x).strip()))
+    if len(sauber) > MAX_ANGEBUNDEN:
+        raise ValueError(f"Höchstens {MAX_ANGEBUNDEN} Second Brains je Projekt.")
+    if not sauber:
+        return []
+    vorhanden = {b.label: b for b in (await db.execute(
+        select(SecondBrain).where(SecondBrain.label.in_(sauber), SecondBrain.is_active.is_(True))
+    )).scalars()}
+    erlaubt = await freigegebene_mounts(user, db)
+    for label in sauber:
+        brain = vorhanden.get(label)
+        if brain is None or (team.wissen_slug and brain.slug == team.wissen_slug):
+            raise ValueError(f"Second Brain „{label}“ gibt es nicht.")
+        if erlaubt is not None and label not in erlaubt:
+            # Wie „gibt es nicht“: ein fremdes Brain soll sich nicht verraten.
+            raise ValueError(f"Second Brain „{label}“ gibt es nicht.")
+    return sauber
+
+
+async def angebundene(db: AsyncSession, team: Team) -> list[SecondBrain]:
+    """Die angebundenen Brains, die der ERSTELLER (noch) nutzen darf.
+
+    Bei jedem Zugriff neu geprüft: wird ihm ein Brain entzogen, fällt es hier
+    heraus, auch wenn es noch am Projekt steht.
+    """
+    labels = [str(x) for x in (getattr(team, "angebundene_brains", None) or []) if x]
+    if not labels:
+        return []
+    erlaubt = await _freigabe_des_erstellers(db, team)
+    if erlaubt is False:
+        return []
+    brains = (await db.execute(
+        select(SecondBrain).where(SecondBrain.label.in_(labels), SecondBrain.is_active.is_(True))
+    )).scalars().all()
+    reihenfolge = {label: i for i, label in enumerate(labels)}
+    return sorted((b for b in brains if erlaubt is None or b.label in erlaubt),
+                  key=lambda b: reihenfolge.get(b.label, 0))
+
+
+async def suchen_mit_angebundenen(db: AsyncSession, team: Team, eigenes: SecondBrain, frage: str) -> list[dict]:
+    """Projektwissen zuerst, dann jedes angebundene Brain — jeder Treffer mit Quelle."""
+    treffer = [{**t, "brain": None, "quelle": "Projektwissen"} for t in await suchen(db, eigenes, frage)]
+    for brain in await angebundene(db, team):
+        try:
+            for t in await suchen(db, brain, frage, limit=5):
+                treffer.append({**t, "brain": brain.label, "quelle": brain.name})
+        except Exception as e:  # noqa: BLE001 — ein kaputtes Brain darf die Projektsuche nicht kippen
+            log.warning("Angebundenes Brain %s nicht durchsuchbar: %s", vault.safe_log(brain.label), vault.safe_log(e))
+    return treffer
+
+
+async def angebunden_lesen(db: AsyncSession, team: Team, label: str, pfad: str) -> str:
+    """Eine Seite aus einem angebundenen Brain — nur lesend, nur aus angebundenen."""
+    brain = next((b for b in await angebundene(db, team) if b.label == label), None)
     if brain is None:
-        return ""
-    try:
-        text = vault.read_file(brain.host_path, "index.md").strip()
-    except (FileNotFoundError, ValueError, OSError):
-        return ""
-    return auszug_text(text)[0]
+        raise LookupError(label)
+    return vault.read_file(brain.host_path, pfad)
 
 
 async def suchen(db: AsyncSession, brain: SecondBrain, frage: str, limit: int = 8) -> list[dict]:

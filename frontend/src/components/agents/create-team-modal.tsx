@@ -46,6 +46,8 @@ export function CreateTeamModal({
   const [repo, setRepo] = useState("");
   const [schluessel, setSchluessel] = useState<number>(0);
   const [schluesselListe, setSchluesselListe] = useState<{ id: number; name: string; key_name: string }[]>([]);
+  const [brains, setBrains] = useState<string[]>([]);
+  const [brainListe, setBrainListe] = useState<{ label: string; name: string; description: string | null }[]>([]);
   const istAdmin = useAuthStore((s) => s.user?.role) === "admin";
   const [nutzer, setNutzer] = useState<{ id: string; name: string; email?: string }[]>([]);
   const [saving, setSaving] = useState(false);
@@ -63,6 +65,7 @@ export function CreateTeamModal({
       setGeteilt(team?.geteilt_mit ?? []);
       setRepo(team?.repo ?? "");
       setSchluessel(team?.repo_secret_id ?? 0);
+      setBrains(team?.angebundene_brains ?? []);
       setError(null);
     }
   }, [open, team]);
@@ -72,7 +75,13 @@ export function CreateTeamModal({
     if (!open || !projekt) return;
     api.getProjektVerzeichnis().then((r) => setNutzer(r.users)).catch(() => setNutzer([]));
     api.listSecrets().then((s) => setSchluesselListe(s.filter((x) => x.is_active))).catch(() => setSchluesselListe([]));
-  }, [open, projekt]);
+    // Nur Brains, die man selbst nutzen darf (dieselbe Regel wie beim Server); das
+    // eigene Projektwissen nicht — es ist ohnehin dabei.
+    api.listSecondBrains(true)
+      .then((l) => setBrainListe(l.filter((b) => !b.label.startsWith("brain-projekt-") || team?.angebundene_brains?.includes(b.label))
+        .map((b) => ({ label: b.label, name: b.name, description: b.description }))))
+      .catch(() => setBrainListe([]));
+  }, [open, projekt, team]);
 
   const toggleMember = (id: string) => {
     setMemberIds((prev) => {
@@ -99,7 +108,7 @@ export function CreateTeamModal({
         member_agent_ids: memberIds,
         lead_agent_id: leadAgentId || null,
         ...(projekt ? { farbe, takt_minuten: takt, geteilt_mit: geteilt } : {}),
-        ...(projekt ? { repo: repo.trim(), repo_secret_id: repo.trim() ? schluessel : 0 } : {}),
+        ...(projekt ? { repo: repo.trim(), repo_secret_id: repo.trim() ? schluessel : 0, angebundene_brains: brains } : {}),
       };
       if (isEdit && team) {
         await api.updateTeam(team.id, body);
@@ -236,6 +245,30 @@ export function CreateTeamModal({
                             </p>
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {projekt && brainListe.length > 0 && (
+                      <div>
+                        <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                          Second Brains anbinden <span className="text-muted-foreground/40">(optional)</span>
+                        </label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {brainListe.map((b) => {
+                            const an = brains.includes(b.label);
+                            return (
+                              <button key={b.label} type="button" title={b.description ?? undefined}
+                                onClick={() => setBrains((alt) => (an ? alt.filter((x) => x !== b.label) : [...alt, b.label]))}
+                                className={cn("inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-colors",
+                                  an ? "border-primary/50 bg-primary/10 text-foreground" : "border-foreground/[0.1] text-muted-foreground hover:text-foreground")}>
+                                {an && <Check className="h-3 w-3" />} {b.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground/50 mt-1">
+                          Die Suche im Projektwissen — auch die der Agenten — sieht dann dort mit nach. Gelesen wird nur, nichts verändert.
+                        </p>
                       </div>
                     )}
 
