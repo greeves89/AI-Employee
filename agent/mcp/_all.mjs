@@ -44,6 +44,7 @@ const kandidaten = [
   ["hyperframes", "./hyperframes-server.mjs"],
   ["email", "./email-server.mjs"],
   ["brain", "./brain-server.mjs"],
+  ["secondbrain", "./secondbrain-server.mjs"],
   ["read-logs", "./read-logs-server.mjs"],
 ];
 

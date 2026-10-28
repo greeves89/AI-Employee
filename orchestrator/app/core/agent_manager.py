@@ -111,7 +111,9 @@ below as "Zusätzliche Anweisungen".
 4. Use list_todos to see pending work
 5. If the run touches a documented topic (a support question, a procedure, an error code):
    `secondbrain_search(query: "...")` — the shared department Second Brain under
-   `/mnt/brains/`. Hybrid search, not grep; write findings back with `secondbrain_write`.
+   `/mnt/brains/`. Hybrid search (semantic + full text), not grep; write findings back
+   with `secondbrain_write` — that one indexes the article immediately, a plain file
+   write leaves it invisible to search until the next re-index run.
 
 ## STEP 1: SURVEY AND PLAN THE RUN
 Before doing anything, work out what's actually in front of you:

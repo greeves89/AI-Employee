@@ -157,7 +157,11 @@ class DieUmstellungIstAbschaltbarTests(unittest.TestCase):
             main.register_mcp_servers()
             config = json.loads((Path(workspace) / ".mcp.json").read_text())
             self.assertTrue(os.environ["MCP_HTTP_PORT"])
-        self.assertEqual(len(calls), 11)
+        # Nicht hart 11: die Zahl ist die LAENGE der Serverliste plus msgraph
+        # (hier per MSGRAPH_ENABLED eingeschaltet). Eine festgetippte Zahl
+        # faerbt sonst jeden neuen Server rot, ohne einen Fehler zu zeigen —
+        # und ``test_eine_mcp_liste`` haelt beide Listen ohnehin gleich.
+        self.assertEqual(len(calls), len(main._COMBINED_MCP_NAMES) + 1)
         for args in calls:
             self.assertIn("MCP_HTTP_PORT=", args)
         self.assertEqual(len(config["mcpServers"]), 6)

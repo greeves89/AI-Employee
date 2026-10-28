@@ -163,7 +163,8 @@ def _start_combined_mcp(port: int) -> bool:
 #: Die eingebauten Server, die der gemeinsame Prozess (#638) unter
 #: http://127.0.0.1:<MCP_HTTP_PORT>/mcp/<name> bereitstellt.
 _COMBINED_MCP_NAMES = ("bash-approval", "memory", "notifications", "orchestrator",
-                       "skills", "desktop", "hyperframes", "email", "brain", "read-logs")
+                       "skills", "desktop", "hyperframes", "email", "brain", "secondbrain",
+                       "read-logs")
 
 
 def register_mcp_servers() -> None:
@@ -275,6 +276,18 @@ def register_mcp_servers() -> None:
         "brain": {
             "command": "node",
             "args": ["/opt/mcp/brain-server.mjs"],
+            "env": {
+                "ORCHESTRATOR_URL": settings.orchestrator_url,
+                "AGENT_ID": settings.agent_id,
+                "AGENT_TOKEN": settings.agent_token,
+            },
+        },
+        # Der GETEILTE Abteilungs-Vault (#727) — etwas anderes als "brain"
+        # (die persoenliche Wissensdatenbank des Nutzers). Bis #727 war der am
+        # meisten genutzte Agententyp der einzige ohne Zugang zum Abteilungswissen.
+        "secondbrain": {
+            "command": "node",
+            "args": ["/opt/mcp/secondbrain-server.mjs"],
             "env": {
                 "ORCHESTRATOR_URL": settings.orchestrator_url,
                 "AGENT_ID": settings.agent_id,
