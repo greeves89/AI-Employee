@@ -2591,6 +2591,14 @@ möglich; wie bei *Shell* sind die risikoreichen Fähigkeiten standardmäßig **
 Agent listet die verfügbaren **Bridge-Sessions**, macht Screenshots deines Bildschirms und
 führt — im Rahmen deiner Freigaben — Aktionen aus.
 
+**Mehrere Monitore.** Hast du mehr als einen Bildschirm angeschlossen, bekommt der Agent bei
+jedem Screenshot **alle** Monitore zu sehen, jeden als eigenes Bild mit seiner Nummer (1 ist der
+Hauptbildschirm). Klickt er auf einem anderen Monitor, nennt er dessen Nummer mit, damit der
+Klick dort landet. Willst du, dass er nur auf einen Monitor schaut, sag es ihm („schau nur auf
+Bildschirm 2“). Dafür braucht es die Bridge ab Version 1.382.0; eine ältere Bridge liefert wie
+bisher nur den Hauptbildschirm. Die Live-Ansicht auf der Agentenseite zeigt weiterhin den
+Hauptbildschirm.
+
 **Was der Agent innerhalb einer Anwendung kann.** Er bedient sie wie ein Mensch: App
 öffnen → das gesuchte Element **finden** → klicken → tippen → **nachsehen**, ob es geklappt
 hat. Elemente findet er über die **Bedienungshilfen** des Betriebssystems, nicht über

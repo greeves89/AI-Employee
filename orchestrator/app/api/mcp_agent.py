@@ -565,7 +565,10 @@ async def _call_tool(name: str, args: dict, agent: Agent, db: AsyncSession, redi
 
         import asyncio as _asyncio
         cmd_id = uuid.uuid4().hex[:8]
-        params = args.get("params", {})
+        params = dict(args.get("params") or {})
+        if action == "screenshot" and not params.get("display"):
+            # Ohne Wahl alle Monitore (eine aeltere Bridge ignoriert den Wunsch).
+            params["alle_bildschirme"] = True
         command_msg = json.dumps({"type": "command", "id": cmd_id, "command": {"action": action, "params": params}})
         session["action_count"] = session.get("action_count", 0) + 1
         session.setdefault("audit_log", []).append({"cmd_id": cmd_id, "action": action, "params": params, "caller": str(agent.id), "ts": __import__("time").time()})
@@ -578,7 +581,20 @@ async def _call_tool(name: str, args: dict, agent: Agent, db: AsyncSession, redi
                 b64 = result.get("screenshot_b64", "")
                 if not b64:
                     return _tool_result("Error: screenshot did not return image data", is_error=True)
-                return {"content": [{"type": "image", "data": b64, "mimeType": "image/png"}]}
+                weitere = [w for w in (result.get("weitere") or []) if w.get("screenshot_b64")]
+                if not weitere:
+                    return {"content": [{"type": "image", "data": b64, "mimeType": "image/png"}]}
+                # Mehrere Monitore: jedes Bild mit seiner Nummer, damit Klicks
+                # das richtige ``display`` mitgeben.
+                inhalt = [{"type": "text", "text": (
+                    f"The user has {1 + len(weitere)} displays, one image each. Pass "
+                    "params.display=N when clicking, moving, scrolling or dragging on display N."
+                )}, {"type": "text", "text": f"Display {result.get('display', 1)}:"},
+                    {"type": "image", "data": b64, "mimeType": "image/png"}]
+                for w in weitere:
+                    inhalt.append({"type": "text", "text": f"Display {w.get('display')}:"})
+                    inhalt.append({"type": "image", "data": w["screenshot_b64"], "mimeType": "image/png"})
+                return {"content": inhalt}
             return _tool_result(json.dumps(result, ensure_ascii=False))
         except _asyncio.TimeoutError:
             session["pending_results"].pop(cmd_id, None)
