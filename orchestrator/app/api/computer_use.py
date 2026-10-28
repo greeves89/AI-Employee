@@ -1065,8 +1065,14 @@ def _require_owned_session(session_id: str, user) -> dict:
     return session
 
 
-async def _send_bridge_action(session: dict, action: str, timeout: float = 10.0) -> dict:
-    """Send a bare action to the bridge and await its result."""
+async def _send_bridge_action(session: dict, action: str, timeout: float = 10.0,
+                              params: dict | None = None) -> dict:
+    """Send an action to the bridge and await its result.
+
+    Für Aktionen der Plattform selbst (Aufnahme, Bridge-Wissen) — NICHT für
+    Agenten: deren Befehle laufen über ``dispatch_bridge_command`` mit
+    Capability-Gruppen, Scope-Listen und Aktionsbudget.
+    """
     if not session["bridge_connected"] or not session["bridge_ws"]:
         raise HTTPException(status_code=503, detail="Bridge not connected")
     cmd_id = uuid.uuid4().hex[:8]
@@ -1074,7 +1080,7 @@ async def _send_bridge_action(session: dict, action: str, timeout: float = 10.0)
     session["pending_results"][cmd_id] = future
     try:
         await session["bridge_ws"].send_text(json.dumps({
-            "type": "command", "id": cmd_id, "command": {"action": action, "params": {}},
+            "type": "command", "id": cmd_id, "command": {"action": action, "params": params or {}},
         }))
         return await asyncio.wait_for(future, timeout=timeout)
     except asyncio.TimeoutError:
@@ -1525,6 +1531,53 @@ async def _vorschlag_antwort(session_id: str, session: dict, msg: dict) -> None:
 
 async def _auftrag_ausfuehren(session_id: str, vorschlag: dict, zusatz: str) -> None:
     from app.core import bridge_mitdenker as bm
+
+    anzeige = f"Ja zu „{vorschlag['angebot']}“" + (f" — {zusatz}" if zusatz else "")
+    await _lauf_ausfuehren(session_id, vorschlag["agent_id"], bm.auftrag_text(
+        vorschlag["auftrag"], vorschlag["angebot"], vorschlag["app"], vorschlag["titel"], zusatz),
+        anzeige=anzeige)
+
+
+#: Gespraech im Chat des Agenten, in dem alles aus dem Overlay steht.
+BRIDGE_GESPRAECH = "bridge"
+BRIDGE_GESPRAECH_TITEL = "Bridge (Overlay)"
+
+
+async def _in_den_verlauf(agent_id: str, message_id: str, anzeige: str) -> None:
+    """Eine Overlay-Nachricht in den Chat des Agenten legen (Gespraech „Bridge“).
+
+    Ohne sie verwarf der Lauscher die Antwort („No user message found“): Overlay
+    und Web-Chat wussten nichts voneinander. Mit ihr steht beides — was der
+    Mensch im Overlay schrieb und was der Agent antwortete — auch im Web-Chat.
+    """
+    from sqlalchemy import select
+
+    from app.db.session import async_session_factory
+    from app.models.chat_session import ChatSession
+    from app.services.chat_persistence import upsert_chat_message
+
+    try:
+        # Das Gespraech ZUERST anlegen: sonst benennt der Speicherweg es nach der
+        # ersten Nachricht, und ein vorhandener Titel wird nie ueberschrieben.
+        async with async_session_factory() as db:
+            zeile = await db.scalar(select(ChatSession).where(
+                ChatSession.agent_id == agent_id, ChatSession.session_id == BRIDGE_GESPRAECH))
+            if zeile is None:
+                db.add(ChatSession(agent_id=agent_id, session_id=BRIDGE_GESPRAECH, title=BRIDGE_GESPRAECH_TITEL))
+                await db.commit()
+        await upsert_chat_message(agent_id, BRIDGE_GESPRAECH, message_id, "user",
+                                  content=anzeige, meta={"source": "bridge"})
+    except Exception:  # noqa: BLE001 — der Auftrag laeuft auch ohne Verlaufseintrag
+        logger.warning("Overlay-Nachricht nicht in den Verlauf gelegt", exc_info=True)
+
+
+async def _lauf_ausfuehren(session_id: str, agent_id: str, text: str, *, anzeige: str) -> None:
+    """Ein Auftrag aus dem Overlay (Ja zu einem Angebot oder Chat-Nachricht):
+    mit aktuellem Bildschirmbild an den Agenten, Ergebnis zurueck ins Overlay.
+
+    Laeuft in der Chat-Sitzung ``bridge`` — weitere Chat-Nachrichten aus dem
+    Overlay landen im selben Kanal und steuern den laufenden Zug (Live-Steering).
+    """
     from app.services.agent_chat_bridge import ask_agent_via_chat
 
     session = _sessions.get(session_id)
@@ -1539,11 +1592,12 @@ async def _auftrag_ausfuehren(session_id: str, vorschlag: dict, zusatz: str) -> 
             frisch = await _refresh_screenshot_cache(session_id)
             if frisch:
                 bilder = [{"media_type": "image/png", "data": frisch}]
+        message_id = uuid.uuid4().hex[:12]
+        await _in_den_verlauf(agent_id, message_id, anzeige)
         antwort = await ask_agent_via_chat(
-            _redis, vorschlag["agent_id"],
-            bm.auftrag_text(vorschlag["auftrag"], vorschlag["angebot"], vorschlag["app"],
-                            vorschlag["titel"], zusatz),
-            source="bridge", timeout=900.0, chat_session_id="bridge", images=bilder,
+            _redis, agent_id, text,
+            source="bridge", timeout=900.0, chat_session_id=BRIDGE_GESPRAECH, images=bilder,
+            message_id=message_id,
         )
         fehler = antwort.startswith("[Fehler")
         await _an_bridge(session, {
@@ -1557,6 +1611,55 @@ async def _auftrag_ausfuehren(session_id: str, vorschlag: dict, zusatz: str) -> 
                                    "text": "Der Auftrag ist fehlgeschlagen."})
     finally:
         session["auftrag_laeuft"] = False
+
+
+async def _overlay_chat(session_id: str, session: dict, msg: dict) -> None:
+    """Chat-Feld im Overlay: der Mensch schreibt seinem Agenten direkt.
+
+    Laeuft ein Auftrag, geht die Nachricht in dessen Kanal (Sitzung ``bridge``)
+    und wird per Live-Steering in den laufenden Zug gefaltet. Sonst startet sie
+    einen neuen Auftrag. Empfaenger ist immer der Agent dieser Sitzung — die
+    Bridge kann keinen anderen nennen.
+    """
+    from app.core import bridge_mitdenker as bm
+    from app.core.chat_auftrag import einreihen
+
+    text = " ".join(str(msg.get("text") or "").split())[:2000]
+    if not text:
+        return
+    if session.get("gestoppt"):
+        await _an_bridge(session, {"type": "overlay_status", "zustand": "gestoppt",
+                                   "text": "Gestoppt — erst freigeben, dann kann der Agent weitermachen."})
+        return
+    if session.get("auftrag_laeuft"):
+        agent_id = session.get("auftrag_agent") or session.get("agent_id")
+        if not agent_id or _redis is None or _redis.client is None:
+            return
+        message_id = uuid.uuid4().hex[:12]
+        await _in_den_verlauf(str(agent_id), message_id, text)
+        ergebnis = await einreihen(_redis.client, str(agent_id), {
+            "id": message_id, "text": bm.chat_text(text, laufender_auftrag=True),
+            "model": None, "images": [], "source": "bridge", "chat_session_id": BRIDGE_GESPRAECH,
+        })
+        await _an_bridge(session, {
+            "type": "overlay_status", "zustand": "arbeitet",
+            "schritte": int((session.get("lauf") or {}).get("schritte") or 0),
+            "text": "Hinweis ist beim Agenten — er arbeitet ihn ein." if ergebnis.eingereiht
+                    else (ergebnis.hinweis or "Der Hinweis kam nicht an."),
+        })
+        return
+    agent_id = session.get("agent_id")
+    if not agent_id:
+        await _an_bridge(session, {"type": "overlay_status", "zustand": "hinweis",
+                                   "text": "Diesem Rechner ist noch kein Agent zugeordnet — in der Bridge einen wählen."})
+        return
+    session["auftrag_laeuft"] = True
+    session["auftrag_agent"] = str(agent_id)
+    session["lauf"] = {"schritte": 0, "zuletzt": time.time()}
+    await _an_bridge(session, {"type": "overlay_status", "zustand": "arbeitet", "schritte": 0,
+                               "text": "Agent übernimmt …"})
+    _hintergrund(session, _lauf_ausfuehren(session_id, str(agent_id),
+                                           bm.chat_text(text, laufender_auftrag=False), anzeige=text))
 
 
 async def _overlay_stopp(session_id: str, session: dict) -> None:
@@ -1761,6 +1864,7 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
             pass
 
     ping_task = asyncio.create_task(_ping_loop())
+    _bridge_wissen_starten(user_id)
 
     try:
         while True:
@@ -1812,6 +1916,9 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
             elif msg_type == "vorschlag_antwort":
                 await _vorschlag_antwort(session_id, session, msg)
 
+            elif msg_type == "overlay_chat":
+                await _overlay_chat(session_id, session, msg)
+
             elif msg_type == "overlay_stopp":
                 await _overlay_stopp(session_id, session)
 
@@ -1833,6 +1940,52 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
             if not future.done():
                 future.set_exception(RuntimeError("Bridge disconnected"))
         session["pending_results"] = {}
+
+
+def verbundene_bridge(user_id: str) -> dict | None:
+    """Die Sitzung mit verbundener Bridge dieses Nutzers (nur im Speicher)."""
+    for s in _sessions.values():
+        if s.get("user_id") == str(user_id) and s.get("bridge_connected") and s.get("bridge_ws"):
+            return s
+    return None
+
+
+async def bridge_befehl(user_id: str, action: str, params: dict, timeout: float = 30.0) -> dict:
+    """Plattform-Befehl an die verbundene Bridge eines Nutzers (Bridge-Wissen)."""
+    session = verbundene_bridge(user_id)
+    if session is None:
+        raise HTTPException(status_code=409, detail="Die Bridge ist nicht verbunden.")
+    try:
+        return await _send_bridge_action(session, action, timeout=timeout, params=params)
+    except RuntimeError:
+        raise HTTPException(status_code=409, detail="Die Bridge hat die Verbindung getrennt.")
+
+
+def _bridge_wissen_starten(user_id: str) -> None:
+    """Gespiegelte Ordner (#1092) abgleichen, solange eine Bridge des Nutzers verbunden ist.
+
+    Eine Schleife je Nutzer (``bridge_wissen.schleife_starten``); sie spricht
+    jeweils die gerade verbundene Bridge an und endet, wenn keine mehr da ist.
+    """
+    from app.core import bridge_wissen
+
+    async def befehl(action: str, params: dict, timeout: float) -> dict:
+        session = verbundene_bridge(user_id)
+        if session is None:
+            raise bridge_wissen.SyncFehler("Die Bridge hat die Verbindung getrennt.")
+        try:
+            return await _send_bridge_action(session, action, timeout=timeout, params=params)
+        except HTTPException as e:
+            raise bridge_wissen.SyncFehler(str(e.detail))
+        except RuntimeError:
+            raise bridge_wissen.SyncFehler("Die Bridge hat die Verbindung getrennt.")
+
+    try:
+        bridge_wissen.schleife_starten(user_id, befehl, lambda: verbundene_bridge(user_id) is not None)
+        # Wartet eine Schleife noch vom letzten Mal (neu verbunden): gleich loslegen.
+        bridge_wissen.anstossen(user_id)
+    except Exception:  # noqa: BLE001 — der Abgleich darf das Verbinden nie aufhalten
+        logger.warning("Bridge-Wissen nicht gestartet", exc_info=True)
 
 
 async def _authenticate_ws(websocket: WebSocket, token: str) -> str | None:

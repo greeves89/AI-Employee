@@ -22,8 +22,10 @@ from pathlib import Path
 BRIDGE = Path(__file__).resolve().parents[2] / "computer-use-bridge/bridge.py"
 
 # Aktionen, die der Dispatcher zwar kennt, die aber bewusst nicht angekuendigt
-# werden: `ping` ist ein Transport-Detail, kein Koennen.
-NICHT_ANGEKUENDIGT = {"ping"}
+# werden: `ping` ist ein Transport-Detail, kein Koennen; `wissen_*` ruft nur die
+# Plattform selbst auf (gespiegelte Ordner, #1092) — Agenten sollen sie weder
+# sehen noch ausloesen.
+NICHT_ANGEKUENDIGT = {"ping", "wissen_ordner", "wissen_liste", "wissen_datei"}
 
 # Der Dispatcher nimmt fuer dieselbe Faehigkeit zwei Schreibweisen an (der
 # MCP-Weg sendet die kurze, der Codex-Weg die lange). Angekuendigt wird EINE
