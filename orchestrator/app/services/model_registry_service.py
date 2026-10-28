@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from typing import NamedTuple
 
@@ -51,6 +52,9 @@ CACHE_KEY = "model_discovery_cache"
 OVERRIDES_KEY = "model_enabled_overrides"
 
 _ANTHROPIC_MODELS_URL = "https://api.anthropic.com/v1/models"
+# Anthropic meldet aeltere Modelle mit Datum ("claude-haiku-4-5-20251001"). Steht
+# dasselbe Modell ohne Datum schon in der Basisliste, waere es sonst doppelt da.
+_DATUMSENDUNG = re.compile(r"-\d{8}$")
 # _OPENAI_MODELS_URL: nicht mehr benutzt, seit _discover_openai() ein
 # bewusster Leerlauf ist (siehe dort). Absichtlich stehen gelassen als
 # Beleg, wo die Abfrage hin muesste, faende sich ein sicherer Weg,
@@ -313,10 +317,12 @@ async def _anthropic_auth_headers(db: AsyncSession | None = None, user_id: str |
         except Exception:  # noqa: BLE001
             oauth = None
     if oauth:
-        # The personal credential can be either an API key (``sk-ant-…``, saved
+        # The personal credential can be either an API key (``sk-ant-api…``, saved
         # verbatim by the user) or an OAuth token from ``claude setup-token`` /
         # the browser login — same field, no separate flag. Route by shape.
-        if oauth.startswith("sk-ant-"):
+        # OAuth tokens are ``sk-ant-oat…``: matching on ``sk-ant-`` alone sent
+        # them as x-api-key and every discovery ended in 401.
+        if oauth.startswith("sk-ant-api"):
             return {"x-api-key": oauth, "anthropic-version": "2023-06-01"}
         return {
             "authorization": f"Bearer {oauth}",
@@ -542,6 +548,8 @@ async def discover(db: AsyncSession, user_id: str | None = None) -> dict:
     for rec, aus_cache in [*((r, False) for r in found), *((r, True) for r in uebernommen)]:
         key = (rec.get("mode"), rec.get("provider"), rec.get("value"))
         if None in key or key in seed_keys or key in seen:
+            continue
+        if (key[0], key[1], _DATUMSENDUNG.sub("", key[2])) in seed_keys:
             continue
         seen.add(key)
         extras.append(rec)
