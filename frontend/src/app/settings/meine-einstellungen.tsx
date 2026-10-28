@@ -4,12 +4,13 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Cpu, KeyRound, Moon, Palette, Plug, Shield, ShieldCheck, Sun, UserRound, ArrowRight } from "lucide-react";
+import { Cpu, FolderSync, KeyRound, Moon, Palette, Plug, Shield, ShieldCheck, Sun, UserRound, ArrowRight } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { MyAiCredentials } from "@/components/settings/my-ai-credentials";
 import { ZweiFaktorEinstellungen } from "@/components/settings/zwei-faktor";
 import { AvailableModels } from "@/components/settings/available-models";
 import { PushToggle } from "@/components/settings/push-toggle";
+import { BridgeOrdner } from "@/components/settings/bridge-ordner";
 import { useTheme } from "@/components/theme-provider";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
 import { useAuthStore } from "@/lib/auth";
@@ -130,6 +131,10 @@ export function MeineEinstellungenView() {
               <Link href="/integrations" className="text-primary hover:underline">Integrationen</Link>.
             </p>
           </div>
+        </Abschnitt>
+
+        <Abschnitt id="bridge-ordner" titel="Meine Bridge-Ordner" icon={FolderSync}>
+          <BridgeOrdner />
         </Abschnitt>
 
         <Abschnitt id="anzeige" titel="Anzeige" icon={Palette}>

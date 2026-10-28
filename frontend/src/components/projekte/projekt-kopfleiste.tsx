@@ -9,7 +9,7 @@
 import Link from "next/link";
 import { ChevronRight, GitBranch, RefreshCw, Timer, TriangleAlert, Wallet } from "lucide-react";
 import { useMoney } from "@/hooks/use-money";
-import { TAKTE, bis, type ProjektBoard } from "@/lib/projekte";
+import { TAKTE, bis, repoAdresse, repoName, type ProjektBoard } from "@/lib/projekte";
 import { cn, timeAgo } from "@/lib/utils";
 
 export function ProjektKopfleiste({
@@ -78,8 +78,8 @@ export function ProjektKopfleiste({
             <span className={cn("inline-flex min-w-0 items-center gap-1.5", repoFehler && "text-red-600 dark:text-red-400")}
               title={repoFehler ?? "Issues und Pull Requests kommen beim Öffnen des Projekts und regelmäßig von selbst aufs Board (ohne Schlüssel für das Repo alle 30 Minuten, sonst alle 10)."}>
               {repoFehler ? <TriangleAlert className="h-3.5 w-3.5 shrink-0" /> : <GitBranch className="h-3.5 w-3.5 shrink-0" />}
-              <a href={`https://github.com/${repo}`} target="_blank" rel="noopener noreferrer"
-                className="max-w-[12rem] truncate text-foreground hover:underline">{repo}</a>
+              <a href={repoAdresse(repo)} target="_blank" rel="noopener noreferrer"
+                className="max-w-[12rem] truncate text-foreground hover:underline">{repoName(repo)}</a>
               <span className="whitespace-nowrap">{repoAbgleichAt ? timeAgo(repoAbgleichAt) : "noch nie"}</span>
               {onAbgleichen && (
                 <button type="button" onClick={onAbgleichen} disabled={gleichtAb} title="Issues und Pull Requests jetzt holen"

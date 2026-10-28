@@ -1,8 +1,9 @@
 """Teams API — persistent agent teams with a lead, plus task delegation."""
 import logging
+import os
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,6 +35,7 @@ class CreateTeam(BaseModel):
     geteilt_mit: list[str] = []
     repo: str | None = None
     repo_secret_id: int | None = None
+    angebundene_brains: list[str] = []
 
 
 class UpdateTeam(BaseModel):
@@ -50,6 +52,8 @@ class UpdateTeam(BaseModel):
     repo: str | None = None
     # Schlüssel für private Repos (Schlüsselverwaltung); 0 entfernt ihn.
     repo_secret_id: int | None = None
+    # Second Brains (Labels), die die Projektsuche mit durchsucht; [] löst alle.
+    angebundene_brains: list[str] | None = None
 
 
 def _farbe(wert: str | None) -> str | None:
@@ -82,6 +86,7 @@ def _serialize(t: Team) -> dict:
         "repo_abgleich_at": t.repo_abgleich_at.isoformat() if getattr(t, "repo_abgleich_at", None) else None,
         "repo_fehler": getattr(t, "repo_fehler", None),
         "repo_secret_id": getattr(t, "repo_secret_id", None),
+        "angebundene_brains": list(getattr(t, "angebundene_brains", None) or []),
         "budget_usd": getattr(t, "budget_usd", None),
         "art": getattr(t, "art", None) or "projekt",
     }
@@ -182,6 +187,16 @@ def _repo_setzen(t: Team, repo: str, user) -> None:
         t.repo, t.repo_abgleich_at, t.repo_fehler = neu, None, None
 
 
+async def _brains_setzen(db: AsyncSession, t: Team, labels: list[str], user) -> list[str]:
+    """Second Brains anbinden — nur solche, die ``user`` selbst nutzen darf."""
+    from app.core import projekt_wissen
+
+    try:
+        return await projekt_wissen.brains_pruefen(db, t, labels, user)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
 async def _repo_schluessel(db: AsyncSession, secret_id: int, user) -> int | None:
     """Schlüssel fürs Repo: nur einer, den ``user`` selbst nutzen darf (0 = keiner)."""
     if not secret_id:
@@ -237,6 +252,8 @@ async def create_team(body: CreateTeam, user=Depends(require_auth), db: AsyncSes
         _repo_setzen(team, body.repo, user)
     if body.repo_secret_id:
         team.repo_secret_id = await _repo_schluessel(db, body.repo_secret_id, user)
+    if body.angebundene_brains:
+        team.angebundene_brains = await _brains_setzen(db, team, body.angebundene_brains, user)
     db.add(team)
     await db.commit()
     await db.refresh(team)
@@ -410,6 +427,7 @@ async def update_team(team_id: str, body: UpdateTeam, user=Depends(require_auth)
     if body.geteilt_mit is not None: t.geteilt_mit = await _freigabe(db, body.geteilt_mit, user)
     if body.repo is not None: _repo_setzen(t, body.repo, user)
     if body.repo_secret_id is not None: t.repo_secret_id = await _repo_schluessel(db, body.repo_secret_id, user)
+    if body.angebundene_brains is not None: t.angebundene_brains = await _brains_setzen(db, t, body.angebundene_brains, user)
     if body.name is not None: t.name = body.name
     if body.description is not None: t.description = body.description
     if body.member_agent_ids is not None: t.member_agent_ids = body.member_agent_ids
@@ -629,6 +647,18 @@ async def _besitzer(user, db: AsyncSession) -> str | None:
         ich = await db.get(Agent, str(user.id))
         return ich.user_id if ich else None
     return str(getattr(user, "id", "")) or None
+
+
+async def _person(user, db: AsyncSession):
+    """Der Mensch hinter ``user`` für Brain-Freigaben — bei einem Agenten sein Besitzer,
+    ohne Besitzer ``projekt_wissen.NIEMAND``."""
+    from app.core import projekt_wissen
+    from app.models.user import User
+
+    if not is_agent_principal(user):
+        return user
+    besitzer = await _besitzer(user, db)
+    return (await db.get(User, besitzer) if besitzer else None) or projekt_wissen.NIEMAND
 
 
 async def _fremd_fuer(karte, agent_id: str | None, db: AsyncSession) -> bool:
@@ -1051,6 +1081,20 @@ async def _projekt_brain(t: Team, user, db: AsyncSession):
     return brain
 
 
+def _keine_dateiseite(pfad: str, *, lesen: bool = False) -> None:
+    """Seiten unter ``dateien/`` gehören den hochgeladenen Dateien.
+
+    Schreiben: 400 (sonst ersetzte eine Hand-Seite den ausgelesenen Text oder
+    umgekehrt). Verlauf: 404 — gelöschte Dateien sollen dort nicht weiterleben.
+    """
+    from app.core.projekt_dateien import ist_dateiseite
+
+    if ist_dateiseite(pfad):
+        if lesen:
+            raise HTTPException(status_code=404, detail="Für hochgeladene Dateien gibt es keinen Verlauf.")
+        raise HTTPException(status_code=400, detail="„dateien/“ ist für hochgeladene Dateien reserviert — bitte einen anderen Pfad wählen.")
+
+
 @router.get("/{team_id}/wissen")
 async def wissen_liste(team_id: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
     from app.core import vault
@@ -1062,13 +1106,21 @@ async def wissen_liste(team_id: str, user=Depends(require_auth_or_agent), db: As
 
 
 @router.get("/{team_id}/wissen/datei")
-async def wissen_lesen(team_id: str, pfad: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
-    from app.core import vault
+async def wissen_lesen(team_id: str, pfad: str, brain: str | None = None, user=Depends(require_auth_or_agent),
+                       db: AsyncSession = Depends(get_db)):
+    """Eine Seite lesen — aus dem Projektwissen oder (``brain``) aus einem angebundenen Second Brain."""
+    from app.core import projekt_wissen, vault
 
     t = await _projekt(team_id, user, db)
-    brain = await _projekt_brain(t, user, db)
     try:
-        return {"pfad": pfad, "inhalt": vault.read_file(brain.host_path, pfad)}
+        if brain:
+            try:
+                inhalt = await projekt_wissen.angebunden_lesen(db, t, brain, pfad, await _person(user, db))
+            except LookupError:
+                raise HTTPException(status_code=404, detail="Dieses Second Brain ist nicht an das Projekt angebunden.")
+            return {"pfad": pfad, "brain": brain, "inhalt": inhalt}
+        eigenes = await _projekt_brain(t, user, db)
+        return {"pfad": pfad, "inhalt": vault.read_file(eigenes.host_path, pfad)}
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Seite nicht gefunden.")
     except ValueError as e:
@@ -1089,9 +1141,70 @@ async def wissen_schreiben(team_id: str, body: WissenSeite, user=Depends(require
     t = await _projekt(team_id, user, db)
     brain = await _projekt_brain(t, user, db)
     try:
+        _keine_dateiseite(body.pfad)
         return await projekt_wissen.schreiben(db, brain, body.pfad.strip(), body.inhalt)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ─── Projektdateien (core/projekt_dateien) ─────────────────────
+
+
+@router.get("/{team_id}/wissen/dateien")
+async def dateien_liste(team_id: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
+    from app.core import projekt_dateien
+
+    t = await _projekt(team_id, user, db)
+    return {"projekt_id": t.id, "dateien": projekt_dateien.liste(await _projekt_brain(t, user, db)),
+            "max_bytes": projekt_dateien.MAX_BYTES, "endungen": sorted(projekt_dateien.ENDUNGEN)}
+
+
+@router.post("/{team_id}/wissen/dateien", status_code=201)
+async def datei_hochladen(team_id: str, datei: UploadFile = File(...), user=Depends(require_auth),
+                          db: AsyncSession = Depends(get_db)):
+    """Datei ans Projekt hängen: Original zum Herunterladen, Text ins Projektwissen."""
+    from app.core import projekt_dateien
+
+    _kein_betrachter(user)
+    t = await _projekt(team_id, user, db)
+    brain = await _projekt_brain(t, user, db)
+    # Nicht mehr lesen als erlaubt — eine riesige Datei soll nicht erst ganz im Speicher landen.
+    inhalt = await datei.read(projekt_dateien.MAX_BYTES + 1)
+    if len(inhalt) > projekt_dateien.MAX_BYTES:
+        raise HTTPException(status_code=413, detail=f"Die Datei ist größer als {projekt_dateien.MAX_BYTES // 1024 // 1024} MB.")
+    try:
+        return await projekt_dateien.ablegen(db, brain, datei.filename or "", inhalt, wer=_wer(user))
+    except projekt_dateien.DateiFehler as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{team_id}/wissen/dateien/{name}")
+async def datei_herunterladen(team_id: str, name: str, user=Depends(require_auth_or_agent),
+                              db: AsyncSession = Depends(get_db)):
+    from fastapi.responses import FileResponse
+
+    from app.core import projekt_dateien
+
+    t = await _projekt(team_id, user, db)
+    try:
+        pfad = projekt_dateien.pfad_zum_herunterladen(await _projekt_brain(t, user, db), name)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Datei nicht gefunden.")
+    # Immer als Download, nie im Browser dargestellt — die Datei kommt von Nutzern.
+    return FileResponse(pfad, filename=os.path.basename(pfad), media_type="application/octet-stream",
+                        headers={"X-Content-Type-Options": "nosniff"})
+
+
+@router.delete("/{team_id}/wissen/dateien/{name}", status_code=204)
+async def datei_loeschen(team_id: str, name: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    from app.core import projekt_dateien
+
+    _kein_betrachter(user)
+    t = await _projekt(team_id, user, db)
+    try:
+        await projekt_dateien.loeschen(db, await _projekt_brain(t, user, db), name)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Datei nicht gefunden.")
 
 
 @router.get("/{team_id}/wissen/suche")
@@ -1104,7 +1217,10 @@ async def wissen_suchen(team_id: str, frage: str, user=Depends(require_auth_or_a
     frage = frage.strip()[:500]
     if not frage:
         raise HTTPException(status_code=422, detail="Die Suchfrage ist leer.")
-    return {"projekt_id": t.id, "treffer": await projekt_wissen.suchen(db, brain, frage)}
+    # Mit den angebundenen Second Brains; jeder Treffer nennt seine Quelle
+    # (``brain`` = Label, leer fürs Projektwissen) — lesen über ``?brain=``.
+    return {"projekt_id": t.id, "treffer": await projekt_wissen.suchen_mit_angebundenen(
+        db, t, brain, frage, await _person(user, db))}
 
 
 @router.post("/{team_id}/repo/abgleichen")
@@ -1134,7 +1250,9 @@ async def repo_abgleichen(team_id: str, beim_oeffnen: bool = False, user=Depends
     try:
         return await projekt_git.projekt_abgleichen(db, redis, t)
     except projekt_git.GitFehler as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        # 424 statt 502: Cloudflare ersetzt jede 502-Antwort durch seine eigene
+        # Fehlerseite — die Meldung („dem Schlüssel fehlt …“) kam nie an.
+        raise HTTPException(status_code=424, detail=str(e))
 
 
 # ─── Projektgespräch ───────────────────────────────────────────
@@ -1312,6 +1430,7 @@ async def wissen_ergaenzen(team_id: str, body: WissenAbschnitt, user=Depends(req
     brain = await _projekt_brain(t, user, db)
     _, _, name = await _autor(user, db)
     try:
+        _keine_dateiseite(body.pfad)
         return await projekt_wissen.anhaengen(db, brain, body.pfad.strip(), body.abschnitt, wer=name)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1324,6 +1443,7 @@ async def wissen_verlauf(team_id: str, pfad: str, user=Depends(require_auth_or_a
     t = await _projekt(team_id, user, db)
     brain = await _projekt_brain(t, user, db)
     try:
+        _keine_dateiseite(pfad, lesen=True)
         return {"pfad": pfad, "versionen": projekt_wissen.verlauf(brain, pfad)}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1337,6 +1457,7 @@ async def wissen_version(team_id: str, pfad: str, version: str, user=Depends(req
     t = await _projekt(team_id, user, db)
     brain = await _projekt_brain(t, user, db)
     try:
+        _keine_dateiseite(pfad, lesen=True)
         return {"pfad": pfad, "version": version, "inhalt": projekt_wissen.version_lesen(brain, pfad, version)}
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Version nicht gefunden.")
@@ -1359,6 +1480,7 @@ async def wissen_wiederherstellen(team_id: str, body: Wiederherstellen, user=Dep
     t = await _projekt(team_id, user, db)
     brain = await _projekt_brain(t, user, db)
     try:
+        _keine_dateiseite(body.pfad)
         alt = projekt_wissen.version_lesen(brain, body.pfad, body.version)
         _, _, name = await _autor(user, db)
         return await projekt_wissen.schreiben(db, brain, body.pfad, alt, wer=f"{name} (zurückgeholt)")

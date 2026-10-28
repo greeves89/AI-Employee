@@ -36,6 +36,7 @@ from app.models.bereich_aufruf import BereichAufruf
 from app.models.chat_message import ChatMessage
 from app.models.chat_session import ChatSession
 from app.models.custom_role import CustomRole
+from app.models.second_brain import SecondBrain
 from app.models.memory import AgentMemory, AgentMemoryLink, AgentMemoryTag
 from app.models.notification import Notification
 from app.models.schedule import Schedule
@@ -50,7 +51,7 @@ TABELLEN = [
     AgentMemoryTag.__table__, AgentMemoryLink.__table__, AgentTodo.__table__,
     AgentMessage.__table__, AIAccount.__table__, CustomRole.__table__,
     AgentPlanItem.__table__, Notification.__table__, AuditLog.__table__,
-    BereichAufruf.__table__,
+    BereichAufruf.__table__, SecondBrain.__table__,
 ]
 
 

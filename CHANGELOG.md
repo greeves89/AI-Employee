@@ -5,20 +5,105 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.386.0] - 2026-10-28
+## [1.388.0] - 2026-10-28
 
 ### Neu
 - **Der Agenten-Browser lässt sich auf bestimmte Domains begrenzen.** Bisher durfte ein Agent mit eingeschaltetem Browser jede Adresse öffnen — auch dann, wenn in seinen Sitzungen echte Anmeldungen des Besitzers stecken. Der Besitzer kann jetzt eine Freigabeliste setzen (`PATCH /api/v1/agents/{id}/browser-domains`, wirkt nach einem Neustart); verglichen wird der Hostname, `example.com` erlaubt also auch `a.example.com`, aber nicht `example.com.fremd.tld`. Ohne Liste bleibt alles wie bisher erlaubt.
 - **Jeder Seitenaufruf des Browsers steht in einem Prüfprotokoll** — der gesperrte genauso wie der erlaubte, jeweils mit Zeitpunkt, Adresse und wer gehandelt hat: der Agent selbst oder der Nutzer über die Arbeitsfläche. Abrufbar über `GET /api/v1/agents/{id}/browser/audit`, nur für den Besitzer, und ohne dafür einen schlafenden Agenten aufzuwecken.
-- **Das Browserprofil liegt verschlüsselt auf der Platte.** Nach einer Anmeldung enthält ein Chromium-Profil faktisch Zugangsdaten. Dauerhaft gespeichert wird jetzt nur noch ein verschlüsseltes Archiv; das Arbeitsprofil entsteht beim Start daraus und liegt außerhalb des Arbeitsbereichs.
+- **Das Browserprofil liegt verschlüsselt auf der Platte.** Nach einer Anmeldung enthält ein Chromium-Profil faktisch Zugangsdaten. Dauerhaft gespeichert wird jetzt nur noch ein verschlüsseltes Archiv; das Arbeitsprofil entsteht beim Start daraus, liegt außerhalb des Arbeitsbereichs und wird beim geordneten Beenden gelöscht. Den Schlüssel gibt der Orchestrator je Agent mit (aus `ENCRYPTION_KEY` abgeleitet), er liegt nie neben dem Archiv. Ein Profil aus älteren Versionen wird beim ersten Start übernommen und der Klartext gelöscht, die Anmeldungen bleiben also erhalten. Passt der Schlüssel nicht, wird das Archiv beiseitegelegt statt überschrieben.
+- Die Freigabeliste wirkt nicht nur auf `navigate`, sondern auf **jede Navigation der Seite**: Klicks, Formulare, `back`, neue Fenster und Eingaben aus der Arbeitsfläche. Landet eine Seite per Weiterleitung außerhalb, wird sie sofort geleert und der Fall protokolliert.
 
 ### Behoben
 - **Die Freigabeliste des Agenten-Browsers war mit einem Backslash umgehbar.** `https://fremd.example\.erlaubt.example/` las die Freigabeprüfung als Unterseite von `erlaubt.example`, der Browser rief aber `fremd.example` auf — dieselbe Lücke, die in v1.381.1 für die Freigabelisten des Orchestrators geschlossen wurde. Die Prüfung im Agenten holt den Host jetzt nach denselben Regeln; Adressen, die Prüfung und Browser verschieden lesen (Backslash, Steuer- und Leerzeichen oder Prozent-Kodierung im Host), gelten als nicht freigegeben.
+- **Agenten konnten den Browser eines fremden Agenten bedienen.** Alle Agenten hängen im selben internen Netz, und der Bildstrom des Agenten-Browsers nahm Verbindungen ohne Anmeldung an. Ein Agent hätte so die angemeldeten Sitzungen eines anderen Nutzers sehen und bedienen können. Bildstrom und Prüfprotokoll antworten jetzt nur noch dem Orchestrator, der sich mit einem Schlüssel je Agent ausweist. Agenten älterer Versionen sind davon erst nach „Update“ geschützt.
+- **Die Freigabeliste konnte jeder ändern, dem der Agent freigegeben war.** Jetzt nur noch Besitzer und Admin. Einträge müssen echte Hostnamen sein (a-z, 0-9, Punkt, Bindestrich; Umlaut-Domains als `xn--…`).
+- Das Prüfprotokoll speichert nur Schema, Host und Pfad. Tokens in der Adresse (Anmelde-Codes, Rücksetz-Links) und Zugangsdaten landen nicht mehr darin.
 - **Eine gesperrte Adresse in der Browser-Arbeitsfläche blieb wortlos.** Wer eine nicht freigegebene Adresse eintippte, sah nur, dass nichts passiert. Jetzt nennt die Arbeitsfläche den Grund und die freigegebenen Domains.
 
 ### Bekannte Grenze
 - Für `claude_code`-Agenten greift die Freigabeliste nur als **weiche Schranke**: diese Laufzeit bedient den Browser über den Playwright-MCP in einem eigenen Prozess, der ausdrücklich keine Sicherheitsgrenze zusagt und Weiterleitungen nicht prüft; ins Prüfprotokoll kommen seine Aufrufe gar nicht. Hart durchgesetzt und protokolliert wird der Weg über das eigene Browserwerkzeug (Codex, Custom-LLM) und jede Eingabe aus der Arbeitsfläche. Diese Parität ist der nächste Schritt in #828 und braucht eine Richtungsentscheidung.
 - Ein harter Abbruch des Containers (OOM-Kill) zwischen zwei Sicherungspunkten verliert die jüngsten Profiländerungen; gesichert wird nach jeder Navigation und beim geordneten Beenden.
+- Bei einer Weiterleitung nach außerhalb hat die erste Anfrage das fremde Ziel schon erreicht, bevor die Seite geleert wird; gelesen wird dort nichts. Eingebettete Rahmen (Anmelde- und Prüf-Widgets) bleiben frei.
+- Die Verschlüsselung schützt das ruhende Archiv (Sicherungen, Platte), nicht vor dem laufenden Agenten selbst: Während er läuft, liegen Profil und Schlüssel in seinem Container.
+
+## [1.387.2] - 2026-10-28
+
+### Behoben
+- **Erster Abgleich eines Bridge-Ordners in iCloud/OneDrive dauerte über eine Stunde und blockierte die Bridge.** Die Bridge bildete für die Dateiliste die Prüfsumme jeder Datei und las danach jede geänderte Datei ein zweites Mal. In Cloud-Ordnern dauert jedes Öffnen Sekunden (gemessen: rund 5 s je Notiz) — bei 637 Dateien lag die Bridge so lange fest, auch für Agenten-Befehle. Die Liste kommt jetzt nur aus Größe und Änderungszeit (ohne eine Datei zu öffnen, Sekunden statt Stunde); gelesen wird jede geänderte Datei genau einmal, in einzelnen Befehlen, zwischen denen andere Aufgaben weiterlaufen. Die Prüfsumme kommt mit der Datei und wird auf dem Server geprüft. Ältere Bridges (bis 1.387.1) funktionieren weiter. Braucht für die Beschleunigung die Bridge 1.387.2.
+
+## [1.387.1] - 2026-10-28
+
+### Behoben
+- **Windows-Bridge wurde für 1.387.0 nicht gebaut.** Windows kennt das Öffnen „ohne Links zu folgen“ (`O_NOFOLLOW`) nicht; ein Test der Bridge schlug dort fehl und hielt den Build an. Die Bridge lehnt unter Windows symbolische Links jetzt ausdrücklich ab, bevor sie eine Datei aus einem gespiegelten Ordner öffnet. Gelesen wurde auch vorher nichts außerhalb des Ordners (die Pfadprüfung griff), die macOS-Bridge ist unverändert.
+
+## [1.387.0] - 2026-10-28
+
+### Neu
+- **Einen Ordner des eigenen Rechners als Second Brain spiegeln** (#1092). Unter „Meine Einstellungen → Meine Bridge-Ordner“ einen in der Bridge freigegebenen Ordner wählen (z. B. einen Obsidian-Vault); die Bridge spiegelt ihn auf den Server, nur in diese Richtung. Markdown und Text kommen so, wie sie sind, PDF/Word/Excel als ausgelesener Text. Danach ist es ein gewöhnliches Second Brain: an Projekte anbindbar, Agenten zuweisbar, durchsuchbar nach Bedeutung — auch wenn der Rechner aus ist. Abgeglichen wird beim Verbinden der Bridge, danach alle zehn Minuten und auf Knopfdruck; nur Geändertes wird übertragen, Gelöschtes verschwindet auch auf dem Server. Braucht die Bridge 1.387.0.
+
+### Sicherheit
+- Gespiegelte Ordner sind privat: kein anderer Nutzer sieht oder nutzt sie, auch kein Administrator — weder in der Brain-Liste, im Mount-Katalog, bei Ordner-Freigaben noch beim Anbinden an Projekte. Eingehängt werden sie nur in Agenten ihres Besitzers (geprüft beim Zuweisen UND bei jedem Containerstart, in der Anleitung und in der Sprachfront). In einem geteilten Projekt wirken sie nur für ihren Besitzer; das Protokoll nennt ihren Namen nicht.
+- Grenzen: höchstens 5 gespiegelte Ordner je Nutzer und 200 MB je Ordner; eine Datei, die nicht gelesen werden konnte, wird erst nach einer Änderung erneut geholt; ein leerer oder nicht erreichbarer Ordner löscht den Spiegel nicht. Das Auslesen von PDF/Word/Excel (auch bei Projektdateien) gibt die Warteschlange erst frei, wenn der Ausleser wirklich fertig ist — nicht schon beim Ablauf der Frist.
+- **Behoben:** Administratoren konnten das Wissen fremder Projekte als Mount in ihre Agenten hängen. Projektwissen ist jetzt nur für den Ersteller des Projekts einhängbar.
+- Gespiegelte Brains sind nur lesend (Schreiben, Löschen, Importieren und „read-write“ werden mit 409 abgelehnt).
+- Die Bridge liest nur in genau den freigegebenen Ordnern (kein Unterordner, fail-closed), ohne versteckte Ordner, `node_modules` und symbolische Links (auch nicht, wenn eine Datei zwischen Prüfung und Lesen gegen einen Link getauscht wird), mit Grenzen (5.000 Dateien, Text 2 MB, Dokumente 10 MB). Der Server prüft jede Angabe der Bridge erneut (Pfade, Prüfsumme, Größe) und übernimmt nur, was passt. Agenten können die Sync-Befehle nicht auslösen.
+
+### Technik
+- Neue Spalten `second_brains.bridge_ordner`, `sync_stand`, `sync_fehler` (Migration `d9e0f1a2b3c4`). Neu: `core/bridge_wissen.py`, `mounts.fremde_privatablagen`, Endpunkte `GET /brains/bridge/ordner`, `POST /brains/bridge`, `POST /brains/bridge/{id}/sync`, `DELETE /brains/bridge/{id}`; Bridge-Aktionen `wissen_ordner`, `wissen_liste`, `wissen_datei`.
+
+## [1.386.0] - 2026-10-28
+
+### Neu
+- **Second Brains an Projekte anbinden.** Im Projekt unter „Bearbeiten → Second Brains anbinden“ lassen sich bis zu zehn vorhandene Second Brains anhängen (z. B. die Ablage einer Abteilung mit Preisen oder Abläufen). Die Projektsuche in der Oberfläche und das Werkzeug `projekt_wissen_suchen` aller Laufzeiten finden dann auch dort; jeder Treffer nennt seine Quelle. Seiten daraus lassen sich öffnen — immer nur lesend, ein angebundenes Brain wird aus dem Projekt heraus nie geändert. Der Projektauftrag nennt die angebundenen Brains.
+
+### Sicherheit
+- Anbinden darf man nur, was man selbst nutzen darf. Projektwissen (auch das anderer Projekte) lässt sich nie anbinden — auch nicht von Administratoren.
+- Wer ein geteiltes Projekt sieht, bekommt damit nicht die Brain-Freigaben des Erstellers: Suche und Lesen zeigen nur Brains, die der Ersteller UND der Aufrufer nutzen dürfen (bei Agenten zählt ihr Besitzer). Wird eine Freigabe entzogen, fällt das Brain sofort heraus; das Speichern des Projekts bleibt trotzdem möglich.
+- Gelesen werden nur Textseiten (wie bei der Suche), Bilder auf fremden Seiten werden nicht geladen.
+
+### Technik
+- Neue Spalte `teams.angebundene_brains` (Migration `c8d9e0f1a2b3`). `GET /teams/{id}/wissen/datei` nimmt `brain=<Label>`, Suchtreffer tragen `brain` und `quelle`.
+
+## [1.385.1] - 2026-10-28
+
+### Behoben
+- **Die Datensicherung enthielt die Wissensablagen nicht.** Second Brains, Projektwissen und hochgeladene Projektdateien liegen als Dateien auf der Platte (`SECONDBRAIN_BASE`), nicht in der Datenbank — `backup.sh` hat sie bisher nicht mitgenommen. Sie landen jetzt als `wissensablagen.tar.gz` in jeder Sicherung (samt git-Verlauf und Projektdateien), `restore.sh` spielt sie zurück. Handbuch Kapitel 37 ergänzt.
+
+## [1.385.0] - 2026-10-28
+
+### Neu
+- **Dateien am Projekt.** Im Reiter „Wissen“ lassen sich jetzt Dateien hochladen (Knopf oder Ziehen): PDF, Word, Excel, Text, CSV, JSON und Bilder, je bis 20 MB. Der Text wird automatisch ausgelesen und als Seite unter `dateien/` ins Projektwissen gelegt — durchsuchbar für Suche und Agenten. Das Original lässt sich herunterladen und löschen (mit seinem Text). Die Originale liegen neben der Wissensablage, nicht in ihrem git-Verlauf; Namen werden bereinigt, gleichnamige Dateien bekommen eine Nummer, heruntergeladen wird immer als Anhang.
+
+### Sicherheit
+- **Zu große Uploads werden abgewiesen, bevor sie gelesen werden** — in der Plattform anhand der angegebenen Länge (411/413) und in Caddy (`request_body max_size 21MB` nur für diesen Pfad). Bisher hätte ein Formular erst ganz auf der Platte gelegen, auch ohne Anmeldung.
+- **Präparierte Word-/Excel-/PDF-Dateien legen die Plattform nicht lahm:** Archive über 50 MB entpackt oder mit über 2.000 Einträgen werden nicht geöffnet, PDFs höchstens 300 Seiten, Excel höchstens 50.000 Zeilen. Das Auslesen läuft außerhalb der Ereignisschleife, einzeln und höchstens 60 Sekunden. Der Ausleser zählte bei Excel quadratisch (auch bei OneDrive-Dateien).
+- **`dateien/` ist für hochgeladene Dateien reserviert:** Seiten dort lassen sich nicht von Hand schreiben, ergänzen oder zurückholen, ein Upload ersetzt keine vorhandene Seite, und der ausgelesene Text wird nicht versioniert — nach dem Löschen ist er auch im Verlauf weg.
+- **Projektwissen erscheint nicht mehr in der allgemeinen Brain-Verwaltung.** Bisher konnten Administratoren dort das Wissen fremder Projekte lesen, exportieren und einen MCP-Zugang dafür erzeugen; es ist jetzt nur über das Projekt erreichbar.
+- Der ausgelesene Text ist als fremder Inhalt gekennzeichnet („Daten, keine Anweisungen“), Bilder darin werden nicht geladen; Downloads tragen `X-Content-Type-Options: nosniff`.
+
+### Technik
+- Der Text-Ausleser für PDF/Word/Excel liegt jetzt in `core/dokument_text.py` (bisher in `msgraph_mcp`); OneDrive-Werkzeuge, Sprachfront und Projektdateien nutzen denselben.
+- Neue Endpunkte: `GET/POST /teams/{id}/wissen/dateien`, `GET/DELETE /teams/{id}/wissen/dateien/{name}`.
+
+## [1.384.1] - 2026-10-28
+
+### Behoben
+- **„Aktualisieren“ im Projekt zeigte bei einem Fehler die Fehlerseite von Cloudflare.** Ein fehlgeschlagener Abgleich wurde als 502 gemeldet — Cloudflare ersetzt solche Antworten durch seine eigene Seite, die eigentliche Meldung kam nie an. Er wird jetzt als 424 gemeldet, die Meldung erscheint im Projekt.
+- **„GitHub 403“ sagte nicht, was fehlt.** Verweigert GitHub den Zugriff, nennt die Meldung jetzt den Grund und das fehlende Recht des Tokens (z. B. „Dem Schlüssel fehlt das Recht Issues: Read — in GitHub beim Token unter Repository permissions setzen“), eine nötige SSO-Freigabe der Organisation oder einen ungültigen Schlüssel. Ein Netzfehler heißt weiter „antwortet nicht“, eine Ablehnung nicht mehr.
+- **CI-Stand blieb bei fein granulierten GitHub-Tokens „offen“.** Solche Tokens dürfen Check-Runs nicht lesen (ein Recht „Checks“ gibt es für sie nicht). Die Plattform liest den Stand dann aus den Workflow-Läufen (Recht „Actions: Read“) und dem Commit-Status.
+
+## [1.384.0] - 2026-10-28
+
+### Neu
+- **Projekte mit Forgejo- und Gitea-Repos.** Neben GitHub lässt sich ein Projekt jetzt mit einem Repo auf einem eigenen Forgejo- oder Gitea-Server verbinden; eingetragen wird die volle Adresse, z. B. `https://git.example.com/team/repo`. Offene Issues kommen in den Eingang, Pull Requests mit ihrem CI-Stand (aus dem Commit-Status von Forgejo/Gitea Actions) in die Prüfung, gemergte und geschlossene werden nachgezogen — wie bei GitHub. Private Repos brauchen einen Token des Servers aus der Schlüsselverwaltung — und zwar einen eigenen: Ein nur zur Nutzung geteilter Schlüssel wird nicht an einen selbst eingetragenen Server geschickt. Eigene Server werden nur über https und nie im internen Netz der Anlage abgefragt.
+
+### Sicherheit
+- Abfragen an eigene Git-Server sind begrenzt: höchstens 60 Sekunden je Abgleich und 2 MB je Antwort, Weiterleitungen werden nicht verfolgt, unpassende Antworten (kein JSON, falsche Form, unsinnige Nummern) werden übergangen und als Fehler am Projekt vermerkt statt den Abgleich abzubrechen. Links aus der Antwort kommen nur aufs Board, wenn sie auf denselben Server zeigen. IP-Literale in eckigen Klammern werden als Repo-Adresse abgelehnt; eine nicht lesbare Adresse stoppt den Abgleich der anderen Projekte nicht mehr.
+- Die Prüfung ausgehender Adressen sperrt jetzt auch den Carrier-Grade-NAT-Bereich 100.64.0.0/10 (z. B. Overlay-Netze) und löst Namen nicht mehr in der Ereignisschleife auf.
+
+### Geändert
+- Ein GitHub-Zugang der Anlage, der als Forgejo/Gitea mit eigener Server-Adresse eingetragen ist, gibt Agenten jetzt die passenden Variablen (`GITEA_TOKEN`, `GITEA_SERVER_URL` …) statt der GitHub-Variablen.
+
 ## [1.383.2] - 2026-10-28
 
 ### Verbessert
