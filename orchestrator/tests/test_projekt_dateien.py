@@ -7,6 +7,7 @@ als Anhang, Loeschen samt Seite, Betrachter und fremde Projekte.
 """
 
 import io
+import unittest
 import os
 
 from fastapi import HTTPException
@@ -115,3 +116,125 @@ class Dateien(Basis):
             with self.assertRaises(HTTPException) as e:
                 await api.dateien_liste("p2", user=MITGLIED, db=db)
         self.assertEqual(e.exception.status_code, 403)
+
+
+class Sicherheit(Dateien):
+    """Befunde des Sicherheits-Reviews vom 28.10.2026 (vor dem ersten Release)."""
+
+    async def test_seite_einer_datei_ueberschreibt_keine_vorhandene_seite(self):
+        await self._hochladen("erste.txt", b"legt das Projektwissen an")
+        brain = await self._brain()
+        vault.write_file(brain.host_path, "dateien/notiz.txt.md", "von Hand")
+        r = await self._hochladen("notiz.txt", b"hochgeladen")
+        self.assertEqual(r["name"], "notiz (2).txt")
+        self.assertEqual(vault.read_file(brain.host_path, "dateien/notiz.txt.md"), "von Hand")
+
+    async def test_dateien_ordner_ist_fuer_uploads_reserviert(self):
+        await self._hochladen("vertrag.txt", b"Vertragstext")
+        async with self.Session() as db:
+            for pfad in ("dateien/vertrag.txt.md", "./dateien/neu.md", "x/../dateien/neu.md", "dateien"):
+                with self.subTest(pfad=pfad), self.assertRaises(HTTPException) as e:
+                    await api.wissen_schreiben("p1", api.WissenSeite(pfad=pfad, inhalt="ersetzt"), user=MITGLIED, db=db)
+                self.assertEqual(e.exception.status_code, 400)
+            with self.assertRaises(HTTPException) as e:
+                await api.wissen_ergaenzen("p1", api.WissenAbschnitt(pfad="dateien/vertrag.txt.md", abschnitt="x"),
+                                           user=MITGLIED, db=db)
+            self.assertEqual(e.exception.status_code, 400)
+            with self.assertRaises(HTTPException) as e:
+                await api.wissen_verlauf("p1", "dateien/vertrag.txt.md", user=MITGLIED, db=db)
+            self.assertEqual(e.exception.status_code, 404)
+            # Andere Seiten bleiben frei beschreibbar.
+            await api.wissen_schreiben("p1", api.WissenSeite(pfad="dateien-uebersicht.md", inhalt="ok"),
+                                       user=MITGLIED, db=db)
+
+    async def test_geloeschte_datei_lebt_nicht_im_verlauf_weiter(self):
+        import subprocess
+
+        await self._hochladen("geheim.txt", b"Kennwort-Liste")
+        async with self.Session() as db:
+            await api.datei_loeschen("p1", "geheim.txt", user=MITGLIED, db=db)
+        brain = await self._brain()
+        if os.path.isdir(os.path.join(brain.host_path, ".git")):
+            log = subprocess.run(["git", "-C", brain.host_path, "log", "--all", "-p"], capture_output=True, text=True)
+            self.assertNotIn("Kennwort-Liste", log.stdout)
+
+    async def test_herunterladen_mit_nosniff(self):
+        await self._hochladen("seite.txt", b"<script>alert(1)</script>")
+        async with self.Session() as db:
+            antwort = await api.datei_herunterladen("p1", "seite.txt", user=MITGLIED, db=db)
+        self.assertEqual(antwort.headers["x-content-type-options"], "nosniff")
+
+    async def test_fremdes_projekt_nicht_herunterladen_oder_loeschen(self):
+        await self._hochladen("intern.txt", b"intern")
+        async with self.Session() as db:
+            for aufruf in (api.datei_herunterladen, api.datei_loeschen):
+                with self.subTest(aufruf=aufruf.__name__), self.assertRaises(HTTPException) as e:
+                    await aufruf("p2", "intern.txt", user=MITGLIED, db=db)
+                self.assertEqual(e.exception.status_code, 403)
+
+    async def test_meldung_zaehlt_nicht_als_ausgelesener_text(self):
+        r = await self._hochladen("kaputt.docx", b"kein zip")
+        self.assertFalse(r["text_ausgelesen"])
+
+
+class Auslesen(unittest.TestCase):
+    def test_zip_bombe_wird_nicht_entpackt(self):
+        import zipfile
+
+        from app.core import dokument_text
+
+        puffer = io.BytesIO()
+        with zipfile.ZipFile(puffer, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr("word/document.xml", b"0" * (dokument_text.MAX_ENTPACKT + 1))
+        text = dokument_text.text_auslesen(puffer.getvalue(), "bombe.docx", "")
+        self.assertTrue(dokument_text.ist_meldung(text), text)
+        self.assertIn("zu groß", text)
+
+    def test_viele_excel_zeilen_bleiben_schnell(self):
+        import time
+
+        from app.core import dokument_text
+
+        roh = _xlsx([[f"z{i}"] for i in range(20_000)])
+        start = time.monotonic()
+        text = dokument_text.text_auslesen(roh, "lang.xlsx", "", max_chars=10**9)
+        self.assertLess(time.monotonic() - start, 15)
+        self.assertIn("z19999", text)
+
+    def test_ist_meldung(self):
+        from app.core.dokument_text import ist_meldung
+
+        self.assertTrue(ist_meldung("Das PDF ist passwortgeschützt — Inhalt nicht lesbar."))
+        self.assertFalse(ist_meldung("Das PDF ist hier der Inhalt"))
+        self.assertFalse(ist_meldung(None))
+
+
+class Koerpergrenze(unittest.IsolatedAsyncioTestCase):
+    async def _senden(self, pfad, kopf):
+        from app.core.koerper_grenze import KoerperGrenze, regel
+
+        regel("POST", r"^/test/upload$", 100)
+        weiter, antworten = [], []
+
+        async def app(scope, receive, send):
+            weiter.append(scope["path"])
+
+        async def send(nachricht):
+            antworten.append(nachricht)
+
+        await KoerperGrenze(app)({"type": "http", "method": "POST", "path": pfad, "headers": kopf}, None, send)
+        return weiter, (antworten[0]["status"] if antworten else None)
+
+    async def test_zu_gross_ohne_laenge_und_passend(self):
+        self.assertEqual(await self._senden("/test/upload", [(b"content-length", b"101")]), ([], 413))
+        self.assertEqual(await self._senden("/test/upload", []), ([], 411))
+        self.assertEqual(await self._senden("/test/upload", [(b"content-length", b"100")]), (["/test/upload"], None))
+        # Andere Pfade sind nicht betroffen.
+        self.assertEqual(await self._senden("/test/anders", []), (["/test/anders"], None))
+
+    def test_regel_fuer_projektdateien_ist_registriert(self):
+        import app.main  # noqa: F401 — registriert die Regeln
+        from app.core.koerper_grenze import REGELN
+
+        self.assertTrue(any(m == "POST" and muster.match("/api/v1/teams/p1/wissen/dateien")
+                            for m, muster, _ in REGELN))

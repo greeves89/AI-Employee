@@ -235,7 +235,9 @@ export function ProjektWissen({
         ) : inhalt === null ? (
           <div className="flex justify-center py-10 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /></div>
         ) : inhalt ? (
-          <div className="text-sm"><MarkdownContent content={inhalt} /></div>
+          // Text hochgeladener Dateien ist fremder Inhalt: ein eingeschleustes Bild
+          // würde beim Öffnen Daten an fremde Adressen schicken.
+          <div className="text-sm"><MarkdownContent content={inhalt} ohneBilder={pfad.startsWith("dateien/")} /></div>
         ) : (
           <p className="text-sm text-muted-foreground">Die Seite ist leer.</p>
         )}

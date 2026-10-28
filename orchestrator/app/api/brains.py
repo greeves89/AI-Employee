@@ -198,6 +198,25 @@ def _to_response(b: SecondBrain) -> BrainResponse:
     )
 
 
+async def _ist_projektwissen(db: AsyncSession, slug: str) -> bool:
+    from app.models.team import Team
+
+    return (await db.scalar(select(Team.id).where(Team.wissen_slug == slug).limit(1))) is not None
+
+
+async def _brain_oder_404(db: AsyncSession, brain_id: int) -> SecondBrain:
+    """Das Brain — 404, wenn es fehlt ODER das Wissen eines Projekts ist.
+
+    Projektwissen (samt ausgelesenem Text hochgeladener Dateien) sieht nur, wer das
+    Projekt sieht — über die Projektseite. Die allgemeine Brain-Verwaltung gab es
+    bis 1.385.0 jedem Administrator preis (Sicherheits-Review 28.10.2026).
+    """
+    brain = await db.get(SecondBrain, brain_id)
+    if not brain or await _ist_projektwissen(db, brain.slug):
+        raise HTTPException(status_code=404, detail="Brain not found")
+    return brain
+
+
 @router.get("/", response_model=list[BrainResponse])
 async def list_brains(
     active_only: bool = False,
@@ -214,7 +233,11 @@ async def list_brains(
     stmt = select(SecondBrain).order_by(SecondBrain.name)
     if active_only:
         stmt = stmt.where(SecondBrain.is_active.is_(True))
-    rows = (await db.execute(stmt)).scalars().all()
+    from app.models.team import Team
+
+    # Projektwissen gehört zur Projektseite, nicht in die allgemeine Liste.
+    projekt_slugs = set((await db.execute(select(Team.wissen_slug).where(Team.wissen_slug.is_not(None)))).scalars())
+    rows = [b for b in (await db.execute(stmt)).scalars().all() if b.slug not in projekt_slugs]
     erlaubt = await freigegebene_mounts(user, db)
     if erlaubt is not None:
         rows = [b for b in rows if b.label in erlaubt]
@@ -268,9 +291,7 @@ async def update_brain(
 ):
     """Update a Second Brain (admin only). Slug/path are immutable once created."""
     _require_admin(user)
-    brain = await db.get(SecondBrain, brain_id)
-    if not brain:
-        raise HTTPException(status_code=404, detail="Brain not found")
+    brain = await _brain_oder_404(db, brain_id)
     if body.name is not None:
         brain.name = body.name.strip()
     if body.default_mode is not None:
@@ -296,9 +317,7 @@ async def delete_brain(
     """Delete a Second Brain (admin only). The vault folder on disk is KEPT
     (data is never destroyed); only the mount registration is removed."""
     _require_admin(user)
-    brain = await db.get(SecondBrain, brain_id)
-    if not brain:
-        raise HTTPException(status_code=404, detail="Brain not found")
+    brain = await _brain_oder_404(db, brain_id)
     await _audit(db, AuditEventType.BRAIN_DELETED, brain, user.id)
     await db.delete(brain)
     await db.commit()
@@ -325,9 +344,7 @@ async def brain_mcp_generate_token(
     can never be read back. Calling again rotates it (old token stops working).
     """
     _require_admin(user)
-    brain = await db.get(SecondBrain, brain_id)
-    if not brain:
-        raise HTTPException(status_code=404, detail="Brain not found")
+    brain = await _brain_oder_404(db, brain_id)
     token = secrets.token_urlsafe(32)
     brain.mcp_token_encrypted = encrypt_token(token)
     brain.mcp_enabled = True
@@ -345,9 +362,7 @@ async def brain_mcp_disable(
 ):
     """Disable MCP access for this brain and wipe its token."""
     _require_admin(user)
-    brain = await db.get(SecondBrain, brain_id)
-    if not brain:
-        raise HTTPException(status_code=404, detail="Brain not found")
+    brain = await _brain_oder_404(db, brain_id)
     brain.mcp_enabled = False
     brain.mcp_token_encrypted = None
     await db.commit()
@@ -375,9 +390,7 @@ class BrainFileWrite(BaseModel):
 async def brain_tree(brain_id: int, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     """Flat, sorted list of folders + files in the vault (excluding .git)."""
     _require_admin(user)
-    brain = await db.get(SecondBrain, brain_id)
-    if not brain:
-        raise HTTPException(status_code=404, detail="Brain not found")
+    brain = await _brain_oder_404(db, brain_id)
     base = os.path.realpath(brain.host_path)
     entries: list[dict] = []
     if os.path.isdir(base):
@@ -401,9 +414,7 @@ async def brain_graph(brain_id: int, user=Depends(require_auth), db: AsyncSessio
     them. Powers the 3D knowledge-graph view in the vault browser.
     """
     _require_admin(user)
-    brain = await db.get(SecondBrain, brain_id)
-    if not brain:
-        raise HTTPException(status_code=404, detail="Brain not found")
+    brain = await _brain_oder_404(db, brain_id)
     graph = vault.build_graph(brain.host_path)
     graph["brain"] = {"id": brain.id, "name": brain.name, "slug": brain.slug}
     return graph
@@ -412,9 +423,7 @@ async def brain_graph(brain_id: int, user=Depends(require_auth), db: AsyncSessio
 @router.get("/{brain_id}/file")
 async def brain_read_file(brain_id: int, path: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     _require_admin(user)
-    brain = await db.get(SecondBrain, brain_id)
-    if not brain:
-        raise HTTPException(status_code=404, detail="Brain not found")
+    brain = await _brain_oder_404(db, brain_id)
     target = _vault_path(brain, path)
     if not os.path.isfile(target):
         raise HTTPException(status_code=404, detail="File not found")
@@ -428,9 +437,7 @@ async def brain_read_file(brain_id: int, path: str, user=Depends(require_auth), 
 @router.put("/{brain_id}/file")
 async def brain_write_file(brain_id: int, body: BrainFileWrite, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     _require_admin(user)
-    brain = await db.get(SecondBrain, brain_id)
-    if not brain:
-        raise HTTPException(status_code=404, detail="Brain not found")
+    brain = await _brain_oder_404(db, brain_id)
     target = _vault_path(brain, body.path)
     if target == os.path.realpath(brain.host_path) or os.path.isdir(target):
         raise HTTPException(status_code=400, detail="path must be a file")
@@ -451,9 +458,7 @@ async def brain_write_file(brain_id: int, body: BrainFileWrite, user=Depends(req
 @router.delete("/{brain_id}/file")
 async def brain_delete_file(brain_id: int, path: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     _require_admin(user)
-    brain = await db.get(SecondBrain, brain_id)
-    if not brain:
-        raise HTTPException(status_code=404, detail="Brain not found")
+    brain = await _brain_oder_404(db, brain_id)
     target = _vault_path(brain, path)
     if os.path.isfile(target):
         os.remove(target)
@@ -481,9 +486,7 @@ async def brain_export(brain_id: int, user=Depends(require_auth), db: AsyncSessi
     from fastapi.responses import Response
 
     _require_admin(user)
-    brain = await db.get(SecondBrain, brain_id)
-    if not brain:
-        raise HTTPException(status_code=404, detail="Brain not found")
+    brain = await _brain_oder_404(db, brain_id)
 
     puffer = io.BytesIO()
     anzahl = vault_transfer.exportiere_zip(brain.host_path, puffer)
@@ -517,9 +520,7 @@ async def brain_import(
     import zipfile
 
     _require_admin(user)
-    brain = await db.get(SecondBrain, brain_id)
-    if not brain:
-        raise HTTPException(status_code=404, detail="Brain not found")
+    brain = await _brain_oder_404(db, brain_id)
 
     roh = await file.read()
     if len(roh) > vault_transfer.MAX_ARCHIV_BYTES:
@@ -557,8 +558,6 @@ async def brain_reindex(brain_id: int, user=Depends(require_auth), db: AsyncSess
     to backfill an existing vault the first time.
     """
     _require_admin(user)
-    brain = await db.get(SecondBrain, brain_id)
-    if not brain:
-        raise HTTPException(status_code=404, detail="Brain not found")
+    brain = await _brain_oder_404(db, brain_id)
     stats = await vault_indexer.reindex_vault(db, brain.label, brain.host_path)
     return {"ok": True, "brain": brain.slug, **stats}

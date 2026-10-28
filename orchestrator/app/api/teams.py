@@ -1052,6 +1052,20 @@ async def _projekt_brain(t: Team, user, db: AsyncSession):
     return brain
 
 
+def _keine_dateiseite(pfad: str, *, lesen: bool = False) -> None:
+    """Seiten unter ``dateien/`` gehören den hochgeladenen Dateien.
+
+    Schreiben: 400 (sonst ersetzte eine Hand-Seite den ausgelesenen Text oder
+    umgekehrt). Verlauf: 404 — gelöschte Dateien sollen dort nicht weiterleben.
+    """
+    from app.core.projekt_dateien import ist_dateiseite
+
+    if ist_dateiseite(pfad):
+        if lesen:
+            raise HTTPException(status_code=404, detail="Für hochgeladene Dateien gibt es keinen Verlauf.")
+        raise HTTPException(status_code=400, detail="„dateien/“ ist für hochgeladene Dateien reserviert — bitte einen anderen Pfad wählen.")
+
+
 @router.get("/{team_id}/wissen")
 async def wissen_liste(team_id: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
     from app.core import vault
@@ -1090,6 +1104,7 @@ async def wissen_schreiben(team_id: str, body: WissenSeite, user=Depends(require
     t = await _projekt(team_id, user, db)
     brain = await _projekt_brain(t, user, db)
     try:
+        _keine_dateiseite(body.pfad)
         return await projekt_wissen.schreiben(db, brain, body.pfad.strip(), body.inhalt)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1375,6 +1390,7 @@ async def wissen_ergaenzen(team_id: str, body: WissenAbschnitt, user=Depends(req
     brain = await _projekt_brain(t, user, db)
     _, _, name = await _autor(user, db)
     try:
+        _keine_dateiseite(body.pfad)
         return await projekt_wissen.anhaengen(db, brain, body.pfad.strip(), body.abschnitt, wer=name)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1387,6 +1403,7 @@ async def wissen_verlauf(team_id: str, pfad: str, user=Depends(require_auth_or_a
     t = await _projekt(team_id, user, db)
     brain = await _projekt_brain(t, user, db)
     try:
+        _keine_dateiseite(pfad, lesen=True)
         return {"pfad": pfad, "versionen": projekt_wissen.verlauf(brain, pfad)}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1400,6 +1417,7 @@ async def wissen_version(team_id: str, pfad: str, version: str, user=Depends(req
     t = await _projekt(team_id, user, db)
     brain = await _projekt_brain(t, user, db)
     try:
+        _keine_dateiseite(pfad, lesen=True)
         return {"pfad": pfad, "version": version, "inhalt": projekt_wissen.version_lesen(brain, pfad, version)}
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Version nicht gefunden.")
@@ -1422,6 +1440,7 @@ async def wissen_wiederherstellen(team_id: str, body: Wiederherstellen, user=Dep
     t = await _projekt(team_id, user, db)
     brain = await _projekt_brain(t, user, db)
     try:
+        _keine_dateiseite(body.pfad)
         alt = projekt_wissen.version_lesen(brain, body.pfad, body.version)
         _, _, name = await _autor(user, db)
         return await projekt_wissen.schreiben(db, brain, body.pfad, alt, wer=f"{name} (zurückgeholt)")
