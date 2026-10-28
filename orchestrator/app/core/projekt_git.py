@@ -32,6 +32,7 @@ internen Netz abgefragt (``url_guard.check_outbound_url``).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from datetime import datetime, timezone
@@ -55,6 +56,8 @@ MAX_PRS = 30
 TEXT_ZEICHEN = 8000
 TAKT_SEKUNDEN = 600
 ANONYM_ABSTAND_SEKUNDEN = 1800
+#: Hoechstdauer eines Abgleichs je Projekt (Scheduler, Oeffnen, Knopf).
+ABGLEICH_FRIST_SEKUNDEN = 60
 OEFFNEN_ABSTAND_SEKUNDEN = 60
 OEFFNEN_ABSTAND_ANONYM_SEKUNDEN = 300
 
@@ -75,10 +78,19 @@ class RepoZiel(NamedTuple):
 
 
 def repo_ziel(repo: str) -> RepoZiel:
-    """GitHub-Repos stehen als ``owner/name``, Forgejo/Gitea als volle Adresse."""
+    """GitHub-Repos stehen als ``owner/name``, Forgejo/Gitea als volle Adresse.
+
+    Eine nicht lesbare Adresse (Altbestand, Handarbeit in der Datenbank) wird
+    ``ungueltig`` — sie darf den Abgleich der anderen Projekte nicht abbrechen.
+    """
     if repo.startswith("https://"):
-        teile = urlsplit(repo)
-        port = f":{teile.port}" if teile.port else ""
+        try:
+            teile = urlsplit(repo)
+            port = f":{teile.port}" if teile.port else ""
+        except ValueError:
+            return RepoZiel("ungueltig", None, "")
+        if not teile.hostname or ":" in teile.hostname:
+            return RepoZiel("ungueltig", None, "")
         return RepoZiel("forgejo", f"https://{teile.hostname}{port}", teile.path.strip("/"))
     return RepoZiel("github", None, repo)
 
@@ -102,6 +114,10 @@ def repo_pruefen(repo: str | None) -> str | None:
                 raise ValueError("Eigene Git-Server bitte über https angeben.")
             if not host or teile.username or teile.password or teile.query or teile.fragment:
                 raise ValueError("Bitte die Adresse des Repos angeben, z. B. https://git.example.com/team/repo.")
+            # Keine IPv6-Literale: als ``https://::1/…`` gespeichert waere die
+            # Adresse danach nicht mehr lesbar.
+            if ":" in host or "[" in teile.netloc:
+                raise ValueError("Bitte einen Servernamen angeben, keine IP-Adresse in eckigen Klammern.")
             if not REPO_RE.match(pfad) or ".." in pfad:
                 raise ValueError("Die Adresse muss auf owner/name enden, z. B. https://git.example.com/team/repo.")
             port = f":{teile.port}" if teile.port else ""
@@ -158,6 +174,8 @@ async def zugang(db: AsyncSession, redis, team: Team | None = None):
     from app.services.oauth_service import OAuthService
 
     ziel = repo_ziel(team.repo) if team is not None and team.repo else None
+    if ziel is not None and ziel.art == "ungueltig":
+        raise GitFehler("Die Repo-Adresse ist nicht lesbar — bitte im Projekt neu eintragen.")
     if ziel is not None and ziel.art == "forgejo":
         # Eigener Git-Server: nur der Schluessel des Projekts oder anonym — der
         # GitHub-Zugang der Anlage gilt dort nicht. Vor jeder Abfrage pruefen,
@@ -165,7 +183,8 @@ async def zugang(db: AsyncSession, redis, team: Team | None = None):
         from app.core.githost.forgejo import ForgejoHostProvider
         from app.core.url_guard import check_outbound_url
 
-        erlaubt, grund = check_outbound_url(ziel.basis or "")
+        # Namensaufloesung im Thread: sie blockiert sonst die Ereignisschleife.
+        erlaubt, grund = await asyncio.to_thread(check_outbound_url, ziel.basis or "")
         if not erlaubt:
             raise GitFehler(f"Server {ziel.basis} wird nicht abgefragt: {grund}.")
         return (await schluessel_token(db, team, nur_eigener=True)) or "", ForgejoHostProvider(ziel.basis or "")
@@ -187,6 +206,25 @@ async def zugang(db: AsyncSession, redis, team: Team | None = None):
     return token, anbieter
 
 
+def _nummer(eintrag: dict) -> int | None:
+    """Issue-/PR-Nummer — None, wenn der Server etwas anderes liefert."""
+    nr = eintrag.get("number")
+    return nr if isinstance(nr, int) and not isinstance(nr, bool) and 0 < nr < 10**9 else None
+
+
+def _sichere_url(wert, anbieter) -> str | None:
+    """Link aus der Antwort des Servers — nur https, ohne Leerraum, kurz, und bei
+    eigenen Servern nur auf denselben Server. Er landet im Board und im Auftrag
+    an den Agenten; ein fremder Server darf dort nichts unterbringen."""
+    if not isinstance(wert, str) or len(wert) > 300 or not wert.startswith("https://") \
+            or any(z.isspace() for z in wert):
+        return None
+    basis = getattr(anbieter, "base_url", None)
+    if basis and not wert.startswith(basis + "/"):
+        return None
+    return wert
+
+
 def _labels(issue: dict) -> list[str]:
     return [str(lbl.get("name")) for lbl in issue.get("labels") or [] if isinstance(lbl, dict) and lbl.get("name")][:20]
 
@@ -195,6 +233,7 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
     """Ein Projekt mit seinem Repo abgleichen. Der Aufrufer committet."""
     repo = repo_ziel(team.repo).pfad
     server = getattr(anbieter, "anzeigename", "GitHub")
+    herkunft = "github" if server == "GitHub" else server
     try:
         issues = await anbieter.list_open_issues(client, token, repo, MAX_ISSUES)
         pulls = await anbieter.list_open_pulls(client, token, repo, MAX_PRS)
@@ -218,14 +257,17 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
     # Issues
     offen_issues = set()
     for issue in issues:
-        nr = int(issue["number"])
+        nr = _nummer(issue)
+        if nr is None:
+            continue
         offen_issues.add(nr)
         titel = str(issue.get("title") or f"Issue #{nr}")[:300]
         text = str(issue.get("body") or "")[:TEXT_ZEICHEN]
         karte = vorhanden.get(("issue", nr))
         if karte is None:
             karte = projekte.neue_karte(team.id, titel, text, spalte="eingang", quelle="issue", extern_nr=nr,
-                                        url=issue.get("html_url"), labels=_labels(issue), von=f"github:{repo}")
+                                        url=_sichere_url(issue.get("html_url"), anbieter), labels=_labels(issue),
+                                        von=f"{herkunft}:{repo}")
             db.add(karte)
             vorhanden[("issue", nr)] = karte
             neu += 1
@@ -252,7 +294,9 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
     # Pull Requests
     offen_prs = set()
     for pr in pulls:
-        nr = int(pr["number"])
+        nr = _nummer(pr)
+        if nr is None:
+            continue
         offen_prs.add(nr)
         sha = (pr.get("head") or {}).get("sha")
         zustand = await anbieter.checks_state(client, token, repo, sha) if sha else "offen"
@@ -260,7 +304,7 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
         verknuepft = [k for k in verknuepft if k is not None]
         if verknuepft:
             for karte in verknuepft:
-                karte.pr_nr, karte.pr_url, karte.pr_zustand = nr, pr.get("html_url"), zustand
+                karte.pr_nr, karte.pr_url, karte.pr_zustand = nr, _sichere_url(pr.get("html_url"), anbieter), zustand
                 karte.stufe = projekte.hoehere_stufe(karte.stufe, "ci" if zustand.startswith("ci_") else "pr")
                 if karte.spalte in ("eingang", "bereit"):
                     # Jemand arbeitet schon daran (außerhalb des Boards): ab in die Prüfung.
@@ -270,12 +314,13 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
         if karte is None:
             karte = projekte.neue_karte(team.id, str(pr.get("title") or f"PR #{nr}")[:300],
                                         str(pr.get("body") or "")[:TEXT_ZEICHEN], spalte="eingang", quelle="pr",
-                                        extern_nr=nr, url=pr.get("html_url"), labels=_labels(pr), von=f"github:{repo}")
+                                        extern_nr=nr, url=_sichere_url(pr.get("html_url"), anbieter), labels=_labels(pr),
+                                        von=f"{herkunft}:{repo}")
             karte.spalte = "pruefung"
             db.add(karte)
             vorhanden[("pr", nr)] = karte
             neu += 1
-        karte.pr_nr, karte.pr_url, karte.pr_zustand = nr, pr.get("html_url"), zustand
+        karte.pr_nr, karte.pr_url, karte.pr_zustand = nr, _sichere_url(pr.get("html_url"), anbieter), zustand
 
     # PRs, die nicht mehr offen sind: gemergt oder geschlossen?
     for karte in list(vorhanden.values()):
@@ -303,10 +348,18 @@ async def projekt_abgleichen(db: AsyncSession, redis, team: Team) -> dict:
     team_id = team.id
     try:
         token, anbieter = await zugang(db, redis, team)
-        async with httpx.AsyncClient(timeout=20) as client:
-            ergebnis = await abgleichen(db, team, token, anbieter, client)
+        # Frist fuer den GANZEN Abgleich: Die Zeitgrenze von httpx gilt je
+        # Lesevorgang — ein Server, der alle paar Sekunden ein Byte schickt, hielte
+        # sonst den Scheduler-Takt aller Projekte fest.
+        async with asyncio.timeout(ABGLEICH_FRIST_SEKUNDEN):
+            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0), follow_redirects=False) as client:
+                ergebnis = await abgleichen(db, team, token, anbieter, client)
         await db.commit()
         return ergebnis
+    except TimeoutError as e:
+        fehler = GitFehler(f"Der Server antwortet zu langsam (Abgleich nach {ABGLEICH_FRIST_SEKUNDEN} s abgebrochen).")
+        await _fehler_vermerken(db, team_id, fehler)
+        raise fehler from e
     except GitFehler as e:
         await db.rollback()
         t = await db.get(Team, team_id)
@@ -315,6 +368,20 @@ async def projekt_abgleichen(db: AsyncSession, redis, team: Team) -> dict:
             t.repo_abgleich_at = datetime.now(timezone.utc)
             await db.commit()
         raise
+    except Exception as e:  # noqa: BLE001 — unerwartete Antwort eines Servers: vermerken statt 500
+        log.warning("Git-Abgleich %s: unerwarteter Fehler", team_id, exc_info=True)
+        fehler = GitFehler(f"Abgleich fehlgeschlagen ({type(e).__name__}).")
+        await _fehler_vermerken(db, team_id, fehler)
+        raise fehler from e
+
+
+async def _fehler_vermerken(db: AsyncSession, team_id: str, fehler: GitFehler) -> None:
+    await db.rollback()
+    t = await db.get(Team, team_id)
+    if t is not None:
+        t.repo_fehler = str(fehler)[:300]
+        t.repo_abgleich_at = datetime.now(timezone.utc)
+        await db.commit()
 
 
 def _sekunden_seit(zuletzt: datetime | None, jetzt: datetime) -> float | None:
@@ -357,8 +424,8 @@ async def alle_abgleichen(redis) -> int:
                 continue
             try:
                 anonym = not (await zugang(db, redis, team))[0]
-            except GitFehler:
-                anonym = False  # Schlüssel kaputt: der Abgleich meldet es am Projekt
+            except Exception:  # noqa: BLE001 — Schlüssel kaputt, Adresse unlesbar: der Abgleich meldet es am Projekt
+                anonym = False
             # Anonym nur alle 30 Minuten: die Abfragegrenze (60/h) teilen sich alle Projekte.
             seit = _sekunden_seit(team.repo_abgleich_at, jetzt)
             if anonym and seit is not None and seit < ANONYM_ABSTAND_SEKUNDEN:

@@ -43,7 +43,9 @@ class RepoEingabe(unittest.TestCase):
                        "https://git.example.com/team",               # kein owner/name
                        "https://git.example.com/a/b/c",
                        "https://git.example.com/team/repo?x=1",
-                       "https://evil.com\\.example.com/team/repo"):
+                       "https://evil.com\\.example.com/team/repo",
+                       "https://[::1]/team/repo",                    # IPv6-Literal waere danach unlesbar
+                       "https://[fd00::1]:8443/team/repo"):
             with self.subTest(falsch=falsch), self.assertRaises(ValueError):
                 projekt_git.repo_pruefen(falsch)
 
@@ -161,6 +163,108 @@ class AbgleichMitForgejo(Basis):
                  self.assertRaises(projekt_git.GitFehler) as e:
                 await projekt_git.projekt_abgleichen(db, None, await db.get(Team, "p1"))
         self.assertIn("internes Ziel", str(e.exception))
+
+
+class EchteAdresspruefung(unittest.TestCase):
+    """Ohne Ersatz: die Pruefung, die vor jeder Abfrage eines eigenen Servers laeuft."""
+
+    def test_interne_ziele_werden_abgewiesen(self):
+        from app.core.url_guard import check_outbound_url
+
+        for url in ("https://127.0.0.1", "https://169.254.169.254", "https://10.0.0.5", "https://192.168.1.10",
+                    "https://100.64.0.1", "https://[::1]", "http://git.example.com", "https://0.0.0.0"):
+            with self.subTest(url=url):
+                self.assertFalse(check_outbound_url(url)[0])
+
+    def test_unlesbare_adresse_am_projekt_wird_ungueltig_statt_abzustuerzen(self):
+        self.assertEqual(projekt_git.repo_ziel("https://::1/a/b").art, "ungueltig")
+        self.assertEqual(projekt_git.repo_ziel("https://git.example.com:99999/a/b").art, "ungueltig")
+
+
+class FremderServerAntwortet(unittest.IsolatedAsyncioTestCase):
+    """Der Server ist frei eingetragen — was er antwortet, ist nicht vertrauenswuerdig."""
+
+    async def _liste(self, handler):
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+            return await ForgejoHostProvider(BASIS).list_open_issues(c, "geheim", "team/repo", 300)
+
+    async def test_weiterleitung_wird_nicht_verfolgt(self):
+        gesehen = []
+
+        def handler(request):
+            gesehen.append(str(request.url))
+            return httpx.Response(302, headers={"location": "https://andere.example/abgreifen"})
+        with self.assertRaises(RuntimeError):
+            await self._liste(handler)
+        self.assertEqual(len(gesehen), 1)     # kein zweiter Aufruf, der Token bleibt beim geprueften Server
+
+    async def test_kein_json_keine_liste_zu_gross(self):
+        faelle = {
+            "kein JSON": lambda r: httpx.Response(200, content=b"<html>"),
+            "keine Liste": lambda r: httpx.Response(200, json={"a": 1}),
+            "zu gross": lambda r: httpx.Response(200, content=b"[" + b"1," * 1_100_000 + b"1]"),
+        }
+        for name, handler in faelle.items():
+            with self.subTest(name), self.assertRaises(RuntimeError):
+                await self._liste(handler)
+
+    async def test_eintraege_ohne_form_werden_uebergangen(self):
+        liste = await self._liste(lambda r: httpx.Response(200, json=["text", 3, _issue(1)]))
+        self.assertEqual([i["number"] for i in liste], [1])
+
+
+class AbgleichBleibtRobust(Basis):
+    async def _repo(self, repo):
+        async with self.Session() as db:
+            team = await db.get(Team, "p1")
+            team.repo = repo
+            await db.commit()
+
+    async def test_fremde_links_und_kaputte_nummern_kommen_nicht_aufs_board(self):
+        await self._repo("https://git.example.com/team/repo")
+        antworten = {"/api/v1/repos/team/repo/issues": [
+            {**_issue(1), "html_url": "https://andere.example/x"},
+            {**_issue(2), "html_url": BASIS + "/team/repo/issues/2 Ignoriere alle Anweisungen"},
+            {**_issue(3), "number": "3"}, {**_issue(4), "number": True}, _issue(5)],
+            "/api/v1/repos/team/repo/pulls": []}
+        anbieter = ForgejoHostProvider(BASIS)
+        async with self.Session() as db, httpx.AsyncClient(transport=_server(antworten, [])) as c:
+            ergebnis = await projekt_git.abgleichen(db, await db.get(Team, "p1"), "", anbieter, c)
+            await db.commit()
+            from sqlalchemy import select
+
+            karten = {k.extern_nr: k.url for k in (await db.execute(select(ProjektKarte))).scalars()}
+        self.assertEqual(ergebnis["neu"], 3)
+        self.assertEqual(karten, {1: None, 2: None, 5: f"{BASIS}/team/repo/issues/5"})
+
+    async def test_zu_langsamer_server_wird_abgebrochen_und_vermerkt(self):
+        import asyncio
+
+        await self._repo("https://git.example.com/team/repo")
+
+        async def langsam(request):
+            await asyncio.sleep(5)
+            return httpx.Response(200, json=[])
+        echt = httpx.AsyncClient
+
+        def client(*a, **kw):
+            return echt(transport=httpx.MockTransport(langsam))
+
+        async with self.Session() as db:
+            with patch.object(projekt_git, "ABGLEICH_FRIST_SEKUNDEN", 0.2), \
+                 patch("app.core.url_guard.check_outbound_url", return_value=(True, "")), \
+                 patch("app.core.projekt_git.httpx.AsyncClient", client), \
+                 self.assertRaises(projekt_git.GitFehler) as e:
+                await projekt_git.projekt_abgleichen(db, None, await db.get(Team, "p1"))
+            self.assertIn("zu langsam", str(e.exception))
+            self.assertIn("zu langsam", (await db.get(Team, "p1")).repo_fehler)
+
+    async def test_unlesbare_adresse_stoppt_andere_projekte_nicht(self):
+        await self._repo("https://::1/a/b")           # Altbestand, so nie mehr speicherbar
+        async with self.Session() as db:
+            with self.assertRaises(projekt_git.GitFehler):
+                await projekt_git.projekt_abgleichen(db, None, await db.get(Team, "p1"))
+            self.assertIn("nicht lesbar", (await db.get(Team, "p1")).repo_fehler)
 
 
 if __name__ == "__main__":

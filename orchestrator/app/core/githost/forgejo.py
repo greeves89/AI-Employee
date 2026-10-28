@@ -15,12 +15,38 @@ Issue and PR objects carry the same fields the board reads (``number``,
 ``core/projekt_git`` works with this provider unchanged.
 """
 
+import json
+
 import httpx
 
 from app.core.githost.base import GitHostProvider
 
 #: Forgejo/Gitea cap a page at 50 items unless the server raises MAX_RESPONSE_ITEMS.
 SEITE = 50
+#: Hoechstens so viel liest die Plattform je Antwort. Der Server ist frei
+#: eingetragen — eine endlose Antwort darf den Speicher nicht fuellen.
+MAX_ANTWORT_BYTES = 2_000_000
+
+
+async def _json_holen(client: httpx.AsyncClient, url: str, headers: dict, params: dict | None = None):
+    """GET mit Groessengrenze; liefert ``(status, json_oder_None)``.
+
+    Weiterleitungen werden NICHT verfolgt: sie fuehrten den Token zu einem
+    anderen Ziel als dem geprueften.
+    """
+    async with client.stream("GET", url, headers=headers, params=params, follow_redirects=False) as resp:
+        if resp.status_code != 200:
+            return resp.status_code, None
+        teile, groesse = [], 0
+        async for stueck in resp.aiter_bytes():
+            groesse += len(stueck)
+            if groesse > MAX_ANTWORT_BYTES:
+                raise RuntimeError(f"Antwort von {resp.url.host} ist zu gross")
+            teile.append(stueck)
+    try:
+        return 200, json.loads(b"".join(teile) or b"null")
+    except ValueError as e:
+        raise RuntimeError(f"Antwort von {resp.url.host} ist kein JSON") from e
 
 
 class ForgejoHostProvider(GitHostProvider):
@@ -99,17 +125,20 @@ class ForgejoHostProvider(GitHostProvider):
         ergebnis: list[dict] = []
         seite = 1
         while len(ergebnis) < hoechstens:
-            resp = await client.get(
-                f"{self.api_base}{pfad}", headers=self._headers(token),
-                params={**params, "limit": SEITE, "page": seite},
-            )
-            if resp.status_code == 404:
+            status, daten = await _json_holen(client, f"{self.api_base}{pfad}", self._headers(token),
+                                              {**params, "limit": SEITE, "page": seite})
+            if status == 404:
                 raise LookupError(pfad)
-            if resp.status_code in (401, 403):
-                raise RuntimeError(f"{self.host} verweigert den Zugriff ({resp.status_code}) — fehlt der Schlüssel?")
-            if resp.status_code != 200:
-                raise RuntimeError(f"{self.host} {resp.status_code} für {pfad}")
-            daten = resp.json() or []
+            if status in (401, 403):
+                raise RuntimeError(f"{self.host} verweigert den Zugriff ({status}) — fehlt der Schlüssel?")
+            if status != 200:
+                raise RuntimeError(f"{self.host} {status} für {pfad}")
+            if daten is None:
+                daten = []
+            if not isinstance(daten, list):
+                raise RuntimeError(f"{self.host} liefert für {pfad} keine Liste")
+            # Nur Eintraege, die wie ein Issue/PR aussehen — fremder Server.
+            daten = [d for d in daten if isinstance(d, dict)]
             if not daten:
                 break
             ergebnis.extend(daten)
@@ -128,26 +157,25 @@ class ForgejoHostProvider(GitHostProvider):
         return await self._seiten(client, token, f"/repos/{repo}/pulls", {"state": "open"}, hoechstens)
 
     async def pull_state(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int) -> str | None:
-        resp = await client.get(f"{self.api_base}/repos/{repo}/pulls/{nummer}", headers=self._headers(token))
-        if resp.status_code != 200:
+        status, daten = await _json_holen(client, f"{self.api_base}/repos/{repo}/pulls/{nummer}", self._headers(token))
+        if status != 200 or not isinstance(daten, dict):
             return None
-        daten = resp.json()
         if daten.get("merged") or daten.get("merged_at"):
             return "gemergt"
         return "geschlossen" if daten.get("state") == "closed" else "offen"
 
     async def issue_state(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int) -> str | None:
-        resp = await client.get(f"{self.api_base}/repos/{repo}/issues/{nummer}", headers=self._headers(token))
-        if resp.status_code != 200:
+        status, daten = await _json_holen(client, f"{self.api_base}/repos/{repo}/issues/{nummer}", self._headers(token))
+        if status != 200 or not isinstance(daten, dict):
             return None
-        return resp.json().get("state")
+        return daten.get("state")
 
     async def checks_state(self, client: httpx.AsyncClient, token: str, repo: str, sha: str) -> str:
         """offen (keine Prüfungen) | ci_laeuft | ci_rot | ci_gruen — aus den Commit-Status."""
-        resp = await client.get(f"{self.api_base}/repos/{repo}/commits/{sha}/status", headers=self._headers(token))
-        if resp.status_code != 200:
+        status, daten = await _json_holen(client, f"{self.api_base}/repos/{repo}/commits/{sha}/status",
+                                          self._headers(token))
+        if status != 200 or not isinstance(daten, dict):
             return "offen"
-        daten = resp.json() or {}
         if not daten.get("statuses"):
             return "offen"
         zustand = str(daten.get("state") or "")
