@@ -2694,7 +2694,13 @@ Menüpunkt **Mitdenken** (Haken) oder den Knopf im Hauptfenster.
 - **Nein** — das Angebot verschwindet.
 - **Stopp** — der Agent darf auf diesem Rechner **nichts** mehr tun, auch nicht aus einem
   laufenden Auftrag heraus. Erst **Freigeben** im Overlay (oder ein neues Ja) hebt das auf.
-- **Chat** — öffnet den Chat deines Agenten im Browser.
+- **Chat** — klappt im Overlay ein Eingabefeld auf; du kannst sofort tippen. **Enter** (oder
+  **Senden**) schickt die Nachricht an deinen Agenten. Arbeitet er gerade an einem Auftrag,
+  arbeitet er deinen Hinweis sofort in diesen Auftrag ein („nimm lieber die zweite Spalte“);
+  sonst wird die Nachricht ein neuer Auftrag, mit einem aktuellen Bild deines Bildschirms.
+  Nach dem Senden geht die Tastatur zurück an deine Anwendung. **Chat zu** klappt das Feld
+  wieder ein. Den vollständigen Chat im Browser öffnest du über das Bridge-Menü
+  („Im Browser öffnen“).
 - **Ausblenden** — blendet Statusmeldungen aus; ein neues Angebot oder ein Ergebnis kommt
   trotzdem.
 

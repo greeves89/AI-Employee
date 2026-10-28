@@ -1525,6 +1525,18 @@ async def _vorschlag_antwort(session_id: str, session: dict, msg: dict) -> None:
 
 async def _auftrag_ausfuehren(session_id: str, vorschlag: dict, zusatz: str) -> None:
     from app.core import bridge_mitdenker as bm
+
+    await _lauf_ausfuehren(session_id, vorschlag["agent_id"], bm.auftrag_text(
+        vorschlag["auftrag"], vorschlag["angebot"], vorschlag["app"], vorschlag["titel"], zusatz))
+
+
+async def _lauf_ausfuehren(session_id: str, agent_id: str, text: str) -> None:
+    """Ein Auftrag aus dem Overlay (Ja zu einem Angebot oder Chat-Nachricht):
+    mit aktuellem Bildschirmbild an den Agenten, Ergebnis zurueck ins Overlay.
+
+    Laeuft in der Chat-Sitzung ``bridge`` — weitere Chat-Nachrichten aus dem
+    Overlay landen im selben Kanal und steuern den laufenden Zug (Live-Steering).
+    """
     from app.services.agent_chat_bridge import ask_agent_via_chat
 
     session = _sessions.get(session_id)
@@ -1540,9 +1552,7 @@ async def _auftrag_ausfuehren(session_id: str, vorschlag: dict, zusatz: str) -> 
             if frisch:
                 bilder = [{"media_type": "image/png", "data": frisch}]
         antwort = await ask_agent_via_chat(
-            _redis, vorschlag["agent_id"],
-            bm.auftrag_text(vorschlag["auftrag"], vorschlag["angebot"], vorschlag["app"],
-                            vorschlag["titel"], zusatz),
+            _redis, agent_id, text,
             source="bridge", timeout=900.0, chat_session_id="bridge", images=bilder,
         )
         fehler = antwort.startswith("[Fehler")
@@ -1557,6 +1567,53 @@ async def _auftrag_ausfuehren(session_id: str, vorschlag: dict, zusatz: str) -> 
                                    "text": "Der Auftrag ist fehlgeschlagen."})
     finally:
         session["auftrag_laeuft"] = False
+
+
+async def _overlay_chat(session_id: str, session: dict, msg: dict) -> None:
+    """Chat-Feld im Overlay: der Mensch schreibt seinem Agenten direkt.
+
+    Laeuft ein Auftrag, geht die Nachricht in dessen Kanal (Sitzung ``bridge``)
+    und wird per Live-Steering in den laufenden Zug gefaltet. Sonst startet sie
+    einen neuen Auftrag. Empfaenger ist immer der Agent dieser Sitzung — die
+    Bridge kann keinen anderen nennen.
+    """
+    from app.core import bridge_mitdenker as bm
+    from app.core.chat_auftrag import einreihen
+
+    text = " ".join(str(msg.get("text") or "").split())[:2000]
+    if not text:
+        return
+    if session.get("gestoppt"):
+        await _an_bridge(session, {"type": "overlay_status", "zustand": "gestoppt",
+                                   "text": "Gestoppt — erst freigeben, dann kann der Agent weitermachen."})
+        return
+    if session.get("auftrag_laeuft"):
+        agent_id = session.get("auftrag_agent") or session.get("agent_id")
+        if not agent_id or _redis is None or _redis.client is None:
+            return
+        ergebnis = await einreihen(_redis.client, str(agent_id), {
+            "id": uuid.uuid4().hex[:12], "text": bm.chat_text(text, laufender_auftrag=True),
+            "model": None, "images": [], "source": "bridge", "chat_session_id": "bridge",
+        })
+        await _an_bridge(session, {
+            "type": "overlay_status", "zustand": "arbeitet",
+            "schritte": int((session.get("lauf") or {}).get("schritte") or 0),
+            "text": "Hinweis ist beim Agenten — er arbeitet ihn ein." if ergebnis.eingereiht
+                    else (ergebnis.hinweis or "Der Hinweis kam nicht an."),
+        })
+        return
+    agent_id = session.get("agent_id")
+    if not agent_id:
+        await _an_bridge(session, {"type": "overlay_status", "zustand": "hinweis",
+                                   "text": "Diesem Rechner ist noch kein Agent zugeordnet — in der Bridge einen wählen."})
+        return
+    session["auftrag_laeuft"] = True
+    session["auftrag_agent"] = str(agent_id)
+    session["lauf"] = {"schritte": 0, "zuletzt": time.time()}
+    await _an_bridge(session, {"type": "overlay_status", "zustand": "arbeitet", "schritte": 0,
+                               "text": "Agent übernimmt …"})
+    _hintergrund(session, _lauf_ausfuehren(session_id, str(agent_id),
+                                           bm.chat_text(text, laufender_auftrag=False)))
 
 
 async def _overlay_stopp(session_id: str, session: dict) -> None:
@@ -1811,6 +1868,9 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
 
             elif msg_type == "vorschlag_antwort":
                 await _vorschlag_antwort(session_id, session, msg)
+
+            elif msg_type == "overlay_chat":
+                await _overlay_chat(session_id, session, msg)
 
             elif msg_type == "overlay_stopp":
                 await _overlay_stopp(session_id, session)
