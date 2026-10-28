@@ -390,8 +390,15 @@ async def _wache_anbringen(context) -> None:
         anfrage = route.request
         try:
             hauptrahmen = anfrage.is_navigation_request() and anfrage.frame.parent_frame is None
-        except Exception:  # noqa: BLE001 — z. B. Anfragen eines Service Workers
-            hauptrahmen = False
+        except Exception:  # noqa: BLE001
+            # Kein Rahmen: ein Popup (``window.open``, ``target=_blank``), dessen
+            # Rahmen erst entsteht, oder ein Service Worker. Im Zweifel als
+            # Seitenwechsel behandeln und pruefen -- sonst ginge die Anfrage
+            # samt Daten in der Adresse an das fremde Ziel.
+            try:
+                hauptrahmen = anfrage.is_navigation_request()
+            except Exception:  # noqa: BLE001
+                hauptrahmen = False
         if hauptrahmen and _scope_fehler(anfrage.url):
             _audit_melden("navigation", anfrage.url, erlaubt=False, akteur="seite")
             await route.abort("blockedbyclient")

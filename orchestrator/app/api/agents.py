@@ -3557,8 +3557,10 @@ async def get_agent_browser_audit(
     beim Bildstrom wird ein schlafender Agent dafuer NICHT geweckt -- wer nur
     das bisherige Protokoll lesen will, soll dafuer keinen Container starten.
     """
-    from app.dependencies import require_agent_access
-    await require_agent_access(agent_id, user, db)
+    # Nur der Besitzer: Das Protokoll zeigt, welche Seiten in SEINEN Sitzungen
+    # aufgerufen wurden -- auch Admin und Freigaben sehen es nicht.
+    from app.dependencies import require_agent_owner
+    await require_agent_owner(agent_id, user, db)
 
     from app.api.ws import BROWSER_STROM_PORT, BROWSER_ZUGANG_KOPF, _agent_container_name
     from app.core.encryption import agent_schluessel

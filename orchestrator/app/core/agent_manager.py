@@ -2098,6 +2098,11 @@ class AgentManager:
                 "EXTENDED_THINKING": str(settings.extended_thinking).lower(),
             })
 
+        # Browser-Schluessel ZULETZT: ``secrets_env`` darf sie nicht ueberschreiben,
+        # sonst koennte ein zugewiesener Key ``BROWSER_ZUGANG`` den Browser fuer
+        # einen fremden Agenten im selben Netz oeffnen (#828, Schritt 5).
+        env_vars.update(_browser_geheimnisse(agent.id))
+
         # 3. Create new container with same volumes + any assigned bind mounts
         agent_permissions = autonomy_matrix.effective_permissions(
             agent.access_policy, agent.autonomy_level or "l3"
@@ -2488,6 +2493,11 @@ class AgentManager:
                 "DEFAULT_MODEL": model,
                 "EXTENDED_THINKING": str(settings.extended_thinking).lower(),
             })
+
+        # Browser-Schluessel ZULETZT: ``secrets_env`` darf sie nicht ueberschreiben,
+        # sonst koennte ein zugewiesener Key ``BROWSER_ZUGANG`` den Browser fuer
+        # einen fremden Agenten im selben Netz oeffnen (#828, Schritt 5).
+        env_vars.update(_browser_geheimnisse(agent.id))
 
         # 3. Create new container with same volumes + any assigned bind mounts
         agent_permissions = autonomy_matrix.effective_permissions(

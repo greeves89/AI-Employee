@@ -88,5 +88,41 @@ class FreigabelisteNurBesitzer(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(200, (await self._aendern("ADMIN", "admin", "besitzer"))[0])
 
 
+class NurDerBesitzerSiehtDenBrowser(unittest.IsolatedAsyncioTestCase):
+    """Bildstrom und Pruefprotokoll zeigen die angemeldeten Sitzungen des Besitzers."""
+
+    async def _pruefen(self, nutzer_id, rolle, besitzer_id):
+        from fastapi import HTTPException
+
+        from app.dependencies import require_agent_owner
+        from app.models.user import UserRole
+
+        db = mock.AsyncMock()
+        db.scalar.return_value = besitzer_id
+        nutzer = mock.Mock(id=nutzer_id, role=getattr(UserRole, rolle))
+        try:
+            await require_agent_owner("abc12345", nutzer, db)
+        except HTTPException as e:
+            return e.status_code
+        return 200
+
+    async def test_besitzer_ja_alle_anderen_nein(self):
+        self.assertEqual(200, await self._pruefen("a", "MEMBER", "a"))
+        for rolle in ("ADMIN", "MANAGER", "MEMBER"):
+            with self.subTest(rolle=rolle):
+                self.assertEqual(404, await self._pruefen("b", rolle, "a"))
+        self.assertEqual(404, await self._pruefen("b", "ADMIN", None))
+
+
+class BrowserVariablenNichtUeberKeys(unittest.TestCase):
+    def test_fremder_key_darf_browser_variablen_nicht_setzen(self):
+        from app.core.secret_zugriff import variable_reserviert
+
+        for name in ("BROWSER_ZUGANG", "BROWSER_PROFIL_KEY", "BROWSER_PROFIL_ARCHIV",
+                     "BROWSER_ALLOWED_DOMAINS", "COMPUTER_USE_BROWSER"):
+            with self.subTest(name=name):
+                self.assertTrue(variable_reserviert(name))
+
+
 if __name__ == "__main__":
     unittest.main()

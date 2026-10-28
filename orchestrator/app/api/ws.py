@@ -1496,12 +1496,12 @@ async def ws_agent_browser(
     if not await _authenticate_ws(websocket, token=token, ticket=ticket):
         return
 
-    # Eigentuemerpruefung -- gleicher Weg wie beim Gespraechskanal. Ohne sie
-    # koennte jeder Angemeldete die Browsersitzung eines fremden Agenten
-    # mitlesen, inklusive dessen angemeldeter Seiten.
+    # Nur der Besitzer -- auch nicht Admin, Manager oder wem der Agent
+    # freigegeben ist: Wer den Strom sieht, sieht und bedient die angemeldeten
+    # Sitzungen des Besitzers (#828, Schritt 5).
     from fastapi import HTTPException as _HTTPException
 
-    from app.dependencies import require_agent_access
+    from app.dependencies import require_agent_owner
     from app.models.user import User as _User
 
     uid = getattr(websocket.state, "user_id", None)
@@ -1511,7 +1511,7 @@ async def ws_agent_browser(
             if user is None:
                 await websocket.close(code=4001, reason="Unauthorized")
                 return
-            await require_agent_access(agent_id, user, db)
+            await require_agent_owner(agent_id, user, db)
     except _HTTPException:
         await websocket.close(code=4003, reason="Access denied to this agent")
         return

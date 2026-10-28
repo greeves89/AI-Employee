@@ -294,6 +294,24 @@ class ScopeUndAudit(unittest.IsolatedAsyncioTestCase):
             route.abort.assert_not_awaited()
         self.assertEqual("seite", self.bs.audit_log()[-1]["akteur"])
 
+    async def test_popup_ohne_rahmen_wird_geprueft(self):
+        """``window.open``: Playwright kennt den Rahmen noch nicht und wirft."""
+        kontext = mock.Mock()
+        kontext.pages = []
+        kontext.route = mock.AsyncMock()
+        with self._mit_freigabe("example.com"):
+            await self.browser._wache_anbringen(kontext)
+            pruefen = kontext.route.call_args.args[1]
+            route = mock.Mock()
+            route.abort = mock.AsyncMock()
+            route.continue_ = mock.AsyncMock()
+            route.request.url = "https://fremd.invalid/?d=geheim"
+            route.request.is_navigation_request.return_value = True
+            type(route.request).frame = mock.PropertyMock(side_effect=RuntimeError("kein Rahmen"))
+            await pruefen(route)
+        route.abort.assert_awaited_once()
+        route.continue_.assert_not_awaited()
+
     async def test_ohne_freigabeliste_keine_wache(self):
         kontext = mock.Mock()
         kontext.route = mock.AsyncMock()
