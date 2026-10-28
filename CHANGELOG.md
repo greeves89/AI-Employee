@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.387.2] - 2026-10-28
+
+### Behoben
+- **Erster Abgleich eines Bridge-Ordners in iCloud/OneDrive dauerte über eine Stunde und blockierte die Bridge.** Die Bridge bildete für die Dateiliste die Prüfsumme jeder Datei und las danach jede geänderte Datei ein zweites Mal. In Cloud-Ordnern dauert jedes Öffnen Sekunden (gemessen: rund 5 s je Notiz) — bei 637 Dateien lag die Bridge so lange fest, auch für Agenten-Befehle. Die Liste kommt jetzt nur aus Größe und Änderungszeit (ohne eine Datei zu öffnen, Sekunden statt Stunde); gelesen wird jede geänderte Datei genau einmal, in einzelnen Befehlen, zwischen denen andere Aufgaben weiterlaufen. Die Prüfsumme kommt mit der Datei und wird auf dem Server geprüft. Ältere Bridges (bis 1.387.1) funktionieren weiter. Braucht für die Beschleunigung die Bridge 1.387.2.
+
 ## [1.387.1] - 2026-10-28
 
 ### Behoben

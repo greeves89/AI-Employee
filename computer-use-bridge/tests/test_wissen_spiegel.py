@@ -55,8 +55,15 @@ class WissenSpiegel(unittest.TestCase):
         pfade = sorted(d["pfad"] for d in r["dateien"])
         self.assertEqual(pfade, ["Angebot.pdf", "Kunden/notiz.txt", "index.md"])
         index = next(d for d in r["dateien"] if d["pfad"] == "index.md")
-        self.assertEqual(index["sha"], hashlib.sha256(b"# Start").hexdigest())
+        st = os.stat(os.path.join(self.vault, "index.md"))
+        self.assertEqual(index["stempel"], f"{st.st_size}-{st.st_mtime_ns}")
         self.assertEqual(index["bytes"], 7)
+        self.assertNotIn("sha", index)
+
+    def test_liste_oeffnet_keine_datei(self):
+        """In iCloud/OneDrive dauert jedes Oeffnen Sekunden — die Liste darf nur stat nutzen."""
+        with patch.object(bridge.os, "open", side_effect=AssertionError("geoeffnet")):
+            self.assertTrue(bridge.wissen_liste(self.vault)["ok"])
 
     def test_nur_genau_der_freigegebene_ordner(self):
         # Auch kein Unterordner: der koennte ein versteckter sein (~/.ssh unter ~).
@@ -74,6 +81,7 @@ class WissenSpiegel(unittest.TestCase):
     def test_datei_liefert_inhalt(self):
         r = bridge.wissen_datei(self.vault, "Kunden/notiz.txt")
         self.assertEqual(base64.b64decode(r["inhalt_b64"]), b"Telefon klaeren")
+        self.assertEqual(r["sha"], hashlib.sha256(b"Telefon klaeren").hexdigest())
 
     def test_datei_bleibt_im_ordner(self):
         for pfad in ("../geheim/passwoerter.md", "link.md", "ordnerlink/passwoerter.md", ".obsidian/workspace.json",
