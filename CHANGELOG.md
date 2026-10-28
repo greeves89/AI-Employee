@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.383.2] - 2026-10-28
+
+### Verbessert
+- **Was im Overlay der Bridge geschrieben wird, steht auch im Web-Chat.** Nachrichten aus dem Chat-Feld des Overlays, Hinweise an einen laufenden Auftrag, ein Ja zu einem Angebot und die Antworten des Agenten erscheinen im Chat des Agenten im Gespräch „Bridge (Overlay)“. Bisher gingen sie am Verlauf vorbei, und die Antwort wurde verworfen, weil zu ihr keine Nutzernachricht gespeichert war.
+
 ## [1.383.1] - 2026-10-28
 
 ### Behoben
