@@ -293,6 +293,23 @@ def angebot_lesen(antwort: str | None) -> dict | None:
     return {"angebot": angebot, "auftrag": auftrag}
 
 
+def chat_text(text: str, laufender_auftrag: bool) -> str:
+    """Nachricht des Menschen aus dem Chat-Feld des Overlays an den Agenten.
+
+    Laeuft schon ein Auftrag, wird sie per Live-Steering in genau diesen Zug
+    gefaltet — dann ist sie eine Korrektur, kein neuer Auftrag.
+    """
+    if laufender_auftrag:
+        return (f"[Bridge] Hinweis deines Menschen aus dem Overlay zum laufenden Auftrag: {text}\n"
+                "Arbeite ihn sofort ein und mach mit dem Auftrag weiter.")
+    return (
+        f"[Bridge] Dein Mensch schreibt dir im Overlay auf seinem Rechner: {text}\n"
+        "Ein aktuelles Bild seines Bildschirms liegt bei. Geht es um etwas auf seinem Rechner, "
+        "arbeite über die Computer-Use-Werkzeuge. Antworte am Ende mit einem kurzen Satz — "
+        "er steht im Overlay."
+    )
+
+
 def auftrag_text(auftrag: str, angebot: str, app: str, titel: str, antwort: str | None) -> str:
     """Der Auftrag an den Agenten nach einem Ja im Overlay."""
     zusatz = f"\nEr hat dazu geschrieben: {antwort}" if antwort else ""

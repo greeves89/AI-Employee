@@ -922,7 +922,13 @@ class TaskRouter:
         if not task:
             return
 
-        task.status = TaskStatus.COMPLETED if data.get("status") == "completed" else TaskStatus.FAILED
+        # Abgebrochen bleibt abgebrochen: Nach dem Abbruch meldet der Agent sein
+        # Ende noch nach (unterbrochen oder „completed“) und ueberschrieb den Status
+        # — der Abbruch stand danach als fertig da (28.10.2026). Kosten, Tokens und
+        # Dauer werden trotzdem gebucht; die Karte hat der Abbruch schon zurueckgelegt.
+        abgebrochen = task.status == TaskStatus.CANCELLED
+        if not abgebrochen:
+            task.status = TaskStatus.COMPLETED if data.get("status") == "completed" else TaskStatus.FAILED
         task.result = data.get("result")
         task.error = data.get("error")
 
@@ -976,8 +982,9 @@ class TaskRouter:
             from app.core.projekt_gespraech import antwort_aus_lauf
             from app.core.projekte import lauf_beendet
 
-            await lauf_beendet(self.db, task)
-            await antwort_aus_lauf(self.db, task)
+            if not abgebrochen:
+                await lauf_beendet(self.db, task)
+                await antwort_aus_lauf(self.db, task)
         except Exception as e:  # noqa: BLE001 — das Board darf das Abschliessen nie stoppen
             logger.warning("Projekt zu Lauf %s nicht nachgezogen: %s", scrub_log(task_id), scrub_log(e))
 

@@ -157,6 +157,39 @@ async def entfernen(db: AsyncSession, team_id: str, schedule_id: str) -> None:
     await db.delete(sched)
 
 
+#: Was eine Projekt-Besprechung vom Board sieht: alles, worüber man spricht —
+#: nicht der Eingang (Kennzahl genügt), dafür das kürzlich Erledigte, damit
+#: niemand ein längst geschlossenes Issue erneut aufgreift.
+STAND_SPALTEN = ("bereit", "in_arbeit", "pruefung", "erledigt")
+
+
+async def stand_jetzt(db: AsyncSession, team_id: str) -> str:
+    """Stand des Projekts für die Besprechung — dieselbe Darstellung wie ``projekt_board``.
+
+    Ohne ihn sprachen die Agenten aus ihrem Gedächtnis: Ein Agent brachte jeden
+    Morgen ein seit Tagen geschlossenes Issue ein, und aus jedem Daily wurden
+    7–9 Karten dazu (19.–28.10.2026).
+    """
+    from app.core import projekte
+    from app.models.agent import Agent
+
+    team = await db.get(Team, team_id)
+    if team is None:
+        return ""
+    b = await projekte.board(db, team_id, None)
+    ids = {k.get("agent_id") for s in b["spalten"].values() for k in s} | {lauf["agent_id"] for lauf in b["laufend"]}
+    ids.discard(None)
+    namen = {a.id: a.name for a in (await db.execute(select(Agent).where(Agent.id.in_(ids)))).scalars()} if ids else {}
+    return projekte.board_als_text({"name": team.name, "id": team.id}, b, namen, je_spalte=10, spalten=STAND_SPALTEN)
+
+
+_ISSUE_NR = re.compile(r"#(\d{1,6})\b")
+
+
+def _vergleichstext(text: str) -> str:
+    return re.sub(r"\W+", " ", (text or "").lower()).strip()[:300]
+
+
 def _items(markdown: str) -> list[str]:
     return [z.strip()[5:].strip() for z in (markdown or "").splitlines() if z.strip().startswith("- [ ]")][:MAX_ITEMS]
 
@@ -189,7 +222,24 @@ async def abschluss(room_id: str, team_id: str, raum_name: str, zusammenfassung:
             log.warning("Protokoll %s nicht ins Wissen geschrieben: %s", room_id, e)
             pfad = None
 
-        items = _items(zusammenfassung)
+        # Nicht jeden Punkt blind zur Karte machen: was nur geschlossene Issues
+        # betrifft oder schon als offene Karte dasteht, wird übersprungen.
+        from app.models.projekt_karte import ProjektKarte
+
+        karten = (await db.execute(
+            select(ProjektKarte.quelle, ProjektKarte.extern_nr, ProjektKarte.spalte, ProjektKarte.titel)
+            .where(ProjektKarte.team_id == team.id)
+        )).all()
+        geschlossen = {nr for quelle, nr, spalte, _ in karten if quelle == "issue" and spalte == "erledigt" and nr}
+        schon_da = {_vergleichstext(titel) for _, _, spalte, titel in karten if spalte != "erledigt"}
+        items, uebersprungen = [], 0
+        for item in _items(zusammenfassung):
+            nummern = {int(n) for n in _ISSUE_NR.findall(item)}
+            if (nummern and nummern <= geschlossen) or _vergleichstext(item) in schon_da:
+                uebersprungen += 1
+                continue
+            schon_da.add(_vergleichstext(item))
+            items.append(item)
         for item in items:
             # Ohne Ersteller: die Items schreiben Agenten (womöglich nach Issue-Texten) —
             # der Text geht deshalb gerahmt als Material an den Bearbeiter, nicht als
@@ -204,7 +254,9 @@ async def abschluss(room_id: str, team_id: str, raum_name: str, zusammenfassung:
         db.add(ProjektNachricht(
             team_id=team.id, autor_typ="system", autor_id=None, autor_name="Besprechung",
             text=(f"Protokoll „{raum_name}“" + (f" (Projektwissen: {pfad})" if pfad else "") +
-                  (f" — {len(items)} Karte(n) unter „Bereit“ angelegt" if items else "") + f"\n\n{kurz}"),
+                  (f" — {len(items)} Karte(n) unter „Bereit“ angelegt" if items else "") +
+                  (f", {uebersprungen} Punkt(e) übersprungen (Issue geschlossen oder schon als Karte da)"
+                   if uebersprungen else "") + f"\n\n{kurz}"),
             art="protokoll", an=[],
         ))
         await db.commit()
