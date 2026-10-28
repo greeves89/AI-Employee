@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.384.0] - 2026-10-28
+
+### Behoben
+- **Computer-Use-Bridge: ein getipptes Passwort landete im Prüfprotokoll und im Replay-Transkript.** Tippte der Agent über die Steuerung des echten Bildschirms (`type`, Zwischenablage, Formularfeld ausfüllen) ein Geheimnis, stand der Klartext bisher unverändert im Prüfprotokoll der Sitzung (`GET .../audit`) und — lief gerade eine Aufnahme — im Replay-Transkript samt Screenshot; aus einem Transkript lässt sich über „Aufnahme zu Skill“ ein geteilter Skill erzeugen. Betroffen war auch der Mitschnitt, wenn der Mensch beim Vorführen einer Aufgabe selbst etwas eintippt. Nur der eingetippte/eingefügte Text wird jetzt durch seine Länge ersetzt; alle anderen Angaben (Ziel-Feld, Koordinaten, Tastenname) bleiben wie gewohnt sichtbar.
+
 ## [1.380.3] - 2026-10-28
 
 ### Verbessert

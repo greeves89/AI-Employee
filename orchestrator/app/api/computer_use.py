@@ -55,6 +55,48 @@ _SCREEN_CHANGING_ACTIONS = {
 }
 
 
+# Params-Felder, die ein Geheimnis tragen KOENNEN (Passwort, Einmalcode, API-
+# Schluessel), wenn eine Aktion es auf dem echten Bildschirm des Nutzers
+# eintippt oder in die Zwischenablage legt. Gemessen gegen den Bridge-Quelltext
+# (computer-use-bridge/bridge.py), nicht geraten — jede Aktion hier liest
+# genau dieses eine Feld als Freitext aus params. Andere Felder derselben
+# Aktionen (selector, keys, interval) sind strukturell, kein Geheimnis.
+_SENSITIVE_PARAM_FIELDS: dict[str, tuple[str, ...]] = {
+    "type": ("text",),
+    "clipboard_write": ("text",),
+    "set_clipboard": ("text",),
+    "browser_fill": ("value",),
+    "ego_fill": ("value",),
+}
+
+
+def _redacted_params(action: str, params: dict[str, Any]) -> dict[str, Any]:
+    """Params-Kopie fuers Audit-Protokoll und das Replay-Transkript.
+
+    Vorher landete ``req.params`` dort UNVERAENDERT: tippte der Agent ein
+    Passwort oder einen Einmalcode auf dem Bildschirm des Nutzers (Aktion
+    ``type``) oder legte ihn in die Zwischenablage, stand der Klartext
+    danach im Audit-Log (``GET .../audit``) und — falls die Sitzung gerade
+    aufgenommen wurde — im Replay-Transkript, von dort aus potenziell in
+    einem per ``recording/to-skill`` erzeugten, geteilten Skill. Nur die
+    FELDER aus ``_SENSITIVE_PARAM_FIELDS`` werden ersetzt (durch ihre Laenge,
+    damit ein Unterschied zwischen einer leeren und einer getippten Eingabe
+    weiterhin erkennbar bleibt); alle anderen Aktionen und Felder bleiben
+    unveraendert. Der tatsaechliche Befehl an die Bridge (``command_msg``)
+    nutzt weiterhin die unveraenderten ``req.params`` — nur die Protokoll-
+    Kopien werden maskiert.
+    """
+    fields = _SENSITIVE_PARAM_FIELDS.get(action)
+    if not fields:
+        return params
+    redacted = dict(params)
+    for field in fields:
+        value = redacted.get(field)
+        if isinstance(value, str) and value:
+            redacted[field] = f"<redacted:{len(value)} chars>"
+    return redacted
+
+
 async def _refresh_screenshot_cache(session_id: str) -> str | None:
     """Pull a fresh screenshot from the bridge right after an action and
     update the session cache, so the next poll from the Live-View tab already
@@ -905,7 +947,7 @@ async def dispatch_bridge_command(
     session["audit_log"].append({
         "cmd_id": cmd_id,
         "action": req.action,
-        "params": req.params,
+        "params": _redacted_params(req.action, req.params),
         "caller": str(getattr(caller, "id", "?")),
         "ts": time.time(),
     })
@@ -926,7 +968,7 @@ async def dispatch_bridge_command(
                 screenshot_b64 = await _refresh_screenshot_cache(session_id)
                 session["recording_steps"].append({
                     "action": req.action,
-                    "params": req.params,
+                    "params": _redacted_params(req.action, req.params),
                     "ts": time.time(),
                     "screenshot_b64": screenshot_b64,
                 })
@@ -1803,7 +1845,14 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
                 # care which source demonstrated the workflow.
                 if session.get("recording"):
                     event = msg.get("event") or {}
-                    if event.get("action"):
+                    action = event.get("action")
+                    if action:
+                        # Derselbe Freitext-Schutz wie bei den Aktionen des
+                        # Agenten (siehe _redacted_params) — die Bridge warnt
+                        # beim Start zwar vor Passwoertern, haelt sich aber
+                        # nicht selbst daran zurueck; "type" liefert hier das
+                        # komplette getippte Wort als params["text"].
+                        event = {**event, "params": _redacted_params(action, event.get("params") or {})}
                         session["recording_steps"].append(event)
 
             elif msg_type == "observation":
