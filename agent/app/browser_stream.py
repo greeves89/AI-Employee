@@ -28,6 +28,7 @@ import asyncio
 import base64
 import json
 import logging
+import os
 import time
 from collections import deque
 
@@ -43,11 +44,31 @@ logger = logging.getLogger(__name__)
 _audit: "deque[dict]" = deque(maxlen=200)
 
 
+def _ohne_geheimnisse(url: str) -> str:
+    """Nur Schema, Host und Pfad ins Protokoll.
+
+    In Query und Fragment stecken oft Tokens (OAuth-``code``, Ruecksetz-Links),
+    in der Authority Benutzername und Passwort.
+    """
+    from urllib.parse import urlsplit
+
+    try:
+        teile = urlsplit(url)
+        host = teile.hostname or ""
+        if teile.port:
+            host = f"{host}:{teile.port}"
+    except ValueError:
+        return "(unlesbare Adresse)"
+    if not teile.scheme:
+        return "(unlesbare Adresse)"
+    return f"{teile.scheme}://{host}{teile.path}"
+
+
 def audit_eintrag(aktion: str, url: str, *, erlaubt: bool, akteur: str) -> None:
     _audit.append({
         "ts": time.time(),
         "aktion": aktion,
-        "url": url,
+        "url": _ohne_geheimnisse(url),
         "erlaubt": erlaubt,
         "akteur": akteur,
     })
@@ -57,7 +78,28 @@ def audit_log() -> list[dict]:
     return list(_audit)
 
 
+#: Kopfzeile, mit der sich der Orchestrator ausweist (``ws.py``: BROWSER_ZUGANG_KOPF).
+ZUGANG_KOPF = "X-Browser-Zugang"
+
+
+def zugang_erlaubt(request: web.Request) -> bool:
+    """Nur der Orchestrator darf an Bildstrom und Pruefprotokoll.
+
+    Alle Agenten haengen im selben Docker-Netz und erreichen einander auf
+    diesem Port. Ohne Ausweis koennte ein Agent den angemeldeten Browser eines
+    fremden Agenten bedienen. Fehlt ``BROWSER_ZUGANG`` (Container von einem
+    alten Orchestrator gebaut), bleibt die Tuer zu.
+    """
+    import hmac
+
+    erwartet = os.environ.get("BROWSER_ZUGANG", "")
+    gegeben = request.headers.get(ZUGANG_KOPF, "")
+    return bool(erwartet) and hmac.compare_digest(gegeben.encode(), erwartet.encode())
+
+
 async def audit_handler(request: web.Request) -> web.Response:
+    if not zugang_erlaubt(request):
+        return web.json_response({"error": "forbidden"}, status=403)
     return web.json_response({"audit_log": audit_log()})
 
 #: Bilder je Sekunde. Chromium schickt ohnehin nur bei Veraenderung; das hier
@@ -259,6 +301,8 @@ _strom = BrowserStream()
 
 async def stream_handler(request: web.Request) -> web.WebSocketResponse:
     """WebSocket: Bilder hinaus, Eingaben hinein."""
+    if not zugang_erlaubt(request):
+        return web.Response(status=403, text="forbidden")
     ws = web.WebSocketResponse(heartbeat=30)
     await ws.prepare(request)
 

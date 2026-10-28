@@ -10,7 +10,6 @@ Live-Nachweis, dass das Profil nach Neustart angemeldet bleibt, steht in
 import importlib
 import os
 import shutil
-import stat
 import tempfile
 import unittest
 from pathlib import Path
@@ -24,8 +23,9 @@ class ProfilCryptoBase(unittest.TestCase):
         self.tmp = tempfile.mkdtemp(prefix="profilcrypto-")
         self.klartext = os.path.join(self.tmp, "klartext")
         self.archiv = os.path.join(self.tmp, "archiv.tar.enc")
-        self.modul._SCHLUESSEL_DATEI = Path(os.path.join(self.tmp, "key"))
-        self.modul._zwischengespeicherter_schluessel = None
+        from cryptography.fernet import Fernet
+
+        os.environ["BROWSER_PROFIL_KEY"] = Fernet.generate_key().decode()
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
@@ -87,47 +87,73 @@ class Idempotenz(ProfilCryptoBase):
             Path(self.klartext, "cookie.db").read_text(), "inzwischen-veraendert")
 
 
-class SchluesselAufloesung(ProfilCryptoBase):
-    def test_persistierter_schluessel_wird_0600_angelegt(self):
+class Schluessel(ProfilCryptoBase):
+    def test_kein_schluessel_auf_der_platte(self):
+        """Der Schluessel kommt vom Orchestrator; neben dem Archiv liegt nichts."""
         self._profil_anlegen()
         self.modul.verschluesseln(self.klartext, self.archiv)
+        self.assertEqual(sorted(os.listdir(self.tmp)), ["archiv.tar.enc", "klartext"])
 
-        modus = stat.S_IMODE(os.stat(self.modul._SCHLUESSEL_DATEI).st_mode)
-        self.assertEqual(modus, 0o600)
+    def test_ohne_schluessel_wird_nichts_gesichert(self):
+        os.environ.pop("BROWSER_PROFIL_KEY")
+        self._profil_anlegen()
+        with self.assertRaises(self.modul.KeinSchluessel):
+            self.modul.verschluesseln(self.klartext, self.archiv)
+        self.assertFalse(os.path.exists(self.archiv))
 
-    def test_umgebung_schlaegt_persistierte_datei(self):
-        from cryptography.fernet import Fernet
-
-        vorgabe = Fernet.generate_key().decode()
-        os.environ["BROWSER_PROFIL_KEY"] = vorgabe
-        self.assertEqual(self.modul._schluessel().decode(), vorgabe)
-
-    def test_ungueltiger_umgebungsschluessel_faellt_zurueck_statt_zu_crashen(self):
-        """Ein Tippfehler in BROWSER_PROFIL_KEY darf den Agenten nicht aus dem
-        Browser aussperren -- dieselbe Regel wie beim Orchestrator-Pendant."""
-        os.environ["BROWSER_PROFIL_KEY"] = "offensichtlich-kein-fernet-schluessel"
-        schluessel = self.modul._schluessel()
-        from cryptography.fernet import Fernet
-        Fernet(schluessel)  # wirft nicht -> ist ein gueltiger Fernet-Schluessel
-
-    def test_gleicher_schluessel_ueber_zwei_prozesse_hinweg(self):
-        """Simuliert einen Neustart: neuer Import, derselbe Schluesseldatei."""
-        self._profil_anlegen("x")
+    def test_ohne_schluessel_bleibt_das_archiv_unberuehrt(self):
+        self._profil_anlegen("alt")
         self.modul.verschluesseln(self.klartext, self.archiv)
-
-        # ERST den Pfad als reinen Wert sichern: ``reload`` mutiert dasselbe
-        # Modulobjekt in-place, ein Zugriff auf ``self.modul`` NACH dem
-        # Reload saehe schon den zuruecksetzten Zustand.
-        schluessel_pfad = self.modul._SCHLUESSEL_DATEI
-
-        import app.profile_crypto as modul2
-        modul2 = importlib.reload(modul2)
-        modul2._SCHLUESSEL_DATEI = schluessel_pfad
-        modul2._zwischengespeicherter_schluessel = None
-
+        vorher = Path(self.archiv).read_bytes()
         shutil.rmtree(self.klartext)
-        modul2.entschluesseln(self.archiv, self.klartext)
-        self.assertEqual(Path(self.klartext, "cookie.db").read_text(), "x")
+
+        os.environ["BROWSER_PROFIL_KEY"] = "kein-fernet-schluessel"
+        self.modul.entschluesseln(self.archiv, self.klartext)
+        self.assertEqual(Path(self.archiv).read_bytes(), vorher)
+        self.assertEqual(os.listdir(self.klartext), [])
+
+    def test_falscher_schluessel_legt_das_archiv_beiseite(self):
+        """Nicht ueberschreiben: Mit dem richtigen Schluessel ist es noch lesbar."""
+        from cryptography.fernet import Fernet
+
+        self._profil_anlegen("alt")
+        self.modul.verschluesseln(self.klartext, self.archiv)
+        vorher = Path(self.archiv).read_bytes()
+        shutil.rmtree(self.klartext)
+
+        os.environ["BROWSER_PROFIL_KEY"] = Fernet.generate_key().decode()
+        self.modul.entschluesseln(self.archiv, self.klartext)
+        self.assertFalse(os.path.exists(self.archiv))
+        beiseite = [n for n in os.listdir(self.tmp) if ".nicht-lesbar-" in n]
+        self.assertEqual(len(beiseite), 1)
+        self.assertEqual(Path(self.tmp, beiseite[0]).read_bytes(), vorher)
+
+
+class AltesProfil(ProfilCryptoBase):
+    """Bis v1.387 lag das Profil im Klartext im Arbeitsbereich."""
+
+    def setUp(self):
+        super().setUp()
+        import app.tools.browser as browser
+        self.browser = importlib.reload(browser)
+        self.alt = os.path.join(self.tmp, "alt-profil")
+        self.browser.ALTES_PROFIL_DIR = self.alt
+        self.browser.PROFIL_ARCHIV = self.archiv
+        self.browser.PROFIL_DIR = self.klartext
+        os.makedirs(self.alt)
+        Path(self.alt, "cookie.db").write_text("alte-anmeldung")
+
+    def test_wird_uebernommen_und_der_klartext_geloescht(self):
+        self.browser.sicherstellen_profil_entschluesselt()
+        self.assertFalse(os.path.exists(self.alt))
+        self.assertEqual(Path(self.klartext, "cookie.db").read_text(), "alte-anmeldung")
+        self.assertNotIn(b"alte-anmeldung", Path(self.archiv).read_bytes())
+
+    def test_ohne_schluessel_bleibt_es_liegen(self):
+        os.environ.pop("BROWSER_PROFIL_KEY")
+        self.browser.sicherstellen_profil_entschluesselt()
+        self.assertTrue(os.path.exists(self.alt))
+        self.assertFalse(os.path.exists(self.archiv))
 
 
 if __name__ == "__main__":

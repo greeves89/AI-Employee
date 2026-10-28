@@ -3501,8 +3501,21 @@ async def update_agent_browser_domains(
     ``None`` oder eine leere Liste heisst unbeschraenkt -- rueckwaertskompatibel
     zum bisherigen Prototyp-Stand. Wirkt wie ``browser-mode`` erst nach einem
     Neustart, weil der Wert als Umgebungsvariable in den Container geht.
+
+    Nur Besitzer und Admin: Wer den Agenten nur freigegeben bekommen hat, darf
+    die Sicherheitsgrenze seines Browsers nicht verschieben.
     """
     await _check_owner(agent_id, user, db)
+    from app.models.user import UserRole
+
+    if getattr(user, "role", None) != UserRole.ADMIN:
+        from app.models.agent import Agent as _Agent
+
+        besitzer = await db.scalar(select(_Agent.user_id).where(_Agent.id == agent_id))
+        if not besitzer or besitzer != user.id:
+            raise HTTPException(
+                status_code=403,
+                detail="Die Browser-Freigabeliste darf nur der Besitzer des Agenten ändern.")
 
     # Serverseitig bereinigen, nicht nur vertrauen: der Wert geht als
     # Umgebungsvariable in den Container und wird dort an Kommas getrennt.
@@ -3547,7 +3560,8 @@ async def get_agent_browser_audit(
     from app.dependencies import require_agent_access
     await require_agent_access(agent_id, user, db)
 
-    from app.api.ws import _agent_container_name, BROWSER_STROM_PORT
+    from app.api.ws import BROWSER_STROM_PORT, BROWSER_ZUGANG_KOPF, _agent_container_name
+    from app.core.encryption import agent_schluessel
 
     name = await _agent_container_name(agent_id)
     if not name:
@@ -3569,7 +3583,11 @@ async def get_agent_browser_audit(
     url = f"http://{name}:{BROWSER_STROM_PORT}/browser/audit"
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+            async with session.get(
+                url,
+                headers={BROWSER_ZUGANG_KOPF: agent_schluessel("browser-zugang", agent_id)},
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as resp:
                 if resp.status != 200:
                     return {"audit_log": [], "warning": f"Agent antwortete mit {resp.status}."}
                 return await resp.json()

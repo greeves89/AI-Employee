@@ -18,12 +18,16 @@ Zugestaendnis, das diese Codebase schon beim Zwischenspeicher unter ``/tmp``
 macht. Ein geordnetes Beenden (SIGTERM/SIGINT, ``shutdown()`` in
 ``main.py``) sichert immer, ein Navigationsschritt zusaetzlich zwischendurch.
 
-**Schluessel:** dieselbe Reihenfolge wie ``orchestrator/app/core/encryption.py``
-(dort die "uebliche Regel"): Umgebungsvariable, wenn gueltig -- sonst eine
-einmal angelegte, auf der Platte persistierte Datei (0600) -- sonst neu
-erzeugen und dort ablegen. Agent und Orchestrator sind getrennte Prozesse
-ohne gemeinsamen Import, deshalb hier dieselbe Logik noch einmal, bewusst
-nicht als Kopie der Orchestrator-Datei.
+**Schluessel:** kommt ausschliesslich vom Orchestrator
+(``BROWSER_PROFIL_KEY``, je Agent aus ``ENCRYPTION_KEY`` abgeleitet) und liegt
+nie im Arbeitsbereich. Fehlt er, wird nichts gesichert und kein Archiv
+angeruehrt.
+
+**Was das schuetzt:** das ruhende Archiv im Arbeitsbereich (Sicherungen,
+Plattenabzug, ein anderer Container mit dem Volume). Es schuetzt NICHT vor dem
+Agenten selbst: Waehrend er laeuft, liegt das Profil entschluesselt unter
+``/tmp`` und der Schluessel in seiner Umgebung. Beim geordneten Beenden wird
+das Klartextprofil geloescht.
 """
 
 from __future__ import annotations
@@ -32,71 +36,34 @@ import io
 import logging
 import os
 import tarfile
+import time
 from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
 
 logger = logging.getLogger(__name__)
 
-#: Wo der Schluessel persistiert, wenn er nicht ueber die Umgebung kommt.
-_SCHLUESSEL_DATEI = Path(
-    os.environ.get("BROWSER_PROFIL_KEY_DATEI", "/workspace/.browser-profil.key")
-)
-
-
-def _ist_gueltiger_schluessel(wert: str | None) -> bool:
-    if not wert:
-        return False
-    try:
-        Fernet(wert.encode())
-        return True
-    except Exception:
-        return False
-
-
-_zwischengespeicherter_schluessel: str | None = None
+class KeinSchluessel(RuntimeError):
+    """``BROWSER_PROFIL_KEY`` fehlt oder ist ungueltig."""
 
 
 def _schluessel() -> bytes:
-    """Fernet-Schluessel aufloesen: Umgebung > Datei > neu erzeugen."""
-    global _zwischengespeicherter_schluessel
-    if _zwischengespeicherter_schluessel:
-        return _zwischengespeicherter_schluessel.encode()
-
-    umgebung = os.environ.get("BROWSER_PROFIL_KEY")
-    if umgebung:
-        if _ist_gueltiger_schluessel(umgebung):
-            _zwischengespeicherter_schluessel = umgebung
-            return umgebung.encode()
-        logger.error(
-            "[ProfilCrypto] BROWSER_PROFIL_KEY ist UNGUELTIG (muss ein "
-            "Fernet.generate_key() sein) -- weiche auf persistierten/neu "
-            "erzeugten Schluessel aus."
-        )
-
-    if _SCHLUESSEL_DATEI.exists():
-        wert = _SCHLUESSEL_DATEI.read_text().strip()
-        if _ist_gueltiger_schluessel(wert):
-            _zwischengespeicherter_schluessel = wert
-            return wert.encode()
-        logger.warning("[ProfilCrypto] Persistierter Schluessel %s ist ungueltig -- "
-                       "wird neu erzeugt.", _SCHLUESSEL_DATEI)
-
-    neu = Fernet.generate_key()
-    _SCHLUESSEL_DATEI.parent.mkdir(parents=True, exist_ok=True)
-    _SCHLUESSEL_DATEI.write_text(neu.decode())
-    _SCHLUESSEL_DATEI.chmod(0o600)
-    logger.warning("[ProfilCrypto] Neuen Schluessel erzeugt und unter %s abgelegt.",
-                   _SCHLUESSEL_DATEI)
-    _zwischengespeicherter_schluessel = neu.decode()
-    return neu
+    wert = os.environ.get("BROWSER_PROFIL_KEY", "")
+    try:
+        Fernet(wert.encode())
+    except Exception as e:  # noqa: BLE001 — leer oder kein Fernet-Schluessel
+        raise KeinSchluessel(
+            "BROWSER_PROFIL_KEY fehlt oder ist ungueltig -- das Browserprofil wird "
+            "nicht gesichert. Agent ueber die Oberflaeche aktualisieren."
+        ) from e
+    return wert.encode()
 
 
 def _fernet() -> Fernet:
     return Fernet(_schluessel())
 
 
-def verschluesseln(klartext_dir: str, archiv_datei: str) -> None:
+def verschluesseln(klartext_dir: str, archiv_datei: str) -> bool:
     """Verzeichnis einpacken, verschluesseln und atomar an ``archiv_datei`` ablegen.
 
     Atomar (temp-Datei + ``os.replace``), damit ein Abbruch waehrend des
@@ -105,7 +72,7 @@ def verschluesseln(klartext_dir: str, archiv_datei: str) -> None:
     """
     if not os.path.isdir(klartext_dir):
         logger.debug("[ProfilCrypto] %s existiert nicht -- nichts zu sichern", klartext_dir)
-        return
+        return False
 
     puffer = io.BytesIO()
     with tarfile.open(fileobj=puffer, mode="w") as tar:
@@ -119,6 +86,7 @@ def verschluesseln(klartext_dir: str, archiv_datei: str) -> None:
     temp.chmod(0o600)
     os.replace(temp, ziel)
     logger.info("[ProfilCrypto] Profil gesichert (%d Bytes verschluesselt)", len(verschluesselt))
+    return True
 
 
 def entschluesseln(archiv_datei: str, klartext_dir: str) -> None:
@@ -144,12 +112,19 @@ def entschluesseln(archiv_datei: str, klartext_dir: str) -> None:
     try:
         roh = Path(archiv_datei).read_bytes()
         entschluesselt = _fernet().decrypt(roh)
+    except KeinSchluessel as e:
+        # Archiv NICHT anfassen: mit dem richtigen Schluessel ist es noch lesbar.
+        logger.error("[ProfilCrypto] %s Profil startet leer, das Archiv bleibt liegen.", e)
+        return
     except InvalidToken:
+        # Beiseitelegen statt beim naechsten Sichern ueberschreiben: Kommt der
+        # richtige Schluessel zurueck, ist die Anmeldung noch zu retten.
+        beiseite = f"{archiv_datei}.nicht-lesbar-{int(time.time())}"
+        os.replace(archiv_datei, beiseite)
         logger.error(
             "[ProfilCrypto] Archiv %s liess sich nicht entschluesseln (Schluessel "
-            "geaendert oder Datei beschaedigt). Profil startet leer statt den Agenten "
-            "dauerhaft zu blockieren -- die Anmeldung ist dann weg.",
-            archiv_datei,
+            "geaendert oder Datei beschaedigt). Liegt jetzt unter %s; das Profil "
+            "startet leer.", archiv_datei, beiseite,
         )
         return
 

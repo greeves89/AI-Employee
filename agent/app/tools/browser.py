@@ -69,11 +69,36 @@ def sicherstellen_profil_entschluesselt() -> None:
         return
     from app import profile_crypto
 
+    _altes_profil_uebernehmen()
     profile_crypto.entschluesseln(PROFIL_ARCHIV, PROFIL_DIR)
     _profil_entschluesselt = True
 
 
-def profil_sichern() -> None:
+#: Bis v1.387 lag das Profil unverschluesselt im Arbeitsbereich.
+ALTES_PROFIL_DIR = os.environ.get("BROWSER_ALTES_PROFIL_DIR", "/workspace/.browser-profil")
+
+
+def _altes_profil_uebernehmen() -> None:
+    """Klartextprofil von vor v1.388 einmal ins Archiv uebernehmen, dann loeschen.
+
+    Ohne das waeren alle Anmeldungen nach dem Update still weg, und die
+    Zugangsdaten laegen weiter unverschluesselt im Arbeitsbereich.
+    """
+    from app import profile_crypto
+
+    if not os.path.isdir(ALTES_PROFIL_DIR):
+        return
+    try:
+        if not os.path.exists(PROFIL_ARCHIV):
+            profile_crypto.verschluesseln(ALTES_PROFIL_DIR, PROFIL_ARCHIV)
+            logger.info("[Browser] Altes Profil verschluesselt uebernommen")
+    except Exception:  # noqa: BLE001 — ohne Schluessel bleibt das alte Profil liegen
+        logger.warning("[Browser] Altes Profil nicht uebernommen", exc_info=True)
+        return
+    shutil.rmtree(ALTES_PROFIL_DIR, ignore_errors=True)
+
+
+def profil_sichern() -> bool:
     """Klartext-Profil einpacken und verschluesselt zurueckschreiben.
 
     Synchron und bewusst fehlertolerant (nie eine Ausnahme nach aussen): Wird
@@ -86,9 +111,22 @@ def profil_sichern() -> None:
     from app import profile_crypto
 
     try:
-        profile_crypto.verschluesseln(PROFIL_DIR, PROFIL_ARCHIV)
+        return profile_crypto.verschluesseln(PROFIL_DIR, PROFIL_ARCHIV)
     except Exception:  # noqa: BLE001 — Sichern darf den Aufrufer nicht mitreissen
         logger.warning("[Browser] Profil-Sicherung fehlgeschlagen", exc_info=True)
+        return False
+
+
+def profil_entfernen() -> None:
+    """Klartextprofil nach dem geordneten Beenden loeschen.
+
+    Nur nach einer erfolgreichen Sicherung aufrufen (``close_browser`` meldet
+    sie). Ein gestoppter Container behaelt ``/tmp``; ohne das laegen die
+    Anmeldungen dort unverschluesselt, bis der Container neu gebaut wird.
+    """
+    global _profil_entschluesselt
+    shutil.rmtree(PROFIL_DIR, ignore_errors=True)
+    _profil_entschluesselt = False
 
 
 #: Domain-Allowlist fuer ``navigate``/``new_tab`` (#828, Schritt 5). ``None``
@@ -326,7 +364,78 @@ async def _ensure_context():
         )
 
     _context.set_default_timeout(NAV_TIMEOUT_MS)
+    await _wache_anbringen(_context)
     return _context
+
+
+async def _wache_anbringen(context) -> None:
+    """Freigabeliste auf Anfrage-Ebene durchsetzen (#828, Schritt 5).
+
+    ``navigate`` prueft nur die Adresse, die es selbst bekommt. Eine Seite
+    wechselt aber auch durch Klicks, ``back``, Formulare, Popups und Eingaben
+    aus der Arbeitsflaeche. Deshalb zusaetzlich hier:
+
+    * ``route`` prueft jede Navigation des Hauptrahmens, bevor sie losgeht.
+      Eingebettete Rahmen bleiben frei, sonst brechen Anmelde- und
+      Pruef-Widgets auf erlaubten Seiten.
+    * Weiterleitungen sieht ``route`` nicht (Playwright ruft den Handler nur
+      fuer die erste Adresse). Landet eine Seite deshalb ausserhalb, schickt
+      ``framenavigated`` sie sofort auf ``about:blank``. Die Anfrage selbst hat
+      das fremde Ziel dann schon erreicht, gelesen wird dort aber nichts.
+    """
+    if _erlaubte_domains() is None:
+        return
+
+    async def pruefen(route) -> None:
+        anfrage = route.request
+        try:
+            hauptrahmen = anfrage.is_navigation_request() and anfrage.frame.parent_frame is None
+        except Exception:  # noqa: BLE001 — z. B. Anfragen eines Service Workers
+            hauptrahmen = False
+        if hauptrahmen and _scope_fehler(anfrage.url):
+            _audit_melden("navigation", anfrage.url, erlaubt=False, akteur="seite")
+            await route.abort("blockedbyclient")
+            return
+        await route.continue_()
+
+    await context.route("**/*", pruefen)
+
+    def beobachten(seite) -> None:
+        def gelandet(rahmen) -> None:
+            if rahmen.parent_frame is not None or not _ausserhalb(rahmen.url):
+                return
+            _audit_melden("weiterleitung", rahmen.url, erlaubt=False, akteur="seite")
+            asyncio.ensure_future(_wegschicken(seite))
+
+        seite.on("framenavigated", gelandet)
+
+    for seite in context.pages:
+        beobachten(seite)
+    context.on("page", beobachten)
+
+
+def _ausserhalb(url: str) -> bool:
+    """Liegt eine schon geladene Adresse ausserhalb der Freigabeliste?"""
+    if url.startswith(("about:", "chrome-error:")):
+        return False
+    return _scope_fehler(url) is not None
+
+
+async def _wegschicken(seite) -> None:
+    try:
+        await seite.goto("about:blank")
+    except Exception:  # noqa: BLE001 — Seite kann schon geschlossen sein
+        logger.debug("[Browser] Seite liess sich nicht leeren", exc_info=True)
+
+
+async def _nach_laden_pruefen(seite, angefragt: str) -> str | None:
+    """Fehlertext, wenn ``angefragt`` per Weiterleitung ausserhalb gelandet ist."""
+    if not _ausserhalb(seite.url):
+        return None
+    ziel = seite.url
+    await _wegschicken(seite)
+    return (f"'{angefragt}' leitete auf '{ziel}' weiter, und diese Adresse ist fuer "
+            f"diesen Agenten nicht freigegeben. Die Seite wurde geleert.")
 
 
 async def _ensure_page():
@@ -344,7 +453,7 @@ async def _ensure_page():
     return _pages[_aktiv]
 
 
-async def close_browser() -> None:
+async def close_browser() -> bool:
     """Am Ende eines Laufs aufräumen — ein offener Chromium hält Speicher fest.
 
     Sichert das Profil IMMER, auch wenn ``_context`` hier None ist: In
@@ -352,6 +461,8 @@ async def close_browser() -> None:
     direkt in ``PROFIL_DIR``, ohne dass dieses Modul je einen eigenen
     Kontext oeffnet — trotzdem muss derselbe Pfad beim geordneten Beenden
     gesichert werden (aufgerufen aus ``main.py``s ``shutdown()``).
+
+    Gibt zurueck, ob die Sicherung geklappt hat.
     """
     global _context, _pages, _aktiv
     try:
@@ -363,7 +474,7 @@ async def close_browser() -> None:
         _context = None
         _pages = []
         _aktiv = 0
-    await asyncio.to_thread(profil_sichern)
+    return await asyncio.to_thread(profil_sichern)
 
 
 async def run(params: dict, *, akteur: str = "agent") -> str:
@@ -431,6 +542,9 @@ async def _dispatch(page, action: str, params: dict, akteur: str = "agent") -> s
         _aktiv = len(_pages) - 1
         if url:
             await neue.goto(url, wait_until="domcontentloaded")
+            fehler = await _nach_laden_pruefen(neue, url)
+            if fehler:
+                return f"Error: {fehler}"
             await asyncio.to_thread(profil_sichern)
         return f"Opened tab [{_aktiv}]." + (f" At {neue.url}" if url else "")
 
@@ -474,6 +588,9 @@ async def _dispatch(page, action: str, params: dict, akteur: str = "agent") -> s
         if fehler:
             return f"Error: {fehler}"
         await page.goto(url, wait_until="domcontentloaded")
+        fehler = await _nach_laden_pruefen(page, url)
+        if fehler:
+            return f"Error: {fehler}"
         # Navigation ist der typische Moment einer Anmeldung -- hier zu
         # sichern haelt das Verlustfenster bei einem harten Abbruch klein,
         # ohne bei jedem Klick/Tastendruck ein Profil zu packen.
@@ -535,6 +652,11 @@ async def _dispatch(page, action: str, params: dict, akteur: str = "agent") -> s
 
     if action == "back":
         await page.go_back()
+        # Aus dem Verlauf (bfcache) kommt eine Seite ohne Anfrage zurueck,
+        # an ``route`` vorbei.
+        fehler = await _nach_laden_pruefen(page, "back")
+        if fehler:
+            return f"Error: {fehler}"
         return f"Back at {page.url}"
 
     return f"Error: action '{action}' not implemented."

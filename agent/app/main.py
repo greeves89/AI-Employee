@@ -865,7 +865,8 @@ async def shutdown(task_consumer: TaskConsumer, chat_consumer: ChatConsumer, mes
     if os.environ.get("COMPUTER_USE_BROWSER", "").lower() == "true":
         from app.tools import browser
         try:
-            await browser.close_browser()
+            if await browser.close_browser():
+                browser.profil_entfernen()
         except Exception as e:  # noqa: BLE001 — Shutdown darf dadurch nicht haengen
             print(f"[Agent] WARN: Profil-Sicherung beim Beenden fehlgeschlagen: {e}")
 

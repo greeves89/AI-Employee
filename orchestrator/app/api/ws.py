@@ -1467,9 +1467,10 @@ async def ws_all_logs(websocket: WebSocket, token: str | None = Query(None), tic
 #   2. Die Agenten-Container haengen am internen Docker-Netz und haben nach
 #      aussen ueberhaupt keinen Weg. Das soll so bleiben.
 #
-# Prototyp-Stand: Geltungsbereiche und Pruefprotokoll fehlen noch (siehe #828).
 
 BROWSER_STROM_PORT = 8080
+#: Kopfzeile, mit der sich der Orchestrator beim Browser des Agenten ausweist.
+BROWSER_ZUGANG_KOPF = "X-Browser-Zugang"
 
 
 async def _agent_container_name(agent_id: str) -> str | None:
@@ -1544,6 +1545,11 @@ async def ws_agent_browser(
     import aiohttp
 
     ziel = f"ws://{name}:{BROWSER_STROM_PORT}/browser/stream"
+    # Ausweis gegenueber dem Agenten: Alle Agenten haengen im selben Netz, der
+    # Agent laesst nur den Orchestrator an seinen Browser (#828, Schritt 5).
+    from app.core.encryption import agent_schluessel
+
+    zugang = {BROWSER_ZUGANG_KOPF: agent_schluessel("browser-zugang", agent_id)}
     # Ein frisch geweckter Agent braucht ein paar Sekunden, bis sein
     # Gesundheitsserver lauscht. Ein einziger Versuch wuerde genau dann
     # scheitern, wenn das Wecken gerade erfolgreich war.
@@ -1555,7 +1561,7 @@ async def ws_agent_browser(
                 # dessen einfache Zahl ist abgekuendigt, und hier geht es
                 # ohnehin um die Gesamtdauer des Verbindungsversuchs.
                 return await asyncio.wait_for(
-                    sitzung.ws_connect(ziel, heartbeat=30), timeout=10)
+                    sitzung.ws_connect(ziel, heartbeat=30, headers=zugang), timeout=10)
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                 letzter = e
                 await asyncio.sleep(1.5)

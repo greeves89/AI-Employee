@@ -208,15 +208,98 @@ class ScopeUndAudit(unittest.IsolatedAsyncioTestCase):
 
     # --- 4. Das Protokoll ist abrufbar und begrenzt ------------------------
 
-    async def test_audit_handler_gibt_das_protokoll_heraus(self):
+    def _anfrage(self, kopf: dict):
+        anfrage = mock.Mock()
+        anfrage.headers = kopf
+        return anfrage
+
+    async def test_audit_handler_gibt_das_protokoll_nur_dem_orchestrator(self):
         import json
 
         self.bs.audit_eintrag("navigate", "https://example.com", erlaubt=True,
                               akteur="agent")
-        antwort = await self.bs.audit_handler(None)
-        daten = json.loads(antwort.body.decode())
+        with mock.patch.dict(os.environ, {"BROWSER_ZUGANG": "geheim-123"}):
+            ok = await self.bs.audit_handler(self._anfrage({"X-Browser-Zugang": "geheim-123"}))
+            falsch = await self.bs.audit_handler(self._anfrage({"X-Browser-Zugang": "geraten"}))
+            ohne = await self.bs.audit_handler(self._anfrage({}))
+
+        daten = json.loads(ok.body.decode())
         self.assertEqual(1, len(daten["audit_log"]))
         self.assertEqual("https://example.com", daten["audit_log"][0]["url"])
+        self.assertEqual(403, falsch.status)
+        self.assertEqual(403, ohne.status)
+
+    async def test_ohne_zugangsschluessel_bleibt_die_tuer_zu(self):
+        """Container eines alten Orchestrators: leerer Schluessel darf nicht passen."""
+        with mock.patch.dict(os.environ, {"BROWSER_ZUGANG": ""}):
+            antwort = await self.bs.audit_handler(self._anfrage({"X-Browser-Zugang": ""}))
+            strom = await self.bs.stream_handler(self._anfrage({}))
+        self.assertEqual(403, antwort.status)
+        self.assertEqual(403, strom.status)
+
+    def test_protokoll_ohne_query_fragment_und_zugangsdaten(self):
+        self.bs.audit_eintrag(
+            "navigate", "https://nutzer:pw@login.example.com:8443/cb?code=GEHEIM#tok=X",
+            erlaubt=True, akteur="agent")
+        self.assertEqual("https://login.example.com:8443/cb", self.bs.audit_log()[-1]["url"])
+
+    # --- Weiterleitungen und Navigation ausserhalb von ``navigate`` --------
+
+    async def test_weiterleitung_nach_aussen_wird_geleert_und_gemeldet(self):
+        class Umleitende(SeitenDoppel):
+            async def goto(self, url, wait_until=None):
+                self.goto_aufrufe.append(url)
+                self.url = "https://angreifer.invalid/x" if url.startswith("https://example.com") else url
+
+        self.seite = Umleitende()
+        with self._mit_freigabe("example.com"):
+            ergebnis = await self.browser.run(
+                {"action": "navigate", "url": "https://example.com/redirect"})
+
+        self.assertTrue(ergebnis.startswith("Error:"), ergebnis)
+        self.assertIn("angreifer.invalid", ergebnis)
+        self.assertEqual("about:blank", self.seite.url)
+
+    async def test_wache_sperrt_navigation_des_hauptrahmens(self):
+        """Klicks, Formulare und Eingaben der Arbeitsflaeche gehen an ``navigate`` vorbei."""
+        kontext = mock.Mock()
+        kontext.pages = []
+        kontext.route = mock.AsyncMock()
+        with self._mit_freigabe("example.com"):
+            await self.browser._wache_anbringen(kontext)
+            pruefen = kontext.route.call_args.args[1]
+
+            def route_fuer(url, hauptrahmen=True, navigation=True):
+                route = mock.Mock()
+                route.abort = mock.AsyncMock()
+                route.continue_ = mock.AsyncMock()
+                route.request.url = url
+                route.request.is_navigation_request.return_value = navigation
+                route.request.frame.parent_frame = None if hauptrahmen else object()
+                return route
+
+            fremd = route_fuer("https://angreifer.invalid/")
+            await pruefen(fremd)
+            erlaubt = route_fuer("https://a.example.com/")
+            await pruefen(erlaubt)
+            rahmen = route_fuer("https://widget.invalid/", hauptrahmen=False)
+            await pruefen(rahmen)
+            bild = route_fuer("https://cdn.invalid/bild.png", navigation=False)
+            await pruefen(bild)
+
+        fremd.abort.assert_awaited_once()
+        fremd.continue_.assert_not_awaited()
+        for route in (erlaubt, rahmen, bild):
+            route.continue_.assert_awaited_once()
+            route.abort.assert_not_awaited()
+        self.assertEqual("seite", self.bs.audit_log()[-1]["akteur"])
+
+    async def test_ohne_freigabeliste_keine_wache(self):
+        kontext = mock.Mock()
+        kontext.route = mock.AsyncMock()
+        with mock.patch.dict(os.environ, {"BROWSER_ALLOWED_DOMAINS": ""}):
+            await self.browser._wache_anbringen(kontext)
+        kontext.route.assert_not_awaited()
 
     def test_protokoll_waechst_nicht_unbegrenzt(self):
         for i in range(500):

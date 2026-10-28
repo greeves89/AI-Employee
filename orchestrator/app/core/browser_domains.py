@@ -21,12 +21,19 @@ Bereinigt wird, NICHT nur vertraut:
 
 from __future__ import annotations
 
+import re
+
 #: Mehr Eintraege sind kein Anwendungsfall, sondern ein Versehen.
 MAX_EINTRAEGE = 100
 #: Laenge eines Hostnamens nach RFC 1035.
 MAX_LAENGE = 253
 
 _VERBOTENE_ZEICHEN = set(' \t\r\n,/\\@?#"\'`;*')
+
+#: Zulassen statt nur sperren: Labels aus a-z, 0-9 und Bindestrich. Domains mit
+#: Umlauten in Punycode (``xn--...``), so wie der Browser sie vergleicht.
+_LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+_HOSTNAME = re.compile(rf"{_LABEL}(?:\.{_LABEL})+")
 
 
 class UngueltigeDomain(ValueError):
@@ -59,6 +66,10 @@ def bereinigen(eintraege: list[str] | None) -> list[str]:
         if "." not in wert and wert != "localhost":
             raise UngueltigeDomain(
                 f"'{roh}' sieht nicht wie ein Hostname aus (kein Punkt darin).")
+        if wert != "localhost" and not _HOSTNAME.fullmatch(wert):
+            raise UngueltigeDomain(
+                f"'{roh}' ist kein gültiger Hostname. Erlaubt sind a-z, 0-9, Punkt und "
+                f"Bindestrich; Domains mit Umlauten in der xn--Schreibweise.")
         if wert not in sauber:
             sauber.append(wert)
 
