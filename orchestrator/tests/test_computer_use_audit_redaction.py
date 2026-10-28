@@ -8,12 +8,11 @@ der Agent ueber die Aktion `type` ein Passwort oder einen Einmalcode auf den ech
 Bildschirm des Nutzers, landete der Klartext in beiden Protokollen -- aus dem
 Replay-Transkript kann `recording/to-skill` sogar einen geteilten Skill bauen.
 
-Diese Tests pruefen die Gegenmassnahme `_redacted_params`: nur die Felder, die laut
-Bridge-Quelltext (`computer-use-bridge/bridge.py`) tatsaechlich Freitext tragen
-("text" bei `type`/`clipboard_write`/`set_clipboard`, "value" bei `browser_fill`/
-`ego_fill`), werden durch ihre Laenge ersetzt -- alles andere (Koordinaten, Selektor,
-Tastenname, Ziel-App) bleibt unveraendert, und der tatsaechliche Befehl an die Bridge
-bekommt weiterhin die unveraenderten Original-Params.
+Diese Tests pruefen die Gegenmassnahme `_redacted_params`: Sichtbar bleiben nur
+Felder aus einer Zulassliste (Koordinaten, Selektor, Ziel-App, benannte Tasten);
+Freitext und jedes unbekannte Feld werden durch ihre Laenge ersetzt, Adressen
+verlieren Query und Fragment. Der tatsaechliche Befehl an die Bridge bekommt
+weiterhin die unveraenderten Original-Params.
 """
 import json
 import time
@@ -72,11 +71,39 @@ class RedactedParamsPureFunctionTests(unittest.TestCase):
         out = cu._redacted_params("open_app", params)
         self.assertEqual(out, params)
 
-    def test_key_action_is_not_treated_as_sensitive(self):
-        """'key'/'hotkey' tragen Tastennamen ('enter', ['ctrl','c']), kein
-        Freitext -- siehe bridge.py: beide lesen params['keys'], nicht 'text'."""
-        out = cu._redacted_params("key", {"keys": ["enter"]})
-        self.assertEqual(out["keys"], ["enter"])
+    def test_benannte_tasten_bleiben_einzelne_zeichen_nicht(self):
+        """Ein Passwort Taste fuer Taste ist getippter Text."""
+        self.assertEqual(cu._redacted_params("key", {"keys": ["enter"]})["keys"], ["enter"])
+        self.assertEqual(cu._redacted_params("key", {"keys": "tab"})["keys"], "tab")
+        self.assertEqual(cu._redacted_params("hotkey", {"keys": ["ctrl", "v"]})["keys"], ["ctrl", "v"])
+        self.assertEqual(cu._redacted_params("key", {"keys": "p"})["keys"], "<redacted:key>")
+        self.assertEqual(cu._redacted_params("key", {"keys": ["shift", "a"]})["keys"], "<redacted:key>")
+
+    def test_shell_und_skripte_werden_geschwaerzt(self):
+        befehl = cu._redacted_params("shell_run", {"command": "curl -u admin:pw https://x", "cwd": "/tmp"})
+        self.assertEqual(befehl["command"], "<redacted:26 chars>")
+        self.assertEqual(befehl["cwd"], "/tmp")
+        skript = cu._redacted_params("ego_run", {"script": "document.querySelector('#pw').value='x'"})
+        self.assertNotIn("#pw", json.dumps(skript))
+
+    def test_adressen_ohne_query_und_zugangsdaten(self):
+        for action in ("open_url", "browser_navigate", "ego_navigate"):
+            with self.subTest(action=action):
+                out = cu._redacted_params(action, {"url": "https://u:p@login.example.com/cb?code=GEHEIM#t=1"})
+                self.assertEqual(out["url"], "https://login.example.com/cb")
+
+    def test_unbekannte_felder_jeder_aktion_werden_geschwaerzt(self):
+        """Zulassen statt sperren: auch ein Feld, das eine kuenftige Aktion einfuehrt."""
+        alle = {a for aktionen in cu.CAPABILITY_GROUPS.values() for a in aktionen}
+        for action in sorted(alle):
+            with self.subTest(action=action):
+                out = cu._redacted_params(action, {"neues_feld": "geheim-123", "text": "pw-456"})
+                self.assertNotIn("geheim-123", json.dumps(out))
+                self.assertNotIn("pw-456", json.dumps(out))
+
+    def test_params_ohne_dict_werfen_nicht(self):
+        self.assertEqual(cu._redacted_params("type", None), {})
+        self.assertEqual(cu._redacted_params("type", "pw"), {})
 
     def test_empty_text_is_left_as_is(self):
         """Eine leere Eingabe ist kein Geheimnis -- und soll von einer fehlenden
@@ -149,7 +176,7 @@ class DispatchAuditAndRecordingRedactionTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_non_sensitive_action_keeps_its_params_in_both_logs(self):
         """Regressionsschutz: die Maskierung darf harmlose Aktionen nicht
-        anfassen -- 'open_app' hat kein Feld in _SENSITIVE_PARAM_FIELDS."""
+        anfassen -- 'name' bei 'open_app' steht in der Zulassliste."""
         cu._sessions["s1"] = _session(recording=True)
 
         await self._dispatch_instantly(
@@ -158,6 +185,58 @@ class DispatchAuditAndRecordingRedactionTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(cu._sessions["s1"]["audit_log"][-1]["params"], {"name": "Excel"})
+
+
+    async def test_nach_type_kein_bild_im_transkript(self):
+        cu._sessions["s1"] = _session(recording=True)
+
+        async def _bild(session_id):
+            return "BILD"
+
+        orig = cu._refresh_screenshot_cache
+        cu._refresh_screenshot_cache = _bild
+        try:
+            await self._dispatch_instantly(
+                session_id="s1", action="type", params={"text": "123456"},
+                caller_user_id="u1", caller_label="agent-1",
+            )
+        finally:
+            cu._refresh_screenshot_cache = orig
+        self.assertIsNone(cu._sessions["s1"]["recording_steps"][-1]["screenshot_b64"])
+
+
+class MenschlicheAufzeichnung(unittest.TestCase):
+    """Fuehrt der Mensch vor, schickt die Bridge das komplett getippte Wort."""
+
+    def test_getipptes_und_bild_kommen_nicht_ins_transkript(self):
+        session = _session(recording=True)
+        cu._menschlichen_schritt_aufzeichnen(session, {"event": {
+            "action": "type", "params": {"text": "s3cr3t-pw"}, "ts": 1.0,
+            "screenshot_b64": "BILD", "source": "human", "extra": "s3cr3t-pw",
+        }})
+        schritt = session["recording_steps"][-1]
+        self.assertNotIn("s3cr3t-pw", json.dumps(schritt))
+        self.assertIsNone(schritt["screenshot_b64"])
+        self.assertEqual("human", schritt["source"])
+
+    def test_klick_behaelt_koordinaten_und_bild(self):
+        session = _session(recording=True)
+        cu._menschlichen_schritt_aufzeichnen(session, {"event": {
+            "action": "click", "params": {"x": 10, "y": 20, "button": "left"},
+            "screenshot_b64": "BILD",
+        }})
+        schritt = session["recording_steps"][-1]
+        self.assertEqual({"x": 10, "y": 20, "button": "left"}, schritt["params"])
+        self.assertEqual("BILD", schritt["screenshot_b64"])
+
+    def test_kaputtes_ereignis_und_ohne_aufnahme_nichts(self):
+        session = _session(recording=True)
+        for msg in ({"event": None}, {"event": {"action": 5}}, {"event": {"params": {}}}):
+            cu._menschlichen_schritt_aufzeichnen(session, msg)
+        self.assertEqual([], session["recording_steps"])
+        aus = _session(recording=False)
+        cu._menschlichen_schritt_aufzeichnen(aus, {"event": {"action": "click", "params": {}}})
+        self.assertEqual([], aus["recording_steps"])
 
 
 if __name__ == "__main__":
