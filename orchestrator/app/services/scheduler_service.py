@@ -172,6 +172,7 @@ class SchedulerService:
         self._idle_stop_counter = 0
         self._failure_watchdog_last_run: datetime | None = None
         self._vault_reindex_last_run: datetime | None = None
+        self._vault_reindex_task: asyncio.Task | None = None
         self._dreaming_counter = 0
         self._reflection_counter = 0
         self._reflection_service = None
@@ -406,9 +407,13 @@ class SchedulerService:
                     await self._tick_failure_watchdog()
                 except Exception as e:
                     logger.warning("[Scheduler] FailureWatchdog error: %s", e)
-                # Second-Brain-Index nachziehen (#727). Selbstgedrosselt auf 5 Min.
+                # Second-Brain-Index nachziehen (#727). Selbstgedrosselt auf 5 Min
+                # und NEBENLAEUFIG: der Durchlauf liest jede Datei jedes Vaults
+                # und stellt pro Datei zwei Abfragen. Inline erwartet waere das
+                # eine Pause der ganzen Schleife — faellige Zeitplaene wuerden
+                # genau so lange nicht verteilt, wie das Indexieren dauert.
                 try:
-                    await self._tick_vault_reindex()
+                    self._starte_vault_reindex()
                 except Exception as e:
                     logger.warning("[Scheduler] VaultReindex error: %s", e)
                 # Trend scan: runs daily (TrendService.tick() self-throttles)
@@ -2130,6 +2135,38 @@ class SchedulerService:
             return
         if schedule is not None:
             schedule.fail_count += 1
+
+    def _starte_vault_reindex(self) -> bool:
+        """Den Durchlauf nebenlaeufig anstossen; ``False`` = laeuft schon.
+
+        Der Zeitstempel allein genuegt dafuer NICHT: er sperrt 5 Minuten, ein
+        Durchlauf ueber einen grossen Vault kann laenger dauern. Dann liefen zwei
+        Indexierungen desselben Vaults gleichzeitig. Die Aufgabe wird festgehalten
+        (sonst kann der Sammler sie mitten im Lauf einziehen) und der Ausgang
+        protokolliert — eine Ausnahme in einer losgelassenen Aufgabe waere sonst
+        unsichtbar.
+        """
+        laufende = getattr(self, "_vault_reindex_task", None)
+        if laufende is not None and not laufende.done():
+            return False
+        now = datetime.now(timezone.utc)
+        if (
+            self._vault_reindex_last_run is not None
+            and (now - self._vault_reindex_last_run) < _VAULT_REINDEX_INTERVAL
+        ):
+            return False
+
+        def _fertig(aufgabe: asyncio.Task) -> None:
+            self._vault_reindex_task = None
+            if aufgabe.cancelled():
+                return
+            fehler = aufgabe.exception()
+            if fehler is not None:
+                logger.warning("[VaultReindex] Durchlauf abgebrochen: %s", fehler)
+
+        self._vault_reindex_task = asyncio.create_task(self._tick_vault_reindex())
+        self._vault_reindex_task.add_done_callback(_fertig)
+        return True
 
     async def _tick_vault_reindex(self) -> dict[str, int]:
         """Second-Brain-Vaults inkrementell nachindexieren (alle 5 Minuten).

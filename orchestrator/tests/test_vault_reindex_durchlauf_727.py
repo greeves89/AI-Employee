@@ -12,12 +12,19 @@ Geprueft wird hier der Takt, nicht die Indexierung selbst (die hat mit
 Drosselung, Isolation eines kaputten Vaults, und dass der Zeitstempel VOR der
 Arbeit gesetzt wird.
 """
+import asyncio
 import unittest
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from app.services import scheduler_service as ss
+
+
+async def _bis(bedingung, takt: float = 0.01):
+    """Warten, bis die Bedingung gilt — ohne feste Schlafzeit."""
+    while not bedingung():
+        await asyncio.sleep(takt)
 
 
 class _Brain:
@@ -142,12 +149,94 @@ class ReindexDurchlaufTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNotNone(gesehen["stempel_waehrend_der_arbeit"])
 
-    async def test_die_hauptschleife_ruft_ihn_ueberhaupt_auf(self):
+    async def test_der_starter_laesst_den_durchlauf_wirklich_laufen(self):
+        """Nebenlaeufig heisst nicht losgelassen: die Aufgabe muss entstehen,
+        wirklich laufen, und ein zweiter Anstoss darf sie nicht doppeln."""
+        s = self._dienst([_Brain("brain-it", "/x/it")])
+        s._vault_reindex_task = None
+        laeufe = []
+        weiter = asyncio.Event()
+
+        async def reindex(db, label, host):
+            laeufe.append(label)
+            await weiter.wait()          # Durchlauf haengt absichtlich
+            return {"files": 0, "chunks": 0, "pruned": 0, "errors": 0}
+
+        with patch("app.services.vault_indexer.reindex_vault", reindex):
+            self.assertTrue(s._starte_vault_reindex())
+            await asyncio.wait_for(_bis(lambda: laeufe == ["brain-it"]), timeout=2)
+            # Waehrend er laeuft: kein zweiter Durchlauf desselben Vaults.
+            self.assertFalse(s._starte_vault_reindex())
+            weiter.set()
+            await asyncio.wait_for(s._vault_reindex_task, timeout=2)
+
+        self.assertEqual(laeufe, ["brain-it"])
+
+    async def test_der_starter_blockiert_die_schleife_nicht(self):
+        """Der Grund fuer die Auslagerung: der Durchlauf liest jede Datei jedes
+        Vaults. Inline erwartet waere das eine Pause der ganzen Schleife."""
+        s = self._dienst([_Brain("brain-it", "/x/it")])
+        s._vault_reindex_task = None
+        weiter = asyncio.Event()
+
+        async def reindex(db, label, host):
+            await weiter.wait()
+            return {"files": 0, "chunks": 0, "pruned": 0, "errors": 0}
+
+        with patch("app.services.vault_indexer.reindex_vault", reindex):
+            vorher = asyncio.get_running_loop().time()
+            s._starte_vault_reindex()
+            # Der Anstoss selbst kehrt sofort zurueck, obwohl der Durchlauf haengt.
+            self.assertLess(asyncio.get_running_loop().time() - vorher, 0.5)
+            weiter.set()
+            await asyncio.wait_for(s._vault_reindex_task, timeout=2)
+
+    async def test_eine_ausnahme_im_durchlauf_wird_protokolliert_nicht_verschluckt(self):
+        """Eine losgelassene Aufgabe, deren Ausnahme niemand abholt, ist
+        unsichtbar — deshalb haengt am Starter ein Abschluss-Rueckruf."""
+        s = self._dienst([_Brain("brain-it", "/x/it")])
+        s._vault_reindex_task = None
+
+        async def kaputt(*a, **k):
+            raise RuntimeError("Datenbank weg")
+
+        with patch.object(ss.SchedulerService, "_tick_vault_reindex", kaputt), \
+             self.assertLogs(ss.logger, level="WARNING") as protokoll:
+            s._starte_vault_reindex()
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+        self.assertTrue(any("Datenbank weg" in z for z in protokoll.output),
+                        f"Ausnahme nicht protokolliert: {protokoll.output}")
+        self.assertIsNone(s._vault_reindex_task)
+
+    def test_die_hauptschleife_ruft_den_starter_wirklich_auf(self):
         """Ein Durchlauf, den niemand ticken laesst, ist toter Code — genau die
-        Klasse, die #727 beim Gegenmessen beim MCP-Server aufgefallen ist."""
+        Klasse, die in diesem Issue beim MCP-Server schon einmal zugeschlagen hat.
+
+        Geprueft wird der SYNTAXBAUM der Schleifenmethode, nicht ihr Quelltext:
+        eine Textsuche besteht ein auskommentiertes ``pass  # await
+        self._tick_vault_reindex()`` klaglos — ein Kommentar ist kein Knoten.
+        """
+        import ast
         import inspect
-        quelle = inspect.getsource(ss.SchedulerService)
-        self.assertIn("_tick_vault_reindex()", quelle)
+
+        baum = ast.parse(inspect.getsource(ss).replace("\t", "    "))
+        lauf = next(
+            (k for k in ast.walk(baum)
+             if isinstance(k, (ast.AsyncFunctionDef, ast.FunctionDef)) and k.name == "run"),
+            None,
+        )
+        self.assertIsNotNone(lauf, "Schleifenmethode `run` nicht gefunden")
+        aufrufe = [
+            k for k in ast.walk(lauf)
+            if isinstance(k, ast.Call) and isinstance(k.func, ast.Attribute)
+            and k.func.attr in ("_starte_vault_reindex", "_tick_vault_reindex")
+        ]
+        self.assertTrue(
+            aufrufe,
+            "Die Scheduler-Schleife stoesst den Re-Index-Durchlauf nicht an — "
+            "er wuerde nie laufen.",
+        )
 
 
 if __name__ == "__main__":

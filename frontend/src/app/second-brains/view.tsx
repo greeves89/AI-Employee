@@ -446,6 +446,15 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
                   <p className="text-[11px] text-muted-foreground/60 mt-0.5 truncate">
                     {b.container_path}{b.description ? ` — ${b.description}` : ""}
                   </p>
+                  {/* Stand des Suchindex (#727). Ohne diese Zeile ist von aussen
+                      nicht zu sehen, ob die Hybrid-Suche in diesem Vault
+                      ueberhaupt etwas zu arbeiten hat — ein leerer Index
+                      antwortet still ueber den Dateiweg weiter. */}
+                  <p className="text-[11px] text-muted-foreground/50 mt-0.5 truncate">
+                    {(b.indexed_files ?? 0) > 0
+                      ? `${b.indexed_files} Dateien im Index${b.indexed_at ? ` · zuletzt ${new Date(b.indexed_at).toLocaleString("de-DE")}` : ""}`
+                      : "noch nicht indiziert — die Suche nutzt bis dahin den Dateiweg"}
+                  </p>
                 </button>
                 <button onClick={() => setBrowsing(b)} title="Inhalt ansehen/bearbeiten"
                   className="rounded-lg p-2 text-muted-foreground hover:text-primary hover:bg-foreground/[0.06]">

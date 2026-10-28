@@ -1425,6 +1425,13 @@ class OrchestratorAPIClient:
             # scheitern, statt lokal weiterzusuchen.
             if resp.status_code == 404 and str(detail).strip() in ("Not Found", "Not found"):
                 return "unerreichbar", "Endpunkt unbekannt (Orchestrator noch ohne #727)"
+            # Diese drei sagen nichts ueber ein Brain, sondern ueber den Weg
+            # dorthin: abgelaufene Anmeldung (401), Zeitueberschreitung (408),
+            # Drosselung der Schnittstelle (429). Behandelte man sie als
+            # Serveraussage, waere der Agent bei einem Token-Problem blind,
+            # obwohl der Vault im Container gemountet und lesbar ist.
+            if resp.status_code in (401, 408, 429):
+                return "unerreichbar", f"HTTP {resp.status_code}: {detail}"
             return "fehler", f"{resp.status_code}: {detail}"
         try:
             return "ok", resp.json()

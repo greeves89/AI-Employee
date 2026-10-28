@@ -51,12 +51,46 @@ def _stdio_namen() -> set[str]:
     return gesehen
 
 
+def _all_mjs_namen() -> set[str]:
+    """Die DRITTE Liste: ``agent/mcp/_all.mjs`` (gemeinsamer Prozess).
+
+    Sie hing bis #727 frei. Steht ein Name in ``_COMBINED_MCP_NAMES``, fehlt
+    aber hier, dann meldet Claude Code eine Adresse an, die niemand bedient —
+    genau die Vorgeschichte, die dieser Test oben beschreibt, nur eine Ebene
+    tiefer.
+    """
+    import re
+    from pathlib import Path
+
+    quelle = (Path(__file__).resolve().parents[1] / "mcp/_all.mjs").read_text()
+    block = quelle[quelle.index("const kandidaten"):quelle.index("];", quelle.index("const kandidaten"))]
+    namen = set(re.findall(r'\[\s*"([a-z0-9-]+)"', block))
+    # msgraph wird im Modul nur unter einer Bedingung angehaengt.
+    if 'kandidaten.push(["msgraph"' in quelle:
+        namen.add("msgraph")
+    return namen
+
+
 class EineListeTest(unittest.TestCase):
 
     def test_beide_listen_sind_nicht_leer(self):
         """Sonst vergleicht der eigentliche Test zwei leere Mengen."""
         self.assertGreaterEqual(len(main._COMBINED_MCP_NAMES), 6)
         self.assertGreaterEqual(len(_stdio_namen()), 6)
+
+    def test_der_gemeinsame_prozess_bedient_jeden_angemeldeten_namen(self):
+        """``_COMBINED_MCP_NAMES`` ist die ANMELDUNG, ``_all.mjs`` die
+        BEDIENUNG. Laufen sie auseinander, zeigt der Agent ein Werkzeug an, das
+        ins Leere greift."""
+        angemeldet = set(main._COMBINED_MCP_NAMES)
+        bedient = _all_mjs_namen()
+        self.assertGreaterEqual(len(bedient), 6, "Parser von _all.mjs liefert nichts")
+        fehlt = angemeldet - bedient
+        self.assertEqual(
+            fehlt, set(),
+            "Diese Server werden angemeldet, aber im gemeinsamen Prozess nicht "
+            "geladen: " + ", ".join(sorted(fehlt)),
+        )
 
     def test_beide_wege_kennen_dieselben_server(self):
         kombi = set(main._COMBINED_MCP_NAMES)

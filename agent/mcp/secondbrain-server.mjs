@@ -4,6 +4,8 @@
  *   secondbrain_search — Hybrid-Suche (Vektor + Volltext, RRF) ueber die
  *                        dem Agenten zugewiesenen Vaults
  *   secondbrain_write  — Artikel schreiben UND sofort indexieren
+ *   secondbrain_read   — eine Vault-Datei lesen (direkt von der Platte)
+ *   secondbrain_list   — was im Vault ueberhaupt liegt (direkt von der Platte)
  *
  * Warum dieser Server ueberhaupt existiert (#727): Claude-Code-Agenten hatten
  * GAR KEIN `secondbrain_*`-Werkzeug — `agent/mcp/` kannte nur `brain-server.mjs`
@@ -11,11 +13,17 @@
  * `memory-server.mjs`. Der am meisten genutzte Agententyp war damit der einzige
  * ohne Zugang zum Abteilungswissen.
  *
- * Bewusst NUR diese zwei Werkzeuge: Lesen und Auflisten braucht keinen
- * Orchestrator — der Vault ist in den Container gemountet, und Claude Code hat
- * dafuer seine eigenen Datei-Werkzeuge (Read/Glob/Grep). Ein dritter Leseweg
- * waere eine Insel. Dieselbe Begruendung tragen die Werkzeugbeschreibungen, damit
- * das Modell den Rueckfall kennt, wenn der Orchestrator nicht antwortet.
+ * Die ersten zwei gehen ueber den Orchestrator (er hat den Index und kennt die
+ * Zuweisung), die letzten zwei direkt auf die Platte — der Vault ist in den
+ * Container gemountet, und fuer Lesen und Auflisten braucht es keinen Index.
+ *
+ * Warum Lesen und Auflisten trotzdem als eigene Werkzeuge noetig sind, obwohl
+ * Claude Code Read/Glob hat: die Prompt-Stellen nennen `secondbrain_read` und
+ * `secondbrain_list` fuer ALLE Laufzeiten. Gaebe es sie hier nicht, waere das
+ * fuer den haeufigsten Agententyp ein Fehlaufruf pro Nachschlagen — und die
+ * Datei-Landkarte im Startkontext verweist ausdruecklich auf `secondbrain_list`
+ * als Weg zum vollstaendigen Stand. Ein Prompt, der ein Werkzeug nennt, das die
+ * Laufzeit nicht hat, ist schlimmer als eine fehlende Empfehlung.
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -25,6 +33,8 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { gateAktivieren } from "./_tool_gate.mjs";
+import fs from "node:fs";
+import nodePath from "node:path";
 
 const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL || "http://ai-employee-orchestrator:8000";
 const AGENT_ID = process.env.AGENT_ID || "";
@@ -36,6 +46,64 @@ const RUECKFALL_HINWEIS =
   "lesbar — notfalls mit den eigenen Datei-Werkzeugen (Grep/Read) weitersuchen. " +
   "Eine so geschriebene Datei steht allerdings erst nach dem naechsten " +
   "Re-Index-Durchlauf (alle 5 Minuten) im Suchindex.";
+
+const BRAINS_ROOT = "/mnt/brains";
+
+/** Vault-relativen Pfad auf eine echte Datei unter /mnt/brains aufloesen.
+ *
+ * Gleiche Schranke wie ``ToolExecutor._resolve_brain_path``: AUFGELOEST
+ * vergleichen (``realpath``), nicht die Zeichenkette — sonst kommt ein
+ * ``..``-Segment oder ein Verweis am Jail vorbei. Der Mount selbst ist hier die
+ * Berechtigung: gemountet ist nur, was dem Agenten zugewiesen wurde.
+ */
+function vaultPfad(eingabe) {
+  const root = fs.realpathSync.native
+    ? fs.realpathSync(BRAINS_ROOT)
+    : BRAINS_ROOT;
+  const roh = String(eingabe || "").trim();
+  if (!roh) throw new Error("'path' is required");
+  const basis = roh.startsWith(BRAINS_ROOT)
+    ? roh
+    : nodePath.join(root, roh.replace(/^\/+/, ""));
+  // realpath nur, wenn es existiert — sonst normalisieren und danach pruefen.
+  let ziel;
+  try {
+    ziel = fs.realpathSync(basis);
+  } catch {
+    ziel = nodePath.resolve(basis);
+  }
+  if (ziel !== root && !ziel.startsWith(root + nodePath.sep)) {
+    throw new Error("path escapes /mnt/brains");
+  }
+  return ziel;
+}
+
+/** Die gemounteten Vaults — ein Verzeichnis je zugewiesenem Brain. */
+function vaultVerzeichnisse() {
+  try {
+    return fs
+      .readdirSync(BRAINS_ROOT, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => nodePath.join(BRAINS_ROOT, e.name))
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+function dateienVon(wurzel) {
+  const out = [];
+  const lauf = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.name === ".git") continue;
+      const voll = nodePath.join(dir, e.name);
+      if (e.isDirectory()) lauf(voll);
+      else out.push(nodePath.relative(wurzel, voll));
+    }
+  };
+  lauf(wurzel);
+  return out.sort();
+}
 
 export function buildServer() {
   const server = new Server(
@@ -122,6 +190,34 @@ export function buildServer() {
           required: ["path", "content"],
         },
       },
+      {
+        name: "secondbrain_read",
+        description:
+          "Read ONE file from the SHARED department Second Brain vault, in full. Path is " +
+          "vault-relative and starts with the vault slug, e.g. 'it_operations/Drucker/HP-Fax.md' " +
+          "— exactly the form secondbrain_search reports. Reads straight from the mounted vault, " +
+          "so it also works when the orchestrator is unreachable. Answer from the content and " +
+          "cite the file.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description: "Vault-relative path INCLUDING the vault slug.",
+            },
+          },
+          required: ["path"],
+        },
+      },
+      {
+        name: "secondbrain_list",
+        description:
+          "List what is in the assigned Second Brain vault(s) at all — the full file tree per " +
+          "vault, with its read-only/read-write mode. Use it to get your bearings when a search " +
+          "comes back empty, or to see the complete picture behind the file map in your start " +
+          "context. Reads straight from the mounted vault.",
+        inputSchema: { type: "object", properties: {} },
+      },
     ],
   }));
 
@@ -182,6 +278,51 @@ export function buildServer() {
             },
           ],
         };
+      }
+
+      if (name === "secondbrain_read") {
+        const ziel = vaultPfad(args?.path);
+        if (!fs.existsSync(ziel) || !fs.statSync(ziel).isFile()) {
+          throw new Error(`File not found: ${args?.path}`);
+        }
+        if (fs.statSync(ziel).size > 2_000_000) {
+          throw new Error("file too large to read");
+        }
+        return {
+          content: [{ type: "text", text: fs.readFileSync(ziel, "utf8") }],
+        };
+      }
+
+      if (name === "secondbrain_list") {
+        const dirs = vaultVerzeichnisse();
+        if (!dirs.length) {
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  "No Second Brain is mounted for this agent. Ask an admin to assign one " +
+                  "(Agent → Wissen → Second Brain).",
+              },
+            ],
+          };
+        }
+        const bloecke = dirs.map((d) => {
+          const slug = nodePath.basename(d);
+          let modus = "read-only";
+          try {
+            fs.accessSync(d, fs.constants.W_OK);
+            modus = "read-write";
+          } catch {
+            // bleibt read-only
+          }
+          const dateien = dateienVon(d);
+          const rumpf = dateien.length
+            ? dateien.map((f) => `  ${f}`).join("\n")
+            : "  (empty)";
+          return `## ${slug}  (${modus})\n${rumpf}`;
+        });
+        return { content: [{ type: "text", text: bloecke.join("\n\n") }] };
       }
 
       throw new Error(`Unknown tool: ${name}`);

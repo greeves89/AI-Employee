@@ -288,7 +288,10 @@ async def create_brain(
 
     _provision_vault(host_path, brain.name, standard)
     await _audit(db, AuditEventType.BRAIN_CREATED, brain, user.id)
-    return _to_response(brain)
+    # Mit Zahlen antworten, nicht ohne: die Oberflaeche nimmt diese Antwort als
+    # neuen Stand der Karte. Ohne Statistik stuende dort nach jedem Anlegen oder
+    # Umbenennen „0 Dateien im Index", obwohl der Index voll ist (#727).
+    return _to_response(brain, await _index_stats(db))
 
 
 @router.patch("/{brain_id}", response_model=BrainResponse)
@@ -316,7 +319,7 @@ async def update_brain(
     await db.commit()
     await db.refresh(brain)
     await _audit(db, AuditEventType.BRAIN_UPDATED, brain, user.id)
-    return _to_response(brain)
+    return _to_response(brain, await _index_stats(db))
 
 
 @router.delete("/{brain_id}")
@@ -668,25 +671,67 @@ async def agent_brain_search(
 
     ``mode`` ist die Gesamtaussage ueber alle durchsuchten Vaults: „hybrid" nur,
     wenn JEDER von ihnen aus dem Index geantwortet hat. Faellt einer auf grep
-    zurueck, steht hier „grep" — sonst verdeckt ein gesunder Vault den
-    driftenden. ``brains`` nennt den Modus je Vault.
+    zurueck oder scheitert er, steht hier „grep" — sonst verdeckt ein gesunder
+    Vault den driftenden. ``brains`` nennt den Modus je Vault.
+
+    **503, wenn gar nichts durchsucht werden konnte.** Das ist der Unterschied
+    zwischen „ich habe gesucht und nichts gefunden" und „ich habe nicht gesucht".
+    Nur die zweite Aussage darf den Agenten auf seinen lokalen Dateiweg schicken
+    (``api_client`` liest 5xx als „nicht erreichbar") — und genau dann ist der
+    lokale Weg richtig, denn der Vault liegt im Container und bleibt lesbar.
+    Antwortete der Endpunkt hier mit 200 und leerer Trefferliste, waere eine
+    kaputte Hybrid-Suche beim Agenten als ehrliches „nichts gefunden"
+    angekommen, und der Rueckfall haette nie gegriffen.
     """
     brains = await _agent_brains(db, auth["agent_id"], label)
+    if not brains:
+        # Kein zugewiesener Brain in der Datenbank — aber vielleicht einer aus
+        # dem statischen Katalog (``AGENT_MOUNT_CATALOG``) oder einer, der
+        # waehrend der Laufzeit des Containers deaktiviert wurde. Beide sind im
+        # Container weiter gemountet und lesbar, also lokal weitersuchen lassen.
+        raise HTTPException(
+            status_code=503,
+            detail="Kein zugewiesener Second Brain in der Verwaltung — lokal weitersuchen.",
+        )
+    # ALLE Modellwerte VOR der Schleife in einfache Tupel aufloesen. Grund: ein
+    # ``rollback()`` entwertet jedes Objekt der Sitzung, und der naechste
+    # Attributzugriff ist dann ein Nachladevorgang — der in einer asynchronen
+    # Sitzung nicht beilaeufig gehen kann und mit ``MissingGreenlet`` abbricht.
+    # Genau im Fehlerzweig, in dem wir aufraeumen und protokollieren wollen,
+    # waere die Vault-Isolation damit hin, bevor sie greift.
+    ziele = [(b.slug, b.label, b.host_path) for b, _m in brains]
+
     je_brain: list[dict] = []
     pro_brain: list[list[dict]] = []
-    for brain, _mode in brains:
+    for slug, label_, host_path in ziele:
         try:
             modus, treffer = await vault_search.hybrid_search_with_mode(
-                db, brain.label, brain.host_path, q, limit
+                db, label_, host_path, q, limit
             )
         except Exception as e:
-            log.warning(
-                "Agenten-Suche in %s fehlgeschlagen: %s", brain.slug, vault.safe_log(e)
-            )
-            je_brain.append({"brain": brain.slug, "mode": "error"})
+            je_brain.append({"brain": slug, "mode": "error"})
+            # Die Sitzung ZURUECKROLLEN, bevor der naechste Vault dran ist.
+            # Ohne das kippt der naechste zwangslaeufig mit (auf Postgres
+            # deterministisch, ``PendingRollbackError``) — ein einzelner kaputter
+            # Vault nimmt dann alle uebrigen mit und das Ergebnis sieht wie eine
+            # ehrliche Leerantwort aus.
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            log.warning("Agenten-Suche in %s fehlgeschlagen: %s", slug, vault.safe_log(e))
             continue
-        je_brain.append({"brain": brain.slug, "mode": modus, "hits": len(treffer)})
-        pro_brain.append([{"brain": brain.slug, **h} for h in treffer])
+        je_brain.append({"brain": slug, "mode": modus, "hits": len(treffer)})
+        pro_brain.append([{"brain": slug, **h} for h in treffer])
+
+    if je_brain and all(b["mode"] == "error" for b in je_brain):
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Suche in keinem der zugewiesenen Second Brains moeglich "
+                f"({len(je_brain)} versucht) — lokal weitersuchen."
+            ),
+        )
 
     # Zusammenfuehren NACH RANG, nicht nach Punktzahl: die Punktzahl aus dem
     # Index ist ein RRF-Wert (~0,01), die aus grep ein Trefferzaehler (~20).
@@ -698,8 +743,11 @@ async def agent_brain_search(
         for liste in pro_brain:
             if i < len(liste):
                 hits.append(liste[i])
-    gemessen = [b["mode"] for b in je_brain if b["mode"] != "error"]
-    gesamt = "hybrid" if gemessen and all(m == "hybrid" for m in gemessen) else "grep"
+    # Ein gescheiterter Vault darf die Gesamtaussage NICHT verbessern: „hybrid"
+    # heisst „alle aus dem Index", und ein Vault, der gar nicht geantwortet hat,
+    # war nicht aus dem Index.
+    gesamt = ("hybrid" if je_brain and all(b["mode"] == "hybrid" for b in je_brain)
+              else "grep")
     return {"mode": gesamt, "brains": je_brain, "hits": hits[:limit]}
 
 
@@ -731,29 +779,32 @@ async def agent_brain_write(
         )
     brains = await _agent_brains(db, auth["agent_id"], slug)
     brain, modus = brains[0]
+    # Gleiche Vorsichtsmassnahme wie im Suchendpunkt: nach einem gescheiterten
+    # Indexierungsversuch waere ``brain.slug`` ein Nachladevorgang.
+    brain_slug, brain_label, brain_host = brain.slug, brain.label, brain.host_path
     if modus == "ro":
         raise HTTPException(
             status_code=403,
-            detail=f"Second Brain '{brain.slug}' ist nur lesend eingebunden — Schreiben nicht erlaubt.",
+            detail=f"Second Brain '{brain_slug}' ist nur lesend eingebunden — Schreiben nicht erlaubt.",
         )
     try:
-        ergebnis = vault.write_file(brain.host_path, rest, body.content)
+        ergebnis = vault.write_file(brain_host, rest, body.content)
     except (ValueError, FileNotFoundError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     except OSError as e:
         raise HTTPException(status_code=500, detail=f"Schreiben fehlgeschlagen: {e}")
     chunks = 0
     try:
-        chunks = await vault_indexer.index_file(db, brain.label, brain.host_path, rest)
+        chunks = await vault_indexer.index_file(db, brain_label, brain_host, rest)
     except Exception as e:
         # Geschrieben ist geschrieben — der 5-Minuten-Durchlauf holt den Index nach.
         log.warning(
             "Index nach Agenten-Schreibzugriff fehlgeschlagen brain=%s path=%s: %s",
-            brain.slug, vault.safe_log(rest), vault.safe_log(e),
+            brain_slug, vault.safe_log(rest), vault.safe_log(e),
         )
     return {
         "ok": True,
-        "brain": brain.slug,
+        "brain": brain_slug,
         "path": rest,
         "created": bool(ergebnis.get("created")),
         "bytes": ergebnis.get("bytes"),

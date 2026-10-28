@@ -444,6 +444,11 @@ LOCAL_TOOLS: list[dict] = [
                 "properties": {
                     "query": {"type": "string", "description": "Keywords (error codes, device names, topics)."},
                     "limit": {"type": "number", "description": "Max files (default 10, max 50)."},
+                    # Paritaet mit dem MCP-Server: dort gibt es das Feld schon,
+                    # und der api_client reicht es ohnehin durch (#727).
+                    "label": {"type": "string",
+                              "description": "Optional: restrict to ONE assigned vault (its slug). "
+                                             "A vault outside your assignment is rejected, not silently empty."},
                 },
                 "required": ["query"],
             },

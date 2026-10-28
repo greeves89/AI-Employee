@@ -150,6 +150,90 @@ class WerkzeugNimmtDenIndexTests(unittest.IsolatedAsyncioTestCase):
         api.secondbrain_search_remote.assert_not_called()
 
 
+class AnmeldungUndDrosselungSindKeinBrainBefundTests(unittest.IsolatedAsyncioTestCase):
+    """401/408/429 sagen nichts ueber ein Brain, sondern ueber den Weg dorthin."""
+
+    async def test_401_ist_unerreichbar(self):
+        art, _ = await _client(_Antwort(401, {"detail": "Invalid agent token"}))._secondbrain_request(
+            "GET", "/brains/agent/search")
+        self.assertEqual(art, "unerreichbar")
+
+    async def test_429_ist_unerreichbar(self):
+        art, _ = await _client(_Antwort(429, {"detail": "rate limit"}))._secondbrain_request(
+            "GET", "/brains/agent/search")
+        self.assertEqual(art, "unerreichbar")
+
+    async def test_408_ist_unerreichbar(self):
+        art, _ = await _client(_Antwort(408, text="timeout"))._secondbrain_request(
+            "GET", "/brains/agent/search")
+        self.assertEqual(art, "unerreichbar")
+
+    async def test_400_bleibt_eine_serveraussage(self):
+        """Die Ausweitung darf nicht alle 4xx mitnehmen — ein fehlerhafter
+        Pfad ist weiter eine Aussage des Servers."""
+        art, _ = await _client(_Antwort(400, {"detail": "path escapes the vault"}))._secondbrain_request(
+            "POST", "/brains/agent/write")
+        self.assertEqual(art, "fehler")
+
+
+class SchreibwegGrenzeTests(unittest.IsolatedAsyncioTestCase):
+    """Der Schreibweg ist die sicherheitsrelevantere Haelfte: ein Rueckfall am
+    Verbot vorbei legt eine Datei in einem Vault ab, zu dem der Server gerade
+    „nein" gesagt hat."""
+
+    def setUp(self):
+        self.ex = ex.ToolExecutor.__new__(ex.ToolExecutor)
+
+    async def test_erfolg_schreibt_nicht_zusaetzlich_lokal(self):
+        api = AsyncMock()
+        api.secondbrain_write_remote.return_value = "Saved to Second Brain: it/a.md"
+        with patch.object(self.ex, "_get_api_client", lambda: api), \
+             patch.object(self.ex, "_secondbrain_write_local",
+                          AsyncMock(side_effect=AssertionError("lokal darf nicht laufen"))):
+            out = await self.ex._tool_secondbrain_write({"path": "it/a.md", "content": "x"})
+        self.assertIn("Saved", out)
+
+    async def test_unerreichbar_schreibt_lokal_weiter(self):
+        """Der Vault ist gemountet — ohne Orchestrator soll der Artikel nicht
+        verloren gehen. Indiziert wird er dann vom 5-Minuten-Durchlauf."""
+        api = AsyncMock()
+        api.secondbrain_write_remote.return_value = ORCHESTRATOR_UNREACHABLE
+        with patch.object(self.ex, "_get_api_client", lambda: api), \
+             patch.object(self.ex, "_secondbrain_write_local",
+                          AsyncMock(return_value="LOKAL GESCHRIEBEN")):
+            out = await self.ex._tool_secondbrain_write({"path": "it/a.md", "content": "x"})
+        self.assertEqual(out, "LOKAL GESCHRIEBEN")
+
+    async def test_ablehnung_schreibt_NICHT_lokal(self):
+        """403 (nur lesend) und Scoping-404 (fremder Vault) sind Verbote."""
+        for antwort in ("Error: 403: Second Brain 'hr' ist nur lesend eingebunden",
+                        "Error: 404: Kein zugewiesener Second Brain 'finanzen'"):
+            with self.subTest(antwort=antwort[:20]):
+                api = AsyncMock()
+                api.secondbrain_write_remote.return_value = antwort
+                with patch.object(self.ex, "_get_api_client", lambda: api), \
+                     patch.object(self.ex, "_secondbrain_write_local",
+                                  AsyncMock(side_effect=AssertionError("Verbot umgangen"))):
+                    out = await self.ex._tool_secondbrain_write({"path": "x/a.md", "content": "x"})
+                self.assertIn("Error", out)
+
+    async def test_ausnahme_schreibt_lokal_weiter(self):
+        api = AsyncMock()
+        api.secondbrain_write_remote.side_effect = RuntimeError("Verbindung weg")
+        with patch.object(self.ex, "_get_api_client", lambda: api), \
+             patch.object(self.ex, "_secondbrain_write_local",
+                          AsyncMock(return_value="LOKAL")):
+            out = await self.ex._tool_secondbrain_write({"path": "it/a.md", "content": "x"})
+        self.assertEqual(out, "LOKAL")
+
+    async def test_fehlende_angaben_fragen_den_server_gar_nicht(self):
+        api = AsyncMock()
+        with patch.object(self.ex, "_get_api_client", lambda: api):
+            out = await self.ex._tool_secondbrain_write({"path": "it/a.md"})
+        self.assertIn("required", out)
+        api.secondbrain_write_remote.assert_not_called()
+
+
 class WerkzeugEinordnungTests(unittest.TestCase):
     """Die Mengen, die ueber Freigabe, Parallelitaet und Zwischenspeicher
     entscheiden — ein Werkzeug, das in keiner steht, ist faktisch gesperrt."""

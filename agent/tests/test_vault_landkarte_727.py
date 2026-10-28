@@ -13,6 +13,7 @@ Aussage, und genau die geht beim Chunking verloren.
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 from app import runner_hooks as rh
 
@@ -99,6 +100,40 @@ class LandkarteTests(unittest.TestCase):
         karte = rh.get_vault_file_map(["/gibt/es/nicht/sicher"])
         self.assertIn("(leer)", karte)
         self.assertLess(len(karte), 200)
+
+
+class LandkarteIstVerdrahtetTests(unittest.TestCase):
+    """Die Landkarte selbst ist oben geprueft — hier geht es darum, dass sie
+    ueberhaupt im Prompt landet. Eine gut getestete Funktion, die niemand
+    aufruft, ist toter Code; genau diese Klasse ist in diesem Issue schon
+    einmal beim MCP-Server zugeschlagen."""
+
+    def test_der_mount_abschnitt_haengt_die_landkarte_ein(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = _vault(tmp, "it", ["Drucker/x17137.md", "index.md"])
+            # ``get_mounts_context`` liest /mnt/brains per glob — das Modul
+            # importiert glob lokal, also wird die Suchfunktion selbst ersetzt.
+            import glob as _glob
+            echt = _glob.glob
+
+            def gefaelscht(muster):
+                if muster == "/mnt/brains/*":
+                    return [d]
+                if muster == "/mnt/*":
+                    return [d]
+                return echt(muster)
+
+            with mock.patch.object(_glob, "glob", gefaelscht):
+                block = rh.get_mounts_context()
+
+        self.assertIn("Second Brain", block)
+        self.assertIn("Landkarte", block)
+        self.assertIn("Drucker/x17137.md", block)
+
+    def test_ohne_vault_steht_keine_landkarte_im_prompt(self):
+        import glob as _glob
+        with mock.patch.object(_glob, "glob", lambda muster: []):
+            self.assertEqual(rh.get_mounts_context(), "")
 
 
 if __name__ == "__main__":

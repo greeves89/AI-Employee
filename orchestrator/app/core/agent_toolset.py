@@ -52,6 +52,10 @@ MCP_SERVER_TOOLS: dict[str, list[str]] = {
     # gemountet, und beide Laufzeiten haben dafuer Datei-Werkzeuge (#727).
     "secondbrain": [
         "secondbrain_search", "secondbrain_write",
+        # Lesen und Auflisten gehen direkt auf den gemounteten Vault, ohne
+        # Orchestrator — noetig, weil die Prompt-Stellen (und die Datei-Landkarte
+        # im Startkontext) sie fuer ALLE Laufzeiten nennen.
+        "secondbrain_read", "secondbrain_list",
     ],
     "computer-use": [
         # Browser im eigenen Profil der Bridge — der verlaessliche Weg fuer
