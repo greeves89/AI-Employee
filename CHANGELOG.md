@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.380.2] - 2026-10-28
+
+### Behoben
+- **„Jetzt neu erkennen“ fand mit Abo-Anmeldung keine neuen Claude-Modelle.** Ein Abo-Token (`sk-ant-oat…`) wurde wie ein API-Schlüssel geschickt und von Anthropic mit 401 abgelehnt; in der Liste standen deshalb nur die Basis-Modelle, Sonnet 5.5, Haiku 5.5 und Fable 5.1 fehlten. Abo-Tokens gehen jetzt als Anmeldung mit OAuth-Kennung, nur `sk-ant-api…` als API-Schlüssel. Neu erkannte Modelle erscheinen wie gehabt ausgeschaltet und werden unter Einstellungen → Modelle freigeschaltet.
+- Modelle, die Anthropic zusätzlich mit Datum im Namen meldet (etwa Haiku 4.5), erscheinen nicht mehr doppelt neben dem gleichnamigen Basis-Modell.
+
 ## [1.380.1] - 2026-10-27
 
 ### Behoben
