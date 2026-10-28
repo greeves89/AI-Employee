@@ -430,16 +430,6 @@ export async function zaehleAufruf(pfad: string): Promise<void> {
   });
 }
 
-export interface MeineNutzung {
-  tage: number;
-  /** Ab so vielen Aufrufen holt das Menü einen Bereich nach oben. */
-  oft_ab: number;
-  bereiche: Record<string, number>;
-}
-
-export async function getMeineNutzung(): Promise<MeineNutzung> {
-  return fetchJSON(`${getBase()}/nutzung/meine`);
-}
 
 export interface BereichNutzung {
   bereich: string;
