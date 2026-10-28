@@ -242,7 +242,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
               </div>
               <div className="h-1.5 rounded-full bg-foreground/[0.06]">
                 <div
-                  className="h-1.5 rounded-full bg-brand transition-all duration-700 ease-out"
+                  className="h-1.5 rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 shadow-[0_0_8px_rgba(59,130,246,0.3)] transition-all duration-700 ease-out"
                   style={{ width: `${Math.min(cpuPercent, 100)}%` }}
                 />
               </div>

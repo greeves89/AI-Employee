@@ -85,11 +85,11 @@ export function AdminSidebar() {
       )}
     >
       <div className={cn("flex h-14 shrink-0 items-center", collapsed ? "lg:justify-center lg:px-0 gap-2 px-4" : "gap-2 px-4")}>
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-sidebar">
-          <Shield className="h-4 w-4 text-brand" />
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/15">
+          <Shield className="h-4 w-4 text-amber-500" />
         </div>
-        <span className={cn("font-[family-name:var(--font-display)] text-[15px] font-semibold", collapsed && "lg:hidden")}>AI Employee</span>
-        <span className={cn("ml-auto rounded-md bg-primary/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.06em] text-primary", collapsed && "lg:hidden")}>
+        <span className={cn("text-sm font-semibold", collapsed && "lg:hidden")}>AI Employee</span>
+        <span className={cn("ml-auto rounded-md bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.06em] text-amber-700 dark:text-amber-400", collapsed && "lg:hidden")}>
           Admin
         </span>
       </div>
@@ -136,7 +136,7 @@ export function AdminSidebar() {
           onClick={schliessen}
           title="Zurück zur Arbeit"
           className={cn(
-            "flex items-center justify-center gap-2 rounded-lg bg-sidebar py-2 text-[13px] font-medium text-sidebar-foreground transition-opacity hover:opacity-90",
+            "flex items-center justify-center gap-2 rounded-lg bg-foreground py-2 text-[13px] font-medium text-background transition-opacity hover:opacity-90",
             collapsed ? "lg:mx-auto lg:h-9 lg:w-9 lg:px-0 px-3" : "px-3"
           )}
         >

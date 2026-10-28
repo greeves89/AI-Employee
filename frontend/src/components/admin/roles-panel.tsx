@@ -559,7 +559,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
                 </div>
                 <p className="mt-2 text-[11px] text-muted-foreground">
                   {draft.mcp_server_ids == null
-                    ? "Keine Liste: alle für alle freigegebenen Server (Schalter „Allen Nutzern bereitstellen“ unter Integrationen)."
+                    ? "Keine Liste: alle für alle freigegebenen Server (Schalter „Allen Nutzern bereitstellen“ unter Admin-Bereich → Dienste & Konten)."
                     : "Nur markierte sind für diese Rolle freigegeben, unabhängig vom Schalter „Allen Nutzern bereitstellen“. Ohne Auswahl: keiner. Admins sehen immer alle."}
                 </p>
                 <SetUnlimitedButton

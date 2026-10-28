@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.394.1] - 2026-10-28
+
+### Geändert
+- **Die Oberfläche hat wieder die bisherigen Farben und die bisherige Schrift.** Die Farben aus dem Redesign (1.391.0, dunkelblaue Leiste, Lava-Orange, Space Grotesk) sind zurückgenommen, Aufbau und Navigation bleiben: drei Gruppen in der Leiste, eigener Admin-Bereich mit „Admin“-Marke, vier Reiter beim Agenten, „Mein Konto“.
+- Die Startseite heißt jetzt auch in der Überschrift „Start“, wie in der Leiste. Hinweise, die noch auf „Integrationen“ zeigten, nennen jetzt „Verbindungen“ bzw. „Admin-Bereich → Dienste & Konten“.
+
 ## [1.391.0] - 2026-10-28
 
 ### Verbessert

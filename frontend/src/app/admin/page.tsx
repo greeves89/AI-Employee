@@ -1759,7 +1759,7 @@ function FeedbackTab({
     if (githubConnected === false) {
       toast.warning(
         "GitHub nicht verbunden",
-        "Bitte zuerst unter Integrationen (Seitenleiste) einen GitHub-Account (PAT) verbinden."
+        "Bitte zuerst unter Verbindungen (Seitenleiste → Weitere Bereiche) einen GitHub-Account (PAT) verbinden."
       );
       return;
     }
@@ -1774,7 +1774,7 @@ function FeedbackTab({
         setGithubConnected(null);
         toast.warning(
           "GitHub nicht verbunden",
-          "Bitte zuerst unter Integrationen (Seitenleiste) einen GitHub-Account (PAT) verbinden."
+          "Bitte zuerst unter Verbindungen (Seitenleiste → Weitere Bereiche) einen GitHub-Account (PAT) verbinden."
         );
       } else {
         toast.error("GitHub Issue konnte nicht erstellt werden", msg);
@@ -1957,7 +1957,7 @@ function FeedbackTab({
                       )}
                       title={
                         githubConnected === false
-                          ? "GitHub nicht verbunden — unter Integrationen (Seitenleiste) verbinden"
+                          ? "GitHub nicht verbunden — unter Verbindungen (Seitenleiste → Weitere Bereiche) verbinden"
                           : "GitHub Issue erstellen"
                       }
                     >

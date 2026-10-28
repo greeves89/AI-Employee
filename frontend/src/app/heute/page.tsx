@@ -122,7 +122,7 @@ function Einrichten({ onFertig, entwurfFrei }: { onFertig: () => void; entwurfFr
       </div>
       <p className="text-[11px] text-muted-foreground">
         Die Agenten bekommen dabei Microsoft 365 im Modus „Entwürfe + Freigabe“ und werden einmal neu gestartet.
-        Dein Microsoft-Konto verbindest du unter Integrationen.
+        Dein Microsoft-Konto verbindest du unter Verbindungen.
       </p>
     </div>
   );
@@ -241,7 +241,7 @@ export default function HeutePage() {
 
   return (
     <div>
-      <Header title="Heute" subtitle={`${datum} — dein Sekretariat`} />
+      <Header title="Start" subtitle={`${datum} — dein Sekretariat`} />
       <div className="space-y-5 p-4 sm:p-6">
         {!daten ? (
           <div className="flex justify-center py-16 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /></div>
