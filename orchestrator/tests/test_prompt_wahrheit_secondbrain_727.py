@@ -78,16 +78,24 @@ class PromptWahrheitTests(unittest.TestCase):
     def test_der_schreibweg_nennt_seinen_grund(self):
         """``secondbrain_write`` statt Dateischreiben ist keine Geschmacksfrage:
         nur dieser Weg indexiert sofort. Steht der Grund nicht dabei, nimmt das
-        Modell weiter das naechstliegende Datei-Werkzeug."""
+        Modell weiter das naechstliegende Datei-Werkzeug.
+
+        Geprueft wird je ABSATZ, nicht ueber ein Zeichenfenster hinter dem
+        Vorkommen: ein Fenster misst den Abstand zweier Zeilen, gemeint ist ihr
+        Zusammenhang — und es wird stillschweigend falsch, sobald jemand einen
+        Satz dazwischen schreibt.
+        """
         for name in QUELLEN:
+            absaetze = [a for a in re.split(r"\n\s*\n", _text(name))
+                        if "secondbrain_write" in a]
+            if not absaetze:
+                continue
             with self.subTest(name):
-                t = _text(name)
-                if "secondbrain_write" not in t:
-                    continue
-                stelle = t[t.index("secondbrain_write"):][:1200].lower()
                 self.assertTrue(
-                    "index" in stelle,
-                    f"{name}: secondbrain_write ohne den Hinweis auf das sofortige Indexieren",
+                    any("index" in a.lower() for a in absaetze),
+                    f"{name}: secondbrain_write wird empfohlen, ohne dass irgendein "
+                    f"Absatz den Grund nennt (sofortiges Indexieren) — "
+                    f"{len(absaetze)} Absatz/Absaetze geprueft",
                 )
 
 
