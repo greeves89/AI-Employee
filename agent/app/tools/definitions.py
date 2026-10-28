@@ -507,7 +507,10 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                 "to log in again. Never ask for passwords or one-time codes; the user "
                 "enters those directly in the browser. "
                 "Several tabs are possible: new_tab / list_tabs / switch_tab / close_tab. "
-                "All other actions apply to the active tab."
+                "All other actions apply to the active tab. "
+                "navigate/new_tab can be restricted to an allowlist of domains for this "
+                "agent; if blocked you get an error naming the allowed domains — don't "
+                "retry the same URL, tell the user instead."
             ),
             "parameters": {
                 "type": "object",

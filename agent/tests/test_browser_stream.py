@@ -64,6 +64,9 @@ class BrowserStreamTest(unittest.IsolatedAsyncioTestCase):
         import app.tools.browser as browser
         self.browser = importlib.reload(browser)
         self.browser.PROFIL_DIR = self.profil
+        # Sonst wuerde jede Sicherung (#828, Schritt 5) den echten
+        # Standardpfad ausserhalb des Wegwerf-Profils beschreiben.
+        self.browser.PROFIL_ARCHIV = self.profil + ".tar.enc"
 
         import app.browser_stream as bs
         self.bs = importlib.reload(bs)
@@ -84,6 +87,9 @@ class BrowserStreamTest(unittest.IsolatedAsyncioTestCase):
         await self.client.close()
         await self.browser.close_browser()
         shutil.rmtree(self.profil, ignore_errors=True)
+        import os
+        if os.path.exists(self.browser.PROFIL_ARCHIV):
+            os.remove(self.browser.PROFIL_ARCHIV)
 
     async def _bild_abwarten(self, ws, sekunden=10):
         async with asyncio.timeout(sekunden):

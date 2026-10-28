@@ -117,7 +117,7 @@ class BrowserStromZugriff(unittest.TestCase):
         verweigern = AsyncMock(side_effect=HTTPException(status_code=403))
         gesucht = AsyncMock(return_value="ai-agent-test-a1")
         with patch.object(ws_modul, "_authenticate_ws", new=_angemeldet), \
-             patch("app.dependencies.require_agent_access", new=verweigern), \
+             patch("app.dependencies.require_agent_owner", new=verweigern), \
              patch("app.db.session.async_session_factory"), \
              patch.object(ws_modul, "_agent_container_name", new=gesucht):
             with self.assertRaises(WebSocketDisconnect):
@@ -139,7 +139,7 @@ class BrowserStromZugriff(unittest.TestCase):
             async def get(self, *a, **k): return _EchterNutzer()
 
         with patch.object(ws_modul, "_authenticate_ws", new=_angemeldet), \
-             patch("app.dependencies.require_agent_access", new=AsyncMock(return_value=None)), \
+             patch("app.dependencies.require_agent_owner", new=AsyncMock(return_value=None)), \
              patch.object(ws_modul, "async_session_factory", new=lambda: _Db()), \
              patch.object(ws_modul, "_agent_container_name", new=AsyncMock(return_value=None)):
             with self.assertRaises(WebSocketDisconnect) as ctx:
@@ -170,8 +170,9 @@ class FehlermeldungErreichtDenNutzer(unittest.TestCase):
             async def __aexit__(self, *a): return False
             async def get(self, *a, **k): return _EchterNutzer()
 
-        with patch.object(ws_modul, "_authenticate_ws", new=_angemeldet), \
-             patch("app.dependencies.require_agent_access", new=AsyncMock(return_value=None)), \
+        with patch("app.core.encryption.agent_schluessel", return_value="test-zugang"), \
+             patch.object(ws_modul, "_authenticate_ws", new=_angemeldet), \
+             patch("app.dependencies.require_agent_owner", new=AsyncMock(return_value=None)), \
              patch.object(ws_modul, "async_session_factory", new=lambda: _Db()), \
              patch("app.core.agent_wakeup.ensure_agent_running", new=AsyncMock(return_value=True)), \
              patch.object(ws_modul, "_agent_container_name",
@@ -215,7 +216,7 @@ class SchlafenderAgent(unittest.TestCase):
             return None
 
         with patch.object(ws_modul, "_authenticate_ws", new=_angemeldet), \
-             patch("app.dependencies.require_agent_access", new=AsyncMock(return_value=None)), \
+             patch("app.dependencies.require_agent_owner", new=AsyncMock(return_value=None)), \
              patch.object(ws_modul, "async_session_factory", new=lambda: _Db()), \
              patch("app.core.agent_wakeup.ensure_agent_running", new=_wecken), \
              patch.object(ws_modul, "_agent_container_name", new=_suchen):

@@ -140,8 +140,13 @@ async def start_health_server(agent_id: str, port: int = 8080) -> web.AppRunner:
     # ueberhaupt eingeschaltet ist -- sonst gibt es nichts zu zeigen, und eine
     # Route, die immer scheitert, verwirrt nur.
     if os.environ.get("COMPUTER_USE_BROWSER", "").lower() == "true":
-        from app.browser_stream import stream_handler
+        from app.browser_stream import audit_handler, stream_handler
         app.router.add_get("/browser/stream", stream_handler)
+        # Pruefprotokoll (#828, Schritt 5) -- der Orchestrator reicht das
+        # owner-geprueft durch (``GET /agents/{id}/browser/audit``), genauso
+        # wie er den Bildstrom selbst durchreicht statt ihn nach aussen zu
+        # oeffnen.
+        app.router.add_get("/browser/audit", audit_handler)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)
