@@ -64,11 +64,12 @@ class Basis(unittest.IsolatedAsyncioTestCase):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         async with self.engine.begin() as conn:
             from app.models.kosten_historie import KostenHistorie
+            from app.models.notification import Notification
             from app.models.projekt_nachricht import ProjektNachricht
             from app.models.task_step import TaskStep
 
             for model in (User, Agent, Task, Team, ProjektKarte, Schedule, SecondBrain, TaskStep, ProjektNachricht,
-                          KostenHistorie):
+                          KostenHistorie, Notification):
                 await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
         async with self.Session() as db:
@@ -528,6 +529,69 @@ class Takt(Basis):
             team.takt_minuten = None
             await projekt_takt.abgleichen(db, team)
             self.assertFalse(sched.enabled)
+
+    async def _takt(self, db):
+        team = await db.get(Team, "p1")
+        team.lead_agent_id = "a1"
+        team.takt_minuten = 30
+        await projekt_takt.abgleichen(db, team)
+        await db.commit()
+        return team, await db.get(Schedule, team.takt_schedule_id)
+
+    async def test_altes_im_eingang_weckt_den_takt_nicht_erneut(self):
+        """Zehn Takte ohne Bewegung (28.10.): Nur Neues im Eingang oder Bereites weckt ihn."""
+        from datetime import datetime, timedelta, timezone
+
+        async with self.Session() as db:
+            team, sched = await self._takt(db)
+            await self._karte(db, "alt", "eingang")
+            sched.last_run_at = datetime.now(timezone.utc) + timedelta(seconds=5)
+            grund, _ = await projekt_takt.pruefen(db, sched)
+            self.assertTrue(grund)
+            await self._karte(db, "b1", "bereit")
+            self.assertEqual(await projekt_takt.pruefen(db, sched), (None, "p1"))
+
+    async def test_stillstand_wird_gemeldet_einmal_je_tag(self):
+        from datetime import datetime, timedelta, timezone
+
+        from sqlalchemy import select
+
+        from app.models.notification import Notification
+        from app.models.projekt_nachricht import ProjektNachricht
+
+        async with self.Session() as db:
+            team, _ = await self._takt(db)
+            await self._karte(db, "e1", "eingang")
+            spaeter = datetime.now(timezone.utc) + timedelta(hours=3)
+            self.assertEqual(await projekt_takt.stillstand_melden(db, team, jetzt=spaeter), "nichts_bereit")
+            await db.commit()
+            self.assertIsNone(await projekt_takt.stillstand_melden(db, team, jetzt=spaeter))
+            await self._karte(db, "b1", "bereit")
+            self.assertEqual(await projekt_takt.stillstand_melden(db, team, jetzt=spaeter), "bereit_liegt")
+            await db.commit()
+            texte = [n.text for n in (await db.execute(select(ProjektNachricht))).scalars()]
+            self.assertEqual(2, len(texte))
+            self.assertTrue(texte[0].startswith("Stillstand: Nichts ist bereit"))
+            meldungen = (await db.execute(select(Notification))).scalars().all()
+            self.assertEqual({m.agent_id for m in meldungen}, {"a1"})
+
+    async def test_kein_stillstand_solange_gearbeitet_wird_oder_frisch(self):
+        from datetime import datetime, timedelta, timezone
+
+        async with self.Session() as db:
+            team, _ = await self._takt(db)
+            await self._karte(db, "e1", "eingang")
+            # frisch angelegtes Projekt: noch kein Stillstand
+            self.assertIsNone(await projekt_takt.stillstand_melden(db, team))
+            await self._karte(db, "w1", "in_arbeit")
+            spaeter = datetime.now(timezone.utc) + timedelta(hours=3)
+            self.assertIsNone(await projekt_takt.stillstand_melden(db, team, jetzt=spaeter))
+
+    def test_lead_nimmt_bereites_selbst_wenn_niemand_frei_ist(self):
+        team = Team(id="p1", name="P")
+        auftrag = projekt_takt.takt_auftrag(team)
+        self.assertIn("vergibst du die oberste bereite Karte an dich selbst", auftrag)
+        self.assertIn("extern in Arbeit", auftrag)
 
     async def test_ohne_lead_und_mehrere_mitglieder_kein_takt(self):
         async with self.Session() as db:
