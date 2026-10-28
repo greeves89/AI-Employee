@@ -7,6 +7,8 @@
 #      Arbeitsordner der Agenten (workspace-*), Sitzungen (claude-session-*),
 #      Build-Werkzeuge (build-tools-*), gemeinsamer Ordner (ai-employee-shared),
 #      Redis und Rückmeldungen
+#   2b. Wissensablagen (Second Brains, Projektwissen, Projektdateien) aus dem
+#      Host-Ordner SECONDBRAIN_BASE (Vorgabe /srv/secondbrain)
 #   3. Konfiguration: .env und orchestrator/data/ — dort liegt der
 #      Verschlüsselungsschlüssel. Ohne ihn sind nach dem Rückspielen alle
 #      verschlüsselten Geheimnisse (KI-Konten, Keys, Zugänge) unlesbar.
@@ -198,6 +200,18 @@ while read -r archiv volume; do
     VOLUME_ANZAHL=$((VOLUME_ANZAHL + 1))
 done <<< "$AUSWAHL"
 log "${VOLUME_ANZAHL} Volume(s) gesichert"
+
+# ─── 2b. Wissensablagen (Host-Ordner) ─────────────────────────────────────────
+SCHRITT="Wissensablagen"
+BRAIN_BASIS=$(brain_basis "$ENV_DATEI")
+if [ -d "$BRAIN_BASIS" ]; then
+    kb=$(docker run --rm --cpus "$SICHERUNG_CPUS" -v "${BRAIN_BASIS}:/data:ro" "$ALPINE_IMAGE" $NIEDRIG du -sk /data 2>/dev/null | cut -f1 | tr -dc '0-9' || true)
+    ENTPACKT_KB=$((ENTPACKT_KB + ${kb:-0}))
+    brains_einpacken "${BACKUP_PATH}/wissensablagen.tar.gz" "$BRAIN_BASIS" "$ALPINE_IMAGE"
+    log "Wissensablagen gesichert (${BRAIN_BASIS})"
+else
+    log "Wissensablagen: ${BRAIN_BASIS} gibt es nicht — übersprungen."
+fi
 
 # ─── 3. Konfiguration und Schlüssel ───────────────────────────────────────────
 SCHRITT="Konfiguration"

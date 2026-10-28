@@ -195,3 +195,21 @@ export const WOCHENTAGE: { key: string; label: string }[] = [
   { key: "do", label: "Donnerstag" }, { key: "fr", label: "Freitag" }, { key: "sa", label: "Samstag" },
   { key: "so", label: "Sonntag" },
 ];
+
+
+/** GitHub-Repo (owner/name oder github.com-Adresse)? Sonst Forgejo/Gitea mit eigener Adresse. */
+export function istGithubRepo(repo: string): boolean {
+  const r = repo.trim().toLowerCase();
+  return !r.startsWith("https://") || r.startsWith("https://github.com/");
+}
+
+/** Wohin der Repo-Link führt: GitHub aus owner/name, Forgejo/Gitea steht schon als Adresse da. */
+export function repoAdresse(repo: string): string {
+  return repo.startsWith("https://") ? repo : `https://github.com/${repo}`;
+}
+
+/** Kurzform für die Anzeige: owner/name, bei eigenem Server mit Servername davor. */
+export function repoName(repo: string): string {
+  if (!repo.startsWith("https://")) return repo;
+  return repo.replace(/^https:\/\//, "");
+}

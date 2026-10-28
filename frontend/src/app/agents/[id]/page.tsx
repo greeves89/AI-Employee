@@ -132,7 +132,7 @@ const tabGroups: TabGroup[] = [
   ] },
   { key: "wissen", label: "Wissen", icon: Brain, subs: [
     { key: "knowledge", label: "Wissensbasis", icon: Brain },
-    { key: "secondbrain", label: "Second Brain", icon: Brain, tooltip: "Second Brain: eine geteilte Wissens-Ablage der Abteilung (z.B. IT-Support), die ein Admin diesem Agenten freigibt." },
+    { key: "secondbrain", label: "Second Brain", icon: Brain, tooltip: "Second Brain: eine Wissens-Ablage (Ordner mit Notizen und Dokumenten), in der dieser Agent nachschlagen kann." },
     { key: "memory", label: "Gedächtnis", icon: MemoryStick },
     { key: "skills", label: "Skills", icon: Sparkles },
   ] },

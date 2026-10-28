@@ -2178,6 +2178,23 @@ export async function deleteSecondBrain(id: number): Promise<{ ok: boolean; id: 
   return fetchJSON(`${getBase()}/brains/${id}`, { method: "DELETE" });
 }
 
+// Second Brain aus einem Bridge-Ordner (#1092) — für jeden Nutzer, nur eigene.
+export async function bridgeOrdner(): Promise<{ ordner: string[] }> {
+  return fetchJSON(`${getBase()}/brains/bridge/ordner`);
+}
+
+export async function bridgeBrainAnlegen(name: string, ordner: string): Promise<SecondBrain> {
+  return fetchJSON(`${getBase()}/brains/bridge`, { method: "POST", body: JSON.stringify({ name, ordner }) });
+}
+
+export async function bridgeBrainSync(id: number): Promise<{ ok: boolean }> {
+  return fetchJSON(`${getBase()}/brains/bridge/${id}/sync`, { method: "POST" });
+}
+
+export async function bridgeBrainLoeschen(id: number): Promise<{ ok: boolean; id: number }> {
+  return fetchJSON(`${getBase()}/brains/bridge/${id}`, { method: "DELETE" });
+}
+
 // MCP exposure: generate/rotate the Bearer token (plaintext returned ONCE), or disable.
 /** Vault als ZIP herunterladen — Ordnerstruktur bleibt erhalten. */
 export function getBrainExportUrl(brainId: number): string {
@@ -4642,12 +4659,14 @@ export interface Team {
   geteilt_mit?: string[];
   /** Ob der angemeldete Nutzer das Projekt angelegt hat (nur er verwaltet es). */
   darf_verwalten?: boolean;
-  /** GitHub-Repo (owner/name): Issues und PRs kommen aufs Board. */
+  /** Git-Repo: GitHub als owner/name, Forgejo/Gitea als https://server/owner/name. Issues und PRs kommen aufs Board. */
   repo?: string | null;
   repo_abgleich_at?: string | null;
   repo_fehler?: string | null;
   /** Schlüssel aus der Schlüsselverwaltung für private Repos. */
   repo_secret_id?: number | null;
+  /** Angebundene Second Brains (Labels): die Projektsuche durchsucht sie mit, nur lesend. */
+  angebundene_brains?: string[];
   /** Monatsbudget des Projekts in USD; leer = keins (setzt der Ersteller unter Finanzen). */
   budget_usd?: number | null;
 }
@@ -4840,6 +4859,7 @@ export async function createTeam(body: {
   geteilt_mit?: string[];
   repo?: string;
   repo_secret_id?: number;
+  angebundene_brains?: string[];
 }): Promise<Team> {
   return fetchJSON(`${getBase()}/teams/`, {
     method: "POST",
@@ -4863,6 +4883,7 @@ export async function updateTeam(
     geteilt_mit?: string[];
     repo?: string;
     repo_secret_id?: number;
+    angebundene_brains?: string[];
   },
 ): Promise<Team> {
   return fetchJSON(`${getBase()}/teams/${id}`, {
@@ -5029,8 +5050,61 @@ export async function projektWissenListe(id: string): Promise<{ dateien: WissenE
   return fetchJSON(`${getBase()}/teams/${id}/wissen`);
 }
 
-export async function projektWissenLesen(id: string, pfad: string): Promise<{ pfad: string; inhalt: string }> {
-  return fetchJSON(`${getBase()}/teams/${id}/wissen/datei?pfad=${encodeURIComponent(pfad)}`);
+export interface ProjektDatei {
+  name: string;
+  bytes: number;
+  /** Seite im Projektwissen mit dem ausgelesenen Text. */
+  seite: string;
+  geaendert: string;
+}
+
+export async function projektDateien(id: string): Promise<{ dateien: ProjektDatei[]; max_bytes: number; endungen: string[] }> {
+  return fetchJSON(`${getBase()}/teams/${id}/wissen/dateien`);
+}
+
+export async function projektDateiHochladen(
+  id: string,
+  datei: File,
+): Promise<{ name: string; bytes: number; seite: string; text_ausgelesen: boolean }> {
+  const form = new FormData();
+  form.append("datei", datei);
+  const res = await fetch(`${getBase()}/teams/${id}/wissen/dateien`, { method: "POST", body: form, credentials: "include" });
+  if (!res.ok) {
+    let text = `Hochladen fehlgeschlagen (${res.status})`;
+    try {
+      const j = await res.json();
+      if (typeof j?.detail === "string") text = j.detail;
+    } catch {
+      // keine JSON-Antwort — beim allgemeinen Text bleiben
+    }
+    throw new Error(text);
+  }
+  return res.json();
+}
+
+export async function projektDateiHerunterladen(id: string, name: string): Promise<void> {
+  const res = await fetch(`${getBase()}/teams/${id}/wissen/dateien/${encodeURIComponent(name)}`, { credentials: "include" });
+  if (!res.ok) throw new Error(`Herunterladen fehlgeschlagen (${res.status})`);
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+export async function projektDateiLoeschen(id: string, name: string): Promise<void> {
+  const res = await fetch(`${getBase()}/teams/${id}/wissen/dateien/${encodeURIComponent(name)}`,
+    { method: "DELETE", credentials: "include" });
+  if (!res.ok) throw new Error(`Löschen fehlgeschlagen (${res.status})`);
+}
+
+/** Eine Seite lesen — mit ``brain`` aus einem angebundenen Second Brain (nur lesend). */
+export async function projektWissenLesen(id: string, pfad: string, brain?: string | null): Promise<{ pfad: string; inhalt: string }> {
+  const b = brain ? `&brain=${encodeURIComponent(brain)}` : "";
+  return fetchJSON(`${getBase()}/teams/${id}/wissen/datei?pfad=${encodeURIComponent(pfad)}${b}`);
 }
 
 // hinweis: der Server meldet hier, dass die Seite ueber die Grenze gewachsen ist,
@@ -5047,10 +5121,18 @@ export async function projektWissenSchreiben(id: string, pfad: string, inhalt: s
   return fetchJSON(`${getBase()}/teams/${id}/wissen/datei`, { method: "PUT", body: JSON.stringify({ pfad, inhalt }) });
 }
 
+/** Treffer der Projektsuche; ``brain`` gesetzt = aus einem angebundenen Second Brain. */
+export interface WissenTreffer {
+  path: string;
+  snippets: string[];
+  brain?: string | null;
+  quelle?: string;
+}
+
 export async function projektWissenSuchen(
   id: string,
   frage: string,
-): Promise<{ treffer: { path: string; snippets: string[] }[] }> {
+): Promise<{ treffer: WissenTreffer[] }> {
   return fetchJSON(`${getBase()}/teams/${id}/wissen/suche?frage=${encodeURIComponent(frage)}`);
 }
 

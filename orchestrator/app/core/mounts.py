@@ -159,3 +159,54 @@ async def freigegebene_mounts(user, db) -> dict[str, str | None] | None:
     for g in grants:
         erlaubt[g.mount_label] = g.mode
     return erlaubt
+
+
+async def fremde_privatablagen(db, labels, user) -> set[str]:
+    """Die Labels aus ``labels``, die privates Wissen ANDERER sind.
+
+    Für niemanden sonst nutzbar — auch nicht für Administratoren, für die
+    ``freigegebene_mounts`` sonst ``None`` (= alles) liefert:
+
+    * Brains aus einem Bridge-Ordner (#1092) — sie spiegeln den Rechner eines
+      Nutzers und gehören nur ihm (``created_by``);
+    * Projektwissen eines Projekts, das ``user`` nicht angelegt hat — ein
+      Projekt sieht nur sein Ersteller, also auch sein Wissen.
+    """
+    from sqlalchemy import select
+
+    from app.models.second_brain import SecondBrain
+    from app.models.team import Team
+
+    labels = [str(x) for x in labels or [] if x]
+    if not labels:
+        return set()
+    uid = str(getattr(user, "id", "") or "")
+    rows = (await db.execute(
+        select(SecondBrain.label, SecondBrain.slug, SecondBrain.created_by, SecondBrain.bridge_ordner)
+        .where(SecondBrain.label.in_(labels))
+    )).all()
+    projekte = dict((await db.execute(
+        select(Team.wissen_slug, Team.created_by).where(Team.wissen_slug.in_([r.slug for r in rows]))
+    )).all()) if rows else {}
+    fremd: set[str] = set()
+    for r in rows:
+        if r.bridge_ordner and str(r.created_by or "") != uid:
+            fremd.add(r.label)
+        elif r.slug in projekte and str(projekte[r.slug] or "") != uid:
+            fremd.add(r.label)
+    return fremd
+
+
+async def mounts_des_agenten(db, agent) -> list[str]:
+    """Die Mount-Labels, die ein Agent WIRKLICH bekommt.
+
+    Ohne privates Wissen, das nicht seinem Besitzer gehört (Bridge-Ordner,
+    fremdes Projektwissen, #1092) — auch wenn es (von früher oder durch einen
+    Administrator) in seiner Konfiguration steht. Gilt für Container, Anleitung
+    und Sprachfront gleichermaßen.
+    """
+    from types import SimpleNamespace
+
+    labels = [str(x) for x in ((getattr(agent, "config", None) or {}).get("mounts") or []) if x]
+    fremd = await fremde_privatablagen(db, labels, SimpleNamespace(id=getattr(agent, "user_id", None) or ""))
+    return [x for x in labels if x not in fremd]

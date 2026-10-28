@@ -6,9 +6,10 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FileText, History, Loader2, Pencil, Plus, RotateCcw, Save, Search, Sparkles, X } from "lucide-react";
+import { Brain, FileText, History, Loader2, Pencil, Plus, RotateCcw, Save, Search, Sparkles, X } from "lucide-react";
 import * as api from "@/lib/api";
 import { apiFehlertext } from "@/lib/api-fehler";
+import { ProjektDateien } from "./projekt-dateien";
 import { MarkdownContent } from "@/components/ui/markdown-content";
 import { Fenster } from "@/components/ui/fenster";
 import { useToast } from "@/components/ui/dialog-provider";
@@ -42,7 +43,9 @@ export function ProjektWissen({
   const [bearbeiten, setBearbeiten] = useState(false);
   const [speichert, setSpeichert] = useState(false);
   const [frage, setFrage] = useState("");
-  const [treffer, setTreffer] = useState<{ path: string; snippets: string[] }[] | null>(null);
+  const [treffer, setTreffer] = useState<api.WissenTreffer[] | null>(null);
+  // Offene Seite aus einem angebundenen Second Brain: nur lesen (kein Bearbeiten, kein Verlauf).
+  const [fremd, setFremd] = useState<{ brain: string; quelle: string } | null>(null);
   const [verlauf, setVerlauf] = useState<{ version: string; wer: string; wann: string }[] | null>(null);
   const [alt, setAlt] = useState<{ version: string; inhalt: string } | null>(null);
   const [baut, setBaut] = useState(false);
@@ -81,18 +84,21 @@ export function ProjektWissen({
   const liste = useCallback(async () => {
     try {
       const r = await api.projektWissenListe(projektId);
-      setSeiten(r.dateien.filter((d) => d.type === "file" && /\.(md|markdown|txt)$/i.test(d.path)).map((d) => d.path));
+      // Die ausgelesenen Texte hochgeladener Dateien stehen unter „Dateien“, nicht bei den Seiten.
+      setSeiten(r.dateien.filter((d) => d.type === "file" && /\.(md|markdown|txt)$/i.test(d.path)
+        && !d.path.startsWith("dateien/")).map((d) => d.path));
     } catch (e) {
       toastRef.current.error("Wissen nicht geladen", apiFehlertext(e));
     }
   }, [projektId]);
 
-  const oeffnen = useCallback(async (p: string) => {
+  const oeffnen = useCallback(async (p: string, aus?: { brain: string; quelle: string } | null) => {
     setPfad(p);
+    setFremd(aus ?? null);
     setBearbeiten(false);
     setInhalt(null);
     try {
-      const r = await api.projektWissenLesen(projektId, p);
+      const r = await api.projektWissenLesen(projektId, p, aus?.brain);
       setInhalt(r.inhalt);
     } catch (e) {
       setInhalt("");
@@ -158,21 +164,26 @@ export function ProjektWissen({
           )}
         </form>
         <ul className="space-y-0.5">
-          {(treffer ? treffer.map((t) => t.path) : seiten).map((s) => (
-            <li key={s}>
-              <button type="button" onClick={() => oeffnen(s)}
-                className={cn("flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-foreground/[0.04]",
-                  s === pfad && "bg-primary/[0.08] font-medium")}>
-                <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                <span className="truncate">{s}</span>
-              </button>
-              {treffer && (
-                <p className="line-clamp-2 px-7 text-[11px] text-muted-foreground">
-                  {treffer.find((t) => t.path === s)?.snippets.join(" … ")}
-                </p>
-              )}
-            </li>
-          ))}
+          {(treffer ?? seiten.map((s): api.WissenTreffer => ({ path: s, snippets: [] }))).map((t) => {
+            const aus = t.brain ? { brain: t.brain, quelle: t.quelle ?? t.brain } : null;
+            const offen = t.path === pfad && (fremd?.brain ?? null) === (aus?.brain ?? null);
+            return (
+              <li key={`${t.brain ?? ""}:${t.path}`}>
+                <button type="button" onClick={() => oeffnen(t.path, aus)}
+                  className={cn("flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-foreground/[0.04]",
+                    offen && "bg-primary/[0.08] font-medium")}>
+                  {aus ? <Brain className="h-3.5 w-3.5 shrink-0 text-violet-500" /> : <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+                  <span className="truncate">{t.path}</span>
+                </button>
+                {treffer && (
+                  <p className="line-clamp-2 px-7 text-[11px] text-muted-foreground">
+                    {aus && <span className="mr-1 font-medium text-violet-600 dark:text-violet-400">{aus.quelle}:</span>}
+                    {t.snippets.join(" … ")}
+                  </p>
+                )}
+              </li>
+            );
+          })}
           {treffer && treffer.length === 0 && <li className="px-2 text-xs text-muted-foreground">Nichts gefunden.</li>}
         </ul>
         {darfSchreiben && onAufbauen && (
@@ -188,18 +199,25 @@ export function ProjektWissen({
             <Plus className="h-3.5 w-3.5" /> Neue Seite
           </button>
         )}
+        <div className="border-t border-foreground/[0.06] pt-2">
+          <ProjektDateien projektId={projektId} darfSchreiben={darfSchreiben} onTextOeffnen={oeffnen} onGeaendert={liste} />
+        </div>
       </aside>
 
       <section className="min-w-0 rounded-2xl border border-foreground/[0.08] bg-card p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
-          <h3 className="truncate text-sm font-semibold">{pfad}</h3>
-          {!bearbeiten && inhalt !== null && (
+          <h3 className="truncate text-sm font-semibold">
+            {fremd && <span className="mr-1.5 text-violet-600 dark:text-violet-400">{fremd.quelle} ·</span>}
+            {pfad}
+          </h3>
+          {fremd && <span className="ml-auto text-[11px] text-muted-foreground">Second Brain — nur lesen</span>}
+          {!fremd && !bearbeiten && inhalt !== null && (
             <button type="button" onClick={verlaufOeffnen}
               className="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground">
               <History className="h-3 w-3" /> Verlauf
             </button>
           )}
-          {darfSchreiben && !bearbeiten && inhalt !== null && (
+          {!fremd && darfSchreiben && !bearbeiten && inhalt !== null && (
             <button type="button" onClick={() => { setEntwurf(inhalt); setBearbeiten(true); }}
               className="inline-flex items-center gap-1 rounded-lg border border-foreground/[0.1] px-2.5 py-1 text-xs hover:bg-foreground/[0.04]">
               <Pencil className="h-3 w-3" /> Bearbeiten
@@ -217,7 +235,7 @@ export function ProjektWissen({
             </div>
           )}
         </div>
-        {pfad === "index.md" && (
+        {!fremd && pfad === "index.md" && (
           <p className="mb-3 rounded-lg bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
             Diese Seite bekommt jeder Agent bei jedem Projektauftrag mit — aber nur ihre ersten{" "}
             {AUSZUG_ZEICHEN} Zeichen. Das Wichtigste zuerst, Ausführliches in eigene Seiten.
@@ -229,7 +247,9 @@ export function ProjektWissen({
         ) : inhalt === null ? (
           <div className="flex justify-center py-10 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /></div>
         ) : inhalt ? (
-          <div className="text-sm"><MarkdownContent content={inhalt} /></div>
+          // Fremder Inhalt (Text hochgeladener Dateien, Seiten angebundener Brains):
+          // ein eingeschleustes Bild würde beim Öffnen Daten an fremde Adressen schicken.
+          <div className="text-sm"><MarkdownContent content={inhalt} ohneBilder={!!fremd || pfad.startsWith("dateien/")} /></div>
         ) : (
           <p className="text-sm text-muted-foreground">Die Seite ist leer.</p>
         )}

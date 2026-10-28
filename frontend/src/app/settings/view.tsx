@@ -278,7 +278,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
       setDreamingSaving(false);
     }
   };
-  // Nachtschicht (Reflection) — nightly transcript reflection run
+  // Nachtschicht — nightly transcript reflection run
   const [reflEnabled, setReflEnabled] = useState(false);
   const [reflHour, setReflHour] = useState(3);
   const [reflMode, setReflMode] = useState<"auto" | "hybrid" | "strict">("hybrid");

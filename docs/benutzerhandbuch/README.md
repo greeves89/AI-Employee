@@ -118,7 +118,7 @@ Administratoren mit dem Schalter **Mitglieder-Ansicht** im Benutzermenü.
 28. [Benachrichtigung → Task-Details öffnen](#28-benachrichtigung--task-details-öffnen)
 29. [Hilfe & FAQ (im Menü) und Klick-Tutorials](#29-hilfe--faq-im-menü)
 30. [Admin: Exchange on-prem, Azure-Stimmen, Dreaming](#30-admin-exchange-on-prem-azure-stimmen-dreaming)
-31. [Nachtschicht (Reflection) — Agenten lernen über Nacht](#31-nachtschicht-reflection--agenten-lernen-über-nacht)
+31. [Nachtschicht — Agenten lernen über Nacht](#31-nachtschicht--agenten-lernen-über-nacht)
 32. [Apps (Ergebnisse deiner Agenten öffnen & freigeben)](#32-apps-ergebnisse-deiner-agenten-öffnen--freigeben)
 33. [Activity — Tageskalender aller Agenten](#33-activity--tageskalender-aller-agenten)
 34. [Kanäle: Telegram, Teams, Slack, WhatsApp, Discord](#34-kanäle-telegram-teams-slack-whatsapp-discord)
@@ -1090,6 +1090,30 @@ Jedes Projekt hat eine eigene Wissensablage — Reiter **Wissen**:
   bleibt, was einer herausgefunden hat, für alle erhalten.
 - Keine Passwörter oder Zugangsschlüssel hineinschreiben.
 
+**Dateien am Projekt** *(seit 1.385.0)*. Unter den Seiten steht der Bereich **Dateien**:
+1. **Hochladen** klicken oder Dateien in den Bereich ziehen. Erlaubt sind PDF, Word (.docx),
+   Excel (.xlsx), Text, Markdown, CSV, JSON und Bilder (PNG, JPG), je Datei bis 20 MB.
+2. Der Text der Datei wird automatisch ausgelesen und als Seite unter `dateien/` ins
+   Projektwissen gelegt — damit finden ihn die Suche und die Agenten (z. B. die Anforderungen
+   aus einem Lastenheft). Bilder werden abgelegt, aber nicht ausgelesen.
+3. Je Datei: **Text** (Symbol Dokument) zeigt den ausgelesenen Inhalt, **Herunterladen** holt das
+   Original, **Löschen** entfernt Datei und Text.
+
+Gleichnamige Dateien werden nicht überschrieben, sondern bekommen eine Nummer („notiz (2).txt“).
+Die Dateien sieht nur, wer das Projekt sieht; Betrachter können sie lesen, aber nichts hochladen.
+
+**Second Brains anbinden** *(seit 1.386.0)*. Im Projekt unter **Bearbeiten → Second Brains anbinden**
+die Wissensablagen anklicken, die das Projekt mitnutzen soll (z. B. die Ablage einer Abteilung mit
+Preisen oder Abläufen). Zur Auswahl stehen nur Second Brains, die du selbst nutzen darfst.
+- Die **Suche** im Reiter Wissen findet dann auch dort; solche Treffer tragen ein violettes Symbol
+  und den Namen des Brains. Ein Klick öffnet die Seite **nur zum Lesen** — geändert wird ein
+  angebundenes Brain nie aus dem Projekt heraus.
+- Die **Agenten** des Projekts sehen dieselben Treffer über ihre Projektsuche und lesen die Seiten
+  ebenso nur lesend; der Projektauftrag nennt die angebundenen Brains.
+- Wird dir der Zugriff auf ein Brain entzogen, fällt es automatisch aus dem Projekt heraus.
+- Auch ein **gespiegelter Ordner deines Rechners** (Kap. 23.4) steht zur Auswahl. Er wirkt nur
+  für dich: Wer das Projekt mit dir teilt, sieht ihn dort nicht.
+
 ### 6a.7a Projektgespräch *(seit 1.371.0)*
 
 Reiter **Gespräch**: Hier sprechen du und die Agenten des Projekts miteinander.
@@ -1178,17 +1202,35 @@ für die offenen Punkte aus diesem Protokoll an.“ Abnehmen und Zurückgeben bl
 
 ### 6a.9 Git-Projekte: Issues und Pull Requests auf dem Board *(seit 1.369.0)*
 
-Ein Projekt kann mit einem **GitHub-Repo** verbunden werden — dann kommt die Arbeit von selbst aufs
-Board. Das Repo trägt ein, wer das Projekt angelegt hat. **Öffentliche Repos** gehen ohne weitere
-Einrichtung (abgeglichen alle 30 Minuten). **Private Repos** brauchen einen **Schlüssel**: Lege in
-der Schlüsselverwaltung (Keys) einen GitHub-Zugangsschlüssel mit Leserecht an und wähle ihn im
-Projekt unter **Schlüssel für das Repo** (dann alle 10 Minuten). Projekte von Administratoren
-können stattdessen die GitHub-Verbindung der Anlage nutzen. Ohne Repo zeigt die Projektseite den
-Hinweis „Kein GitHub-Repo verbunden“ mit dem Knopf **Repo verbinden**.
+Ein Projekt kann mit einem **Git-Repo** verbunden werden — auf **GitHub** oder auf einem eigenen
+**Forgejo- oder Gitea-Server** (seit 1.384.0). Dann kommt die Arbeit von selbst aufs Board. Das Repo
+trägt ein, wer das Projekt angelegt hat. **Öffentliche Repos** gehen ohne weitere Einrichtung
+(abgeglichen alle 30 Minuten). **Private Repos** brauchen einen **Schlüssel**: Lege in der
+Schlüsselverwaltung (Keys) einen Zugangsschlüssel mit Leserecht an (bei GitHub ein GitHub-Token, bei
+Forgejo/Gitea ein Token dieses Servers, dort unter *Einstellungen → Anwendungen* erzeugt) und wähle
+ihn im Projekt unter **Schlüssel für das Repo** (dann alle 10 Minuten). Projekte von Administratoren
+können bei GitHub-Repos stattdessen die GitHub-Verbindung der Anlage nutzen. Ohne Repo zeigt die
+Projektseite den Hinweis „Kein Git-Repo verbunden“ mit dem Knopf **Repo verbinden**.
+
+Welche Rechte der Token braucht: Bei einem **fein granulierten GitHub-Token** (`github_pat_…`) unter
+*Repository permissions* **Issues**, **Pull requests**, **Commit statuses** und **Actions** jeweils auf
+**Read** setzen — mit nur „Metadata“ sieht die Plattform das Repo, darf aber keine Issues lesen. Ein
+Recht „Checks“ gibt es für solche Tokens nicht; den CI-Stand liest die Plattform dann aus den
+Workflow-Läufen (Actions) und dem Commit-Status. Die
+Fehlerzeile im Projekt nennt dann das fehlende Recht („Dem Schlüssel fehlt das Recht Issues: Read“).
+Gehört das Repo einer Organisation, muss sie den Token gegebenenfalls freigeben (bzw. per SSO
+autorisieren). Bei einem klassischen Token genügt der Bereich `repo`.
+
+Hinweis zu eigenen Servern: Die Plattform fragt sie nur über **https** ab und nie im internen Netz
+der Anlage. Als Schlüssel geht nur ein **eigener** Schlüssel des Projekt-Erstellers — ein Schlüssel,
+der dir nur zur Nutzung geteilt wurde, wird nicht an einen selbst eingetragenen Server geschickt. Verlangt der Server für jedes Repo eine Anmeldung, braucht auch ein „öffentliches“ Repo
+einen Schlüssel. Den CI-Stand eines Pull Requests liest sie aus dem Commit-Status, den Forgejo
+Actions (bzw. Gitea Actions) setzen.
 
 1. Projekt anlegen oder **Bearbeiten** öffnen.
-2. Unter **GitHub-Repo** `owner/name` eintragen, z. B. `beispiel-org/beispiel-repo` (eine kopierte
-   GitHub-Adresse geht auch).
+2. Unter **Git-Repo** eintragen:
+   - GitHub: `owner/name`, z. B. `beispiel-org/beispiel-repo` (eine kopierte GitHub-Adresse geht auch),
+   - Forgejo/Gitea: die volle Adresse des Repos, z. B. `https://git.example.com/team/repo`.
 3. Bei einem privaten Repo unter **Schlüssel für das Repo** den passenden Schlüssel wählen.
 4. **Speichern**.
 
@@ -2723,6 +2765,49 @@ dein Ja freigibt.
 
 ---
 
+
+### 23.4 Einen Ordner deines Rechners als Second Brain spiegeln *(seit 1.387.0)*
+
+Liegt dein Wissen in einem Ordner auf deinem Rechner — zum Beispiel ein **Obsidian-Vault** —,
+kann die Bridge ihn auf den Server spiegeln. Daraus wird ein ganz normales Second Brain: du
+kannst es an Projekte anbinden (Kap. 6a.7, „Second Brains anbinden“) oder einem Agenten zuweisen (Kap. 5.5), die Suche findet darin auch nach Bedeutung, und es
+bleibt nutzbar, wenn dein Rechner aus ist.
+
+1. In der Bridge unter **Berechtigungen → Ordner-Zugriff** den Ordner freigeben (Knopf
+   **Hinzufügen**). Das ist dieselbe Liste wie für Shell-Befehle.
+2. Bridge verbinden.
+3. In der Weboberfläche **Meine Einstellungen → Meine Bridge-Ordner** öffnen und
+   **Ordner spiegeln** klicken. Die Plattform fragt die Bridge nach ihren freigegebenen Ordnern.
+4. Ordner auswählen, einen **Namen** vergeben und **Spiegeln** klicken. Der erste Abgleich
+   startet sofort.
+
+Was übernommen wird:
+- **Markdown und Text** (`.md`, `.markdown`, `.txt`, bis 2 MB) so, wie sie sind.
+- **PDF, Word, Excel** (bis 10 MB) als ausgelesener Text unter `<Dateiname>.md`.
+- Versteckte Ordner wie `.obsidian`, `.git` oder `.trash`, `node_modules` und Verknüpfungen
+  (Links) bleiben außen vor.
+- Grenzen: höchstens **5 Ordner** je Nutzer, **5.000 Dateien** und **200 MB** je Ordner. Was
+  darüber liegt, wird übergangen und unter dem Ordner gemeldet.
+
+Abgeglichen wird, solange die Bridge verbunden ist: beim Verbinden und danach alle zehn
+Minuten, mit **Jetzt abgleichen** (Pfeil-Symbol) sofort. Übertragen werden nur geänderte
+Dateien; was du im Ordner löschst, verschwindet auch auf dem Server. Unter jedem Ordner steht,
+wann zuletzt abgeglichen wurde und ob etwas übergangen wurde.
+
+Gut zu wissen:
+- **Nur in eine Richtung, nur lesend.** Geändert wird im Ordner auf deinem Rechner, nicht in
+  der Plattform. Agenten lesen das Brain, schreiben aber nicht hinein.
+- **Nur für dich.** Kein anderer Nutzer sieht den Spiegel, auch kein Administrator. Hängst du
+  ihn an ein Projekt, das du mit anderen teilst, sehen die anderen ihn dort nicht. Einhängen
+  lässt er sich nur in deine eigenen Agenten — aber wer einen deiner Agenten mitbenutzen darf,
+  kann über ihn auch nach dem Inhalt fragen.
+- **Leerer Ordner:** Ist der Ordner plötzlich leer (z. B. ein nicht eingehängtes Laufwerk),
+  löscht die Plattform vorsichtshalber nichts und meldet das am Ordner.
+- **Löschen** (Papierkorb-Symbol) entfernt nur die Kopie auf dem Server; der Ordner auf
+  deinem Rechner bleibt unberührt.
+- Dafür braucht es die Bridge ab Version 1.387.0. Eine ältere meldet sich am Ordner mit
+  „Die Bridge ist zu alt …“.
+
 ## 24. Skills herunterladen & installieren
 
 Ein **Skill** ist eine wiederverwendbare Fähigkeit (z. B. „Präsentation erstellen").
@@ -3070,7 +3155,7 @@ ausgeliefert und laufen auch ohne Internetzugang.
 
 ---
 
-## 31. Nachtschicht (Reflection) — Agenten lernen über Nacht
+## 31. Nachtschicht — Agenten lernen über Nacht
 
 Die **Nachtschicht** ist der nächtliche Reflexions-Lauf der Plattform: Sie liest die
 Gespräche, Aufgaben und Meetings des Tages, destilliert daraus **dauerhaftes Wissen**
@@ -3079,7 +3164,7 @@ der Agenten bzw. die Knowledge Base. **Morgens startet jeder Agent schlauer.**
 
 ### 31.1 Aktivieren (Admin)
 
-1. Seitenleiste → **Admin-Konsole** → **System & Lizenz** → Karte **„Nachtschicht (Reflection)"**.
+1. Seitenleiste → **Admin-Konsole** → **System & Lizenz** → Karte **„Nachtschicht"**.
 2. **Aktiviert** einschalten.
 3. **Uhrzeit** wählen (Standard: **3 Uhr nachts**).
 4. **Modus** wählen:
@@ -3469,6 +3554,7 @@ Hinweise:
 | `ai-employee-shared` | gemeinsamer Ordner aller Agenten (`/shared`) | ja |
 | `<projekt>_redis_data` | Warteschlangen und kurzlebiger Zustand | ja |
 | `<projekt>_feedback_data` | Rückmeldungen aus der Oberfläche | ja |
+| Host-Ordner `SECONDBRAIN_BASE` (Vorgabe `/srv/secondbrain`) | Wissensablagen: Second Brains, Projektwissen samt Verlauf, Projektdateien | ja, seit 1.385.1 (`wissensablagen.tar.gz`) — ältere Sicherungen enthalten sie nicht |
 | `.env` im Installationsordner | Passwörter, `ENCRYPTION_KEY`, Zugangsdaten | ja (`konfiguration.tar.gz`) |
 | `orchestrator/data/.encryption_key` | Verschlüsselungsschlüssel, falls er nicht in der `.env` steht | ja (`konfiguration.tar.gz`) |
 | `<projekt>_embedding_models`, `<projekt>_stt_models` | heruntergeladene Modelle (Suche, Spracherkennung) | nein — werden neu geladen |
@@ -3496,7 +3582,8 @@ Installationsordners in Kleinbuchstaben (z. B. `ai-employee`).
 
 Was dabei passiert: Die Datenbank wird im laufenden Betrieb per `pg_dump` gesichert,
 die Volumes werden **dynamisch** eingesammelt (jeder neue Agent ist automatisch
-dabei), `.env` und `orchestrator/data/` kommen als `konfiguration.tar.gz` dazu. Ein
+dabei), die Wissensablagen als `wissensablagen.tar.gz`, `.env` und `orchestrator/data/`
+als `konfiguration.tar.gz`. Ein
 `MANIFEST` enthält Version, Zeitpunkt und Prüfsummen. Aufbewahrt werden 7 tägliche
 und 4 wöchentliche Stände.
 
@@ -3543,7 +3630,8 @@ Das Skript fragt vor dem Überschreiben nach (`ja` eingeben; `--yes` für Skript
    `.env` bleibt als `.env.vor-wiederherstellung-<zeitstempel>` liegen. Weicht das
    Datenbank-Passwort ab (Sicherung von einem anderen Server), wird es übernommen.
 4. **Datenbank** aus dem Dump einspielen.
-5. **Volumes** zurückspielen (Arbeitsordner, Sitzungen, gemeinsamer Ordner, Redis …).
+5. **Volumes** zurückspielen (Arbeitsordner, Sitzungen, gemeinsamer Ordner, Redis …),
+   danach die **Wissensablagen**, falls die Sicherung sie enthält (ab 1.385.1).
 6. Anlage starten und **Selbsttest**: Ein gespeichertes Geheimnis wird mit dem
    zurückgelegten Schlüssel entschlüsselt. Scheitert das, meldet das Skript es laut
    (Exit-Code 2) — dann passt der Schlüssel nicht zur Datenbank.
