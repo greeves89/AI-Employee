@@ -456,6 +456,11 @@ async def get_agent_mount_catalog(
     from sqlalchemy import select
 
     catalog = await get_effective_catalog(db)
+    # Privates Wissen anderer (Bridge-Ordner, fremdes Projektwissen) gehört in
+    # keine Auswahl — auch nicht in die eines Administrators (#1092).
+    from app.core.mounts import fremde_privatablagen
+    for label in await fremde_privatablagen(db, list(catalog), user):
+        catalog.pop(label, None)
 
     if hasattr(user, "role") and user.role == UserRole.ADMIN:
         # Admin: full catalog
@@ -514,7 +519,19 @@ async def list_user_mount_access(
     grants = (await db.execute(
         select(UserMountAccess).where(UserMountAccess.user_id == user_id)
     )).scalars().all()
-    return {"grants": [{"mount_label": g.mount_label, "mode": g.mode} for g in grants]}
+    # Die eigenen Bridge-Ordner des Nutzers verwaltet er selbst — sie stehen hier nicht.
+    eigene = await _eigene_privatablagen(db, user_id)
+    return {"grants": [{"mount_label": g.mount_label, "mode": g.mode} for g in grants if g.mount_label not in eigene]}
+
+
+async def _eigene_privatablagen(db: AsyncSession, user_id: str) -> set[str]:
+    """Labels der gespiegelten Bridge-Ordner, die ``user_id`` gehören (#1092)."""
+    from sqlalchemy import select
+
+    from app.models.second_brain import SecondBrain
+
+    return set((await db.execute(select(SecondBrain.label).where(
+        SecondBrain.created_by == str(user_id), SecondBrain.bridge_ordner.is_not(None)))).scalars())
 
 
 @router.put("/agent-mounts/access/{user_id}")
@@ -542,9 +559,14 @@ async def set_user_mount_access(
     if not isinstance(new_grants, list):
         raise HTTPException(status_code=422, detail="grants must be a list")
 
-    from app.core.mounts import get_effective_catalog
+    from types import SimpleNamespace
+
+    from app.core.mounts import fremde_privatablagen, get_effective_catalog
     catalog = await get_effective_catalog(db)
-    valid_labels = set(catalog.keys())
+    # Privates Wissen anderer ist nicht vergebbar; das eigene des Nutzers bleibt,
+    # wie es ist (er verwaltet es selbst unter Meine Bridge-Ordner).
+    eigene = await _eigene_privatablagen(db, user_id)
+    valid_labels = set(catalog.keys()) - await fremde_privatablagen(db, list(catalog), SimpleNamespace(id=user_id)) - eigene
 
     # Validate
     cleaned = []
@@ -558,7 +580,8 @@ async def set_user_mount_access(
         cleaned.append((label, mode))
 
     # Atomic replace
-    await db.execute(sql_delete(UserMountAccess).where(UserMountAccess.user_id == user_id))
+    await db.execute(sql_delete(UserMountAccess).where(
+        UserMountAccess.user_id == user_id, UserMountAccess.mount_label.not_in(eigene or {""})))
     for label, mode in cleaned:
         db.add(UserMountAccess(user_id=user_id, mount_label=label, mode=mode))
     await db.commit()

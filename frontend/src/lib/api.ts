@@ -2178,6 +2178,23 @@ export async function deleteSecondBrain(id: number): Promise<{ ok: boolean; id: 
   return fetchJSON(`${getBase()}/brains/${id}`, { method: "DELETE" });
 }
 
+// Second Brain aus einem Bridge-Ordner (#1092) — für jeden Nutzer, nur eigene.
+export async function bridgeOrdner(): Promise<{ ordner: string[] }> {
+  return fetchJSON(`${getBase()}/brains/bridge/ordner`);
+}
+
+export async function bridgeBrainAnlegen(name: string, ordner: string): Promise<SecondBrain> {
+  return fetchJSON(`${getBase()}/brains/bridge`, { method: "POST", body: JSON.stringify({ name, ordner }) });
+}
+
+export async function bridgeBrainSync(id: number): Promise<{ ok: boolean }> {
+  return fetchJSON(`${getBase()}/brains/bridge/${id}/sync`, { method: "POST" });
+}
+
+export async function bridgeBrainLoeschen(id: number): Promise<{ ok: boolean; id: number }> {
+  return fetchJSON(`${getBase()}/brains/bridge/${id}`, { method: "DELETE" });
+}
+
 // MCP exposure: generate/rotate the Bearer token (plaintext returned ONCE), or disable.
 /** Vault als ZIP herunterladen — Ordnerstruktur bleibt erhalten. */
 export function getBrainExportUrl(brainId: number): string {

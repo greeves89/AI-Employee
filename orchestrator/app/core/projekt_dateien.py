@@ -95,14 +95,23 @@ def _pfad(brain: SecondBrain, name: str) -> str:
     return ziel
 
 
-async def _text_mit_frist(inhalt: bytes, name: str) -> str | None:
-    """Auslesen außerhalb der Ereignisschleife, mit Frist und einzeln."""
-    async with _AUSLESEN:
-        try:
-            return await asyncio.wait_for(asyncio.to_thread(_text, inhalt, name), AUSLESEN_FRIST)
-        except TimeoutError:
-            log.warning("Auslesen von %s nach %s s abgebrochen", _sicher(name), AUSLESEN_FRIST)
-            return f"Inhalt konnte nicht extrahiert werden (nach {AUSLESEN_FRIST} s abgebrochen)."
+async def text_mit_frist(inhalt: bytes, name: str) -> str | None:
+    """Auslesen außerhalb der Ereignisschleife, mit Frist und einzeln.
+
+    Auch für gespiegelte Bridge-Ordner (``bridge_wissen``) — dieselbe Warteschlange,
+    damit nie zwei Dokumente gleichzeitig Speicher fressen.
+    """
+    await _AUSLESEN.acquire()
+    # Einen Thread kann man nicht abbrechen: nach Ablauf der Frist liest er weiter.
+    # Die Sperre gibt deshalb erst sein Ende frei, nicht die Frist — sonst liefen
+    # nach jeder Zeitüberschreitung zwei speicherhungrige Ausleser gleichzeitig.
+    arbeit = asyncio.ensure_future(asyncio.to_thread(_text, inhalt, name))
+    arbeit.add_done_callback(lambda _: _AUSLESEN.release())
+    try:
+        return await asyncio.wait_for(asyncio.shield(arbeit), AUSLESEN_FRIST)
+    except TimeoutError:
+        log.warning("Auslesen von %s nach %s s abgebrochen", _sicher(name), AUSLESEN_FRIST)
+        return f"Inhalt konnte nicht extrahiert werden (nach {AUSLESEN_FRIST} s abgebrochen)."
 
 
 def _sicher(text: str) -> str:
@@ -149,7 +158,7 @@ async def ablegen(db: AsyncSession, brain: SecondBrain, name: str, inhalt: bytes
     os.replace(tmp, ziel)
 
     try:
-        text = await _text_mit_frist(inhalt, name)
+        text = await text_mit_frist(inhalt, name)
         seite = seite_von(name)
         # Ausdrücklich als fremder Inhalt gekennzeichnet: der Text stammt aus einem
         # Dokument, und Agenten lesen ihn — er gibt keine Anweisungen.

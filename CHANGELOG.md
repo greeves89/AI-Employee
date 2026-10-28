@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.387.0] - 2026-10-28
+
+### Neu
+- **Einen Ordner des eigenen Rechners als Second Brain spiegeln** (#1092). Unter „Meine Einstellungen → Meine Bridge-Ordner“ einen in der Bridge freigegebenen Ordner wählen (z. B. einen Obsidian-Vault); die Bridge spiegelt ihn auf den Server, nur in diese Richtung. Markdown und Text kommen so, wie sie sind, PDF/Word/Excel als ausgelesener Text. Danach ist es ein gewöhnliches Second Brain: an Projekte anbindbar, Agenten zuweisbar, durchsuchbar nach Bedeutung — auch wenn der Rechner aus ist. Abgeglichen wird beim Verbinden der Bridge, danach alle zehn Minuten und auf Knopfdruck; nur Geändertes wird übertragen, Gelöschtes verschwindet auch auf dem Server. Braucht die Bridge 1.387.0.
+
+### Sicherheit
+- Gespiegelte Ordner sind privat: kein anderer Nutzer sieht oder nutzt sie, auch kein Administrator — weder in der Brain-Liste, im Mount-Katalog, bei Ordner-Freigaben noch beim Anbinden an Projekte. Eingehängt werden sie nur in Agenten ihres Besitzers (geprüft beim Zuweisen UND bei jedem Containerstart, in der Anleitung und in der Sprachfront). In einem geteilten Projekt wirken sie nur für ihren Besitzer; das Protokoll nennt ihren Namen nicht.
+- Grenzen: höchstens 5 gespiegelte Ordner je Nutzer und 200 MB je Ordner; eine Datei, die nicht gelesen werden konnte, wird erst nach einer Änderung erneut geholt; ein leerer oder nicht erreichbarer Ordner löscht den Spiegel nicht. Das Auslesen von PDF/Word/Excel (auch bei Projektdateien) gibt die Warteschlange erst frei, wenn der Ausleser wirklich fertig ist — nicht schon beim Ablauf der Frist.
+- **Behoben:** Administratoren konnten das Wissen fremder Projekte als Mount in ihre Agenten hängen. Projektwissen ist jetzt nur für den Ersteller des Projekts einhängbar.
+- Gespiegelte Brains sind nur lesend (Schreiben, Löschen, Importieren und „read-write“ werden mit 409 abgelehnt).
+- Die Bridge liest nur in genau den freigegebenen Ordnern (kein Unterordner, fail-closed), ohne versteckte Ordner, `node_modules` und symbolische Links (auch nicht, wenn eine Datei zwischen Prüfung und Lesen gegen einen Link getauscht wird), mit Grenzen (5.000 Dateien, Text 2 MB, Dokumente 10 MB). Der Server prüft jede Angabe der Bridge erneut (Pfade, Prüfsumme, Größe) und übernimmt nur, was passt. Agenten können die Sync-Befehle nicht auslösen.
+
+### Technik
+- Neue Spalten `second_brains.bridge_ordner`, `sync_stand`, `sync_fehler` (Migration `d9e0f1a2b3c4`). Neu: `core/bridge_wissen.py`, `mounts.fremde_privatablagen`, Endpunkte `GET /brains/bridge/ordner`, `POST /brains/bridge`, `POST /brains/bridge/{id}/sync`, `DELETE /brains/bridge/{id}`; Bridge-Aktionen `wissen_ordner`, `wissen_liste`, `wissen_datei`.
+
 ## [1.386.0] - 2026-10-28
 
 ### Neu

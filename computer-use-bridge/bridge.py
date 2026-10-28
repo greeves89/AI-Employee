@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
+import hashlib
 import io
 import json
 import logging
@@ -22,6 +23,7 @@ import os
 import platform
 import queue
 import ssl
+import stat
 import sys
 import threading
 import time
@@ -1479,6 +1481,136 @@ def allowed_shell_dirs() -> list[str]:
     return dirs
 
 
+# ── Gespiegelte Ordner (#1092) ────────────────────────────────────────────────
+#
+# Die Plattform spiegelt einen freigegebenen Ordner in ein Second Brain auf dem
+# Server. Sie fragt (``wissen_liste``), die Bridge antwortet; geaenderte Dateien
+# holt sie einzeln (``wissen_datei``). Gelesen wird NUR innerhalb freigegebener
+# Ordner (dieselbe Liste wie fuer Shell-Befehle, fail-closed), ohne versteckte
+# Ordner (.git, .obsidian, .trash) und ohne symbolische Links. Agenten koennen
+# diese Befehle nicht ausloesen: der Server kennt sie in keiner Capability-Gruppe.
+
+WISSEN_TEXT_ENDUNGEN = (".md", ".markdown", ".txt")
+WISSEN_ENDUNGEN = WISSEN_TEXT_ENDUNGEN + (".pdf", ".docx", ".xlsx")
+WISSEN_MAX_DATEIEN = 5000
+WISSEN_MAX_TEXT_BYTES = 2_000_000
+WISSEN_MAX_DOKUMENT_BYTES = 10 * 1024 * 1024
+# Neben versteckten Ordnern: Ablagen von Werkzeugen, kein Wissen.
+WISSEN_AUSGELASSEN = {"node_modules", "__pycache__"}
+# (Pfad, Groesse, Aenderungszeit) -> Pruefsumme: der Abgleich laeuft alle zehn
+# Minuten, ohne Merker laese er jedes Mal jede Datei ganz.
+_wissen_pruefsummen: dict[tuple[str, int, int], str] = {}
+
+
+def _wissen_wurzel(ordner) -> str | None:
+    """Der Ordner, wenn er GENAU so freigegeben ist — sonst None.
+
+    Kein Unterordner: der Server spiegelt nur, was ``wissen_ordner`` nennt, und
+    ein Unterordner koennte ein versteckter sein (``~/.ssh`` unter ``~``).
+    """
+    if not isinstance(ordner, str) or not ordner.strip():
+        return None
+    echt = os.path.realpath(os.path.expanduser(ordner.strip()))
+    return echt if echt in allowed_shell_dirs() and os.path.isdir(echt) else None
+
+
+def _wissen_oeffnen(pfad: str) -> int:
+    """Datei oeffnen, OHNE einem Link zu folgen, und pruefen, dass sie eine
+    gewoehnliche Datei ist — zwischen Pruefung und Lesen kann sie sonst gegen
+    einen Link getauscht werden. Liefert den Dateideskriptor."""
+    fd = os.open(pfad, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0))
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError("keine gewoehnliche Datei")
+    except Exception:
+        os.close(fd)
+        raise
+    return fd
+
+
+def _wissen_grenze(name: str) -> int:
+    return WISSEN_MAX_TEXT_BYTES if name.lower().endswith(WISSEN_TEXT_ENDUNGEN) else WISSEN_MAX_DOKUMENT_BYTES
+
+
+def _wissen_pruefsumme(pfad: str, st: os.stat_result) -> str:
+    schluessel = (pfad, st.st_size, st.st_mtime_ns)
+    bekannt = _wissen_pruefsummen.get(schluessel)
+    if bekannt:
+        return bekannt
+    h = hashlib.sha256()
+    with os.fdopen(_wissen_oeffnen(pfad), "rb") as fh:
+        for stueck in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(stueck)
+    if len(_wissen_pruefsummen) > 4 * WISSEN_MAX_DATEIEN:
+        _wissen_pruefsummen.clear()
+    _wissen_pruefsummen[schluessel] = h.hexdigest()
+    return _wissen_pruefsummen[schluessel]
+
+
+def wissen_ordner() -> dict:
+    return {"ok": True, "ordner": allowed_shell_dirs()}
+
+
+def wissen_liste(ordner) -> dict:
+    """Pfad (relativ, mit /), Groesse und SHA-256 jeder spiegelbaren Datei."""
+    wurzel = _wissen_wurzel(ordner)
+    if wurzel is None:
+        return {"ok": False, "error": "Der Ordner ist in der Bridge nicht (mehr) freigegeben."}
+    dateien: list[dict] = []
+    for root, dirs, files in os.walk(wurzel, followlinks=False):
+        dirs[:] = sorted(d for d in dirs if not d.startswith(".") and d not in WISSEN_AUSGELASSEN)
+        for name in sorted(files):
+            if name.startswith(".") or not name.lower().endswith(WISSEN_ENDUNGEN):
+                continue
+            pfad = os.path.join(root, name)
+            try:
+                if os.path.islink(pfad):
+                    continue
+                st = os.stat(pfad)
+                if st.st_size > _wissen_grenze(name):
+                    continue
+                dateien.append({
+                    "pfad": os.path.relpath(pfad, wurzel).replace(os.sep, "/"),
+                    "sha": _wissen_pruefsumme(pfad, st),
+                    "bytes": st.st_size,
+                })
+            except OSError:
+                continue
+            if len(dateien) >= WISSEN_MAX_DATEIEN:
+                return {"ok": True, "dateien": dateien, "abgeschnitten": True}
+    return {"ok": True, "dateien": dateien, "abgeschnitten": False}
+
+
+def wissen_datei(ordner, pfad) -> dict:
+    """Inhalt EINER Datei aus einem freigegebenen Ordner (Base64)."""
+    wurzel = _wissen_wurzel(ordner)
+    if wurzel is None:
+        return {"ok": False, "error": "Der Ordner ist in der Bridge nicht (mehr) freigegeben."}
+    if not isinstance(pfad, str) or not pfad or "\x00" in pfad or os.path.isabs(pfad):
+        return {"ok": False, "error": "Ungueltiger Pfad"}
+    teile = pfad.replace("\\", "/").split("/")
+    if any(not t or t in (".", "..") or t.startswith(".") for t in teile):
+        return {"ok": False, "error": "Ungueltiger Pfad"}
+    if not pfad.lower().endswith(WISSEN_ENDUNGEN):
+        return {"ok": False, "error": "Diese Dateiart wird nicht gespiegelt"}
+    if any(t in WISSEN_AUSGELASSEN for t in teile):
+        return {"ok": False, "error": "Ungueltiger Pfad"}
+    ziel = os.path.join(wurzel, *teile)
+    echt = os.path.realpath(ziel)
+    # realpath loest Links in Zwischenordnern auf: zeigt einer hinaus, endet es hier.
+    if echt != ziel or not echt.startswith(wurzel + os.sep):
+        return {"ok": False, "error": "Datei nicht gefunden"}
+    grenze = _wissen_grenze(echt)
+    try:
+        with os.fdopen(_wissen_oeffnen(echt), "rb") as fh:
+            roh = fh.read(grenze + 1)
+    except OSError:
+        return {"ok": False, "error": "Datei nicht gefunden"}
+    if len(roh) > grenze:
+        return {"ok": False, "error": "Datei zu gross"}
+    return {"ok": True, "inhalt_b64": base64.b64encode(roh).decode("ascii")}
+
+
 def shell_run(command: str, cwd: str | None = None, timeout: int = 120) -> dict:
     """Einen Shell-Befehl ausfuehren — NUR wenn Ordner freigegeben sind.
 
@@ -2173,6 +2305,15 @@ class CommandDispatcher:
                     params.get("cwd"),
                     int(params.get("timeout") or 120),
                 )
+
+            elif action == "wissen_ordner":
+                return wissen_ordner()
+
+            elif action == "wissen_liste":
+                return wissen_liste(params.get("ordner"))
+
+            elif action == "wissen_datei":
+                return wissen_datei(params.get("ordner"), params.get("pfad"))
 
             elif action == "list_windows":
                 return list_windows()

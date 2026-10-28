@@ -1319,6 +1319,17 @@ async def delete_user(
                       agenten=agenten if eigene else None, agenten_anzahl=len(eigene))
     await db.delete(target)
     await db.commit()
+    # Gespiegelte Bridge-Ordner (#1092) sind private Kopien seines Rechners — ohne
+    # Besitzer sähe und räumte sie niemand mehr. Sie gehen mit.
+    from app.core import bridge_wissen
+    from app.models.second_brain import SecondBrain
+    for spiegel in (await db.execute(select(SecondBrain).where(
+            SecondBrain.created_by == user_id, SecondBrain.bridge_ordner.is_not(None)))).scalars().all():
+        try:
+            await bridge_wissen.entfernen(db, spiegel)
+        except Exception:  # noqa: BLE001 — der Nutzer ist gelöscht; ein Rest darf das nicht umkehren
+            await db.rollback()
+            logger.warning("Spiegel %s des gelöschten Nutzers nicht entfernt", spiegel.id, exc_info=True)
     logger.info(
         "Admin %s hat Nutzer %s gelöscht (%d Agent(en), %s)",
         scrub_log(current.id), scrub_log(user_id), len(eigene), agenten or "keine",
