@@ -112,12 +112,38 @@ def write_file(host_path: str, rel_path: str, content: str, *, overwrite: bool =
     existed = os.path.isfile(target)
     if existed and not overwrite:
         raise FileExistsError(rel_path)
-    os.makedirs(os.path.dirname(target) or os.path.realpath(host_path), exist_ok=True)
+    ordner = os.path.dirname(target) or os.path.realpath(host_path)
+    neue_ordner = []
+    pruefen = ordner
+    while not os.path.isdir(pruefen):
+        neue_ordner.append(pruefen)
+        pruefen = os.path.dirname(pruefen)
+    os.makedirs(ordner, exist_ok=True)
     tmp = target + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
         fh.write(content)
     os.replace(tmp, target)
+    for pfad in [*neue_ordner, target]:
+        _dem_agenten_geben(pfad)
     return {"path": rel_path, "created": not existed, "bytes": len(content.encode("utf-8"))}
+
+
+#: Nutzer, unter dem die Agenten-Container laufen (``agent`` im Abbild).
+AGENT_UID = 1000
+
+
+def _dem_agenten_geben(pfad: str) -> None:
+    """Neue Datei/neuen Ordner dem Agenten-Nutzer übergeben.
+
+    Der Orchestrator schreibt als root. Ohne Übergabe gehörte eine Notiz, die der
+    Agent über ``secondbrain_write`` anlegt, root (Datei 0644, Ordner 0755) — und
+    der Agent selbst konnte sie danach im eingebundenen Vault weder ändern noch
+    daneben schreiben. Wo der Orchestrator nicht root ist (Tests), bleibt alles so.
+    """
+    try:
+        os.chown(pfad, AGENT_UID, AGENT_UID)
+    except (PermissionError, OSError, AttributeError):
+        pass
 
 
 def delete_file(host_path: str, rel_path: str) -> None:

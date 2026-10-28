@@ -649,6 +649,23 @@ def get_approval_rules_prefix() -> str:
 
 #: Merker in ``geladen``: Regel + Liste stehen in dieser Unterhaltung schon.
 _LISTE_GEZEIGT = "__liste__"
+#: Vorsatz fuer die Merker „diese Anleitung stand schon in der Liste" (je ID).
+_GELISTET = "__gelistet__:"
+#: Soviele IDs gehen hoechstens mit. Die Zahl liegt ueber jedem realistischen
+#: Bestand (gemessen 231) und haelt den Rumpf trotzdem klein, falls ein Merker-Satz
+#: durch einen Fehler anwaechst.
+_MAX_SCHON_GELISTET = 2000
+
+
+def _schon_gelistet(geladen: set[str]) -> list[int]:
+    """Die Skill-IDs, die in dieser Unterhaltung schon gelistet wurden.
+
+    Nur Ziffernfolgen: der Merkersatz enthaelt auch Anleitungs-NAMEN und den
+    Listen-Merker, und eine Zeichenkette im Rumpf waere fuer den Orchestrator
+    wertlos (dort sind die IDs ganze Zahlen).
+    """
+    ids = [m[len(_GELISTET):] for m in geladen if m.startswith(_GELISTET)]
+    return sorted(int(i) for i in ids if i.isdigit())[:_MAX_SCHON_GELISTET]
 
 
 def fachanleitungen(auftrag: str, geladen: set[str]) -> str:
@@ -659,9 +676,12 @@ def fachanleitungen(auftrag: str, geladen: set[str]) -> str:
     die Regel samt Liste (ladbare ID + Auslöser) und die passenden Anleitungen
     vollständig.
 
-    ``geladen`` gehört zur Unterhaltung: Regel und Liste erscheinen einmal, jede
-    Anleitung auch — ab dann stehen sie im Verlauf. Ohne Antwort des Orchestrators
-    bleibt ``geladen`` unverändert, der nächste Aufruf versucht es wieder.
+    ``geladen`` gehört zur Unterhaltung: die Liste erscheint einmal — und noch
+    einmal, wenn der Orchestrator wegen des Deckels (#1044) eine Anleitung
+    auswählt, die in dieser Unterhaltung noch nicht gelistet war. Jede Anleitung
+    selbst erscheint einmal; ab dann steht sie im Verlauf. Ohne Antwort des
+    Orchestrators bleibt ``geladen`` unverändert, der nächste Aufruf versucht es
+    wieder.
 
     Befund, der dazu führte (Abnahme v1.362.1): Ein Buchhaltungs-Agent schrieb im
     Chat einen DATEV-Stapel mit Nettobetrag bei BU 9 — die zugewiesene Anleitung
@@ -671,7 +691,14 @@ def fachanleitungen(auftrag: str, geladen: set[str]) -> str:
         url = f"{settings.orchestrator_url}/api/v1/skills/agent/fachanleitungen"
         req = urllib.request.Request(
             url,
-            data=_json.dumps({"auftrag": (auftrag or "")[:4000]}).encode("utf-8"),
+            data=_json.dumps({
+                "auftrag": (auftrag or "")[:4000],
+                # Was in dieser Unterhaltung schon gelistet wurde. Der
+                # Orchestrator schickt dann nur noch, was NEU dazukommt — sonst
+                # wanderte bei jedem Themenwechsel der ganze Block erneut in den
+                # Verlauf (gemessen Faktor 1,94 teurer als ohne Deckel, #1044).
+                "schon_gelistet": _schon_gelistet(geladen),
+            }).encode("utf-8"),
             headers={
                 "Authorization": f"Bearer {settings.agent_token}",
                 "X-Agent-ID": settings.agent_id,
@@ -686,9 +713,30 @@ def fachanleitungen(auftrag: str, geladen: set[str]) -> str:
 
     teile: list[str] = []
     liste = data.get("prompt") or ""
-    if liste and _LISTE_GEZEIGT not in geladen:
+    # Die Liste ist seit v1.386.0 GEDECKELT und je Nachricht nach Relevanz
+    # sortiert (Issue #1044). „Einmal je Unterhaltung" war richtig, solange sie
+    # vollständig war — mit Deckel wären es die 40 Anleitungen, die zur ERSTEN
+    # Nachricht passten, und das ist typisch eine Begrüßung.
+    #
+    # Deshalb entscheidet das jetzt der Orchestrator: er bekommt oben mitgeteilt,
+    # was hier schon im Verlauf steht, und liefert ``prompt`` entweder leer oder
+    # als NACHTRAG mit genau den neuen Einträgen. Hier ist also nichts mehr zu
+    # filtern — nur noch zu buchen, was gezeigt wurde.
+    if "gelistet_ids" in data:
+        if liste:
+            teile.append(liste)
+        geladen.add(_LISTE_GEZEIGT)
+        geladen.update(
+            _GELISTET + str(i) for i in (data.get("gelistet_ids") or []) if i is not None)
+    elif liste and _LISTE_GEZEIGT not in geladen:
+        # Älterer Orchestrator ohne ``gelistet_ids``: der kennt den Nachtrag nicht
+        # und liefert jedes Mal die volle Liste. Dann gilt wieder „einmal je
+        # Unterhaltung" — sonst wiederholte sich der ganze Block bei jeder
+        # Nachricht, also genau der Fehler, den dieser Umbau abstellt.
         teile.append(liste)
-    geladen.add(_LISTE_GEZEIGT)
+        geladen.add(_LISTE_GEZEIGT)
+    else:
+        geladen.add(_LISTE_GEZEIGT)
     for anleitung in data.get("anleitungen") or []:
         name = str(anleitung.get("name") or "")
         if not name or name in geladen:

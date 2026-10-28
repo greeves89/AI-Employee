@@ -1099,6 +1099,24 @@ def _container_slug(name: str) -> str:
     return slug or "agent"
 
 
+def _browser_geheimnisse(agent_id: str) -> dict[str, str]:
+    """Schluessel fuer den Agenten-Browser (#828, Schritt 5), je Agent abgeleitet.
+
+    * ``BROWSER_PROFIL_KEY`` verschluesselt das gesicherte Browserprofil im
+      Arbeitsbereich. Er liegt NICHT im selben Volume wie das Archiv.
+    * ``BROWSER_ZUGANG`` muss der Orchestrator mitschicken, wenn er Bildstrom
+      oder Pruefprotokoll des Agenten abruft. Alle Agenten haengen im selben
+      Docker-Netz; ohne ihn koennte ein Agent den angemeldeten Browser eines
+      fremden Agenten bedienen.
+    """
+    from app.core.encryption import agent_schluessel
+
+    return {
+        "BROWSER_PROFIL_KEY": agent_schluessel("browser-profil", agent_id),
+        "BROWSER_ZUGANG": agent_schluessel("browser-zugang", agent_id),
+    }
+
+
 class AgentManager:
     """Manages the lifecycle of agent Docker containers."""
 
@@ -1755,6 +1773,12 @@ class AgentManager:
                 "EXTENDED_THINKING": str(settings.extended_thinking).lower(),
                 "COMPUTER_USE_BROWSER": "true" if browser_mode else "false",
                 "COMPUTER_USE_USER_ID": str(user_id) if user_id else "",
+                # Domain-Allowlist fuer den Agenten-Browser (#828, Schritt 5).
+                # Bei der Erstellung noch leer -- es gibt noch kein
+                # ``agent.config``, aus dem eine Freigabeliste kaeme; die
+                # setzt ein Besitzer erst danach per PATCH + Neustart.
+                "BROWSER_ALLOWED_DOMAINS": "",
+                **_browser_geheimnisse(agent_id),
                 "AGENT_WORKSPACE_SIZE_GB": str(settings.agent_workspace_size_gb),
             })
 
@@ -2030,6 +2054,11 @@ class AgentManager:
             # werden, der einen Container baut.
             "COMPUTER_USE_BROWSER": "true" if agent.browser_mode else "false",
             "COMPUTER_USE_USER_ID": str(agent.user_id) if agent.user_id else "",
+            # Domain-Allowlist fuer den Agenten-Browser (#828, Schritt 5) --
+            # muss wie der Browser-Schalter selbst in JEDEM Bauweg gesetzt
+            # werden, sonst greift eine Aenderung erst beim naechsten davon.
+            "BROWSER_ALLOWED_DOMAINS": ",".join(config.get("browser_allowed_domains") or []),
+            **_browser_geheimnisse(agent.id),
             # Standard-Denktiefe aus den Agenten-Einstellungen — die Laufzeit
             # nutzt sie ueberall dort, wo am Lauf keine Stufe haengt.
             "DEFAULT_REASONING": str(config.get("default_reasoning", "") or ""),
@@ -2085,14 +2114,19 @@ class AgentManager:
                 "EXTENDED_THINKING": str(settings.extended_thinking).lower(),
             })
 
+        # Browser-Schluessel ZULETZT: ``secrets_env`` darf sie nicht ueberschreiben,
+        # sonst koennte ein zugewiesener Key ``BROWSER_ZUGANG`` den Browser fuer
+        # einen fremden Agenten im selben Netz oeffnen (#828, Schritt 5).
+        env_vars.update(_browser_geheimnisse(agent.id))
+
         # 3. Create new container with same volumes + any assigned bind mounts
         agent_permissions = autonomy_matrix.effective_permissions(
             agent.access_policy, agent.autonomy_level or "l3"
         )
         needs_sudo = len(agent_permissions) > 0
-        from app.core.mounts import get_effective_catalog, resolve_agent_mounts, mounts_to_docker_volumes
+        from app.core.mounts import get_effective_catalog, mounts_des_agenten, resolve_agent_mounts, mounts_to_docker_volumes
         catalog = await get_effective_catalog(self.db)
-        mount_entries = resolve_agent_mounts(config.get("mounts", []), catalog, config.get("mount_modes", {}))
+        mount_entries = resolve_agent_mounts(await mounts_des_agenten(self.db, agent), catalog, config.get("mount_modes", {}))
         bind_mounts = mounts_to_docker_volumes(mount_entries) or None
         def _create_agent_container():
             return self._create_or_adopt(
@@ -2137,7 +2171,8 @@ class AgentManager:
         # 5b. Refresh instructions file with latest DEFAULT_CLAUDE_MD (CLAUDE.md for
         # Claude Code, AGENT.md for Custom LLM — model-agnostic naming).
         try:
-            agent_mounts = config.get("mounts", [])
+            from app.core.mounts import mounts_des_agenten
+            agent_mounts = await mounts_des_agenten(self.db, agent)
             from app.core import master_rules as _mr
             mode = agent.mode or config.get("mode", "claude_code")
             fresh_claude_md = _render_claude_md(
@@ -2309,13 +2344,13 @@ class AgentManager:
         if not agent.container_id:
             return False
         try:
-            from app.core.mounts import get_effective_catalog
+            from app.core.mounts import get_effective_catalog, mounts_des_agenten
             catalog = await get_effective_catalog(self.db)
             mode = agent.mode or (agent.config or {}).get("mode", "claude_code")
             build_tools = await self._build_tools_aktiv(agent.template_id)
             from app.core import master_rules as _mr
             rendered = _render_claude_md(
-                (agent.config or {}).get("mounts", []), catalog,
+                await mounts_des_agenten(self.db, agent), catalog,
                 agent_name=agent.name, agent_role=(agent.config or {}).get("role", ""),
                 master_rules=await _mr.load(self.db), mode=mode,
                 build_tools=build_tools,
@@ -2400,6 +2435,11 @@ class AgentManager:
             # werden, der einen Container baut.
             "COMPUTER_USE_BROWSER": "true" if agent.browser_mode else "false",
             "COMPUTER_USE_USER_ID": str(agent.user_id) if agent.user_id else "",
+            # Domain-Allowlist fuer den Agenten-Browser (#828, Schritt 5) --
+            # muss wie der Browser-Schalter selbst in JEDEM Bauweg gesetzt
+            # werden, sonst greift eine Aenderung erst beim naechsten davon.
+            "BROWSER_ALLOWED_DOMAINS": ",".join(config.get("browser_allowed_domains") or []),
+            **_browser_geheimnisse(agent.id),
             # Standard-Denktiefe aus den Agenten-Einstellungen — die Laufzeit
             # nutzt sie ueberall dort, wo am Lauf keine Stufe haengt.
             "DEFAULT_REASONING": str(config.get("default_reasoning", "") or ""),
@@ -2470,14 +2510,19 @@ class AgentManager:
                 "EXTENDED_THINKING": str(settings.extended_thinking).lower(),
             })
 
+        # Browser-Schluessel ZULETZT: ``secrets_env`` darf sie nicht ueberschreiben,
+        # sonst koennte ein zugewiesener Key ``BROWSER_ZUGANG`` den Browser fuer
+        # einen fremden Agenten im selben Netz oeffnen (#828, Schritt 5).
+        env_vars.update(_browser_geheimnisse(agent.id))
+
         # 3. Create new container with same volumes + any assigned bind mounts
         agent_permissions = autonomy_matrix.effective_permissions(
             agent.access_policy, agent.autonomy_level or "l3"
         )
         needs_sudo = len(agent_permissions) > 0
-        from app.core.mounts import get_effective_catalog, resolve_agent_mounts, mounts_to_docker_volumes
+        from app.core.mounts import get_effective_catalog, mounts_des_agenten, resolve_agent_mounts, mounts_to_docker_volumes
         catalog = await get_effective_catalog(self.db)
-        mount_entries = resolve_agent_mounts(config.get("mounts", []), catalog, config.get("mount_modes", {}))
+        mount_entries = resolve_agent_mounts(await mounts_des_agenten(self.db, agent), catalog, config.get("mount_modes", {}))
         bind_mounts = mounts_to_docker_volumes(mount_entries) or None
         def _create_agent_container():
             # Gleiche Uebernahme wie in `restart_agent`: der Name ist fest, also
@@ -2523,7 +2568,8 @@ class AgentManager:
         #    DEFAULT_CLAUDE_MD silently passed it by, no matter how often it was updated.
         _instructions_files = instructions_paths(mode)
         try:
-            _agent_mounts = (agent.config or {}).get("mounts", [])
+            from app.core.mounts import mounts_des_agenten
+            _agent_mounts = await mounts_des_agenten(self.db, agent)
             from app.core import master_rules as _mr
             _rendered = _render_claude_md(
                 _agent_mounts, catalog,

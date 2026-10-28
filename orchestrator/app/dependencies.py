@@ -287,6 +287,21 @@ async def require_agent_access(
     raise HTTPException(status_code=403, detail="Access denied to this agent")
 
 
+async def require_agent_owner(agent_id: str, user, db: AsyncSession) -> None:
+    """Nur der Besitzer des Agenten -- ohne Ausnahme fuer Admin, Manager oder Freigaben.
+
+    Fuer private Daten des Besitzers, z. B. den angemeldeten Agenten-Browser:
+    Wer ihn sieht, sieht und bedient die Sitzungen des Besitzers (Postfach,
+    Konten). Admins sehen private Nutzerdaten nicht. 404 statt 403, damit
+    fremde Agenten-IDs nicht bestaetigt werden.
+    """
+    from app.models.agent import Agent
+
+    besitzer = await db.scalar(select(Agent.user_id).where(Agent.id == agent_id))
+    if not besitzer or besitzer != getattr(user, "id", None):
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
 async def get_current_user_ws(token: str | None, db: AsyncSession) -> "User":
     """Validate JWT token for WebSocket connections (token from query param).
 

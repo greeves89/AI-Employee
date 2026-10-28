@@ -80,6 +80,10 @@ export interface SecondBrain {
   mcp_path?: string | null;   // relative MCP endpoint; prepend window.location.origin
   indexed_files?: number;     // files in the search index (#727)
   indexed_at?: string | null; // last time the index was written (#727)
+  /** Gespiegelter Bridge-Ordner (#1092): Quelle auf dem Rechner, nur lesend, privat. */
+  bridge_ordner?: string | null;
+  sync_stand?: string | null;
+  sync_fehler?: string | null;
   created_at: string;
   updated_at: string;
 }

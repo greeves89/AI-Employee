@@ -487,8 +487,12 @@ SPALTEN_NAMEN = {"eingang": "Eingang", "bereit": "Bereit", "in_arbeit": "In Arbe
 PRIO_NAMEN = {1: "P1", 2: "P2", 3: "P3"}
 
 
-def board_als_text(projekt: dict, b: dict, namen: dict[str, str], *, je_spalte: int = 25) -> str:
-    """Das Board als Text für die Werkzeuge der Agenten — EINE Darstellung für alle Laufzeiten."""
+def board_als_text(projekt: dict, b: dict, namen: dict[str, str], *, je_spalte: int = 25,
+                   spalten: tuple[str, ...] = ("eingang", "bereit", "in_arbeit", "pruefung", "erledigt")) -> str:
+    """Das Board als Text für die Werkzeuge der Agenten — EINE Darstellung für alle Laufzeiten.
+
+    ``spalten``: welche Spalten mit ihren Karten erscheinen (die Kennzahlen stehen immer da).
+    """
     def wer(aid):
         return namen.get(aid or "", aid or "—")
 
@@ -504,7 +508,7 @@ def board_als_text(projekt: dict, b: dict, namen: dict[str, str], *, je_spalte: 
             was = lauf["karte_titel"] or f"Teilarbeit: {lauf['titel']}"
             stufe = f" [{lauf['stufe']}]" if lauf.get("stufe") else ""
             zeilen.append(f"- {wer(lauf['agent_id'])}: {was}{stufe}")
-    for spalte in ("eingang", "bereit", "in_arbeit", "pruefung", "erledigt"):
+    for spalte in spalten:
         karten = b["spalten"].get(spalte) or []
         if not karten:
             continue

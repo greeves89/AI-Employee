@@ -27,9 +27,16 @@ async def _bis(bedingung, takt: float = 0.01):
         await asyncio.sleep(takt)
 
 
-class _Brain:
-    def __init__(self, label, host_path):
-        self.label, self.host_path = label, host_path
+class _Brain(tuple):
+    """Eine Zeile ``(label, host_path)`` — so liest der Durchlauf die Brains seit
+    dem Rollback-Fix (ORM-Objekte verfallen nach einem Rollback)."""
+
+    def __new__(cls, label, host_path):
+        return super().__new__(cls, (label, host_path))
+
+    @property
+    def label(self):
+        return self[0]
 
 
 class _Ergebnis:
@@ -49,6 +56,9 @@ class _DB:
 
     async def execute(self, *a, **k):
         return _Ergebnis(self._brains)
+
+    async def rollback(self):
+        self.zurueckgerollt = getattr(self, "zurueckgerollt", 0) + 1
 
 
 class ReindexDurchlaufTests(unittest.IsolatedAsyncioTestCase):

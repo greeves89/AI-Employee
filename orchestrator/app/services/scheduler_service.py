@@ -2192,15 +2192,21 @@ class SchedulerService:
 
         gesamt = {"brains": 0, "files": 0, "chunks": 0, "pruned": 0, "errors": 0}
         async with resilient_session() as db:
+            # Werte vorab lesen: Nach einem Rollback sind die ORM-Objekte verfallen,
+            # und ein Zugriff darauf lüde nach (MissingGreenlet).
             brains = (
-                await db.execute(select(SecondBrain).where(SecondBrain.is_active.is_(True)))
-            ).scalars().all()
-            for brain in brains:
+                await db.execute(
+                    select(SecondBrain.label, SecondBrain.host_path).where(SecondBrain.is_active.is_(True))
+                )
+            ).all()
+            for label, host_path in brains:
                 try:
-                    stats = await vault_indexer.reindex_vault(db, brain.label, brain.host_path)
+                    stats = await vault_indexer.reindex_vault(db, label, host_path)
                 except Exception as e:
-                    # Ein kaputter Vault darf die uebrigen nicht mitreissen.
-                    logger.warning("[VaultReindex] brain=%s: %s", brain.label, e)
+                    # Ein kaputter Vault darf die uebrigen nicht mitreissen — auch
+                    # nicht über eine abgebrochene Sitzung.
+                    logger.warning("[VaultReindex] brain=%s: %s", label, e)
+                    await db.rollback()
                     gesamt["errors"] += 1
                     continue
                 gesamt["brains"] += 1

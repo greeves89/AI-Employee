@@ -56,14 +56,22 @@ async def _embed_chunks(texts: list[str]) -> list[list[float] | None]:
 
 
 async def index_file(
-    db: AsyncSession, brain_label: str, host_path: str, rel_path: str
+    db: AsyncSession, brain_label: str, host_path: str, rel_path: str,
+    nachfuellen: dict | None = None,
 ) -> int:
-    """(Re)index a single vault file. Returns the number of chunks written."""
+    """(Re)index a single vault file. Returns the number of chunks written.
+
+    ``nachfuellen`` ist der Zustand eines ganzen Laufs (``reindex_vault``): Fehlt der
+    Embedding-Dienst, fragt nicht jede weitere Datei erneut nach.
+    """
     try:
         content = vault.read_file(host_path, rel_path)
     except (FileNotFoundError, ValueError):
         await remove_file(db, brain_label, rel_path)
         return 0
+    # Postgres nimmt kein NUL-Byte in Text. Eine einzige solche Datei brach vorher
+    # die gemeinsame Sitzung ab — und damit den Rest des Laufs.
+    content = content.replace("\x00", "")
 
     fhash = _file_hash(content)
     existing = (
@@ -89,7 +97,12 @@ async def index_file(
         ).first()
         if not has_null:
             return 0  # unchanged and fully embedded
-        # Fall through: re-index to fill missing embeddings.
+        # Unverändert, nur Embeddings fehlen: NUR diese nachfüllen. Vorher wurde die
+        # Datei neu zerlegt, gelöscht und neu geschrieben — ohne Embedding-Dienst
+        # (oder mit falschem Schlüssel) alle 5 Minuten jede Datei aller Vaults.
+        if nachfuellen is not None and nachfuellen.get("aus"):
+            return 0
+        return await _embeddings_nachfuellen(db, brain_label, rel_path, content, nachfuellen)
 
     chunks = chunk_markdown(content)
     # Replace all chunks of this file atomically.
@@ -134,6 +147,48 @@ async def index_file(
     return len(chunks)
 
 
+async def _embeddings_nachfuellen(
+    db: AsyncSession, brain_label: str, rel_path: str, content: str, zustand: dict | None
+) -> int:
+    """Fehlende Embeddings einer unveränderten Datei setzen, ohne sie neu zu schreiben.
+
+    Liefert der Dienst nichts, merkt sich ``zustand["aus"]`` das für den Rest des
+    Laufs — sonst fragte jede weitere Datei einen Dienst an, der gerade fehlt.
+    """
+    leer = set(
+        (
+            await db.execute(
+                sa_text(
+                    "SELECT chunk_idx FROM vault_chunks "
+                    "WHERE brain_label = :b AND path = :p AND embedding IS NULL"
+                ),
+                {"b": brain_label, "p": rel_path},
+            )
+        ).scalars().all()
+    )
+    teile = [c for c in chunk_markdown(content) if c.index in leer]
+    if not teile:
+        return 0
+    vectors = await _embed_chunks([c.embed_text for c in teile])
+    gesetzt = 0
+    for c, vec in zip(teile, vectors):
+        if vec is None:
+            continue
+        await db.execute(
+            sa_text(
+                "UPDATE vault_chunks SET embedding = CAST(:emb AS vector) "
+                "WHERE brain_label = :b AND path = :p AND chunk_idx = :i"
+            ),
+            {"emb": str(vec), "b": brain_label, "p": rel_path, "i": c.index},
+        )
+        gesetzt += 1
+    if gesetzt:
+        await db.commit()
+    elif zustand is not None:
+        zustand["aus"] = True
+    return 0
+
+
 async def remove_file(db: AsyncSession, brain_label: str, rel_path: str) -> None:
     """Drop all chunks for a deleted vault file."""
     await db.execute(
@@ -169,15 +224,19 @@ async def reindex_vault(
         pruned += 1
 
     files = chunks = errors = 0
+    nachfuellen: dict = {}
     for rel in present:
         try:
-            n = await index_file(db, brain_label, host_path, rel)
+            n = await index_file(db, brain_label, host_path, rel, nachfuellen)
             if n:
                 files += 1
                 chunks += n
         except Exception:
             logger.warning("[VaultIndexer] skipping %s due to error", rel, exc_info=True)
             errors += 1
+            # Ohne Rollback bliebe die Sitzung abgebrochen, und jede weitere Datei
+            # (auch die anderer Vaults im selben Lauf) scheiterte gleich mit.
+            await db.rollback()
     logger.info(
         "[VaultIndexer] reindexed brain=%s files=%s chunks=%s pruned=%s errors=%s",
         brain_label, files, chunks, pruned, errors,

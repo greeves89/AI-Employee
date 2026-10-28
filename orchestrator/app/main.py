@@ -2996,6 +2996,13 @@ app = FastAPI(
 # Security headers
 app.add_middleware(SecurityHeadersMiddleware)
 
+# Uploads: Größe prüfen, BEVOR der Körper eingelesen wird (core/koerper_grenze).
+from app.core import koerper_grenze as _koerper_grenze  # noqa: E402
+from app.core.projekt_dateien import MAX_BYTES as _PROJEKTDATEI_MAX  # noqa: E402
+
+_koerper_grenze.regel("POST", r"^/api/v1/teams/[^/]+/wissen/dateien$", _PROJEKTDATEI_MAX + 1024 * 1024)
+app.add_middleware(_koerper_grenze.KoerperGrenze)
+
 # API rate limiting (120 requests/minute per user or IP)
 # 300/min je Nutzer: 120 reichten fuer eine Oberflaeche mit Live-Ansichten und
 # mehreren offenen Tabs nicht (29.09.2026, 429 auf der Admin-Ansicht beim Kunden).

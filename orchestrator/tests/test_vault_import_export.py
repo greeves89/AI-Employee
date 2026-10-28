@@ -227,6 +227,7 @@ class TheEmbeddingsAreRebuiltTests(unittest.IsolatedAsyncioTestCase):
         brain = MagicMock(host_path=host_path, slug="wissen", label="Wissen")
         db = MagicMock()
         db.get = AsyncMock(return_value=brain)
+        db.scalar = AsyncMock(return_value=None)  # kein Projektwissen
         user = MagicMock(role=UserRole.ADMIN if role_admin else UserRole.MEMBER)
 
         upload = MagicMock()

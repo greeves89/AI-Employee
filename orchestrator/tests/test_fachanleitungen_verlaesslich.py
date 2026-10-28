@@ -117,7 +117,11 @@ class AuftragFindetSeineAnleitungTests(unittest.TestCase):
         self.assertIn("Kostenvoranschlag", liste)
 
     def test_ohne_zugewiesene_skills_kein_block(self):
-        self.assertEqual({"prompt": "", "anleitungen": []}, fachanleitungen.fuer_agent([], "DATEV-Export"))
+        # Geprüft wird die Zusage „kein Block", nicht die Feldliste: seit #1044
+        # liefert fuer_agent zusätzlich die Kennzahl des Blocks mit.
+        ergebnis = fachanleitungen.fuer_agent([], "DATEV-Export")
+        self.assertEqual(ergebnis["prompt"], "")
+        self.assertEqual(ergebnis["anleitungen"], [])
 
     def test_hoechstens_zwei_anleitungen_je_auftrag(self):
         skills = [_skill(i, s["name"]) for i, s in enumerate(mitgelieferte_skills.laden(), start=1)]

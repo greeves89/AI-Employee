@@ -21,6 +21,17 @@
 		reverse_proxy ai-employee-orchestrator:8000
 	}
 
+	# Projektdateien: höchstens 20 MB je Datei (Orchestrator prüft zusätzlich
+	# vor dem Einlesen, core/koerper_grenze.py). Host-nginx davor braucht dafür
+	# `client_max_body_size 21m;`.
+	@projektdateien path_regexp ^/api/v1/teams/[^/]+/wissen/dateien$
+	handle @projektdateien {
+		request_body {
+			max_size 21MB
+		}
+		reverse_proxy ai-employee-orchestrator:8000
+	}
+
 	# API + health endpoints → orchestrator
 	handle /api/* {
 		reverse_proxy ai-employee-orchestrator:8000

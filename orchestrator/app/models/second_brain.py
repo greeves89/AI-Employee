@@ -37,6 +37,12 @@ class SecondBrain(Base):
     # token. Token is Fernet-encrypted at rest, shown to the admin only once.
     mcp_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     mcp_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Gespiegelter Ordner auf dem Rechner des Besitzers (``created_by``), gesetzt
+    # nur bei Brains aus einem Bridge-Ordner (core/bridge_wissen). Solche Brains
+    # sind privat und nur lesend — die Quelle ist der Rechner, nicht die Plattform.
+    bridge_ordner: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sync_stand: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sync_fehler: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )
