@@ -5,7 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.382.0] - 2026-10-28
+## [1.386.0] - 2026-10-28
 
 ### Neu
 - **Der Agenten-Browser lässt sich auf bestimmte Domains begrenzen.** Bisher durfte ein Agent mit eingeschaltetem Browser jede Adresse öffnen — auch dann, wenn in seinen Sitzungen echte Anmeldungen des Besitzers stecken. Der Besitzer kann jetzt eine Freigabeliste setzen (`PATCH /api/v1/agents/{id}/browser-domains`, wirkt nach einem Neustart); verglichen wird der Hostname, `example.com` erlaubt also auch `a.example.com`, aber nicht `example.com.fremd.tld`. Ohne Liste bleibt alles wie bisher erlaubt.
