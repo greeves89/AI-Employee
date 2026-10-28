@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.393.1] - 2026-10-28
+
+### Verbessert
+- **Verbindungen, Apps und Skills sagen jetzt, wo ihr Gegenstück liegt.** „Verbindungen“ erklärt, dass Dienste der Anlage und Werkzeug-Server (MCP) im Admin-Bereich unter „Dienste & Konten“ stehen; Admins bekommen einen direkten Link. „Apps“ verweist auf Arbeit → Apps beim Agenten, „Skills“ auf Wissen → Skills. Die Agenten-Werkzeugleiste verlinkt „alle Agenten“ zur Apps-Seite.
+
 ## [1.393.0] - 2026-10-28
 
 ### Verbessert

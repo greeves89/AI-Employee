@@ -1501,6 +1501,9 @@ Reviewer) zusammen ein Ergebnis erarbeiten sollen. Seitenleiste → **Meeting Ro
 
 ## 10. Skill Marketplace
 
+> **Zwei Wege zum selben Katalog:** die Seite **Skills** (Seitenleiste → Automatisieren) für
+> alle Agenten, oder auf der Seite eines Agenten **Wissen → Skills** nur für ihn.
+
 Ein **Skill** ist eine wiederverwendbare **Fähigkeit** (ein Slash-Command), die ein Agent
 installieren kann — z. B. „Präsentation erstellen", „Second Brain durchsuchen" oder ein
 fester Spezial-Workflow. Der **Skill Marketplace** ist der Katalog dieser Fähigkeiten.
@@ -3258,6 +3261,9 @@ praktisch zum Ausprobieren, ohne bis 3 Uhr zu warten.
 ---
 
 ## 32. Apps (Ergebnisse deiner Agenten öffnen & freigeben)
+
+> Die Seite **Apps** (Seitenleiste → *Weitere Bereiche*) zeigt die Apps aller deiner Agenten.
+> Die Apps eines einzelnen Agenten findest du auch auf seiner Seite unter **Arbeit → Apps**.
 
 Wenn ein Agent etwas Lauffähiges gebaut hat — eine kleine Web-App, ein Dashboard, einen
 Prototyp —, findest du das unter **Apps** in der linken Seitenleiste. Dort startest du es,
