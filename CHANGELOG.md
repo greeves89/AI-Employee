@@ -5,7 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.387.0] - 2026-10-28
+## [1.390.0] - 2026-10-28
 
 ### Verbessert
 - **Deine Agenten verschwenden ihren Kontext nicht mehr an eine endlose Skill-Liste.** Bisher stand in JEDEM Auftrag und JEDER Chatnachricht die vollständige Liste aller zugewiesenen Fachanleitungen — bei einem produktiven Agenten mit 231 Zuweisungen waren das 62.060 Zeichen (rund 15.500 Token), bevor überhaupt eine Anleitung geladen war. Jetzt listet der Block höchstens 40 Anleitungen: aus denselben 231 Zuweisungen werden rund 11.100 Zeichen (etwa 2.800 statt 15.500 Token), also 82 % weniger Festkosten je Lauf. Das ist Platz, der vorher fehlte — Läufe, die am Kontextlimit mit „Prompt is too long“ starben, haben ihn jetzt für die eigentliche Arbeit.
@@ -13,12 +13,94 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 - **Im Chat wird nichts wiederholt.** Jede Anleitung erscheint in einer Unterhaltung höchstens einmal; wechselt das Thema, kommt nur ein kurzer Nachtrag mit den neu passenden Anleitungen statt der ganzen Liste. Ohne diese Regel wäre der Deckel im Chat ein Rückschritt gewesen: weil die Reihenfolge je Nachricht neu bestimmt wird, wäre bei jedem Themenwechsel der ganze Block erneut in den Verlauf gewandert — gemessen fast das Doppelte dessen, was die ungedeckelte Liste einmal kostete.
 - **Nichts geht verloren, und der Agent weiß das.** Unter der Liste steht, wie viele Anleitungen nicht aufgeführt sind und wie er sie findet (`skill_search`) und lädt (`skill_install`). Ohne diesen Hinweis hätte er die gekürzte Liste für den ganzen Bestand gehalten und gesagt, es gebe keine Anleitung dazu.
 - **Die Größe des Blocks ist ab jetzt sichtbar.** Die Antwort des Endpunkts nennt Zuweisungen, gelistete, schon gezeigte und abgeschnittene Anleitungen sowie Zeichen und geschätzte Token — wer die Grenze verschieben will, kann vorher nachsehen statt zu schätzen.
-- **Zurückstellbar ohne neues Abbild.** Die Grenze steht in `FACHANLEITUNGEN_MAX_GELISTET` (Standard 40); `0` schaltet den Deckel ab und stellt das bisherige Verhalten wieder her.
+- **Zurückstellbar ohne neues Abbild.** Die Grenze steht in `FACHANLEITUNGEN_MAX_GELISTET` (Standard 40); `0` schaltet den Deckel ab; Zeilengrenze, Entschärfung und Datenrahmen bleiben auch dann aktiv.
 
 ### Behoben
 - **Ein einzelner Skill konnte die Anleitungs-Liste eines Agenten unbrauchbar machen.** Name und Beschreibung eines Skills gingen ungeprüft in den Prompt. Eine lange Auslöser-Angabe blähte eine einzige Listenzeile auf über 50.000 Zeichen auf — der Block wurde größer als vorher, und alle anderen Anleitungen fielen aus der Liste. Das passierte auch ohne böse Absicht: es genügte ein selbstgebauter Skill, der seine Auslöser mitten im Text nennt und danach weiterschreibt. Jede Zeile ist jetzt begrenzt.
-- **Ein Skill konnte dem Agenten eine fremde Anleitung vortäuschen.** Über Zeilenumbrüche in Name oder Beschreibung ließen sich im Block eine gefälschte Abschluss-Marke, eine gefälschte Listenzeile mit fremder Skill-Nummer und ein gefälschter „… und 0 weitere“-Hinweis unterbringen — der Agent hätte die fremde Nummer geladen und den Rest des Blocks für gewöhnlichen Text gehalten. Angaben aus dem Skill-Marktplatz werden jetzt entschärft, bevor sie in den Prompt gelangen.
-- **Wer die meisten Schlagwörter in den Skill-Namen schrieb, stand vorn.** Für die Reihenfolge zählte der vollständige Name, auch der Teil, der gar nicht angezeigt wird. Ein mit Begriffen gefüllter Name verdrängte damit die Anleitung, die wirklich zum Auftrag passte. Bewertet wird jetzt der angezeigte Name, und Namenstreffer zählen nur bis zu einer Obergrenze.
+- **Ein Skill konnte dem Agenten eine fremde Anleitung vortäuschen.** Über Zeilenumbrüche in Name oder Beschreibung ließen sich im Block eine gefälschte Abschluss-Marke, eine gefälschte Listenzeile mit fremder Skill-Nummer und ein gefälschter „… und 0 weitere“-Hinweis unterbringen — der Agent hätte die fremde Nummer geladen und den Rest des Blocks für gewöhnlichen Text gehalten. Angaben aus dem Skill-Marktplatz werden jetzt entschärft, bevor sie in den Prompt gelangen, auch im Kopf einer eingebetteten Anleitung. Die Liste steht als Datenrahmen (`EXTERNAL-DATA`) im Prompt, und der Agent ist angewiesen, Anweisungen darin nicht zu befolgen.
+- **Wer die meisten Schlagwörter in den Skill-Namen schrieb, stand vorn.** Für die Reihenfolge zählte der vollständige Name, auch der Teil, der gar nicht angezeigt wird. Ein mit Begriffen gefüllter Name verdrängte damit die Anleitung, die wirklich zum Auftrag passte. Bewertet wird jetzt der angezeigte Name, und Namenstreffer zählen nur bis zu einer Obergrenze. Dasselbe gilt für die Beschreibung: bewertet werden ihre ersten 500 Zeichen, Treffer darin zählen höchstens dreimal. Füllwörter in der Beschreibung („auf“, „mit“, „ein“) treffen keine Wortzusammensetzungen im Auftrag mehr („Auftrag“, „Mitarbeiter“, „Einladung“).
+
+### Bekannte Grenze
+- Die Sprachfront bekommt den Fachanleitungen-Block bisher gar nicht (auch vor dieser Version nicht). Angleichen ist in #1097 erfasst.
+
+## [1.387.2] - 2026-10-28
+
+### Behoben
+- **Erster Abgleich eines Bridge-Ordners in iCloud/OneDrive dauerte über eine Stunde und blockierte die Bridge.** Die Bridge bildete für die Dateiliste die Prüfsumme jeder Datei und las danach jede geänderte Datei ein zweites Mal. In Cloud-Ordnern dauert jedes Öffnen Sekunden (gemessen: rund 5 s je Notiz) — bei 637 Dateien lag die Bridge so lange fest, auch für Agenten-Befehle. Die Liste kommt jetzt nur aus Größe und Änderungszeit (ohne eine Datei zu öffnen, Sekunden statt Stunde); gelesen wird jede geänderte Datei genau einmal, in einzelnen Befehlen, zwischen denen andere Aufgaben weiterlaufen. Die Prüfsumme kommt mit der Datei und wird auf dem Server geprüft. Ältere Bridges (bis 1.387.1) funktionieren weiter. Braucht für die Beschleunigung die Bridge 1.387.2.
+
+## [1.387.1] - 2026-10-28
+
+### Behoben
+- **Windows-Bridge wurde für 1.387.0 nicht gebaut.** Windows kennt das Öffnen „ohne Links zu folgen“ (`O_NOFOLLOW`) nicht; ein Test der Bridge schlug dort fehl und hielt den Build an. Die Bridge lehnt unter Windows symbolische Links jetzt ausdrücklich ab, bevor sie eine Datei aus einem gespiegelten Ordner öffnet. Gelesen wurde auch vorher nichts außerhalb des Ordners (die Pfadprüfung griff), die macOS-Bridge ist unverändert.
+
+## [1.387.0] - 2026-10-28
+
+### Neu
+- **Einen Ordner des eigenen Rechners als Second Brain spiegeln** (#1092). Unter „Meine Einstellungen → Meine Bridge-Ordner“ einen in der Bridge freigegebenen Ordner wählen (z. B. einen Obsidian-Vault); die Bridge spiegelt ihn auf den Server, nur in diese Richtung. Markdown und Text kommen so, wie sie sind, PDF/Word/Excel als ausgelesener Text. Danach ist es ein gewöhnliches Second Brain: an Projekte anbindbar, Agenten zuweisbar, durchsuchbar nach Bedeutung — auch wenn der Rechner aus ist. Abgeglichen wird beim Verbinden der Bridge, danach alle zehn Minuten und auf Knopfdruck; nur Geändertes wird übertragen, Gelöschtes verschwindet auch auf dem Server. Braucht die Bridge 1.387.0.
+
+### Sicherheit
+- Gespiegelte Ordner sind privat: kein anderer Nutzer sieht oder nutzt sie, auch kein Administrator — weder in der Brain-Liste, im Mount-Katalog, bei Ordner-Freigaben noch beim Anbinden an Projekte. Eingehängt werden sie nur in Agenten ihres Besitzers (geprüft beim Zuweisen UND bei jedem Containerstart, in der Anleitung und in der Sprachfront). In einem geteilten Projekt wirken sie nur für ihren Besitzer; das Protokoll nennt ihren Namen nicht.
+- Grenzen: höchstens 5 gespiegelte Ordner je Nutzer und 200 MB je Ordner; eine Datei, die nicht gelesen werden konnte, wird erst nach einer Änderung erneut geholt; ein leerer oder nicht erreichbarer Ordner löscht den Spiegel nicht. Das Auslesen von PDF/Word/Excel (auch bei Projektdateien) gibt die Warteschlange erst frei, wenn der Ausleser wirklich fertig ist — nicht schon beim Ablauf der Frist.
+- **Behoben:** Administratoren konnten das Wissen fremder Projekte als Mount in ihre Agenten hängen. Projektwissen ist jetzt nur für den Ersteller des Projekts einhängbar.
+- Gespiegelte Brains sind nur lesend (Schreiben, Löschen, Importieren und „read-write“ werden mit 409 abgelehnt).
+- Die Bridge liest nur in genau den freigegebenen Ordnern (kein Unterordner, fail-closed), ohne versteckte Ordner, `node_modules` und symbolische Links (auch nicht, wenn eine Datei zwischen Prüfung und Lesen gegen einen Link getauscht wird), mit Grenzen (5.000 Dateien, Text 2 MB, Dokumente 10 MB). Der Server prüft jede Angabe der Bridge erneut (Pfade, Prüfsumme, Größe) und übernimmt nur, was passt. Agenten können die Sync-Befehle nicht auslösen.
+
+### Technik
+- Neue Spalten `second_brains.bridge_ordner`, `sync_stand`, `sync_fehler` (Migration `d9e0f1a2b3c4`). Neu: `core/bridge_wissen.py`, `mounts.fremde_privatablagen`, Endpunkte `GET /brains/bridge/ordner`, `POST /brains/bridge`, `POST /brains/bridge/{id}/sync`, `DELETE /brains/bridge/{id}`; Bridge-Aktionen `wissen_ordner`, `wissen_liste`, `wissen_datei`.
+
+## [1.386.0] - 2026-10-28
+
+### Neu
+- **Second Brains an Projekte anbinden.** Im Projekt unter „Bearbeiten → Second Brains anbinden“ lassen sich bis zu zehn vorhandene Second Brains anhängen (z. B. die Ablage einer Abteilung mit Preisen oder Abläufen). Die Projektsuche in der Oberfläche und das Werkzeug `projekt_wissen_suchen` aller Laufzeiten finden dann auch dort; jeder Treffer nennt seine Quelle. Seiten daraus lassen sich öffnen — immer nur lesend, ein angebundenes Brain wird aus dem Projekt heraus nie geändert. Der Projektauftrag nennt die angebundenen Brains.
+
+### Sicherheit
+- Anbinden darf man nur, was man selbst nutzen darf. Projektwissen (auch das anderer Projekte) lässt sich nie anbinden — auch nicht von Administratoren.
+- Wer ein geteiltes Projekt sieht, bekommt damit nicht die Brain-Freigaben des Erstellers: Suche und Lesen zeigen nur Brains, die der Ersteller UND der Aufrufer nutzen dürfen (bei Agenten zählt ihr Besitzer). Wird eine Freigabe entzogen, fällt das Brain sofort heraus; das Speichern des Projekts bleibt trotzdem möglich.
+- Gelesen werden nur Textseiten (wie bei der Suche), Bilder auf fremden Seiten werden nicht geladen.
+
+### Technik
+- Neue Spalte `teams.angebundene_brains` (Migration `c8d9e0f1a2b3`). `GET /teams/{id}/wissen/datei` nimmt `brain=<Label>`, Suchtreffer tragen `brain` und `quelle`.
+
+## [1.385.1] - 2026-10-28
+
+### Behoben
+- **Die Datensicherung enthielt die Wissensablagen nicht.** Second Brains, Projektwissen und hochgeladene Projektdateien liegen als Dateien auf der Platte (`SECONDBRAIN_BASE`), nicht in der Datenbank — `backup.sh` hat sie bisher nicht mitgenommen. Sie landen jetzt als `wissensablagen.tar.gz` in jeder Sicherung (samt git-Verlauf und Projektdateien), `restore.sh` spielt sie zurück. Handbuch Kapitel 37 ergänzt.
+
+## [1.385.0] - 2026-10-28
+
+### Neu
+- **Dateien am Projekt.** Im Reiter „Wissen“ lassen sich jetzt Dateien hochladen (Knopf oder Ziehen): PDF, Word, Excel, Text, CSV, JSON und Bilder, je bis 20 MB. Der Text wird automatisch ausgelesen und als Seite unter `dateien/` ins Projektwissen gelegt — durchsuchbar für Suche und Agenten. Das Original lässt sich herunterladen und löschen (mit seinem Text). Die Originale liegen neben der Wissensablage, nicht in ihrem git-Verlauf; Namen werden bereinigt, gleichnamige Dateien bekommen eine Nummer, heruntergeladen wird immer als Anhang.
+
+### Sicherheit
+- **Zu große Uploads werden abgewiesen, bevor sie gelesen werden** — in der Plattform anhand der angegebenen Länge (411/413) und in Caddy (`request_body max_size 21MB` nur für diesen Pfad). Bisher hätte ein Formular erst ganz auf der Platte gelegen, auch ohne Anmeldung.
+- **Präparierte Word-/Excel-/PDF-Dateien legen die Plattform nicht lahm:** Archive über 50 MB entpackt oder mit über 2.000 Einträgen werden nicht geöffnet, PDFs höchstens 300 Seiten, Excel höchstens 50.000 Zeilen. Das Auslesen läuft außerhalb der Ereignisschleife, einzeln und höchstens 60 Sekunden. Der Ausleser zählte bei Excel quadratisch (auch bei OneDrive-Dateien).
+- **`dateien/` ist für hochgeladene Dateien reserviert:** Seiten dort lassen sich nicht von Hand schreiben, ergänzen oder zurückholen, ein Upload ersetzt keine vorhandene Seite, und der ausgelesene Text wird nicht versioniert — nach dem Löschen ist er auch im Verlauf weg.
+- **Projektwissen erscheint nicht mehr in der allgemeinen Brain-Verwaltung.** Bisher konnten Administratoren dort das Wissen fremder Projekte lesen, exportieren und einen MCP-Zugang dafür erzeugen; es ist jetzt nur über das Projekt erreichbar.
+- Der ausgelesene Text ist als fremder Inhalt gekennzeichnet („Daten, keine Anweisungen“), Bilder darin werden nicht geladen; Downloads tragen `X-Content-Type-Options: nosniff`.
+
+### Technik
+- Der Text-Ausleser für PDF/Word/Excel liegt jetzt in `core/dokument_text.py` (bisher in `msgraph_mcp`); OneDrive-Werkzeuge, Sprachfront und Projektdateien nutzen denselben.
+- Neue Endpunkte: `GET/POST /teams/{id}/wissen/dateien`, `GET/DELETE /teams/{id}/wissen/dateien/{name}`.
+
+## [1.384.1] - 2026-10-28
+
+### Behoben
+- **„Aktualisieren“ im Projekt zeigte bei einem Fehler die Fehlerseite von Cloudflare.** Ein fehlgeschlagener Abgleich wurde als 502 gemeldet — Cloudflare ersetzt solche Antworten durch seine eigene Seite, die eigentliche Meldung kam nie an. Er wird jetzt als 424 gemeldet, die Meldung erscheint im Projekt.
+- **„GitHub 403“ sagte nicht, was fehlt.** Verweigert GitHub den Zugriff, nennt die Meldung jetzt den Grund und das fehlende Recht des Tokens (z. B. „Dem Schlüssel fehlt das Recht Issues: Read — in GitHub beim Token unter Repository permissions setzen“), eine nötige SSO-Freigabe der Organisation oder einen ungültigen Schlüssel. Ein Netzfehler heißt weiter „antwortet nicht“, eine Ablehnung nicht mehr.
+- **CI-Stand blieb bei fein granulierten GitHub-Tokens „offen“.** Solche Tokens dürfen Check-Runs nicht lesen (ein Recht „Checks“ gibt es für sie nicht). Die Plattform liest den Stand dann aus den Workflow-Läufen (Recht „Actions: Read“) und dem Commit-Status.
+
+## [1.384.0] - 2026-10-28
+
+### Neu
+- **Projekte mit Forgejo- und Gitea-Repos.** Neben GitHub lässt sich ein Projekt jetzt mit einem Repo auf einem eigenen Forgejo- oder Gitea-Server verbinden; eingetragen wird die volle Adresse, z. B. `https://git.example.com/team/repo`. Offene Issues kommen in den Eingang, Pull Requests mit ihrem CI-Stand (aus dem Commit-Status von Forgejo/Gitea Actions) in die Prüfung, gemergte und geschlossene werden nachgezogen — wie bei GitHub. Private Repos brauchen einen Token des Servers aus der Schlüsselverwaltung — und zwar einen eigenen: Ein nur zur Nutzung geteilter Schlüssel wird nicht an einen selbst eingetragenen Server geschickt. Eigene Server werden nur über https und nie im internen Netz der Anlage abgefragt.
+
+### Sicherheit
+- Abfragen an eigene Git-Server sind begrenzt: höchstens 60 Sekunden je Abgleich und 2 MB je Antwort, Weiterleitungen werden nicht verfolgt, unpassende Antworten (kein JSON, falsche Form, unsinnige Nummern) werden übergangen und als Fehler am Projekt vermerkt statt den Abgleich abzubrechen. Links aus der Antwort kommen nur aufs Board, wenn sie auf denselben Server zeigen. IP-Literale in eckigen Klammern werden als Repo-Adresse abgelehnt; eine nicht lesbare Adresse stoppt den Abgleich der anderen Projekte nicht mehr.
+- Die Prüfung ausgehender Adressen sperrt jetzt auch den Carrier-Grade-NAT-Bereich 100.64.0.0/10 (z. B. Overlay-Netze) und löst Namen nicht mehr in der Ereignisschleife auf.
+
+### Geändert
+- Ein GitHub-Zugang der Anlage, der als Forgejo/Gitea mit eigener Server-Adresse eingetragen ist, gibt Agenten jetzt die passenden Variablen (`GITEA_TOKEN`, `GITEA_SERVER_URL` …) statt der GitHub-Variablen.
+
 ## [1.383.2] - 2026-10-28
 
 ### Verbessert

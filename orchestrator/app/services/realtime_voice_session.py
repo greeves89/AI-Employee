@@ -4186,7 +4186,8 @@ class RealtimeVoiceSession:
         try:
             async with async_session_factory() as db:
                 agent = await db.get(Agent, self.agent_id)
-                mounts = list((agent.config or {}).get("mounts", [])) if agent else []
+                from app.core.mounts import mounts_des_agenten
+                mounts = await mounts_des_agenten(db, agent) if agent else []
                 if not mounts:
                     return "Mir ist kein zweites Gehirn (Vault) zugewiesen."
                 brains = (await db.execute(
@@ -4237,7 +4238,8 @@ class RealtimeVoiceSession:
         try:
             async with async_session_factory() as db:
                 agent = await db.get(Agent, self.agent_id)
-                mounts = list((agent.config or {}).get("mounts", [])) if agent else []
+                from app.core.mounts import mounts_des_agenten
+                mounts = await mounts_des_agenten(db, agent) if agent else []
                 if not mounts:
                     return None
                 brains = (await db.execute(
@@ -4884,7 +4886,8 @@ class RealtimeVoiceSession:
         try:
             async with async_session_factory() as db:
                 agent = await db.get(Agent, self.agent_id)
-                mounts = list((agent.config or {}).get("mounts", [])) if agent else []
+                from app.core.mounts import mounts_des_agenten
+                mounts = await mounts_des_agenten(db, agent) if agent else []
                 if not mounts:
                     return "Mir ist kein zweites Gehirn zugewiesen, in das ich schreiben könnte."
                 brains = (await db.execute(

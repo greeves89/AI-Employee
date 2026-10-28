@@ -10,6 +10,42 @@ import httpx
 from app.core.githost.base import GitHostProvider
 
 
+#: Was GitHub in ``x-accepted-github-permissions`` verlangt → wie es im
+#: Token-Dialog heisst (fein granulierte Tokens, „Repository permissions“).
+_RECHTE = {"issues": "Issues", "pull_requests": "Pull requests", "checks": "Checks",
+           "statuses": "Commit statuses", "contents": "Contents", "metadata": "Metadata"}
+
+
+def _zugriff_verweigert(resp: httpx.Response) -> str:
+    """Verstaendliche Meldung zu 401/403: GitHubs eigener Grund plus das fehlende Recht.
+
+    Ein fein granulierter Token sieht das Repo oft (Metadata), darf aber keine
+    Issues lesen — „GitHub 403“ allein liess offen, was am Token fehlt.
+    """
+    try:
+        grund = str((resp.json() or {}).get("message") or "").strip()
+    except ValueError:
+        grund = ""
+    if resp.status_code == 401:
+        return "GitHub lehnt den Schlüssel ab (ungültig oder abgelaufen)."
+    if resp.headers.get("x-github-sso"):
+        return ("Die Organisation verlangt eine SSO-Freigabe des Schlüssels — "
+                "in GitHub beim Token „Configure SSO“ → Organisation autorisieren.")
+    rechte = []
+    for teil in (resp.headers.get("x-accepted-github-permissions") or "").split(";"):
+        name, _, stufe = teil.strip().partition("=")
+        if name and name in _RECHTE:
+            rechte.append(f"{_RECHTE[name]}: {'Read' if stufe in ('read', '') else stufe}")
+    if rechte:
+        return (f"Dem Schlüssel fehlt das Recht {', '.join(rechte)} — in GitHub beim Token unter "
+                f"„Repository permissions“ setzen.{f' (GitHub: {grund})' if grund else ''}")
+    return f"GitHub verweigert den Zugriff{f': {grund}' if grund else ''}."
+
+
+#: Abschluesse, die einen PR rot machen (Check-Runs wie Workflow-Laeufe).
+_ROT = {"failure", "timed_out", "cancelled", "action_required", "startup_failure"}
+
+
 class GitHubHostProvider(GitHostProvider):
     def __init__(self, api_base: str = "https://api.github.com", host: str | None = None):
         self.api_base = api_base
@@ -101,6 +137,8 @@ class GitHubHostProvider(GitHostProvider):
                 raise LookupError(pfad)
             if resp.status_code in (401, 403) and resp.headers.get("x-ratelimit-remaining") == "0":
                 raise RuntimeError("GitHub-Abfragegrenze erreicht — mit verbundenem GitHub-Zugang ist sie viel höher")
+            if resp.status_code in (401, 403):
+                raise RuntimeError(_zugriff_verweigert(resp))
             if resp.status_code != 200:
                 raise RuntimeError(f"GitHub {resp.status_code} für {pfad}")
             daten = resp.json()
@@ -141,6 +179,11 @@ class GitHubHostProvider(GitHostProvider):
             f"{self.api_base}/repos/{repo}/commits/{sha}/check-runs", headers=self._headers(token),
             params={"per_page": 100},
         )
+        if resp.status_code in (401, 403):
+            # Fein granulierte Tokens koennen Check-Runs nicht lesen (das Recht
+            # „Checks“ gibt es nur fuer GitHub-Apps) — dann aus den Workflow-Laeufen
+            # (Recht „Actions: Read“) und dem Commit-Status.
+            return await self._ci_ohne_checks(client, token, repo, sha)
         if resp.status_code != 200:
             return "offen"
         laeufe = resp.json().get("check_runs") or []
@@ -148,8 +191,26 @@ class GitHubHostProvider(GitHostProvider):
             return "offen"
         if any(r.get("status") != "completed" for r in laeufe):
             return "ci_laeuft"
-        rot = {"failure", "timed_out", "cancelled", "action_required"}
-        return "ci_rot" if any(r.get("conclusion") in rot for r in laeufe) else "ci_gruen"
+        return "ci_rot" if any(r.get("conclusion") in _ROT for r in laeufe) else "ci_gruen"
+
+    async def _ci_ohne_checks(self, client: httpx.AsyncClient, token: str, repo: str, sha: str) -> str:
+        laeufe: list[dict] = []
+        r = await client.get(f"{self.api_base}/repos/{repo}/actions/runs", headers=self._headers(token),
+                             params={"head_sha": sha, "per_page": 50})
+        if r.status_code == 200:
+            laeufe = [x for x in (r.json() or {}).get("workflow_runs") or [] if isinstance(x, dict)]
+        zustand, status = "", []
+        r = await client.get(f"{self.api_base}/repos/{repo}/commits/{sha}/status", headers=self._headers(token))
+        if r.status_code == 200:
+            daten = r.json() or {}
+            zustand, status = str(daten.get("state") or ""), daten.get("statuses") or []
+        if not laeufe and not status:
+            return "offen"
+        if any(x.get("status") != "completed" for x in laeufe) or (status and zustand == "pending"):
+            return "ci_laeuft"
+        if any(x.get("conclusion") in _ROT for x in laeufe) or (status and zustand in ("failure", "error")):
+            return "ci_rot"
+        return "ci_gruen"
 
     @staticmethod
     def _headers(token: str) -> dict[str, str]:
