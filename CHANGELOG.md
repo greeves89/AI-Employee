@@ -10,6 +10,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 ### Hinzugefügt
 - **Erklärung bei zwei technischen Begriffen in den Agent-Einstellungen.** "MCP-Endpunkt" und "Berechtigungen (Sudo-Pakete)" zeigen jetzt ein kleines Hilfe-Symbol mit einer kurzen Erklärung in normaler Sprache. Teil von Issue #787 Punkt 8 ("technische Labels ohne Erklärung für Nicht-Techniker") — die dort ebenfalls geforderte Gliederung der Seite in aufklappbare Abschnitte war bereits seit Ende September umgesetzt.
 
+## [1.380.3] - 2026-10-28
+
+### Verbessert
+- **Projekt-Board holt neue Issues beim Öffnen.** Wer ein Git-Projekt aufruft, bekommt neue Issues und Pull Requests gleich aufs Board, statt auf den nächsten regelmäßigen Abgleich zu warten (ohne Schlüssel für das Repo sind das bis zu 30 Minuten). Damit GitHub nicht bei jedem Seitenaufruf gefragt wird, höchstens einmal je Minute, ohne Schlüssel höchstens alle fünf Minuten. Der Knopf im Projektkopf heißt jetzt sichtbar **Aktualisieren**.
+
 ## [1.380.2] - 2026-10-28
 
 ### Behoben
