@@ -110,7 +110,7 @@ async def anlegen(db: AsyncSession, user, name: str, ordner: str) -> SecondBrain
         os.chown(ablage, AGENT_UID, AGENT_UID)
     except OSError:
         pass  # ohne root (Tests, Entwicklung): bleibt beim eigenen Konto
-    os.chmod(ablage, 0o750)
+    os.chmod(ablage, 0o700)
     ordnername = posixpath.basename(ordner.replace("\\", "/").rstrip("/")) or ordner
     brain = SecondBrain(
         label=f"brain-{slug}", name=name.strip()[:200], slug=slug, host_path=ablage,
