@@ -1189,8 +1189,10 @@ können bei GitHub-Repos stattdessen die GitHub-Verbindung der Anlage nutzen. Oh
 Projektseite den Hinweis „Kein Git-Repo verbunden“ mit dem Knopf **Repo verbinden**.
 
 Welche Rechte der Token braucht: Bei einem **fein granulierten GitHub-Token** (`github_pat_…`) unter
-*Repository permissions* **Issues**, **Pull requests**, **Commit statuses** und **Checks** jeweils auf
-**Read** setzen — mit nur „Metadata“ sieht die Plattform das Repo, darf aber keine Issues lesen. Die
+*Repository permissions* **Issues**, **Pull requests**, **Commit statuses** und **Actions** jeweils auf
+**Read** setzen — mit nur „Metadata“ sieht die Plattform das Repo, darf aber keine Issues lesen. Ein
+Recht „Checks“ gibt es für solche Tokens nicht; den CI-Stand liest die Plattform dann aus den
+Workflow-Läufen (Actions) und dem Commit-Status. Die
 Fehlerzeile im Projekt nennt dann das fehlende Recht („Dem Schlüssel fehlt das Recht Issues: Read“).
 Gehört das Repo einer Organisation, muss sie den Token gegebenenfalls freigeben (bzw. per SSO
 autorisieren). Bei einem klassischen Token genügt der Bereich `repo`.

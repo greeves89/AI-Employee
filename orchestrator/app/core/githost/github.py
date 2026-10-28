@@ -42,6 +42,10 @@ def _zugriff_verweigert(resp: httpx.Response) -> str:
     return f"GitHub verweigert den Zugriff{f': {grund}' if grund else ''}."
 
 
+#: Abschluesse, die einen PR rot machen (Check-Runs wie Workflow-Laeufe).
+_ROT = {"failure", "timed_out", "cancelled", "action_required", "startup_failure"}
+
+
 class GitHubHostProvider(GitHostProvider):
     def __init__(self, api_base: str = "https://api.github.com", host: str | None = None):
         self.api_base = api_base
@@ -175,6 +179,11 @@ class GitHubHostProvider(GitHostProvider):
             f"{self.api_base}/repos/{repo}/commits/{sha}/check-runs", headers=self._headers(token),
             params={"per_page": 100},
         )
+        if resp.status_code in (401, 403):
+            # Fein granulierte Tokens koennen Check-Runs nicht lesen (das Recht
+            # „Checks“ gibt es nur fuer GitHub-Apps) — dann aus den Workflow-Laeufen
+            # (Recht „Actions: Read“) und dem Commit-Status.
+            return await self._ci_ohne_checks(client, token, repo, sha)
         if resp.status_code != 200:
             return "offen"
         laeufe = resp.json().get("check_runs") or []
@@ -182,8 +191,26 @@ class GitHubHostProvider(GitHostProvider):
             return "offen"
         if any(r.get("status") != "completed" for r in laeufe):
             return "ci_laeuft"
-        rot = {"failure", "timed_out", "cancelled", "action_required"}
-        return "ci_rot" if any(r.get("conclusion") in rot for r in laeufe) else "ci_gruen"
+        return "ci_rot" if any(r.get("conclusion") in _ROT for r in laeufe) else "ci_gruen"
+
+    async def _ci_ohne_checks(self, client: httpx.AsyncClient, token: str, repo: str, sha: str) -> str:
+        laeufe: list[dict] = []
+        r = await client.get(f"{self.api_base}/repos/{repo}/actions/runs", headers=self._headers(token),
+                             params={"head_sha": sha, "per_page": 50})
+        if r.status_code == 200:
+            laeufe = [x for x in (r.json() or {}).get("workflow_runs") or [] if isinstance(x, dict)]
+        zustand, status = "", []
+        r = await client.get(f"{self.api_base}/repos/{repo}/commits/{sha}/status", headers=self._headers(token))
+        if r.status_code == 200:
+            daten = r.json() or {}
+            zustand, status = str(daten.get("state") or ""), daten.get("statuses") or []
+        if not laeufe and not status:
+            return "offen"
+        if any(x.get("status") != "completed" for x in laeufe) or (status and zustand == "pending"):
+            return "ci_laeuft"
+        if any(x.get("conclusion") in _ROT for x in laeufe) or (status and zustand in ("failure", "error")):
+            return "ci_rot"
+        return "ci_gruen"
 
     @staticmethod
     def _headers(token: str) -> dict[str, str]:

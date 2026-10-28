@@ -79,3 +79,34 @@ class Endpunkt(Basis):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CiOhneCheckRecht(unittest.IsolatedAsyncioTestCase):
+    """Fein granulierte Tokens duerfen keine Check-Runs lesen (403, ``checks=read``) —
+    der CI-Stand kommt dann aus den Workflow-Laeufen und dem Commit-Status."""
+
+    async def _stand(self, laeufe, status=None) -> str:
+        def handler(request):
+            pfad = request.url.path
+            if pfad.endswith("/check-runs"):
+                return httpx.Response(403, headers={"x-accepted-github-permissions": "checks=read"},
+                                      json={"message": "Resource not accessible by personal access token"})
+            if pfad.endswith("/actions/runs"):
+                self.assertEqual(request.url.params["head_sha"], "abc")
+                return httpx.Response(200, json={"workflow_runs": laeufe})
+            if pfad.endswith("/status"):
+                return httpx.Response(200, json=status or {"state": "pending", "statuses": []})
+            return httpx.Response(404, json={})
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+            return await GitHubHostProvider().checks_state(c, "tok", "o/r", "abc")
+
+    async def test_stand_aus_workflow_laeufen(self):
+        self.assertEqual(await self._stand([{"status": "in_progress"}]), "ci_laeuft")
+        self.assertEqual(await self._stand([{"status": "completed", "conclusion": "success"}]), "ci_gruen")
+        self.assertEqual(await self._stand([{"status": "completed", "conclusion": "success"},
+                                            {"status": "completed", "conclusion": "failure"}]), "ci_rot")
+
+    async def test_externe_ci_ueber_commit_status_und_ohne_alles_offen(self):
+        self.assertEqual(await self._stand([], {"state": "failure", "statuses": [{"id": 1}]}), "ci_rot")
+        self.assertEqual(await self._stand([], {"state": "success", "statuses": [{"id": 1}]}), "ci_gruen")
+        self.assertEqual(await self._stand([]), "offen")
