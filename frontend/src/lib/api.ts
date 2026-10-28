@@ -4642,7 +4642,7 @@ export interface Team {
   geteilt_mit?: string[];
   /** Ob der angemeldete Nutzer das Projekt angelegt hat (nur er verwaltet es). */
   darf_verwalten?: boolean;
-  /** GitHub-Repo (owner/name): Issues und PRs kommen aufs Board. */
+  /** Git-Repo: GitHub als owner/name, Forgejo/Gitea als https://server/owner/name. Issues und PRs kommen aufs Board. */
   repo?: string | null;
   repo_abgleich_at?: string | null;
   repo_fehler?: string | null;

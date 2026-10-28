@@ -1,7 +1,8 @@
 """Git-Projekte: Issues und Pull Requests eines Repos auf dem Board.
 
-Ein Projekt kann ein GitHub-Repo haben (``teams.repo`` = ``owner/name``). Der
-Scheduler gleicht alle zehn Minuten ab (``alle_abgleichen``), auf Knopfdruck
+Ein Projekt kann ein Repo haben: auf GitHub (``teams.repo`` = ``owner/name``) oder
+auf einem eigenen Forgejo/Gitea-Server (``teams.repo`` = ``https://server/owner/name``,
+siehe ``repo_ziel``; Anbieter ``githost/forgejo.py``). Der Scheduler gleicht alle zehn Minuten ab (``alle_abgleichen``), auf Knopfdruck
 auch sofort (``POST /teams/{id}/repo/abgleichen``):
 
 * offene Issues → Karten im **Eingang** (neu) bzw. Titel/Text/Labels aktualisiert;
@@ -10,22 +11,23 @@ auch sofort (``POST /teams/{id}/repo/abgleichen``):
   dann eine Notiz; der Lauf entscheidet).
 * offene PRs → verknüpft mit der Issue-Karte, die sie schließen („Fixes #12“),
   sonst eine eigene Karte in der **Prüfung** („Wartet auf Merge“); dazu der
-  CI-Stand aus den Checks.
+  CI-Stand aus den Checks (GitHub) bzw. dem Commit-Status (Forgejo/Gitea).
 * PR gemergt/geschlossen → Stand nachgezogen; eine reine PR-Karte ist erledigt.
 
 Zugang je Projekt (``zugang``), in dieser Reihenfolge:
 1. ein Schlüssel aus der Schlüsselverwaltung (``teams.repo_secret_id``) — nur,
    solange der Ersteller des Projekts ihn nutzen darf;
-2. die GitHub-Verbindung der Anlage bzw. ``GITHUB_TOKEN`` — NUR für Projekte, die
-   ein Administrator angelegt hat (sonst läse jeder über den Anlagen-Zugang
-   fremde private Repos);
+2. die GitHub-Verbindung der Anlage bzw. ``GITHUB_TOKEN`` — NUR für GitHub-Repos von
+   Projekten, die ein Administrator angelegt hat (sonst läse jeder über den
+   Anlagen-Zugang fremde private Repos);
 3. anonym — nur öffentliche Repos, niedrige Abfragegrenze (60/Stunde); der Takt
    gleicht anonyme Projekte deshalb nur alle 30 Minuten ab.
 
 Beim Öffnen eines Projekts gleicht die Oberfläche zusätzlich ab (``beim_oeffnen``),
 mit Schlüssel höchstens einmal je Minute, anonym höchstens alle fünf Minuten.
 Die Plattform LIEST nur; schreiben (Branches, PRs, Kommentare) tun die Agenten
-mit ihrem eigenen GitHub-Werkzeug.
+mit ihren eigenen Git-Werkzeugen. Eigene Server werden nur über https und nie im
+internen Netz abgefragt (``url_guard.check_outbound_url``).
 """
 
 from __future__ import annotations
@@ -33,6 +35,8 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime, timezone
+from typing import NamedTuple
+from urllib.parse import urlsplit
 
 import httpx
 from sqlalchemy import select
@@ -59,13 +63,54 @@ class GitFehler(RuntimeError):
     """Kein Zugang, Repo unbekannt, GitHub antwortet nicht — mit deutscher Meldung."""
 
 
+_GITHUB_HOSTS = {"github.com", "www.github.com"}
+
+
+class RepoZiel(NamedTuple):
+    """Wo ein Projekt-Repo liegt. ``art``: "github" oder "forgejo" (auch Gitea)."""
+
+    art: str
+    basis: str | None   # https://server (nur Forgejo/Gitea)
+    pfad: str           # owner/name
+
+
+def repo_ziel(repo: str) -> RepoZiel:
+    """GitHub-Repos stehen als ``owner/name``, Forgejo/Gitea als volle Adresse."""
+    if repo.startswith("https://"):
+        teile = urlsplit(repo)
+        port = f":{teile.port}" if teile.port else ""
+        return RepoZiel("forgejo", f"https://{teile.hostname}{port}", teile.path.strip("/"))
+    return RepoZiel("github", None, repo)
+
+
 def repo_pruefen(repo: str | None) -> str | None:
-    repo = (repo or "").strip().removeprefix("https://github.com/").strip("/")
-    if not repo:
+    """Eingabe → gespeicherte Form: ``owner/name`` (GitHub) oder
+    ``https://server/owner/name`` (Forgejo/Gitea, nur https)."""
+    roh = (repo or "").strip()
+    if not roh:
         return None
-    if not REPO_RE.match(repo) or ".." in repo:
-        raise ValueError("Repo bitte als owner/name angeben, z. B. beispiel-org/beispiel-repo.")
-    return repo
+    if roh.lower().startswith(("http://", "https://")):
+        from app.core.url_guard import eindeutiger_host
+
+        teile = urlsplit(roh)
+        host = eindeutiger_host(roh)
+        pfad = teile.path.strip("/").removesuffix(".git")
+        if host in _GITHUB_HOSTS:
+            roh = pfad
+        else:
+            if teile.scheme.lower() != "https":
+                raise ValueError("Eigene Git-Server bitte über https angeben.")
+            if not host or teile.username or teile.password or teile.query or teile.fragment:
+                raise ValueError("Bitte die Adresse des Repos angeben, z. B. https://git.example.com/team/repo.")
+            if not REPO_RE.match(pfad) or ".." in pfad:
+                raise ValueError("Die Adresse muss auf owner/name enden, z. B. https://git.example.com/team/repo.")
+            port = f":{teile.port}" if teile.port else ""
+            return f"https://{host}{port}/{pfad}"
+    roh = roh.strip("/")
+    if not REPO_RE.match(roh) or ".." in roh:
+        raise ValueError("Repo bitte als owner/name (GitHub) oder als Adresse "
+                         "(Forgejo/Gitea, z. B. https://git.example.com/team/repo) angeben.")
+    return roh
 
 
 async def _ersteller(db: AsyncSession, team: Team):
@@ -103,6 +148,19 @@ async def zugang(db: AsyncSession, redis, team: Team | None = None):
     from app.models.user import UserRole
     from app.services.oauth_service import OAuthService
 
+    ziel = repo_ziel(team.repo) if team is not None and team.repo else None
+    if ziel is not None and ziel.art == "forgejo":
+        # Eigener Git-Server: nur der Schluessel des Projekts oder anonym — der
+        # GitHub-Zugang der Anlage gilt dort nicht. Vor jeder Abfrage pruefen,
+        # dass die Adresse nicht ins interne Netz zeigt.
+        from app.core.githost.forgejo import ForgejoHostProvider
+        from app.core.url_guard import check_outbound_url
+
+        erlaubt, grund = check_outbound_url(ziel.basis or "")
+        if not erlaubt:
+            raise GitFehler(f"Server {ziel.basis} wird nicht abgefragt: {grund}.")
+        return (await schluessel_token(db, team)) or "", ForgejoHostProvider(ziel.basis or "")
+
     token = await schluessel_token(db, team) if team is not None else None
     if token is None:
         ersteller = await _ersteller(db, team) if team is not None else None
@@ -126,7 +184,8 @@ def _labels(issue: dict) -> list[str]:
 
 async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client: httpx.AsyncClient) -> dict:
     """Ein Projekt mit seinem Repo abgleichen. Der Aufrufer committet."""
-    repo = team.repo
+    repo = repo_ziel(team.repo).pfad
+    server = getattr(anbieter, "anzeigename", "GitHub")
     try:
         issues = await anbieter.list_open_issues(client, token, repo, MAX_ISSUES)
         pulls = await anbieter.list_open_pulls(client, token, repo, MAX_PRS)
@@ -136,7 +195,7 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
         raise GitFehler(f"Repo {repo} nicht gefunden. Ist es privat, braucht das Projekt einen Schlüssel "
                         "(Bearbeiten → Schlüssel für das Repo).") from e
     except (RuntimeError, httpx.HTTPError) as e:
-        raise GitFehler(f"GitHub antwortet nicht für {repo}: {e}") from e
+        raise GitFehler(f"{server} antwortet nicht für {repo}: {e}") from e
 
     jetzt = datetime.now(timezone.utc)
     vorhanden = {

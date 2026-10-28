@@ -10,7 +10,7 @@ import type { Team } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { useToast } from "@/components/ui/dialog-provider";
-import { PROJEKT_FARBEN, TAKTE } from "@/lib/projekte";
+import { PROJEKT_FARBEN, TAKTE, istGithubRepo } from "@/lib/projekte";
 import { useAuthStore } from "@/lib/auth";
 
 interface CreateTeamModalProps {
@@ -199,17 +199,18 @@ export function CreateTeamModal({
                     {projekt && (
                       <div>
                         <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                          GitHub-Repo <span className="text-muted-foreground/40">(optional)</span>
+                          Git-Repo <span className="text-muted-foreground/40">(optional)</span>
                         </label>
                         <input
                           type="text"
                           value={repo}
                           onChange={(e) => setRepo(e.target.value)}
-                          placeholder="owner/name, z. B. beispiel-org/beispiel-repo"
+                          placeholder="GitHub: owner/name · Forgejo/Gitea: https://git.example.com/team/repo"
                           className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
                         />
                         <p className="text-[11px] text-muted-foreground/50 mt-1">
-                          Offene Issues kommen in den Eingang, Pull Requests mit CI-Stand unter „Wartet auf Merge“.
+                          GitHub als owner/name, ein eigener Forgejo- oder Gitea-Server mit voller Adresse. Offene
+                          Issues kommen in den Eingang, Pull Requests mit CI-Stand unter „Wartet auf Merge“.
                         </p>
                         {repo.trim() && (
                           <div className="mt-2">
@@ -220,15 +221,18 @@ export function CreateTeamModal({
                               className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
                             >
                               <option value={0}>
-                                {istAdmin ? "Kein eigener — GitHub-Verbindung der Anlage bzw. öffentlich" : "Keiner — nur öffentliche Repos"}
+                                {istAdmin && istGithubRepo(repo)
+                                  ? "Kein eigener — GitHub-Verbindung der Anlage bzw. öffentlich"
+                                  : "Keiner — nur öffentliche Repos"}
                               </option>
                               {schluesselListe.map((k) => (
                                 <option key={k.id} value={k.id}>{k.name} ({k.key_name})</option>
                               ))}
                             </select>
                             <p className="text-[11px] text-muted-foreground/50 mt-1">
-                              Für private Repos: einen GitHub-Zugangsschlüssel (Token mit Leserecht) aus der
-                              Schlüsselverwaltung wählen. Öffentliche Repos gehen ohne (abgeglichen alle 30 Min.).
+                              Für private Repos: einen Zugangsschlüssel mit Leserecht aus der Schlüsselverwaltung
+                              wählen, bei GitHub ein GitHub-Token, bei Forgejo/Gitea ein Token dieses Servers.
+                              Öffentliche Repos gehen ohne (abgeglichen alle 30 Min.).
                             </p>
                           </div>
                         )}
