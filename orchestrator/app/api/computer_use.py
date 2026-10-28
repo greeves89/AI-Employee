@@ -55,6 +55,139 @@ _SCREEN_CHANGING_ACTIONS = {
 }
 
 
+# Felder, die im Pruefprotokoll und im Replay-Transkript sichtbar bleiben
+# duerfen: Koordinaten, Schalter, Grenzen und Namen von Zielen. Gemessen gegen
+# den Bridge-Quelltext (computer-use-bridge/bridge.py). Zulassen statt sperren:
+# Jedes andere Feld wird geschwaerzt, auch eines, das eine kuenftige Aktion neu
+# einfuehrt. Freitext wie ``text``, ``value``, ``command`` und ``script`` steht
+# bewusst NICHT hier -- darin landen Passwoerter, ``curl -u``, ``sudo -S``.
+_SICHTBARE_FELDER: frozenset[str] = frozenset({
+    "x", "y", "x1", "y1", "x2", "y2", "button", "double", "amount", "interval",
+    "duration", "timeout", "timeout_ms", "index", "display", "alle_bildschirme",
+    "scale", "full_page", "max_depth", "max_chars", "role", "name", "title",
+    "app", "selector", "query", "channel", "cwd",
+})
+
+#: Adressen: nur Schema, Host und Pfad -- in Query und Fragment stecken Tokens.
+_ADRESS_FELDER: frozenset[str] = frozenset({"url"})
+
+#: Benannte Tasten bleiben lesbar; einzelne Zeichen sind getippter Text.
+_MODIFIKATOREN = frozenset({"ctrl", "control", "cmd", "command", "alt", "option", "win", "super", "meta"})
+
+#: Aktionen, nach denen das Bild Getipptes zeigen kann (Einmalcode, Klartextfeld).
+_TIPP_AKTIONEN = frozenset({
+    "type", "key", "hotkey", "clipboard_write", "set_clipboard", "browser_fill", "ego_fill",
+})
+
+
+def _geschwaerzt(wert: Any) -> str:
+    return f"<redacted:{len(wert)} chars>" if isinstance(wert, str) else "<redacted>"
+
+
+def _adresse_ohne_geheimnisse(url: Any) -> Any:
+    if not isinstance(url, str):
+        return _geschwaerzt(url)
+    from urllib.parse import urlsplit
+
+    try:
+        teile = urlsplit(url)
+        host = teile.hostname or ""
+        if teile.port:
+            host = f"{host}:{teile.port}"
+    except ValueError:
+        return _geschwaerzt(url)
+    if not teile.scheme:
+        return _geschwaerzt(url)
+    return f"{teile.scheme}://{host}{teile.path}"
+
+
+def _tasten_geschwaerzt(keys: Any) -> Any:
+    """Einzelne druckbare Zeichen ohne Ctrl/Cmd/Alt sind getippter Text.
+
+    Wer ein Passwort Taste fuer Taste eingibt, schickt ``key`` mit ``"p"``,
+    ``"w"``, ... -- das gehoert geschwaerzt. ``enter``, ``tab`` und ``ctrl+v``
+    bleiben lesbar, sonst taugt die Aufzeichnung nicht mehr zum Nachspielen.
+    """
+    if isinstance(keys, str):
+        teile = [t.strip().lower() for t in keys.split("+")]
+    elif isinstance(keys, (list, tuple)) and all(isinstance(t, str) for t in keys):
+        teile = [t.strip().lower() for t in keys]
+    else:
+        return _geschwaerzt(keys)
+    if any(t in _MODIFIKATOREN for t in teile):
+        return keys
+    if any(len(t) == 1 for t in teile):
+        return "<redacted:key>"
+    return keys
+
+
+def _redacted_params(action: str, params: Any) -> dict[str, Any]:
+    """Params-Kopie fuers Pruefprotokoll und das Replay-Transkript.
+
+    Vorher landete ``req.params`` dort UNVERAENDERT: Tippte der Agent ein
+    Passwort auf dem Bildschirm des Nutzers, stand der Klartext danach im
+    Pruefprotokoll (``GET .../audit``) und im Replay-Transkript, von dort aus
+    potenziell in einem per ``recording/to-skill`` erzeugten, geteilten Skill.
+    Sichtbar bleibt nur, was in ``_SICHTBARE_FELDER`` steht; Freitext wird
+    durch seine Laenge ersetzt. Der Befehl an die Bridge (``command_msg``)
+    nutzt weiterhin die unveraenderten ``req.params``.
+    """
+    if not isinstance(params, dict):
+        return {}
+    redacted: dict[str, Any] = {}
+    for feld, wert in params.items():
+        if feld in _SICHTBARE_FELDER and isinstance(wert, (str, int, float, bool, type(None))):
+            redacted[feld] = wert
+        elif feld in _ADRESS_FELDER:
+            redacted[feld] = _adresse_ohne_geheimnisse(wert)
+        elif feld == "keys":
+            redacted[feld] = _tasten_geschwaerzt(wert)
+        elif isinstance(wert, (int, float, bool, type(None))) or wert == "":
+            # Zahlen sind keine Geheimnisse; eine leere Eingabe soll von einer
+            # fehlenden unterscheidbar bleiben.
+            redacted[feld] = wert
+        else:
+            redacted[feld] = _geschwaerzt(wert)
+    return redacted
+
+
+def _menschlichen_schritt_aufzeichnen(session: dict, msg: dict) -> None:
+    """Vom Menschen vorgefuehrten Schritt ins Replay-Transkript, geschwaerzt.
+
+    Dieselbe Regel wie fuer die Aktionen des Agenten. Die Bridge warnt beim
+    Start zwar vor Passwoertern, haelt sich aber nicht selbst daran zurueck:
+    ``type`` liefert das komplette getippte Wort. Uebernommen werden nur die
+    bekannten Felder des Ereignisses, nicht was die Bridge sonst mitschickt.
+    """
+    if not session.get("recording"):
+        return
+    event = msg.get("event")
+    if not isinstance(event, dict):
+        return
+    action = event.get("action")
+    if not isinstance(action, str) or not action:
+        return
+    schritt: dict[str, Any] = {
+        "action": action,
+        "params": _redacted_params(action, event.get("params")),
+        "ts": event.get("ts") if isinstance(event.get("ts"), (int, float)) else time.time(),
+        "source": "human",
+    }
+    if "screenshot_b64" in event:
+        schritt["screenshot_b64"] = _bild_fuer_aufzeichnung(action, event.get("screenshot_b64"))
+    session["recording_steps"].append(schritt)
+
+
+def _bild_fuer_aufzeichnung(action: str, screenshot_b64: str | None) -> str | None:
+    """Nach dem Tippen kein Bild ins Transkript.
+
+    Ein Einmalcode oder ein Feld ohne Punkte zeigt das Getippte im Bild, und
+    das Transkript geht an das Bildmodell (``recording_to_skill``). Das naechste
+    Bild nach einer anderen Aktion zeigt den Fortschritt trotzdem.
+    """
+    return None if action in _TIPP_AKTIONEN else screenshot_b64
+
+
 async def _refresh_screenshot_cache(session_id: str) -> str | None:
     """Pull a fresh screenshot from the bridge right after an action and
     update the session cache, so the next poll from the Live-View tab already
@@ -902,7 +1035,7 @@ async def dispatch_bridge_command(
     session["audit_log"].append({
         "cmd_id": cmd_id,
         "action": req.action,
-        "params": req.params,
+        "params": _redacted_params(req.action, req.params),
         "caller": str(getattr(caller, "id", "?")),
         "ts": time.time(),
     })
@@ -923,9 +1056,9 @@ async def dispatch_bridge_command(
                 screenshot_b64 = await _refresh_screenshot_cache(session_id)
                 session["recording_steps"].append({
                     "action": req.action,
-                    "params": req.params,
+                    "params": _redacted_params(req.action, req.params),
                     "ts": time.time(),
-                    "screenshot_b64": screenshot_b64,
+                    "screenshot_b64": _bild_fuer_aufzeichnung(req.action, screenshot_b64),
                 })
             else:
                 asyncio.create_task(_refresh_screenshot_cache(session_id))
@@ -1902,10 +2035,7 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
                 # clicking/typing and pushed it up unsolicited. Same transcript
                 # the agent's own actions land in, so skill authoring doesn't
                 # care which source demonstrated the workflow.
-                if session.get("recording"):
-                    event = msg.get("event") or {}
-                    if event.get("action"):
-                        session["recording_steps"].append(event)
+                _menschlichen_schritt_aufzeichnen(session, msg)
 
             elif msg_type == "observation":
                 await _beobachtung(session_id, session, msg)
