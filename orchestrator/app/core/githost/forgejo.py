@@ -164,6 +164,41 @@ class ForgejoHostProvider(GitHostProvider):
             return "gemergt"
         return "geschlossen" if daten.get("state") == "closed" else "offen"
 
+    async def get_issue(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int) -> dict | None:
+        """Ein Issue mit Tags und Zuständigen — None, wenn es nicht lesbar ist."""
+        resp = await client.get(f"{self.api_base}/repos/{repo}/issues/{nummer}", headers=self._headers(token))
+        return resp.json() if resp.status_code == 200 else None
+
+    async def _label_id(self, client: httpx.AsyncClient, token: str, repo: str, name: str) -> int | None:
+        """Forgejo/Gitea vergeben Tags per Kennung: vorhandenes suchen, sonst anlegen."""
+        resp = await client.get(f"{self.api_base}/repos/{repo}/labels", headers=self._headers(token),
+                                params={"limit": 50})
+        if resp.status_code == 200:
+            for eintrag in resp.json() or []:
+                if isinstance(eintrag, dict) and eintrag.get("name") == name:
+                    return eintrag.get("id")
+        neu = await client.post(f"{self.api_base}/repos/{repo}/labels", headers=self._headers(token),
+                                json={"name": name, "color": "#fbca04"})
+        return neu.json().get("id") if neu.status_code in (200, 201) else None
+
+    async def add_labels(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int,
+                         labels: list[str]) -> bool:
+        ids = [i for i in [await self._label_id(client, token, repo, n) for n in labels] if i is not None]
+        if not ids:
+            return False
+        resp = await client.post(f"{self.api_base}/repos/{repo}/issues/{nummer}/labels",
+                                 headers=self._headers(token), json={"labels": ids})
+        return resp.status_code in (200, 201)
+
+    async def remove_label(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int,
+                           label: str) -> bool:
+        lid = await self._label_id(client, token, repo, label)
+        if lid is None:
+            return True
+        resp = await client.delete(f"{self.api_base}/repos/{repo}/issues/{nummer}/labels/{lid}",
+                                   headers=self._headers(token))
+        return resp.status_code in (200, 204, 404)
+
     async def issue_state(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int) -> str | None:
         status, daten = await _json_holen(client, f"{self.api_base}/repos/{repo}/issues/{nummer}", self._headers(token))
         if status != 200 or not isinstance(daten, dict):

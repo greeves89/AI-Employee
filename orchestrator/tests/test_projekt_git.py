@@ -37,6 +37,21 @@ class _Anbieter:
     async def issue_state(self, client, token, repo, nummer):
         return "closed"
 
+    # Schreibender Teil (Übernahme ins Repo melden)
+    async def get_issue(self, client, token, repo, nummer):
+        return next((i for i in self.issues if i["number"] == nummer), None)
+
+    async def add_labels(self, client, token, repo, nummer, labels):
+        self.geschrieben = getattr(self, "geschrieben", []) + [("+", nummer, tuple(labels))]
+        return True
+
+    async def remove_label(self, client, token, repo, nummer, label):
+        self.geschrieben = getattr(self, "geschrieben", []) + [("-", nummer, label)]
+        return True
+
+    async def comment_issue(self, client, token, repo, nummer, body):
+        self.kommentare = getattr(self, "kommentare", []) + [(nummer, body)]
+
 
 def _issue(nr, titel="Fehler", body="Text", labels=()):
     return {"number": nr, "title": titel, "body": body, "html_url": f"https://github.com/o/r/issues/{nr}",
@@ -217,6 +232,79 @@ class ExterneBearbeitung(Abgleich):
         self.assertEqual(f("issue-91"), ["91"])
         self.assertEqual(f("fix/bridge-windows-link"), [])
         self.assertEqual(f("release/v1.391.0"), [])
+
+
+class UebernahmeInsRepo(Abgleich):
+    """Das Board arbeitet nach denselben Regeln wie die Agenten außerhalb: vor dem
+    Vergeben live prüfen, übernehmen mit Tag und Kommentar, nach dem PR Tag weg."""
+
+    async def _karte(self, db, nr):
+        return (await self._karten(db))[("issue", nr)]
+
+    async def test_vor_dem_vergeben_live_gefragt(self):
+        self.gh.issues = [_issue(48)]
+        async with self.Session() as db:
+            await self._lauf(db)
+            team = await db.get(Team, "p1")
+            k = await self._karte(db, 48)
+            # Inzwischen übernimmt jemand außerhalb — der Abgleich weiß es noch nicht.
+            self.gh.issues[0]["assignees"] = [{"login": "claude-session"}]
+            with patch.object(projekt_git, "zugang", return_value=("t", self.gh)):
+                self.assertEqual(await projekt_git.extern_dran(db, None, team, k), "@claude-session")
+            self.gh.issues[0]["assignees"] = []
+            self.gh.issues[0]["labels"] = [{"name": "status/in-arbeit"}]
+            with patch.object(projekt_git, "zugang", return_value=("t", self.gh)):
+                self.assertEqual(await projekt_git.extern_dran(db, None, team, k), "extern")
+
+    async def test_offener_pr_zum_ticket_heisst_schon_dran(self):
+        self.gh.issues = [_issue(50)]
+        async with self.Session() as db:
+            await self._lauf(db)
+            team = await db.get(Team, "p1")
+            k = await self._karte(db, 50)
+            k.pr_nr, k.pr_zustand = 77, "ci_laeuft"
+            self.assertEqual(await projekt_git.extern_dran(db, None, team, k), "PR #77")
+
+    async def test_uebernahme_und_rueckgabe_landen_im_repo(self):
+        self.gh.issues = [_issue(61)]
+        async with self.Session() as db:
+            await self._lauf(db)
+            k = await self._karte(db, 61)
+        with patch("app.db.session.async_session_factory", self.Session), \
+                patch.object(projekt_git, "zugang", return_value=("t", self.gh)):
+            await projekt_git.uebernahme_melden("p1", k.id, None, agent_name="DEV_Prod Agent")
+            await projekt_git.uebernahme_melden("p1", k.id, None, agent_name=None, uebernehmen=False)
+        self.assertEqual(self.gh.geschrieben, [("+", 61, ("status/in-arbeit",)), ("-", 61, "status/in-arbeit")])
+        self.assertIn("DEV_Prod Agent", self.gh.kommentare[0][1])
+        self.assertIn("Closes #61", self.gh.kommentare[0][1])
+
+    async def test_ohne_schreibrecht_steht_es_an_der_karte(self):
+        self.gh.issues = [_issue(62)]
+        async with self.Session() as db:
+            await self._lauf(db)
+            k = await self._karte(db, 62)
+        with patch("app.db.session.async_session_factory", self.Session), \
+                patch.object(projekt_git, "zugang", return_value=("", self.gh)):
+            await projekt_git.uebernahme_melden("p1", k.id, None, agent_name="X")
+        async with self.Session() as db:
+            self.assertIn("nicht ins Repo gemeldet", (await self._karte(db, 62)).notiz)
+
+    async def test_eigenes_tag_zaehlt_nicht_als_fremd_und_faellt_nach_dem_pr(self):
+        self.gh.issues = [_issue(63, labels=["status/in-arbeit"])]
+        async with self.Session() as db:
+            await self._lauf(db)
+            k = await self._karte(db, 63)
+            k.spalte, k.task_id, k.extern_bearbeiter = "in_arbeit", "t-eigen", None
+            await db.commit()
+            pr = _pr(101, body="Closes #63")
+            pr["head"]["ref"] = "63-loesung"
+            self.gh.pulls = [pr]
+            await self._lauf(db)
+            k = await self._karte(db, 63)
+            self.assertIsNone(k.extern_bearbeiter)
+            # Der eigene Lauf läuft noch; in die Prüfung geht die Karte mit seinem Ende.
+            self.assertEqual((k.spalte, k.pr_nr), ("in_arbeit", 101))
+        self.assertIn(("-", 63, "status/in-arbeit"), self.gh.geschrieben)
 
 
 class RepoSetzen(Basis):
