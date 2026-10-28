@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.393.7] - 2026-10-28
+
+### Behoben
+- **Das Daily legte jeden Morgen Karten zu längst Erledigtem an.** Gemessen am 26.–28.10.: bis zu zehn Karten je Besprechung zum seit 16.10. geschlossenen #961, jeden Tag anders formuliert und ohne die Nummer im Text. Der Filter verglich nur wörtlich gleiche Titel mit offenen Karten. Der Lead räumte die Karten in jedem Takt wieder ab. Jetzt:
+  - Verglichen wird per Wortüberlappung, mit allem Offenen, mit allem in den letzten 14 Tagen Erledigten und mit jedem geschlossenen Issue.
+  - Neue Punkte landen im Eingang statt in Bereit. Gearbeitet wird nur an Bereitem, also plant der Lead sie erst ein.
+  - Höchstens fünf Karten je Besprechung. Das Protokoll im Gespräch sagt, wie viele übersprungen wurden.
+
 ## [1.393.3] - 2026-10-28
 
 ### Geändert

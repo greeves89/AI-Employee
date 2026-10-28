@@ -192,7 +192,8 @@ class Termine(_Arbeitsraum):
             karten = (await db.execute(select(ProjektKarte).where(ProjektKarte.team_id == "p1"))).scalars().all()
             self.assertEqual(sorted(k.titel for k in karten), ["Doku ergänzen", "Login-Fehler nachstellen"])
             # Ohne Ersteller → beim Vergeben gerahmt (die Items stammen von Agenten).
-            self.assertTrue(all(k.spalte == "bereit" and k.ersteller_user_id is None for k in karten))
+            # In den Eingang: gearbeitet wird nur an Bereitem, einplanen ist Sache des Leads/Menschen.
+            self.assertTrue(all(k.spalte == "eingang" and k.ersteller_user_id is None for k in karten))
             letzte = (await projekt_gespraech.liste(db, "p1"))[-1]
             self.assertEqual(letzte.art, "protokoll")
             brain = await projekt_wissen.brain_des_projekts(db, await db.get(Team, "p1"))
@@ -259,6 +260,31 @@ class BesprechungKenntDenStand(_Arbeitsraum):
         # Punkt kommt einmal; wer zusätzlich ein offenes Issue nennt, bleibt.
         self.assertEqual(titel, ["#961 und #1063 zusammen prüfen", "Neu: Ladezeit der Projektseite messen"])
         self.assertIn("3 Punkt(e) übersprungen", text)
+
+    async def test_umformulierter_punkt_zu_erledigtem_wird_keine_karte(self):
+        """26.–28.10.: Jeden Morgen dieselben #961-Punkte, anders formuliert, ohne Nummer."""
+        from app.core import projekte
+
+        async with self.Session() as db:
+            alt = projekte.neue_karte("p1", "DevBot: AST-Wache für alle Erzeuger der Zeitplan-Präfixe ergänzen",
+                                      spalte="eingang", von="besprechung:gestern")
+            alt.spalte = "erledigt"
+            alt.erledigt_at = datetime.now(timezone.utc) - timedelta(days=1)
+            db.add(alt)
+            await db.commit()
+        titel, _ = await self._abschluss(
+            "## Action Items\n"
+            "- [ ] DevBot – heute vor Review: AST-Wache für Erzeuger der Zeitplan-Präfixe ergänzen\n"
+            "- [ ] Ladezeit der Projektseite messen und dokumentieren\n")
+        self.assertEqual(titel, ["Ladezeit der Projektseite messen und dokumentieren"])
+
+    async def test_hoechstens_fuenf_karten_je_besprechung(self):
+        themen = ["Ladezeit messen", "Rechnungen prüfen", "Handbuch kürzen", "Logos tauschen", "Backup testen",
+                  "Termine planen", "Kunden anrufen", "Server härten", "Preise prüfen"]
+        punkte = "".join(f"- [ ] {t} und Ergebnis notieren\n" for t in themen)
+        titel, text = await self._abschluss("## Action Items\n" + punkte)
+        self.assertEqual(len(titel), projekt_termine.MAX_KARTEN)
+        self.assertIn("4 Punkt(e) übersprungen", text)
 
     async def test_ohne_projekt_kein_stand(self):
         async with self.Session() as db:

@@ -1187,7 +1187,11 @@ Reiter **Termine** (anlegen darf der Ersteller des Projekts — und der Lead sel
 Zur Zeit treffen sich die Agenten des Projekts in einer Besprechung (Ablauf nach Vorlage: beim
 Daily Stand → Hindernisse → nächster Schritt). Danach:
 - steht das **Protokoll** im Projektwissen (`protokolle/…`) und im Gespräch,
-- wird jedes **Action Item** eine Karte unter **Bereit** — der Lead vergibt sie.
+- wird jedes neue **Action Item** eine Karte im **Eingang** *(seit 1.393.7)* — der Lead plant sie ein,
+  wenn sie noch nötig ist. Höchstens fünf je Besprechung. Punkte, die schon als Karte dastehen,
+  in den letzten 14 Tagen erledigt wurden oder ein geschlossenes Issue betreffen, werden keine
+  Karte, auch wenn sie anders formuliert sind. Das Protokoll im Gespräch nennt, wie viele
+  übersprungen wurden.
 
 Rechts stehen die letzten Besprechungen mit ihrer Zusammenfassung; ein Klick öffnet die ganze
 Besprechung. Eine Besprechung braucht mindestens zwei Agenten im Projekt.
