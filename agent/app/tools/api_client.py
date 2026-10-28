@@ -331,12 +331,16 @@ class OrchestratorAPIClient:
         except (TypeError, ValueError):
             timeout_value = 15.0
 
+        befehl = dict(params.get("params") or {})
+        if action == "screenshot" and not befehl.get("display"):
+            # Ohne Wahl alle Monitore (eine aeltere Bridge ignoriert den Wunsch).
+            befehl["alle_bildschirme"] = True
         result = await self._request(
             "POST",
             f"/computer-use/sessions/{session_id}/command",
             json={
                 "action": action,
-                "params": params.get("params") or {},
+                "params": befehl,
                 "timeout": timeout_value,
             },
         )
@@ -364,15 +368,37 @@ class OrchestratorAPIClient:
                         f"{d.get('number')}{' (primary)' if d.get('primary') else ''}: "
                         f"{d.get('width')}x{d.get('height')}" for d in monitore
                     )
-                    hinweis.append(
-                        f"The user has {len(monitore)} displays ({liste}); this is number "
-                        f"{payload.get('display')}. Pass params.display=N for another one."
-                    )
-                return multimodal.IMAGE_SENTINEL + json.dumps({
+                    weitere = [w for w in (payload.get("weitere") or []) if w.get("screenshot_b64")]
+                    if weitere:
+                        hinweis.append(
+                            f"The user has {len(monitore)} displays ({liste}); you get one image "
+                            f"per display, this first one is number {payload.get('display')}. "
+                            "Pass params.display=N when clicking on display N."
+                        )
+                    else:
+                        hinweis.append(
+                            f"The user has {len(monitore)} displays ({liste}); this is number "
+                            f"{payload.get('display')}. Pass params.display=N for another one."
+                        )
+                bilder = {
                     "media_type": "image/png",
                     "data": payload["screenshot_b64"],
                     "note": " ".join(hinweis),
-                })
+                }
+                weitere_bilder = [
+                    {
+                        "media_type": "image/png",
+                        "data": w["screenshot_b64"],
+                        "note": f"Display {w.get('display')}"
+                        + (f" ({w['image_size']['w']}x{w['image_size']['h']})"
+                           if (w.get("image_size") or {}).get("w") else "")
+                        + f" — pass params.display={w.get('display')} when clicking here.",
+                    }
+                    for w in (payload.get("weitere") or []) if w.get("screenshot_b64")
+                ]
+                if weitere_bilder:
+                    bilder["weitere"] = weitere_bilder
+                return multimodal.IMAGE_SENTINEL + json.dumps(bilder)
             return "Error: screenshot did not return image data"
         return json.dumps(payload, ensure_ascii=False)
 

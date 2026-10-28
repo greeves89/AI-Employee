@@ -196,6 +196,12 @@ def tool_message(result_text: str, tool_call_id: str, name: str) -> ChatMessage:
                 image_block(payload.get("media_type", "image/jpeg"), payload["data"]),
                 text_block(note),
             ]
+            # Weitere Bilder desselben Ergebnisses (z. B. jeder Monitor eines
+            # Bridge-Screenshots), je mit eigener Beschriftung.
+            for weiteres in payload.get("weitere") or []:
+                if isinstance(weiteres, dict) and weiteres.get("data"):
+                    blocks.append(image_block(weiteres.get("media_type", "image/png"), weiteres["data"]))
+                    blocks.append(text_block(weiteres.get("note") or "Further image."))
             return ChatMessage(
                 role="tool", content=blocks, tool_call_id=tool_call_id, name=name
             )
@@ -209,6 +215,9 @@ def log_summary(result_text: str) -> str:
     if is_image_result(result_text):
         payload = _parse_image_result(result_text) or {}
         approx = len(payload.get("data", "")) * 3 // 4
+        anzahl = 1 + len([w for w in payload.get("weitere") or [] if isinstance(w, dict) and w.get("data")])
+        if anzahl > 1:
+            return f"[{anzahl} images {payload.get('media_type', '?')}, first ~{approx // 1024} KB, attached for vision]"
         return f"[image {payload.get('media_type', '?')}, ~{approx // 1024} KB attached for vision]"
     return result_text[:2000]
 

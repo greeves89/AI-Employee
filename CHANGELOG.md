@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.382.0] - 2026-10-28
+
+### Neu
+- **Die Bridge gibt dem Agenten alle Monitore mit.** Hat der Rechner mehrere Bildschirme, liefert ein Screenshot ohne Bildschirmwahl jetzt jeden Monitor als eigenes Bild mit seiner Nummer, statt nur den Hauptbildschirm. Das gilt in allen Laufzeiten: Claude Code und Codex über das Desktop-Werkzeug, eigene Sprachmodelle, der Orchestrator-Zugang und die Sprachfront (die zeigt alle Bilder an und lässt alle auswerten). Wer nur einen Monitor sehen will, nennt ihn wie bisher mit `display`.
+
+### Behoben
+- **Klicks auf dem zweiten Monitor rechneten mit dem falschen Maßstab.** Die Bridge merkte sich nur den Maßstab des zuletzt aufgenommenen Bildes. Haben zwei Monitore unterschiedliche Auflösung, landete ein Klick auf dem anderen Monitor daneben. Maßstab und Lage werden jetzt je Monitor gemerkt. Außerdem gaben die Desktop-Werkzeuge für Klicken, Bewegen, Scrollen und Ziehen die Monitornummer bisher gar nicht an die Bridge weiter.
+
+### Hinweis
+- Für alle Monitore braucht es die Bridge 1.382.0. Eine ältere Bridge ignoriert den Wunsch und liefert wie bisher nur den Hauptbildschirm.
+
 ## [1.381.2] - 2026-10-28
 
 ### Verbessert
