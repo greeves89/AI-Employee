@@ -3499,6 +3499,7 @@ Hinweise:
 | `ai-employee-shared` | gemeinsamer Ordner aller Agenten (`/shared`) | ja |
 | `<projekt>_redis_data` | Warteschlangen und kurzlebiger Zustand | ja |
 | `<projekt>_feedback_data` | Rückmeldungen aus der Oberfläche | ja |
+| Host-Ordner `SECONDBRAIN_BASE` (Vorgabe `/srv/secondbrain`) | Wissensablagen: Second Brains, Projektwissen samt Verlauf, Projektdateien | ja, seit 1.385.1 (`wissensablagen.tar.gz`) — ältere Sicherungen enthalten sie nicht |
 | `.env` im Installationsordner | Passwörter, `ENCRYPTION_KEY`, Zugangsdaten | ja (`konfiguration.tar.gz`) |
 | `orchestrator/data/.encryption_key` | Verschlüsselungsschlüssel, falls er nicht in der `.env` steht | ja (`konfiguration.tar.gz`) |
 | `<projekt>_embedding_models`, `<projekt>_stt_models` | heruntergeladene Modelle (Suche, Spracherkennung) | nein — werden neu geladen |
@@ -3526,7 +3527,8 @@ Installationsordners in Kleinbuchstaben (z. B. `ai-employee`).
 
 Was dabei passiert: Die Datenbank wird im laufenden Betrieb per `pg_dump` gesichert,
 die Volumes werden **dynamisch** eingesammelt (jeder neue Agent ist automatisch
-dabei), `.env` und `orchestrator/data/` kommen als `konfiguration.tar.gz` dazu. Ein
+dabei), die Wissensablagen als `wissensablagen.tar.gz`, `.env` und `orchestrator/data/`
+als `konfiguration.tar.gz`. Ein
 `MANIFEST` enthält Version, Zeitpunkt und Prüfsummen. Aufbewahrt werden 7 tägliche
 und 4 wöchentliche Stände.
 
@@ -3573,7 +3575,8 @@ Das Skript fragt vor dem Überschreiben nach (`ja` eingeben; `--yes` für Skript
    `.env` bleibt als `.env.vor-wiederherstellung-<zeitstempel>` liegen. Weicht das
    Datenbank-Passwort ab (Sicherung von einem anderen Server), wird es übernommen.
 4. **Datenbank** aus dem Dump einspielen.
-5. **Volumes** zurückspielen (Arbeitsordner, Sitzungen, gemeinsamer Ordner, Redis …).
+5. **Volumes** zurückspielen (Arbeitsordner, Sitzungen, gemeinsamer Ordner, Redis …),
+   danach die **Wissensablagen**, falls die Sicherung sie enthält (ab 1.385.1).
 6. Anlage starten und **Selbsttest**: Ein gespeichertes Geheimnis wird mit dem
    zurückgelegten Schlüssel entschlüsselt. Scheitert das, meldet das Skript es laut
    (Exit-Code 2) — dann passt der Schlüssel nicht zur Datenbank.
