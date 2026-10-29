@@ -131,6 +131,31 @@ class GleicherTitelInZweiProjekten(_MitDatenbank):
             self.assertIn(("Clearlight", "b-neu"), nach, "das eigene Projekt wurde nicht fortgeschrieben")
             self.assertIn(("AI-Employee", "a"), nach, "das fremde Projekt wurde mit ueberschrieben")
 
+    async def test_beide_projekte_im_selben_aufruf_behalten_ihren_eigenen_eintrag(self):
+        """Der Fall, der den Schluessel wirklich auf die Probe stellt: derselbe
+        Titel in zwei Projekten, BEIDE im Umfang, beide in einem Aufruf. Ohne
+        das Projekt im Schluessel treffen beide Eintraege dieselbe Zeile — die
+        zweite ueberschreibt die erste und eine Zeile bleibt unberuehrt."""
+        async with self.Session() as db:
+            await self._anlegen(db, "Abnahme", projekt="AI-Employee", beschreibung="a")
+            await self._anlegen(db, "Abnahme", projekt="Clearlight", beschreibung="b")
+
+            antwort = await self._aufrufen(
+                db,
+                [
+                    TodoBulkItem(title="Abnahme", project="AI-Employee", description="a-neu"),
+                    TodoBulkItem(title="Abnahme", project="Clearlight", description="b-neu"),
+                ],
+            )
+
+            self.assertEqual(antwort["added"], 0)
+            nach = {(t.project, t.description) for t in await self._alle(db)}
+            self.assertEqual(
+                nach,
+                {("AI-Employee", "a-neu"), ("Clearlight", "b-neu")},
+                f"jedes Projekt muss seinen eigenen Eintrag behalten, bekam: {nach}",
+            )
+
     async def test_neuer_titel_im_zweiten_projekt_kommt_dazu(self):
         async with self.Session() as db:
             await self._anlegen(db, "Abnahme", projekt="AI-Employee")
@@ -184,6 +209,26 @@ class BisherigesVerhaltenBleibt(_MitDatenbank):
                 (1, 0),
                 "im task_id-Umfang darf das Projekt den Treffer nicht verhindern",
             )
+
+    async def test_gemischte_liste_findet_auch_den_eintrag_ohne_projekt(self):
+        """Eine Liste, in der nur EIN TEIL der Eintraege ein Projekt nennt: der
+        Umfang muss beide Seiten umfassen, sonst gilt der projektlose Titel als
+        neu und die Dublette ist wieder da — nur eine Stelle weiter."""
+        async with self.Session() as db:
+            await self._anlegen(db, "Lose Notiz")
+
+            antwort = await self._aufrufen(
+                db,
+                [
+                    TodoBulkItem(title="Lose Notiz", description="neu"),
+                    TodoBulkItem(title="Karte pruefen", project="AI-Employee"),
+                ],
+            )
+
+            self.assertEqual(antwort["updated"], 1, "der projektlose Titel war vorhanden")
+            self.assertEqual(antwort["added"], 1, "nur die Karte ist wirklich neu")
+            alle = await self._alle(db)
+            self.assertEqual(len(alle), 2, f"Dublette entstanden: {[(t.project, t.title) for t in alle]}")
 
     async def test_ganz_ohne_projekt_bleibt_beim_alten_umfang(self):
         async with self.Session() as db:
