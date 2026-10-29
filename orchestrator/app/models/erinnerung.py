@@ -7,7 +7,7 @@ Agenten seines Sekretariats (Werkzeug ``erinnerung_anlegen``).
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, Text
+from sqlalchemy import JSON, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -24,3 +24,6 @@ class Erinnerung(Base, TimestampMixin):
     von: Mapped[str] = mapped_column(String(80), default="nutzer")
     gemeldet_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     erledigt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    # Worauf sie sich bezieht: {"art": "mail", "mail_id", "link", "betreff"} oder
+    # {"art": "freigabe", "approval_id", "betreff"} (Nachfassen). Setzt nur der Server.
+    bezug: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
