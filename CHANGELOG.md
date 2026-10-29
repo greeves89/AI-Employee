@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.401.0] - 2026-10-29
+
+### Neu
+- Neu: Externe erreichen Agenten aus dem Issue mit `@ai-employee <Agent>: <Frage>`; die Frage landet im Projektgespräch und weckt den Agenten.
+- Neu: Agenten stellen Rückfragen an Externe direkt im Issue (Werkzeug `projekt_issue_kommentar`).
+- Neu: Mehrere AI-Employee-Anlagen am selben Repo werden unterschieden (`@ai-employee <anlage>/<Agent>: …`, „Anlage …“ auf dem Board, Push-Sperre zwischen Anlagen).
+
 ## [1.400.0] - 2026-10-29
 
 ### Neu

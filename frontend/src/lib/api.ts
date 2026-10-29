@@ -4665,6 +4665,10 @@ export interface Team {
   max_uebernahmen?: number | null;
   /** Dürfen Agenten abgelaufene fremde Übernahmen nach einer Karenzzeit übernehmen? */
   abgelaufene_uebernehmen?: boolean;
+  /** Rückkanal „@ai-employee …“ im Issue: an, aus oder auto (an nur bei privatem Repo mit Schlüssel). */
+  rueckkanal?: "an" | "aus" | "auto";
+  /** Ob das Repo öffentlich ist (beim Abgleich gelesen; leer = unbekannt). */
+  repo_oeffentlich?: boolean | null;
 }
 
 // ─── Finanzen (orchestrator: core/finanzen) — alle Beträge in USD ───
@@ -4997,6 +5001,7 @@ export async function updateTeam(
     uebernahme_stunden?: number;
     max_uebernahmen?: number;
     abgelaufene_uebernehmen?: boolean;
+    rueckkanal?: "an" | "aus" | "auto";
   },
 ): Promise<Team> {
   return fetchJSON(`${getBase()}/teams/${id}`, {

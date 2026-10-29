@@ -223,6 +223,16 @@ class GitHubHostProvider(GitHostProvider):
                                   headers=self._headers(token), json={"body": body})
         return resp.status_code == 200
 
+    async def repo_oeffentlich(self, client: httpx.AsyncClient, token: str, repo: str) -> bool | None:
+        """Ist das Repo öffentlich? None, wenn nicht lesbar."""
+        resp = await client.get(f"{self.api_base}/repos/{repo}", headers=self._headers(token))
+        if resp.status_code != 200:
+            return None
+        daten = resp.json() or {}
+        if "private" not in daten:
+            return None
+        return not bool(daten.get("private")) and daten.get("visibility", "public") == "public"
+
     async def eigenes_konto(self, client: httpx.AsyncClient, token: str) -> str | None:
         """Login des Kontos hinter dem Schlüssel — None ohne Schlüssel oder wenn nicht lesbar."""
         if not token:

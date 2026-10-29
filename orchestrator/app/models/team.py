@@ -59,3 +59,8 @@ class Team(Base, TimestampMixin):
     uebernahme_stunden: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     max_uebernahmen: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     abgelaufene_uebernehmen: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Rückkanal „@ai-employee …“ im Issue weckt Agenten: None = automatisch (an nur bei
+    # privatem Repo mit Schlüssel), sonst ausdrücklich an/aus. Ob das Repo öffentlich
+    # ist, liest der Abgleich (None = unbekannt).
+    rueckkanal: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
+    repo_oeffentlich: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)

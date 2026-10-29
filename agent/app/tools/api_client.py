@@ -527,6 +527,18 @@ class OrchestratorAPIClient:
         an = f"{k['agent_id']} — Lauf {k.get('task_id')}" if k.get("agent_id") else (k.get("extern_bearbeiter") or params.get("an"))
         return f"Karte [{k['id']}] übergeben an {an}. Stand und nächster Schritt stehen im Issue."
 
+    async def projekt_issue_kommentar(self, params: dict) -> str:
+        if not params.get("karte_id") or not params.get("text"):
+            return "Error: karte_id and text are required"
+        pfad = self._projekt_pfad(params, "karten", str(params["karte_id"]), "issue-kommentar")
+        if not pfad:
+            return "Error: projekt_id is required"
+        r = await self._request("POST", pfad, json={"text": params["text"]})
+        if isinstance(r, str):
+            return r
+        url = f" ({r['url']})" if r.get("url") else ""
+        return f"Im Issue #{r.get('issue')} geschrieben{url}. Antworten kommen über das Projektgespräch zu dir."
+
     async def projekt_karte_stand(self, params: dict) -> str:
         if not params.get("karte_id"):
             return "Error: karte_id is required"

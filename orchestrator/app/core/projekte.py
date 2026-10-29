@@ -292,7 +292,7 @@ WERKZEUG_TAETIGKEIT = {
     "create_task": "gibt eine Aufgabe weiter", "send_message": "schreibt einem Kollegen",
     "projekt_board": "liest das Projekt-Board", "projekt_karte_stand": "meldet den Stand",
     "projekt_karte_anlegen": "legt eine Karte an", "projekt_karte_vergeben": "vergibt eine Karte",
-    "projekt_karte_uebergeben": "übergibt eine Karte",
+    "projekt_karte_uebergeben": "übergibt eine Karte", "projekt_issue_kommentar": "schreibt ins Issue",
     "projekt_wissen_suchen": "sucht im Projektwissen", "projekt_wissen_lesen": "liest im Projektwissen",
     "projekt_wissen_schreiben": "schreibt ins Projektwissen", "memory_save": "merkt sich etwas",
     "memory_search": "erinnert sich", "browser": "bedient den Browser",
@@ -491,7 +491,10 @@ def karten_auftrag(karte: ProjektKarte, projekt_name: str, *, fremd: bool = Fals
             "- Der Branch einer fremden Übernahme gehört dem Übernehmer: Ein Push dorthin wird gesperrt. Frag "
             "stattdessen im Issue nach oder stelle einen Pull Request in seinen Branch.\n"
             "- Musst du aufhören, bevor es fertig ist, übergib mit `projekt_karte_uebergeben` (Stand und nächster "
-            "Schritt) — an einen Kollegen oder an jemanden außerhalb."
+            "Schritt) — an einen Kollegen oder an jemanden außerhalb.\n"
+            "- Fragen an Menschen oder Agenten außerhalb der Plattform stellst du im Issue mit "
+            "`projekt_issue_kommentar`; ihre Antworten (`@ai-employee <dein Name>: …`) kommen über das "
+            "Projektgespräch zu dir."
             if karte.quelle == "issue" and karte.extern_nr else ""
         )
     )

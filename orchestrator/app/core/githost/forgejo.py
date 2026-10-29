@@ -272,6 +272,13 @@ class ForgejoHostProvider(GitHostProvider):
             k["vertraut"] = geprueft[autor]
         return kommentare
 
+    async def repo_oeffentlich(self, client: httpx.AsyncClient, token: str, repo: str) -> bool | None:
+        """Ist das Repo öffentlich? None, wenn nicht lesbar."""
+        status, daten = await _json_holen(client, f"{self.api_base}/repos/{repo}", self._headers(token))
+        if status != 200 or not isinstance(daten, dict) or "private" not in daten:
+            return None
+        return not bool(daten.get("private"))
+
     async def eigenes_konto(self, client: httpx.AsyncClient, token: str) -> str | None:
         """Login des Kontos hinter dem Schlüssel — None ohne Schlüssel oder wenn nicht lesbar."""
         if not token:
