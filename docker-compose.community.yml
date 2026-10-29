@@ -108,6 +108,12 @@ services:
       OAUTH_REDIRECT_BASE_URL: ${OAUTH_REDIRECT_BASE_URL:-http://localhost:8000}
       # Agent image this orchestrator spawns
       AGENT_IMAGE: "ghcr.io/greeves89/ai-employee-agent:${AI_EMPLOYEE_VERSION:-latest}"
+      # Fehlt dieses Abbild lokal, holt der Orchestrator genau die oben
+      # genannte Referenz (#889). Ohne diese Zeilen kommt ein eigener Spiegel
+      # aus der .env nicht im Behaelter an.
+      AI_EMPLOYEE_REGISTRY: ${AI_EMPLOYEE_REGISTRY:-ghcr.io/greeves89}
+      AI_EMPLOYEE_ABBILD_HOLEN: ${AI_EMPLOYEE_ABBILD_HOLEN:-1}
+      AI_EMPLOYEE_ABBILD_ABGELEHNT: ${AI_EMPLOYEE_ABBILD_ABGELEHNT:-}
       AGENT_NETWORK: ai-employee-network
       # Feedback-Widget: MD+PNG-Ablage (Volume unten) + optionale Issue-Spiegelung
       FEEDBACK_DIR: /data/feedback
@@ -173,9 +179,10 @@ services:
     pull_policy: always
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
-    environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-      NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:8000}
+    # Kein NEXT_PUBLIC_API_URL/-WS_URL: Next.js backt diese Werte beim BAU in das
+    # Browser-Bundle, zur Laufzeit gesetzt bleiben sie wirkungslos. Das eine Abbild
+    # fuer alle Anlagen (#889) bringt sie bewusst leer mit; die Adresse ergibt sich
+    # im Browser aus der aufgerufenen Seite (frontend/src/lib/config.ts).
     depends_on:
       orchestrator:
         condition: service_healthy

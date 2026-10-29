@@ -58,10 +58,6 @@ services:
       traefik.http.routers.frontend.service: "frontend"
       traefik.http.routers.frontend.priority: "1"
       traefik.http.services.frontend.loadbalancer.server.port: "3000"
-    build:
-      args:
-        NEXT_PUBLIC_API_URL: "https://${DOMAIN}"
-        NEXT_PUBLIC_WS_URL: "wss://${DOMAIN}"
 
 volumes:
   letsencrypt_data:

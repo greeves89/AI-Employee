@@ -5,7 +5,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
+from app.config import NUR_AUS_DER_UMGEBUNG, settings
 from app.models.platform_settings import PlatformSettings
 
 logger = logging.getLogger(__name__)
@@ -307,6 +307,14 @@ class SettingsService:
         loaded = 0
         for key, value in db_settings.items():
             if not value:
+                continue
+            # Welches Abbild geholt und gestartet wird, bestimmt nur die Umgebung
+            # des Betreibers — nie eine Zeile in der Einstellungstabelle (#889).
+            if key in NUR_AUS_DER_UMGEBUNG:
+                logger.warning(
+                    "Einstellung %s kommt nur aus der Umgebung — gespeicherter Wert ignoriert",
+                    key,
+                )
                 continue
             if hasattr(settings, key):
                 current = getattr(settings, key)

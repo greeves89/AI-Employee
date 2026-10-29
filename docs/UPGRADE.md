@@ -165,6 +165,37 @@ cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.
   -a dienst=orchestrator ghcr.io/OWNER/ai-employee-orchestrator:VERSION
 ```
 
+**The agent image is not a compose service.** `docker compose pull` does not fetch it, and
+`docker image prune` removes it. If `ai-employee-agent:latest` is missing when an agent is
+created or rebuilt, the orchestrator now pulls
+`<registry>/ai-employee-agent:<VERSION>` itself and tags it locally — on an installation that
+never built locally, agent creation used to fail with a Docker error about an unknown image
+name. The version comes from the `VERSION` file (code and image stay on the same release),
+never from the environment, and a moving tag such as `latest` is refused.
+
+This shortcut performs **no signature check** — cosign is not part of the orchestrator image.
+It is the rescue path, not the supported one: the verified path stays `./scripts/update.sh`.
+Set `AI_EMPLOYEE_ABBILD_HOLEN=0` on an installation that must only ever run locally built
+images; the orchestrator then logs the missing image instead of pulling it.
+
+The orchestrator only ever pulls `<AI_EMPLOYEE_REGISTRY>/ai-employee-agent:<x.y.z>`. If
+`AGENT_IMAGE` already holds a full reference (as `docker-compose.community.yml` does), it is
+pulled only when it has exactly that form — no other host, account or image name, no moving
+tag. `AGENT_IMAGE`, `AI_EMPLOYEE_REGISTRY` and the two switches are read from the environment
+only; values stored in the settings table are ignored for them.
+
+The cleanup after an update (`AI_EMPLOYEE_ABBILDER_AUFRAEUMEN`) only removes registry names.
+The local name `ai-employee-agent:latest` that new agents start from always stays, so the
+orchestrator does not have to pull it again after an update.
+
+If the signature check above rejected a version, `abbilder_bereitstellen` records that
+number as `AI_EMPLOYEE_ABBILD_ABGELEHNT` in `.env`, and the orchestrator refuses to pull it.
+If that image is missing locally, the agent is not started at all — otherwise Docker would
+fetch the full reference implicitly. The cleanup does not keep registry names of that version.
+Without that note the rejection would only last for the run: a later `docker image prune`
+removes the locally built image, and the next agent would have pulled the rejected one. The
+next verified release clears the note.
+
 ### Step 4: Stop Current Services
 
 ```bash
