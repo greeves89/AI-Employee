@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.400.0] - 2026-10-29
+
+### Neu
+- Neu: Übernahmen von Issues laufen ohne Lebenszeichen ab (Standard 2 Stunden, je Projekt einstellbar); Agenten der Plattform verlängern ihre eigenen automatisch, solange sie arbeiten.
+- Neu: Obergrenze offener Übernahmen je Bearbeiter (Standard 2).
+- Neu: „Übergeben an …“ auf dem Board und als Agenten-Werkzeug, mit Stand und nächstem Schritt im Issue.
+- Neu: Konflikt-Warnung bei zwei gleichzeitigen Übernahmen oder fremden Commits auf dem Branch einer Übernahme.
+- Neu: Projekteinstellung, mit der Agenten abgelaufene fremde Übernahmen nach einer Karenzzeit übernehmen dürfen (Standard aus).
+
 ## [1.399.0] - 2026-10-29
 
 ### Neu
