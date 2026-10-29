@@ -52,6 +52,7 @@ MAX_ACTIONS_PER_SESSION = 500
 # blind poll interval is what actually makes the live view feel live.
 _SCREEN_CHANGING_ACTIONS = {
     "click", "type", "key", "scroll", "move", "drag", "open_app", "close_app",
+    "element_press", "element_set_value",
 }
 
 
@@ -65,7 +66,7 @@ _SICHTBARE_FELDER: frozenset[str] = frozenset({
     "x", "y", "x1", "y1", "x2", "y2", "button", "double", "amount", "interval",
     "duration", "timeout", "timeout_ms", "index", "display", "alle_bildschirme",
     "scale", "full_page", "max_depth", "max_chars", "role", "name", "title",
-    "app", "selector", "query", "channel", "cwd",
+    "app", "selector", "query", "channel", "cwd", "aktion",
 })
 
 #: Adressen: nur Schema, Host und Pfad -- in Query und Fragment stecken Tokens.
@@ -77,6 +78,7 @@ _MODIFIKATOREN = frozenset({"ctrl", "control", "cmd", "command", "alt", "option"
 #: Aktionen, nach denen das Bild Getipptes zeigen kann (Einmalcode, Klartextfeld).
 _TIPP_AKTIONEN = frozenset({
     "type", "key", "hotkey", "clipboard_write", "set_clipboard", "browser_fill", "ego_fill",
+    "element_set_value",
 })
 
 
@@ -236,8 +238,14 @@ async def _refresh_screenshot_cache(session_id: str) -> str | None:
 # test_bridge_action_names_are_allowed.py haelt beide Seiten ab jetzt zusammen.
 CAPABILITY_GROUPS: dict[str, list[str]] = {
     "screenshots": ["screenshot", "get_mouse_position"],
-    "mouse": ["mouse_move", "move", "mouse_click", "click", "mouse_scroll", "scroll", "drag"],
-    "keyboard": ["key", "type", "hotkey"],
+    # `element_press` bedient ein Element selbst (Knopf ausloesen, Haekchen,
+    # Auswahl, Aufklappen) — das ist Klicken, nur ohne Koordinate. Ein Wert in
+    # ein Feld ist Tippen. Deshalb haengen beide an Maus bzw. Tastatur und nicht
+    # an `accessibility`: Wer nur das Lesen der Oberflaeche freigibt, soll damit
+    # nichts ausloesen koennen.
+    "mouse": ["mouse_move", "move", "mouse_click", "click", "mouse_scroll", "scroll", "drag",
+              "element_press"],
+    "keyboard": ["key", "type", "hotkey", "element_set_value"],
     # Elemente FINDEN statt auf Koordinaten zu raten — der Kern verlaesslicher
     # Bedienung. Beides war implementiert (Bridge + MCP-Werkzeug), aber hier nie
     # eingetragen und damit unerreichbar.
@@ -377,7 +385,13 @@ _APP_SCOPED_ACTIONS: dict[str, tuple[str, ...]] = {
     "open_app": ("app", "name"),
     "close_app": ("app", "name"),
     "focus_window": ("app", "name"),
+    "element_press": ("app",),
+    "element_set_value": ("app",),
 }
+#: Diese Aktionen wirken in EINER Anwendung — ohne `app` waere das „irgendwo auf
+#: dem Desktop". Ist die Sitzung auf bestimmte Anwendungen beschraenkt, muss
+#: `app` deshalb dabei sein, sonst liefe die Freigabeliste ins Leere.
+_APP_PFLICHT_BEI_FREIGABE = frozenset({"element_press", "element_set_value"})
 _URL_SCOPED_ACTIONS: dict[str, tuple[str, ...]] = {
     "open_url": ("url",),
     "browser_navigate": ("url",),
@@ -428,6 +442,20 @@ def _url_in_scope(url: str, allowed_domains: list[str] | None) -> bool:
     return False
 
 
+#: Aktionen, bei denen die BRIDGE das Programm aus `app` aufloest. Der Server
+#: prueft nur den Namen; findet die Bridge dazu per Teiltreffer im Fenstertitel
+#: ein anderes Programm („Excel-Tipps – Chrome"), waere die Freigabeliste
+#: umgangen. Bei beschraenkten Sitzungen loest sie deshalb nur exakt ueber den
+#: Prozess- bzw. App-Namen auf.
+_BRIDGE_LOEST_APP_AUF = frozenset({"focus_window", "element_press", "element_set_value"})
+
+
+def _streng_wenn_beschraenkt(action: str, params: dict, session: dict) -> dict:
+    if action in _BRIDGE_LOEST_APP_AUF and session.get("allowed_apps") is not None:
+        return {**params, "app_streng": True}
+    return params
+
+
 def _scope_violation(action: str, params: dict, session: dict) -> str | None:
     """Fehlertext, wenn die Aktion ausserhalb der Freigabeliste liegt — sonst None."""
     for keys, allowed, kind in (
@@ -442,6 +470,9 @@ def _scope_violation(action: str, params: dict, session: dict) -> str | None:
                 value = str(params[key])
                 break
         if not value:
+            if kind == "app" and allowed is not None and action in _APP_PFLICHT_BEI_FREIGABE:
+                return (f"Diese Sitzung darf nur bestimmte Anwendungen bedienen "
+                        f"({', '.join(allowed) or '(keine)'}) — gib `app` mit an.")
             continue
         if kind == "app" and not _app_in_scope(value, allowed):
             return (f"Anwendung '{value}' ist für diese Sitzung nicht freigegeben. "
@@ -1020,6 +1051,7 @@ async def dispatch_bridge_command(
     violation = _scope_violation(req.action, req.params or {}, session)
     if violation:
         raise HTTPException(status_code=403, detail=violation)
+    req.params = _streng_wenn_beschraenkt(req.action, req.params or {}, session)
 
     if not session["bridge_connected"] or not session["bridge_ws"]:
         raise HTTPException(status_code=503, detail="Bridge not connected")

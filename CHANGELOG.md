@@ -5,6 +5,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.395.0] - 2026-10-29
+
+### Neu
+- **Desktop-Bridge bedient Elemente direkt — unter Windows über UI Automation, auf dem Mac über die Bedienungshilfen.** Bisher konnte die Bridge Elemente nur finden und dann auf ihre Mitte klicken. Das ging bei skalierten Anzeigen, zweiten Monitoren oder halb verdeckten Fenstern daneben. Neu:
+  - Bridge-Aktionen `element_press` (Schritte `press`, `toggle`, `select`, `expand`, `collapse`, `focus`) und `element_set_value`. Sie lösen das Element über seine eigenen Muster aus: Invoke, Toggle, SelectionItem, ExpandCollapse und Value unter Windows, AXPress und AXValue auf dem Mac.
+  - `select` mit einem Wert klappt eine Auswahlliste auf und wählt den Eintrag. `toggle` mit `true`/`false` bringt ein Häkchen auf genau diesen Stand.
+  - Das Ergebnis nennt den genutzten Weg und den Stand des Elements danach (Inhalt, Häkchen, Auswahl, aufgeklappt).
+  - Hat ein Element keinen eigenen Weg, klickt bzw. tippt die Bridge an seiner Mitte, mit derselben Overlay-Sperre wie `click`, und sagt das dazu.
+  - Für Agenten als MCP-Werkzeug `computer_element_action`, für Codex/eigene Modelle über `computer_use`, in der Sprachfront als Kurzformen `press` und `set`.
+- Die Suche nach Elementen läuft jetzt direkt über die lebende Oberfläche (Breite vor Tiefe, mit Obergrenze), statt erst einen ganzen Baum aufzubauen. Eine genaue Beschriftung schlägt einen Teiltreffer: „Speichern“ trifft nicht mehr „Speichern unter …“. `wait_for_element` wartet auch, solange die Anwendung noch startet.
+
+### Behoben
+- **Der Elementbaum war auf dem Mac immer leer.** Die Bridge las Attribute als `elem.AXRole`, das es in pyobjc nicht gibt. Jeder Knoten wurde verworfen, `find_element` fand auf dem Mac nie etwas. Ohne Programmnamen las sie das systemweite Element, das keine Kinder hat; jetzt die Anwendung im Vordergrund. Knöpfe ohne Beschriftung (Schließen, Minimieren) sind über ihre Rollenbeschreibung auffindbar.
+- **UI Automation unter Windows lief nur im ersten Thread.** Die Bridge führt Befehle im Thread-Pool aus, COM braucht aber je Thread eine Initialisierung. Alle Zugriffe laufen jetzt in einem eigenen Initialisierungskontext.
+- `list_windows` unter Windows nennt den Prozessnamen statt des Fensterklassennamens. `focus_window` findet das Fenster auch über den Prozessnamen.
+- Werte von Passwortfeldern werden unter Windows weder in den Baum noch in Suchtreffer übernommen.
+
+### Sicherheit
+- `element_press` gehört zur Freigabe *Maus steuern*, `element_set_value` zu *Tastatureingabe*. Wer nur das Lesen der Oberfläche freigibt, kann damit nichts auslösen.
+- Ist eine Sitzung auf bestimmte Anwendungen beschränkt, verlangen beide Aktionen das Programm (`app`) und prüfen es gegen die Freigabeliste.
+- Bei solchen Sitzungen löst die Bridge das Programm nur noch über den genauen Prozess- bzw. App-Namen auf, auch bei `focus_window`. Vorher genügte ein Teiltreffer im Fenstertitel: Bei freigegebenem „Excel“ hätte so ein Browserfenster „Excel-Tipps – Chrome“ bedient werden können.
+- `element_press` trägt keinen Text ein (kein `set_value`, kein freier Text in Auswahllisten). Das bleibt `element_set_value` mit Tastatur-Freigabe.
+- Vor einem Rückfall-Klick holt die Bridge das genannte Programm nach vorn. Klappt das nicht, klickt sie nicht.
+- Eigene Fenster der Bridge (Overlay, Einstellungen) werden nie gesucht oder bedient.
+- Passwortfelder auf dem Mac werden über die Unterrolle erkannt und nie ausgelesen.
+- Suche und Baum haben eine Zeitgrenze (8 s), höchstens 300 Kinder je Element und höchstens 10 Ebenen. Eine hängende Anwendung blockiert die Bridge nicht mehr.
+- Eingetragene Werte erscheinen im Prüfprotokoll nur geschwärzt.
+
 ## [1.394.2] - 2026-10-29
 
 ### Dokumentation

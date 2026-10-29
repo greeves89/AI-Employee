@@ -2734,11 +2734,22 @@ Bildschirm 2“). Dafür braucht es die Bridge ab Version 1.382.0; eine ältere 
 bisher nur den Hauptbildschirm. Die Live-Ansicht auf der Agentenseite zeigt weiterhin den
 Hauptbildschirm.
 
-**Was der Agent innerhalb einer Anwendung kann.** Er bedient sie wie ein Mensch: App
-öffnen → das gesuchte Element **finden** → klicken → tippen → **nachsehen**, ob es geklappt
-hat. Elemente findet er über die **Bedienungshilfen** des Betriebssystems, nicht über
-geratene Koordinaten — das funktioniert seit 1.165.0 unter **macOS und Windows**
-gleichermaßen.
+**Was der Agent innerhalb einer Anwendung kann.** Er bedient sie über die
+**Bedienungshilfen** des Betriebssystems (unter Windows *UI Automation*, auf dem Mac die
+Bedienungshilfen von macOS): App öffnen → das Element **finden** → es **direkt bedienen** →
+**nachsehen**, ob es gewirkt hat. Direkt bedienen heißt: Der Agent löst den Knopf selbst aus,
+setzt ein Häkchen, wählt einen Eintrag in einer Aufklappliste, klappt einen Ordner auf oder
+füllt ein Eingabefeld. Er klickt dafür nicht auf eine Stelle des Bildschirms. Das klappt
+deshalb auch bei skalierten Anzeigen, auf einem zweiten Monitor und wenn ein anderes Fenster
+halb davor liegt. Nach jedem Schritt meldet die Bridge, wie das Element jetzt steht (Inhalt
+des Felds, Häkchen gesetzt, Eintrag gewählt). Nur wo ein Element keinen eigenen Weg anbietet,
+etwa eine Zeichenfläche, klickt oder tippt die Bridge an seiner Stelle und sagt das dazu.
+Ab Bridge 1.395.0; ältere Bridges finden Elemente nur und klicken dann auf ihre Mitte.
+
+Das direkte Bedienen fällt unter dieselben Freigaben wie Klicken und Tippen:
+**Maus steuern** für Knöpfe, Häkchen und Listen, **Tastatureingabe** für Eingabefelder. Ist
+die Sitzung auf bestimmte Programme beschränkt, muss der Agent das Programm dabei nennen;
+andere Programme bedient er nicht. Das Overlay der Bridge bedient er nie.
 
 *Nur Windows:* Dafür braucht die Bridge einmalig das Paket `uiautomation`. Die aktuelle
 Bridge-App bringt es mit; bei einer selbst installierten Bridge einmal
@@ -2749,6 +2760,17 @@ tippen und Tastenkombinationen gehen auch ohne, er braucht dann nur deinen Hinwe
 1. Bridge starten, anmelden, Berechtigungen *Screenshot* + *Klick* erlauben.
 2. Im Agent-Chat: „Öffne den Browser und zeig mir die Startseite." → der Agent macht einen
    Screenshot und klickt sich nach deinen Freigaben durch.
+
+### 23.1a Szenario: Agent füllt ein Windows-Programm aus
+1. Bridge starten und anmelden. Unter **Berechtigungen** sind *Aufbau der Oberfläche*,
+   *Maus steuern* und *Tastatureingabe* standardmäßig an.
+2. Im Agent-Chat zum Beispiel: „Öffne den Editor, schreib ‚Hallo Team' hinein und setz in
+   den Einstellungen das Häkchen bei Zeilenumbruch.“
+3. Der Agent öffnet das Programm, füllt das Textfeld direkt und setzt das Häkchen. In seiner
+   Antwort steht, was er bedient hat und wie es danach steht, zum Beispiel
+   „Häkchen gesetzt: ja“.
+4. Findet er ein Element nicht, sagt er das, statt irgendwo hinzuklicken. Hilf ihm dann
+   mit der genauen Beschriftung („der Knopf heißt ‚Übernehmen‘“).
 
 ### 23.2 ego lite: der Agent arbeitet in deiner ECHTEN, eingeloggten Sitzung
 
