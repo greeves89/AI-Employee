@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAufgabeFenster } from "@/components/tasks/aufgabe-fenster";
 import { CalendarDays, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCost, formatDuration } from "@/lib/utils";
@@ -341,7 +342,7 @@ function MultiAgentStrip({
 function AgentRow({
   agent: a, dayStart, now, isToday,
 }: { agent: ActivityAgentTimeline; dayStart: Date; now: Date; isToday: boolean }) {
-  const router = useRouter();
+  const { oeffnen: aufgabeOeffnen } = useAufgabeFenster();
   const nowPct = isToday ? pct(now.getTime() - dayStart.getTime()) : null;
 
   return (
@@ -366,7 +367,7 @@ function AgentRow({
             <button
               type="button"
               key={t.task_id}
-              onClick={() => router.push(`/tasks/${t.task_id}`)}
+              onClick={() => aufgabeOeffnen(t.task_id)}
               className={cn(
                 "group absolute bottom-1 top-1 overflow-hidden rounded-md border px-1.5 py-1 text-left transition-opacity hover:z-10 hover:opacity-80",
                 statusStyle[t.status] || "border-foreground/30 bg-foreground/20",
@@ -448,6 +449,7 @@ function DayAgenda({
   agent, dayStart, now, isToday,
 }: { agent: ActivityAgentTimeline; dayStart: Date; now: Date; isToday: boolean }) {
   const router = useRouter();
+  const { oeffnen: aufgabeOeffnen } = useAufgabeFenster();
   const scrollRef = useRef<HTMLDivElement>(null);
   // Was der Agent sich VORGENOMMEN hat — die Gegenprobe zu den Task-Balken, die nur
   // zeigen, was schon gelaufen ist. Ohne das bleibt "was hat das Ding heute vor?"
@@ -652,7 +654,7 @@ function DayAgenda({
                 role="button"
                 onClick={
                   item.task_id
-                    ? () => router.push(`/tasks/${item.task_id}`)
+                    ? () => aufgabeOeffnen(item.task_id!)
                     : () => openEditor(item)
                 }
                 title={
@@ -764,7 +766,7 @@ function DayAgenda({
               <button
                 type="button"
                 key={t.task_id}
-                onClick={() => router.push(`/tasks/${t.task_id}`)}
+                onClick={() => aufgabeOeffnen(t.task_id)}
                 // Kurze Aufgaben sind nur einen Titel hoch — die zweite Zeile passt
                 // nicht hinein. Beim Ueberfahren steht trotzdem alles da.
                 title={`${cleanTitle(t.title)}${t.resumed ? " (fortgesetzt)" : ""}\n${timeRange} · ${t.status}${durationSuffix}${costSuffix}`}

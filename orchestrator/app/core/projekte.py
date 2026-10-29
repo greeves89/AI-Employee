@@ -123,12 +123,15 @@ def _extern_stockt(k: ProjektKarte) -> bool:
     return extern_stockt(k)
 
 
-def karte_dict(k: ProjektKarte, task: Task | None = None, *, lauf_sichtbar: bool = True) -> dict:
-    zeigen = task is not None and lauf_sichtbar and k.spalte == "pruefung"
+def karte_dict(k: ProjektKarte, task: Task | None = None, *, lauf_sichtbar: bool = True,
+               voll: bool = False) -> dict:
+    """Karte für Board und Fenster. ``voll``: für das Fenster einer einzelnen Karte —
+    ganzer Text, Ergebnis und Fehler des Laufs in jeder Spalte (das Board kürzt)."""
+    zeigen = task is not None and lauf_sichtbar and (voll or k.spalte == "pruefung")
     return {
         "id": k.id,
         "titel": k.titel,
-        "text": _kurz(k.text, 600),
+        "text": k.text if voll else _kurz(k.text, 600),
         "quelle": k.quelle,
         "extern_nr": k.extern_nr,
         "url": k.url,
@@ -153,8 +156,8 @@ def karte_dict(k: ProjektKarte, task: Task | None = None, *, lauf_sichtbar: bool
         "aktualisiert": _utc(k.updated_at),
         "erledigt": _utc(k.erledigt_at),
         "kosten_usd": task.cost_usd if task is not None and lauf_sichtbar else None,
-        "ergebnis": _kurz(task.result, 400) if zeigen else None,
-        "fehler": _kurz(task.error, 300) if zeigen else None,
+        "ergebnis": (task.result if voll else _kurz(task.result, 400)) if zeigen else None,
+        "fehler": (task.error if voll else _kurz(task.error, 300)) if zeigen else None,
     }
 
 

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import Link from "next/link";
+import { AufgabeLink } from "@/components/tasks/aufgabe-fenster";
 import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
@@ -289,7 +290,7 @@ function SingleTasksView() {
             const läuft = task.status === "running";
             const canCancel = läuft || task.status === "queued" || task.status === "pending";
             return (
-              <Link key={task.id} href={`/tasks/${task.id}`}>
+              <AufgabeLink key={task.id} taskId={task.id}>
               <motion.div
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -405,7 +406,7 @@ function SingleTasksView() {
                   </div>
                 )}
               </motion.div>
-              </Link>
+              </AufgabeLink>
             );
           })}
         </div>

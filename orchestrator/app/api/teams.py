@@ -740,6 +740,28 @@ async def projekt_board_text(team_id: str, user=Depends(require_auth_or_agent), 
     return {"projekt_id": t.id, "text": f"{text}\n\nMitglieder: {mitglieder or '—'}"}
 
 
+@router.get("/{team_id}/karten/{karte_id}")
+async def karte_holen(team_id: str, karte_id: str, user=Depends(require_auth_or_agent),
+                      db: AsyncSession = Depends(get_db)):
+    """Eine Karte vollständig — für das Fenster, das sich beim Klick auf eine Karte öffnet.
+
+    Den Lauf (Ergebnis, Kosten) sieht nur, wem der ausführende Agent gehört — wie im Board.
+    """
+    from app.core import projekte
+    from app.models.task import Task
+
+    t = await _projekt(team_id, user, db)
+    try:
+        karte = await projekte.karte_laden(db, t.id, karte_id)
+    except LookupError as e:
+        raise _kartenfehler(e)
+    task = await db.get(Task, karte.task_id) if karte.task_id else None
+    sicht = await _sicht(user, db)
+    lauf_sichtbar = task is not None and (sicht is None or task.agent_id in sicht)
+    return {**projekte.karte_dict(karte, task, lauf_sichtbar=lauf_sichtbar, voll=True),
+            "lauf_sichtbar": lauf_sichtbar}
+
+
 class NeueKarte(BaseModel):
     titel: str = Field(min_length=1, max_length=300)
     text: str = Field(default="", max_length=20000)

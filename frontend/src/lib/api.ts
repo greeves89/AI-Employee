@@ -5133,6 +5133,11 @@ export async function karteVergeben(id: string, karteId: string, agentId?: strin
   });
 }
 
+/** Eine Karte vollständig (ganzer Text, Ergebnis des Laufs) — für das Karten-Fenster. */
+export async function karteHolen(id: string, karteId: string): Promise<ProjektKarte & { lauf_sichtbar: boolean }> {
+  return fetchJSON(`${getBase()}/teams/${id}/karten/${karteId}`);
+}
+
 export async function karteAbnehmen(id: string, karteId: string): Promise<ProjektKarte> {
   return fetchJSON(`${getBase()}/teams/${id}/karten/${karteId}/abnehmen`, { method: "POST" });
 }

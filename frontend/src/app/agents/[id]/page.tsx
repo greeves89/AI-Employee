@@ -57,7 +57,7 @@ import { AUFGABEN_STATUS, aufgabenTitel, istSystemZeitplan } from "@/lib/aufgabe
 import { Fenster } from "@/components/ui/fenster";
 import { MarkdownContent } from "@/components/ui/markdown-content";
 import { Stufenwahl } from "@/components/ui/stufenwahl";
-import { TaskDetail } from "@/components/tasks/task-detail";
+import { AufgabeLink, useAufgabeFenster } from "@/components/tasks/aufgabe-fenster";
 import type { AgentTodo, Schedule } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { formatDuration, formatCost, timeAgo } from "@/lib/utils";
@@ -876,12 +876,12 @@ function AufgabenSpalte({
 }) {
   const [plaene, setPlaene] = useState<Schedule[]>([]);
   const [todos, setTodos] = useState<AgentTodo[]>([]);
-  // Aufgabe im Fenster ueber dem Chat — man bleibt im Gespraech.
-  const [angesehen, setAngesehen] = useState<string | null>(null);
+  // Aufgabe im Fenster ueber dem Chat — man bleibt im Gespraech (gemeinsames
+  // Aufgaben-Fenster, wie ueberall).
+  const { oeffnen: aufgabeOeffnen } = useAufgabeFenster();
   // Ohne eigene Wahl: der erste Reiter mit Inhalt, nicht ein leerer "Offen".
   const [gewaehlterReiter, setReiter] = useState<"offen" | "geplant" | "erledigt" | null>(null);
   const [suche, setSuche] = useState("");
-  const fensterZu = useCallback(() => setAngesehen(null), []);
   // Offenes To-do ansehen, abhaken oder streichen — vorher tat ein Klick nichts.
   const [todoAuf, setTodoAuf] = useState<AgentTodo | null>(null);
   const [todoArbeitet, setTodoArbeitet] = useState(false);
@@ -1008,7 +1008,7 @@ function AufgabenSpalte({
       const Icon = cfg.icon;
       return {
         key: e.key,
-        onClick: e.aufgabe ? () => setAngesehen(e.aufgabe!) : undefined,
+        onClick: e.aufgabe ? () => aufgabeOeffnen(e.aufgabe!) : undefined,
         icon: <Icon className={cn("h-3.5 w-3.5 mt-0.5 shrink-0", cfg.color, e.status === "running" && "animate-spin")} />,
         titel: e.titel,
         unter: `${AUFGABEN_STATUS[e.status] ?? e.status} · ${timeAgo(e.zeit)}`,
@@ -1126,9 +1126,6 @@ function AufgabenSpalte({
           </div>
         )}
       </Fenster>
-      <Fenster offen={angesehen !== null} schliessen={fensterZu} breite="max-w-5xl">
-        {angesehen && <TaskDetail key={angesehen} taskId={angesehen} imFenster zeigeAufgabe={setAngesehen} />}
-      </Fenster>
     </aside>
   );
 }
@@ -1162,7 +1159,7 @@ function TaskHistory({ tasks }: { tasks: ReturnType<typeof useTasks>["tasks"] })
         const cfg = statusConfig[task.status] ?? statusConfig.pending;
         const Icon = cfg.icon;
         return (
-          <Link key={task.id} href={`/tasks/${task.id}`}>
+          <AufgabeLink key={task.id} taskId={task.id}>
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1214,7 +1211,7 @@ function TaskHistory({ tasks }: { tasks: ReturnType<typeof useTasks>["tasks"] })
               </div>
             )}
           </motion.div>
-          </Link>
+          </AufgabeLink>
         );
       })}
     </div>
