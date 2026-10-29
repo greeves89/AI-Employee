@@ -5023,6 +5023,11 @@ export async function karteAbnehmen(id: string, karteId: string): Promise<Projek
   return fetchJSON(`${getBase()}/teams/${id}/karten/${karteId}/abnehmen`, { method: "POST" });
 }
 
+/** Liegen gebliebene fremde Übernahme lösen: Tag und Zuständige im Repo weg, Karte nach Bereit. */
+export async function karteExternFreigeben(id: string, karteId: string): Promise<ProjektKarte> {
+  return fetchJSON(`${getBase()}/teams/${id}/karten/${karteId}/extern-freigeben`, { method: "POST" });
+}
+
 export async function karteZurueckgeben(id: string, karteId: string, hinweis: string, agentId?: string | null): Promise<ProjektKarte> {
   return fetchJSON(`${getBase()}/teams/${id}/karten/${karteId}/zurueckgeben`, {
     method: "POST",

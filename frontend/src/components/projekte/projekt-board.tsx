@@ -9,8 +9,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { UserRound,
-  ArrowLeft, ArrowRight, Check, CircleDot, CornerUpLeft, ExternalLink, GitPullRequest, Loader2, Play, Plus,
-  Trash2, TriangleAlert,
+  ArrowLeft, ArrowRight, Check, CircleDot, CornerUpLeft, ExternalLink, GitBranch, GitPullRequest, Loader2, Play, Plus,
+  Trash2, TriangleAlert, Unlock,
 } from "lucide-react";
 import type { Agent } from "@/lib/types";
 import {
@@ -51,6 +51,8 @@ export interface BoardAktionen {
   verschieben: (k: ProjektKarte, aenderung: { spalte?: string; prioritaet?: number }) => Promise<void>;
   vergeben: (k: ProjektKarte, agentId: string | null) => Promise<void>;
   abnehmen: (k: ProjektKarte) => Promise<void>;
+  /** Fremde Übernahme lösen (Tag + Zuständige im Repo weg, Karte nach Bereit). */
+  freigeben: (k: ProjektKarte) => Promise<void>;
   // agentId leer: der bisherige Bearbeiter — ist er nicht mehr im Projekt, der Lead.
   zurueckgeben: (k: ProjektKarte, hinweis: string, agentId: string | null) => Promise<void>;
   anlegen: (titel: string, text: string) => Promise<void>;
@@ -84,6 +86,55 @@ function Knopf({
       {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
       {children}
     </button>
+  );
+}
+
+/** Stand einer Übernahme von außen: übernommen → Branch → PR, dazu das letzte Lebenszeichen. */
+function ExternStand({ karte, farbe, onFreigeben }: { karte: ProjektKarte; farbe: string; onFreigeben: () => Promise<void> }) {
+  const schritte = [
+    { label: "Übernommen", da: true },
+    { label: "Branch", da: !!karte.extern_branch },
+    { label: "PR", da: !!karte.pr_nr },
+  ];
+  return (
+    <div className="mt-2 space-y-1.5">
+      <div className="flex items-center gap-1 text-[10px]">
+        {schritte.map((s, i) => (
+          <span key={s.label} className="inline-flex items-center gap-1">
+            {i > 0 && <span className="h-px w-3 bg-foreground/15" />}
+            <span
+              className={cn("rounded-full px-1.5 py-px", s.da ? "font-medium text-foreground" : "text-muted-foreground/70 ring-1 ring-inset ring-foreground/10")}
+              style={s.da ? { background: `${farbe}22` } : undefined}
+            >
+              {s.label}
+            </span>
+          </span>
+        ))}
+      </div>
+      {karte.extern_branch && (
+        <p className="flex items-center gap-1 truncate text-[10px] text-muted-foreground" title={karte.extern_branch}>
+          <GitBranch className="h-3 w-3 shrink-0" /> {karte.extern_branch}
+        </p>
+      )}
+      {karte.extern_stockt ? (
+        <div className="rounded-md bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+          <p className="flex items-start gap-1">
+            <TriangleAlert className="mt-px h-3 w-3 shrink-0" />
+            <span>
+              Liegt: {karte.extern_regung ? `letzte Bewegung ${timeAgo(karte.extern_regung)}` : "keine Bewegung"} — kein Commit,
+              kein Pull Request.
+            </span>
+          </p>
+          <div className="mt-1.5">
+            <Knopf titel="Übernahme im Repo lösen, Karte nach Bereit" onClick={onFreigeben}>
+              <Unlock className="h-3 w-3" /> Freigeben
+            </Knopf>
+          </div>
+        </div>
+      ) : (
+        karte.extern_regung && <p className="text-[10px] text-muted-foreground">Letzte Bewegung {timeAgo(karte.extern_regung)}</p>
+      )}
+    </div>
   );
 }
 
@@ -168,7 +219,11 @@ function Karte({
 
       {karte.notiz && <p className="mt-1.5 rounded-md bg-amber-500/10 px-2 py-1 text-[11px] text-amber-700 dark:text-amber-300">{karte.notiz}</p>}
 
-      {karte.spalte === "in_arbeit" && (
+      {karte.spalte === "in_arbeit" && karte.extern_bearbeiter && !karte.task_id && (
+        <ExternStand karte={karte} farbe={farbe} onFreigeben={() => aktionen.freigeben(karte)} />
+      )}
+
+      {karte.spalte === "in_arbeit" && !(karte.extern_bearbeiter && !karte.task_id) && (
         <>
           {ausgabe && (
             <p className="mt-1.5 line-clamp-2 text-[11px] italic text-foreground/70" title={ausgabe}>„{ausgabe}“</p>

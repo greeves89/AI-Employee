@@ -35,7 +35,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 from urllib.parse import urlsplit
 
@@ -58,6 +58,14 @@ TAKT_SEKUNDEN = 600
 ANONYM_ABSTAND_SEKUNDEN = 1800
 #: Hoechstdauer eines Abgleichs je Projekt (Scheduler, Oeffnen, Knopf).
 ABGLEICH_FRIST_SEKUNDEN = 60
+#: So lange darf eine fremde Übernahme ohne jede Regung bleiben (keine Änderung am
+#: Issue, kein Commit auf ihrem Branch, kein PR), bevor das Board sie als liegen
+#: geblieben zeigt und das Projekt es meldet. Gemessen am 29.10.: eine Sitzung
+#: übernahm zehn Tickets auf einmal und brachte danach stundenlang nichts ins Repo
+#: — das Board zeigte sie als „in Arbeit“, und niemandem fiel es auf.
+EXTERN_STILL_AB = timedelta(hours=2)
+#: Höchstens so viele Commit-Abfragen je Abgleich (GitHub nennt am Branch keine Zeit).
+MAX_BRANCH_ZEITEN = 10
 OEFFNEN_ABSTAND_SEKUNDEN = 60
 OEFFNEN_ABSTAND_ANONYM_SEKUNDEN = 300
 
@@ -263,7 +271,38 @@ def _zustaendige(eintrag: dict) -> list[str]:
     return [str(p.get("login")) for p in leute if isinstance(p, dict) and p.get("login")][:5]
 
 
-def extern_nachziehen(karte, labels: list[str], zustaendige: list[str]) -> bool:
+def _zeit(wert) -> datetime | None:
+    """ISO-Zeit aus einer Antwort des Repos — None, wenn unlesbar."""
+    if not isinstance(wert, str) or not wert:
+        return None
+    try:
+        return _aware(datetime.fromisoformat(wert.replace("Z", "+00:00")))
+    except ValueError:
+        return None
+
+
+def _aware(wert: datetime | None) -> datetime | None:
+    if wert is None:
+        return None
+    return wert if wert.tzinfo else wert.replace(tzinfo=timezone.utc)
+
+
+def extern_regung(karte) -> datetime | None:
+    """Letztes Lebenszeichen einer fremden Übernahme."""
+    werte = [w for w in (_aware(karte.extern_regung_at), _aware(karte.extern_seit)) if w]
+    return max(werte) if werte else None
+
+
+def extern_stockt(karte, jetzt: datetime | None = None) -> bool:
+    """Ist eine fremde Übernahme liegen geblieben? Ohne Regung seit ``EXTERN_STILL_AB``."""
+    if not karte.extern_bearbeiter or karte.task_id or karte.spalte != "in_arbeit":
+        return False
+    letzte = extern_regung(karte)
+    return letzte is not None and (jetzt or datetime.now(timezone.utc)) - letzte > EXTERN_STILL_AB
+
+
+def extern_nachziehen(karte, labels: list[str], zustaendige: list[str],
+                      seit: datetime | None = None, jetzt: datetime | None = None) -> bool:
     """Stand einer Issue-Karte an das anpassen, was AUSSERHALB des Boards passiert.
 
     Nimmt ein anderer Agent (eine andere AI-Employee-Anlage, Claude Code) oder ein
@@ -283,6 +322,13 @@ def extern_nachziehen(karte, labels: list[str], zustaendige: list[str]) -> bool:
         # Arbeitet ein eigener Agent daran, ist ein In-Arbeit-Tag unser eigenes
         # (``uebernahme_melden``) — kein Fremder.
         bearbeiter = None
+    if bearbeiter is None:
+        karte.extern_seit = karte.extern_regung_at = karte.extern_branch = None
+    elif karte.extern_seit is None:
+        # Wann übernommen wurde, sagt das Repo nicht direkt. Die letzte Änderung am
+        # Issue ist die beste Schätzung (das Tag zu setzen ändert es) — sonst jetzt.
+        jetzt = jetzt or datetime.now(timezone.utc)
+        karte.extern_seit = min(seit, jetzt) if seit else jetzt
     karte.extern_bearbeiter = bearbeiter
     if karte.task_id or karte.spalte == "erledigt":
         return vorher != (karte.spalte, karte.extern_bearbeiter)
@@ -351,8 +397,13 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
             if karte.spalte == "erledigt" and karte.notiz == "Issue geschlossen":
                 # Wieder geöffnet: zurück in den Eingang.
                 karte.spalte, karte.erledigt_at, karte.notiz = "eingang", None, "Issue wieder geöffnet"
-        if extern_nachziehen(karte, _labels(issue), _zustaendige(issue)) and karte.extern_bearbeiter is not None:
+        geaendert_am = _zeit(issue.get("updated_at"))
+        if extern_nachziehen(karte, _labels(issue), _zustaendige(issue), seit=geaendert_am, jetzt=jetzt) \
+                and karte.extern_bearbeiter is not None:
             aktualisiert += 1
+        if karte.extern_bearbeiter and geaendert_am and (
+                karte.extern_regung_at is None or geaendert_am > _aware(karte.extern_regung_at)):
+            karte.extern_regung_at = geaendert_am
 
     for (quelle, nr), karte in vorhanden.items():
         if quelle != "issue" or nr in offen_issues or karte.spalte == "erledigt":
@@ -422,10 +473,48 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
                 karte.spalte, karte.erledigt_at = "erledigt", jetzt
                 erledigt += 1
 
+    await _extern_branches(anbieter, client, token, repo, list(vorhanden.values()))
+
     team.repo_abgleich_at = jetzt
     team.repo_fehler = None
     return {"neu": neu, "aktualisiert": aktualisiert, "erledigt": erledigt,
             "offene_issues": len(issues), "offene_prs": len(pulls)}
+
+
+async def _extern_branches(anbieter, client: httpx.AsyncClient, token: str, repo: str, karten: list) -> None:
+    """Branch und letzten Commit fremder Übernahmen nachziehen — ein Lebenszeichen.
+
+    Wer nach dem Übernehmen pusht, arbeitet; das sieht man am Issue nicht. Eine
+    Abfrage der Branches je Abgleich, Commit-Zeiten nur für die betroffenen.
+    """
+    offen = [k for k in karten if k.quelle == "issue" and k.extern_bearbeiter and not k.task_id
+             and k.spalte == "in_arbeit" and not k.pr_nr]
+    if not offen or not hasattr(anbieter, "list_branches"):
+        return
+    try:
+        branches = await anbieter.list_branches(client, token, repo)
+    except Exception as e:  # noqa: BLE001 — Beiwerk: ohne Branches zählt die Issue-Zeit
+        log.info("[Projekt] Branches von %s nicht lesbar: %s", repo, e)
+        return
+    je_nr: dict[int, dict] = {}
+    for b in branches:
+        for n in _BRANCH_NR.findall(str(b.get("name") or "")):
+            je_nr.setdefault(int(n), b)
+    abfragen = 0
+    for karte in offen:
+        b = je_nr.get(karte.extern_nr)
+        karte.extern_branch = str(b["name"])[:200] if b else None
+        if not b:
+            continue
+        zeit = _zeit(b.get("zeit"))
+        if zeit is None and b.get("sha") and abfragen < MAX_BRANCH_ZEITEN and hasattr(anbieter, "commit_zeit"):
+            abfragen += 1
+            try:
+                zeit = _zeit(await anbieter.commit_zeit(client, token, repo, b["sha"]))
+            except Exception:  # noqa: BLE001
+                zeit = None
+        if zeit and (karte.extern_regung_at is None or zeit > _aware(karte.extern_regung_at)):
+            karte.extern_regung_at = zeit
 
 
 async def projekt_abgleichen(db: AsyncSession, redis, team: Team) -> dict:
@@ -603,6 +692,51 @@ async def uebernahme_melden(team_id: str, karte_id: str, redis, *, agent_name: s
             log.warning("[Projekt] Übernahme #%s nicht ins Repo gemeldet: %s", nr, e)
             karte.notiz = f"Übernahme nicht ins Repo gemeldet: {str(e)[:200]}"[:500]
             await db.commit()
+
+
+async def extern_freigeben(db: AsyncSession, redis, team: Team, karte: ProjektKarte) -> None:
+    """Eine liegen gebliebene fremde Übernahme lösen — auf Wunsch des Menschen.
+
+    Im Repo: In-Arbeit-Tags und Zuständige weg, ein Kommentar dazu. Auf dem Board:
+    die Karte zurück nach „Bereit“, der Lead kann sie vergeben. Der Aufrufer
+    committet. Scheitert das Schreiben ins Repo, bleibt alles, wie es war — sonst
+    holte der nächste Abgleich die Übernahme gleich wieder zurück.
+    """
+    if karte.quelle != "issue" or not karte.extern_nr or not team.repo:
+        raise GitFehler("Nur Karten aus Issues haben eine Übernahme im Repo.")
+    if not karte.extern_bearbeiter or karte.task_id or karte.spalte != "in_arbeit":
+        raise GitFehler("An dieser Karte arbeitet niemand von außen.")
+    token, anbieter = await zugang(db, redis, team)
+    if not token:
+        raise GitFehler("Ohne Schlüssel kann das Board nichts ins Repo schreiben (Bearbeiten → Schlüssel).")
+    repo, nr = repo_ziel(team.repo).pfad, karte.extern_nr
+    letzte = extern_regung(karte)
+    seit = ""
+    if letzte is not None:
+        stunden = max(1, int((datetime.now(timezone.utc) - letzte).total_seconds() // 3600))
+        seit = f" seit {stunden} Std."
+    async with httpx.AsyncClient(timeout=httpx.Timeout(10.0), follow_redirects=False) as client:
+        issue = await anbieter.get_issue(client, token, repo, nr)
+        if not isinstance(issue, dict):
+            raise GitFehler(f"Issue #{nr} ist nicht lesbar.")
+        for tag in _labels(issue):
+            if _status_aus_tags([tag]) == "in_arbeit" and not await anbieter.remove_label(client, token, repo, nr, tag):
+                raise GitFehler(f"Tag {tag} ließ sich nicht entfernen (Schreibrecht für Issues?).")
+        leute = _zustaendige(issue)
+        if leute and not await anbieter.remove_assignees(client, token, repo, nr, leute):
+            raise GitFehler("Die Zuständigen ließen sich nicht austragen (Schreibrecht für Issues?).")
+        # Ohne Namen: das Repo kann öffentlich sein.
+        await anbieter.comment_issue(
+            client, token, repo, nr,
+            f"Übernahme gelöst über das Projekt-Board: {seit.strip() or 'lange'} keine Bewegung "
+            "(kein Commit, kein Pull Request). Das Ticket ist wieder frei. Wer weiterarbeitet, setzt bitte "
+            f"erneut `{UEBERNAHME_TAG}`.")
+    karte.extern_bearbeiter = None
+    karte.extern_seit = karte.extern_regung_at = karte.extern_branch = None
+    karte.labels = [t for t in (karte.labels or []) if _status_aus_tags([t]) != "in_arbeit"]
+    karte.spalte = "bereit"
+    karte.notiz = (f"Fremde Übernahme gelöst — {seit.strip()} keine Bewegung." if seit
+                   else "Fremde Übernahme gelöst.")
 
 
 def uebernahme_im_hintergrund(team_id: str, karte_id: str, redis, *, agent_name: str | None,
