@@ -59,6 +59,17 @@ und bleiben still, dieselben 100 bei 0 Ergebnissen ergeben 100 und melden sich.
 Die Trennschaerfe der Vorgabewerte ist in
 ``tests/test_produktivitaet_monitor.py`` gemessen und als Randabstand
 festgehalten (``max(ruhig) < min(auffaellig)``), nicht als Mittelwert.
+
+## Nutzertrennung
+
+Zwei Mengen, nicht eine: ``agent_ids`` bestimmt, WORUEBER gerechnet wird,
+``inhalte_fuer``, WESSEN Inhalte (Beispieltexte, Auftragstitel, Raumnamen,
+Agentennamen) in einem Befund stehen duerfen. Fuer einen normalen Nutzer sind
+beide seine sichtbaren Agenten. Ein Administrator rechnet ueber die ganze
+Anlage, sieht Inhalte aber nur von seinen EIGENEN Agenten — fuer fremde
+Gruppen bekommt er Zahlen (``nur_kennzahlen``). Der Hintergrundwaechter
+rechnet ohne Nutzer und haelt gar keine Inhalte: seine Meldung nennt nur
+Zahlen, auch an den Lead eines gemischten Teams.
 """
 
 from __future__ import annotations
@@ -163,8 +174,14 @@ class Bilanz:
     koordination: int = 0
     fortschritt: int = 0
     arten: dict[str, int] = field(default_factory=dict)
+    #: Vollstaendig — die Auswahl des Empfaengers braucht alle Anteile. Nach
+    #: aussen geht nur, was ``inhalte_fuer`` erlaubt (siehe :meth:`zu_dict`).
     je_agent: list[AgentAnteil] = field(default_factory=list)
+    #: Nur Beispiele von Agenten aus ``inhalte_fuer`` — schon beim Sammeln
+    #: gefiltert, nicht erst bei der Ausgabe.
     beispiele: list[dict] = field(default_factory=list)
+    #: Agenten, deren Namen und Inhalte in der Antwort stehen duerfen.
+    inhalte_fuer: frozenset[str] = frozenset()
 
     @property
     def verhaeltnis(self) -> float:
@@ -185,8 +202,11 @@ class Bilanz:
             "fortschritt": self.fortschritt,
             "verhaeltnis": round(self.verhaeltnis, 2),
             "arten": dict(sorted(self.arten.items())),
+            # Nur Agenten, deren Inhalte der Aufrufer sehen darf: ein Name
+            # ist schon ein Inhalt eines fremden Nutzers.
             "je_agent": [a.zu_dict() for a in sorted(
-                self.je_agent, key=lambda x: (-x.koordination, x.agent_name)
+                (x for x in self.je_agent if x.agent_id in self.inhalte_fuer),
+                key=lambda x: (-x.koordination, x.agent_name),
             )],
             "beispiele": self.beispiele,
         }
@@ -208,12 +228,17 @@ class Befund:
     #: Lead-Wechsel (oder ein neu angelegter Agent, der in der Sortierung
     #: vorrueckt) denselben Zustand sofort ein zweites Mal.
     mitglieder: frozenset[str] = frozenset()
+    #: Keiner der Mitglieder gehoert dem Aufrufer: der Befund traegt nur
+    #: Zahlen — keine Beispiele, keine Agentennamen (Administrator-Sicht auf
+    #: fremde Gruppen).
+    nur_kennzahlen: bool = False
 
     def zu_dict(self) -> dict:
         return {
             "gruppe_id": self.gruppe_id,
             "gruppe_name": self.gruppe_name,
             "art": self.art,
+            "nur_kennzahlen": self.nur_kennzahlen,
             "warnung": self.warnung,
             "begruendung": self.begruendung,
             **self.bilanz.zu_dict(),
@@ -306,6 +331,92 @@ async def lade_raeume(db, seit: datetime) -> list:
     )).scalars().all())
 
 
+@dataclass
+class Vorrat:
+    """Alle Rohdaten eines Fensters fuer eine Menge von Agenten — EINMAL geladen.
+
+    ``tasks`` hat keinen Index auf ``agent_id``/``created_at``/``completed_at``;
+    jede Auftragsabfrage ist auf Postgres ein Durchlauf ueber die ganze
+    Tabelle. Je Gruppe wiederholt waeren das bei zwanzig Gruppen vierzig
+    Tabellendurchlaeufe pro Stunde — auf einem Raspberry Pi spuerbar. Darum
+    laedt ein Durchlauf die Rohdaten einmal fuer die Vereinigung aller
+    Gruppen, und jede Gruppe filtert daraus in Python.
+    """
+
+    seit: datetime
+    #: (from_agent_id, message_type, Textanfang)
+    nachrichten: list[tuple] = field(default_factory=list)
+    todos: list[str] = field(default_factory=list)
+    freigaben: list[str] = field(default_factory=list)
+    #: (id, agent_id, title, metadata)
+    angelegt: list[tuple] = field(default_factory=list)
+    #: (id, agent_id, Ergebnislaenge)
+    fertig: list[tuple] = field(default_factory=list)
+    nicht_erfuellt: set[str] = field(default_factory=set)
+    raeume: list = field(default_factory=list)
+
+
+async def lade_vorrat(db, agent_ids: set[str], seit: datetime, raeume: list | None = None) -> Vorrat:
+    """Laedt die Rohdaten fuer ``agent_ids`` (explizite Menge, nie ``None``)."""
+    from app.models.agent_message import AgentMessage
+    from app.models.agent_todo import AgentTodo
+    from app.models.command_approval import CommandApproval
+    from app.models.task import Task, TaskStatus
+    from app.models.task_rating import TaskRating
+
+    vorrat = Vorrat(seit=seit)
+    if not agent_ids:
+        return vorrat
+    ids = sorted(agent_ids)
+
+    # Nachrichten: nur der Textanfang — ein Beispiel zeigt hoechstens 160
+    # Zeichen, den Volltext jeder Nachricht des Tages braucht niemand.
+    vorrat.nachrichten = list((await db.execute(
+        select(AgentMessage.from_agent_id, AgentMessage.message_type,
+               func.substr(AgentMessage.text, 1, 200))
+        .where(AgentMessage.from_agent_id.in_(ids))
+        .where(AgentMessage.timestamp >= seit)
+    )).all())
+    vorrat.todos = list((await db.execute(
+        select(AgentTodo.agent_id)
+        .where(AgentTodo.agent_id.in_(ids))
+        .where(AgentTodo.created_at >= seit)
+    )).scalars().all())
+    vorrat.freigaben = list((await db.execute(
+        select(CommandApproval.agent_id)
+        .where(CommandApproval.agent_id.in_(ids))
+        .where(CommandApproval.created_at >= seit)
+    )).scalars().all())
+    # Nur die gebrauchten Spalten: ``select(Task)`` zieht ``prompt`` und
+    # ``result`` als Volltext mit.
+    vorrat.angelegt = list((await db.execute(
+        select(Task.id, Task.agent_id, Task.title, Task.metadata_)
+        .where(Task.agent_id.in_(ids))
+        .where(Task.created_at >= seit)
+    )).all())
+    # Die Ergebnislaenge rechnet die Datenbank; den Text braucht hier niemand.
+    vorrat.fertig = list((await db.execute(
+        select(Task.id, Task.agent_id, func.length(func.trim(Task.result)))
+        .where(Task.agent_id.in_(ids))
+        .where(Task.completed_at >= seit)
+        .where(Task.status == TaskStatus.COMPLETED)
+    )).all())
+    # Die Bewertungen werden ueber die AGENTEN geholt, nicht ueber die
+    # Auftragskennungen: ``task_id.in_(fertig_ids)`` band einen Parameter je
+    # abgeschlossenem Auftrag, und jenseits von ~32.000 Parametern bricht der
+    # Postgres-Treiber hart ab. Ueber die Agenten ist die Zahl der Parameter
+    # durch die Zahl der Agenten begrenzt.
+    vorrat.nicht_erfuellt = {
+        tid for (tid,) in (await db.execute(
+            select(TaskRating.task_id)
+            .where(TaskRating.agent_id.in_(ids))
+            .where(TaskRating.fulfilled.is_(False))
+        )).all()
+    }
+    vorrat.raeume = raeume if raeume is not None else await lade_raeume(db, seit)
+    return vorrat
+
+
 async def erhebe_bilanz(
     db,
     agent_ids: set[str],
@@ -313,6 +424,8 @@ async def erhebe_bilanz(
     fenster_stunden: int,
     jetzt: datetime | None = None,
     raeume: list | None = None,
+    inhalte_fuer: set[str] | None = None,
+    vorrat: Vorrat | None = None,
 ) -> Bilanz:
     """Zaehlt Koordination und Fortschritt fuer genau diese Agenten.
 
@@ -321,20 +434,21 @@ async def erhebe_bilanz(
     dieser Dienst bekommt nur noch die bereits gefilterte Menge, damit er sie
     nicht versehentlich aufweiten kann.
 
-    ``raeume`` kann vorgeladen uebergeben werden (siehe :func:`lade_raeume`);
-    fehlt es, laedt diese Funktion selbst.
-    """
-    from app.models.agent_message import AgentMessage
-    from app.models.agent_todo import AgentTodo
-    from app.models.command_approval import CommandApproval
-    from app.models.task import Task, TaskStatus
-    from app.models.task_rating import TaskRating
+    ``inhalte_fuer`` begrenzt, von welchen Agenten Beispiele (Nachrichtentexte,
+    Auftragstitel, Raumnamen) und Namen in die Bilanz gelangen; ``None`` heisst
+    ``agent_ids``. Gezaehlt wird trotzdem ueber alle ``agent_ids``.
 
+    ``raeume`` bzw. ``vorrat`` koennen vorgeladen uebergeben werden (siehe
+    :func:`lade_vorrat`); fehlen sie, laedt diese Funktion selbst.
+    """
     jetzt = jetzt or datetime.now(timezone.utc)
     seit = jetzt - timedelta(hours=fenster_stunden)
-    bilanz = Bilanz(fenster_stunden=fenster_stunden, seit=seit)
+    erlaubt = frozenset(agent_ids if inhalte_fuer is None else set(inhalte_fuer) & agent_ids)
+    bilanz = Bilanz(fenster_stunden=fenster_stunden, seit=seit, inhalte_fuer=erlaubt)
     if not agent_ids:
         return bilanz
+    if vorrat is None:
+        vorrat = await lade_vorrat(db, agent_ids, seit, raeume=raeume)
 
     anteile: dict[str, AgentAnteil] = {
         aid: AgentAnteil(agent_id=aid, agent_name=namen.get(aid, aid)) for aid in agent_ids
@@ -347,31 +461,29 @@ async def erhebe_bilanz(
             anteile[agent_id].koordination += n
             anteile[agent_id].arten[art] = anteile[agent_id].arten.get(art, 0) + n
 
-    def beispiel(art: str, text: str, agent_id: str | None = None) -> None:
-        if len(bilanz.beispiele) >= MAX_BEISPIELE:
+    def beispiel(art: str, text: str, agent_id: str | None) -> None:
+        # Ein Beispiel ist ein INHALT: nur von Agenten, deren Inhalte der
+        # Aufrufer sehen darf — bei einem gemischten Team also nie vom
+        # Agenten eines anderen Nutzers, auch wenn er mitgezaehlt wird.
+        if agent_id not in erlaubt or len(bilanz.beispiele) >= MAX_BEISPIELE:
             return
         bilanz.beispiele.append({
             "art": art,
-            "agent": namen.get(agent_id or "", agent_id or ""),
+            "agent": namen.get(agent_id, agent_id),
             "text": (text or "").strip().replace("\n", " ")[:160],
         })
 
     # --- Koordination: Agentennachrichten (der Sender zaehlt) ---
-    nachrichten = (await db.execute(
-        select(AgentMessage)
-        .where(AgentMessage.from_agent_id.in_(agent_ids))
-        .where(AgentMessage.timestamp >= seit)
-    )).scalars().all()
-    for m in nachrichten:
-        art = f"nachricht:{m.message_type or 'message'}"
-        buche(m.from_agent_id, art)
-        if (m.message_type or "") in ("question", "handoff"):
-            beispiel(art, m.text, m.from_agent_id)
+    for von, typ, text in vorrat.nachrichten:
+        if von not in agent_ids:
+            continue
+        art = f"nachricht:{typ or 'message'}"
+        buche(von, art)
+        if (typ or "") in ("question", "handoff"):
+            beispiel(art, text, von)
 
     # --- Koordination: Meeting-Beitraege und Folgemeetings ---
-    if raeume is None:
-        raeume = await lade_raeume(db, seit)
-    for raum in raeume:
+    for raum in vorrat.raeume:
         # ``agent_ids`` des Raums ist eine JSON-Liste — die Schnittmenge muss in
         # Python gebildet werden, ein SQL-Filter darauf ist nicht portabel.
         beteiligt = set(raum.agent_ids or []) & agent_ids
@@ -388,35 +500,24 @@ async def erhebe_bilanz(
             # Meeting, das aus einem Meeting entstand.
             for aid in sorted(beteiligt):
                 buche(aid, "meeting:folgemeeting")
-            beispiel("meeting:folgemeeting", raum.name or raum.id, sorted(beteiligt)[0])
+            # Der Raumname ist ein Inhalt: nur, wenn ein Agent des Aufrufers
+            # selbst im Raum sitzt.
+            eigene_im_raum = sorted(beteiligt & erlaubt)
+            if eigene_im_raum:
+                beispiel("meeting:folgemeeting", raum.name or raum.id, eigene_im_raum[0])
 
-    # --- Koordination: Todos ---
-    todos = (await db.execute(
-        select(AgentTodo)
-        .where(AgentTodo.agent_id.in_(agent_ids))
-        .where(AgentTodo.created_at >= seit)
-    )).scalars().all()
-    for t in todos:
-        buche(t.agent_id, "todo:angelegt")
-
-    # --- Koordination: Freigabe-Anfragen ---
-    freigaben = (await db.execute(
-        select(CommandApproval)
-        .where(CommandApproval.agent_id.in_(agent_ids))
-        .where(CommandApproval.created_at >= seit)
-    )).scalars().all()
-    for f in freigaben:
-        buche(f.agent_id, "freigabe:angefragt")
+    # --- Koordination: Todos und Freigabe-Anfragen ---
+    for aid in vorrat.todos:
+        if aid in agent_ids:
+            buche(aid, "todo:angelegt")
+    for aid in vorrat.freigaben:
+        if aid in agent_ids:
+            buche(aid, "freigabe:angefragt")
 
     # --- Auftraege: im Fenster angelegt (Koordination) ---
-    # Nur die drei gebrauchten Spalten: ``select(Task)`` zieht ``prompt`` und
-    # ``result`` als Volltext mit, und das zweimal je Gruppe.
-    angelegt = (await db.execute(
-        select(Task.id, Task.agent_id, Task.title, Task.metadata_)
-        .where(Task.agent_id.in_(agent_ids))
-        .where(Task.created_at >= seit)
-    )).all()
-    for t_id, t_agent, t_titel, t_meta in angelegt:
+    for t_id, t_agent, t_titel, t_meta in vorrat.angelegt:
+        if t_agent not in agent_ids:
+            continue
         meta = t_meta or {}
         if meta.get("heal_attempt"):
             # Wiederholung der Selbstheilung: derselbe Auftrag ein zweites Mal.
@@ -428,33 +529,13 @@ async def erhebe_bilanz(
             buche(t_agent, "auftrag:delegiert")
 
     # --- Fortschritt: abgeschlossene Auftraege mit Ergebnis ---
-    # Die Ergebnislaenge rechnet die Datenbank; den Text braucht hier niemand.
-    fertig = (await db.execute(
-        select(Task.id, Task.agent_id, func.length(func.trim(Task.result)))
-        .where(Task.agent_id.in_(agent_ids))
-        .where(Task.completed_at >= seit)
-        .where(Task.status == TaskStatus.COMPLETED)
-    )).all()
-    # Die Bewertungen werden ueber die AGENTEN geholt, nicht ueber die
-    # Auftragskennungen: ``task_id.in_(fertig_ids)`` band einen Parameter je
-    # abgeschlossenem Auftrag, und jenseits von ~32.000 Parametern bricht der
-    # Postgres-Treiber hart ab. Ueber die Agenten ist die Zahl der Parameter
-    # durch die Gruppengroesse begrenzt.
-    nicht_erfuellt = {
-        tid for (tid,) in (await db.execute(
-            select(TaskRating.task_id)
-            .where(TaskRating.agent_id.in_(agent_ids))
-            .where(TaskRating.fulfilled.is_(False))
-        )).all()
-    }
-    for t_id, t_agent, laenge in fertig:
-        if t_id in nicht_erfuellt:
+    for t_id, t_agent, laenge in vorrat.fertig:
+        if t_agent not in agent_ids or t_id in vorrat.nicht_erfuellt:
             continue
         if (laenge or 0) < MIN_ERGEBNIS_ZEICHEN:
             continue
         bilanz.fortschritt += 1
-        if t_agent in anteile:
-            anteile[t_agent].fortschritt += 1
+        anteile[t_agent].fortschritt += 1
 
     bilanz.je_agent = [a for a in anteile.values() if a.koordination or a.fortschritt]
     return bilanz
@@ -507,17 +588,27 @@ async def befunde_fuer(
     agent_ids: set[str] | None,
     schwellen: dict[str, Any] | None = None,
     jetzt: datetime | None = None,
+    inhalte_fuer: set[str] | None = None,
 ) -> list[Befund]:
     """Ein Befund je Gruppe — Teams zuerst, dann Agenten ohne Team je Nutzer.
 
-    ``agent_ids=None`` heisst Administrator (kein Filter). Eine LEERE Menge
-    heisst „nichts" und liefert eine leere Liste — nie „alles".
+    ``agent_ids=None`` heisst „ueber die ganze Anlage rechnen" (Administrator,
+    Hintergrundwaechter). Eine LEERE Menge heisst „nichts" und liefert eine
+    leere Liste — nie „alles".
+
+    ``inhalte_fuer`` sind die Agenten, deren Namen und Inhalte (Beispieltexte,
+    Auftragstitel, Raumnamen) in den Befunden stehen duerfen. Fehlt es, gilt
+    ``agent_ids`` — und bei ``agent_ids=None`` die LEERE Menge: wer ueber die
+    ganze Anlage rechnet, bekommt ohne ausdrueckliche Angabe nur Zahlen. Ein
+    Administrator ist kein Leser fremder Chats.
     """
     from app.models.agent import Agent
     from app.models.team import Team
 
     schwellen = schwellen or await lade_schwellen(db)
     fenster = int(schwellen["fenster_stunden"])
+    if inhalte_fuer is None:
+        inhalte_fuer = set(agent_ids) if agent_ids is not None else set()
 
     agenten_stmt = select(Agent)
     if agent_ids is not None:
@@ -527,17 +618,16 @@ async def befunde_fuer(
         return []
     sichtbar = {a.id for a in agenten}
     namen = {a.id: a.name for a in agenten}
+    inhalte = frozenset(inhalte_fuer) & sichtbar
 
     teams = list((await db.execute(
         select(Team).where(Team.is_active.is_(True))
     )).scalars().all())
 
-    befunde: list[Befund] = []
+    # Erst die Gruppen bilden, dann EINMAL fuer alle laden (siehe ``Vorrat``).
+    # (gruppe_id, gruppe_name, art, mitglieder, lead)
+    gruppen: list[tuple[str, str, str, set[str], str | None]] = []
     schon_erfasst: set[str] = set()
-
-    # Die Meetingraeume EINMAL fuer alle Gruppen, nicht je Gruppe erneut.
-    seit = (jetzt or datetime.now(timezone.utc)) - timedelta(hours=fenster)
-    raeume = await lade_raeume(db, seit)
 
     for team in teams:
         # Nur die Mitglieder, die der Aufrufer sehen darf. Ein Team kann Agenten
@@ -554,17 +644,7 @@ async def befunde_fuer(
             # Eine Gruppe aus einem Agenten hat keine Koordination im Sinne
             # dieser Kennzahl; ihre Nachrichten gehen an niemanden im Team.
             continue
-        bilanz = await erhebe_bilanz(db, mitglieder, namen, fenster, jetzt, raeume=raeume)
-        warnung, grund = bewerte(bilanz, schwellen)
-        melde_agent = (
-            team.lead_agent_id if team.lead_agent_id in mitglieder
-            else _lautester(bilanz, mitglieder)
-        )
-        befunde.append(Befund(
-            gruppe_id=team.id, gruppe_name=team.name, art="team",
-            bilanz=bilanz, warnung=warnung, begruendung=grund,
-            melde_agent_id=melde_agent, mitglieder=frozenset(mitglieder),
-        ))
+        gruppen.append((team.id, team.name, "team", mitglieder, team.lead_agent_id))
 
     # Agenten ohne Team: je Nutzer eine Gruppe. Ohne diesen Zweig blieben genau
     # die haeufigsten Anlagen unbeobachtet — mehrere Agenten, kein Team.
@@ -576,18 +656,30 @@ async def befunde_fuer(
     for user_id, mitglieder in sorted(ohne_team.items()):
         if len(mitglieder) < 2:
             continue
-        bilanz = await erhebe_bilanz(db, mitglieder, namen, fenster, jetzt, raeume=raeume)
-        warnung, grund = bewerte(bilanz, schwellen)
-        befunde.append(Befund(
-            # Die Nutzerkennung wird NICHT durchgereicht: wem ein Agent nur
-            # freigegeben wurde, muss nicht erfahren, wem er gehoert. Der
-            # Abdruck ist stabil, damit die Meldepause die Gruppe wiedererkennt.
-            gruppe_id=f"nutzer:{_abdruck(user_id)}", gruppe_name="Agenten ohne Team",
-            art="nutzer", bilanz=bilanz, warnung=warnung, begruendung=grund,
-            melde_agent_id=_lautester(bilanz, mitglieder),
-            mitglieder=frozenset(mitglieder),
-        ))
+        # Die Nutzerkennung wird NICHT durchgereicht: wem ein Agent nur
+        # freigegeben wurde, muss nicht erfahren, wem er gehoert. Der Abdruck
+        # ist stabil, damit die Meldepause die Gruppe wiedererkennt.
+        gruppen.append((f"nutzer:{_abdruck(user_id)}", "Agenten ohne Team", "nutzer", mitglieder, None))
 
+    if not gruppen:
+        return []
+    seit = (jetzt or datetime.now(timezone.utc)) - timedelta(hours=fenster)
+    vorrat = await lade_vorrat(db, set().union(*(g[3] for g in gruppen)), seit)
+
+    befunde: list[Befund] = []
+    for gruppe_id, gruppe_name, art, mitglieder, lead in gruppen:
+        bilanz = await erhebe_bilanz(
+            db, mitglieder, namen, fenster, jetzt,
+            inhalte_fuer=set(inhalte), vorrat=vorrat,
+        )
+        warnung, grund = bewerte(bilanz, schwellen)
+        melde_agent = lead if lead in mitglieder else _lautester(bilanz, mitglieder)
+        befunde.append(Befund(
+            gruppe_id=gruppe_id, gruppe_name=gruppe_name, art=art,
+            bilanz=bilanz, warnung=warnung, begruendung=grund,
+            melde_agent_id=melde_agent, mitglieder=frozenset(mitglieder),
+            nur_kennzahlen=not (mitglieder & inhalte),
+        ))
     return befunde
 
 
@@ -641,8 +733,11 @@ class ProduktivitaetsMonitor:
         async with resilient_session(session_factory=self._sf) as db:
             schwellen = await lade_schwellen(db)
             # Der Waechter laeuft ohne Nutzer, also ueber alle Agenten (None).
-            # Die Zuordnung zu Nutzern passiert ueber die Gruppen.
-            befunde = await befunde_fuer(db, None, schwellen)
+            # Die Zuordnung zu Nutzern passiert ueber die Gruppen. Inhalte holt
+            # er bewusst KEINE (``inhalte_fuer`` leer): die Meldung geht an den
+            # Besitzer des Leads, und in einem gemischten Team saessen sonst
+            # Texte der Agenten anderer Nutzer darin. Sie nennt nur Zahlen.
+            befunde = await befunde_fuer(db, None, schwellen, inhalte_fuer=set())
             schon_benachrichtigt: set[str] = set()
             for befund in befunde:
                 if not befund.warnung or not befund.melde_agent_id:

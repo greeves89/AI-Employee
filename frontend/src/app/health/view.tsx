@@ -5,7 +5,7 @@ import {
   HeartPulse, CheckCircle2, XCircle, AlertTriangle,
   Play, Loader2, Clock, Zap, TrendingUp, RefreshCw,
   Star, DollarSign, Timer, Bot, Activity, AlertOctagon, CirclePause,
-  Users, ChevronDown, ChevronRight,
+  Users, ChevronDown, ChevronRight, Lock,
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, LineChart, Line,
@@ -92,7 +92,15 @@ function KoordinationsBilanz({ daten }: { daten: Produktivitaet }) {
                   <Users className="w-4 h-4 shrink-0 text-muted-foreground" />
                 )}
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium truncate">{g.gruppe_name}</p>
+                  <p className="text-sm font-medium truncate flex items-center gap-1.5">
+                    {g.gruppe_name}
+                    {g.nur_kennzahlen && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-normal text-muted-foreground/70">
+                        <Lock className="w-3 h-3" />
+                        anderer Nutzer
+                      </span>
+                    )}
+                  </p>
                   <p className="text-xs text-muted-foreground">{g.begruendung}</p>
                 </div>
                 <div className="flex items-center gap-4 shrink-0 text-right">
@@ -146,6 +154,13 @@ function KoordinationsBilanz({ daten }: { daten: Produktivitaet }) {
                       )}
                     </div>
                   </div>
+
+                  {g.nur_kennzahlen && (
+                    <p className="text-xs text-muted-foreground">
+                      Diese Gruppe gehört einem anderen Nutzer. Sichtbar sind nur die
+                      Kennzahlen, keine Agentennamen und keine Inhalte.
+                    </p>
+                  )}
 
                   {(g.je_agent ?? []).length > 0 && (
                     <div>

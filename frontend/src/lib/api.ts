@@ -2708,6 +2708,9 @@ export interface ProduktivitaetGruppe {
   gruppe_id: string;
   gruppe_name: string;
   art: "team" | "nutzer";
+  /** Gruppe ohne eigene Agenten (Administrator-Sicht): nur Zahlen, keine
+   *  Beispiele und keine Agentennamen — Inhalte gehören ihrem Nutzer. */
+  nur_kennzahlen?: boolean;
   warnung: boolean;
   begruendung: string;
   fenster_stunden: number;

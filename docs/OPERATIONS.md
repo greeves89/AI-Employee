@@ -208,6 +208,13 @@ Rohdaten: `GET /api/v1/health/produktivitaet` (nur die für den Aufrufer
 sichtbaren Agenten). Bei einer Warnung schreibt der Wächter zusätzlich eine
 Benachrichtigung an den Team-Lead.
 
+Nutzertrennung: Ein Nutzer sieht nur die Gruppen seiner eigenen (und ihm
+freigegebenen) Agenten, mit Beispielen. Ein Administrator sieht zusätzlich die
+Gruppen anderer Nutzer, dort aber nur Zahlen (Koordination, Ergebnisse,
+Verhältnis, Warnung, Arten) — keine Beispieltexte, keine Auftragstitel, keine
+Raum- und Agentennamen (`nur_kennzahlen` in der Antwort). In einem gemischten
+Team stehen Beispiele und Namen nur von den eigenen Agenten des Aufrufers.
+
 **Was zählt als Koordination:** Agentennachrichten (der Sender), Meeting-Beiträge,
 Folgemeetings, angelegte Todos, von Agenten angelegte Aufträge, Wiederholungen der
 Selbstheilung, Freigabe-Anfragen. Vom Nutzer angelegte Aufträge zählen NICHT.
@@ -250,7 +257,9 @@ Empfänger der Benachrichtigung ist der Team-Lead; hat die Gruppe keinen (Agente
 ohne Team), der Agent mit der meisten Koordination. Sie erscheint bei allen
 Nutzern, die diesen Agenten besitzen oder freigeschaltet bekommen haben. Sitzt
 ein Agent in mehreren Teams, klingelt es je Prüfung nur einmal — auf der
-Health-Seite bleiben trotzdem alle betroffenen Gruppen sichtbar.
+Health-Seite bleiben trotzdem alle betroffenen Gruppen sichtbar. Die Meldung
+(und der optionale Analyse-Auftrag) nennt nur Zahlen und Arten, nie Inhalte —
+auch dann nicht, wenn im Team Agenten anderer Nutzer sitzen.
 
 **Bei mehreren Orchestrator-Repliken** sollte nur eine melden; ein
 Führungsschloss gibt es für diesen Wächter nicht, es schützt allein die

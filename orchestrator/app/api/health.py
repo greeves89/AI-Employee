@@ -432,18 +432,24 @@ async def get_produktivitaet(
     Aufschluesselung nach Art der Aktivitaet, Anteil je Agent und Beispielen
     (Drill-down fuer die Health-Seite).
 
-    Gerechnet wird AUSSCHLIESSLICH ueber die fuer den Aufrufer sichtbaren
-    Agenten (``visible_agent_ids``). Eine leere Menge heisst „nichts", nie
-    „alles" — sonst saehe ein frischer Nutzer die Bilanz der ganzen Anlage.
+    Gerechnet wird ueber die fuer den Aufrufer sichtbaren Agenten
+    (``visible_agent_ids``). Eine leere Menge heisst „nichts", nie „alles" —
+    sonst saehe ein frischer Nutzer die Bilanz der ganzen Anlage.
+
+    Inhalte (Beispieltexte, Auftragstitel, Raum- und Agentennamen) stehen nur
+    fuer die EIGENEN Agenten des Aufrufers in der Antwort — auch fuer einen
+    Administrator. Er sieht die Gruppen anderer Nutzer mit Zahlen
+    (``nur_kennzahlen``), aber nicht, was dort geschrieben wurde.
     """
-    from app.core.ownership import visible_agent_ids
+    from app.core.ownership import eigene_agent_ids, visible_agent_ids
     from app.services import produktivitaet_service as ps
 
     sichtbar = await visible_agent_ids(user, db)
+    eigene = await eigene_agent_ids(user, db)
     schwellen = await ps.lade_schwellen(db)
     if stunden:
         schwellen["fenster_stunden"] = stunden
-    befunde = await ps.befunde_fuer(db, sichtbar, schwellen)
+    befunde = await ps.befunde_fuer(db, sichtbar, schwellen, inhalte_fuer=eigene)
     return {
         "fenster_stunden": int(schwellen["fenster_stunden"]),
         "schwellen": {

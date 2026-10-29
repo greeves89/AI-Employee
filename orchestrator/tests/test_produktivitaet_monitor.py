@@ -17,7 +17,9 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.compiler import compiles
 
 from app.models.agent import Agent
 from app.models.agent_access import AgentAccess
@@ -33,6 +35,15 @@ from app.models.task_rating import TaskRating
 from app.models.team import Team
 from app.models.user import UserRole
 from app.services import produktivitaet_service as ps
+
+
+# Meetingraeume speichern JSONB. Ohne diese Uebersetzung liefen die Tests nur
+# in der Gesamtsuite — dort hatte ein anderes Testmodul sie zufaellig vorher
+# registriert; allein gestartet scheiterte schon das Anlegen der Tabellen.
+@compiles(JSONB, "sqlite")
+def _jsonb_als_json(type_, compiler, **kw):
+    return "JSON"
+
 
 #: Bezugszeit der Testdaten. Bewusst die ECHTE Jetzt-Zeit und kein fester
 #: Zeitpunkt: die Dienstfunktionen bekommen ``jetzt`` ausdruecklich, der
@@ -328,7 +339,8 @@ class SynthetischeLage(Basis):
         for _ in range(abschluesse):
             self.db.add(_auftrag("a1", result=ERGEBNIS))
         await self.db.commit()
-        befunde = await ps.befunde_fuer(self.db, None, jetzt=JETZT)
+        # Aus Sicht des Besitzers: Inhalte nur fuer die eigenen Agenten.
+        befunde = await ps.befunde_fuer(self.db, None, jetzt=JETZT, inhalte_fuer={"a1", "a2"})
         self.assertEqual(len(befunde), 1, "ein Befund fuer das Team")
         return befunde[0]
 
@@ -607,6 +619,168 @@ class Endpunkt(Basis):
         self.assertEqual(antwort["fenster_stunden"], 1)
         # Die 30 Nachrichten liegen zwei Stunden zurueck und fallen heraus.
         self.assertEqual(antwort["warnungen"], 0)
+
+
+#: Inhalte, die NIE beim falschen Leser ankommen duerfen.
+GEHEIM_TEXT = "Vertraulicher Rueckfragetext von A"
+GEHEIM_TITEL = "Vertraulicher Auftragstitel von A"
+GEHEIM_RAUM = "Vertraulicher Raumname von A"
+
+
+def _geheime_nachricht(von, nach, art="question"):
+    return AgentMessage(
+        message_id=uuid.uuid4().hex, from_agent_id=von, from_agent_name=von,
+        to_agent_id=nach, text=GEHEIM_TEXT, message_type=art,
+        timestamp=JETZT - timedelta(hours=1),
+    )
+
+
+class Nutzertrennung(Basis):
+    """Jeder sieht nur seine eigenen Agenten und deren Inhalte — AUCH ein
+    Administrator. Er bekommt fuer fremde Gruppen nur Zahlen.
+
+    Die Inhalte von A liegen in allen drei Formen vor, in denen der Monitor
+    Beispiele bildet: Nachrichtentext, Auftragstitel, Raumname.
+    """
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        await self._anlegen(
+            _agent("a1", "A-Eins", "ua"), _agent("a2", "A-Zwei", "ua"),
+            _agent("b1", "B-Eins", "ub"), _agent("b2", "B-Zwei", "ub"),
+            Team(id="ta", name="Team A", member_agent_ids=["a1", "a2"], lead_agent_id="a1"),
+            Team(id="tb", name="Team B", member_agent_ids=["b1", "b2"], lead_agent_id="b1"),
+        )
+        # Zwei Rueckfragen (werden Beispiele), der Rest einfache Nachrichten —
+        # sonst fuellten die Rueckfragen allein die fuenf Beispielplaetze.
+        for i in range(30):
+            art = "question" if i < 2 else "message"
+            self.db.add(_geheime_nachricht("a1", "a2", art) if i % 2 else _geheime_nachricht("a2", "a1", art))
+        self.db.add(Task(
+            id="tgeheim", title=GEHEIM_TITEL, prompt="p", agent_id="a1",
+            status=TaskStatus.QUEUED, metadata_={"heal_attempt": 1},
+            created_at=JETZT - timedelta(hours=1),
+        ))
+        raum = _raum("rg", ["a1", "a2"], ["a1"], parent="r0")
+        raum.name = GEHEIM_RAUM
+        self.db.add(raum)
+        for _ in range(3):
+            self.db.add(_nachricht("b1", "b2"))
+        await self.db.commit()
+
+    async def _antwort(self, user_id, rolle):
+        from app.api.health import get_produktivitaet
+
+        return await get_produktivitaet(
+            stunden=0, user=SimpleNamespace(id=user_id, role=rolle), db=self.db,
+        )
+
+    def _kein_inhalt_von_a(self, antwort):
+        roh = str(antwort)
+        for geheim in (GEHEIM_TEXT, GEHEIM_TITEL, GEHEIM_RAUM, "A-Eins", "A-Zwei"):
+            self.assertNotIn(geheim, roh)
+
+    async def test_besitzer_sieht_seine_beispiele(self):
+        """Gegenprobe: ohne sie bewiese das Fehlen der Texte unten nichts."""
+        antwort = await self._antwort("ua", UserRole.MEMBER)
+        team_a = next(g for g in antwort["gruppen"] if g["gruppe_id"] == "ta")
+        self.assertFalse(team_a["nur_kennzahlen"])
+        texte = {b["text"] for b in team_a["beispiele"]}
+        self.assertIn(GEHEIM_TEXT, texte)
+        self.assertIn(GEHEIM_TITEL, texte)
+        self.assertIn(GEHEIM_RAUM, texte)
+        self.assertEqual({a["agent_name"] for a in team_a["je_agent"]}, {"A-Eins", "A-Zwei"})
+
+    async def test_nutzer_b_sieht_weder_gruppe_noch_beispiel_von_a(self):
+        antwort = await self._antwort("ub", UserRole.MEMBER)
+        self.assertEqual([g["gruppe_id"] for g in antwort["gruppen"]], ["tb"])
+        self.assertEqual(antwort["warnungen"], 0, "die Warnung von A gehoert nicht zu B")
+        self._kein_inhalt_von_a(antwort)
+
+    async def test_administrator_sieht_zahlen_aber_keine_texte(self):
+        antwort = await self._antwort("adm", UserRole.ADMIN)
+        team_a = next(g for g in antwort["gruppen"] if g["gruppe_id"] == "ta")
+        # Die Zahlen sind da — das ist Betrieb.
+        self.assertTrue(team_a["warnung"])
+        self.assertGreaterEqual(team_a["koordination"], 30)
+        self.assertEqual(team_a["fortschritt"], 0)
+        self.assertGreater(team_a["verhaeltnis"], 0)
+        # Die Inhalte nicht — das waere der Chat eines anderen Nutzers.
+        self.assertTrue(team_a["nur_kennzahlen"])
+        self.assertEqual(team_a["beispiele"], [])
+        self.assertEqual(team_a["je_agent"], [])
+        self._kein_inhalt_von_a(antwort)
+
+    async def test_administrator_sieht_eigene_gruppe_mit_beispielen(self):
+        await self._anlegen(
+            _agent("c1", "C-Eins", "adm"), _agent("c2", "C-Zwei", "adm"),
+            _geheime_nachricht("c1", "c2"),
+        )
+        antwort = await self._antwort("adm", UserRole.ADMIN)
+        eigene = [g for g in antwort["gruppen"] if g["art"] == "nutzer"]
+        self.assertEqual(len(eigene), 1)
+        self.assertFalse(eigene[0]["nur_kennzahlen"])
+        self.assertEqual([b["agent"] for b in eigene[0]["beispiele"]], ["C-Eins"])
+        # Die fremden Teams bleiben trotzdem ohne Inhalt.
+        self.assertTrue(next(g for g in antwort["gruppen"] if g["gruppe_id"] == "ta")["nur_kennzahlen"])
+
+    async def test_gemischtes_team_zeigt_nur_beispiele_der_eigenen_agenten(self):
+        """Ein Administrator mit einem Agenten in einem Team von A: die Zahlen
+        des ganzen Teams, die Beispiele und Namen nur von seinem Agenten."""
+        await self._anlegen(_agent("c1", "C-Eins", "adm"), _geheime_nachricht("c1", "a1"))
+        team = await self.db.get(Team, "ta")
+        team.member_agent_ids = ["a1", "a2", "c1"]
+        await self.db.commit()
+
+        antwort = await self._antwort("adm", UserRole.ADMIN)
+        team_a = next(g for g in antwort["gruppen"] if g["gruppe_id"] == "ta")
+        self.assertFalse(team_a["nur_kennzahlen"])
+        self.assertGreaterEqual(team_a["koordination"], 31, "gezaehlt wird das ganze Team")
+        self.assertEqual({b["agent"] for b in team_a["beispiele"]}, {"C-Eins"})
+        self.assertEqual({a["agent_name"] for a in team_a["je_agent"]}, {"C-Eins"})
+        self.assertNotIn(GEHEIM_TITEL, str(antwort))
+        self.assertNotIn(GEHEIM_RAUM, str(antwort))
+        self.assertNotIn("A-Eins", str(antwort))
+
+    async def test_ohne_angabe_bringt_die_ganze_anlage_keine_inhalte(self):
+        """Wer ueber alles rechnet und nicht sagt, fuer wen, bekommt nur Zahlen."""
+        befunde = await ps.befunde_fuer(self.db, None, jetzt=JETZT)
+        self.assertTrue(befunde)
+        for b in befunde:
+            self.assertTrue(b.nur_kennzahlen)
+            self.assertEqual(b.bilanz.beispiele, [])
+            self.assertEqual(b.zu_dict()["je_agent"], [])
+
+    async def test_meldung_an_den_lead_eines_gemischten_teams_traegt_keine_fremden_inhalte(self):
+        """Der Waechter meldet an den Besitzer des Leads. Sitzen im Team Agenten
+        eines anderen Nutzers, darf dort nichts von ihnen stehen."""
+        import contextlib
+        from unittest.mock import patch
+
+        from sqlalchemy import select
+
+        team = await self.db.get(Team, "ta")
+        team.member_agent_ids = ["a1", "a2", "b1"]
+        team.lead_agent_id = "b1"
+        await self.db.commit()
+
+        @contextlib.asynccontextmanager
+        async def _sitzung(*a, **k):
+            yield self.db
+
+        monitor = ps.ProduktivitaetsMonitor(self.Session, redis=_Warteschlange())
+        with patch("app.db.session.resilient_session", _sitzung):
+            gemeldet = await monitor.einmal_pruefen()
+
+        self.assertEqual([b.gruppe_id for b in gemeldet], ["ta"])
+        self.assertEqual(gemeldet[0].bilanz.beispiele, [], "der Waechter haelt keine Inhalte")
+        meldungen = list((await self.db.execute(
+            select(Notification).where(Notification.agent_id == "b1")
+        )).scalars().all())
+        self.assertEqual(len(meldungen), 1)
+        roh = f"{meldungen[0].title} {meldungen[0].message} {meldungen[0].meta}"
+        for geheim in (GEHEIM_TEXT, GEHEIM_TITEL, GEHEIM_RAUM, "A-Eins", "A-Zwei"):
+            self.assertNotIn(geheim, roh)
 
 
 class Einstellungen(Basis):
