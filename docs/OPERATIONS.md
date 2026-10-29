@@ -194,6 +194,81 @@ Alerts are defined in `monitoring/alerts.yml`. Active alerts appear in:
 - Postgres down: critical
 - Redis down: critical
 
+### Produktivitätsmonitor: Koordination gegen Fortschritt
+
+Arbeiten mehrere Agenten lange zusammen, wächst oft der Anteil an Koordination
+(Rückfragen, Übergaben, Meetings, Folgemeetings, Freigaben, Wiederholungen),
+während der tatsächliche Fortschritt stagniert. Kein einzelner Agent sieht das,
+weil jeder Schritt für sich sinnvoll ist. Der Monitor misst das Verhältnis je
+Gruppe (Team, sonst „Agenten ohne Team" je Nutzer) und warnt.
+
+**Anzeige:** Health-Seite, Abschnitt „Koordination gegen Fortschritt" — je
+Gruppe aufklappbar mit Art der Aktivität, Anteil je Agent und Beispielen.
+Rohdaten: `GET /api/v1/health/produktivitaet` (nur die für den Aufrufer
+sichtbaren Agenten). Bei einer Warnung schreibt der Wächter zusätzlich eine
+Benachrichtigung an den Team-Lead.
+
+Nutzertrennung: Ein Nutzer sieht nur die Gruppen seiner eigenen (und ihm
+freigegebenen) Agenten, mit Beispielen. Ein Administrator sieht zusätzlich die
+Gruppen anderer Nutzer, dort aber nur Zahlen (Koordination, Ergebnisse,
+Verhältnis, Warnung, Arten) — keine Beispieltexte, keine Auftragstitel, keine
+Raum- und Agentennamen (`nur_kennzahlen` in der Antwort). In einem gemischten
+Team stehen Beispiele und Namen nur von den eigenen Agenten des Aufrufers.
+
+**Was zählt als Koordination:** Agentennachrichten (der Sender), Meeting-Beiträge,
+Folgemeetings, angelegte Todos, von Agenten angelegte Aufträge, Wiederholungen der
+Selbstheilung, Freigabe-Anfragen. Vom Nutzer angelegte Aufträge zählen NICHT.
+Zugeordnet wird über den Empfänger des Auftrags; eine Delegation an einen Agenten
+außerhalb der sichtbaren Menge zählt daher nicht mit (sie zu zählen hieße, den
+Auftragsdatensatz eines fremden Agenten zu lesen).
+
+**Was zählt als Fortschritt:** abgeschlossene Aufträge mit einem Ergebnis von
+mindestens 200 Zeichen (ein abgebrochener Lauf meldet ebenfalls „abgeschlossen",
+schreibt aber keinen Bericht). Ein Auftrag, den der Nutzer als nicht erfüllt
+bewertet hat, zählt nicht. Übernommene Meeting-Ergebnisse zählen bewusst
+**nicht** mit: das Feld trägt keinen Zeitstempel, ein vor Monaten übernommenes
+Ergebnis würde sonst als heutiger Fortschritt gelten und die Warnung
+unterdrücken.
+
+**Einstellungen und Vorgabewerte.** In der Oberfläche gibt es für diese fünf
+Schlüssel noch kein Feld; zu setzen sind sie über `PATCH /api/v1/settings` (als
+Admin) oder direkt in der Tabelle `platform_settings`:
+
+| Schlüssel | Vorgabe | Bedeutung |
+|---|---|---|
+| `produktivitaet_fenster_stunden` | `24` | Beobachtungsfenster in Stunden |
+| `produktivitaet_min_koordination` | `20` | absolute Untergrenze — darunter wird nicht bewertet, damit ein ruhiger Tag ruhig bleibt |
+| `produktivitaet_verhaeltnis` | `8.0` | ab so vielen Koordinationsereignissen je geliefertem Ergebnis wird gewarnt |
+| `produktivitaet_melde_pause_stunden` | `24` | so lange wird dieselbe Gruppe nicht erneut gemeldet; `0` schaltet die Pause ab (dann meldet **jede** stündliche Prüfung erneut) |
+| `produktivitaet_analyse_auftrag` | `false` | zusätzlich einen Analyse-Auftrag an den Team-Lead stellen (kostet einen Modelllauf) |
+
+Die Warnung braucht BEIDE Bedingungen: genug Koordination (Untergrenze) UND ein
+hohes Verhältnis. Echter Fortschritt unterdrückt den Alarm anteilig — 100
+Koordinationsereignisse bei 13 Ergebnissen ergeben 7,7 und bleiben still,
+dieselben 100 bei 0 Ergebnissen ergeben 100 und melden sich. Eine Gruppe aus
+nur einem Agenten wird nicht bewertet: ihre Nachrichten gehen an niemanden.
+
+Werte außerhalb ihres sinnvollen Bereichs werden auf den Rand gezogen und
+protokolliert (Fenster 1–720 h, Untergrenze ab 1, Verhältnis ab 1,0). Ohne das
+hätte ein Fenster von `0` den Wächter **still** blind gemacht: leeres Fenster,
+Koordination immer 0, keine Warnung und kein Hinweis darauf.
+
+Empfänger der Benachrichtigung ist der Team-Lead; hat die Gruppe keinen (Agenten
+ohne Team), der Agent mit der meisten Koordination. Sie erscheint bei allen
+Nutzern, die diesen Agenten besitzen oder freigeschaltet bekommen haben. Sitzt
+ein Agent in mehreren Teams, klingelt es je Prüfung nur einmal — auf der
+Health-Seite bleiben trotzdem alle betroffenen Gruppen sichtbar. Die Meldung
+(und der optionale Analyse-Auftrag) nennt nur Zahlen und Arten, nie Inhalte —
+auch dann nicht, wenn im Team Agenten anderer Nutzer sitzen.
+
+**Bei mehreren Orchestrator-Repliken** sollte nur eine melden; ein
+Führungsschloss gibt es für diesen Wächter nicht, es schützt allein die
+Meldepause in der Datenbank (siehe `docs/HIGH_AVAILABILITY.md`).
+
+Schwelle senken, wenn Warnungen ausbleiben, obwohl die Bilanz auf der
+Health-Seite auffällig aussieht; Untergrenze anheben, wenn eine kleine, aber
+gesprächige Gruppe regelmäßig grundlos meldet.
+
 ### Check Service Health via CLI
 
 ```bash

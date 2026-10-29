@@ -31,6 +31,16 @@ async def visible_agent_ids(user, db: AsyncSession) -> set[str] | None:
     """
     if is_admin(user):
         return None
+    return await eigene_agent_ids(user, db)
+
+
+async def eigene_agent_ids(user, db: AsyncSession) -> set[str]:
+    """Owned + shared agent ids — WITHOUT the admin exception.
+
+    For content that is private to a user (chat texts, results, task titles):
+    an admin may see operating figures of the whole installation, but the
+    contents only of his own agents. Same rule as ``approvals._visible_agent_ids``.
+    """
     from app.models.agent import Agent
     from app.models.agent_access import AgentAccess
 

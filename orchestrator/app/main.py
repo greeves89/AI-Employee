@@ -2899,6 +2899,18 @@ written this way is not in the index.
     disk_monitor_task = asyncio.create_task(disk_monitor.run())
     app.state.disk_monitor = disk_monitor
 
+    # Produktivitaetsmonitor (#882): warnt, wenn in einer Gruppe die Koordination
+    # den Fortschritt ueberwaechst. Schreibt nur eine Benachrichtigung; der
+    # Analyse-Auftrag an den Team-Lead ist eine Einstellung und standardmaessig aus.
+    from app.services.produktivitaet_service import ProduktivitaetsMonitor
+    from app.db.session import async_session_factory as _sf_prod
+
+    produktivitaet_monitor = ProduktivitaetsMonitor(
+        _sf_prod, redis=app.state.redis, docker_service=app.state.docker,
+    )
+    produktivitaet_task = asyncio.create_task(produktivitaet_monitor.run())
+    app.state.produktivitaet_monitor = produktivitaet_monitor
+
     # Start license heartbeat (call2home — opt-in, no-op unless license_server_url is set)
     from app.services.license_heartbeat_service import LicenseHeartbeatService
     from app.db.session import async_session_factory as _sf_lic_hb
@@ -2971,6 +2983,8 @@ written this way is not in the index.
     user_lifecycle_task.cancel()
     disk_monitor.stop()
     disk_monitor_task.cancel()
+    produktivitaet_monitor.stop()
+    produktivitaet_task.cancel()
     license_heartbeat.stop()
     license_heartbeat_task.cancel()
     license_ping_task.cancel()

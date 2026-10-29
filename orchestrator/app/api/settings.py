@@ -101,6 +101,12 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         improvement_min_skill_usages=int(await svc.get("improvement_min_skill_usages") or "5"),
         improvement_skill_threshold=float(await svc.get("improvement_skill_threshold") or "3.0"),
         improvement_analysis_interval=int(await svc.get("improvement_analysis_interval") or "3600"),
+        # Produktivitaetsmonitor (#882)
+        produktivitaet_fenster_stunden=int(await svc.get("produktivitaet_fenster_stunden") or "24"),
+        produktivitaet_min_koordination=int(await svc.get("produktivitaet_min_koordination") or "20"),
+        produktivitaet_verhaeltnis=float(await svc.get("produktivitaet_verhaeltnis") or "8.0"),
+        produktivitaet_melde_pause_stunden=int(await svc.get("produktivitaet_melde_pause_stunden") or "24"),
+        produktivitaet_analyse_auftrag=(await svc.get("produktivitaet_analyse_auftrag") or "false").lower() in ("true", "1", "yes"),
         meeting_planner_plan_id=await svc.get("meeting_planner_plan_id") or "",
         meeting_moderator_ai_account_id=await svc.get("meeting_moderator_ai_account_id") or "",
         dreaming_enabled=(await svc.get("dreaming_enabled") or "false").lower() in ("true", "1", "yes"),
@@ -279,6 +285,19 @@ async def update_settings(
         value = getattr(data, field_name, None)
         if value is not None:
             await svc.set(field_name, str(value))
+
+    # Produktivitaetsmonitor (#882). Der Schalter wird klein geschrieben
+    # abgelegt, weil der Leser auf ("true", "1", "yes") prueft — ``str(True)``
+    # ergaebe "True" und damit still ein AUS.
+    for field_name in (
+        "produktivitaet_fenster_stunden", "produktivitaet_min_koordination",
+        "produktivitaet_verhaeltnis", "produktivitaet_melde_pause_stunden",
+    ):
+        value = getattr(data, field_name, None)
+        if value is not None:
+            await svc.set(field_name, str(value))
+    if data.produktivitaet_analyse_auftrag is not None:
+        await svc.set("produktivitaet_analyse_auftrag", str(data.produktivitaet_analyse_auftrag).lower())
 
     # Voice provider config
     _VOICE_FIELDS = [

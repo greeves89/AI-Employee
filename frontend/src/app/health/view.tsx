@@ -5,6 +5,7 @@ import {
   HeartPulse, CheckCircle2, XCircle, AlertTriangle,
   Play, Loader2, Clock, Zap, TrendingUp, RefreshCw,
   Star, DollarSign, Timer, Bot, Activity, AlertOctagon, CirclePause,
+  Users, ChevronDown, ChevronRight, Lock,
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, LineChart, Line,
@@ -13,9 +14,200 @@ import {
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
-import type { HealthDashboard, TestRun, ImprovementReport, AutoMetrics } from "@/lib/api";
+import type {
+  HealthDashboard, TestRun, ImprovementReport, AutoMetrics,
+  Produktivitaet, ProduktivitaetGruppe,
+} from "@/lib/api";
 import { formatMoney } from "@/lib/money";
 import { useMoney } from "@/hooks/use-money";
+
+/** Ereignisarten in Worten — der Schluessel aus der API ist technisch. */
+const KOORDINATIONS_ARTEN: Record<string, string> = {
+  "nachricht:message": "Nachrichten",
+  "nachricht:question": "Rückfragen",
+  "nachricht:response": "Antworten",
+  "nachricht:handoff": "Übergaben",
+  "nachricht:notification": "Hinweise",
+  "nachricht:status_update": "Statusmeldungen",
+  "meeting:beitrag": "Meeting-Beiträge",
+  "meeting:folgemeeting": "Folgemeetings",
+  "todo:angelegt": "angelegte Todos",
+  "freigabe:angefragt": "Freigabe-Anfragen",
+  "auftrag:delegiert": "delegierte Aufträge",
+  "auftrag:wiederholung": "Wiederholungen",
+};
+
+function artInWorten(art: string) {
+  return KOORDINATIONS_ARTEN[art] ?? art;
+}
+
+/** Koordination gegen Fortschritt je Gruppe, mit Aufschlüsselung (#882). */
+function KoordinationsBilanz({ daten }: { daten: Produktivitaet }) {
+  const [offen, setOffen] = useState<string | null>(null);
+  // Gegen eine formwidrige 200-Antwort (Proxy, Teilantwort, aeltere Anlage):
+  // ein Zugriff auf daten.gruppen.sort oder daten.schwellen.verhaeltnis wuerde
+  // werfen und die GANZE Systemzustand-Seite mitreissen, nicht nur diesen
+  // Abschnitt. Das Promise-Ergebnis allein zu pruefen reicht dafuer nicht.
+  const gruppen = Array.isArray(daten?.gruppen)
+    ? [...daten.gruppen].sort(
+        (a, b) => Number(b.warnung) - Number(a.warnung) || (b.verhaeltnis ?? 0) - (a.verhaeltnis ?? 0)
+      )
+    : [];
+  if (!gruppen.length) return null;
+
+  return (
+    <>
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-muted-foreground">
+          Koordination gegen Fortschritt
+        </h2>
+        <span className="text-[11px] text-muted-foreground/60">
+          letzte {daten.fenster_stunden} h
+          {daten.schwellen
+            ? ` · Warnschwelle ${daten.schwellen.verhaeltnis} Schritte je Ergebnis, ab ${daten.schwellen.min_koordination} Ereignissen`
+            : ""}
+        </span>
+      </div>
+
+      <div className="space-y-2">
+        {gruppen.map((g: ProduktivitaetGruppe) => {
+          const auf = offen === g.gruppe_id;
+          return (
+            <div
+              key={g.gruppe_id}
+              className={cn(
+                "rounded-xl border backdrop-blur-sm",
+                g.warnung
+                  ? "border-amber-500/30 bg-amber-500/5"
+                  : "border-foreground/[0.06] bg-card/80"
+              )}
+            >
+              <button
+                onClick={() => setOffen(auf ? null : g.gruppe_id)}
+                className="w-full flex items-center gap-3 p-4 text-left"
+              >
+                {g.warnung ? (
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-amber-700 dark:text-amber-400" />
+                ) : (
+                  <Users className="w-4 h-4 shrink-0 text-muted-foreground" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate flex items-center gap-1.5">
+                    {g.gruppe_name}
+                    {g.nur_kennzahlen && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-normal text-muted-foreground/70">
+                        <Lock className="w-3 h-3" />
+                        anderer Nutzer
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{g.begruendung}</p>
+                </div>
+                <div className="flex items-center gap-4 shrink-0 text-right">
+                  <div>
+                    <p className="text-lg font-bold leading-none">{g.koordination}</p>
+                    <p className="text-[10px] text-muted-foreground/60">Koordination</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold leading-none">{g.fortschritt}</p>
+                    <p className="text-[10px] text-muted-foreground/60">Ergebnisse</p>
+                  </div>
+                  <div>
+                    <p
+                      className={cn(
+                        "text-lg font-bold leading-none",
+                        g.warnung && "text-amber-700 dark:text-amber-400"
+                      )}
+                    >
+                      {g.verhaeltnis}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground/60">je Ergebnis</p>
+                  </div>
+                  {auf ? (
+                    <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                  )}
+                </div>
+              </button>
+
+              {auf && (
+                <div className="border-t border-foreground/[0.06] p-4 space-y-4">
+                  <div>
+                    <p className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
+                      Art der Aktivität
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(g.arten ?? {})
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([art, n]) => (
+                          <span
+                            key={art}
+                            className="px-2 py-1 rounded-md bg-foreground/[0.04] text-xs"
+                          >
+                            {artInWorten(art)}{" "}
+                            <span className="font-semibold">{n}</span>
+                          </span>
+                        ))}
+                      {!Object.keys(g.arten ?? {}).length && (
+                        <span className="text-xs text-muted-foreground">keine im Zeitfenster</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {g.nur_kennzahlen && (
+                    <p className="text-xs text-muted-foreground">
+                      Diese Gruppe gehört einem anderen Nutzer. Sichtbar sind nur die
+                      Kennzahlen, keine Agentennamen und keine Inhalte.
+                    </p>
+                  )}
+
+                  {(g.je_agent ?? []).length > 0 && (
+                    <div>
+                      <p className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
+                        Welche Agenten
+                      </p>
+                      <div className="space-y-1">
+                        {(g.je_agent ?? []).map((a) => (
+                          <div
+                            key={a.agent_id}
+                            className="flex items-center gap-2 text-xs"
+                          >
+                            <Bot className="w-3 h-3 text-muted-foreground/60 shrink-0" />
+                            <span className="truncate flex-1">{a.agent_name}</span>
+                            <span className="text-muted-foreground">
+                              {a.koordination} Koordination · {a.fortschritt} Ergebnisse
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {(g.beispiele ?? []).length > 0 && (
+                    <div>
+                      <p className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
+                        Beispiele
+                      </p>
+                      <ul className="space-y-1">
+                        {(g.beispiele ?? []).map((b, i) => (
+                          <li key={i} className="text-xs text-muted-foreground">
+                            <span className="text-foreground/70">{artInWorten(b.art)}</span>
+                            {b.agent ? ` · ${b.agent}` : ""} — {b.text}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
 
 /** Zustand eines Agenten in Worten (die Farbe kommt aus ``health``). */
 const AGENT_ZUSTAND: Record<string, string> = {
@@ -79,6 +271,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
   const [latestRun, setLatestRun] = useState<TestRun | null>(null);
   const [reports, setReports] = useState<ImprovementReport[]>([]);
   const [autoMetrics, setAutoMetrics] = useState<AutoMetrics | null>(null);
+  const [produktivitaet, setProduktivitaet] = useState<Produktivitaet | null>(null);
   const [days, setDays] = useState(7);
   const [loading, setLoading] = useState(true);
   const [triggering, setTriggering] = useState(false);
@@ -101,10 +294,11 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
     try {
       setLoading(true);
       setError(null);
-      const [d, r, m] = await Promise.allSettled([
+      const [d, r, m, k] = await Promise.allSettled([
         api.getHealthDashboard(),
         api.getLatestTestRun(),
         api.getAutoMetrics(days),
+        api.getProduktivitaet(),
       ]);
       if (d.status === "fulfilled") {
         setDashboard(d.value);
@@ -125,6 +319,9 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
       }
       if (r.status === "fulfilled") setLatestRun(r.value);
       if (m.status === "fulfilled") setAutoMetrics(m.value);
+      // Eine aeltere Anlage kennt den Endpunkt noch nicht — dann bleibt der
+      // Abschnitt einfach leer statt die ganze Seite zu verlieren.
+      if (k.status === "fulfilled") setProduktivitaet(k.value);
     } finally {
       setLoading(false);
     }
@@ -263,6 +460,8 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
             {error}
           </div>
         )}
+
+        {produktivitaet && <KoordinationsBilanz daten={produktivitaet} />}
 
         {/* Auto-Metrics KPI Summary */}
         {autoMetrics && autoMetrics.total_tasks > 0 && (

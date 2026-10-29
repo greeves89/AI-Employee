@@ -64,6 +64,12 @@ class SettingsUpdate(BaseModel):
     improvement_min_skill_usages: int | None = None
     improvement_skill_threshold: float | None = None
     improvement_analysis_interval: int | None = None
+    # Produktivitaetsmonitor (#882): Koordination gegen Fortschritt
+    produktivitaet_fenster_stunden: int | None = None
+    produktivitaet_min_koordination: int | None = None
+    produktivitaet_verhaeltnis: float | None = None
+    produktivitaet_melde_pause_stunden: int | None = None
+    produktivitaet_analyse_auftrag: bool | None = None
     # Voice live-session config
     voice_stt_provider: str | None = None       # "faster_whisper" | "openai_whisper"
     voice_tts_provider: str | None = None       # "edge_tts" | "elevenlabs"
@@ -207,6 +213,13 @@ class SettingsResponse(BaseModel):
     improvement_min_skill_usages: int = 5
     improvement_skill_threshold: float = 3.0
     improvement_analysis_interval: int = 3600
+    # Produktivitaetsmonitor (#882). Vorgaben siehe
+    # services/produktivitaet_service.py DEFAULTS und docs/OPERATIONS.md.
+    produktivitaet_fenster_stunden: int = 24
+    produktivitaet_min_koordination: int = 20
+    produktivitaet_verhaeltnis: float = 8.0
+    produktivitaet_melde_pause_stunden: int = 24
+    produktivitaet_analyse_auftrag: bool = False
     # Meeting → MS Planner + "Dreaming"-Memory
     meeting_planner_plan_id: str = ""
     meeting_moderator_ai_account_id: str = ""

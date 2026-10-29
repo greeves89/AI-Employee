@@ -2693,6 +2693,48 @@ export async function getAutoMetrics(days = 7): Promise<AutoMetrics> {
   return fetchJSON(`${getBase()}/health/auto-metrics?days=${days}`);
 }
 
+// --- Produktivitaetsmonitor: Koordination gegen Fortschritt (#882) ---
+
+export interface ProduktivitaetAgent {
+  agent_id: string;
+  agent_name: string;
+  koordination: number;
+  fortschritt: number;
+  /** Ereignisart ("nachricht:question", "meeting:folgemeeting", ...) → Anzahl. */
+  arten: Record<string, number>;
+}
+
+export interface ProduktivitaetGruppe {
+  gruppe_id: string;
+  gruppe_name: string;
+  art: "team" | "nutzer";
+  /** Gruppe ohne eigene Agenten (Administrator-Sicht): nur Zahlen, keine
+   *  Beispiele und keine Agentennamen — Inhalte gehören ihrem Nutzer. */
+  nur_kennzahlen?: boolean;
+  warnung: boolean;
+  begruendung: string;
+  fenster_stunden: number;
+  seit: string;
+  koordination: number;
+  fortschritt: number;
+  /** Koordinationsereignisse je geliefertem Ergebnis. */
+  verhaeltnis: number;
+  arten: Record<string, number>;
+  je_agent: ProduktivitaetAgent[];
+  beispiele: { art: string; agent: string; text: string }[];
+}
+
+export interface Produktivitaet {
+  fenster_stunden: number;
+  schwellen: { min_koordination: number; verhaeltnis: number };
+  warnungen: number;
+  gruppen: ProduktivitaetGruppe[];
+}
+
+export async function getProduktivitaet(stunden = 0): Promise<Produktivitaet> {
+  return fetchJSON(`${getBase()}/health/produktivitaet?stunden=${stunden}`);
+}
+
 // --- Approval Rules ---
 
 export interface ApprovalRule {
