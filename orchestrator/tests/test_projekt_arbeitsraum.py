@@ -305,8 +305,11 @@ class StatusAnDerQuelle(_Arbeitsraum):
 
     ITEM = "Für #961 die Inventur wiederholen"
 
-    async def _abschluss(self, zustaende, *, redis="redis-attrappe", kaputt=False):
-        """``zustaende``: Issue-Nummer → Status beim Hoster. ``kaputt``: Quelle antwortet nicht."""
+    async def _abschluss(self, zustaende, *, redis="redis-attrappe", kaputt=False, prs=(), punkte=None,
+                         langsam=0.0):
+        """``zustaende``: Issue-Nummer → Status beim Hoster (fehlende Nummer = ``None``,
+        so melden die Anbieter 404/401/403 und eine erschöpfte Abfragegrenze).
+        ``prs``: Nummern, die beim Hoster ein Pull Request sind. ``kaputt``: Quelle wirft."""
         gefragt = []
 
         class _Anbieter:
@@ -314,7 +317,12 @@ class StatusAnDerQuelle(_Arbeitsraum):
                 gefragt.append((repo, nummer))
                 if kaputt:
                     raise RuntimeError("Hoster antwortet nicht")
+                if langsam:
+                    await asyncio.sleep(langsam)
                 return zustaende.get(nummer)
+
+            async def pull_state(self, client, token, repo, nummer):
+                return "gemergt" if nummer in prs else None
 
         @contextlib.asynccontextmanager
         async def _sitzung():
@@ -326,8 +334,8 @@ class StatusAnDerQuelle(_Arbeitsraum):
 
         with patch("app.db.session.async_session_factory", _sitzung), \
                 patch("app.core.projekt_git.zugang", _zugang):
-            await projekt_termine.abschluss("raum1", "p1", "Daily: Projekt",
-                                            f"## Action Items\n- [ ] {self.ITEM}\n", ["a1"], redis=redis)
+            text = "## Action Items\n" + "".join(f"- [ ] {p}\n" for p in (punkte or [self.ITEM]))
+            await projekt_termine.abschluss("raum1", "p1", "Daily: Projekt", text, ["a1"], redis=redis)
         async with self.Session() as db:
             from sqlalchemy import select
 
@@ -355,6 +363,34 @@ class StatusAnDerQuelle(_Arbeitsraum):
         """Aufrufer ohne ``redis`` (Bestand, Tests): Verhalten wie bisher, kein Absturz."""
         titel, gefragt = await self._abschluss({961: "closed"}, redis=None)
         self.assertEqual((titel, gefragt), ([self.ITEM], []))
+
+    async def test_keine_antwort_der_quelle_legt_die_karte_an(self):
+        """Die Anbieter werfen bei 404/401/403 und erschöpfter Abfragegrenze NICHT, sie
+        liefern ``None``. Das ist der häufigste Ausfallweg (anonyme Projekte: 60 Abfragen
+        je Stunde) und muss wie „nicht geschlossen" wirken, nicht wie „geschlossen"."""
+        titel, gefragt = await self._abschluss({})
+        self.assertEqual((titel, gefragt), ([self.ITEM], [("o/r", 961)]))
+
+    async def test_pull_request_ist_kein_erledigtes_issue(self):
+        """`/issues/{n}` antwortet bei GitHub auch für PRs, und „#N" meint im Protokoll
+        oft etwas anderes als ein Issue. Sonst verschwände „PR #1126 nachziehen" lautlos."""
+        titel, _ = await self._abschluss({1126: "closed"}, prs=(1126,), punkte=["PR #1126 nachziehen"])
+        self.assertEqual(titel, ["PR #1126 nachziehen"])
+
+    async def test_hoechstens_zwanzig_abfragen_je_besprechung(self):
+        """Die im CHANGELOG zugesagte Obergrenze — ein Protokoll voller Nummern darf das
+        Ende der Besprechung nicht aufhalten."""
+        nummern = list(range(500, 530))                      # 30 Nummern in EINEM Punkt
+        punkt = "Sammelpunkt " + " ".join(f"#{n}" for n in nummern)
+        _, gefragt = await self._abschluss({}, punkte=[punkt])
+        self.assertEqual(len(gefragt), projekt_termine.MAX_STATUSABFRAGEN)
+
+    async def test_frist_bricht_die_abfrage_ab_und_legt_die_karte_an(self):
+        """Die zugesagte Gesamtfrist. Eine hängende Quelle darf die Besprechung nicht
+        festhalten — und der Punkt muss danach eine Karte werden, nicht verschwinden."""
+        with patch.object(projekt_termine, "STATUS_FRIST_SEKUNDEN", 0.05):
+            titel, _ = await self._abschluss({961: "closed"}, langsam=0.5)
+        self.assertEqual(titel, [self.ITEM])
 
 
 class TerminText(unittest.TestCase):

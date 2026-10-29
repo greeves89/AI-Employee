@@ -229,7 +229,7 @@ def _items(markdown: str) -> list[str]:
     return [z.strip()[5:].strip() for z in (markdown or "").splitlines() if z.strip().startswith("- [ ]")][:MAX_ITEMS]
 
 
-async def _geschlossen_an_der_quelle(db: AsyncSession, redis, team: Team, nummern: set[int]) -> set[int]:
+async def _geschlossen_an_der_quelle(redis, team_id: str, repo: str, nummern: set[int]) -> set[int]:
     """Welche der genannten Issue-Nummern sind beim Hoster wirklich geschlossen?
 
     Die Board-Spalte taugt dafür nicht: ``spalte == "erledigt"`` kennt nur Nummern,
@@ -239,30 +239,54 @@ async def _geschlossen_an_der_quelle(db: AsyncSession, redis, team: Team, nummer
     deshalb jedes Mal und wurde wieder zur Karte; das Aufräumen von Hand half nicht,
     weil mit der Karte auch das einzige Kennzeichen verschwand.
 
-    Eine nicht erreichbare Quelle heißt ausdrücklich *nicht* geschlossen: ein
-    doppelter Punkt ist billiger als ein verlorener. Schon gemessene Nummern bleiben
-    dabei gültig — bricht die Abfrage nach der Hälfte ab, zählt die Hälfte.
+    Eine nicht erreichbare Quelle heißt ausdrücklich *nicht* geschlossen — und das
+    gilt für beide Arten von „nicht erreichbar": eine Ausnahme UND die Antwort
+    ``None``, mit der die Anbieter 404/401/403 und eine erschöpfte Abfragegrenze
+    melden. Ein doppelter Punkt ist billiger als ein verlorener. Schon gemessene
+    Nummern bleiben gültig — bricht die Abfrage nach der Hälfte ab, zählt die Hälfte.
+
+    Läuft in einer EIGENEN Sitzung und bekommt deshalb nur Werte, kein ORM-Objekt.
     """
-    if not nummern or redis is None or not (team.repo or ""):
+    if not nummern or redis is None or not repo:
         return set()
 
     import httpx
 
     from app.core import projekt_git
+    from app.db.session import async_session_factory
 
     zu: set[int] = set()
     try:
-        ziel = projekt_git.repo_ziel(team.repo)
+        ziel = projekt_git.repo_ziel(repo)
         if ziel.art == "ungueltig" or not ziel.pfad:
             return zu
-        token, anbieter = await projekt_git.zugang(db, redis, team)
         async with asyncio.timeout(STATUS_FRIST_SEKUNDEN):
-            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0), follow_redirects=False) as client:
-                for nr in sorted(nummern)[:MAX_STATUSABFRAGEN]:
-                    if await anbieter.issue_state(client, token, ziel.pfad, nr) == "closed":
+            # EIGENE Sitzung: ``zugang`` kann beim Token-Tausch auf der übergebenen
+            # Sitzung ein ``rollback`` auslösen (``oauth_service`` tut das, wenn sein
+            # ``commit`` scheitert). Das ließe alle geladenen Objekte des Aufrufers
+            # verfallen — die Karten dieser Besprechung wären verloren, der nächste
+            # Zugriff ein Nachladen außerhalb des Async-Kontexts (MissingGreenlet).
+            # ``zugang`` liegt mit in der Frist: es tauscht selbst Token über HTTP
+            # und wartet auf eine Datenbanksperre.
+            async with async_session_factory() as eigene:
+                team = await eigene.get(Team, team_id)
+                if team is None:
+                    return zu
+                token, anbieter = await projekt_git.zugang(eigene, redis, team)
+                async with httpx.AsyncClient(timeout=httpx.Timeout(10.0), follow_redirects=False) as client:
+                    for nr in sorted(nummern)[:MAX_STATUSABFRAGEN]:
+                        if await anbieter.issue_state(client, token, ziel.pfad, nr) != "closed":
+                            continue
+                        # ``/issues/{n}`` antwortet bei GitHub AUCH für Pull Requests, und
+                        # ``#N`` steht in einem Protokoll oft für etwas anderes als ein Issue
+                        # („PR #1126 nachziehen", „Punkt #3 priorisieren"). In einem
+                        # gewachsenen Repo ist fast jede Zahl „geschlossen" — ein PR ist aber
+                        # kein erledigtes Issue, und so ein Punkt darf nicht verschwinden.
+                        if await anbieter.pull_state(client, token, ziel.pfad, nr) is not None:
+                            continue
                         zu.add(nr)
     except Exception as e:  # noqa: BLE001 — die Besprechung endet auch ohne Hoster
-        log.warning("Issue-Status für Projekt %s nicht vollständig geprüft: %s", team.id, e)
+        log.warning("Issue-Status für Projekt %s nicht vollständig geprüft: %s", team_id, e)
     return zu
 
 
@@ -322,7 +346,7 @@ async def abschluss(room_id: str, team_id: str, raum_name: str, zusammenfassung:
         # Den Status der genannten Issues an der QUELLE messen, nicht am Kartenzustand:
         # ohne Karte kennt das Board eine geschlossene Nummer gar nicht (#1106).
         genannt = {int(n) for p in punkte for n in _ISSUE_NR.findall(p)}
-        geschlossen |= await _geschlossen_an_der_quelle(db, redis, team, genannt - geschlossen)
+        geschlossen |= await _geschlossen_an_der_quelle(redis, team.id, team.repo or "", genannt - geschlossen)
         items, uebersprungen = [], 0
         for item in punkte:
             nummern = {int(n) for n in _ISSUE_NR.findall(item)}
