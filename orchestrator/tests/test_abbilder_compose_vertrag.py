@@ -71,10 +71,17 @@ class BauArgumenteSindDeklariert(unittest.TestCase):
             for dienst, spec in _dienste(pfad).items():
                 bau = (spec or {}).get("build")
                 args = bau.get("args") or {} if isinstance(bau, dict) else {}
-                for schluessel in (args if isinstance(args, dict) else {}):
+                umgebung = (spec or {}).get("environment") or {}
+                if isinstance(umgebung, list):
+                    umgebung = {e.split("=", 1)[0]: None for e in umgebung if isinstance(e, str)}
+                # Laufzeitwerte zaehlen mit: in der Community-Zusammenstellung
+                # standen die beiden Adressen unter "environment:" — auf einem
+                # fertigen Abbild genauso wirkungslos, denn Next.js backt
+                # NEXT_PUBLIC_* beim Bau ins Browser-Bundle.
+                for schluessel in list(args if isinstance(args, dict) else {}) + list(umgebung):
                     self.assertFalse(
                         schluessel.startswith("NEXT_PUBLIC_"),
-                        f"{name}: {dienst} backt {schluessel} ins Abbild (#889).",
+                        f"{name}: {dienst} gibt {schluessel} mit — wirkungslos (#889).",
                     )
 
 
@@ -97,6 +104,58 @@ class EnvBeispielNenntDieSchalter(unittest.TestCase):
         versehentlich auf einen alten Stand oder gar nicht."""
         beispiel = (WURZEL / ".env.example").read_text()
         self.assertIn("AI_EMPLOYEE_VERSION", beispiel)
+
+
+class SchalterHoerenAufIhrenDokumentiertenNamen(unittest.TestCase):
+    """Die Einstellungen haben KEIN env_prefix (config.py: ``env_prefix: ""``) —
+    der Feldname IST der Umgebungsname. Ein Feld ``abbild_holen`` hoerte deshalb
+    auf ``ABBILD_HOLEN``, waehrend Compose, ``.env.example`` und die Anleitung
+    ``AI_EMPLOYEE_ABBILD_HOLEN`` versprachen: der Schalter wirkte nicht, und kein
+    Test sah es, weil alle Tests das FELD patchen statt die Umgebung zu setzen.
+    Dieser hier setzt die Umgebung.
+    """
+
+    SCHALTER = {
+        "AI_EMPLOYEE_REGISTRY": ("ai_employee_registry", "registry.example.com/ai", "registry.example.com/ai"),
+        "AI_EMPLOYEE_ABBILD_HOLEN": ("ai_employee_abbild_holen", "0", False),
+        "AI_EMPLOYEE_ABBILD_ABGELEHNT": ("ai_employee_abbild_abgelehnt", "1.2.3", "1.2.3"),
+    }
+
+    def test_jeder_schalter_wirkt_unter_seinem_namen(self):
+        import os
+        import subprocess
+        import sys
+        for umgebung, (feld, wert, erwartet) in self.SCHALTER.items():
+            with self.subTest(umgebung=umgebung):
+                # Eigener Prozess: die Einstellungen werden beim Import EINMAL
+                # gelesen, ein os.environ-Patch im laufenden Test kaeme zu spaet.
+                code = (
+                    "import sys; sys.path.insert(0, '.');"
+                    "from app.config import Settings;"
+                    f"print(repr(Settings().{feld}))"
+                )
+                r = subprocess.run(
+                    [sys.executable, "-c", code],
+                    cwd=WURZEL / "orchestrator",
+                    env={**os.environ, umgebung: wert},
+                    capture_output=True, text=True,
+                )
+                self.assertEqual(0, r.returncode, r.stderr[-800:])
+                self.assertEqual(
+                    repr(erwartet), r.stdout.strip(),
+                    f"{umgebung}={wert} wirkt nicht auf Settings.{feld} — "
+                    "heisst das Feld noch wie die Umgebungsvariable?",
+                )
+
+    def test_die_namen_stehen_in_compose_und_env_example(self):
+        """Ein Schalter, der im Code wirkt, aber nirgends durchgereicht wird, ist
+        fuer den Betreiber nicht vorhanden."""
+        compose = (WURZEL / "docker-compose.yml").read_text()
+        beispiel = (WURZEL / ".env.example").read_text()
+        for umgebung in self.SCHALTER:
+            with self.subTest(umgebung=umgebung):
+                self.assertIn(umgebung, compose, f"{umgebung} erreicht den Orchestrator nicht")
+                self.assertIn(umgebung, beispiel, f"{umgebung} ist nicht dokumentiert")
 
 
 if __name__ == "__main__":

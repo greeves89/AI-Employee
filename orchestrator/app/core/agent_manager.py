@@ -1646,6 +1646,22 @@ class AgentManager:
             env.setdefault("GH_TOKEN", github_token)
         return env
 
+    async def _abbild_warmlaufen(self) -> None:
+        """Agenten-Abbild bereitstellen, BEVOR ein Behaelter erzeugt wird (#889).
+
+        In einem eigenen Faden, und das ist der ganze Zweck: fehlt das Abbild
+        lokal, laedt ``abbild_sicherstellen`` mehrere Gigabyte. Auf dem
+        Event-Loop stuende in dieser Zeit der ganze Orchestrator — API,
+        WebSockets, Zeitplan-Laeufer und die Zustandspruefung. Letztere stellt den
+        Behaelter nach ~90 s auf "unhealthy", und ``autoheal`` startet ihn mitten
+        im Laden neu. ``create_container`` holt zur Sicherheit weiterhin selbst,
+        findet das Abbild dann aber schon vor.
+        """
+        try:
+            await asyncio.to_thread(self.docker.abbild_sicherstellen, settings.agent_image)
+        except Exception as e:  # noqa: BLE001 — darf einen Start nie verhindern
+            logger.warning(f"Abbild-Vorbereitung uebersprungen: {scrub_log(e)}")
+
     async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None, budget_exceeded_action: str = "stop", mode: str = "claude_code", llm_config: dict | None = None, ai_account_id: int | None = None, browser_mode: bool = False, autonomy_level: str | None = None,
                            knowledge_md: str | None = None, template_id: int | None = None,
                            root_bestaetigt: bool = False) -> Agent:
@@ -1793,6 +1809,7 @@ class AgentManager:
             else autonomy_matrix.effective_permissions({}, autonomy_level)
         )
         needs_sudo = len(agent_permissions) > 0
+        await self._abbild_warmlaufen()
         container = self.docker.create_container(
             image=settings.agent_image,
             name=container_name,
@@ -2128,6 +2145,8 @@ class AgentManager:
         catalog = await get_effective_catalog(self.db)
         mount_entries = resolve_agent_mounts(await mounts_des_agenten(self.db, agent), catalog, config.get("mount_modes", {}))
         bind_mounts = mounts_to_docker_volumes(mount_entries) or None
+        await self._abbild_warmlaufen()
+
         def _create_agent_container():
             return self._create_or_adopt(
                 container_name,
@@ -2524,6 +2543,8 @@ class AgentManager:
         catalog = await get_effective_catalog(self.db)
         mount_entries = resolve_agent_mounts(await mounts_des_agenten(self.db, agent), catalog, config.get("mount_modes", {}))
         bind_mounts = mounts_to_docker_volumes(mount_entries) or None
+        await self._abbild_warmlaufen()
+
         def _create_agent_container():
             # Gleiche Uebernahme wie in `restart_agent`: der Name ist fest, also
             # kann ein zweiter Weg denselben Container in der Zwischenzeit

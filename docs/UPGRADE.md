@@ -177,6 +177,12 @@ It is the rescue path, not the supported one: the verified path stays `./scripts
 Set `AI_EMPLOYEE_ABBILD_HOLEN=0` on an installation that must only ever run locally built
 images; the orchestrator then logs the missing image instead of pulling it.
 
+If the signature check above rejected a version, `abbilder_bereitstellen` records that
+number as `AI_EMPLOYEE_ABBILD_ABGELEHNT` in `.env`, and the orchestrator refuses to pull it.
+Without that note the rejection would only last for the run: a later `docker image prune`
+removes the locally built image, and the next agent would have pulled the rejected one. The
+next verified release clears the note.
+
 ### Step 4: Stop Current Services
 
 ```bash

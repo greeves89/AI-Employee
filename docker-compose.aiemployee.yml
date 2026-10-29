@@ -140,6 +140,13 @@ services:
       ANBIETER_URL: ${ANBIETER_URL-https://agents.future-app.de}
       ANBIETER_KONTAKT: ${ANBIETER_KONTAKT:-}
       AGENT_IMAGE: ai-employee-agent:latest
+      # Herkunft der fertigen Abbilder (#889): fehlt das Agenten-Abbild lokal,
+      # holt der Orchestrator es hier. Ohne diese Zeilen kommt ein eigener
+      # Spiegel aus der .env NICHT im Behaelter an — Compose reicht Variablen
+      # einzeln durch, was nicht dasteht, fehlt.
+      AI_EMPLOYEE_REGISTRY: ${AI_EMPLOYEE_REGISTRY:-ghcr.io/greeves89}
+      AI_EMPLOYEE_ABBILD_HOLEN: ${AI_EMPLOYEE_ABBILD_HOLEN:-1}
+      AI_EMPLOYEE_ABBILD_ABGELEHNT: ${AI_EMPLOYEE_ABBILD_ABGELEHNT:-}
       KIOSK_VOICE_ENABLED: ${KIOSK_VOICE_ENABLED:-}
       KIOSK_ENABLED: ${KIOSK_ENABLED:-false}
       MAX_PARALLEL_CHATS: ${MAX_PARALLEL_CHATS:-1}

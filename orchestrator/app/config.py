@@ -127,7 +127,17 @@ class Settings(BaseSettings):
     ai_employee_registry: str = "ghcr.io/greeves89"
     # Aus, wenn eine Anlage ausschliesslich selbst gebaute Abbilder benutzen soll
     # (abgeschottetes Netz). Dann meldet das Protokoll den fehlenden Bau statt zu holen.
-    abbild_holen: bool = True
+    #
+    # Der Name MUSS mit "ai_employee_" beginnen: env_prefix ist leer, der Feldname
+    # IST der Umgebungsname. Als "abbild_holen" hoerte das Feld auf
+    # ABBILD_HOLEN, waehrend Compose, .env.example und die Anleitung
+    # AI_EMPLOYEE_ABBILD_HOLEN versprachen — der Schalter wirkte nicht.
+    ai_employee_abbild_holen: bool = True
+    # Von scripts/lib/abbilder.sh gesetzt, wenn die Signaturpruefung einer Version
+    # fehlgeschlagen ist (#938): diese Version wird dann auch hier nicht geholt.
+    # Ohne diesen Vermerk haette ein spaeteres "docker image prune" das verworfene
+    # Abbild wieder hereingelassen — die Ablehnung war nicht dauerhaft.
+    ai_employee_abbild_abgelehnt: str = ""
     # Platform container names for admin system control (restart/status from the UI)
     orchestrator_container_name: str = "ai-employee-orchestrator"
     frontend_container_name: str = "ai-employee-frontend"

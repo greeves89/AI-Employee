@@ -768,6 +768,13 @@ async def _start_moderator_container(room_id: str, docker, redis_url_internal: s
         except Exception:
             pass
 
+        # Erst das Abbild, dann der Behaelter — der Pull laeuft in einem eigenen
+        # Faden, damit er den Event-Loop nicht minutenlang anhaelt (#889).
+        try:
+            await asyncio.to_thread(docker.abbild_sicherstellen, settings.agent_image)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Abbild-Vorbereitung uebersprungen: {e}")
+
         container = docker.create_container(
             image=settings.agent_image,
             name=container_name,

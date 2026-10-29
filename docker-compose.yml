@@ -207,6 +207,9 @@ services:
       # holt der Orchestrator es hier. Ein eigener Spiegel wird in .env gesetzt.
       AI_EMPLOYEE_REGISTRY: ${AI_EMPLOYEE_REGISTRY:-ghcr.io/greeves89}
       AI_EMPLOYEE_ABBILD_HOLEN: ${AI_EMPLOYEE_ABBILD_HOLEN:-1}
+      # Von scripts/lib/abbilder.sh gesetzt, wenn eine Signaturpruefung
+      # fehlgeschlagen ist: diese Version holt der Orchestrator dann auch nicht.
+      AI_EMPLOYEE_ABBILD_ABGELEHNT: ${AI_EMPLOYEE_ABBILD_ABGELEHNT:-}
       AGENT_MEMORY_LIMIT: ${AGENT_MEMORY_LIMIT-8g}
       # Kiosk voice: enables POST /kiosk/ws-ticket (mints a WS ticket for the local
       # kiosk). Empty by default → endpoint 404s. Set to "true" ONLY on the single-

@@ -169,6 +169,28 @@ class AbbildSignaturen(AbbilderBereitstellen):
                 self.assertIn(f"-a dienst={dienst} ", aufruf + " ")
                 self.assertIn(f"/ai-employee-{dienst}@", aufruf)
 
+    def test_ungueltige_signatur_wird_dauerhaft_vermerkt(self):
+        """Der Orchestrator holt das Agenten-Abbild selbst nach, wenn es lokal
+        fehlt (#889). Ohne diesen Vermerk kaeme genau das hier verworfene Abbild
+        auf diesem Weg wieder herein, sobald ein "docker image prune" den lokalen
+        Bau wegnimmt — die Ablehnung waere nicht dauerhaft."""
+        lauf = self._lauf(COSIGN_GEHT="0")
+        self.assertEqual(lauf.returncode, 0, lauf.stderr)
+        self.assertIn(
+            "AI_EMPLOYEE_ABBILD_ABGELEHNT=1.400.2",
+            (self.anlage / ".env").read_text(),
+        )
+
+    def test_geprüfte_version_hebt_einen_alten_vermerk_auf(self):
+        """Sonst blieb die Anlage nach einem einzigen Fehlschlag dauerhaft am
+        lokalen Bau haengen, auch nach der naechsten, geprueften Freigabe."""
+        env = self.anlage / ".env"
+        env.write_text(env.read_text() + "AI_EMPLOYEE_ABBILD_ABGELEHNT=1.400.1\n")
+        lauf = self._lauf()
+        self.assertEqual(lauf.returncode, 0, lauf.stderr)
+        self.assertIn("QUELLE=registry", lauf.stdout)
+        self.assertIn("AI_EMPLOYEE_ABBILD_ABGELEHNT=\n", env.read_text())
+
     def test_ungueltige_signatur_verhindert_die_benutzung_und_baut_lokal(self):
         lauf = self._lauf(COSIGN_GEHT="0")
         self.assertEqual(lauf.returncode, 0, lauf.stderr)

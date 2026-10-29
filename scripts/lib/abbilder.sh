@@ -167,6 +167,20 @@ abbilder_verwerfen() {
     done
 }
 
+# abbilder_env_setzen <NAME> <wert> — Schluessel in .env eintragen/ersetzen.
+#
+# Nur Namen und Werte ohne Sonderzeichen; beides kommt hier aus VERSION bzw. aus
+# festen Zeichenketten, nie von aussen.
+abbilder_env_setzen() {
+    local name="$1" wert="$2"
+    [ -f .env ] || return 0
+    if grep -q "^${name}=" .env; then
+        sed -i.bak "s|^${name}=.*|${name}=${wert}|" .env && rm -f .env.bak
+    else
+        printf '%s=%s\n' "$name" "$wert" >> .env
+    fi
+}
+
 abbilder_bereitstellen() {
     local lokal_bauen="${1:-0}" version registry
     version="$(tr -d '[:space:]' < VERSION 2>/dev/null || true)"
@@ -176,13 +190,7 @@ abbilder_bereitstellen() {
     export AI_EMPLOYEE_VERSION="$version"
     # Fuer den lokalen Bau: Version ins Frontend-Bundle (update-banner.tsx).
     export APP_VERSION="$version"
-    if [ -f .env ]; then
-        if grep -q '^AI_EMPLOYEE_VERSION=' .env; then
-            sed -i.bak "s/^AI_EMPLOYEE_VERSION=.*/AI_EMPLOYEE_VERSION=${version}/" .env && rm -f .env.bak
-        else
-            printf 'AI_EMPLOYEE_VERSION=%s\n' "$version" >> .env
-        fi
-    fi
+    abbilder_env_setzen AI_EMPLOYEE_VERSION "$version"
 
     ABBILD_QUELLE="lokal"
     if [ "$lokal_bauen" != "1" ]; then
@@ -194,11 +202,18 @@ abbilder_bereitstellen() {
             # shellcheck disable=SC2086  # bewusst getrennte Liste
             if abbilder_signatur_pruefen "$registry" "$version" $ABBILD_DIENSTE agent; then
                 docker tag "${registry}/ai-employee-agent:${version}" ai-employee-agent:latest
+                # Ein frueherer Vermerk gilt nicht mehr: diese Version ist geprueft.
+                abbilder_env_setzen AI_EMPLOYEE_ABBILD_ABGELEHNT ""
                 ABBILD_QUELLE="registry"
                 return 0
             fi
             # shellcheck disable=SC2086  # bewusst getrennte Liste
             abbilder_verwerfen "$registry" "$version" $ABBILD_DIENSTE agent
+            # Dauerhaft festhalten, WELCHE Version durchgefallen ist (#889):
+            # der Orchestrator holt das Agenten-Abbild sonst selbst nach, wenn es
+            # lokal fehlt — und damit kaeme genau das verworfene Abbild wieder
+            # herein, sobald ein "docker image prune" den lokalen Bau wegnimmt.
+            abbilder_env_setzen AI_EMPLOYEE_ABBILD_ABGELEHNT "$version"
         else
             echo "Abbilder ${version} nicht abrufbar (Registry nicht erreichbar oder Version noch nicht gebaut) — baue lokal."
         fi

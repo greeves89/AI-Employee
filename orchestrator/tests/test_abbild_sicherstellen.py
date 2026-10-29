@@ -94,9 +94,10 @@ class AbbildSicherstellen(unittest.TestCase):
     AGENT = "ai-employee-agent:latest"
 
     def _lauf(self, dienst, abbild=None, version="1.394.2",
-              registry="ghcr.io/greeves89", holen=True):
+              registry="ghcr.io/greeves89", holen=True, abgelehnt=""):
         with patch("app.config.settings.ai_employee_registry", registry), \
-             patch("app.config.settings.abbild_holen", holen), \
+             patch("app.config.settings.ai_employee_abbild_holen", holen), \
+             patch("app.config.settings.ai_employee_abbild_abgelehnt", abgelehnt), \
              patch("app.config.get_agent_version", return_value=version):
             return dienst.abbild_sicherstellen(abbild or self.AGENT)
 
@@ -127,12 +128,16 @@ class AbbildSicherstellen(unittest.TestCase):
             self.assertEqual("registry", self._lauf(d, abbild="ai-employee-agent"))
         self.assertEqual([("ai-employee-agent", "latest")], d.client.geholt[0].tags)
 
-    def test_lokaler_name_mit_port_behaelt_den_port(self):
-        """In "host:5000/ai-employee-agent" gehoert der Doppelpunkt zum Port."""
+    def test_eigener_registry_host_wird_direkt_geholt(self):
+        """"host:5000/ai-employee-agent" ist schon eine vollstaendige Referenz
+        (eigener Spiegel mit Port). Dann wird genau sie geholt und nichts
+        umbenannt — eine aus AI_EMPLOYEE_REGISTRY gebaute Referenz wuerde am
+        ausdruecklich gesetzten AGENT_IMAGE vorbeigreifen."""
         d = _dienst()
         with patch("app.config.settings.agent_image", "host:5000/ai-employee-agent"):
-            self._lauf(d, abbild="host:5000/ai-employee-agent")
-        self.assertEqual([("host:5000/ai-employee-agent", "latest")], d.client.geholt[0].tags)
+            self.assertEqual("registry", self._lauf(d, abbild="host:5000/ai-employee-agent"))
+        self.assertEqual(["host:5000/ai-employee-agent"], d.client.pulls)
+        self.assertEqual([], d.client.geholt[0].tags)
 
     def test_eigener_spiegel_wird_benutzt(self):
         d = _dienst()
@@ -154,7 +159,7 @@ class AbbildSicherstellen(unittest.TestCase):
     def test_unbrauchbare_version_holt_nichts(self):
         """get_agent_version() faellt ohne VERSION-Datei auf "0.0.0" bzw. Unsinn
         zurueck — dann darf keine Referenz daraus entstehen."""
-        for version in ("latest", "", "1.2", "1.2.3; rm -rf /", "../../etc"):
+        for version in ("latest", "", "0.0.0", "1.2", "1.2.3; rm -rf /", "../../etc"):
             with self.subTest(version=version):
                 d = _dienst()
                 self.assertEqual("fehlt", self._lauf(d, version=version))
@@ -179,12 +184,67 @@ class AbbildSicherstellen(unittest.TestCase):
                 d = _dienst(pull_fehler=fehler)
                 self.assertEqual("fehlt", self._lauf(d))
 
+    def test_ein_fehler_bei_der_pruefung_verhindert_keinen_start(self):
+        """Der Griff ist eine Bequemlichkeit. Ein Start, der ohne ihn gelaufen
+        waere, darf nicht an ihm scheitern. Genau das passierte beim Bau dieser
+        Aenderung: ein Docker-Zugang ohne ``images`` liess ``create_container``
+        mit AttributeError sterben — drei bestehende Tests wurden rot, und in
+        Betrieb waere jeder Agentenstart daran gescheitert."""
+
+        class _ClientOhneImages(_FakeClient):
+            @property
+            def images(self):
+                raise AttributeError("kein images an diesem Zugang")
+
+        d = DockerService.__new__(DockerService)
+        d.client = _ClientOhneImages()
+        with patch("app.config.settings.ai_employee_registry", "ghcr.io/greeves89"), \
+             patch("app.config.settings.ai_employee_abbild_holen", True), \
+             patch("app.config.get_agent_version", return_value="1.395.0"):
+            behaelter = d.create_container(
+                image=self.AGENT,
+                name="ai-agent-test-abc123",
+                environment={},
+                volume_name="vol-abc123",
+                network="ai-employee-network",
+            )
+        self.assertEqual("deadbeef", behaelter.id)
+        self.assertEqual([("run", self.AGENT)], d.client.ablauf)
+
+    def test_verworfene_version_kommt_nicht_durch_die_hintertuer(self):
+        """#938 verwirft ein Abbild mit ungueltiger Signatur und baut lokal. Ohne
+        diese Schranke holte ein spaeteres "docker image prune" genau dieses
+        Abbild wieder herein — die Ablehnung waere nicht dauerhaft."""
+        d = _dienst()
+        self.assertEqual("fehlt", self._lauf(d, version="1.395.0", abgelehnt="1.395.0"))
+        self.assertEqual([], d.client.pulls)
+
+    def test_eine_andere_verworfene_version_blockiert_nicht(self):
+        """Sonst bliebe die Anlage nach einem einzigen Fehlschlag dauerhaft am
+        lokalen Bau haengen, auch nach der naechsten, geprueften Freigabe."""
+        d = _dienst()
+        self.assertEqual("registry", self._lauf(d, version="1.395.1", abgelehnt="1.395.0"))
+        self.assertEqual(["ghcr.io/greeves89/ai-employee-agent:1.395.1"], d.client.pulls)
+
+    def test_volle_registry_referenz_wird_genau_so_geholt(self):
+        """Die Community-Zusammenstellung setzt AGENT_IMAGE auf
+        ghcr.io/<konto>/ai-employee-agent:<version> UND bindet die VERSION-Datei
+        nicht ein. Eine aus VERSION gebaute Nummer waere dort "0.0.0" — also
+        eine Referenz, die es nirgends gibt."""
+        d = _dienst()
+        voll = "ghcr.io/greeves89/ai-employee-agent:1.394.2"
+        with patch("app.config.settings.agent_image", voll):
+            self.assertEqual("registry", self._lauf(d, abbild=voll, version="0.0.0"))
+        self.assertEqual([voll], d.client.pulls)
+        # Nichts umzubenennen: AGENT_IMAGE zeigt schon auf genau diese Referenz.
+        self.assertEqual([], d.client.geholt[0].tags)
+
     def test_griff_sitzt_vor_dem_start_des_behaelters(self):
         """Die Gegenprobe gegen das Wegfallen des Aufrufs in create_container:
         erst holen, dann starten. Umgekehrt waere der Griff wirkungslos."""
         d = _dienst()
         with patch("app.config.settings.ai_employee_registry", "ghcr.io/greeves89"), \
-             patch("app.config.settings.abbild_holen", True), \
+             patch("app.config.settings.ai_employee_abbild_holen", True), \
              patch("app.config.settings.agent_image", self.AGENT), \
              patch("app.config.get_agent_version", return_value="1.394.2"):
             d.create_container(
