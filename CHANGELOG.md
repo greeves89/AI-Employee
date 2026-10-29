@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.404.0] - 2026-10-29
+
+### Neu
+### Neu
+- Projekt-Board mit sieben Spalten: Inbox, Bereit, In Arbeit, Triage, Review, Erledigt, Verworfen. Jede Spalte zeigt, wofür sie steht; das Board scrollt waagerecht, Verworfen ist einklappbar.
+- Freigeben nur durch Menschen: Agenten legen neue Karten in der Inbox an und nehmen nur freigegebene Karten aus Bereit. „Freigeben“ setzt bei Issues das Tag `status/ready`.
+- Rückfragen (Triage): Ein Agent mit offener Frage stellt sie im Issue bzw. als Notiz, setzt die Karte auf Triage und arbeitet nicht weiter. Das Board setzt das Triage-Tag, nimmt das In-Arbeit-Tag weg und gibt das Ticket frei. Die Karte ist als „Wartet auf dich“ markiert; „Freigeben“ stellt sie zurück nach Bereit. Der Arbeitstakt meldet offene Rückfragen einmal am Tag.
+- Issues, die als „not planned“ geschlossen werden, landen in Verworfen.
+- Agenten dürfen ihren Pull Request unter festen Bedingungen selbst mergen (aktuelles main, Tests und CI grün, fremdes Review, bei heiklen Bereichen Security-Review).
+### Geändert
+- „Eingang“ heißt jetzt „Inbox“, „Prüfung“ heißt „Review“.
+- Der Abgleich erkennt Status-Tags mit Vorsilben (`agent:blocked`, `claude:needs-human` …) und setzt beim Schreiben das Tag, das das Repo schon verwendet.
+
 ## [1.403.0] - 2026-10-29
 
 ### Neu
