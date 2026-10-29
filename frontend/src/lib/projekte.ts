@@ -42,8 +42,14 @@ export interface ProjektKarte {
   extern_regung?: string | null;
   /** Branch mit der Ticketnummer, auf dem von außen gearbeitet wird. */
   extern_branch?: string | null;
-  /** Übernommen, aber seit über zwei Stunden ohne Bewegung. */
+  /** Übernommen, aber abgelaufen: kein Lebenszeichen innerhalb der Dauer des Projekts. */
   extern_stockt?: boolean;
+  /** Bis wann die Übernahme von außen ohne weiteres Lebenszeichen gilt. */
+  extern_bis?: string | null;
+  /** Zwei gültige Übernahmen oder ein fremder Commit auf dem Branch — rot markiert. */
+  konflikt?: string | null;
+  /** Hält der Bearbeiter von außen mehr Übernahmen als erlaubt: wie viele. */
+  bearbeiter_uebernahmen?: number | null;
   pr_nr: number | null;
   pr_url: string | null;
   pr_zustand: string | null;
@@ -78,6 +84,10 @@ export interface ProjektKennzahlen {
   laeufe: number;
   /** Kosten der Läufe des Projekts im laufenden Monat (USD). */
   kosten_monat_usd?: number;
+  /** Höchstens so viele offene Übernahmen je Bearbeiter (Projekteinstellung). */
+  obergrenze_uebernahmen?: number;
+  /** Karten mit Konflikt (zwei Übernahmen, fremder Commit). */
+  konflikte?: number;
   heute_fertig: number;
   fertig_7_tage: number;
   verlauf: { tag: string; anzahl: number }[];

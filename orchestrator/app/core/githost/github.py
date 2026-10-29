@@ -206,6 +206,23 @@ class GitHubHostProvider(GitHostProvider):
         commit = (resp.json() or {}).get("commit") or {}
         return (commit.get("committer") or {}).get("date") or (commit.get("author") or {}).get("date")
 
+    async def commit_info(self, client: httpx.AsyncClient, token: str, repo: str, sha: str) -> dict | None:
+        """Zeit und Autor eines Commits — ``{"zeit", "autor_name", "autor_mail"}`` oder None."""
+        resp = await client.get(f"{self.api_base}/repos/{repo}/commits/{sha}", headers=self._headers(token))
+        if resp.status_code != 200:
+            return None
+        commit = (resp.json() or {}).get("commit") or {}
+        autor = commit.get("author") or {}
+        return {"zeit": (commit.get("committer") or {}).get("date") or autor.get("date"),
+                "autor_name": str(autor.get("name") or "")[:100], "autor_mail": str(autor.get("email") or "")[:200]}
+
+    async def kommentar_aendern(self, client: httpx.AsyncClient, token: str, repo: str, kommentar_id: int,
+                                body: str) -> bool:
+        """Einen Issue-Kommentar ersetzen (Übernahme verlängern)."""
+        resp = await client.patch(f"{self.api_base}/repos/{repo}/issues/comments/{kommentar_id}",
+                                  headers=self._headers(token), json={"body": body})
+        return resp.status_code == 200
+
     async def eigenes_konto(self, client: httpx.AsyncClient, token: str) -> str | None:
         """Login des Kontos hinter dem Schlüssel — None ohne Schlüssel oder wenn nicht lesbar."""
         if not token:

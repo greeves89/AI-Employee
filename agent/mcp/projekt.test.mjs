@@ -28,8 +28,8 @@ function stub(antwort) {
 }
 const stop = (server) => new Promise((resolve) => server.close(resolve));
 
-test("alle dreizehn Projekt-Werkzeuge sind bekannt", () => {
-  assert.equal(PROJEKT_WERKZEUGE.size, 13);
+test("alle vierzehn Projekt-Werkzeuge sind bekannt", () => {
+  assert.equal(PROJEKT_WERKZEUGE.size, 14);
 });
 
 test("das Board kommt als Text vom Server und ist als fremde Daten gerahmt", async () => {
@@ -56,6 +56,20 @@ test("vergeben und Stand melden treffen die Karte im Projekt", async () => {
     ]);
     assert.deepEqual(anfragen[0].body, { agent_id: "a2" });
     assert.deepEqual(anfragen[1].body, { stufe: "pr", pr_url: "https://x/pull/3" });
+  } finally {
+    await stop(server);
+  }
+});
+
+test("übergeben schickt Empfänger, Stand und nächsten Schritt (#1120)", async () => {
+  const { server, anfragen } = await stub({ id: "k1", titel: "T", agent_id: null, extern_bearbeiter: "Claude Code (Laptop)" });
+  try {
+    const r = await projektWerkzeug("projekt_karte_uebergeben", {
+      projekt_id: "p1", karte_id: "k1", an: "claude-code:Laptop", stand: "Login gebaut", naechster_schritt: "Tests",
+    });
+    assert.deepEqual([anfragen[0].method, anfragen[0].url], ["POST", "/api/v1/teams/p1/karten/k1/uebergeben"]);
+    assert.deepEqual(anfragen[0].body, { stand: "Login gebaut", naechster_schritt: "Tests", an: "claude-code:Laptop" });
+    assert.match(r.content[0].text, /übergeben an Claude Code \(Laptop\)/);
   } finally {
     await stop(server);
   }
