@@ -38,7 +38,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
-from app.core.fremdtext import einzeilig
+from app.core.fremdtext import einzeilig, entschaerft
 
 PLATTFORM = "plattform"
 CLAUDE_CODE = "claude_code"
@@ -506,6 +506,50 @@ def commit_passt(u: Uebernahme, autor_mail: str | None) -> bool:
     if u.art == PLATTFORM:
         return True  # alte Freitext-Übernahme ohne Kennung: nicht prüfbar
     return not plattform
+
+
+# ── Text, den die Plattform in fremde Repos schreibt ─────────────────────────
+
+_BILD = re.compile(r"!\[([^\]\n]*)\]\(([^)\n]*)\)")
+#: Markdown-Link ``[Text](Adresse)`` ODER nackte Adresse — in EINEM Durchgang, damit
+#: die Adresse eines Links nicht noch einmal als nackte Adresse gilt.
+_LINK_ODER_URL = re.compile(r"\[([^\]\n]*)\]\(([^)\s]+)(?:\s+\"[^\"\n]*\")?\)|(?<!`)\bhttps?://[^\s<>`)\]]+",
+                            re.I)
+
+
+def _host(url: str) -> str:
+    from urllib.parse import urlsplit
+
+    try:
+        return (urlsplit(url).hostname or "").lower()
+    except ValueError:
+        return ""
+
+
+def _als_text(url: str) -> str:
+    """Eine Adresse als Code-Text: sichtbar, aber nicht anklickbar und ohne Vorschau."""
+    return "`" + url.replace("`", "")[:200] + "`"
+
+
+def neutralisieren(text: str | None, erlaubte_hosts: set[str] | frozenset[str] = frozenset()) -> str:
+    """Text für einen Issue-Kommentar entschärfen — er stammt von einem Agenten.
+
+    * Kein rohes HTML (``<`` wird ``&lt;``) — damit auch keine Kopfzeile ``<!-- … -->``.
+    * Keine Bilder: ``![…](…)`` lädt beim Lesen eine fremde Adresse (Zählpixel,
+      Datenabfluss über die Adresse). Es bleibt der Text, die Adresse als Code.
+    * Links nur auf den Host des Repos und den der Anlage; alle anderen nur als Text.
+    """
+    erlaubt = {h.lower() for h in erlaubte_hosts if h}
+    t = entschaerft(text or "").replace("<", "&lt;")
+    t = _BILD.sub(lambda m: f"Bild „{m.group(1).strip() or 'ohne Titel'}“: {_als_text(m.group(2))}", t)
+    t = t.replace("![", "!\\[")
+
+    def ersetzen(m):
+        if m.group(2) is not None:  # [Text](Adresse)
+            return m.group(0) if _host(m.group(2)) in erlaubt else f"{m.group(1)} ({_als_text(m.group(2))})"
+        return m.group(0) if _host(m.group(0)) in erlaubt else _als_text(m.group(0))
+
+    return _LINK_ODER_URL.sub(ersetzen, t)
 
 
 def wer_aus_eingabe(roh: str | None) -> tuple[str, str, str] | None:

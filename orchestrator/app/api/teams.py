@@ -1100,7 +1100,7 @@ async def karte_uebergeben(team_id: str, karte_id: str, body: Uebergeben, reques
     try:
         neu = await projekt_git.uebergabe_schreiben(
             db, redis, t, karte, an_wer=an_wer, an_name=an_name, an_agent_id=body.agent_id, von_name=von_name,
-            stand=body.stand, naechster_schritt=body.naechster_schritt)
+            stand=body.stand, naechster_schritt=body.naechster_schritt, agent_id=von.id if von else None)
     except projekt_git.GitFehler as e:
         await db.rollback()
         raise HTTPException(status_code=424, detail=str(e))

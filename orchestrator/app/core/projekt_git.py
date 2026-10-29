@@ -465,8 +465,8 @@ async def _uebernahme_lesen(anbieter, client, token: str, repo: str, karte, geae
     karte.uebernahme = befund.inhaber.als_dict() if befund.inhaber else None
     karte.kommentare_gelesen_at = jetzt
     if befund.konkurrent is not None:
-        karte.konflikt = (f"{KONFLIKT_UEBERNAHMEN}: {befund.konkurrent.name} und {befund.inhaber.name} "
-                          "arbeiten am selben Ticket.")[:300]
+        karte.konflikt = (f"{KONFLIKT_UEBERNAHMEN}: {einzeilig(befund.konkurrent.name, 60)} und "
+                          f"{einzeilig(befund.inhaber.name, 60)} arbeiten am selben Ticket.")[:300]
     elif (karte.konflikt or "").startswith(KONFLIKT_UEBERNAHMEN):
         karte.konflikt = None
     return True
@@ -478,6 +478,9 @@ async def _eigene_verlaengern(db: AsyncSession, team: Team, anbieter, client, to
 
     Ist die Hälfte der Dauer um, schreibt das Board die Kopfzeile neu (``bis``
     rückt vor, ``seit`` bleibt). Höchstens zehn je Abgleich; ohne Schlüssel nicht.
+    Geändert werden nur Kommentare, die die Plattform selbst geschrieben hat: Autor
+    ist das Konto des Projekt-Schlüssels UND die Kopfzeile trägt diese Anlage —
+    sonst überschriebe das Board den Kommentar eines anderen.
     """
     from app.core.projekte import AKTIV
     from app.models.agent import Agent
@@ -485,10 +488,15 @@ async def _eigene_verlaengern(db: AsyncSession, team: Team, anbieter, client, to
 
     if not token or not hasattr(anbieter, "kommentar_aendern"):
         return
+    konto = (await schluessel_konto(anbieter, client, token) or "").lower()
+    if not konto:
+        return
     kandidaten = []
     for karte in karten:
         u = uebernahme.Uebernahme.aus_dict(karte.uebernahme)
         if (karte.quelle != "issue" or not karte.task_id or u is None or not u.kopfzeile or not u.kommentar_id
+                or u.art != uebernahme.PLATTFORM or u.anlage != uebernahme.anlage_kennung()
+                or (u.autor or "").lower() != konto
                 or not u.gehoert(agent_id=karte.agent_id, lauf=karte.task_id)):
             continue
         if u.bis is not None and u.bis - jetzt > dauer / 2:
@@ -511,15 +519,33 @@ async def _eigene_verlaengern(db: AsyncSession, team: Team, anbieter, client, to
             log.info("[Projekt] Übernahme #%s nicht verlängert: %s", karte.extern_nr, e)
 
 
-async def konflikte_melden(db: AsyncSession, team: Team, karten: list) -> int:
-    """Neue Konflikte ins Projektgespräch und an den Lead — jeden höchstens einmal.
+#: Höchstens eine Konflikt-Meldung je Issue in diesem Zeitraum — auch wenn die
+#: Beteiligten wechseln (sonst ließe sich das Gespräch mit wechselnden Kopfzeilen fluten).
+KONFLIKT_PAUSE = timedelta(hours=24)
+
+
+async def konflikte_melden(db: AsyncSession, team: Team, karten: list, jetzt: datetime | None = None) -> int:
+    """Neue Konflikte ins Projektgespräch und an den Lead — höchstens einer je Issue und Tag.
 
     Gibt die Zahl der neu gemeldeten zurück. Der Aufrufer committet.
     """
+    from sqlalchemy import func
+
     from app.core import projekt_gespraech
     from app.models.notification import Notification
+    from app.models.projekt_nachricht import ProjektNachricht
 
-    neu = [k for k in karten if k.konflikt and k.konflikt != k.konflikt_gemeldet]
+    jetzt = jetzt or datetime.now(timezone.utc)
+    kandidaten = [k for k in karten if k.konflikt and k.konflikt != k.konflikt_gemeldet]
+    neu = []
+    for karte in kandidaten:
+        schon = await db.scalar(select(func.count(ProjektNachricht.id)).where(
+            ProjektNachricht.team_id == team.id, ProjektNachricht.karte_id == karte.id,
+            ProjektNachricht.autor_typ == "system", ProjektNachricht.text.startswith("Konflikt an #"),
+            ProjektNachricht.created_at > jetzt - KONFLIKT_PAUSE))
+        karte.konflikt_gemeldet = karte.konflikt
+        if not schon:
+            neu.append(karte)
     for karte in neu[:10]:
         text = (f"Konflikt an #{karte.extern_nr}: {karte.konflikt} Bitte im Issue klären, wer weitermacht — "
                 "die anderen hören auf und übergeben ihren Stand.")
@@ -726,9 +752,9 @@ async def _extern_branches(anbieter, client: httpx.AsyncClient, token: str, repo
             if info:
                 karte.extern_sha = sha
                 if not uebernahme.commit_passt(u, info.get("autor_mail")):
-                    autor = einzeilig(str(info.get("autor_name") or info.get("autor_mail") or "?"), 80)
+                    autor = einzeilig(str(info.get("autor_name") or info.get("autor_mail") or "?"), 60)
                     karte.konflikt = (f"{KONFLIKT_COMMIT}: {sha[:7]} auf {karte.extern_branch} ist von {autor}, "
-                                      f"übernommen hat aber {u.name}.")[:300]
+                                      f"übernommen hat aber {einzeilig(u.name, 60)}.")[:300]
                 elif (karte.konflikt or "").startswith(KONFLIKT_COMMIT):
                     karte.konflikt = None
         if zeit is None and sha and abfragen < MAX_BRANCH_ZEITEN and hasattr(anbieter, "commit_zeit"):
@@ -912,9 +938,36 @@ async def offene_uebernahmen(db: AsyncSession, team_id: str, agent_id: str) -> i
         ProjektKarte.agent_id == agent_id)) or 0)
 
 
+def erlaubte_hosts(team: Team) -> set[str]:
+    """Hosts, auf die ein Kommentar der Plattform verlinken darf: der des Repos und der der Anlage."""
+    from app.config import settings
+
+    ziel = repo_ziel(team.repo or "")
+    hosts = {"github.com"} if ziel.art == "github" else {urlsplit(ziel.basis or "").hostname or ""}
+    try:
+        hosts.add(urlsplit(getattr(settings, "public_app_url", "") or "").hostname or "")
+    except ValueError:
+        pass
+    return {h.lower() for h in hosts if h}
+
+
+async def ausgehend_pruefen(text: str, *, agent_id: str | None, kanal: str, team: Team) -> str:
+    """Text, der in ein (vielleicht öffentliches) Repo geht: DLP, dann entschärfen.
+
+    Die DLP-Regeln der Anlage (``core/dlp.evaluate_egress``) können maskieren oder
+    sperren; gesperrt → GitFehler. Danach ``uebernahme.neutralisieren``.
+    """
+    from app.core.dlp import evaluate_egress
+
+    urteil = await evaluate_egress(text or "", agent_id=agent_id, channel=kanal)
+    if urteil.blocked:
+        raise GitFehler("Der Text enthält geschützte Daten (DLP-Regel) und geht nicht ins Repo.")
+    return uebernahme.neutralisieren(urteil.output, erlaubte_hosts(team))
+
+
 async def uebergabe_schreiben(db: AsyncSession, redis, team: Team, karte: ProjektKarte, *, an_wer: str,
                               an_name: str, an_agent_id: str | None, von_name: str, stand: str,
-                              naechster_schritt: str) -> uebernahme.Uebernahme:
+                              naechster_schritt: str, agent_id: str | None = None) -> uebernahme.Uebernahme:
     """„Übergeben an …“: Kommentar mit Stand, nächstem Schritt und Kopfzeile des Empfängers.
 
     Die Kopfzeile trägt ``vorher`` = bisheriger Inhaber — damit endet dessen
@@ -934,6 +987,9 @@ async def uebergabe_schreiben(db: AsyncSession, redis, team: Team, karte: Projek
     else:
         vorher_wer = (karte.uebernahme or {}).get("wer") or "extern"
     jetzt = datetime.now(timezone.utc)
+    stand = await ausgehend_pruefen(stand, agent_id=agent_id, kanal="issue_uebergabe", team=team)
+    naechster_schritt = await ausgehend_pruefen(naechster_schritt, agent_id=agent_id, kanal="issue_uebergabe",
+                                                team=team)
     text = uebernahme.uebergabe_kommentar(an_wer=an_wer, an_name=an_name, an_agent_id=an_agent_id,
                                           von_name=von_name, vorher_wer=vorher_wer, stand=stand,
                                           naechster_schritt=naechster_schritt, nr=karte.extern_nr, jetzt=jetzt,
@@ -943,7 +999,8 @@ async def uebergabe_schreiben(db: AsyncSession, redis, team: Team, karte: Projek
         if not await anbieter.add_labels(client, token, repo, karte.extern_nr, [UEBERNAHME_TAG]):
             raise GitFehler(f"Tag {UEBERNAHME_TAG} ließ sich nicht setzen (Schreibrecht für Issues?).")
         await anbieter.comment_issue(client, token, repo, karte.extern_nr, text)
-    neu = uebernahme.lesen({"id": None, "body": text, "erstellt": jetzt.isoformat()})
+    # Selbst geschrieben, mit dem Schlüssel des Projekts: vertraut.
+    neu = uebernahme.lesen({"id": None, "body": text, "erstellt": jetzt.isoformat(), "vertraut": True})
     return neu
 
 
