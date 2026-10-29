@@ -1172,6 +1172,22 @@ ORCHESTRATOR_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "projekt_issue_kommentar",
+            "description": "Write a question or note for people outside the platform (Claude Code sessions, humans, other installations) as a comment into the issue of a card. Use it to ask whoever holds or reported the ticket. Their answers ('@ai-employee <your name>: …' in the issue) reach you through the project conversation. Do not post status spam; at most 10 comments per hour.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "projekt_id": {"type": "string", "description": "Project (team) id — from list_my_team (team_id)."},
+                    "karte_id": {"type": "string", "description": "Card of the issue (from projekt_board)."},
+                    "text": {"type": "string", "description": "The comment (Markdown, max. 4000 chars)."}
+                },
+                "required": ["projekt_id", "karte_id", "text"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "projekt_karte_stand",
             "description": "Report progress on the card you are working on: stage (planung, bau, tests, pr, ci, merge), the URL of your pull request, and/or a short note. Report every new stage so the project overview stays true.",
             "parameters": {

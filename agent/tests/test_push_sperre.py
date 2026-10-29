@@ -206,5 +206,52 @@ class HealthHandler(unittest.TestCase):
         entscheiden.assert_awaited_once_with("Bash", {"command": "git push"}, cwd="/workspace/r", lauf="t-7")
 
 
+class RueckkanalLauf(unittest.TestCase):
+    """Läufe aus dem Rückkanal: Werkzeuge zum Vergeben, Pushen, Mailen fragt der Hook nach."""
+
+    def setUp(self):
+        self.erlaubt = patch("app.tools.pretooluse_hook._get_allowed_categories", return_value=None)
+        self.erlaubt.start()
+
+    def tearDown(self):
+        self.erlaubt.stop()
+
+    def test_hook_sperrt_mail_im_rueckkanal_lauf(self):
+        client = _Client(_Antwort(200, {"erlaubt": False, "grund": "Gesperrt: Rückkanal-Lauf"}))
+        with patch("httpx.AsyncClient", return_value=client):
+            aus = asyncio.run(decide_async("mcp__email__email_send", {"to": "x@example.com"}, lauf="t-r"))
+        self.assertEqual(aus["hookSpecificOutput"]["permissionDecision"], "deny")
+        url, _, daten = client.gesendet[0]
+        self.assertTrue(url.endswith("/api/v1/teams/repo/werkzeug-pruefen"))
+        self.assertEqual(daten, {"lauf": "t-r", "werkzeug": "email_send", "eingabe": {}})
+
+    def test_andere_werkzeuge_fragen_nicht(self):
+        client = _Client(_Antwort(200, {"erlaubt": False, "grund": "x"}))
+        with patch("httpx.AsyncClient", return_value=client):
+            self.assertIsNone(asyncio.run(push_sperre.werkzeug_pruefen("Read", {}, "t-r")))
+            self.assertIsNone(asyncio.run(push_sperre.werkzeug_pruefen("mcp__orchestrator__projekt_board", {}, "t")))
+        self.assertEqual(client.gesendet, [])
+
+    def test_karte_anlegen_schickt_die_spalte_mit_und_bleibt_fail_open(self):
+        client = _Client(_Antwort(200, {"erlaubt": True}))
+        with patch("httpx.AsyncClient", return_value=client):
+            self.assertIsNone(asyncio.run(push_sperre.werkzeug_pruefen(
+                "projekt_karte_anlegen", {"titel": "t", "spalte": "bereit"}, "t-r")))
+        self.assertEqual(client.gesendet[0][2]["eingabe"], {"spalte": "bereit"})
+        with patch("httpx.AsyncClient", return_value=_Client(fehler=OSError("weg"))):
+            self.assertIsNone(asyncio.run(push_sperre.werkzeug_pruefen("email_send", {}, "t-r")))
+
+    def test_executor_fragt_mit_seinem_lauf(self):
+        from app.tools.executor import ToolExecutor
+
+        ex = ToolExecutor(workspace_dir=tempfile.gettempdir())
+        ex.lauf = "t-r"
+        pruefen = AsyncMock(return_value="Gesperrt: Rückkanal-Lauf")
+        with patch("app.tools.push_sperre.werkzeug_pruefen", new=pruefen):
+            aus = asyncio.run(ex.execute("projekt_karte_vergeben", {"projekt_id": "p", "karte_id": "k"}))
+        self.assertTrue(aus.startswith("[GESPERRT]"))
+        pruefen.assert_awaited_once_with("projekt_karte_vergeben", {"projekt_id": "p", "karte_id": "k"}, "t-r")
+
+
 if __name__ == "__main__":
     unittest.main()

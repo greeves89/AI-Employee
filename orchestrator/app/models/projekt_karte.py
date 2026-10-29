@@ -7,7 +7,7 @@ einem Pull Request. Der Lauf eines Agenten ist der Task dazu (``task_id``):
 
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Float, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, BigInteger, DateTime, Float, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -75,3 +75,6 @@ class ProjektKarte(Base, TimestampMixin):
     # und welcher davon schon gemeldet ist — jeder höchstens einmal.
     konflikt: Mapped[str | None] = mapped_column(String(300), nullable=True)
     konflikt_gemeldet: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    # Rückkanal (core/projekt_git._rueckkanal): Kennung des letzten Issue-Kommentars,
+    # dessen Ansprache „@ai-employee …“ schon ins Projektgespräch ging — jeder nur einmal.
+    rueckkanal_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

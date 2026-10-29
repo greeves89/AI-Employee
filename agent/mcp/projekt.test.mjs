@@ -28,8 +28,8 @@ function stub(antwort) {
 }
 const stop = (server) => new Promise((resolve) => server.close(resolve));
 
-test("alle vierzehn Projekt-Werkzeuge sind bekannt", () => {
-  assert.equal(PROJEKT_WERKZEUGE.size, 14);
+test("alle fünfzehn Projekt-Werkzeuge sind bekannt", () => {
+  assert.equal(PROJEKT_WERKZEUGE.size, 15);
 });
 
 test("das Board kommt als Text vom Server und ist als fremde Daten gerahmt", async () => {
@@ -70,6 +70,18 @@ test("übergeben schickt Empfänger, Stand und nächsten Schritt (#1120)", async
     assert.deepEqual([anfragen[0].method, anfragen[0].url], ["POST", "/api/v1/teams/p1/karten/k1/uebergeben"]);
     assert.deepEqual(anfragen[0].body, { stand: "Login gebaut", naechster_schritt: "Tests", an: "claude-code:Laptop" });
     assert.match(r.content[0].text, /übergeben an Claude Code \(Laptop\)/);
+  } finally {
+    await stop(server);
+  }
+});
+
+test("Rückfrage ins Issue trifft die Karte (#1123)", async () => {
+  const { server, anfragen } = await stub({ issue: 5, url: "https://github.com/o/r/issues/5" });
+  try {
+    const r = await projektWerkzeug("projekt_issue_kommentar", { projekt_id: "p1", karte_id: "k5", text: "Frage?" });
+    assert.deepEqual([anfragen[0].method, anfragen[0].url], ["POST", "/api/v1/teams/p1/karten/k5/issue-kommentar"]);
+    assert.deepEqual(anfragen[0].body, { text: "Frage?" });
+    assert.match(r.content[0].text, /Im Issue #5 geschrieben/);
   } finally {
     await stop(server);
   }

@@ -214,6 +214,50 @@ def push_ziele(befehl: str, verzeichnis: str | None = None, *, tiefe: int = 0) -
     return ziele
 
 
+#: Werkzeuge, die in einem Lauf aus dem Rückkanal (Frage aus einem Issue) gesperrt sein
+#: können — nur für sie wird der Orchestrator gefragt (``projekt_git.RUECKKANAL_GESPERRT``).
+LAUF_PRUEFEN = frozenset({
+    "projekt_karte_vergeben", "projekt_karte_uebergeben", "projekt_karte_verschieben", "projekt_karte_anlegen",
+    "create_task", "create_task_batch", "delegate_and_wait",
+    "email_send", "email_reply", "send_email", "reply_email", "ms_send_email",
+    "send_teams_message", "send_teams_chat_message",
+})
+
+
+async def werkzeug_pruefen(werkzeug: str, eingabe: dict | None, lauf: str | None) -> str | None:
+    """Sperrgrund für ein Werkzeug in einem beschränkten Lauf — None, wenn erlaubt.
+
+    Fail-open wie die Push-Sperre: Ist der Orchestrator nicht erreichbar, wird nicht
+    gesperrt (Zusammenstoß- und Missbrauchsbremse, keine Sicherheitsgrenze).
+    """
+    name = werkzeug.rsplit("__", 1)[-1] if werkzeug.startswith("mcp__") else werkzeug
+    if name not in LAUF_PRUEFEN:
+        return None
+    from app.config import settings
+
+    spalte = (eingabe or {}).get("spalte") if isinstance(eingabe, dict) else None
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=5) as client:
+            antwort = await client.post(
+                f"{settings.orchestrator_url}/api/v1/teams/repo/werkzeug-pruefen",
+                headers={"X-Agent-ID": settings.agent_id, "Authorization": f"Bearer {settings.agent_token}"},
+                json={"lauf": (lauf or "").strip()[:64] or None, "werkzeug": name,
+                      "eingabe": {"spalte": spalte} if isinstance(spalte, str) else {}},
+            )
+        if antwort.status_code != 200:
+            logger.warning("[Lauf-Sperre] Orchestrator antwortet %s, %s erlaubt", antwort.status_code, name)
+            return None
+        daten = antwort.json()
+    except Exception as e:  # noqa: BLE001 — fail-open, siehe oben
+        logger.warning("[Lauf-Sperre] Orchestrator nicht erreichbar, %s erlaubt: %s", name, e)
+        return None
+    if isinstance(daten, dict) and daten.get("erlaubt") is False:
+        return str(daten.get("grund") or "In diesem Lauf gesperrt.")[:1500]
+    return None
+
+
 async def pruefen(befehl: str, verzeichnis: str | None = None, lauf: str | None = None) -> str | None:
     """Sperrgrund für einen Shell-Befehl — None, wenn er pushen darf (oder nicht pusht)."""
     from app.config import settings

@@ -417,7 +417,7 @@ def inhaber(kommentare: list[dict], eigene_anlage: str | None = None) -> Ueberna
 
 def kopfzeile(art: str, **felder) -> str:
     """``<!-- ai-employee:claim … -->`` — alle Werte entschärft, leere weggelassen."""
-    teile = [f"ai-employee:{'release' if art == 'release' else 'claim'}"]
+    teile = [f"ai-employee:{art if art in ('release', 'nachricht') else 'claim'}"]
     for name in ("wer", "agent_id", "lauf", "branch", "seit", "bis", "vorher"):
         wert = felder.get(name)
         if isinstance(wert, datetime):
@@ -564,6 +564,80 @@ def wer_aus_eingabe(roh: str | None) -> tuple[str, str, str] | None:
     return wer, art, name
 
 
+# ── Rückkanal: Issue-Kommentar → Agent, Agent → Issue ────────────────────────
+
+#: ``@ai-employee <Agent>: <Text>`` bzw. ``@ai-employee <anlage>/<Agent>: …`` am
+#: Zeilenanfang; ohne Namen (``@ai-employee: …``) an den Lead. Zitate (``>``) zählen nicht.
+_ANSPRACHE = re.compile(r"^[ \t]*@ai-employee(?:[ \t]+(?P<ziel>[^:\n]{1,100}?))?[ \t]*:[ \t]*(?P<text>\S.*)$",
+                        re.I | re.M)
+#: Erste Zeile eines Kommentars der Plattform (Übernahme, Rückgabe, Nachricht).
+_PLATTFORM_KOPF = re.compile(r"^<!--\s*ai-employee:[a-z]+\b(.*?)-->", re.S)
+MAX_ANSPRACHE = 3000
+
+
+@dataclass
+class Ansprache:
+    """Eine Nachricht aus einem Issue-Kommentar an einen Agenten dieser Anlage."""
+
+    kommentar_id: int
+    agent: str | None     # Name des angesprochenen Agenten; None = Lead
+    text: str
+    von: str              # lesbar: „@login“ oder „Anlage X: Agent“
+
+
+def ansprachen(kommentar: dict, eigene_anlage: str | None = None) -> Ansprache | None:
+    """Die Ansprache an DIESE Anlage in einem Kommentar — oder None.
+
+    Kommentare, die diese Anlage selbst geschrieben hat (Kopfzeile mit ihrer
+    Kennung), zählen nicht: sonst weckte eine Rückfrage, die eine Ansprache
+    zitiert, den eigenen Agenten. Eine Ansprache mit fremder Anlage
+    (``@ai-employee anlage-nord/DEV: …``) gilt der anderen Anlage. Der Text ist
+    entschärft und gekürzt — er bleibt fremder Text.
+    """
+    if not isinstance(kommentar, dict) or not isinstance(kommentar.get("id"), int):
+        return None
+    if kommentar.get("vertraut") is not True:
+        return None  # nur Konten mit Schreibrecht am Repo dürfen Agenten wecken
+    eigene_anlage = eigene_anlage or anlage_kennung()
+    text = str(kommentar.get("body") or "")[:20000].lstrip()
+    von = f"@{kommentar['autor']}" if kommentar.get("autor") and _LOGIN.match(str(kommentar["autor"])) else "extern"
+    kopf = _PLATTFORM_KOPF.match(text)
+    if kopf:
+        felder = dict(_FELD.findall(kopf.group(1)[:2000]))
+        _, art, name, _, _ = _wer_lesen(felder.get("wer", ""), eigene_anlage)
+        if art == PLATTFORM:
+            return None  # von dieser Anlage selbst geschrieben
+        if art != EXTERN:
+            von = name
+    treffer = _ANSPRACHE.search(text)
+    if treffer is None:
+        return None
+    ziel = (treffer.group("ziel") or "").strip()
+    if "/" in ziel:
+        anlage, _, ziel = ziel.partition("/")
+        if anlage.strip().lower() != eigene_anlage.lower():
+            return None
+    zeilen = [z for z in text[treffer.start("text"):].splitlines() if not z.lstrip().startswith(">")]
+    inhalt = entschaerft("\n".join(zeilen)).strip()[:MAX_ANSPRACHE]
+    if not inhalt:
+        return None
+    return Ansprache(kommentar_id=kommentar["id"], agent=einzeilig(ziel, 80) or None, text=inhalt,
+                     von=einzeilig(von, 60))
+
+
+def nachricht_kommentar(*, agent_name: str | None, agent_id: str | None, text: str) -> str:
+    """Kommentar eines Plattform-Agenten ins Issue (Rückfrage an Externe).
+
+    Die Kopfzeile weist ihn als Kommentar dieser Anlage aus — der Rückkanal
+    liest ihn deshalb nicht als Ansprache, auch wenn er eine zitiert.
+    """
+    name = _wert(agent_name or "Agent", 80) or "Agent"
+    kopf = kopfzeile("nachricht", wer=wer_plattform(name), agent_id=agent_id)
+    inhalt = (text or "").strip()[:4000]
+    return (f"{kopf}\n**{name}** (AI-Employee-Agent):\n\n{inhalt}\n\n"
+            f"_Antwort an den Agenten: ein Kommentar mit `@ai-employee {name}: …`_")
+
+
 # ── Abschnitt für die AGENTS.md ──────────────────────────────────────────────
 
 AGENTS_MD_START = "<!-- ai-employee:zusammenarbeit:start -->"
@@ -626,9 +700,20 @@ Zwei gültige Übernahmen am selben Issue oder ein Commit eines anderen auf dem
 Branch einer Übernahme markiert das Board rot und meldet es den Menschen.
 
 ### Rückkanal
-Fragen an die Agenten von AI Employee stellt man im Issue; sie lesen die
-Kommentare zu ihren Übernahmen. Kopfzeilen und Rückgaben zählen nur von Konten
-mit Schreibrecht am Repo.
+Fragen an die Agenten von AI Employee stellt man im Issue, mit einer Zeile, die
+so beginnt:
+
+```
+@ai-employee <Agent>: <Frage>
+```
+
+Ohne Namen (`@ai-employee: …`) geht sie an den Lead des Projekts; arbeiten
+mehrere Anlagen am Repo, nennt `@ai-employee <anlage>/<Agent>: …` die Anlage.
+Die Frage landet im Projektgespräch und weckt den Agenten. Seine Rückfragen
+schreibt er ins Issue.
+Kopfzeilen, Rückgaben und Fragen zählen nur von Konten mit Schreibrecht am
+Repo. Der Rückkanal ist bei privaten Repos mit Schlüssel an, sonst aus
+(Projekteinstellung).
 {AGENTS_MD_ENDE}
 """
 

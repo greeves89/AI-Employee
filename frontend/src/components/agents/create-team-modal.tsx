@@ -49,6 +49,7 @@ export function CreateTeamModal({
   const [uebernahmeStunden, setUebernahmeStunden] = useState<number>(2);
   const [maxUebernahmen, setMaxUebernahmen] = useState<number>(2);
   const [abloesen, setAbloesen] = useState(false);
+  const [rueckkanal, setRueckkanal] = useState<"an" | "aus" | "auto">("auto");
   const [schluesselListe, setSchluesselListe] = useState<{ id: number; name: string; key_name: string }[]>([]);
   const [brains, setBrains] = useState<string[]>([]);
   const [brainListe, setBrainListe] = useState<{ label: string; name: string; description: string | null }[]>([]);
@@ -72,6 +73,7 @@ export function CreateTeamModal({
       setUebernahmeStunden(team?.uebernahme_stunden ?? 2);
       setMaxUebernahmen(team?.max_uebernahmen ?? 2);
       setAbloesen(!!team?.abgelaufene_uebernehmen);
+      setRueckkanal(team?.rueckkanal ?? "auto");
       setBrains(team?.angebundene_brains ?? []);
       setError(null);
     }
@@ -118,6 +120,7 @@ export function CreateTeamModal({
         ...(projekt ? { repo: repo.trim(), repo_secret_id: repo.trim() ? schluessel : 0 } : {}),
         ...(projekt && isEdit && repo.trim() ? {
           uebernahme_stunden: uebernahmeStunden, max_uebernahmen: maxUebernahmen, abgelaufene_uebernehmen: abloesen,
+          rueckkanal,
         } : {}),
         // Nur bei Änderung mitschicken — sonst blockierte ein inzwischen entzogenes
         // Brain das Speichern jeder anderen Einstellung.
@@ -281,6 +284,18 @@ export function CreateTeamModal({
                                 Agenten dürfen abgelaufene fremde Übernahmen selbst übernehmen (30 Minuten nach dem Ablauf,
                                 mit Kommentar an den bisherigen Bearbeiter). Aus: nur ein Mensch gibt sie im Board frei.
                               </span>
+                            </label>
+                            <label className="block text-[11px] text-muted-foreground">
+                              Fragen aus dem Issue („@ai-employee Agent: …“) wecken Agenten
+                              <select value={rueckkanal} onChange={(e) => setRueckkanal(e.target.value as "an" | "aus" | "auto")}
+                                className="mt-1 w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-sm outline-none focus:border-primary/50">
+                                <option value="auto">
+                                  Automatisch — {team?.repo_oeffentlich === false && schluessel ? "an (privates Repo mit Schlüssel)" : "aus (öffentliches Repo oder ohne Schlüssel)"}
+                                </option>
+                                <option value="an">An — auch bei öffentlichem Repo</option>
+                                <option value="aus">Aus</option>
+                              </select>
+                              <span className="mt-1 block">Nur Kommentare von Konten mit Schreibrecht am Repo zählen; höchstens fünf Weckrufe je Stunde.</span>
                             </label>
                           </div>
                         )}

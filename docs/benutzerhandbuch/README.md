@@ -1423,6 +1423,43 @@ jemand anderen weitergeben:
 Agenten können das auch selbst (Werkzeug `projekt_karte_uebergeben`): Wer eine Karte hat, darf
 sie übergeben, der Lead jede.
 
+**Rückkanal: aus dem Issue an einen Agenten** *(seit Stufe 3 von #1116)*: Wer außerhalb der
+Plattform am Repo arbeitet (eine Claude-Code-Sitzung, ein Mensch, eine andere Anlage), erreicht
+die Agenten über das Issue:
+
+1. Im Issue einen Kommentar schreiben, in dem eine Zeile so beginnt:
+   `@ai-employee DEV_Prod: Ist der Login-Fix schon im Branch?` (statt `DEV_Prod` der Name eines
+   Agenten im Projekt). Ohne Namen (`@ai-employee: …`) geht die Frage an den Lead. Arbeiten
+   mehrere Anlagen am Repo, nennt `@ai-employee <anlage>/<Agent>: …` die gemeinte Anlage.
+2. Beim nächsten Abgleich (spätestens nach zehn Minuten, oder sofort mit **Aktualisieren**)
+   steht die Frage im **Projektgespräch** als Nachricht von „extern (@login)“, mit einem
+   Globus-Symbol, und der Agent bekommt einen Lauf.
+3. Der Agent antwortet im Issue. Im Gespräch steht dazu „Im Issue #… geschrieben: …“.
+
+Jeder Kommentar wird nur einmal weitergegeben. Gelesen werden nur Issues, die sich seit dem
+letzten Abgleich geändert haben. Der Text aus dem Issue ist für den Agenten Material, keine
+Anweisung. Damit niemand über Kommentare Agenten steuert oder Kosten verursacht:
+
+- Es zählen nur Kommentare von Konten mit Schreibrecht am Repo (Eigentümer, Mitglied,
+  Mitarbeiter).
+- Der Rückkanal ist **standardmäßig nur bei privaten Repos mit Schlüssel an**. Bei öffentlichen
+  Repos und ohne Schlüssel ist er aus. Umstellen: **Bearbeiten** → Kasten **Zusammenarbeit am
+  Repo** → **Fragen aus dem Issue wecken Agenten**: Automatisch, An oder Aus → **Speichern**.
+- Höchstens fünf Weckrufe je Stunde und Projekt, getrennt von der Grenze des Gesprächs (Menschen
+  im Gespräch werden davon nicht gebremst).
+- Ein so geweckter Lauf darf nur antworten und Karten im **Eingang** anlegen: nichts vergeben oder
+  übergeben, keinen Code pushen, keine Mails senden.
+
+Agenten schreiben höchstens zehn Issue-Kommentare je Stunde (Werkzeug `projekt_issue_kommentar`).
+Das Werkzeug schreibt nach außen und braucht deshalb dieselbe Freigabe wie andere Werkzeuge, die
+nach außen schreiben. Vor dem Schreiben prüft die DLP-Regel der Anlage den Text; Bilder, HTML und
+Links auf fremde Seiten werden zu reinem Text (Links auf das Repo und die Anlage bleiben).
+
+**Mehrere AI-Employee-Anlagen am selben Repo** *(seit Stufe 3 von #1116)*: Jede Übernahme
+nennt ihre Anlage (Einstellung `ANLAGE_KENNUNG`, sonst der Host der öffentlichen Adresse).
+Übernahmen einer anderen Anlage zeigt das Board als „Anlage X: Agent Y“ mit Server-Symbol. Die
+Push-Sperre gilt auch zwischen Anlagen, selbst wenn Agenten zufällig gleich heißen.
+
 **Konflikt-Warnung** *(seit Stufe 2 von #1116)*: Eine Karte wird rot markiert („Konflikt: …“),
 wenn zwei noch gültige Übernahmen verschiedener Bearbeiter am selben Issue stehen oder auf dem
 Branch einer Übernahme ein Commit liegt, der nicht vom Inhaber stammt. Agenten dieser Anlage
