@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, BookOpen, Box, CalendarClock, Crown, GitBranch, KanbanSquare, Loader2, MessageSquare, MessagesSquare, Pencil, Send, Trash2, TriangleAlert, Users } from "lucide-react";
+import { ArrowLeft, BookOpen, Box, CalendarClock, Crown, GitBranch, KanbanSquare, Loader2, MessageCircleQuestion, MessageSquare, MessagesSquare, Pencil, Send, Trash2, TriangleAlert, Users } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { CreateTeamModal } from "@/components/agents/create-team-modal";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
@@ -189,7 +189,7 @@ export default function ProjektPage() {
     setSendet(true);
     try {
       const karte = await api.projektAuftrag(projekt.id, { text: text.trim(), agent_id: ziel || null, nur_eingang: nurEingang });
-      toast.success(nurEingang ? "In den Eingang gelegt" : "Auftrag abgegeben", karte.titel);
+      toast.success(nurEingang ? "In die Inbox gelegt" : "Auftrag abgegeben", karte.titel);
       setText("");
       await laden();
       agentenNeu();
@@ -353,7 +353,7 @@ export default function ProjektPage() {
                 </select>
                 <label className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
                   <input type="checkbox" checked={nurEingang} onChange={(e) => setNurEingang(e.target.checked)} />
-                  nur in den Eingang
+                  nur in die Inbox
                 </label>
                 <button
                   type="button"
@@ -387,9 +387,13 @@ export default function ProjektPage() {
                 className={cn("-mb-px inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-sm",
                   reiter === key ? "border-primary font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}>
                 <Icon className="h-4 w-4" /> {label}
+                {key === "board" && (board.kennzahlen.triage ?? 0) > 0 && (
+                  <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300"
+                    title="Rückfragen warten auf dich (Triage)"><MessageCircleQuestion className="h-3 w-3" />{board.kennzahlen.triage}</span>
+                )}
                 {key === "board" && board.kennzahlen.pruefung > 0 && (
                   <span className="rounded-full bg-orange-500/15 px-1.5 text-[10px] font-semibold text-orange-600 dark:text-orange-400"
-                    title="Wartet auf deine Prüfung">{board.kennzahlen.pruefung}</span>
+                    title="Wartet auf dein Review">{board.kennzahlen.pruefung}</span>
                 )}
                 {key === "raum" && board.laufend.length > 0 && (
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" title="Jemand arbeitet gerade" />

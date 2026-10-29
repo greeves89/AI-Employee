@@ -12,7 +12,13 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
 
-SPALTEN = ("eingang", "bereit", "in_arbeit", "pruefung", "erledigt")
+# Reihenfolge = Reihenfolge auf dem Board. Die Schlüssel sind gespeichert und
+# bleiben; angezeigt heißen „eingang“ Inbox und „pruefung“ Review
+# (core/projekte.SPALTEN_NAMEN). „triage“: Rückfrage offen, wartet auf einen
+# Menschen. „verworfen“: wird nicht umgesetzt (Issue „not planned“ geschlossen).
+SPALTEN = ("eingang", "bereit", "in_arbeit", "triage", "pruefung", "erledigt", "verworfen")
+#: Spalten, in denen eine Karte abgeschlossen ist (Board zeigt sie 30 Tage).
+ABGESCHLOSSEN = ("erledigt", "verworfen")
 STUFEN = ("planung", "bau", "tests", "pr", "ci", "merge")
 QUELLEN = ("eigen", "issue", "pr")
 

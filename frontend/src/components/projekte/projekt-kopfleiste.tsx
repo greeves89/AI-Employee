@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Kopfleiste eines Projekts: der Fluss Eingang › Bereit › In Arbeit › Prüfung ›
+ * Kopfleiste eines Projekts: der Fluss Inbox › Bereit › In Arbeit › Triage › Review ›
  * Erledigt als Zahlen, dazu Kosten, Takt und Repo-Stand — eine Zeile statt vier
  * Kästen. Ein Klick auf eine Zahl führt zum Board.
  */
@@ -34,17 +34,18 @@ export function ProjektKopfleiste({
   const ueberBudget = !!budgetUsd && kosten >= budgetUsd;
   const taktLabel = TAKTE.find((t) => t.minuten === (takt.minuten ?? 0))?.label ?? "Aus";
   const fluss = [
-    { label: "Eingang", wert: k.eingang },
+    { label: "Inbox", wert: k.eingang },
     { label: "Bereit", wert: k.bereit },
     { label: "In Arbeit", wert: k.in_arbeit, aktiv: k.in_arbeit > 0 },
-    { label: "Prüfung", wert: k.pruefung, achtung: k.pruefung > 0 },
+    { label: "Triage", wert: k.triage ?? 0, achtung: (k.triage ?? 0) > 0 },
+    { label: "Review", wert: k.pruefung, achtung: k.pruefung > 0 },
     { label: "Erledigt", zusatz: " · 7 Tage", wert: k.fertig_7_tage },
   ];
 
   return (
     <div className="rounded-2xl border border-foreground/[0.08] bg-card">
       <div className="flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:gap-0">
-        <div className="grid min-w-0 flex-1 grid-cols-5 items-center gap-1">
+        <div className="grid min-w-0 flex-1 grid-cols-6 items-center gap-1">
           {fluss.map((f, i) => (
             <button key={f.label} type="button" onClick={onBoard}
               className="group relative flex min-w-0 flex-col items-center rounded-xl px-1 py-1.5 hover:bg-foreground/[0.04]">

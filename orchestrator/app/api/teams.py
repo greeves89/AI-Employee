@@ -794,8 +794,10 @@ async def karte_anlegen(team_id: str, body: NeueKarte, user=Depends(require_auth
 
     _kein_betrachter(user)
     t = await _projekt(team_id, user, db)
+    # Karten von Agenten landen in der Inbox: freigeben (Bereit) darf nur ein Mensch.
+    spalte = "eingang" if is_agent_principal(user) and body.spalte == "bereit" else body.spalte
     try:
-        karte = projekte.neue_karte(t.id, body.titel, body.text, spalte=body.spalte,
+        karte = projekte.neue_karte(t.id, body.titel, body.text, spalte=spalte,
                                     prioritaet=body.prioritaet, von=_wer(user),
                                     ersteller_user_id=await _besitzer(user, db))
     except projekte.KartenFehler as e:
@@ -816,19 +818,24 @@ class KarteAendern(BaseModel):
 
 @router.patch("/{team_id}/karten/{karte_id}")
 async def karte_aendern(team_id: str, karte_id: str, body: KarteAendern, user=Depends(require_auth_or_agent),
-                        db: AsyncSession = Depends(get_db)):
+                        db: AsyncSession = Depends(get_db), redis=Depends(get_redis_service)):
+    """Karte umstellen. Agenten geben nie frei (Bereit) und verwerfen nicht; eine
+    Rückfrage (Triage) dürfen sie stellen. Bei Issue-Karten schreibt das Board
+    Triage bzw. Bereit als Tag ins Issue (``projekt_git.status_ins_repo``)."""
     from app.core import projekte
 
     _kein_betrachter(user)
     t = await _projekt(team_id, user, db)
+    agent_id = str(user.id) if is_agent_principal(user) else None
     try:
         karte = await projekte.karte_laden(db, t.id, karte_id, sperren=True)
+        vorher, lauf = karte.spalte, karte.task_id
         projekte.verschieben(karte, spalte=body.spalte, prioritaet=body.prioritaet,
-                             reihenfolge=body.reihenfolge, notiz=body.notiz)
+                             reihenfolge=body.reihenfolge, notiz=body.notiz, von_agent=agent_id)
     except (LookupError, projekte.KartenFehler) as e:
         await db.rollback()
         raise _kartenfehler(e)
-    # Titel und Text: nur eigene Karten (Issues kommen aus dem Repo), nur im Eingang
+    # Titel und Text: nur eigene Karten (Issues kommen aus dem Repo), nur in der Inbox
     # (danach ist sie eingeplant oder vergeben) und nur vom Nutzer, dem die Karte
     # gehoert — sonst liesse sich ein Auftrag an fremde Agenten unterschieben.
     if body.titel is not None or body.text is not None:
@@ -837,13 +844,45 @@ async def karte_aendern(team_id: str, karte_id: str, body: KarteAendern, user=De
             karte.ersteller_user_id != await _besitzer(user, db)
         ):
             await db.rollback()
-            raise HTTPException(status_code=409, detail="Titel und Text ändert nur, wem die Karte gehört — und nur im Eingang.")
+            raise HTTPException(status_code=409, detail="Titel und Text ändert nur, wem die Karte gehört — und nur in der Inbox.")
         if body.titel is not None:
             karte.titel = body.titel.strip()
         if body.text is not None:
             karte.text = body.text.strip()
+    if karte.quelle == "issue" and t.repo and karte.spalte != vorher and karte.spalte in ("triage", "bereit"):
+        await _status_ins_repo(db, redis, t, karte, vorher=vorher, lauf=lauf, agent_id=agent_id)
     await db.commit()
     return projekte.karte_dict(karte)
+
+
+async def _status_ins_repo(db: AsyncSession, redis, t: Team, karte, *, vorher: str, lauf: str | None,
+                           agent_id: str | None) -> None:
+    """Triage/Bereit ins Issue schreiben — mit der Karte, die schon umgestellt ist.
+
+    Freigabe durch einen Menschen (Bereit) an einer Karte mit Triage-Tag MUSS im
+    Repo ankommen — sonst holte der nächste Abgleich sie zurück nach Triage: dann
+    bleibt alles, wie es war (424). Sonst ist das Tag Beiwerk: ein Fehler steht
+    im Protokoll, die Karte ist trotzdem umgestellt.
+    """
+    from app.core import projekt_git
+
+    name = None
+    if agent_id:
+        name = await db.scalar(select(Agent.name).where(Agent.id == agent_id))
+    try:
+        await projekt_git.status_ins_repo(
+            db, redis, t, karte, karte.spalte, agent_name=name,
+            # Die Übernahme gibt nur frei, wer sie hielt (der Agent seiner eigenen Karte).
+            agent_id=agent_id if agent_id and vorher == "in_arbeit" and karte.agent_id == agent_id else None,
+            lauf=lauf)
+    except Exception as e:  # noqa: BLE001 — GitFehler, Netz
+        if karte.spalte == "bereit" and projekt_git.tags_der_art(karte.labels, "triage"):
+            await db.rollback()
+            raise HTTPException(status_code=424, detail=(
+                f"Freigabe nicht ins Repo geschrieben: {e} Ohne das wäre die Karte beim nächsten Abgleich "
+                "wieder in Triage — bitte das Triage-Tag im Issue selbst entfernen."))
+        projekt_git.log.warning("[Projekt] Spalte %s von #%s nicht ins Repo geschrieben: %s",
+                                karte.spalte, karte.extern_nr, e)
 
 
 class Vergeben(BaseModel):
@@ -887,8 +926,16 @@ async def _vergeben(t: Team, karte_id: str, agent_id: str | None, user, request:
         vorab = await projekte.karte_laden(db, t.id, karte_id)
     except LookupError as e:
         raise _kartenfehler(e)
+    # Vergeben wird aus Bereit — also nur, was ein Mensch freigegeben hat. Ein
+    # Mensch darf auch direkt aus Inbox oder Triage vergeben: das IST die Freigabe.
+    erlaubt = ("bereit",) if is_agent_principal(user) else ("eingang", "bereit", "triage")
+    if vorab.spalte not in erlaubt:
+        raise HTTPException(status_code=409, detail=(
+            "Agenten vergeben nur Karten aus Bereit — freigeben (Inbox/Triage → Bereit) darf nur ein Mensch."
+            if is_agent_principal(user) and vorab.spalte in ("eingang", "triage")
+            else "Nur Karten aus Inbox, Bereit oder Triage lassen sich vergeben."))
     vorgaenger = None
-    if vorab.quelle == "issue" and vorab.spalte in ("eingang", "bereit"):
+    if vorab.quelle == "issue":
         # Obergrenze: höchstens N offene Übernahmen je Bearbeiter — der Server lehnt ab.
         bearbeiter = ziel or t.lead_agent_id
         grenze = uebernahme.obergrenze_fuer(t)
@@ -913,9 +960,9 @@ async def _vergeben(t: Team, karte_id: str, agent_id: str | None, user, request:
         karte = await projekte.karte_laden(db, t.id, karte_id, sperren=True)
     except LookupError as e:
         raise _kartenfehler(e)
-    if karte.spalte not in ("eingang", "bereit"):
+    if karte.spalte not in erlaubt:
         await db.rollback()
-        raise HTTPException(status_code=409, detail="Nur Karten aus Eingang oder Bereit lassen sich vergeben.")
+        raise HTTPException(status_code=409, detail="Die Karte hat sich inzwischen bewegt — nicht vergeben.")
     vorher = karte.spalte
     team_id, lead_id = t.id, t.lead_agent_id
     karte.spalte = "in_arbeit"
@@ -1080,10 +1127,14 @@ async def karte_uebergeben(team_id: str, karte_id: str, body: Uebergeben, reques
         karte = await projekte.karte_laden(db, t.id, karte_id)
     except LookupError as e:
         raise _kartenfehler(e)
-    if karte.quelle != "issue" or karte.spalte == "erledigt":
+    if karte.quelle != "issue" or karte.spalte in ("erledigt", "verworfen"):
         raise HTTPException(status_code=409, detail="Übergeben geht nur bei offenen Karten aus Issues.")
     if is_agent_principal(user) and str(user.id) not in (karte.agent_id, t.lead_agent_id):
         raise HTTPException(status_code=403, detail="Übergeben darf nur, wer die Karte hat — oder der Lead.")
+    if is_agent_principal(user) and karte.spalte not in ("in_arbeit", "bereit"):
+        # Sonst gäbe ein Agent über die Übergabe eine Karte frei, die kein Mensch freigegeben hat.
+        raise HTTPException(status_code=409, detail="Agenten übergeben nur Karten aus Bereit oder In Arbeit — "
+                                                    "freigeben darf nur ein Mensch.")
     if body.agent_id:
         mitglieder = set(t.member_agent_ids or []) | ({t.lead_agent_id} if t.lead_agent_id else set())
         if body.agent_id not in mitglieder:
@@ -1227,7 +1278,7 @@ async def karte_zurueckgeben(team_id: str, karte_id: str, body: Zurueckgeben, re
         raise _kartenfehler(e)
     if karte.spalte != "pruefung":
         await db.rollback()
-        raise HTTPException(status_code=409, detail="Zurückgeben geht nur in der Prüfung.")
+        raise HTTPException(status_code=409, detail="Zurückgeben geht nur im Review.")
     alt = await _lauf_der_karte(db, karte, user)
     team_id, lead_id = t.id, t.lead_agent_id
     mitglieder = set(t.member_agent_ids or []) | ({lead_id} if lead_id else set())
@@ -1280,7 +1331,7 @@ class ProjektAuftrag(BaseModel):
     titel: str | None = Field(default=None, max_length=300)
     # Leer: an den Lead (oder das einzige Mitglied). Sonst direkt an dieses Mitglied.
     agent_id: str | None = None
-    # Nur als Karte in den Eingang legen, nicht gleich vergeben.
+    # Nur als Karte in die Inbox legen, nicht gleich vergeben.
     nur_eingang: bool = False
     prioritaet: int = Field(default=2, ge=1, le=3)
 

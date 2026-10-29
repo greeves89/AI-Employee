@@ -473,6 +473,15 @@ def rueckgabe_kommentar(*, agent_name: str | None, agent_id: str | None = None, 
     return f"{kopf}\nZurückgegeben: Der AI-Employee-Agent arbeitet nicht mehr daran — das Ticket ist wieder frei."
 
 
+def rueckfrage_kommentar(*, agent_name: str | None, agent_id: str | None = None, lauf: str | None = None,
+                         triage_tag: str = "status/triage", bereit_tag: str = "status/ready") -> str:
+    """Rückgabe mit offener Rückfrage: Der Agent hört auf, bis ein Mensch geklärt hat."""
+    kopf = kopfzeile("release", wer=wer_plattform(agent_name or "Lead"), agent_id=agent_id, lauf=lauf)
+    return (f"{kopf}\nRückfrage offen: Der AI-Employee-Agent arbeitet nicht weiter, bis sie beantwortet ist "
+            f"(Frage im Kommentar dazu). Nach der Klärung bitte `{_wert(triage_tag, 60).replace('`', '')}` entfernen "
+            f"und `{_wert(bereit_tag, 60).replace('`', '')}` setzen — dann geht das Ticket zurück nach Bereit.")
+
+
 def anzeige(u: Uebernahme | None) -> str:
     """Kurz für Meldungen: „Claude Code (seit 29.10. 14:03)“."""
     if u is None:
@@ -694,6 +703,25 @@ Schritt, dessen erste Zeile die Kopfzeile des Empfängers ist, mit
 `vorher="<wer bisher>"`. Wer einfach aufhört, schreibt einen Kommentar, dessen
 erste Zeile `<!-- ai-employee:release wer="…" -->` ist, und nimmt das Tag
 `status/in-arbeit` weg.
+
+### Ablauf und Status-Tags
+Neue Issues landen in der Inbox. Nur ein Mensch gibt frei: Tag `status/ready`
+(→ Bereit); Agenten nehmen nur freigegebene Issues. Wer übernimmt, setzt
+`status/in-arbeit`. Bei einer Rückfrage: die Frage als Kommentar ins Issue,
+`status/triage` setzen, `status/in-arbeit` entfernen und nicht weiterarbeiten.
+Der Mensch antwortet, entfernt `status/triage` und setzt wieder `status/ready`.
+Ein offener PR mit `Closes #<nr>` heißt Review; gemergt bzw. geschlossen heißt
+erledigt, als „not planned“ geschlossen heißt verworfen. Hat das Repo schon
+eigene Tags dafür (z. B. `agent:blocked` für Rückfragen), gelten diese.
+
+### Selbst mergen
+Erlaubt (Squash), sofern dieses Repo nichts anderes sagt, wenn alles erfüllt
+ist: Branch enthält das aktuelle main (danach erneut geprüft); Tests grün, bei
+Oberflächen-Änderungen auch ein Browser-Test; CI grün auf dem letzten Commit
+(Lauf zum headSha prüfen); Review durch jemand anderen als den Autor (bei
+Login, Rollen, Personendaten, Uploads oder neuen öffentlichen Endpunkten
+zusätzlich ein Security-Review); niemand sonst arbeitet am PR. Fremde Branches
+nie überschreiben (kein `--force`).
 
 ### Konflikte
 Zwei gültige Übernahmen am selben Issue oder ein Commit eines anderen auf dem

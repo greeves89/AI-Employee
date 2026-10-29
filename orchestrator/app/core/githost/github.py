@@ -172,6 +172,11 @@ class GitHubHostProvider(GitHostProvider):
         resp = await client.get(f"{self.api_base}/repos/{repo}/issues/{nummer}", headers=self._headers(token))
         return resp.json() if resp.status_code == 200 else None
 
+    async def list_labels(self, client: httpx.AsyncClient, token: str, repo: str, hoechstens: int = 300) -> list[str]:
+        """Namen aller Tags (Labels) des Repos — das Board setzt das hier übliche."""
+        rows = await self._seiten(client, token, f"/repos/{repo}/labels", {}, hoechstens)
+        return [str(r["name"]) for r in rows if isinstance(r, dict) and isinstance(r.get("name"), str)]
+
     async def add_labels(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int,
                          labels: list[str]) -> bool:
         resp = await client.post(f"{self.api_base}/repos/{repo}/issues/{nummer}/labels",

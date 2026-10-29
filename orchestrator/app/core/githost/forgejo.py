@@ -181,6 +181,11 @@ class ForgejoHostProvider(GitHostProvider):
                                 json={"name": name, "color": "#fbca04"})
         return neu.json().get("id") if neu.status_code in (200, 201) else None
 
+    async def list_labels(self, client: httpx.AsyncClient, token: str, repo: str, hoechstens: int = 300) -> list[str]:
+        """Namen aller Tags (Labels) des Repos — das Board setzt das hier übliche."""
+        rows = await self._seiten(client, token, f"/repos/{repo}/labels", {}, hoechstens)
+        return [str(r["name"]) for r in rows if isinstance(r, dict) and isinstance(r.get("name"), str)]
+
     async def add_labels(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int,
                          labels: list[str]) -> bool:
         ids = [i for i in [await self._label_id(client, token, repo, n) for n in labels] if i is not None]

@@ -245,7 +245,7 @@ class BesprechungKenntDenStand(_Arbeitsraum):
         self.assertIn("#961", stand)
         self.assertIn("Erledigt", stand)
         self.assertNotIn("Alte Idee aus dem Eingang", stand)   # nur als Kennzahl
-        self.assertIn("Eingang 1", stand)
+        self.assertIn("Inbox 1", stand)
 
     async def test_erledigte_und_doppelte_punkte_werden_keine_karten(self):
         await self._karten_anlegen()

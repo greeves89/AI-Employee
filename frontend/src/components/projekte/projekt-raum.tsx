@@ -57,7 +57,7 @@ export function ProjektRaum({
 
   const plaetze = mitglieder.slice(0, PLAETZE.length);
   const weitere = mitglieder.length - plaetze.length;
-  // Der Stapel an der Tür: alles, was noch nicht vergeben ist (Eingang + Bereit).
+  // Der Stapel an der Tür: alles, was noch nicht vergeben ist (Inbox + Bereit).
   const offen = kennzahlen.eingang + kennzahlen.bereit;
   const blaetter = Math.min(offen, 12);
   const zettel = [

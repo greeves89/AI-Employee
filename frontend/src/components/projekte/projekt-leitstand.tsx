@@ -112,7 +112,7 @@ export function ProjektLeitstand({
         <section className="min-w-0 rounded-2xl border border-foreground/[0.08] bg-card p-4">
           <h2 className="text-sm font-semibold">Reststapel</h2>
           <button type="button" onClick={onZumBoard} className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
-            <span className="rounded-full bg-foreground/[0.06] px-2 py-0.5"><b className="tabular-nums">{k.eingang}</b> Eingang</span>
+            <span className="rounded-full bg-foreground/[0.06] px-2 py-0.5"><b className="tabular-nums">{k.eingang}</b> Inbox</span>
             <span className="text-muted-foreground">›</span>
             <span className="rounded-full px-2 py-0.5" style={{ background: `${farbe}22` }}><b className="tabular-nums">{k.bereit}</b> Bereit</span>
           </button>

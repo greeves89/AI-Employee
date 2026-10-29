@@ -136,8 +136,11 @@ class Karten(Basis):
         async with self.Session() as db:
             k = await api.karte_anlegen("p1", api.NeueKarte(titel="Login prüfen"), user=MITGLIED, db=db)
             self.assertEqual(k["spalte"], "eingang")
+            # Agenten geben nie frei: auch mit spalte=bereit landet die Karte in der Inbox.
             k2 = await api.karte_anlegen("p1", api.NeueKarte(titel="Doku", spalte="bereit"), user=agent("a2"), db=db)
-            self.assertEqual(k2["spalte"], "bereit")
+            self.assertEqual(k2["spalte"], "eingang")
+            k3 = await api.karte_anlegen("p1", api.NeueKarte(titel="Plan", spalte="bereit"), user=MITGLIED, db=db)
+            self.assertEqual(k3["spalte"], "bereit")
             with self.assertRaises(HTTPException) as e:
                 await api.karte_anlegen("p1", api.NeueKarte(titel="x"), user=agent("b1"), db=db)
             self.assertEqual(e.exception.status_code, 403)
