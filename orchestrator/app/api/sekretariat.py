@@ -401,6 +401,9 @@ async def mail_antwort(body: AntwortEntwerfen, request: Request, user=Depends(re
     from app.core import sekretariat, sekretariat_postfach
 
     team = await _team(db, user)
+    if await sekretariat.antwort_schon_beauftragt(db, str(user.id), body.mail_id):
+        raise HTTPException(status_code=409, detail=(
+            "Für diese Mail ist gerade schon eine Antwort beauftragt — der Entwurf kommt nach „Wartet auf dich“."))
     try:
         mail = await sekretariat_postfach.mail_lesen(await sekretariat.zugang(db, user), body.mail_id)
     except sekretariat.SekretariatFehler as e:

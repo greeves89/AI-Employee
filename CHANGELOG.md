@@ -17,6 +17,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 - Erinnerungen: „Später“ (1 Std., morgen 9:00, nächste Woche), „Nachfassen“ nach einer gesendeten Mail, Fristen aus Mails übernehmen.
 - Neu: Protokoll „Was das Sekretariat heute getan hat“, Termine von morgen und ein Hinweis, welches Modell die Mailinhalte verarbeitet.
 
+### Sicherheit
+- **Fremder Text kann den Datenrahmen nicht mehr schließen.**
+  - Mails, Issues, Gespräche und Ergebnisse stehen in Aufträgen in `[EXTERNAL-DATA]`. Die Marke wurde an fünf Stellen nur in exakter Schreibweise entschärft. Kleinschreibung, Leerzeichen, Klammern voller Breite und unsichtbare Zeichen liefen durch.
+  - Jetzt gibt es eine gemeinsame Stelle (`core/fremdtext`), die alle Schreibweisen erfasst und unsichtbare Zeichen entfernt.
+  - Mail-Felder (Betreff, Absender, Vorschau) gehen einzeilig in den Auftrag.
+- Der Betreff eines abgelehnten Entwurfs (bei Antworten aus der fremden Mail) geht nur noch entschärft, einzeilig und gekürzt an den Agenten.
+- **Kostenbremsen:** „Antwort entwerfen“ je Mail höchstens einmal in 10 Minuten. „Briefing neu erstellen“ frühestens 5 Minuten nach dem letzten. Beides wird über die Datenbank geprüft und hält auch mit mehreren Workern.
+- Ändert sich beim Bearbeiten eines Entwurfs gleichzeitig Bcc, Antwort-an oder ein Anhang, bricht die Änderung ab. Die Freigabe bleibt dann ungültig, statt etwas zu senden, das niemand gesehen hat.
+- Das Protokoll zeigt nur Läufe der eigenen Agenten. Einträge älter als 30 Tage werden weggeräumt.
+
 ### Datenbank
 - Migration `a8b9c0d1e2f3`: Tabelle `sekretariat_protokoll`, Spalte `erinnerungen.bezug`.
 

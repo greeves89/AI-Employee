@@ -390,7 +390,9 @@ def _entschaerft(text: str, laenge: int) -> str:
     t = t.replace("skill_install(", "skill_install·(")
     # Auch ohne Leerzeichen (``…und 0 weitere``) und mit drei Punkten.
     t = re.sub(r"(?:…|\.\.\.)\s*und", "·und", t)
-    return t.replace("[EXTERNAL-DATA", "(EXTERNAL-DATA").replace("[/EXTERNAL-DATA", "(/EXTERNAL-DATA")
+    from app.core.fremdtext import entschaerft
+
+    return entschaerft(t)
 
 
 def _listenzeile(s: dict) -> str:

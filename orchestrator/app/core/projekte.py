@@ -408,7 +408,9 @@ def lauf_titel(karte: ProjektKarte, fremd: bool = False) -> str:
 
 
 def _entschaerft(text: str) -> str:
-    return text.replace("[EXTERNAL-DATA", "(EXTERNAL-DATA").replace("[/EXTERNAL-DATA", "(/EXTERNAL-DATA")
+    from app.core.fremdtext import entschaerft
+
+    return entschaerft(text)
 
 
 def karten_auftrag(karte: ProjektKarte, projekt_name: str, *, fremd: bool = False) -> str:
@@ -506,7 +508,7 @@ def nacharbeit_prompt(karte: ProjektKarte, task: Task | None, hinweis: str, proj
         ergebnis = ergebnis[:4000] + "\n[… gekürzt]"
     # Das bisherige Ergebnis kann Text aus fremden Quellen enthalten (Webseiten,
     # Mails, Issues) — es ist Material, keine Anweisung.
-    ergebnis = ergebnis.replace("[EXTERNAL-DATA", "(EXTERNAL-DATA").replace("[/EXTERNAL-DATA", "(/EXTERNAL-DATA")
+    ergebnis = _entschaerft(ergebnis)
     return (
         f"Nacharbeit: Der Auftraggeber hat die Karte zurückgegeben mit diesem Hinweis:\n\n{hinweis.strip()}\n\n"
         + karten_auftrag(karte, projekt_name, fremd=fremd)
