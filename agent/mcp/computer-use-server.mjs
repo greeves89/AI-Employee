@@ -78,15 +78,16 @@ const TOOLS = [
   {
     name: "computer_ax_tree",
     description:
-      "Get the macOS Accessibility (AX) element tree — much faster than screenshot loops. " +
-      "Returns structured JSON with roles, titles, values, and bounding boxes. " +
-      "Only available on macOS with accessibility permissions granted.",
+      "Get the UI element tree of an app (macOS Accessibility / Windows UI Automation) — much " +
+      "faster and more reliable than screenshot loops. Returns structured JSON with roles, " +
+      "titles, values and bounding boxes. Works on macOS (accessibility permission granted) and " +
+      "Windows. Without `app` it reads the app in the foreground.",
     inputSchema: {
       type: "object",
       properties: {
         app: {
           type: "string",
-          description: "App name to inspect (e.g. 'Safari', 'Finder'). Omit for full system tree.",
+          description: "App to inspect — macOS app name ('Safari', 'Finder') or Windows window title/process ('Excel', 'notepad'). Omit for the foreground app.",
         },
         max_depth: {
           type: "integer",
@@ -233,15 +234,16 @@ const TOOLS = [
   {
     name: "computer_find_element",
     description:
-      "Search the AX tree for a UI element by text and/or role. Returns the element's " +
-      "bounding box and center coordinates — ready to pass to computer_click. " +
-      "Faster than reading the full AX tree manually.",
+      "Search the UI element tree (macOS AX / Windows UI Automation) for an element by text " +
+      "and/or role. An exact label match wins over a partial one. Returns the element's " +
+      "bounding box and center coordinates. To ACT on the element, prefer " +
+      "computer_element_action — it operates the element directly instead of clicking a point.",
     inputSchema: {
       type: "object",
       properties: {
         query: { type: "string", description: "Text to search for in title/label/value." },
-        role: { type: "string", description: "AX role to match (e.g. 'AXButton', 'AXTextField')." },
-        app: { type: "string", description: "App name to search in (omit for full desktop)." },
+        role: { type: "string", description: "Role to match, platform-neutral: 'button' matches AXButton (macOS) and ButtonControl (Windows); also 'textfield'/'edit', 'checkbox', 'combobox', 'menuitem', 'tabitem', 'listitem'." },
+        app: { type: "string", description: "App to search in (omit for the foreground app on macOS / whole desktop on Windows)." },
       },
     },
   },
@@ -249,15 +251,45 @@ const TOOLS = [
     name: "computer_wait_for_element",
     description:
       "Wait until a UI element matching the query appears on screen. " +
-      "Polls the AX tree every 0.5s up to the timeout. Returns element coords when found.",
+      "Polls the UI element tree (macOS AX / Windows UI Automation) every 0.5s up to the " +
+      "timeout — also while the app is still starting. Returns element coords when found.",
     inputSchema: {
       type: "object",
       properties: {
         query: { type: "string", description: "Text to wait for." },
-        role: { type: "string", description: "AX role filter (optional)." },
+        role: { type: "string", description: "Role filter, platform-neutral like 'button' (optional)." },
         app: { type: "string", description: "App name to watch (optional)." },
         timeout: { type: "number", description: "Max wait in seconds (default 10, max 30).", default: 10 },
       },
+    },
+  },
+  {
+    name: "computer_element_action",
+    description:
+      "Operate a UI element DIRECTLY through the operating system (Windows UI Automation / " +
+      "macOS Accessibility) — the reliable way to work in native apps, no coordinates. Finds " +
+      "the element like computer_find_element, then: 'press' (button, menu item, link), " +
+      "'toggle' (checkbox/switch; value true/false reaches that state), 'select' (list item, " +
+      "tab, radio; with value = entry text it opens a dropdown and picks that entry), " +
+      "'expand'/'collapse' (tree node, dropdown, menu), 'focus', 'set_value' (fills a text " +
+      "field with value). Works even if the window is partly covered or on a scaled monitor. " +
+      "Only if the element offers no direct way does the bridge click/type at its center. " +
+      "The reply names the method used and the element's state afterwards " +
+      "(value/checked/selected/expanded) — check it instead of assuming success.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: ["press", "toggle", "select", "expand", "collapse", "focus", "set_value"],
+          description: "What to do with the element.",
+        },
+        query: { type: "string", description: "Label/title/text of the element (exact match preferred)." },
+        role: { type: "string", description: "Role filter, platform-neutral: 'button', 'checkbox', 'edit'/'textfield', 'combobox', 'menuitem', 'tabitem', 'listitem'." },
+        app: { type: "string", description: "App the element is in ('Excel', 'notepad', 'Safari'). Required when the session is limited to certain apps." },
+        value: { type: "string", description: "set_value: the text to put in. select: the entry to pick. toggle: 'true'/'false' for a target state." },
+      },
+      required: ["action"],
     },
   },
   {
@@ -749,6 +781,26 @@ export function buildServer() {
             };
           }
           return { content: [{ type: "text", text: `Timed out waiting for "${args?.query}"` }], isError: true };
+
+        case "computer_element_action": {
+          const schritt = args?.action ?? "press";
+          const ziel = { query: args?.query ?? "", role: args?.role ?? "", app: args?.app };
+          result = schritt === "set_value"
+            ? await sendCommand("element_set_value", { ...ziel, value: args?.value ?? "" }, 20)
+            : await sendCommand("element_press", { ...ziel, aktion: schritt, value: args?.value }, 20);
+          const el = result.element || {};
+          const name = `${el.role || ""} "${el.title || el.label || args?.query || ""}"`.trim();
+          if (result.ok) {
+            const zustand = result.zustand && Object.keys(result.zustand).length
+              ? `\nState now: ${JSON.stringify(result.zustand)}` : "";
+            const hinweis = result.hinweis ? `\nNote: ${result.hinweis}` : "";
+            return { content: [{ type: "text", text: `Done: ${schritt} on ${name} via ${result.methode}.${zustand}${hinweis}` }] };
+          }
+          if (result.found === false && !result.error) {
+            return { content: [{ type: "text", text: `Not found: "${args?.query}" (role: ${args?.role || "any"})` }], isError: true };
+          }
+          return { content: [{ type: "text", text: `Error: ${result.error || "unknown"}${el.role ? ` (element: ${name})` : ""}` }], isError: true };
+        }
 
         case "computer_list_windows": {
           result = await sendCommand("list_windows", {}, 20);

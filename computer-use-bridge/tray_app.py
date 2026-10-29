@@ -113,8 +113,8 @@ app_log = _setup_app_logging()
 CAPABILITY_META = [
     {"id": "screenshots",   "label": "Screenshots",           "desc": "Bildschirminhalt lesen",                  "risk": "gering"},
     {"id": "accessibility", "label": "Accessibility Tree",    "desc": "UI-Elemente lesen und finden",            "risk": "gering"},
-    {"id": "mouse",         "label": "Maus-Steuerung",        "desc": "Cursor bewegen, klicken, scrollen",       "risk": "mittel"},
-    {"id": "keyboard",      "label": "Tastatur-Eingabe",      "desc": "Text schreiben und Shortcuts senden",     "risk": "mittel"},
+    {"id": "mouse",         "label": "Maus-Steuerung",        "desc": "Klicken, scrollen, Knöpfe direkt auslösen","risk": "mittel"},
+    {"id": "keyboard",      "label": "Tastatur-Eingabe",      "desc": "Text schreiben, Felder ausfüllen, Kürzel", "risk": "mittel"},
     {"id": "apps",          "label": "Apps öffnen / schließen","desc": "Anwendungen starten, beenden, fokussieren", "risk": "mittel"},
     {"id": "clipboard",     "label": "Zwischenablage",        "desc": "Zwischenablage lesen und schreiben",     "risk": "mittel"},
     {"id": "browser",       "label": "Browser-Steuerung",     "desc": "Eigenes Browser-Profil bedienen (Seiten lesen, Formulare)", "risk": "hoch"},
@@ -3196,6 +3196,7 @@ _AKTION_TEXT = {
     "move": "Bewegt die Maus …", "mouse_move": "Bewegt die Maus …", "drag": "Zieht …",
     "screenshot": "Schaut auf den Bildschirm …", "ax_tree": "Liest die Oberfläche …",
     "find_element": "Sucht ein Element …", "wait_for_element": "Wartet auf die Anwendung …",
+    "element_press": "Bedient ein Element …", "element_set_value": "Füllt ein Feld aus …",
     "open_app": "Öffnet ein Programm …", "close_app": "Schließt ein Programm …",
     "open_url": "Öffnet eine Seite …", "focus_window": "Wechselt das Fenster …",
     "list_windows": "Schaut, welche Fenster offen sind …", "shell_run": "Führt einen Befehl aus …",
