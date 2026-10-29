@@ -160,7 +160,10 @@ def einordnen(m: dict, eigene: set[str]) -> tuple[str, list[str]]:
         automatisch.append("Absender antwortet nicht (no-reply)")
     if _ATLASSIAN.search(von):
         automatisch.append("Benachrichtigung von Atlassian/Jira")
-    if "quarantine" in von or ("quarant" in betreff and von.endswith("microsoft.com")):
+    # Die Domäne genau vergleichen — „…@nicht-microsoft.com“ ist kein Microsoft-Absender.
+    domaene = von.rpartition("@")[2]
+    von_microsoft = domaene == "microsoft.com" or domaene.endswith(".microsoft.com")
+    if von_microsoft and ("quarantine" in von.partition("@")[0] or "quarant" in betreff):
         automatisch.append("Quarantäne-Hinweis von Microsoft")
     if "list-unsubscribe" in kopf or "list-id" in kopf:
         automatisch.append("Newsletter oder Verteiler (Abmeldelink im Kopf)")

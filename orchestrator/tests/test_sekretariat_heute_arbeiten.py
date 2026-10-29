@@ -160,6 +160,11 @@ class Einordnen(unittest.TestCase):
             self.assertEqual(gruppe, "automatisch", kw)
             self.assertTrue(gruende)
 
+    def test_quarantaene_nur_von_microsoft_selbst(self):
+        gruppe, _ = self.gruppe(**{"from": {"emailAddress": {"address": "quarantine@nicht-microsoft.com"}},
+                                   "subject": "Nachrichten in Quarantäne"})
+        self.assertNotEqual(gruppe, "automatisch")
+
     def test_braucht_dich_und_weitere(self):
         self.assertEqual(self.gruppe(), ("braucht_dich", ["direkt an dich"]))
         self.assertEqual(self.gruppe(toRecipients=[{"emailAddress": {"address": "team@example.com"}}],
