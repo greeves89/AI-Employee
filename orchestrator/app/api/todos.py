@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -229,33 +229,57 @@ async def bulk_update_todos(
     bulk_project = body.project
     bulk_project_path = body.project_path
 
-    # Find existing TODOs for this scope
+    # Find existing TODOs for this scope.
+    #
+    # The scope has to come from the SAME fields the write path below uses
+    # (`item.project or bulk_project`), not from the body alone (#1128). The
+    # schema allows the project per item, and for a list spanning several
+    # projects that is the only way to pass it. Scoping by `body.project`
+    # only meant such a call looked for existing TODOs among those WITHOUT a
+    # project — where a TODO that HAS one can never be found. Every title
+    # counted as new, so the call reliably produced duplicates.
+    item_projects = {item.project or bulk_project for item in body.todos}
+    named_projects = {p for p in item_projects if p is not None}
+    unscoped = and_(AgentTodo.task_id.is_(None), AgentTodo.project.is_(None))
+
     existing_query = select(AgentTodo).where(AgentTodo.agent_id == agent_id)
+    scope_by_project = body.task_id is None
     if body.task_id is not None:
         existing_query = existing_query.where(AgentTodo.task_id == body.task_id)
-    elif bulk_project is not None:
-        # Scope by project when no task_id given
-        existing_query = existing_query.where(AgentTodo.project == bulk_project)
+    elif named_projects and None in item_projects:
+        # Mixed list: some items name a project, some do not.
+        existing_query = existing_query.where(
+            or_(AgentTodo.project.in_(named_projects), unscoped)
+        )
+    elif named_projects:
+        existing_query = existing_query.where(AgentTodo.project.in_(named_projects))
     else:
-        existing_query = existing_query.where(AgentTodo.task_id.is_(None)).where(AgentTodo.project.is_(None))
+        existing_query = existing_query.where(unscoped)
 
     result = await db.execute(existing_query)
     existing = list(result.scalars().all())
 
-    # Build lookup by title for matching
-    existing_by_title: dict[str, AgentTodo] = {}
+    # Build lookup for matching. Once the scope can span several projects, the
+    # title alone is no longer a unique key: the same title in two projects
+    # would collide and an item of project A would silently update the TODO of
+    # project B. Within a task_id scope the project stays out of the key, so
+    # matching there behaves exactly as before.
+    def _match_key(project: str | None, title: str) -> tuple[str | None, str]:
+        return (project if scope_by_project else None, title.strip().lower())
+
+    existing_by_title: dict[tuple[str | None, str], AgentTodo] = {}
     for t in existing:
-        existing_by_title[t.title.strip().lower()] = t
+        existing_by_title[_match_key(t.project, t.title)] = t
 
     updated_count = 0
     added_count = 0
     max_sort = max((t.sort_order for t in existing), default=-1)
 
     for item in body.todos:
-        key = item.title.strip().lower()
         # Per-item project overrides bulk-level project
         item_project = item.project or bulk_project
         item_project_path = item.project_path or bulk_project_path
+        key = _match_key(item_project, item.title)
         if key in existing_by_title:
             # Update existing todo
             t = existing_by_title[key]
@@ -289,6 +313,9 @@ async def bulk_update_todos(
             )
             db.add(todo)
             existing.append(todo)
+            # Also register it for matching: two items with the same title in
+            # ONE call must not create the duplicate all over again.
+            existing_by_title[key] = todo
             added_count += 1
 
     await db.commit()
