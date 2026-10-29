@@ -96,11 +96,10 @@ class WinCtrl:
     def SetFocus(self):
         self.protokoll.append("SetFocus")
 
-    def __getattr__(self, name):
-        if name.startswith("Get") and name.endswith("Pattern"):
-            muster = self.__dict__["_muster"].get(name[3:-7])
-            return lambda: muster
-        raise AttributeError(name)
+    def GetPattern(self, kennung):
+        """Wie uiautomation: Muster ueber seine Kennung, ``None`` wenn nicht da."""
+        namen = {v: k for k, v in bridge._UIA_MUSTER.items()}
+        return self._muster.get(namen[kennung])
 
 
 # ── Suche ─────────────────────────────────────────────────────────────────────
@@ -349,6 +348,22 @@ class EchtesNotepad(unittest.TestCase):
         self.assertNotIn("error", baum)
         self.assertTrue(baum.get("children"))
 
+    def test_streng_ueber_den_echten_prozessnamen(self):
+        """Freigabeliste: Aufloesung nur ueber notepad.exe — liest den Prozessnamen per Win32."""
+        r = bridge.element_bedienen("focus", "", "edit", "notepad", streng=True)
+        if not r.get("found", True):
+            r = bridge.element_bedienen("focus", "", "document", "notepad", streng=True)
+        self.assertTrue(r.get("ok"), r)
+        fenster = bridge.list_windows()["windows"]
+        self.assertTrue(any(w["app"].lower() == "notepad" for w in fenster), fenster)
+
+    def test_menue_auf_und_zu(self):
+        r = bridge.element_bedienen("expand", "File", "menuitem", "notepad")
+        if not r.get("ok") and not r.get("found", True):
+            self.skipTest("Dieses Notepad hat kein klassisches Menue 'File'")
+        self.assertTrue(r.get("ok") or r.get("fallback"), r)
+        bridge.element_bedienen("collapse", "File", "menuitem", "notepad")
+
     def test_aus_einem_anderen_thread(self):
         """Die Bridge fuehrt Befehle im Thread-Pool aus — COM muss dort initialisiert sein."""
         from concurrent.futures import ThreadPoolExecutor
@@ -386,13 +401,18 @@ class FreigabelisteStreng(unittest.TestCase):
 
             return Root()
 
-        def ProcessIdToProcessName(self, pid):
-            return self._p[pid]
+    def setUp(self):
+        self._alt = bridge._win_prozessname
+        namen = {1: "chrome.exe", 2: "EXCEL.EXE"}
+        bridge._win_prozessname = lambda pid: namen[pid]
+
+    def tearDown(self):
+        bridge._win_prozessname = self._alt
 
     def _auto(self):
         chrome = self.Fenster("Excel-Tipps – Google Chrome", 1)
         excel = self.Fenster("Mappe1 - Excel", 2)
-        return self.Auto([chrome, excel], {1: "chrome.exe", 2: "EXCEL.EXE"}), chrome, excel
+        return self.Auto([chrome, excel], {}), chrome, excel
 
     def test_genauer_prozess_gewinnt_auch_ohne_streng(self):
         auto, _chrome, excel = self._auto()
@@ -423,3 +443,44 @@ class FreigabelisteStreng(unittest.TestCase):
         finally:
             bridge.element_bedienen = alt
         self.assertTrue(gesehen["streng"])
+
+
+class SicherheitsBefunde(unittest.TestCase):
+    """Befunde der Sicherheitspruefung zu #1110 — damit sie nicht wiederkommen."""
+
+    def test_element_press_traegt_keinen_text_ein(self):
+        """set_value ueber element_press waere Tippen unter der Maus-Freigabe."""
+        r = _dispatcher().dispatch({"action": "element_press", "params": {
+            "query": "Name", "aktion": "set_value", "value": "x"}})
+        self.assertFalse(r["ok"])
+        self.assertIn("element_set_value", r["error"])
+
+    def test_auswahl_schreibt_keinen_freien_text(self):
+        liste = WinCtrl("Ort", "ComboBoxControl",
+                        muster={"Value": {"Value": "", "IsReadOnly": False}},
+                        kinder=[WinCtrl("Hamburg", "ListItemControl")])
+        r = bridge._win_ausfuehren(None, liste, "select", "Berlin")
+        self.assertFalse(r["ok"])
+        self.assertNotIn("SetValue:Berlin", liste.protokoll)
+
+    def test_rueckfall_holt_das_programm_erst_nach_vorn(self):
+        alt_b, alt_f = bridge.element_bedienen, bridge.focus_window
+        aufrufe = []
+        try:
+            bridge.element_bedienen = lambda *a, **k: {"ok": False, "fallback": "click",
+                                                       "grund": "x", "element": dict(ELEMENT)}
+            bridge.focus_window = lambda app, title="", streng=False: (
+                aufrufe.append((app, streng)) or {"ok": False, "error": "nicht da"})
+            d = _dispatcher()
+            r = d.dispatch({"action": "element_press", "params": {
+                "query": "OK", "app": "Excel", "app_streng": True}})
+        finally:
+            bridge.element_bedienen, bridge.focus_window = alt_b, alt_f
+        self.assertEqual(aufrufe, [("Excel", True)])
+        self.assertFalse(r["ok"])
+        self.assertNotIn(("click", 50, 10), d._ctrl.protokoll)  # kein Klick ins Blaue
+
+    def test_baum_ist_gedeckelt(self):
+        breit = Knoten(kinder=[Knoten("AXStaticText", f"x{i}") for i in range(2000)])
+        baum = bridge._baum(breit, lambda k: k.kinder, lambda k: k.m, 50)
+        self.assertLessEqual(len(baum["children"]), bridge._MAX_KINDER)

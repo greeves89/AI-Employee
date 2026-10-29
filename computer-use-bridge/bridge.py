@@ -851,6 +851,14 @@ ELEMENT_AKTIONEN = ("press", "toggle", "select", "expand", "collapse", "focus")
 #: Elemente; ohne Deckel stuende ein Agent minutenlang.
 _SUCHE_MAX_KNOTEN = 4000
 _SUCHE_MAX_TIEFE = 14
+#: Haengt eine Anwendung, dauert JEDER Zugriff bis zu ihrer Zeitgrenze. Ohne
+#: Uhr liefe eine Suche weiter, lange nachdem der Server aufgegeben hat, und
+#: wiederholte Aufrufe fuellten den Thread-Pool der Bridge.
+_SUCHE_MAX_SEKUNDEN = 8.0
+#: Eine Tabelle mit 100 000 Zeilen hat 100 000 Kinder — gelesen werden die ersten.
+_MAX_KINDER = 300
+_BAUM_MAX_KNOTEN = 3000
+_BAUM_MAX_TIEFE = 10
 
 
 def _wahr(wert) -> bool:
@@ -899,7 +907,8 @@ def _breitensuche(wurzel, kinder, merkmale, query: str, role: str = "",
     erster = (None, None)
     warteschlange = deque([(wurzel, 0)])
     gesehen = 0
-    while warteschlange and gesehen < max_knoten:
+    frist = time.monotonic() + _SUCHE_MAX_SEKUNDEN
+    while warteschlange and gesehen < max_knoten and time.monotonic() < frist:
         element, tiefe = warteschlange.popleft()
         gesehen += 1
         try:
@@ -914,7 +923,7 @@ def _breitensuche(wurzel, kinder, merkmale, query: str, role: str = "",
                 erster = (element, m)
         if tiefe < max_tiefe:
             try:
-                for kind in kinder(element) or []:
+                for kind in list(kinder(element) or [])[:_MAX_KINDER]:
                     warteschlange.append((kind, tiefe + 1))
             except Exception:  # noqa: BLE001
                 pass
@@ -936,10 +945,17 @@ def _mit_mitte(m: dict) -> dict:
     return out
 
 
-def _baum(element, kinder, merkmale, tiefe: int) -> dict | None:
-    """Baumform {role, title, label, value, bbox, children} — fuer beide Systeme."""
-    if tiefe <= 0:
+def _baum(element, kinder, merkmale, tiefe: int, _rest: list | None = None) -> dict | None:
+    """Baumform {role, title, label, value, bbox, children} — fuer beide Systeme.
+
+    Gedeckelt wie die Suche: Tiefe, Kinder je Knoten, Knoten insgesamt, Zeit.
+    """
+    if _rest is None:
+        _rest = [_BAUM_MAX_KNOTEN, time.monotonic() + _SUCHE_MAX_SEKUNDEN]
+        tiefe = min(tiefe, _BAUM_MAX_TIEFE)
+    if tiefe <= 0 or _rest[0] <= 0 or time.monotonic() > _rest[1]:
         return None
+    _rest[0] -= 1
     try:
         node = {k: v for k, v in merkmale(element).items() if v not in (None, "")}
     except Exception:  # noqa: BLE001
@@ -947,8 +963,8 @@ def _baum(element, kinder, merkmale, tiefe: int) -> dict | None:
     node.setdefault("role", "")
     unter = []
     try:
-        for kind in kinder(element) or []:
-            k = _baum(kind, kinder, merkmale, tiefe - 1)
+        for kind in list(kinder(element) or [])[:_MAX_KINDER]:
+            k = _baum(kind, kinder, merkmale, tiefe - 1, _rest)
             if k:
                 unter.append(k)
     except Exception:  # noqa: BLE001
@@ -996,6 +1012,23 @@ def _win_kinder(ctrl) -> list:
     return ctrl.GetChildren()
 
 
+def _win_fenster(root) -> list:
+    """Fenster auf dem Desktop — ohne die eigenen der Bridge (Overlay,
+    Einstellungen): die bedient nur der Mensch."""
+    eigen = os.getpid()
+    return [w for w in root.GetChildren() if getattr(w, "ProcessId", None) != eigen]
+
+
+def _win_kinder_fuer(wurzel, app_name: str | None):
+    """Kinder-Funktion fuer eine Suche ab ``wurzel``.
+
+    Ohne Programmnamen ist die Wurzel der Desktop — dort ohne Bridge-Fenster.
+    """
+    if app_name:
+        return _win_kinder
+    return lambda e: _win_fenster(e) if e is wurzel else e.GetChildren()
+
+
 def _win_merkmale(ctrl) -> dict:
     m: dict[str, Any] = {"role": ctrl.ControlTypeName or ""}
     name = (ctrl.Name or "").strip()
@@ -1030,9 +1063,34 @@ def _app_name_norm(name: str) -> str:
     return (name or "").strip().lower().removesuffix(".exe").removesuffix(".app")
 
 
+def _win_prozessname(pid: int) -> str:
+    """Name der ausfuehrbaren Datei eines Prozesses („EXCEL.EXE").
+
+    ``uiautomation`` bringt dafuer keine Funktion mit; ``GetProcesses()`` liest
+    alle Prozesse und ist fuer einen einzigen viel zu teuer.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    k32 = ctypes.windll.kernel32
+    k32.OpenProcess.restype = wintypes.HANDLE
+    k32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    h = k32.OpenProcess(0x1000, False, int(pid))  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not h:
+        return ""
+    try:
+        puffer = ctypes.create_unicode_buffer(1024)
+        groesse = wintypes.DWORD(len(puffer))
+        if k32.QueryFullProcessImageNameW(h, 0, puffer, ctypes.byref(groesse)):
+            return os.path.basename(puffer.value)
+        return ""
+    finally:
+        k32.CloseHandle(h)
+
+
 def _win_prozess(auto, window) -> str:
     try:
-        return _app_name_norm(auto.ProcessIdToProcessName(window.ProcessId) or "")
+        return _app_name_norm(_win_prozessname(window.ProcessId))
     except Exception:  # noqa: BLE001
         return ""
 
@@ -1052,7 +1110,7 @@ def _win_wurzel(auto, app_name: str | None, streng: bool = False):
             raise LookupError("Diese Sitzung darf nur bestimmte Programme bedienen — gib `app` an.")
         return root
     wanted = _app_name_norm(app_name)
-    fenster = [(w, _win_prozess(auto, w)) for w in root.GetChildren()]
+    fenster = [(w, _win_prozess(auto, w)) for w in _win_fenster(root)]
     for window, proc in fenster:
         if proc == wanted:
             return window
@@ -1065,9 +1123,19 @@ def _win_wurzel(auto, app_name: str | None, streng: bool = False):
     raise LookupError(f"Kein Fenster zu '{app_name}'. Offene Programme: {', '.join(offen[:15])}")
 
 
+#: UI-Automation-Kennungen der Muster (``uiautomation.PatternId``). Bewusst ueber
+#: ``GetPattern(id)``: Die bequemen ``GetInvokePattern()`` & Co. gibt es nur an
+#: einzelnen Steuerelement-Klassen — ein CustomControl, das Invoke anbietet,
+#: haette sonst als „kein Ausloeser" gegolten.
+_UIA_MUSTER = {
+    "Invoke": 10000, "Value": 10002, "ExpandCollapse": 10005,
+    "SelectionItem": 10010, "Toggle": 10015, "LegacyIAccessible": 10018,
+}
+
+
 def _win_muster(ctrl, name: str):
     try:
-        return getattr(ctrl, f"Get{name}Pattern")()
+        return ctrl.GetPattern(_UIA_MUSTER[name])
     except Exception:  # noqa: BLE001 — Muster nicht angeboten
         return None
 
@@ -1153,12 +1221,15 @@ def _win_ausfuehren(auto, ctrl, aktion: str, wert=None) -> dict:
             eintrag, _m = _breitensuche(ctrl, _win_kinder, _win_merkmale, str(wert), "",
                                          max_knoten=800, max_tiefe=6)
             if eintrag is None:
-                # Manche Listen nehmen den Text direkt (bearbeitbare ComboBox).
-                p = _win_muster(ctrl, "Value")
-                if p is not None and not getattr(p, "IsReadOnly", False):
-                    p.SetValue(str(wert))
-                    return _ok("ValuePattern.SetValue")
-                return {"ok": False, "error": f"Eintrag '{wert}' steht nicht in der Liste."}
+                # Kein Text hineinschreiben: das waere Tippen unter der Maus-Freigabe.
+                # Wer frei eintragen will, nimmt element_set_value (Tastatur).
+                if klapp is not None:
+                    try:
+                        klapp.Collapse()
+                    except Exception:  # noqa: BLE001
+                        pass
+                return {"ok": False, "error": f"Eintrag '{wert}' steht nicht in der Liste. "
+                                              "Freien Text traegt element_set_value ein."}
             gewaehlt = _win_ausfuehren(auto, eintrag, "select")
             if klapp is not None:
                 try:
@@ -1201,7 +1272,7 @@ def _win_ui_tree(app_name: str | None = None, max_depth: int = 6) -> dict:
                 wurzel = _win_wurzel(auto, app_name)
             except LookupError as e:
                 return {"error": str(e)}
-            return _baum(wurzel, _win_kinder, _win_merkmale, max_depth) or {}
+            return _baum(wurzel, _win_kinder_fuer(wurzel, app_name), _win_merkmale, max_depth) or {}
     except ImportError:
         return {"error": _UIA_FEHLT}
     except Exception as e:  # noqa: BLE001 — ein kaputter Baum darf die Bridge nicht killen
@@ -1225,6 +1296,11 @@ def _ax(elem, attr: str):
     except Exception:  # noqa: BLE001
         return None
     return wert if err == 0 else None
+
+
+def _mac_geheim(elem) -> bool:
+    """Passwortfeld? Auf dem Mac ist das die UNTERrolle (Rolle bleibt AXTextField)."""
+    return "AXSecureTextField" in (_ax(elem, "AXRole"), _ax(elem, "AXSubrole"))
 
 
 def _mac_bbox(elem) -> dict | None:
@@ -1264,7 +1340,7 @@ def _mac_merkmale(elem) -> dict:
         label = ident if ident and not str(ident).startswith("_NS:") else None  # AppKit-intern
     if label:
         m["label"] = str(label)
-    if m["role"] != "AXSecureTextField":
+    if not _mac_geheim(elem):
         wert = _ax(elem, "AXValue")
         if isinstance(wert, (str, int, float)) and not isinstance(wert, bool) and str(wert):
             m["value"] = str(wert)[:200]
@@ -1272,6 +1348,18 @@ def _mac_merkmale(elem) -> dict:
     if bbox:
         m["bbox"] = bbox
     return m
+
+
+def _mac_app_element(pid: int):
+    """AX-Element einer App — mit kurzer Zeitgrenze je Zugriff, damit eine
+    haengende App die Suche nicht je Element sechs Sekunden aufhaelt."""
+    import ApplicationServices as AS  # type: ignore
+    elem = AS.AXUIElementCreateApplication(pid)
+    try:
+        AS.AXUIElementSetMessagingTimeout(elem, 1.0)
+    except Exception:  # noqa: BLE001
+        pass
+    return elem
 
 
 def _mac_wurzel(app_name: str | None, streng: bool = False):
@@ -1290,16 +1378,21 @@ def _mac_wurzel(app_name: str | None, streng: bool = False):
         app = ws.frontmostApplication()
         if app is None:
             raise LookupError("Keine Anwendung im Vordergrund.")
-        return AS.AXUIElementCreateApplication(app.processIdentifier())
+        if app.processIdentifier() == os.getpid():
+            raise LookupError("Im Vordergrund ist die Bridge selbst — nenne das Programm (`app`).")
+        return _mac_app_element(app.processIdentifier())
     wanted = app_name.strip().lower().removesuffix(".app")
+    eigen = os.getpid()
     for app in ws.runningApplications():
+        if app.processIdentifier() == eigen:
+            continue  # die Bridge selbst (Overlay, Einstellungen) bedient nur der Mensch
         name = str(app.localizedName() or "").lower()
         bundle = str(app.bundleIdentifier() or "").lower()
         if wanted in (name, bundle):
-            return AS.AXUIElementCreateApplication(app.processIdentifier())
+            return _mac_app_element(app.processIdentifier())
     for app in ([] if streng else ws.runningApplications()):  # Teiltreffer nur unbeschraenkt
-        if wanted in str(app.localizedName() or "").lower():
-            return AS.AXUIElementCreateApplication(app.processIdentifier())
+        if app.processIdentifier() != eigen and wanted in str(app.localizedName() or "").lower():
+            return _mac_app_element(app.processIdentifier())
     raise LookupError(f"'{app_name}' laeuft nicht.")
 
 
@@ -1312,7 +1405,7 @@ def _mac_zustand(elem) -> dict:
     wert = _ax(elem, "AXValue")
     if rolle in ("AXCheckBox", "AXRadioButton", "AXSwitch") and wert is not None:
         z["checked"] = bool(wert)
-    elif rolle != "AXSecureTextField" and isinstance(wert, (str, int, float)):
+    elif not _mac_geheim(elem) and isinstance(wert, (str, int, float)):
         z["value"] = str(wert)[:200]
     for attr, key in (("AXSelected", "selected"), ("AXExpanded", "expanded"),
                       ("AXDisclosing", "expanded")):
@@ -1433,7 +1526,8 @@ def _element_mit(app_name: str | None, query: str, role: str, schritt, streng: b
         if IS_WIN:
             with _Uia() as auto:
                 wurzel = _win_wurzel(auto, app_name, streng)
-                element, m = _breitensuche(wurzel, _win_kinder, _win_merkmale, query, role)
+                element, m = _breitensuche(wurzel, _win_kinder_fuer(wurzel, app_name), _win_merkmale,
+                                           query, role)
                 if element is None:
                     return {"ok": False, "found": False, "query": query, "role": role}
                 return schritt(("win", auto), element, m)
@@ -2310,7 +2404,7 @@ def list_windows() -> dict:
                         # („XLMAIN", „Chrome_WidgetWin_1") sagt niemandem etwas.
                         app = ""
                         try:
-                            app = (auto.ProcessIdToProcessName(ctrl.ProcessId) or "").strip()
+                            app = _win_prozessname(ctrl.ProcessId).strip()
                             app = app[:-4] if app.lower().endswith(".exe") else app
                         except Exception:
                             pass
@@ -2635,12 +2729,29 @@ class CommandDispatcher:
             aktion, wert = "set_value", params["value"]
         else:
             aktion, wert = params.get("aktion") or params.get("step") or "press", params.get("value")
+            if aktion not in ELEMENT_AKTIONEN:
+                # Text eintragen ist Tastatur — der Server prueft fuer element_press
+                # nur die Maus-Freigabe. Ohne diese Sperre waere set_value ueber
+                # element_press der Weg an der Tastatur-Freigabe vorbei.
+                return {"ok": False, "error": f"'{aktion}' geht nicht ueber element_press. "
+                                              "Moeglich: " + ", ".join(ELEMENT_AKTIONEN)
+                                              + "; Text eintragen mit element_set_value."}
+        app = params.get("app")
+        streng = bool(params.get("app_streng"))
         res = element_bedienen(aktion, params.get("query", ""), params.get("role", ""),
-                               params.get("app"), wert, sperrzone=in_overlay,
-                               streng=bool(params.get("app_streng")))
+                               app, wert, sperrzone=in_overlay, streng=streng)
         art = res.get("fallback")
         mitte = (res.get("element") or {}).get("center")
         if art and mitte:
+            if app:
+                # Der Klick trifft das Fenster, das VORNE liegt. Ohne das landete er
+                # bei verdecktem Ziel in einem fremden Programm — an der
+                # Freigabeliste vorbei.
+                vorn = focus_window(str(app), streng=streng)
+                if not vorn.get("ok"):
+                    return {"ok": False, "element": self._element_to_image_space(res["element"]),
+                            "error": f"Programm nicht nach vorn zu holen: {vorn.get('error')}"}
+                time.sleep(0.2)
             cx, cy = mitte["x"], mitte["y"]
             self._ctrl.click(cx, cy)
             if art == "type":
@@ -2729,7 +2840,10 @@ class CommandDispatcher:
 
             elif action == "ax_tree":
                 app = params.get("app")
-                depth = params.get("max_depth", 6)
+                try:
+                    depth = max(1, min(int(params.get("max_depth", 6)), _BAUM_MAX_TIEFE))
+                except (TypeError, ValueError):
+                    depth = 6
                 tree = get_ax_tree(app, depth)
                 if isinstance(tree, dict) and set(tree.keys()) == {"error"}:
                     # Fehler oben melden wie ueberall sonst — vorher steckte er
