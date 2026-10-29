@@ -11,7 +11,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 - **Die Besprechung legte Punkte zu längst geschlossenen Issues immer wieder als Karten an (#1106).** Die Wache prüfte, ob zu einer genannten Issue-Nummer eine Karte in der Spalte „Erledigt“ liegt — nicht, ob das Issue beim Hoster geschlossen ist. Wer die Karte abräumte, nahm damit das einzige Kennzeichen mit, und die nächste Besprechung legte denselben Punkt erneut an. Auf dem eigenen Board kannte die Wache so 4 Nummern, während im Repo hunderte Issues geschlossen waren.
   - Jetzt wird der Status der genannten Issues beim Hoster selbst abgefragt.
   - Antwortet der Hoster nicht, entsteht die Karte: ein doppelter Punkt ist billiger als ein verlorener.
-  - Höchstens 20 Abfragen und zusammen 15 Sekunden je Besprechung — ein Protokoll voller Nummern hält das Ende der Besprechung nicht auf.
+  - Höchstens 20 Abfragen und zusammen 15 Sekunden je Besprechung — ein Protokoll voller Nummern hält das Ende der Besprechung nicht auf. Die Frist umfasst auch das Beschaffen des Zugangs, denn das tauscht selbst Token aus und wartet auf eine Sperre.
+  - Eine Nummer, die beim Hoster ein Pull Request ist, zählt nicht als erledigtes Issue: „#N" meint in einem Protokoll oft etwas anderes („PR #1126 nachziehen", „Punkt #3 priorisieren"), und in einem gewachsenen Repo ist fast jede Zahl geschlossen. Solche Punkte würden sonst lautlos verschwinden.
+  - Die Abfrage läuft in einer eigenen Datenbanksitzung. Sonst konnte das Beschaffen des Zugangs die Sitzung der Besprechung zurückrollen — Karten, Protokollnachricht und Übersprungen-Spur gingen dann still verloren, obwohl die Besprechung als beendet galt.
   - Unverändert bleibt: ein Punkt, der neben einer geschlossenen auch eine offene Nummer nennt, wird weiterhin zur Karte.
 
 ## [1.411.0] - 2026-10-31
