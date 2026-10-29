@@ -5,6 +5,10 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+/** Offene Fenster, das oberste zuletzt. Esc schließt nur das oberste — liegt ein
+ *  Aufgaben-Fenster über einem Karten-Fenster, gingen sonst beide zu. */
+const stapel: symbol[] = [];
+
 /** Ein Fenster ueber der Seite: schliesst per Esc, Klick daneben oder X.
  *  Genutzt von der Agenten-Seite (Aufgabe ansehen, Konnektoren, Modell …),
  *  damit man dabei im Chat bleibt. */
@@ -24,11 +28,16 @@ export function Fenster({
 }) {
   useEffect(() => {
     if (!offen) return;
+    const meins = Symbol("fenster");
+    stapel.push(meins);
     const beiTaste = (e: KeyboardEvent) => {
-      if (e.key === "Escape") schliessen();
+      if (e.key === "Escape" && stapel[stapel.length - 1] === meins) schliessen();
     };
     document.addEventListener("keydown", beiTaste);
-    return () => document.removeEventListener("keydown", beiTaste);
+    return () => {
+      document.removeEventListener("keydown", beiTaste);
+      stapel.splice(stapel.indexOf(meins), 1);
+    };
   }, [offen, schliessen]);
 
   if (!offen || typeof document === "undefined") return null;

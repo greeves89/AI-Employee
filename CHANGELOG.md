@@ -5,12 +5,70 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.398.1] - 2026-10-29
+
+### Behoben
+- **`update.sh` räumt alte Abbilder weg.** Jedes Update holte die Abbilder der neuen Version (das Agenten-Abbild allein hat über 6 GB) und ließ die alten liegen. Auf einer Anlage mit vielen Updates lagen so rund 20 Versionen je Abbild, über 100 GB, bis die Platte voll war und die Sicherung vor dem nächsten Update scheiterte.
+  - Nach einem erfolgreichen Start löscht das Skript jetzt die eigenen Abbilder älterer Versionen. Es behält die neue und die vorige Version (Rücksprung) und alles, was ein Container noch benutzt; gelöscht wird nie erzwungen.
+  - Dazu entfernt es Build-Cache, der älter als drei Tage ist. Volumes bleiben unberührt.
+  - Abschaltbar mit `AI_EMPLOYEE_ABBILDER_AUFRAEUMEN=0`.
+
+## [1.398.0] - 2026-10-29
+
+### Sekretariat / Seite „Heute“
+- Behoben: Die Termine auf der Seite „Heute“ ließen sich nicht laden, weil Microsoft die Kalenderabfrage wegen falsch kodierter Zeitangaben ablehnte.
+- Der Posteingang zeigt die echte Zahl ungelesener Mails und ordnet sie in „Braucht dich“, „Weitere“ und „Automatisch“. Je Mail gibt es Öffnen, Antwort entwerfen, Erinnern und Erledigt (als gelesen markieren, archivieren oder in einen Ordner ablegen).
+- Fehlen Termine oder Posteingang, nennt die Seite den Grund (nicht verbunden, abgelaufen, Berechtigung fehlt, Störung, Zeitüberschreitung) und bietet „Erneut versuchen“ und „Verbinden“ an.
+- Das Tagesbriefing nutzt dieselben Daten wie die Seite, hat eine feste Gliederung (Top 3 heute, Termine, Wartet auf dich, Fristen), zeigt seine Uhrzeit und lässt sich mit „Neu erstellen“ sofort anstoßen.
+- Mail-Entwürfe lassen sich vor dem Freigeben bearbeiten. Beim Ablehnen kann man eine Begründung angeben: Sie geht an den Agenten, und daraus entsteht ein Regel-Vorschlag. Rückfragen sind deutlich von Mail-Freigaben unterschieden.
+- Regeln lassen sich bearbeiten. Das Löschen fragt vorher nach und meldet Fehler. Bei leerer Liste gibt es Vorschläge aus dem Posteingang.
+- Erinnerungen: „Später“ (1 Std., morgen 9:00, nächste Woche), „Nachfassen“ nach einer gesendeten Mail, Fristen aus Mails übernehmen.
+- Neu: Protokoll „Was das Sekretariat heute getan hat“, Termine von morgen und ein Hinweis, welches Modell die Mailinhalte verarbeitet.
+
+### Sicherheit
+- **Fremder Text kann den Datenrahmen nicht mehr schließen.**
+  - Mails, Issues, Gespräche und Ergebnisse stehen in Aufträgen in `[EXTERNAL-DATA]`. Die Marke wurde an fünf Stellen nur in exakter Schreibweise entschärft. Kleinschreibung, Leerzeichen, Klammern voller Breite und unsichtbare Zeichen liefen durch.
+  - Jetzt gibt es eine gemeinsame Stelle (`core/fremdtext`), die alle Schreibweisen erfasst und unsichtbare Zeichen entfernt.
+  - Mail-Felder (Betreff, Absender, Vorschau) gehen einzeilig in den Auftrag.
+- Der Betreff eines abgelehnten Entwurfs (bei Antworten aus der fremden Mail) geht nur noch entschärft, einzeilig und gekürzt an den Agenten.
+- **Kostenbremsen:** „Antwort entwerfen“ je Mail höchstens einmal in 10 Minuten. „Briefing neu erstellen“ frühestens 5 Minuten nach dem letzten. Beides wird über die Datenbank geprüft und hält auch mit mehreren Workern.
+- Ändert sich beim Bearbeiten eines Entwurfs gleichzeitig Bcc, Antwort-an oder ein Anhang, bricht die Änderung ab. Die Freigabe bleibt dann ungültig, statt etwas zu senden, das niemand gesehen hat.
+- Das Protokoll zeigt nur Läufe der eigenen Agenten. Einträge älter als 30 Tage werden weggeräumt.
+
+### Datenbank
+- Migration `a8b9c0d1e2f3`: Tabelle `sekretariat_protokoll`, Spalte `erinnerungen.bezug`.
+
+## [1.397.0] - 2026-10-29
+
+### Neu
+- **Karten öffnen sich im Fenster.** Ein Klick auf eine Karte im Projekt-Board öffnet ein Fenster mit der ganzen Beschreibung (das Board kürzt auf 600 Zeichen), allen Tags, Ticket, Pull Request, Stand und Ergebnis bzw. Fehler des Laufs. Dazu kommen dieselben Knöpfe wie auf der Karte. **Lauf ansehen** öffnet den Lauf in einem zweiten Fenster.
+  - Neuer Endpunkt `GET /teams/{id}/karten/{karte_id}` mit vollem Text. Das Ergebnis eines Laufs sieht nur, wem der ausführende Agent gehört, wie im Board.
+- **Aufgaben öffnen sich überall im selben Fenster:** Aufgabenliste, Agenten-Seite, Leitstand, Aktivitätsverlauf, Benachrichtigungen und Aufgaben-Kacheln im Chat.
+  - Strg/Cmd-Klick öffnet weiterhin die eigene Seite in einem neuen Tab.
+  - Die beiden bisherigen Sonderfenster (Benachrichtigungen, Chat-Kachel) sind durch das gemeinsame ersetzt.
+- Liegen mehrere Fenster übereinander, schließt **Esc** nur das oberste.
+
+## [1.396.1] - 2026-10-29
+
+### Geändert
+- Projektgespräch: Die Auswahl „Nachricht / Frage / Entscheidung“ neben dem Eingabefeld ist durch einen Umschalter **Entscheidung** ersetzt. „Frage“ bewirkte nur ein Etikett. Eine Entscheidung landet wie bisher zusätzlich in `entscheidungen.md`. Agenten können weiterhin alle Arten schreiben.
+
 ## [1.396.0] - 2026-10-29
 
 ### Neu
-- **Produktivitätsmonitor: Koordination gegen Fortschritt.** Arbeiten mehrere Agenten lange zusammen, wächst oft der Anteil an Abstimmung — Rückfragen, Übergaben, Meetings, Folgemeetings, Freigaben, Wiederholungen —, während am Ende weniger fertig wird. Das sah bisher niemand: jeder einzelne Schritt ist für sich sinnvoll, und kein Agent kennt die Summe. Der Systemzustand zeigt jetzt je Team (und je „Agenten ohne Team") das Verhältnis beider Größen, aufklappbar nach Art der Aktivität, Anteil je Agent und Beispielen. Kippt es — viel Abstimmung, kaum gelieferte Ergebnisse —, steht dort eine Warnung und der Team-Lead bekommt eine Benachrichtigung. Standardmäßig frühestens einmal pro Tag je Gruppe, damit die Meldung nicht zur Tapete wird. Die Schwellen sind einstellbar (Vorgaben und Begründung in `docs/OPERATIONS.md`); ein ruhiger Tag löst nichts aus, und echter Fortschritt unterdrückt die Warnung. Optional — standardmäßig aus, weil es einen Modelllauf kostet — stellt der Monitor dem Team-Lead zusätzlich einen Analyse-Auftrag, welche Abstimmungsschritte Arbeit ersetzen statt sie vorzubereiten.
+- **Projekt-Board: Liegen gebliebene Übernahmen von außen erkennen und freigeben.** Übernimmt eine andere Sitzung oder Anlage Tickets (Tag `status/in-arbeit` oder Zuständige) und bringt danach nichts ins Repo, standen die Karten bisher unbegrenzt in „In Arbeit“. Niemand bemerkte es, und der Lead durfte sie nicht nehmen. Jetzt:
+  - Eine extern übernommene Karte zeigt ihren Stand **Übernommen → Branch → PR**, den Branch mit der Ticketnummer und die letzte Bewegung.
+  - Als Bewegung zählen eine Änderung am Issue und ein Commit auf dem Branch. Der Abgleich holt dafür einmal die Branches und höchstens zehn Commit-Zeiten.
+  - Nach zwei Stunden ohne Bewegung wird die Karte gelb markiert.
+  - Mit Arbeitstakt meldet das Projekt das einmal am Tag im Gespräch und beim Lead.
+  - **Freigeben** (nur Menschen): Im Repo kommen In-Arbeit-Tag und Zuständige weg, dazu ein Kommentar ohne Namen. Die Karte geht nach Bereit. Scheitert das Schreiben ins Repo, bleibt alles unverändert.
+  - Git-Anbieter (GitHub, Forgejo): `list_branches`, `commit_zeit`, `remove_assignees`.
 
----
+### Behoben
+- Ein Board voller extern übernommener Karten in „In Arbeit“ verdeckte den Stillstand des Projekts. Fremde Übernahmen zählen jetzt nicht mehr als Arbeit.
+
+### Datenbank
+- Migration `f2a3b4c5d6e7`: `projekt_karten.extern_seit`, `extern_regung_at`, `extern_branch`.
 
 ## [1.395.0] - 2026-10-29
 
@@ -39,9 +97,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 - Passwortfelder auf dem Mac werden über die Unterrolle erkannt und nie ausgelesen.
 - Suche und Baum haben eine Zeitgrenze (8 s), höchstens 300 Kinder je Element und höchstens 10 Ebenen. Eine hängende Anwendung blockiert die Bridge nicht mehr.
 - Eingetragene Werte erscheinen im Prüfprotokoll nur geschwärzt.
-
----
-
 
 ## [1.394.2] - 2026-10-29
 

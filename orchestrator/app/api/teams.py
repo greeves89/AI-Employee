@@ -740,6 +740,28 @@ async def projekt_board_text(team_id: str, user=Depends(require_auth_or_agent), 
     return {"projekt_id": t.id, "text": f"{text}\n\nMitglieder: {mitglieder or '—'}"}
 
 
+@router.get("/{team_id}/karten/{karte_id}")
+async def karte_holen(team_id: str, karte_id: str, user=Depends(require_auth_or_agent),
+                      db: AsyncSession = Depends(get_db)):
+    """Eine Karte vollständig — für das Fenster, das sich beim Klick auf eine Karte öffnet.
+
+    Den Lauf (Ergebnis, Kosten) sieht nur, wem der ausführende Agent gehört — wie im Board.
+    """
+    from app.core import projekte
+    from app.models.task import Task
+
+    t = await _projekt(team_id, user, db)
+    try:
+        karte = await projekte.karte_laden(db, t.id, karte_id)
+    except LookupError as e:
+        raise _kartenfehler(e)
+    task = await db.get(Task, karte.task_id) if karte.task_id else None
+    sicht = await _sicht(user, db)
+    lauf_sichtbar = task is not None and (sicht is None or task.agent_id in sicht)
+    return {**projekte.karte_dict(karte, task, lauf_sichtbar=lauf_sichtbar, voll=True),
+            "lauf_sichtbar": lauf_sichtbar}
+
+
 class NeueKarte(BaseModel):
     titel: str = Field(min_length=1, max_length=300)
     text: str = Field(default="", max_length=20000)
@@ -956,6 +978,34 @@ async def karte_abnehmen(team_id: str, karte_id: str, user=Depends(require_auth)
     antwort = projekte.karte_dict(karte)
     await db.commit()
     await _ergebnis_festhalten(db, t, antwort, task, user)
+    return antwort
+
+
+@router.post("/{team_id}/karten/{karte_id}/extern-freigeben")
+async def karte_extern_freigeben(team_id: str, karte_id: str, user=Depends(require_auth),
+                                 db: AsyncSession = Depends(get_db), redis=Depends(get_redis_service)):
+    """Eine fremde Übernahme lösen, die liegen geblieben ist — nur ein Mensch.
+
+    Bewusst ohne Agenten (``require_auth``): Der Lead soll fremde Übernahmen nicht
+    selbst wegräumen, sonst nähme er anderen die Arbeit aus der Hand.
+    """
+    from app.core import projekt_git, projekte
+
+    _kein_betrachter(user)
+    t = await _projekt(team_id, user, db)
+    try:
+        # Ohne Zeilensperre: das Schreiben ins Repo ist Netzwerk und darf andere
+        # Änderungen am Board nicht so lange aufhalten.
+        karte = await projekte.karte_laden(db, t.id, karte_id)
+        await projekt_git.extern_freigeben(db, redis, t, karte)
+    except LookupError as e:
+        await db.rollback()
+        raise _kartenfehler(e)
+    except projekt_git.GitFehler as e:
+        await db.rollback()
+        raise HTTPException(status_code=424, detail=str(e))
+    antwort = projekte.karte_dict(karte)
+    await db.commit()
     return antwort
 
 

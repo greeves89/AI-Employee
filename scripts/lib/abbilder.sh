@@ -206,3 +206,35 @@ abbilder_bereitstellen() {
     docker build -t ai-employee-agent:latest ./agent
     docker compose build
 }
+
+# abbilder_aufraeumen <version...> — eigene Abbilder älterer Versionen löschen.
+#
+# Jedes Update holt die Abbilder der neuen Version (das Agenten-Abbild allein
+# hat über 6 GB) und ließ die alten liegen. Auf einer Anlage mit vielen Updates
+# lagen so rund 20 Versionen je Abbild — über 100 GB, bis die Platte voll war
+# und die Sicherung vor dem nächsten Update scheiterte (29.10.).
+#
+# Behalten werden die übergebenen Versionen (die neue und die vorige für den
+# Rücksprung) und alles, was ein Container noch benutzt: ``docker image rm``
+# OHNE ``-f`` lehnt solche Abbilder ab. Dazu Build-Cache älter als drei Tage
+# (Agenten-Apps, lokale Bauten). Daten (Volumes) werden nie angefasst.
+#   AI_EMPLOYEE_ABBILDER_AUFRAEUMEN=0   abschalten
+abbilder_aufraeumen() {
+    local registry dienst tag behalten geloescht=0
+    [ "$(abbilder_env AI_EMPLOYEE_ABBILDER_AUFRAEUMEN)" = "0" ] && return 0
+    registry="$(abbilder_env AI_EMPLOYEE_REGISTRY)"
+    registry="${registry:-ghcr.io/greeves89}"
+    behalten=" $* "
+    for dienst in $ABBILD_DIENSTE agent; do
+        for tag in $(docker images "${registry}/ai-employee-${dienst}" --format '{{.Tag}}' 2>/dev/null); do
+            case "$behalten" in *" ${tag} "*) continue ;; esac
+            [ "$tag" = "<none>" ] && continue
+            if docker image rm "${registry}/ai-employee-${dienst}:${tag}" >/dev/null 2>&1; then
+                geloescht=$((geloescht + 1))
+            fi
+        done
+    done
+    docker image prune -f >/dev/null 2>&1 || true
+    docker builder prune -f --filter until=72h >/dev/null 2>&1 || true
+    echo "Alte Abbilder entfernt: ${geloescht} (behalten:${behalten}und alles, was ein Container nutzt)"
+}

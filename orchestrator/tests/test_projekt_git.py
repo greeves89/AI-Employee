@@ -21,6 +21,8 @@ class _Anbieter:
         self.pulls: list[dict] = []
         self.checks: dict[str, str] = {}
         self.pr_zustand: dict[int, str] = {}
+        self.branches: list[dict] = []
+        self.commit_zeiten: dict[str, str] = {}
 
     async def list_open_issues(self, client, token, repo, hoechstens):
         return list(self.issues)
@@ -51,6 +53,20 @@ class _Anbieter:
 
     async def comment_issue(self, client, token, repo, nummer, body):
         self.kommentare = getattr(self, "kommentare", []) + [(nummer, body)]
+
+    # Lebenszeichen fremder Übernahmen (Branches/Commit-Zeiten setzt der Test)
+    async def list_branches(self, client, token, repo, hoechstens=300):
+        return list(self.branches)
+
+    async def commit_zeit(self, client, token, repo, sha):
+        return self.commit_zeiten.get(sha)
+
+    async def remove_assignees(self, client, token, repo, nummer, logins):
+        self.geschrieben = getattr(self, "geschrieben", []) + [("zustaendige-weg", nummer, tuple(logins))]
+        for i in self.issues:
+            if i["number"] == nummer:
+                i["assignees"] = []
+        return True
 
 
 def _issue(nr, titel="Fehler", body="Text", labels=()):
@@ -512,3 +528,154 @@ class BeimOeffnen(Basis):
         with self.assertRaises(HTTPException) as e:
             await self._oeffnen(SimpleNamespace(id="ub", role=UserRole.MEMBER))
         self.assertIn(e.exception.status_code, (403, 404))
+
+
+def _vor(stunden: float) -> str:
+    from datetime import datetime, timedelta, timezone
+
+    return (datetime.now(timezone.utc) - timedelta(hours=stunden)).isoformat().replace("+00:00", "Z")
+
+
+class LiegenGebliebeneUebernahme(Abgleich):
+    """Eine fremde Sitzung übernimmt Tickets und bringt nichts ins Repo (29.10.: zehn
+    Tickets, stundenlang nichts). Das Board muss das sehen — und freigeben können."""
+
+    async def _karte(self, db, nr):
+        return (await self._karten(db))[("issue", nr)]
+
+    async def test_ohne_bewegung_liegt_sie(self):
+        issue = _issue(71, labels=["status/in-arbeit"])
+        issue["updated_at"] = _vor(3)
+        self.gh.issues = [issue]
+        async with self.Session() as db:
+            await self._lauf(db)
+            k = await self._karte(db, 71)
+            self.assertEqual(k.spalte, "in_arbeit")
+            # Übernommen wurde laut Repo vor drei Stunden — nicht erst beim Abgleich.
+            self.assertTrue(projekt_git.extern_stockt(k))
+            self.assertIsNone(k.extern_branch)
+
+    async def test_frische_uebernahme_liegt_nicht(self):
+        issue = _issue(72, labels=["status/in-arbeit"])
+        issue["updated_at"] = _vor(0.5)
+        self.gh.issues = [issue]
+        async with self.Session() as db:
+            await self._lauf(db)
+            self.assertFalse(projekt_git.extern_stockt(await self._karte(db, 72)))
+
+    async def test_commit_auf_dem_branch_ist_ein_lebenszeichen(self):
+        issue = _issue(70, labels=["status/in-arbeit"])
+        issue["updated_at"] = _vor(5)
+        self.gh.issues = [issue]
+        self.gh.branches = [{"name": "main", "sha": "m"}, {"name": "feat/70-demo-rueckbau", "sha": "c70"}]
+        self.gh.commit_zeiten = {"c70": _vor(0.2)}
+        async with self.Session() as db:
+            await self._lauf(db)
+            k = await self._karte(db, 70)
+            self.assertEqual(k.extern_branch, "feat/70-demo-rueckbau")
+            self.assertFalse(projekt_git.extern_stockt(k))
+
+    async def test_ohne_uebernahme_kein_stand(self):
+        issue = _issue(73, labels=["status/in-arbeit"])
+        issue["updated_at"] = _vor(3)
+        self.gh.issues = [issue]
+        async with self.Session() as db:
+            await self._lauf(db)
+            self.gh.issues = [_issue(73)]
+            await self._lauf(db)
+            k = await self._karte(db, 73)
+            self.assertEqual((k.extern_bearbeiter, k.extern_seit, k.extern_regung_at), (None, None, None))
+
+    async def test_freigeben_loest_tag_zustaendige_und_karte(self):
+        issue = _issue(66, labels=["status/in-arbeit", "typ/gap"])
+        issue["assignees"] = [{"login": "claude-sitzung"}]
+        issue["updated_at"] = _vor(4)
+        self.gh.issues = [issue]
+        async with self.Session() as db:
+            await self._lauf(db)
+            team = await db.get(Team, "p1")
+            k = await self._karte(db, 66)
+            with patch.object(projekt_git, "zugang", return_value=("t", self.gh)):
+                await projekt_git.extern_freigeben(db, None, team, k)
+            await db.commit()
+            self.assertEqual((k.spalte, k.extern_bearbeiter), ("bereit", None))
+            self.assertEqual(k.labels, ["typ/gap"])
+            self.assertIn(("-", 66, "status/in-arbeit"), self.gh.geschrieben)
+            self.assertIn(("zustaendige-weg", 66, ("claude-sitzung",)), self.gh.geschrieben)
+            kommentar = self.gh.kommentare[-1][1]
+            self.assertIn("wieder frei", kommentar)
+            self.assertNotIn("@", kommentar)  # keine Namen ins (vielleicht öffentliche) Repo
+            # Der nächste Abgleich holt die Übernahme nicht zurück.
+            self.gh.issues[0]["labels"] = [{"name": "typ/gap"}]
+            await self._lauf(db)
+            self.assertEqual((await self._karte(db, 66)).spalte, "bereit")
+
+    async def test_freigeben_ohne_schluessel_aendert_nichts(self):
+        issue = _issue(67, labels=["status/in-arbeit"])
+        self.gh.issues = [issue]
+        async with self.Session() as db:
+            await self._lauf(db)
+            team = await db.get(Team, "p1")
+            k = await self._karte(db, 67)
+            with patch.object(projekt_git, "zugang", return_value=("", self.gh)), \
+                    self.assertRaises(projekt_git.GitFehler):
+                await projekt_git.extern_freigeben(db, None, team, k)
+            self.assertEqual((k.spalte, k.extern_bearbeiter), ("in_arbeit", "extern"))
+
+    async def test_eigene_karte_laesst_sich_nicht_freigeben(self):
+        self.gh.issues = [_issue(68)]
+        async with self.Session() as db:
+            await self._lauf(db)
+            team = await db.get(Team, "p1")
+            k = await self._karte(db, 68)
+            k.spalte, k.task_id = "in_arbeit", "t-eigen"
+            with patch.object(projekt_git, "zugang", return_value=("t", self.gh)), \
+                    self.assertRaises(projekt_git.GitFehler):
+                await projekt_git.extern_freigeben(db, None, team, k)
+
+    async def test_takt_meldet_einmal_und_zaehlt_sie_nicht_als_arbeit(self):
+        from datetime import datetime, timedelta, timezone
+
+        from sqlalchemy import select
+
+        from app.core import projekt_takt
+        from app.models.projekt_nachricht import ProjektNachricht
+
+        issue = _issue(69, labels=["status/in-arbeit"])
+        issue["updated_at"] = _vor(3)
+        self.gh.issues = [issue, _issue(80)]
+        async with self.Session() as db:
+            await self._lauf(db)
+            team = await db.get(Team, "p1")
+            team.lead_agent_id = "a1"
+            self.assertEqual(await projekt_takt.extern_liegen_melden(db, team), 1)
+            await db.commit()
+            self.assertEqual(await projekt_takt.extern_liegen_melden(db, team), 1)  # gezählt, nicht neu gemeldet
+            await db.commit()
+            texte = [n.text for n in (await db.execute(select(ProjektNachricht))).scalars()]
+            self.assertEqual(len(texte), 1)
+            self.assertIn("#69", texte[0])
+            # Fremde Übernahme in „In Arbeit“ verdeckt keinen Stillstand mehr.
+            spaeter = datetime.now(timezone.utc) + timedelta(hours=3)
+            self.assertEqual(await projekt_takt.stillstand_melden(db, team, jetzt=spaeter), "nichts_bereit")
+
+    async def test_board_text_fuer_den_lead(self):
+        from app.core import projekte
+
+        issue = _issue(65, labels=["status/in-arbeit"])
+        issue["updated_at"] = _vor(3)
+        self.gh.issues = [issue]
+        async with self.Session() as db:
+            await self._lauf(db)
+            d = projekte.karte_dict(await self._karte(db, 65))
+            self.assertTrue(d["extern_stockt"])
+            self.assertIsNotNone(d["extern_seit"])
+
+    def test_freigeben_nur_fuer_menschen(self):
+        """Der Lead soll fremde Übernahmen nicht selbst wegräumen."""
+        import inspect
+
+        from app.dependencies import require_auth
+
+        sig = inspect.signature(api.karte_extern_freigeben)
+        self.assertIs(sig.parameters["user"].default.dependency, require_auth)

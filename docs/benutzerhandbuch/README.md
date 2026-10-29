@@ -1045,7 +1045,7 @@ Der Reiter **Board** hat fünf Spalten:
 |---|---|---|
 | **Eingang** | Neu, noch nicht gesichtet | **Einplanen** (→ Bereit) oder **verwerfen** (Papierkorb) |
 | **Bereit** | Eingeplant, wartet auf einen Agenten | Empfänger wählen und **Los** klicken — der Agent legt los |
-| **In Arbeit** | Ein Agent arbeitet daran | Letzte Ausgabe, Stufe und Pull Request ansehen; Klick auf den Titel öffnet den Lauf |
+| **In Arbeit** | Ein Agent arbeitet daran | Letzte Ausgabe, Stufe und Pull Request ansehen |
 | **Prüfung** | Der Agent ist fertig (oder gescheitert) | **Abnehmen** oder **Zurückgeben** |
 | **Erledigt** | Abgenommen oder verworfen (letzte 30 Tage) | — |
 
@@ -1056,6 +1056,25 @@ Der Reiter **Board** hat fünf Spalten:
 - Das **+** in der Spalte Eingang legt eine neue Karte an (Titel und Beschreibung).
 - Beim **Los** in der Spalte Bereit wählst du im Auswahlfeld „Lead verteilt“ oder
   „Direkt: …“ einen bestimmten Agenten.
+
+**Eine Karte im Fenster öffnen** *(seit 1.397.0)*:
+
+1. Klicke irgendwo auf die Karte, nur nicht auf einen ihrer Knöpfe. Es öffnet sich ein Fenster
+   über dem Board, du bleibst auf der Seite.
+2. Im Fenster stehen:
+   - die **ganze Beschreibung** (auf der Karte ist sie gekürzt),
+   - alle Tags, das Ticket im Repo und der Pull Request,
+   - der Stand der Arbeit und, falls schon gelaufen, das Ergebnis oder der Fehler des Laufs.
+3. Unten stehen dieselben Knöpfe wie auf der Karte: Einplanen, Los, Abnehmen, Zurückgeben,
+   Freigeben. Die Änderung siehst du sofort im Fenster.
+4. **Lauf ansehen** öffnet den ganzen Lauf mit Verlauf und Dateien in einem zweiten Fenster
+   darüber. **Esc** schließt immer nur das oberste Fenster.
+
+**Aufgaben öffnen sich überall im Fenster** *(seit 1.397.0)*: Ein Klick auf eine Aufgabe öffnet
+sie über der Seite, in einem einheitlichen Fenster. Das gilt in der Aufgabenliste, auf der
+Agenten-Seite, im Leitstand, im Aktivitätsverlauf, in den Benachrichtigungen und bei den
+Aufgaben-Kacheln im Chat. Mit **Strg/Cmd-Klick** öffnest du die Aufgabe wie bisher als eigene
+Seite in einem neuen Tab.
 
 ### 6a.4 Einen Auftrag geben
 
@@ -1172,8 +1191,10 @@ Reiter **Gespräch**: Hier sprechen du und die Agenten des Projekts miteinander.
 1. Nachricht ins Feld schreiben.
 2. Wen du ansprechen willst, klickst du über dem Feld an (fügt **@Name** ein) — oder du tippst
    @Name selbst. Sprichst du niemanden an, antwortet der **Lead**.
-3. Im Auswahlfeld daneben die Art wählen: **Nachricht**, **Frage** oder **Entscheidung**.
-   Entscheidungen landen zusätzlich in `entscheidungen.md` im Projektwissen.
+3. Soll die Nachricht als **Entscheidung** gelten, klicke vor dem Senden auf den Knopf
+   **Entscheidung** neben dem Eingabefeld (*seit 1.396.1*; vorher eine Auswahlliste). Er färbt sich,
+   und die Nachricht landet zusätzlich in `entscheidungen.md` im Projektwissen. Ohne den Knopf ist
+   es eine normale Nachricht.
 4. **Senden** (oder Strg/Cmd + Enter).
 
 ![Reiter „Gespräch“: Fragen, Entscheidungen, Antworten der Agenten; unten Ansprechen und Senden](screenshots/77-projekt-gespraech.png)
@@ -1327,6 +1348,29 @@ anderen AI-Employee-Anlage, Claude Code oder ein Mensch direkt im Repo:
   jemand daran. Hat ein eigener Agent die Karte bereits, bleibt sie bei ihm; der fremde Name
   steht dann daneben, damit ihr seht, dass zwei am selben Ticket sitzen.
 
+**Wenn eine Übernahme von außen liegen bleibt** *(seit 1.396.0)*: Manchmal übernimmt eine andere
+Sitzung Tickets und bringt danach nichts ins Repo. So erkennst und löst du das:
+
+1. Eine von außen übernommene Karte zeigt unter dem Titel ihren Stand: **Übernommen → Branch →
+   PR**. Liegt im Repo ein Branch mit der Ticketnummer (z. B. `feat/70-…`), steht er darunter.
+   Darunter steht, wann sich zuletzt etwas bewegt hat, ein Kommentar oder ein Commit.
+2. Bewegt sich **zwei Stunden lang nichts** (kein Commit, kein Pull Request, keine Änderung am
+   Issue), wird die Karte gelb markiert: „Liegt: letzte Bewegung vor …“.
+3. Hat das Projekt einen Arbeitstakt, schreibt das Projekt das einmal am Tag ins
+   **Gespräch** („Liegen geblieben: … #71, #70 …“), und der Lead bekommt eine Benachrichtigung.
+   Selbst nimmt der Lead solche Karten nicht, sonst arbeiten zwei am selben Ticket.
+4. Klicke an der gelben Karte auf **Freigeben** und bestätige. Das Board nimmt im Repo das
+   In-Arbeit-Tag und die Zuständigen weg und schreibt einen kurzen Kommentar ohne Namen. Die
+   Karte geht nach **Bereit**, und der Lead vergibt sie beim nächsten Takt.
+5. Arbeitet die andere Sitzung doch noch daran, setzt sie das Tag einfach neu. Dann wandert die
+   Karte wieder nach In Arbeit.
+
+Freigeben kann nur ein Mensch, kein Agent. Das Projekt braucht dafür einen Schlüssel mit
+Schreibrecht für Issues.
+
+Externe Karten in **In Arbeit** zählen nicht mehr als Arbeit des Projekts. Liegen nur sie dort
+und sonst nichts bereit, meldet das Projekt den Stillstand wie gewohnt.
+
 Über dem Board zeigt eine Leiste das Repo, wann zuletzt abgeglichen wurde und gegebenenfalls einen
 Fehler (z. B. „GitHub ist auf dieser Anlage nicht verbunden“). Beim Öffnen des Projekts gleicht die
 Seite von selbst ab — mit Schlüssel höchstens einmal je Minute, ohne Schlüssel höchstens alle fünf
@@ -1437,20 +1481,107 @@ gestartet. Je Nutzer gibt es ein Sekretariat; es ist nur für dich sichtbar.
 - **Eingabezeile oben:** Was du hier schreibst, bekommt das Sekretariat als Auftrag. Beginnt der
   Text mit **„Merke:“**, wird er eine **feste Regel** für alle Agenten des Sekretariats, z. B.
   „Merke: Mails von der Steuerkanzlei immer sofort an mich“.
-- **Wartet auf dich** — Antworten, die das Sekretariat entworfen hat, mit Empfängern, Betreff und
-  Text. **Freigeben und senden** schickt die Mail ab, **Ablehnen** lässt den Entwurf im Postfach
-  liegen. Das Sekretariat schreibt nur **reinen Text** (auch Antworten samt zitierter Mail), damit
-  du genau siehst, was rausgeht. Gelbe Hinweise sagen, was die Vorschau nicht vollständig zeigt (Anhänge, Formatierung,
-  sehr langer Text) — dann im Postfach prüfen. Mails gibst du nur hier oder unter **Freigaben**
-  frei; über Telegram oder die Glocke kannst du sie nur ablehnen. Auch Rückfragen der Agenten
-  stehen hier.
-- **Termine heute** — direkt aus deinem Kalender.
-- **Posteingang** — die ungelesenen Mails; ein Stern markiert wichtige oder markierte.
-- **Erinnerungen** — eigene (Text und Zeitpunkt eintragen, **+**) und solche, die das Sekretariat
-  aus Mails anlegt (Fristen, Termine). Zur Zeit bekommst du eine Benachrichtigung; das Häkchen
-  hakt eine Erinnerung ab.
-- **Tagesbriefing** — was heute ansteht, was wichtig ist, was auf dich wartet.
-- **Regeln** — alle „Merke:“-Regeln; der Papierkorb löscht eine.
+- **Datenschutz** (Zeile mit Schloss unter der Eingabezeile): welche Agenten deine Mailinhalte
+  verarbeiten — mit Laufzeit, Anbieter und Modell, so wie die Agenten tatsächlich eingestellt sind.
+- **Wartet auf dich** — Mail-Entwürfe (grünes Schild **Mail-Freigabe**) und Rückfragen der Agenten
+  (blaues Schild **Rückfrage**, eigener Rahmen). Details zu Freigeben, Bearbeiten und Ablehnen in 6c.3.
+- **Termine heute** — direkt aus deinem Kalender. Darunter **Morgen (Anzahl)**: anklicken klappt
+  die Termine von morgen auf.
+- **Posteingang** — rechts oben die **echte Zahl** der ungelesenen Mails; sind es mehr als 15,
+  steht dabei „die neuesten 15 hier“. Details in 6c.4.
+- **Erinnerungen** — eigene, solche aus Mails und Nachfass-Erinnerungen. Details in 6c.5.
+- **Tagesbriefing** — rechts oben **„erstellt um HH:MM“** und der Knopf **Neu erstellen**. Details in 6c.6.
+- **Regeln** — alle „Merke:“-Regeln, bearbeitbar, mit Vorschlägen. Details in 6c.7.
+- **Was das Sekretariat heute getan hat** (unten, eingeklappt) — Details in 6c.8.
+
+**Wenn Termine oder Posteingang fehlen**, steht statt der Liste der Grund, z. B. „Dein
+Microsoft-Konto ist nicht verbunden“, „Die Anmeldung bei Microsoft ist abgelaufen“, „Microsoft
+verweigert den Zugriff: Beim Verbinden fehlt eine Berechtigung“, eine Störung bei Microsoft oder
+eine Zeitüberschreitung. **Erneut versuchen** lädt neu; bei fehlender Verbindung, abgelaufener
+Anmeldung oder fehlender Berechtigung führt **Verbinden** zu **Verbindungen**.
+
+### 6c.3 Entwürfe freigeben, bearbeiten oder ablehnen
+
+1. Unter **Wartet auf dich** siehst du je Entwurf Empfänger, Betreff und Text. Das Sekretariat
+   schreibt nur **reinen Text** (auch Antworten samt zitierter Mail), damit du genau siehst, was
+   rausgeht. Gelbe Hinweise sagen, was die Vorschau nicht vollständig zeigt (Anhänge, Formatierung,
+   sehr langer Text) — dann im Postfach prüfen.
+2. **Bearbeiten** klicken, um **An**, **Cc**, **Betreff** und **Text** zu ändern, dann **Speichern**.
+   Der Entwurf im Postfach wird dabei geändert; **Freigeben und senden** schickt danach genau
+   diesen Stand. Ist der Entwurf länger als die Vorschau, fehlt der Knopf — dann im Postfach bearbeiten.
+3. **Freigeben und senden** schickt die Mail ab. Danach erscheint oben im Kasten
+   **„Nachfassen, wenn keine Antwort bis …“**: **in 3 Tagen**, **nächste Woche** oder ein Datum
+   wählen und **Vormerken** — das wird eine Erinnerung.
+4. **Ablehnen** öffnet ein Feld für eine **Begründung** (freiwillig), dann erneut **Ablehnen**.
+   Der Entwurf bleibt im Postfach liegen. Die Begründung geht an den Agenten zurück, und unter
+   **Regeln** erscheint daraus ein **Vorschlag** („Merke: …“). Zur Regel wird er erst, wenn du
+   ihn übernimmst.
+
+Mails gibst du nur hier oder unter **Freigaben** frei; über Telegram oder die Glocke kannst du sie
+nur ablehnen.
+
+### 6c.4 Mit dem Posteingang arbeiten
+
+Die ungelesenen Mails stehen in drei Gruppen, jeweils mit Anzahl:
+
+- **Braucht dich** — Mails direkt an dich und Mails mit einer Frage oder Terminanfrage, und als
+  wichtig markierte.
+- **Weitere** — der Rest, z. B. Mails, in denen du nur in Kopie stehst.
+- **Automatisch** (eingeklappt) — Benachrichtigungen von Atlassian/Jira, Newsletter, Absender
+  „no-reply“, Quarantäne-Hinweise von Microsoft.
+
+Die Einordnung geschieht nach Absender und Kopfzeilen, ohne KI. Fährst du mit der Maus über eine
+Mail, steht der Grund da (z. B. „direkt an dich, enthält eine Frage“). Ein Stern markiert
+wichtige oder markierte Mails.
+
+Unter jeder Mail:
+
+1. **Öffnen** — öffnet die Mail in Outlook (neuer Tab).
+2. **Antwort entwerfen** — optional einen Hinweis eintippen („zusagen, Termin nächste Woche
+   vorschlagen“), dann **Auftrag geben**. Das Sekretariat entwirft die Antwort; sie erscheint
+   unter **Wartet auf dich**.
+3. **Erinnern** — **in 1 Std.**, **morgen 9:00** oder **nächste Woche**. Die Erinnerung trägt einen
+   Link **Mail öffnen**.
+4. **Erledigt** — **Nur als gelesen**, **Archivieren** oder einen Ordner unter **In Ordner …**
+   wählen und **Ablegen**. Die Mail wird als gelesen markiert und verschwindet aus der Liste.
+
+### 6c.5 Erinnerungen
+
+- **+** legt eine eigene Erinnerung an (Text und Zeitpunkt).
+- Das **Häkchen** hakt eine Erinnerung ab.
+- Die **Uhr** öffnet **Später:** **in 1 Std.**, **morgen 9:00** oder **nächste Woche**. Die
+  Erinnerung wird dann erneut gemeldet.
+- **Frist aus Mail übernehmen:** Steht in einer ungelesenen Mail eine Frist („bis 15.11.“,
+  „Frist: 3. Dezember“), schlägt der Kasten sie vor. **Übernehmen** legt eine Erinnerung für
+  9:00 Uhr an diesem Tag an.
+
+Zur Zeit bekommst du eine Benachrichtigung.
+
+### 6c.6 Tagesbriefing
+
+Das Briefing kommt werktags zur eingestellten Uhrzeit und ist immer gleich gegliedert:
+**Top 3 heute**, **Termine**, **Wartet auf dich**, **Fristen**. Der Agent bekommt dafür dieselben
+Daten, die du auf der Seite siehst (Termine, ungelesene Mails, offene Freigaben, Erinnerungen).
+Fehlt eine Quelle, nennt das Briefing den Grund.
+
+**Neu erstellen** stößt das Briefing sofort an. Solange eines erstellt wird, ist der Knopf gesperrt.
+
+### 6c.7 Regeln
+
+1. **Stift** an einer Regel: Text ändern, **Speichern**.
+2. **Papierkorb**: vor dem Löschen fragt eine Bestätigung nach. Klappt das Löschen nicht, erscheint
+   eine Meldung.
+3. **Vorschläge** (unten im Kasten): aus abgelehnten Entwürfen mit Begründung und — solange du
+   noch keine Regel hast — aus deinem Posteingang, z. B. „Merke: Benachrichtigungen von
+   Atlassian/Jira nur gesammelt im Tagesbriefing nennen“. **Übernehmen** macht daraus eine Regel,
+   **Verwerfen** entfernt einen Vorschlag aus einer Ablehnung.
+
+### 6c.8 Was das Sekretariat heute getan hat
+
+Unten auf der Seite: **Was das Sekretariat heute getan hat** anklicken. Die Liste zeigt mit Uhrzeit
+verschobene Mails, angelegte Entwürfe, gesendete und abgelehnte Freigaben, angelegte Erinnerungen,
+die Läufe des Sekretariats und was du selbst erledigt hast. Bei einer gesendeten Mail steht
+**Nachfassen** — wie in 6c.3, Schritt 3.
 
 Das Sekretariat ist ein Team wie ein Projekt: Unten auf der Seite führt ein Link zu Raum, Board
 und Gespräch, ein zweiter zu seinen Kosten unter **Finanzen**. In der Projektliste steht es nicht.
@@ -3779,6 +3910,13 @@ Spiegel) lässt sich mit `AI_EMPLOYEE_REGISTRY` in der `.env` einstellen. Die Ve
 steht danach als `AI_EMPLOYEE_VERSION` in der `.env`, damit Code und Abbilder
 zusammenpassen. Am Ende nennt das Skript die Agenten, die noch auf dem alten Abbild laufen,
 und den Commit vor dem Update.
+
+**Alte Abbilder räumt das Update selbst weg** *(seit 1.398.1)*. Nach einem erfolgreichen Start
+löscht `update.sh` die Abbilder älterer Versionen. Es behält die neue und die vorige Version
+(für den Rücksprung) und alles, was ein Agent oder ein anderer Container noch benutzt. Dazu
+entfernt es Build-Cache, der älter als drei Tage ist. Daten (Volumes) fasst es nie an. Vorher
+blieben alle Versionen liegen; bei häufigen Updates waren das schnell über 100 GB. Abschalten
+lässt es sich mit `AI_EMPLOYEE_ABBILDER_AUFRAEUMEN=0` in der `.env`.
 
 **Rücksprung** auf den Stand vor dem Update: `git checkout <commit von vorher>`, dann
 `bash -c '. scripts/lib/abbilder.sh && abbilder_bereitstellen 0' && docker compose up -d`

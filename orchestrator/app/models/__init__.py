@@ -28,6 +28,7 @@ from app.models.kosten_historie import KostenHistorie
 from app.models.projekt_karte import ProjektKarte
 from app.models.projekt_nachricht import ProjektNachricht
 from app.models.erinnerung import Erinnerung
+from app.models.sekretariat_protokoll import SekretariatProtokoll
 from app.models.bridge_regel import BridgeRegel
 from app.models.bereich_aufruf import BereichAufruf
 from app.models.test_run import TestRun
@@ -72,6 +73,7 @@ __all__ = [
     "ProjektKarte",
     "ProjektNachricht",
     "Erinnerung",
+    "SekretariatProtokoll",
     "BridgeRegel",
     "BereichAufruf",
     "TestRun",

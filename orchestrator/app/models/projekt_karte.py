@@ -51,3 +51,9 @@ class ProjektKarte(Base, TimestampMixin):
     # Wer das Issue AUSSERHALB des Boards bearbeitet: Zuständige im Repo („@name“)
     # oder „extern“, wenn nur ein Status-Tag gesetzt ist. Leer = niemand von außen.
     extern_bearbeiter: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Seit wann jemand von außen dran ist, wann er sich zuletzt geregt hat (Issue
+    # geändert, Commit auf seinem Branch) und auf welchem Branch er arbeitet. Daran
+    # sieht das Board, ob eine fremde Übernahme liegen geblieben ist.
+    extern_seit: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    extern_regung_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    extern_branch: Mapped[str | None] = mapped_column(String(200), nullable=True)

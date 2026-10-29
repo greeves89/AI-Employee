@@ -6,11 +6,10 @@
  * vergeben („Los“), abnehmen oder zurückgeben.
  */
 
-import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { UserRound,
-  ArrowLeft, ArrowRight, Check, CircleDot, CornerUpLeft, ExternalLink, GitPullRequest, Loader2, Play, Plus,
-  Trash2, TriangleAlert,
+  ArrowLeft, ArrowRight, Check, CircleDot, CornerUpLeft, ExternalLink, GitBranch, GitPullRequest, Loader2, Play, Plus,
+  ScrollText, Trash2, TriangleAlert, Unlock,
 } from "lucide-react";
 import type { Agent } from "@/lib/types";
 import {
@@ -19,6 +18,10 @@ import {
 } from "@/lib/projekte";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { Fenster } from "@/components/ui/fenster";
+import { MarkdownContent } from "@/components/ui/markdown-content";
+import { useAufgabeFenster } from "@/components/tasks/aufgabe-fenster";
+import * as api from "@/lib/api";
+import { apiFehlertext } from "@/lib/api-fehler";
 import { useMoney } from "@/hooks/use-money";
 import { cn, timeAgo } from "@/lib/utils";
 import { StufenLeiste } from "./projekt-leitstand";
@@ -51,6 +54,8 @@ export interface BoardAktionen {
   verschieben: (k: ProjektKarte, aenderung: { spalte?: string; prioritaet?: number }) => Promise<void>;
   vergeben: (k: ProjektKarte, agentId: string | null) => Promise<void>;
   abnehmen: (k: ProjektKarte) => Promise<void>;
+  /** Fremde Übernahme lösen (Tag + Zuständige im Repo weg, Karte nach Bereit). */
+  freigeben: (k: ProjektKarte) => Promise<void>;
   // agentId leer: der bisherige Bearbeiter — ist er nicht mehr im Projekt, der Lead.
   zurueckgeben: (k: ProjektKarte, hinweis: string, agentId: string | null) => Promise<void>;
   anlegen: (titel: string, text: string) => Promise<void>;
@@ -87,8 +92,202 @@ function Knopf({
   );
 }
 
+/** Stand einer Übernahme von außen: übernommen → Branch → PR, dazu das letzte Lebenszeichen. */
+function ExternStand({ karte, farbe, onFreigeben }: { karte: ProjektKarte; farbe: string; onFreigeben: () => Promise<void> }) {
+  const schritte = [
+    { label: "Übernommen", da: true },
+    { label: "Branch", da: !!karte.extern_branch },
+    { label: "PR", da: !!karte.pr_nr },
+  ];
+  return (
+    <div className="mt-2 space-y-1.5">
+      <div className="flex items-center gap-1 text-[10px]">
+        {schritte.map((s, i) => (
+          <span key={s.label} className="inline-flex items-center gap-1">
+            {i > 0 && <span className="h-px w-3 bg-foreground/15" />}
+            <span
+              className={cn("rounded-full px-1.5 py-px", s.da ? "font-medium text-foreground" : "text-muted-foreground/70 ring-1 ring-inset ring-foreground/10")}
+              style={s.da ? { background: `${farbe}22` } : undefined}
+            >
+              {s.label}
+            </span>
+          </span>
+        ))}
+      </div>
+      {karte.extern_branch && (
+        <p className="flex items-center gap-1 truncate text-[10px] text-muted-foreground" title={karte.extern_branch}>
+          <GitBranch className="h-3 w-3 shrink-0" /> {karte.extern_branch}
+        </p>
+      )}
+      {karte.extern_stockt ? (
+        <div className="rounded-md bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+          <p className="flex items-start gap-1">
+            <TriangleAlert className="mt-px h-3 w-3 shrink-0" />
+            <span>
+              Liegt: {karte.extern_regung ? `letzte Bewegung ${timeAgo(karte.extern_regung)}` : "keine Bewegung"} — kein Commit,
+              kein Pull Request.
+            </span>
+          </p>
+          <div className="mt-1.5">
+            <Knopf titel="Übernahme im Repo lösen, Karte nach Bereit" onClick={onFreigeben}>
+              <Unlock className="h-3 w-3" /> Freigeben
+            </Knopf>
+          </div>
+        </div>
+      ) : (
+        karte.extern_regung && <p className="text-[10px] text-muted-foreground">Letzte Bewegung {timeAgo(karte.extern_regung)}</p>
+      )}
+    </div>
+  );
+}
+
+/** Was man mit einer Karte tun kann — je Spalte. Auf der Karte und im Karten-Fenster gleich. */
+function KartenAktionen({
+  karte, agents, mitglieder, leadId, aktionen, onZurueck, kompakt = false,
+}: {
+  karte: ProjektKarte;
+  agents: Map<string, Agent>;
+  mitglieder: string[];
+  leadId: string | null;
+  aktionen: BoardAktionen;
+  onZurueck: (k: ProjektKarte) => void;
+  kompakt?: boolean;
+}) {
+  // Leer = an den Lead (er verteilt); ohne Lead muss man wählen (außer bei einem Mitglied).
+  const [ziel, setZiel] = useState<string>(!leadId && mitglieder.length === 1 ? mitglieder[0] : "");
+  const prOffen = !!karte.pr_url && !["gemergt", "geschlossen"].includes(karte.pr_zustand ?? "");
+  return (
+    <div className={cn("flex flex-wrap items-center gap-1.5", kompakt ? "mt-1.5 -mb-1 -ml-1" : "mt-2.5")}>
+      {karte.spalte === "eingang" && (
+        <>
+          <Knopf leise titel="Nach Bereit — kommt als Nächstes dran" onClick={() => aktionen.verschieben(karte, { spalte: "bereit" })}>
+            Einplanen <ArrowRight className="h-3 w-3" />
+          </Knopf>
+          <Knopf gefahr titel="Verwerfen (nach Erledigt)" onClick={() => aktionen.verschieben(karte, { spalte: "erledigt" })}>
+            <Trash2 className="h-3 w-3" />
+          </Knopf>
+        </>
+      )}
+      {karte.spalte === "bereit" && (
+        <>
+          <select
+            value={ziel}
+            onChange={(e) => setZiel(e.target.value)}
+            aria-label="Wer bekommt die Karte?"
+            className="min-w-0 max-w-[9rem] rounded-lg border border-foreground/[0.1] bg-background/80 px-1.5 py-1 text-xs"
+          >
+            <option value="">{leadId ? "Lead verteilt" : "Agent wählen …"}</option>
+            {mitglieder.map((m) => (
+              <option key={m} value={m}>{leadId ? "Direkt: " : ""}{agents.get(m)?.name ?? m}</option>
+            ))}
+          </select>
+          <Knopf
+            haupt
+            titel="Karte vergeben — der Agent legt los"
+            onClick={() => {
+              if (!ziel && !leadId) return;
+              return aktionen.vergeben(karte, ziel || null);
+            }}
+          >
+            <Play className="h-3 w-3" /> Los
+          </Knopf>
+          <Knopf titel="Zurück in den Eingang" onClick={() => aktionen.verschieben(karte, { spalte: "eingang" })}>
+            <ArrowLeft className="h-3 w-3" />
+          </Knopf>
+        </>
+      )}
+      {karte.spalte === "pruefung" && karte.task_id && (
+        <>
+          <Knopf haupt onClick={() => aktionen.abnehmen(karte)}>
+            <Check className="h-3 w-3" /> Abnehmen
+          </Knopf>
+          <Knopf onClick={() => onZurueck(karte)}>
+            <CornerUpLeft className="h-3 w-3" /> Zurückgeben
+          </Knopf>
+        </>
+      )}
+      {/* Ohne eigenen Lauf (PR aus dem Repo, Issue mit fremdem PR) gibt es nichts
+          abzunehmen oder zurückzugeben — nur „erledigt“, wenn er gemergt ist. */}
+      {/* Bei offenem PR kein „Erledigt“: der Knopf verschob nur die Karte, der PR
+          blieb offen — und nach dem Merge zieht der Abgleich die Karte ohnehin nach. */}
+      {karte.spalte === "pruefung" && !karte.task_id && prOffen && (
+        <span className="text-[11px] text-muted-foreground">Wandert nach dem Merge von selbst nach Erledigt.</span>
+      )}
+      {karte.spalte === "pruefung" && !karte.task_id && !prOffen && (
+        <Knopf titel="Nach Erledigt (z. B. nach dem Merge)" onClick={() => aktionen.verschieben(karte, { spalte: "erledigt" })}>
+          <Check className="h-3 w-3" /> Erledigt
+        </Knopf>
+      )}
+    </div>
+  );
+}
+
+/** Kopfzeile einer Karte: Ticket, Agent, Bearbeiter von außen, Zeit, Kosten. */
+function KartenMeta({ karte, agents }: { karte: ProjektKarte; agents: Map<string, Agent> }) {
+  const money = useMoney();
+  const agent = karte.agent_id ? agents.get(karte.agent_id) : undefined;
+  const wann = karte.erledigt ?? karte.aktualisiert ?? karte.erstellt;
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+      {karte.extern_nr && karte.url ? (
+        <a href={karte.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 hover:text-foreground">
+          {karte.quelle === "pr" ? <GitPullRequest className="h-3 w-3" /> : <CircleDot className="h-3 w-3" />}#{karte.extern_nr}
+        </a>
+      ) : null}
+      {agent && (
+        <span className="inline-flex items-center gap-1">
+          <AgentAvatar config={agent.config} size="sm" className="h-4 w-4 rounded" />
+          {agent.name}
+        </span>
+      )}
+      {karte.extern_bearbeiter && (
+        <span
+          title="Bearbeitet außerhalb des Boards (Zuständige oder Status-Tag im Repo)"
+          className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-1.5 py-px font-medium text-foreground"
+        >
+          <UserRound className="h-3 w-3 text-primary" />
+          {karte.extern_bearbeiter === "extern" ? "extern dran" : karte.extern_bearbeiter}
+        </span>
+      )}
+      {wann && <span>{timeAgo(wann)}</span>}
+      {karte.kosten_usd ? <span title={money.title(karte.kosten_usd)}>{money.fmt(karte.kosten_usd)}</span> : null}
+    </div>
+  );
+}
+
+function Tags({ labels, alle = false }: { labels: string[]; alle?: boolean }) {
+  if (!labels.length) return null;
+  const zeigen = alle ? labels : labels.slice(0, 6);
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-1">
+      {zeigen.map((tag) => (
+        <span key={tag} className="rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground">
+          {tag}
+        </span>
+      ))}
+      {labels.length > zeigen.length && <span className="text-[10px] text-muted-foreground">+{labels.length - zeigen.length}</span>}
+    </div>
+  );
+}
+
+function PrLink({ karte }: { karte: ProjektKarte }) {
+  if (!karte.pr_url) return null;
+  return (
+    <a href={karte.pr_url} target="_blank" rel="noopener noreferrer"
+      className="mt-2 inline-flex items-center gap-1 rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] hover:bg-foreground/[0.08]">
+      <GitPullRequest className="h-3 w-3" /> PR #{karte.pr_nr ?? "?"} · {PR_ZUSTAND[karte.pr_zustand ?? "offen"] ?? karte.pr_zustand}
+      <ExternalLink className="h-2.5 w-2.5" />
+    </a>
+  );
+}
+
+/** Klicks auf Knöpfe, Links und Auswahlfelder IN der Karte öffnen kein Fenster. */
+function aufBedienelement(ziel: EventTarget | null): boolean {
+  return ziel instanceof HTMLElement && !!ziel.closest("button, a, select, input, textarea, label");
+}
+
 function Karte({
-  karte, agents, mitglieder, leadId, farbe, aktionen, onZurueck, ausgabe,
+  karte, agents, mitglieder, leadId, farbe, aktionen, onZurueck, onOeffnen, ausgabe,
 }: {
   karte: ProjektKarte;
   /** Letzte Ausgabe des laufenden Agenten (nur in Arbeit). */
@@ -99,19 +298,23 @@ function Karte({
   farbe: string;
   aktionen: BoardAktionen;
   onZurueck: (k: ProjektKarte) => void;
+  /** Klick auf die Karte: alles zur Karte im Fenster. */
+  onOeffnen: (k: ProjektKarte) => void;
 }) {
-  const money = useMoney();
-  const agent = karte.agent_id ? agents.get(karte.agent_id) : undefined;
   const prio = PRIORITAETEN[karte.prioritaet] ?? PRIORITAETEN[2];
   const gescheitert = karte.task_status === "failed";
-  // Leer = an den Lead (er verteilt); ohne Lead muss man wählen (außer bei einem Mitglied).
-  const [ziel, setZiel] = useState<string>(!leadId && mitglieder.length === 1 ? mitglieder[0] : "");
-  const wann = karte.erledigt ?? karte.aktualisiert ?? karte.erstellt;
-  const prOffen = !!karte.pr_url && !["gemergt", "geschlossen"].includes(karte.pr_zustand ?? "");
 
   return (
-    <div className={cn("rounded-xl border bg-card text-sm shadow-sm", karte.spalte === "eingang" ? "p-2.5" : "p-3",
-      gescheitert ? "border-red-500/30" : "border-foreground/[0.08]")}>
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Karte öffnen: ${karte.titel}`}
+      onClick={(e) => { if (!aufBedienelement(e.target)) onOeffnen(karte); }}
+      onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && e.target === e.currentTarget) { e.preventDefault(); onOeffnen(karte); } }}
+      className={cn("cursor-pointer rounded-xl border bg-card text-sm shadow-sm transition-colors hover:border-foreground/[0.16] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+        karte.spalte === "eingang" ? "p-2.5" : "p-3",
+        gescheitert ? "border-red-500/30" : "border-foreground/[0.08]")}
+    >
       <div className="flex items-start gap-1.5">
         <button
           type="button"
@@ -123,52 +326,20 @@ function Karte({
           {prio.label}
         </button>
         <div className="min-w-0 flex-1">
-          {karte.task_id ? (
-            <Link href={`/tasks/${karte.task_id}`} className="line-clamp-2 font-medium hover:underline">{karte.titel}</Link>
-          ) : (
-            <p className="line-clamp-2 font-medium">{karte.titel}</p>
-          )}
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
-            {karte.extern_nr && karte.url ? (
-              <a href={karte.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 hover:text-foreground">
-                {karte.quelle === "pr" ? <GitPullRequest className="h-3 w-3" /> : <CircleDot className="h-3 w-3" />}#{karte.extern_nr}
-              </a>
-            ) : null}
-            {agent && (
-              <span className="inline-flex items-center gap-1">
-                <AgentAvatar config={agent.config} size="sm" className="h-4 w-4 rounded" />
-                {agent.name}
-              </span>
-            )}
-            {karte.extern_bearbeiter && (
-              <span
-                title="Bearbeitet außerhalb des Boards (Zuständige oder Status-Tag im Repo)"
-                className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-1.5 py-px font-medium text-foreground"
-              >
-                <UserRound className="h-3 w-3 text-primary" />
-                {karte.extern_bearbeiter === "extern" ? "extern dran" : karte.extern_bearbeiter}
-              </span>
-            )}
-            {wann && <span>{timeAgo(wann)}</span>}
-            {karte.kosten_usd ? <span title={money.title(karte.kosten_usd)}>{money.fmt(karte.kosten_usd)}</span> : null}
-          </div>
+          <p className="line-clamp-2 font-medium">{karte.titel}</p>
+          <KartenMeta karte={karte} agents={agents} />
         </div>
       </div>
 
-      {karte.labels.length > 0 && (
-        <div className="mt-1.5 flex flex-wrap gap-1">
-          {karte.labels.slice(0, 6).map((tag) => (
-            <span key={tag} className="rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground">
-              {tag}
-            </span>
-          ))}
-          {karte.labels.length > 6 && <span className="text-[10px] text-muted-foreground">+{karte.labels.length - 6}</span>}
-        </div>
-      )}
+      <Tags labels={karte.labels} />
 
       {karte.notiz && <p className="mt-1.5 rounded-md bg-amber-500/10 px-2 py-1 text-[11px] text-amber-700 dark:text-amber-300">{karte.notiz}</p>}
 
-      {karte.spalte === "in_arbeit" && (
+      {karte.spalte === "in_arbeit" && karte.extern_bearbeiter && !karte.task_id && (
+        <ExternStand karte={karte} farbe={farbe} onFreigeben={() => aktionen.freigeben(karte)} />
+      )}
+
+      {karte.spalte === "in_arbeit" && !(karte.extern_bearbeiter && !karte.task_id) && (
         <>
           {ausgabe && (
             <p className="mt-1.5 line-clamp-2 text-[11px] italic text-foreground/70" title={ausgabe}>„{ausgabe}“</p>
@@ -177,13 +348,7 @@ function Karte({
         </>
       )}
 
-      {karte.pr_url && (
-        <a href={karte.pr_url} target="_blank" rel="noopener noreferrer"
-          className="mt-2 inline-flex items-center gap-1 rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] hover:bg-foreground/[0.08]">
-          <GitPullRequest className="h-3 w-3" /> PR #{karte.pr_nr ?? "?"} · {PR_ZUSTAND[karte.pr_zustand ?? "offen"] ?? karte.pr_zustand}
-          <ExternalLink className="h-2.5 w-2.5" />
-        </a>
-      )}
+      <PrLink karte={karte} />
 
       {karte.spalte === "pruefung" && (karte.fehler || karte.ergebnis) && (
         <p className={cn("mt-2 line-clamp-4 whitespace-pre-line text-xs", gescheitert ? "text-red-500" : "text-muted-foreground")}>
@@ -192,76 +357,127 @@ function Karte({
         </p>
       )}
 
-      {/* Aktionen je Spalte */}
-      <div className={cn("flex flex-wrap items-center gap-1.5", karte.spalte === "eingang" ? "mt-1.5 -mb-1 -ml-1" : "mt-2.5")}>
-        {karte.spalte === "eingang" && (
-          <>
-            <Knopf leise titel="Nach Bereit — kommt als Nächstes dran" onClick={() => aktionen.verschieben(karte, { spalte: "bereit" })}>
-              Einplanen <ArrowRight className="h-3 w-3" />
-            </Knopf>
-            <Knopf gefahr titel="Verwerfen (nach Erledigt)" onClick={() => aktionen.verschieben(karte, { spalte: "erledigt" })}>
-              <Trash2 className="h-3 w-3" />
-            </Knopf>
-          </>
-        )}
-        {karte.spalte === "bereit" && (
-          <>
-            <select
-              value={ziel}
-              onChange={(e) => setZiel(e.target.value)}
-              aria-label="Wer bekommt die Karte?"
-              className="min-w-0 max-w-[9rem] rounded-lg border border-foreground/[0.1] bg-background/80 px-1.5 py-1 text-xs"
-            >
-              <option value="">{leadId ? "Lead verteilt" : "Agent wählen …"}</option>
-              {mitglieder.map((m) => (
-                <option key={m} value={m}>{leadId ? "Direkt: " : ""}{agents.get(m)?.name ?? m}</option>
-              ))}
-            </select>
-            <Knopf
-              haupt
-              titel="Karte vergeben — der Agent legt los"
-              onClick={() => {
-                if (!ziel && !leadId) return;
-                return aktionen.vergeben(karte, ziel || null);
-              }}
-            >
-              <Play className="h-3 w-3" /> Los
-            </Knopf>
-            <Knopf titel="Zurück in den Eingang" onClick={() => aktionen.verschieben(karte, { spalte: "eingang" })}>
-              <ArrowLeft className="h-3 w-3" />
-            </Knopf>
-          </>
-        )}
-        {karte.spalte === "pruefung" && karte.task_id && (
-          <>
-            <Knopf haupt onClick={() => aktionen.abnehmen(karte)}>
-              <Check className="h-3 w-3" /> Abnehmen
-            </Knopf>
-            <Knopf onClick={() => onZurueck(karte)}>
-              <CornerUpLeft className="h-3 w-3" /> Zurückgeben
-            </Knopf>
-          </>
-        )}
-        {/* Ohne eigenen Lauf (PR aus dem Repo, Issue mit fremdem PR) gibt es nichts
-            abzunehmen oder zurückzugeben — nur „erledigt“, wenn er gemergt ist. */}
-        {/* Bei offenem PR kein „Erledigt“: der Knopf verschob nur die Karte, der PR
-            blieb offen — und nach dem Merge zieht der Abgleich die Karte ohnehin nach. */}
-        {karte.spalte === "pruefung" && !karte.task_id && prOffen && (
-          <span className="text-[11px] text-muted-foreground">Wandert nach dem Merge von selbst nach Erledigt.</span>
-        )}
-        {karte.spalte === "pruefung" && !karte.task_id && !prOffen && (
-          <Knopf titel="Nach Erledigt (z. B. nach dem Merge)" onClick={() => aktionen.verschieben(karte, { spalte: "erledigt" })}>
-            <Check className="h-3 w-3" /> Erledigt
-          </Knopf>
-        )}
-      </div>
+      <KartenAktionen karte={karte} agents={agents} mitglieder={mitglieder} leadId={leadId}
+        aktionen={aktionen} onZurueck={onZurueck} kompakt={karte.spalte === "eingang"} />
     </div>
   );
 }
 
-export function ProjektBoardAnsicht({
-  board, agents, mitglieder, leadId, farbe, aktionen,
+/** Eine Karte im Fenster: ganzer Text, Tags, Ticket, PR, Lauf — und dieselben Knöpfe wie auf dem Board. */
+function KartenFenster({
+  projektId, karte, agents, mitglieder, leadId, farbe, aktionen, onZurueck, schliessen,
 }: {
+  projektId: string;
+  /** Live aus dem Board — nach einer Aktion steht hier der neue Stand. */
+  karte: ProjektKarte | null;
+  agents: Map<string, Agent>;
+  mitglieder: string[];
+  leadId: string | null;
+  farbe: string;
+  aktionen: BoardAktionen;
+  onZurueck: (k: ProjektKarte) => void;
+  schliessen: () => void;
+}) {
+  const { oeffnen: aufgabeOeffnen } = useAufgabeFenster();
+  const [voll, setVoll] = useState<(ProjektKarte & { lauf_sichtbar?: boolean }) | null>(null);
+  const [fehler, setFehler] = useState<string | null>(null);
+  const id = karte?.id ?? null;
+  const stand = karte?.aktualisiert ?? null;
+
+  useEffect(() => {
+    if (!id) return;
+    let aktiv = true;
+    setFehler(null);
+    api.karteHolen(projektId, id)
+      .then((k) => { if (aktiv) setVoll(k); })
+      .catch((e) => { if (aktiv) setFehler(apiFehlertext(e)); });
+    return () => { aktiv = false; };
+  }, [projektId, id, stand]);
+
+  const k = karte ? { ...karte, ...(voll?.id === karte.id ? { text: voll.text, ergebnis: voll.ergebnis, fehler: voll.fehler } : {}) } : null;
+  const spalte = SPALTEN.find((s) => s.key === k?.spalte)?.label ?? k?.spalte;
+  const prio = k ? PRIORITAETEN[k.prioritaet] ?? PRIORITAETEN[2] : null;
+  const gescheitert = k?.task_status === "failed";
+
+  return (
+    <Fenster offen={!!k} schliessen={schliessen} breite="max-w-3xl">
+      {k && prio && (
+        <div className="space-y-4 p-5">
+          <div>
+            <div className="flex items-start gap-2">
+              <button
+                type="button"
+                title="Priorität ändern"
+                onClick={() => aktionen.verschieben(k, { prioritaet: (k.prioritaet % 3) + 1 })}
+                disabled={k.spalte === "erledigt"}
+                className={cn("mt-1 shrink-0 rounded px-1.5 text-[11px] font-semibold", prio.klasse)}
+              >
+                {prio.label}
+              </button>
+              <h2 className="min-w-0 flex-1 text-lg font-semibold leading-snug">{k.titel}</h2>
+              <span className="shrink-0 rounded-full bg-foreground/[0.06] px-2 py-0.5 text-[11px] text-muted-foreground">{spalte}</span>
+            </div>
+            <KartenMeta karte={k} agents={agents} />
+            <Tags labels={k.labels} alle />
+          </div>
+
+          {k.notiz && <p className="rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">{k.notiz}</p>}
+
+          <section>
+            <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Beschreibung</h3>
+            {fehler ? (
+              <p className="text-sm text-red-500">{fehler}</p>
+            ) : k.text ? (
+              <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-3 text-sm">
+                <MarkdownContent content={k.text} />
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Keine Beschreibung.</p>
+            )}
+          </section>
+
+          {k.spalte === "in_arbeit" && k.extern_bearbeiter && !k.task_id && (
+            <ExternStand karte={k} farbe={farbe} onFreigeben={() => aktionen.freigeben(k)} />
+          )}
+          {k.spalte === "in_arbeit" && !(k.extern_bearbeiter && !k.task_id) && (
+            <StufenLeiste stufe={k.stufe} farbe={farbe} />
+          )}
+
+          <PrLink karte={k} />
+
+          {(k.fehler || k.ergebnis) && (
+            <section>
+              <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {gescheitert ? "Fehler des Laufs" : "Ergebnis des Laufs"}
+              </h3>
+              <div className={cn("max-h-80 overflow-y-auto rounded-lg border p-3 text-sm",
+                gescheitert ? "border-red-500/20 bg-red-500/5 text-red-600 dark:text-red-400" : "border-foreground/[0.06] bg-foreground/[0.02]")}>
+                <MarkdownContent content={(k.fehler ?? k.ergebnis) as string} />
+              </div>
+            </section>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2 border-t border-foreground/[0.06] pt-3">
+            <KartenAktionen karte={k} agents={agents} mitglieder={mitglieder} leadId={leadId}
+              aktionen={aktionen} onZurueck={onZurueck} />
+            {k.task_id && voll?.lauf_sichtbar !== false && (
+              <span className="mt-2.5">
+                <Knopf leise titel="Den ganzen Lauf mit Verlauf und Dateien ansehen" onClick={() => aufgabeOeffnen(k.task_id!)}>
+                  <ScrollText className="h-3 w-3" /> Lauf ansehen
+                </Knopf>
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </Fenster>
+  );
+}
+
+export function ProjektBoardAnsicht({
+  projektId, board, agents, mitglieder, leadId, farbe, aktionen,
+}: {
+  projektId: string;
   board: ProjektBoard;
   agents: Agent[];
   mitglieder: string[];
@@ -270,12 +486,18 @@ export function ProjektBoardAnsicht({
   aktionen: BoardAktionen;
 }) {
   const [zurueck, setZurueck] = useState<ProjektKarte | null>(null);
+  // Karte im Fenster: nur die Kennung merken — gezeigt wird der LIVE-Stand aus dem Board.
+  const [offenId, setOffenId] = useState<string | null>(null);
+  const offeneKarte = offenId
+    ? Object.values(board.spalten).flat().find((k) => k.id === offenId) ?? null
+    : null;
   const [hinweis, setHinweis] = useState("");
   const [sendet, setSendet] = useState(false);
   const [neu, setNeu] = useState(false);
   const [titel, setTitel] = useState("");
   const [text, setText] = useState("");
   const agentById = new Map(agents.map((a) => [a.id, a]));
+  const zurueckGeben = (karte: ProjektKarte) => { setHinweis(""); setNacharbeiter(""); setZurueck(karte); };
   const ausgabeJeLauf = new Map(board.laufend.map((l) => [l.task_id, l.letzte_ausgabe]));
   const [nacharbeiter, setNacharbeiter] = useState("");
   const imProjekt = [...new Set([...(leadId ? [leadId] : []), ...mitglieder])];
@@ -316,7 +538,7 @@ export function ProjektBoardAnsicht({
                 ) : (
                   karten.map((k) => (
                     <Karte key={k.id} karte={k} agents={agentById} ausgabe={k.task_id ? ausgabeJeLauf.get(k.task_id) : null} mitglieder={mitglieder} leadId={leadId} farbe={farbe}
-                      aktionen={aktionen} onZurueck={(karte) => { setHinweis(""); setNacharbeiter(""); setZurueck(karte); }} />
+                      aktionen={aktionen} onZurueck={zurueckGeben} onOeffnen={(karte) => setOffenId(karte.id)} />
                   ))
                 )}
               </div>
@@ -324,6 +546,9 @@ export function ProjektBoardAnsicht({
           );
         })}
       </div>
+
+      <KartenFenster projektId={projektId} karte={offeneKarte} agents={agentById} mitglieder={mitglieder} leadId={leadId}
+        farbe={farbe} aktionen={aktionen} onZurueck={zurueckGeben} schliessen={() => setOffenId(null)} />
 
       <Fenster offen={neu} schliessen={() => setNeu(false)} titel="Neue Karte im Eingang" breite="max-w-lg">
         <div className="space-y-3 p-5">

@@ -156,6 +156,29 @@ class Karten(Basis):
                     await api.karte_aendern("p1", kid, api.KarteAendern(spalte=spalte), user=MITGLIED, db=db)
                 self.assertEqual(e.exception.status_code, 409)
 
+    async def test_fenster_bekommt_die_ganze_karte(self):
+        """Das Board kürzt den Text auf 600 Zeichen — das Fenster einer Karte zeigt alles."""
+        lang = "Zeile mit Inhalt. " * 80
+        async with self.Session() as db:
+            k = await api.karte_anlegen("p1", api.NeueKarte(titel="Lang", text=lang), user=MITGLIED, db=db)
+            r = await api.karte_holen("p1", k["id"], user=MITGLIED, db=db)
+            self.assertEqual(r["text"], lang.strip())
+            self.assertFalse(r["lauf_sichtbar"])
+            with self.assertRaises(HTTPException) as e:
+                await api.karte_holen("p1", "gibt-es-nicht", user=MITGLIED, db=db)
+            self.assertEqual(e.exception.status_code, 404)
+            with self.assertRaises(HTTPException) as e:
+                await api.karte_holen("p1", k["id"], user=agent("b1"), db=db)
+            self.assertEqual(e.exception.status_code, 403)
+
+    async def test_fenster_zeigt_fremde_laeufe_nicht(self):
+        async with self.Session() as db:
+            db.add(Task(id="t-fremd", title="t", prompt="p", agent_id="b1", team_id="p1", result="geheim"))
+            await self._karte(db, "kf", "pruefung", task_id="t-fremd")
+            r = await api.karte_holen("p1", "kf", user=MITGLIED, db=db)
+            self.assertFalse(r["lauf_sichtbar"])
+            self.assertIsNone(r["ergebnis"])
+
     async def test_karte_eines_anderen_projekts_ist_unbekannt(self):
         async with self.Session() as db:
             await self._karte(db, "fremd", team_id="p2")
