@@ -266,11 +266,18 @@ async def extern_liegen_melden(db: AsyncSession, team: Team, jetzt: datetime | N
     )
     if schon:
         return len(liegen)
-    stunden = int(EXTERN_STILL_AB.total_seconds() // 3600)
+    from app.core import uebernahme
+
+    stunden = int(uebernahme.dauer_fuer(team).total_seconds() // 3600) or int(EXTERN_STILL_AB.total_seconds() // 3600)
     nummern = ", ".join(f"#{k.extern_nr}" for k in liegen[:12]) + (" …" if len(liegen) > 12 else "")
-    text = (f"{_EXTERN_KOPF} {len(liegen)} Karten sind von außen übernommen, aber seit über {stunden} Std. "
-            f"ohne Bewegung (kein Commit, kein Pull Request): {nummern}. Der Lead nimmt sie nicht, solange "
-            "sie übernommen sind. Im Board mit „Freigeben“ lösen — dann vergibt er sie.")
+    text = (f"{_EXTERN_KOPF} {len(liegen)} Karten sind von außen übernommen, aber die Übernahme ist "
+            f"abgelaufen — über {stunden} Std. ohne Lebenszeichen (kein Commit, keine erneuerte Übernahme): "
+            f"{nummern}. Der Lead nimmt sie nicht, solange sie übernommen sind. Im Board mit „Freigeben“ "
+            "lösen — dann vergibt er sie.")
+    if getattr(team, "abgelaufene_uebernehmen", False):
+        text = text.replace("Der Lead nimmt sie nicht, solange sie übernommen sind.",
+                            "Das Projekt erlaubt, abgelaufene Übernahmen nach einer Karenzzeit selbst zu "
+                            "übernehmen — der Lead darf sie dann vergeben.")
     await projekt_gespraech.posten(db, team, autor_typ="system", autor_id=None, autor_name="Projekt",
                                    text=text, art="nachricht")
     if team.lead_agent_id:

@@ -8,7 +8,7 @@
 
 import { useEffect, useState } from "react";
 import { UserRound,
-  ArrowLeft, ArrowRight, Bot, Check, CircleDot, CornerUpLeft, ExternalLink, GitBranch, GitPullRequest, Globe, Loader2,
+  ArrowLeft, ArrowRight, ArrowRightLeft, Bot, Check, CircleDot, CornerUpLeft, ExternalLink, GitBranch, GitPullRequest, Globe, Loader2,
   Play, Plus, ScrollText, Server, Terminal, Trash2, TriangleAlert, Unlock,
 } from "lucide-react";
 import type { Agent } from "@/lib/types";
@@ -56,6 +56,10 @@ export interface BoardAktionen {
   abnehmen: (k: ProjektKarte) => Promise<void>;
   /** Fremde Übernahme lösen (Tag + Zuständige im Repo weg, Karte nach Bereit). */
   freigeben: (k: ProjektKarte) => Promise<void>;
+  /** „Übergeben an …“: an einen Agenten des Projekts (agent_id) oder jemanden außerhalb (an). */
+  uebergeben: (k: ProjektKarte, body: { agent_id?: string; an?: string; stand: string; naechster_schritt: string }) => Promise<void>;
+  /** Öffnet das Übergabe-Fenster — setzt die Board-Ansicht selbst. */
+  uebergabeOeffnen?: (k: ProjektKarte) => void;
   // agentId leer: der bisherige Bearbeiter — ist er nicht mehr im Projekt, der Lead.
   zurueckgeben: (k: ProjektKarte, hinweis: string, agentId: string | null) => Promise<void>;
   anlegen: (titel: string, text: string) => Promise<void>;
@@ -124,8 +128,8 @@ function ExternStand({ karte, farbe, onFreigeben }: { karte: ProjektKarte; farbe
           <p className="flex items-start gap-1">
             <TriangleAlert className="mt-px h-3 w-3 shrink-0" />
             <span>
-              Liegt: {karte.extern_regung ? `letzte Bewegung ${timeAgo(karte.extern_regung)}` : "keine Bewegung"} — kein Commit,
-              kein Pull Request.
+              Abgelaufen: {karte.extern_regung ? `letzte Bewegung ${timeAgo(karte.extern_regung)}` : "keine Bewegung"} — kein Commit,
+              keine erneuerte Übernahme.
             </span>
           </p>
           <div className="mt-1.5">
@@ -135,9 +139,109 @@ function ExternStand({ karte, farbe, onFreigeben }: { karte: ProjektKarte; farbe
           </div>
         </div>
       ) : (
-        karte.extern_regung && <p className="text-[10px] text-muted-foreground">Letzte Bewegung {timeAgo(karte.extern_regung)}</p>
+        (karte.extern_regung || karte.extern_bis) && (
+          <p className="text-[10px] text-muted-foreground">
+            {karte.extern_regung && <>Letzte Bewegung {timeAgo(karte.extern_regung)}</>}
+            {karte.extern_regung && karte.extern_bis && " · "}
+            {karte.extern_bis && <>gilt bis {new Date(karte.extern_bis).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}</>}
+          </p>
+        )
+      )}
+      {!!karte.bearbeiter_uebernahmen && (
+        <p className="flex items-start gap-1 text-[10px] text-amber-700 dark:text-amber-300">
+          <TriangleAlert className="mt-px h-3 w-3 shrink-0" />
+          Dieser Bearbeiter hält {karte.bearbeiter_uebernahmen} Übernahmen — mehr als im Projekt erlaubt.
+        </p>
       )}
     </div>
+  );
+}
+
+/** Rot: zwei gültige Übernahmen am selben Issue oder ein fremder Commit auf dem Branch. */
+function Konflikt({ karte }: { karte: ProjektKarte }) {
+  if (!karte.konflikt) return null;
+  return (
+    <p className="mt-1.5 flex items-start gap-1 rounded-md bg-red-500/10 px-2 py-1 text-[11px] text-red-700 dark:text-red-300">
+      <TriangleAlert className="mt-px h-3 w-3 shrink-0" />
+      <span><span className="font-medium">Konflikt:</span> {karte.konflikt}</span>
+    </p>
+  );
+}
+
+/** „Übergeben an …“: Empfänger, Stand und nächster Schritt — landet als Kommentar im Issue. */
+function UebergabeFenster({
+  karte, agents, mitglieder, aktionen, schliessen,
+}: {
+  karte: ProjektKarte | null;
+  agents: Map<string, Agent>;
+  mitglieder: string[];
+  aktionen: BoardAktionen;
+  schliessen: () => void;
+}) {
+  const [ziel, setZiel] = useState("");
+  const [aussen, setAussen] = useState("");
+  const [stand, setStand] = useState("");
+  const [naechster, setNaechster] = useState("");
+  const kartenId = karte?.id ?? null;
+  useEffect(() => {
+    // Nur beim Öffnen leeren — das Board lädt regelmäßig neu, die Karte ist dann ein neues Objekt.
+    if (kartenId) { setZiel(""); setAussen(""); setStand(""); setNaechster(""); }
+  }, [kartenId]);
+  const istAussen = ziel === "__aussen";
+  const bereit = !!karte && !!stand.trim() && !!naechster.trim() && (istAussen ? !!aussen.trim() : !!ziel);
+  const senden = async () => {
+    if (!karte || !bereit) return;
+    try {
+      await aktionen.uebergeben(karte, {
+        ...(istAussen ? { an: aussen.trim() } : { agent_id: ziel }),
+        stand: stand.trim(), naechster_schritt: naechster.trim(),
+      });
+      schliessen();
+    } catch {
+      // Die Meldung zeigt die Aktion selbst; das Fenster bleibt offen.
+    }
+  };
+  const feld = "w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-sm outline-none focus:border-primary/50";
+  return (
+    <Fenster offen={!!karte} schliessen={schliessen} titel={karte ? `Übergeben: #${karte.extern_nr} ${karte.titel}` : ""} breite="max-w-lg">
+      <div className="space-y-3 p-5 text-sm">
+        <p className="text-xs text-muted-foreground">
+          Stand und nächster Schritt kommen als Kommentar ins Issue; die Übernahme geht an den Empfänger.
+          Ein Agent des Projekts bekommt die Karte als neuen Lauf.
+        </p>
+        <label className="block text-xs font-medium text-muted-foreground">
+          An
+          <select value={ziel} onChange={(e) => setZiel(e.target.value)} className={cn(feld, "mt-1")}>
+            <option value="">Empfänger wählen …</option>
+            {mitglieder.filter((m) => m !== karte?.agent_id).map((m) => (
+              <option key={m} value={m}>{agents.get(m)?.name ?? m}</option>
+            ))}
+            <option value="__aussen">Jemand außerhalb der Plattform …</option>
+          </select>
+        </label>
+        {istAussen && (
+          <label className="block text-xs font-medium text-muted-foreground">
+            Wer genau
+            <input value={aussen} onChange={(e) => setAussen(e.target.value)} className={cn(feld, "mt-1")}
+              placeholder="claude-code:Laptop · mensch:login · ai-employee:anlage/agent" />
+          </label>
+        )}
+        <label className="block text-xs font-medium text-muted-foreground">
+          Stand
+          <textarea value={stand} onChange={(e) => setStand(e.target.value)} rows={3} className={cn(feld, "mt-1 resize-none")}
+            placeholder="Was ist erledigt, was offen, wo liegt die Arbeit (Branch, PR)?" />
+        </label>
+        <label className="block text-xs font-medium text-muted-foreground">
+          Nächster Schritt
+          <textarea value={naechster} onChange={(e) => setNaechster(e.target.value)} rows={2} className={cn(feld, "mt-1 resize-none")} />
+        </label>
+        <div className="flex justify-end">
+          <Knopf haupt onClick={senden} titel={bereit ? undefined : "Empfänger, Stand und nächsten Schritt ausfüllen"}>
+            <ArrowRightLeft className="h-3 w-3" /> Übergeben
+          </Knopf>
+        </div>
+      </div>
+    </Fenster>
   );
 }
 
@@ -212,6 +316,12 @@ function KartenAktionen({
           blieb offen — und nach dem Merge zieht der Abgleich die Karte ohnehin nach. */}
       {karte.spalte === "pruefung" && !karte.task_id && prOffen && (
         <span className="text-[11px] text-muted-foreground">Wandert nach dem Merge von selbst nach Erledigt.</span>
+      )}
+      {karte.spalte === "in_arbeit" && karte.quelle === "issue" && aktionen.uebergabeOeffnen && (
+        <Knopf leise titel="Übergeben an … — Stand und nächster Schritt kommen ins Issue"
+          onClick={() => aktionen.uebergabeOeffnen?.(karte)}>
+          <ArrowRightLeft className="h-3 w-3" /> Übergeben
+        </Knopf>
       )}
       {karte.spalte === "pruefung" && !karte.task_id && !prOffen && (
         <Knopf titel="Nach Erledigt (z. B. nach dem Merge)" onClick={() => aktionen.verschieben(karte, { spalte: "erledigt" })}>
@@ -338,7 +448,7 @@ function Karte({
       onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && e.target === e.currentTarget) { e.preventDefault(); onOeffnen(karte); } }}
       className={cn("cursor-pointer rounded-xl border bg-card text-sm shadow-sm transition-colors hover:border-foreground/[0.16] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
         karte.spalte === "eingang" ? "p-2.5" : "p-3",
-        gescheitert ? "border-red-500/30" : "border-foreground/[0.08]")}
+        gescheitert || karte.konflikt ? "border-red-500/40" : "border-foreground/[0.08]")}
     >
       <div className="flex items-start gap-1.5">
         <button
@@ -357,6 +467,7 @@ function Karte({
       </div>
 
       <Tags labels={karte.labels} />
+      <Konflikt karte={karte} />
 
       {karte.notiz && <p className="mt-1.5 rounded-md bg-amber-500/10 px-2 py-1 text-[11px] text-amber-700 dark:text-amber-300">{karte.notiz}</p>}
 
@@ -444,6 +555,7 @@ function KartenFenster({
             </div>
             <KartenMeta karte={k} agents={agents} />
             <Tags labels={k.labels} alle />
+            <Konflikt karte={k} />
           </div>
 
           {k.notiz && <p className="rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">{k.notiz}</p>}
@@ -523,6 +635,12 @@ export function ProjektBoardAnsicht({
   const [text, setText] = useState("");
   const agentById = new Map(agents.map((a) => [a.id, a]));
   const zurueckGeben = (karte: ProjektKarte) => { setHinweis(""); setNacharbeiter(""); setZurueck(karte); };
+  // „Übergeben an …“: das Fenster gehört der Board-Ansicht, Karte und Karten-Fenster öffnen es.
+  const [uebergabeId, setUebergabeId] = useState<string | null>(null);
+  const uebergabeKarte = uebergabeId
+    ? Object.values(board.spalten).flat().find((k) => k.id === uebergabeId) ?? null
+    : null;
+  const boardAktionen: BoardAktionen = { ...aktionen, uebergabeOeffnen: (k) => setUebergabeId(k.id) };
   const ausgabeJeLauf = new Map(board.laufend.map((l) => [l.task_id, l.letzte_ausgabe]));
   const [nacharbeiter, setNacharbeiter] = useState("");
   const imProjekt = [...new Set([...(leadId ? [leadId] : []), ...mitglieder])];
@@ -563,7 +681,7 @@ export function ProjektBoardAnsicht({
                 ) : (
                   karten.map((k) => (
                     <Karte key={k.id} karte={k} agents={agentById} ausgabe={k.task_id ? ausgabeJeLauf.get(k.task_id) : null} mitglieder={mitglieder} leadId={leadId} farbe={farbe}
-                      aktionen={aktionen} onZurueck={zurueckGeben} onOeffnen={(karte) => setOffenId(karte.id)} />
+                      aktionen={boardAktionen} onZurueck={zurueckGeben} onOeffnen={(karte) => setOffenId(karte.id)} />
                   ))
                 )}
               </div>
@@ -573,7 +691,10 @@ export function ProjektBoardAnsicht({
       </div>
 
       <KartenFenster projektId={projektId} karte={offeneKarte} agents={agentById} mitglieder={mitglieder} leadId={leadId}
-        farbe={farbe} aktionen={aktionen} onZurueck={zurueckGeben} schliessen={() => setOffenId(null)} />
+        farbe={farbe} aktionen={boardAktionen} onZurueck={zurueckGeben} schliessen={() => setOffenId(null)} />
+
+      <UebergabeFenster karte={uebergabeKarte} agents={agentById} mitglieder={imProjekt} aktionen={aktionen}
+        schliessen={() => setUebergabeId(null)} />
 
       <Fenster offen={neu} schliessen={() => setNeu(false)} titel="Neue Karte im Eingang" breite="max-w-lg">
         <div className="space-y-3 p-5">

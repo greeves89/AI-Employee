@@ -227,6 +227,24 @@ class ForgejoHostProvider(GitHostProvider):
         commit = daten.get("commit") or {}
         return (commit.get("committer") or {}).get("date") or daten.get("created")
 
+    async def commit_info(self, client: httpx.AsyncClient, token: str, repo: str, sha: str) -> dict | None:
+        """Zeit und Autor eines Commits — ``{"zeit", "autor_name", "autor_mail"}`` oder None."""
+        status, daten = await _json_holen(client, f"{self.api_base}/repos/{repo}/git/commits/{sha}",
+                                          self._headers(token))
+        if status != 200 or not isinstance(daten, dict):
+            return None
+        commit = daten.get("commit") or {}
+        autor = commit.get("author") or {}
+        return {"zeit": (commit.get("committer") or {}).get("date") or daten.get("created"),
+                "autor_name": str(autor.get("name") or "")[:100], "autor_mail": str(autor.get("email") or "")[:200]}
+
+    async def kommentar_aendern(self, client: httpx.AsyncClient, token: str, repo: str, kommentar_id: int,
+                                body: str) -> bool:
+        """Einen Issue-Kommentar ersetzen (Übernahme verlängern)."""
+        resp = await client.patch(f"{self.api_base}/repos/{repo}/issues/comments/{kommentar_id}",
+                                  headers=self._headers(token), json={"body": body}, follow_redirects=False)
+        return resp.status_code in (200, 201)
+
     async def list_issue_comments(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int,
                                   hoechstens: int = 300) -> list[dict]:
         """Kommentare eines Issues, älteste zuerst (``core/uebernahme`` liest die Übernahmen daraus)."""

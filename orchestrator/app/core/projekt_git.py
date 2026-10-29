@@ -302,11 +302,31 @@ def extern_regung(karte) -> datetime | None:
 
 
 def extern_stockt(karte, jetzt: datetime | None = None) -> bool:
-    """Ist eine fremde Übernahme liegen geblieben? Ohne Regung seit ``EXTERN_STILL_AB``."""
+    """Ist eine fremde Übernahme liegen geblieben — also abgelaufen?
+
+    Maßgeblich ist ``extern_bis`` (vom Abgleich: ``bis`` der Kopfzeile, verlängert
+    durch Lebenszeichen, mit der Dauer des Projekts). Ohne ihn (vor dem ersten
+    Abgleich mit dieser Logik) die letzte Regung plus ``EXTERN_STILL_AB``.
+    """
     if not karte.extern_bearbeiter or karte.task_id or karte.spalte != "in_arbeit":
         return False
+    jetzt = jetzt or datetime.now(timezone.utc)
+    bis = _aware(getattr(karte, "extern_bis", None))
+    if bis is not None:
+        return jetzt > bis
     letzte = extern_regung(karte)
-    return letzte is not None and (jetzt or datetime.now(timezone.utc)) - letzte > EXTERN_STILL_AB
+    return letzte is not None and jetzt - letzte > EXTERN_STILL_AB
+
+
+def extern_ablauf(karte, dauer: timedelta = EXTERN_STILL_AB) -> datetime | None:
+    """Bis wann die fremde Übernahme an der Karte gilt (für ``extern_bis``)."""
+    if not karte.extern_bearbeiter or karte.task_id:
+        return None
+    u = uebernahme.Uebernahme.aus_dict(karte.uebernahme)
+    regung = extern_regung(karte)
+    if u is not None:
+        return u.ablauf(dauer, regung)
+    return regung + dauer if regung else None
 
 
 def extern_nachziehen(karte, labels: list[str], zustaendige: list[str],
@@ -418,12 +438,18 @@ def _uebernommen(labels: list[str], zustaendige: list[str]) -> bool:
     return bool(zustaendige) or _status_aus_tags(labels) == "in_arbeit"
 
 
+#: Präfixe der Konflikt-Texte — ein neuer Befund derselben Quelle ersetzt den alten.
+KONFLIKT_UEBERNAHMEN = "Zwei gültige Übernahmen"
+KONFLIKT_COMMIT = "Fremder Commit"
+
+
 async def _uebernahme_lesen(anbieter, client, token: str, repo: str, karte, geaendert_am: datetime | None,
-                            jetzt: datetime) -> bool:
+                            jetzt: datetime, dauer: timedelta = uebernahme.DAUER) -> bool:
     """Kommentare eines übernommenen Issues lesen und den Inhaber an der Karte merken.
 
     Nur, wenn sich das Issue seit dem letzten Lesen geändert hat (ein neuer
     Kommentar ändert es). Gibt zurück, ob gelesen wurde (für die Obergrenze).
+    Zwei gültige Übernahmen verschiedener Inhaber sind ein Konflikt (``konflikt``).
     """
     if not hasattr(anbieter, "list_issue_comments"):
         return False
@@ -435,10 +461,102 @@ async def _uebernahme_lesen(anbieter, client, token: str, repo: str, karte, geae
     except Exception as e:  # noqa: BLE001 — ohne Kommentare bleibt es bei Zuständigen/Tag
         log.info("[Projekt] Kommentare von #%s nicht lesbar: %s", karte.extern_nr, e)
         return True
-    u = uebernahme.inhaber(kommentare)
-    karte.uebernahme = u.als_dict() if u else None
+    befund = uebernahme.auswerten(kommentare, jetzt=jetzt, dauer=dauer)
+    karte.uebernahme = befund.inhaber.als_dict() if befund.inhaber else None
     karte.kommentare_gelesen_at = jetzt
+    if befund.konkurrent is not None:
+        karte.konflikt = (f"{KONFLIKT_UEBERNAHMEN}: {einzeilig(befund.konkurrent.name, 60)} und "
+                          f"{einzeilig(befund.inhaber.name, 60)} arbeiten am selben Ticket.")[:300]
+    elif (karte.konflikt or "").startswith(KONFLIKT_UEBERNAHMEN):
+        karte.konflikt = None
     return True
+
+
+async def _eigene_verlaengern(db: AsyncSession, team: Team, anbieter, client, token: str, repo: str,
+                              karten: list, dauer: timedelta, jetzt: datetime) -> None:
+    """Übernahmen eigener Agenten verlängern, solange ihr Lauf läuft — im Server, nicht im Agenten.
+
+    Ist die Hälfte der Dauer um, schreibt das Board die Kopfzeile neu (``bis``
+    rückt vor, ``seit`` bleibt). Höchstens zehn je Abgleich; ohne Schlüssel nicht.
+    Geändert werden nur Kommentare, die die Plattform selbst geschrieben hat: Autor
+    ist das Konto des Projekt-Schlüssels UND die Kopfzeile trägt diese Anlage —
+    sonst überschriebe das Board den Kommentar eines anderen.
+    """
+    from app.core.projekte import AKTIV
+    from app.models.agent import Agent
+    from app.models.task import Task
+
+    if not token or not hasattr(anbieter, "kommentar_aendern"):
+        return
+    konto = (await schluessel_konto(anbieter, client, token) or "").lower()
+    if not konto:
+        return
+    kandidaten = []
+    for karte in karten:
+        u = uebernahme.Uebernahme.aus_dict(karte.uebernahme)
+        if (karte.quelle != "issue" or not karte.task_id or u is None or not u.kopfzeile or not u.kommentar_id
+                or u.art != uebernahme.PLATTFORM or u.anlage != uebernahme.anlage_kennung()
+                or (u.autor or "").lower() != konto
+                or not u.gehoert(agent_id=karte.agent_id, lauf=karte.task_id)):
+            continue
+        if u.bis is not None and u.bis - jetzt > dauer / 2:
+            continue
+        kandidaten.append((karte, u))
+    if not kandidaten:
+        return
+    aktiv = set((await db.execute(select(Task.id).where(
+        Task.id.in_([k.task_id for k, _ in kandidaten]), Task.status.in_(AKTIV)))).scalars().all())
+    for karte, u in [(k, u) for k, u in kandidaten if k.task_id in aktiv][:10]:
+        name = await db.scalar(select(Agent.name).where(Agent.id == karte.agent_id)) if karte.agent_id else None
+        text = uebernahme.uebernahme_kommentar(agent_name=name or u.agent, agent_id=u.agent_id, lauf=u.lauf,
+                                               nr=karte.extern_nr, projekt_name=team.name, jetzt=jetzt,
+                                               dauer=dauer, seit=u.seit)
+        try:
+            if await anbieter.kommentar_aendern(client, token, repo, u.kommentar_id, text):
+                u.bis, u.geaendert = jetzt + dauer, jetzt
+                karte.uebernahme = u.als_dict()
+        except Exception as e:  # noqa: BLE001 — Verlängern ist Beiwerk; der nächste Abgleich versucht es wieder
+            log.info("[Projekt] Übernahme #%s nicht verlängert: %s", karte.extern_nr, e)
+
+
+#: Höchstens eine Konflikt-Meldung je Issue in diesem Zeitraum — auch wenn die
+#: Beteiligten wechseln (sonst ließe sich das Gespräch mit wechselnden Kopfzeilen fluten).
+KONFLIKT_PAUSE = timedelta(hours=24)
+
+
+async def konflikte_melden(db: AsyncSession, team: Team, karten: list, jetzt: datetime | None = None) -> int:
+    """Neue Konflikte ins Projektgespräch und an den Lead — höchstens einer je Issue und Tag.
+
+    Gibt die Zahl der neu gemeldeten zurück. Der Aufrufer committet.
+    """
+    from sqlalchemy import func
+
+    from app.core import projekt_gespraech
+    from app.models.notification import Notification
+    from app.models.projekt_nachricht import ProjektNachricht
+
+    jetzt = jetzt or datetime.now(timezone.utc)
+    kandidaten = [k for k in karten if k.konflikt and k.konflikt != k.konflikt_gemeldet]
+    neu = []
+    for karte in kandidaten:
+        schon = await db.scalar(select(func.count(ProjektNachricht.id)).where(
+            ProjektNachricht.team_id == team.id, ProjektNachricht.karte_id == karte.id,
+            ProjektNachricht.autor_typ == "system", ProjektNachricht.text.startswith("Konflikt an #"),
+            ProjektNachricht.created_at > jetzt - KONFLIKT_PAUSE))
+        karte.konflikt_gemeldet = karte.konflikt
+        if not schon:
+            neu.append(karte)
+    for karte in neu[:10]:
+        text = (f"Konflikt an #{karte.extern_nr}: {karte.konflikt} Bitte im Issue klären, wer weitermacht — "
+                "die anderen hören auf und übergeben ihren Stand.")
+        await projekt_gespraech.posten(db, team, autor_typ="system", autor_id=None, autor_name="Projekt",
+                                       text=text, art="nachricht", karte_id=karte.id)
+        if team.lead_agent_id:
+            db.add(Notification(agent_id=team.lead_agent_id, type="warning", priority="high",
+                                title=f"Projekt „{team.name}“: Konflikt an #{karte.extern_nr}", message=text,
+                                action_url=f"/projekte/{team.id}"))
+        karte.konflikt_gemeldet = karte.konflikt
+    return len(neu[:10])
 
 
 async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client: httpx.AsyncClient) -> dict:
@@ -462,6 +580,7 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
         raise GitFehler(f"{server}, {repo}: {e}") from e
 
     jetzt = datetime.now(timezone.utc)
+    dauer = uebernahme.dauer_fuer(team)
     await uebernahme.anlage_laden(db)
     vorhanden = {
         (k.quelle, k.extern_nr): k
@@ -498,7 +617,7 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
                 karte.spalte, karte.erledigt_at, karte.notiz = "eingang", None, "Issue wieder geöffnet"
         geaendert_am = _zeit(issue.get("updated_at"))
         if _uebernommen(_labels(issue), _zustaendige(issue)) and kommentar_abfragen < MAX_KOMMENTAR_ABFRAGEN:
-            if await _uebernahme_lesen(anbieter, client, token, repo, karte, geaendert_am, jetzt):
+            if await _uebernahme_lesen(anbieter, client, token, repo, karte, geaendert_am, jetzt, dauer):
                 kommentar_abfragen += 1
         if extern_nachziehen(karte, _labels(issue), _zustaendige(issue), seit=geaendert_am, jetzt=jetzt) \
                 and karte.extern_bearbeiter is not None:
@@ -575,7 +694,16 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
                 karte.spalte, karte.erledigt_at = "erledigt", jetzt
                 erledigt += 1
 
-    await _extern_branches(anbieter, client, token, repo, list(vorhanden.values()))
+    alle = list(vorhanden.values())
+    await _extern_branches(anbieter, client, token, repo, alle)
+    # Ablauf fremder Übernahmen (Kopfzeile, Lebenszeichen, Dauer des Projekts) und
+    # die Verlängerung eigener, solange ihr Lauf läuft.
+    for karte in alle:
+        karte.extern_bis = extern_ablauf(karte, dauer)
+        if not karte.extern_bearbeiter and not karte.task_id and karte.konflikt:
+            karte.konflikt = None  # niemand mehr dran: kein Konflikt mehr
+    await _eigene_verlaengern(db, team, anbieter, client, token, repo, alle, dauer, jetzt)
+    await konflikte_melden(db, team, alle)
 
     team.repo_abgleich_at = jetzt
     team.repo_fehler = None
@@ -609,10 +737,30 @@ async def _extern_branches(anbieter, client: httpx.AsyncClient, token: str, repo
         if not b:
             continue
         zeit = _zeit(b.get("zeit"))
-        if zeit is None and b.get("sha") and abfragen < MAX_BRANCH_ZEITEN and hasattr(anbieter, "commit_zeit"):
+        sha = str(b.get("sha") or "")[:64]
+        u = uebernahme.Uebernahme.aus_dict(karte.uebernahme)
+        # Neuer Commit auf dem Branch einer Übernahme mit Ausweis: Zeit UND Autor
+        # (passt er zum Inhaber?) in einer Abfrage — je Commit nur einmal.
+        if (u is not None and sha and sha != karte.extern_sha and abfragen < MAX_BRANCH_ZEITEN
+                and hasattr(anbieter, "commit_info")):
             abfragen += 1
             try:
-                zeit = _zeit(await anbieter.commit_zeit(client, token, repo, b["sha"]))
+                info = await anbieter.commit_info(client, token, repo, sha) or {}
+            except Exception:  # noqa: BLE001 — Beiwerk
+                info = {}
+            zeit = zeit or _zeit(info.get("zeit"))
+            if info:
+                karte.extern_sha = sha
+                if not uebernahme.commit_passt(u, info.get("autor_mail")):
+                    autor = einzeilig(str(info.get("autor_name") or info.get("autor_mail") or "?"), 60)
+                    karte.konflikt = (f"{KONFLIKT_COMMIT}: {sha[:7]} auf {karte.extern_branch} ist von {autor}, "
+                                      f"übernommen hat aber {einzeilig(u.name, 60)}.")[:300]
+                elif (karte.konflikt or "").startswith(KONFLIKT_COMMIT):
+                    karte.konflikt = None
+        if zeit is None and sha and abfragen < MAX_BRANCH_ZEITEN and hasattr(anbieter, "commit_zeit"):
+            abfragen += 1
+            try:
+                zeit = _zeit(await anbieter.commit_zeit(client, token, repo, sha))
             except Exception:  # noqa: BLE001
                 zeit = None
         if zeit and (karte.extern_regung_at is None or zeit > _aware(karte.extern_regung_at)):
@@ -724,19 +872,22 @@ async def alle_abgleichen(redis) -> int:
 UEBERNAHME_TAG = "status/in-arbeit"
 
 
-async def extern_dran(db: AsyncSession, redis, team: Team, karte: ProjektKarte) -> str | None:
+async def uebernahme_live(db: AsyncSession, redis, team: Team,
+                          karte: ProjektKarte) -> tuple[str | None, uebernahme.Uebernahme | None]:
     """Arbeitet schon jemand außerhalb des Boards an diesem Issue? Live im Repo gefragt.
 
     Der Abgleich läuft höchstens alle paar Minuten — in der Zwischenzeit hätte das
     Board ein Ticket vergeben, das gerade jemand anderes übernommen hat. Liefert
-    den Namen (aus der Übernahme-Kopfzeile, sonst ``@login`` oder „extern“) oder
-    None. Ist das Repo nicht erreichbar, entscheidet der letzte Abgleich.
+    (Name, Übernahme): den Namen aus der Übernahme-Kopfzeile, sonst ``@login`` oder
+    „extern“, oder (None, None). Ist das Repo nicht erreichbar, entscheidet der
+    letzte Abgleich.
     """
     if karte.quelle != "issue" or not karte.extern_nr or not team.repo:
-        return None
+        return None, None
     # Ein offener PR zum Ticket (aus dem letzten Abgleich) heißt: jemand ist dran.
     if karte.pr_nr and karte.pr_zustand not in ("gemergt", "geschlossen") and not karte.task_id:
-        return f"PR #{karte.pr_nr}"
+        return f"PR #{karte.pr_nr}", None
+    zuletzt = uebernahme.Uebernahme.aus_dict(karte.uebernahme)
     await uebernahme.anlage_laden(db)
     try:
         token, anbieter = await zugang(db, redis, team)
@@ -744,23 +895,118 @@ async def extern_dran(db: AsyncSession, redis, team: Team, karte: ProjektKarte) 
         async with httpx.AsyncClient(timeout=httpx.Timeout(8.0), follow_redirects=False) as client:
             issue = await anbieter.get_issue(client, token, repo, karte.extern_nr)
             if not isinstance(issue, dict):
-                return karte.extern_bearbeiter
+                return karte.extern_bearbeiter, zuletzt
             if not _uebernommen(_labels(issue), _zustaendige(issue)):
-                return None
+                return None, None
             kommentare = await kommentare_holen(anbieter, client, token, repo, karte.extern_nr)
     except Exception as e:  # noqa: BLE001 — Repo nicht erreichbar: nicht blockieren
         log.info("[Projekt] Übernahme-Prüfung #%s übersprungen: %s", karte.extern_nr, e)
-        return karte.extern_bearbeiter
+        return karte.extern_bearbeiter, zuletzt
     u = uebernahme.inhaber(kommentare)
     if u is not None:
-        return u.name
+        return u.name, u
     leute = _zustaendige(issue)
-    return ", ".join(f"@{z}" for z in leute) if leute else "extern"
+    return (", ".join(f"@{z}" for z in leute) if leute else "extern"), None
+
+
+async def extern_dran(db: AsyncSession, redis, team: Team, karte: ProjektKarte) -> str | None:
+    """Nur der Name aus ``uebernahme_live``."""
+    return (await uebernahme_live(db, redis, team, karte))[0]
+
+
+def abloesbar(team: Team, karte: ProjektKarte, u: uebernahme.Uebernahme | None,
+              jetzt: datetime | None = None) -> bool:
+    """Darf ein Plattform-Agent diese fremde Übernahme selbst übernehmen?
+
+    Nur, wenn das Projekt es ausdrücklich erlaubt (``abgelaufene_uebernehmen``,
+    Standard aus), die Übernahme einen Ausweis bzw. eine Zeit hat und seit ihrem
+    Ablauf die Karenzzeit (``uebernahme.KARENZ``) vergangen ist. Ohne Erlaubnis
+    bleibt es beim Knopf „Freigeben“ für Menschen.
+    """
+    if not getattr(team, "abgelaufene_uebernehmen", False) or u is None:
+        return False
+    ende = u.ablauf(uebernahme.dauer_fuer(team), extern_regung(karte) if karte.extern_bearbeiter else None)
+    return ende is not None and (jetzt or datetime.now(timezone.utc)) > ende + uebernahme.KARENZ
+
+
+async def offene_uebernahmen(db: AsyncSession, team_id: str, agent_id: str) -> int:
+    """Wie viele Issues dieses Projekts hält der Agent gerade (In Arbeit)?"""
+    from sqlalchemy import func
+
+    return int(await db.scalar(select(func.count(ProjektKarte.id)).where(
+        ProjektKarte.team_id == team_id, ProjektKarte.quelle == "issue", ProjektKarte.spalte == "in_arbeit",
+        ProjektKarte.agent_id == agent_id)) or 0)
+
+
+def erlaubte_hosts(team: Team) -> set[str]:
+    """Hosts, auf die ein Kommentar der Plattform verlinken darf: der des Repos und der der Anlage."""
+    from app.config import settings
+
+    ziel = repo_ziel(team.repo or "")
+    hosts = {"github.com"} if ziel.art == "github" else {urlsplit(ziel.basis or "").hostname or ""}
+    try:
+        hosts.add(urlsplit(getattr(settings, "public_app_url", "") or "").hostname or "")
+    except ValueError:
+        pass
+    return {h.lower() for h in hosts if h}
+
+
+async def ausgehend_pruefen(text: str, *, agent_id: str | None, kanal: str, team: Team) -> str:
+    """Text, der in ein (vielleicht öffentliches) Repo geht: DLP, dann entschärfen.
+
+    Die DLP-Regeln der Anlage (``core/dlp.evaluate_egress``) können maskieren oder
+    sperren; gesperrt → GitFehler. Danach ``uebernahme.neutralisieren``.
+    """
+    from app.core.dlp import evaluate_egress
+
+    urteil = await evaluate_egress(text or "", agent_id=agent_id, channel=kanal)
+    if urteil.blocked:
+        raise GitFehler("Der Text enthält geschützte Daten (DLP-Regel) und geht nicht ins Repo.")
+    return uebernahme.neutralisieren(urteil.output, erlaubte_hosts(team))
+
+
+async def uebergabe_schreiben(db: AsyncSession, redis, team: Team, karte: ProjektKarte, *, an_wer: str,
+                              an_name: str, an_agent_id: str | None, von_name: str, stand: str,
+                              naechster_schritt: str, agent_id: str | None = None) -> uebernahme.Uebernahme:
+    """„Übergeben an …“: Kommentar mit Stand, nächstem Schritt und Kopfzeile des Empfängers.
+
+    Die Kopfzeile trägt ``vorher`` = bisheriger Inhaber — damit endet dessen
+    Übernahme (``uebernahme.auswerten``). Das Tag ``status/in-arbeit`` bleibt bzw.
+    wird gesetzt. Liefert die neue Übernahme; der Aufrufer stellt die Karte um.
+    """
+    if karte.quelle != "issue" or not karte.extern_nr or not team.repo:
+        raise GitFehler("Übergeben geht nur bei Karten aus Issues.")
+    token, anbieter = await zugang(db, redis, team)
+    if not token:
+        raise GitFehler("Ohne Schlüssel kann das Board nichts ins Repo schreiben (Bearbeiten → Schlüssel).")
+    from app.models.agent import Agent
+
+    if karte.agent_id:
+        bisher = await db.scalar(select(Agent.name).where(Agent.id == karte.agent_id))
+        vorher_wer = uebernahme.wer_plattform(bisher or "Lead")
+    else:
+        vorher_wer = (karte.uebernahme or {}).get("wer") or "extern"
+    jetzt = datetime.now(timezone.utc)
+    stand = await ausgehend_pruefen(stand, agent_id=agent_id, kanal="issue_uebergabe", team=team)
+    naechster_schritt = await ausgehend_pruefen(naechster_schritt, agent_id=agent_id, kanal="issue_uebergabe",
+                                                team=team)
+    text = uebernahme.uebergabe_kommentar(an_wer=an_wer, an_name=an_name, an_agent_id=an_agent_id,
+                                          von_name=von_name, vorher_wer=vorher_wer, stand=stand,
+                                          naechster_schritt=naechster_schritt, nr=karte.extern_nr, jetzt=jetzt,
+                                          dauer=uebernahme.dauer_fuer(team))
+    repo = repo_ziel(team.repo).pfad
+    async with httpx.AsyncClient(timeout=httpx.Timeout(10.0), follow_redirects=False) as client:
+        if not await anbieter.add_labels(client, token, repo, karte.extern_nr, [UEBERNAHME_TAG]):
+            raise GitFehler(f"Tag {UEBERNAHME_TAG} ließ sich nicht setzen (Schreibrecht für Issues?).")
+        await anbieter.comment_issue(client, token, repo, karte.extern_nr, text)
+    # Selbst geschrieben, mit dem Schlüssel des Projekts: vertraut.
+    neu = uebernahme.lesen({"id": None, "body": text, "erstellt": jetzt.isoformat(), "vertraut": True})
+    return neu
 
 
 async def uebernahme_melden(team_id: str, karte_id: str, redis, *, agent_name: str | None,
                             uebernehmen: bool = True, agent_id: str | None = None,
-                            lauf: str | None = None) -> None:
+                            lauf: str | None = None, vorgaenger: uebernahme.Uebernahme | None = None) -> None:
     """Übernahme (oder Rückgabe) eines Issues ins Repo schreiben — im Hintergrund.
 
     Übernehmen: Tag ``status/in-arbeit`` und ein Kommentar mit Übernahme-Kopfzeile
@@ -787,7 +1033,8 @@ async def uebernahme_melden(team_id: str, karte_id: str, redis, *, agent_name: s
                 if uebernehmen:
                     ok = await anbieter.add_labels(client, token, repo, nr, [UEBERNAHME_TAG])
                     await anbieter.comment_issue(client, token, repo, nr, uebernahme.uebernahme_kommentar(
-                        agent_name=agent_name, agent_id=agent_id, lauf=lauf, nr=nr, projekt_name=team.name))
+                        agent_name=agent_name, agent_id=agent_id, lauf=lauf, nr=nr, projekt_name=team.name,
+                        dauer=uebernahme.dauer_fuer(team), vorgaenger=vorgaenger))
                 else:
                     ok = await anbieter.remove_label(client, token, repo, nr, UEBERNAHME_TAG)
                     await anbieter.comment_issue(client, token, repo, nr, uebernahme.rueckgabe_kommentar(
@@ -849,12 +1096,12 @@ async def extern_freigeben(db: AsyncSession, redis, team: Team, karte: ProjektKa
 
 def uebernahme_im_hintergrund(team_id: str, karte_id: str, redis, *, agent_name: str | None,
                               uebernehmen: bool = True, agent_id: str | None = None,
-                              lauf: str | None = None) -> None:
+                              lauf: str | None = None, vorgaenger: uebernahme.Uebernahme | None = None) -> None:
     """``uebernahme_melden`` ohne den Aufrufer warten zu lassen."""
     try:
         asyncio.get_running_loop().create_task(
             uebernahme_melden(team_id, karte_id, redis, agent_name=agent_name, uebernehmen=uebernehmen,
-                              agent_id=agent_id, lauf=lauf))
+                              agent_id=agent_id, lauf=lauf, vorgaenger=vorgaenger))
     except RuntimeError:
         pass
 
