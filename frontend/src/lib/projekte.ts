@@ -116,9 +116,9 @@ export interface ProjektBoard {
  *  ``schmal``: lässt sich einklappen (Verworfen). */
 export const SPALTEN: { key: ProjektSpalte; label: string; beschreibung: string; leer: string; schmal?: boolean }[] = [
   { key: "eingang", label: "Inbox", beschreibung: "Neu angelegt, noch nicht gesichtet", leer: "Nichts Neues." },
+  { key: "triage", label: "Triage", beschreibung: "Rückfragen offen, wartet auf einen Menschen", leer: "Keine offenen Rückfragen." },
   { key: "bereit", label: "Bereit", beschreibung: "Freigegeben von einem Menschen, Agenten nehmen sie", leer: "Nichts freigegeben." },
   { key: "in_arbeit", label: "In Arbeit", beschreibung: "In Umsetzung", leer: "Gerade arbeitet niemand an einer Karte." },
-  { key: "triage", label: "Triage", beschreibung: "Rückfragen offen, wartet auf einen Menschen", leer: "Keine offenen Rückfragen." },
   { key: "pruefung", label: "Review", beschreibung: "PR offen, wartet auf Prüfung und Merge", leer: "Nichts abzunehmen." },
   { key: "erledigt", label: "Erledigt", beschreibung: "Gemergt bzw. Issue geschlossen", leer: "Noch nichts erledigt." },
   { key: "verworfen", label: "Verworfen", beschreibung: "Wird nicht umgesetzt, Begründung am Issue", leer: "Nichts verworfen.", schmal: true },

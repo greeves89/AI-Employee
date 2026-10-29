@@ -1048,14 +1048,14 @@ waagerecht weiter.
 | Spalte | Bedeutung | Was du tun kannst |
 |---|---|---|
 | **Inbox** | Neu angelegt, noch nicht gesichtet — von dir, einem Agenten oder aus einem Issue | **Freigeben** (→ Bereit) oder **verwerfen** (Papierkorb) |
+| **Triage** | Rückfragen offen, wartet auf einen Menschen | Frage beantworten, dann **Freigeben** (→ Bereit) |
 | **Bereit** | Freigegeben von einem Menschen, Agenten nehmen sie | Empfänger wählen und **Los** klicken — oder der Lead vergibt im Takt |
 | **In Arbeit** | In Umsetzung | Letzte Ausgabe, Stufe und Pull Request ansehen |
-| **Triage** | Rückfragen offen, wartet auf einen Menschen | Frage beantworten, dann **Freigeben** (→ Bereit) |
 | **Review** | PR offen, wartet auf Prüfung und Merge — oder der Lauf ist fertig | **Abnehmen** oder **Zurückgeben** |
 | **Erledigt** | Gemergt bzw. Issue geschlossen (letzte 30 Tage) | — |
 | **Verworfen** | Wird nicht umgesetzt, Begründung am Issue (letzte 30 Tage) | **Inbox** holt eine Karte zurück |
 
-![Das Board mit den Spalten Inbox, Bereit, In Arbeit, Triage, Review, Erledigt und Verworfen](screenshots/73-projekt-board.png)
+![Das Board mit den Spalten Inbox, Triage, Bereit, In Arbeit, Review, Erledigt und Verworfen](screenshots/73-projekt-board.png)
 
 - Das kleine Kürzel **P1/P2/P3** vor dem Titel ist die Priorität. Ein Klick darauf schaltet
   sie weiter. Karten mit P1 stehen oben und kommen zuerst dran.

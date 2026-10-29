@@ -3,7 +3,7 @@
 Ein Projekt ist ein Team (``models/team.py``). Seine Arbeit liegt als Karten
 (``models/projekt_karte.py``) auf dem Board:
 
-    Inbox → Bereit → In Arbeit → (Triage) → Review → Erledigt | Verworfen
+    Inbox → (Triage) → Bereit → In Arbeit → Review → Erledigt | Verworfen
 
 (Gespeicherte Schlüssel: eingang, bereit, in_arbeit, triage, pruefung, erledigt,
 verworfen — „eingang“ heißt angezeigt Inbox, „pruefung“ Review.)

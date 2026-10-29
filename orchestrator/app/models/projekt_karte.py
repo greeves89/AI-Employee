@@ -16,7 +16,7 @@ from app.models.base import Base, TimestampMixin
 # bleiben; angezeigt heißen „eingang“ Inbox und „pruefung“ Review
 # (core/projekte.SPALTEN_NAMEN). „triage“: Rückfrage offen, wartet auf einen
 # Menschen. „verworfen“: wird nicht umgesetzt (Issue „not planned“ geschlossen).
-SPALTEN = ("eingang", "bereit", "in_arbeit", "triage", "pruefung", "erledigt", "verworfen")
+SPALTEN = ("eingang", "triage", "bereit", "in_arbeit", "pruefung", "erledigt", "verworfen")
 #: Spalten, in denen eine Karte abgeschlossen ist (Board zeigt sie 30 Tage).
 ABGESCHLOSSEN = ("erledigt", "verworfen")
 STUFEN = ("planung", "bau", "tests", "pr", "ci", "merge")
