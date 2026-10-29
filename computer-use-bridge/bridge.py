@@ -1026,29 +1026,43 @@ def _win_merkmale(ctrl) -> dict:
     return m
 
 
-def _win_wurzel(auto, app_name: str | None):
+def _app_name_norm(name: str) -> str:
+    return (name or "").strip().lower().removesuffix(".exe").removesuffix(".app")
+
+
+def _win_prozess(auto, window) -> str:
+    try:
+        return _app_name_norm(auto.ProcessIdToProcessName(window.ProcessId) or "")
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _win_wurzel(auto, app_name: str | None, streng: bool = False):
     """Das Fenster der Anwendung — oder der Desktop, wenn keine genannt ist.
 
-    Gesucht wird ueber Fenstertitel UND Prozessnamen: „Excel" trifft das Fenster
-    „Mappe1 - Excel" genauso wie den Prozess EXCEL.EXE.
+    Zuerst der genaue Prozessname (EXCEL.EXE fuer „Excel"), dann — nur ohne
+    ``streng`` — ein Teiltreffer in Fenstertitel oder Prozess („Mappe1 - Excel").
+    ``streng`` setzt der Server bei Sitzungen mit Freigabeliste: Ein Teiltreffer
+    im Titel koennte dort ein ANDERES Programm treffen („Excel-Tipps – Chrome")
+    und die Liste umgehen.
     """
     root = auto.GetRootControl()
     if not app_name:
+        if streng:
+            raise LookupError("Diese Sitzung darf nur bestimmte Programme bedienen — gib `app` an.")
         return root
-    wanted = app_name.strip().lower()
-    for suffix in (".exe", ".app"):
-        if wanted.endswith(suffix):
-            wanted = wanted[: -len(suffix)]
-    for window in root.GetChildren():
-        title = (getattr(window, "Name", "") or "").lower()
-        proc = ""
-        try:
-            proc = (window.ProcessId and auto.ProcessIdToProcessName(window.ProcessId) or "").lower()
-        except Exception:  # noqa: BLE001
-            pass
-        if wanted in title or (proc and wanted in proc):
+    wanted = _app_name_norm(app_name)
+    fenster = [(w, _win_prozess(auto, w)) for w in root.GetChildren()]
+    for window, proc in fenster:
+        if proc == wanted:
             return window
-    raise LookupError(f"Kein Fenster gefunden, das zu '{app_name}' passt.")
+    if not streng:
+        for window, proc in fenster:
+            title = (getattr(window, "Name", "") or "").lower()
+            if wanted in title or (proc and wanted in proc):
+                return window
+    offen = sorted({p for _w, p in fenster if p})
+    raise LookupError(f"Kein Fenster zu '{app_name}'. Offene Programme: {', '.join(offen[:15])}")
 
 
 def _win_muster(ctrl, name: str):
@@ -1260,7 +1274,7 @@ def _mac_merkmale(elem) -> dict:
     return m
 
 
-def _mac_wurzel(app_name: str | None):
+def _mac_wurzel(app_name: str | None, streng: bool = False):
     """Die Anwendung — ohne Namen die im Vordergrund.
 
     Frueher war das ohne Namen das systemweite Element; das hat keine Kinder,
@@ -1271,6 +1285,8 @@ def _mac_wurzel(app_name: str | None):
 
     ws = AppKit.NSWorkspace.sharedWorkspace()
     if not app_name:
+        if streng:
+            raise LookupError("Diese Sitzung darf nur bestimmte Programme bedienen — gib `app` an.")
         app = ws.frontmostApplication()
         if app is None:
             raise LookupError("Keine Anwendung im Vordergrund.")
@@ -1281,7 +1297,7 @@ def _mac_wurzel(app_name: str | None):
         bundle = str(app.bundleIdentifier() or "").lower()
         if wanted in (name, bundle):
             return AS.AXUIElementCreateApplication(app.processIdentifier())
-    for app in ws.runningApplications():
+    for app in ([] if streng else ws.runningApplications()):  # Teiltreffer nur unbeschraenkt
         if wanted in str(app.localizedName() or "").lower():
             return AS.AXUIElementCreateApplication(app.processIdentifier())
     raise LookupError(f"'{app_name}' laeuft nicht.")
@@ -1404,7 +1420,7 @@ def get_ax_tree(app_name: str | None = None, max_depth: int = 6) -> dict:
         return {"error": str(e)}
 
 
-def _element_mit(app_name: str | None, query: str, role: str, schritt):
+def _element_mit(app_name: str | None, query: str, role: str, schritt, streng: bool = False):
     """Element live suchen und ``schritt(plattform, element, merkmale)`` darauf ausfuehren.
 
     EIN Weg fuer Suchen und Bedienen auf beiden Systemen. Unter Windows laeuft
@@ -1416,13 +1432,13 @@ def _element_mit(app_name: str | None, query: str, role: str, schritt):
     try:
         if IS_WIN:
             with _Uia() as auto:
-                wurzel = _win_wurzel(auto, app_name)
+                wurzel = _win_wurzel(auto, app_name, streng)
                 element, m = _breitensuche(wurzel, _win_kinder, _win_merkmale, query, role)
                 if element is None:
                     return {"ok": False, "found": False, "query": query, "role": role}
                 return schritt(("win", auto), element, m)
         if IS_MAC:
-            wurzel = _mac_wurzel(app_name)
+            wurzel = _mac_wurzel(app_name, streng)
             element, m = _breitensuche(wurzel, _mac_kinder, _mac_merkmale, query, role)
             if element is None:
                 return {"ok": False, "found": False, "query": query, "role": role}
@@ -1444,7 +1460,7 @@ def element_finden(query: str, role: str = "", app_name: str | None = None) -> d
 
 
 def element_bedienen(aktion: str, query: str, role: str = "", app_name: str | None = None,
-                     wert=None, sperrzone=None) -> dict:
+                     wert=None, sperrzone=None, streng: bool = False) -> dict:
     """Element suchen und bedienen. ``sperrzone(x, y)`` → True heisst: nicht anfassen.
 
     Ergebnis: ``ok`` + ``methode`` + ``zustand`` danach, oder ``fallback``
@@ -1477,7 +1493,7 @@ def element_bedienen(aktion: str, query: str, role: str = "", app_name: str | No
                 ergebnis["zustand"] = {}
         return ergebnis
 
-    ergebnis = _element_mit(app_name, query, role, schritt)
+    ergebnis = _element_mit(app_name, query, role, schritt, streng)
     if ergebnis.get("found") is False and not ergebnis.get("error"):
         ergebnis["error"] = (f"Kein Element gefunden zu '{query or role}'. Erst "
                              "computer_ax_tree ansehen oder die Beschriftung pruefen.")
@@ -2310,7 +2326,7 @@ def list_windows() -> dict:
     return {"error": "list_windows auf dieser Plattform nicht unterstuetzt"}
 
 
-def focus_window(app: str, title: str = "") -> dict:
+def focus_window(app: str, title: str = "", streng: bool = False) -> dict:
     """Eine Anwendung (optional ein bestimmtes Fenster) nach vorn holen.
 
     Tippen und Klicken gehen immer an das Fenster im Vordergrund — ohne diesen
@@ -2346,11 +2362,14 @@ def focus_window(app: str, title: str = "") -> dict:
                 if title.strip():
                     needle = title.strip().lower()
                     for ctrl in auto.GetRootControl().GetChildren():
-                        if needle in (ctrl.Name or "").lower():
+                        # Bei einer Freigabeliste nur Fenster DIESES Programms —
+                        # sonst holte ein passender Titel ein fremdes nach vorn.
+                        if needle in (ctrl.Name or "").lower() and (
+                                not streng or _win_prozess(auto, ctrl) == _app_name_norm(app)):
                             fenster = ctrl
                             break
                 if fenster is None:
-                    fenster = _win_wurzel(auto, app)
+                    fenster = _win_wurzel(auto, app, streng)
                 fenster.SetActive()
                 return {"ok": True, "app": app, "title": fenster.Name or ""}
         except ImportError:
@@ -2617,7 +2636,8 @@ class CommandDispatcher:
         else:
             aktion, wert = params.get("aktion") or params.get("step") or "press", params.get("value")
         res = element_bedienen(aktion, params.get("query", ""), params.get("role", ""),
-                               params.get("app"), wert, sperrzone=in_overlay)
+                               params.get("app"), wert, sperrzone=in_overlay,
+                               streng=bool(params.get("app_streng")))
         art = res.get("fallback")
         mitte = (res.get("element") or {}).get("center")
         if art and mitte:
@@ -2808,6 +2828,7 @@ class CommandDispatcher:
                 return focus_window(
                     str(params.get("app") or params.get("name") or ""),
                     str(params.get("title") or ""),
+                    streng=bool(params.get("app_streng")),
                 )
 
             # ── Browser im eigenen Profil ────────────────────────────────────

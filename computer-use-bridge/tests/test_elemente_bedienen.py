@@ -265,7 +265,7 @@ class Dispatcher(unittest.TestCase):
     def test_schritt_und_wert_kommen_an(self):
         gesehen = {}
 
-        def fake(aktion, query, role, app, wert, sperrzone=None):
+        def fake(aktion, query, role, app, wert, sperrzone=None, streng=False):
             gesehen.update(aktion=aktion, query=query, app=app, wert=wert,
                            sperre=sperrzone is bridge.in_overlay)
             return {"ok": True, "methode": "TogglePattern", "element": dict(ELEMENT)}
@@ -291,7 +291,7 @@ class Gemeinsam(unittest.TestCase):
         """Das Overlay des Menschen bedient nur er selbst — auch nicht ueber UIA."""
         alt = bridge._element_mit
         try:
-            bridge._element_mit = lambda app, q, r, schritt: schritt(
+            bridge._element_mit = lambda app, q, r, schritt, streng=False: schritt(
                 ("win", None), WinCtrl("OK", muster={"Invoke": {}}), {**ELEMENT})
             r = bridge.element_bedienen("press", "OK", sperrzone=lambda x, y: True)
         finally:
@@ -360,3 +360,66 @@ class EchtesNotepad(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FreigabelisteStreng(unittest.TestCase):
+    """Bei beschraenkten Sitzungen loest die Bridge Programme nur exakt auf.
+
+    Sonst traefe „Excel" auch ein Browserfenster „Excel-Tipps – Chrome" und die
+    Freigabeliste des Servers waere umgangen.
+    """
+
+    class Fenster:
+        def __init__(self, name, pid):
+            self.Name, self.ProcessId = name, pid
+
+    class Auto:
+        def __init__(self, fenster, prozesse):
+            self._f, self._p = fenster, prozesse
+
+        def GetRootControl(self):
+            f = self._f
+
+            class Root:
+                def GetChildren(self):
+                    return f
+
+            return Root()
+
+        def ProcessIdToProcessName(self, pid):
+            return self._p[pid]
+
+    def _auto(self):
+        chrome = self.Fenster("Excel-Tipps – Google Chrome", 1)
+        excel = self.Fenster("Mappe1 - Excel", 2)
+        return self.Auto([chrome, excel], {1: "chrome.exe", 2: "EXCEL.EXE"}), chrome, excel
+
+    def test_genauer_prozess_gewinnt_auch_ohne_streng(self):
+        auto, _chrome, excel = self._auto()
+        self.assertIs(bridge._win_wurzel(auto, "Excel"), excel)
+
+    def test_streng_kein_titel_teiltreffer(self):
+        auto, chrome, _excel = self._auto()
+        auto._f = [chrome]  # Excel ist zu, nur der Browser hat „Excel" im Titel
+        self.assertIs(bridge._win_wurzel(auto, "Excel"), chrome)  # unbeschraenkt: wie bisher
+        with self.assertRaises(LookupError):
+            bridge._win_wurzel(auto, "Excel", streng=True)
+
+    def test_streng_ohne_app_kein_ganzer_desktop(self):
+        auto, *_ = self._auto()
+        with self.assertRaises(LookupError):
+            bridge._win_wurzel(auto, "", streng=True)
+
+    def test_dispatcher_reicht_streng_durch(self):
+        gesehen = {}
+        alt = bridge.element_bedienen
+        try:
+            def fake(*a, **k):
+                gesehen.update(k)
+                return {"ok": True, "methode": "x", "element": dict(ELEMENT)}
+            bridge.element_bedienen = fake
+            _dispatcher().dispatch({"action": "element_press",
+                                    "params": {"query": "OK", "app": "Excel", "app_streng": True}})
+        finally:
+            bridge.element_bedienen = alt
+        self.assertTrue(gesehen["streng"])

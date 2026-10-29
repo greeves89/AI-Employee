@@ -442,6 +442,20 @@ def _url_in_scope(url: str, allowed_domains: list[str] | None) -> bool:
     return False
 
 
+#: Aktionen, bei denen die BRIDGE das Programm aus `app` aufloest. Der Server
+#: prueft nur den Namen; findet die Bridge dazu per Teiltreffer im Fenstertitel
+#: ein anderes Programm („Excel-Tipps – Chrome"), waere die Freigabeliste
+#: umgangen. Bei beschraenkten Sitzungen loest sie deshalb nur exakt ueber den
+#: Prozess- bzw. App-Namen auf.
+_BRIDGE_LOEST_APP_AUF = frozenset({"focus_window", "element_press", "element_set_value"})
+
+
+def _streng_wenn_beschraenkt(action: str, params: dict, session: dict) -> dict:
+    if action in _BRIDGE_LOEST_APP_AUF and session.get("allowed_apps") is not None:
+        return {**params, "app_streng": True}
+    return params
+
+
 def _scope_violation(action: str, params: dict, session: dict) -> str | None:
     """Fehlertext, wenn die Aktion ausserhalb der Freigabeliste liegt — sonst None."""
     for keys, allowed, kind in (
@@ -1037,6 +1051,7 @@ async def dispatch_bridge_command(
     violation = _scope_violation(req.action, req.params or {}, session)
     if violation:
         raise HTTPException(status_code=403, detail=violation)
+    req.params = _streng_wenn_beschraenkt(req.action, req.params or {}, session)
 
     if not session["bridge_connected"] or not session["bridge_ws"]:
         raise HTTPException(status_code=503, detail="Bridge not connected")

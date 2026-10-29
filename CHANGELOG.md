@@ -25,6 +25,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 ### Sicherheit
 - `element_press` gehört zur Freigabe *Maus steuern*, `element_set_value` zu *Tastatureingabe*. Wer nur das Lesen der Oberfläche freigibt, kann damit nichts auslösen.
 - Ist eine Sitzung auf bestimmte Anwendungen beschränkt, verlangen beide Aktionen das Programm (`app`) und prüfen es gegen die Freigabeliste.
+- Bei solchen Sitzungen löst die Bridge das Programm nur noch über den genauen Prozess- bzw. App-Namen auf, auch bei `focus_window`. Vorher genügte ein Teiltreffer im Fenstertitel: Bei freigegebenem „Excel“ hätte so ein Browserfenster „Excel-Tipps – Chrome“ bedient werden können.
 - Eingetragene Werte erscheinen im Prüfprotokoll nur geschwärzt.
 
 ## [1.394.2] - 2026-10-29

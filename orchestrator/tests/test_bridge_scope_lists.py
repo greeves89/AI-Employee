@@ -133,3 +133,15 @@ class ElementActionScopeTests(unittest.TestCase):
         self.assertEqual(out["query"], "Kennwort")
         self.assertEqual(out["aktion"], "press")
         self.assertNotIn("geheim123", str(out))
+
+    def test_limited_session_asks_bridge_for_exact_app(self):
+        """Die Bridge loest `app` sonst per Teiltreffer im Fenstertitel auf —
+        „Excel" traefe dann auch „Excel-Tipps – Chrome"."""
+        from app.api.computer_use import _streng_wenn_beschraenkt
+
+        eng = {"allowed_apps": ["Excel"]}
+        for action in ("element_press", "element_set_value", "focus_window"):
+            with self.subTest(action=action):
+                self.assertTrue(_streng_wenn_beschraenkt(action, {"app": "Excel"}, eng)["app_streng"])
+        self.assertNotIn("app_streng", _streng_wenn_beschraenkt("element_press", {}, {"allowed_apps": None}))
+        self.assertNotIn("app_streng", _streng_wenn_beschraenkt("click", {"x": 1}, eng))
