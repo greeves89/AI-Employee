@@ -166,14 +166,33 @@ class PushPruefenGrenzen(_Basis):
             self.assertTrue((await self._pruefen(db, ziele))["erlaubt"])
         self.assertEqual(self.abrufe, 3)
 
-    async def test_ueber_der_grenze_nicht_mehr_geprueft(self):
+    async def test_hammern_hebelt_die_sperre_nicht_aus(self):
+        """Über der Grenze keine neuen Abfragen beim Git-Server — aber die Entscheidung bleibt."""
         ziel = [{"branch": "12-x", "remote": "https://github.com/o/r"}]
         async with self.Session() as db:
             for _ in range(projekt_git.PUSH_FRAGEN_JE_MINUTE):
                 self.assertFalse((await self._pruefen(db, ziel))["erlaubt"])
-            with self.assertLogs("app.core.projekt_git", level="WARNING") as protokoll:
-                self.assertTrue((await self._pruefen(db, ziel))["erlaubt"])
-        self.assertIn("nicht geprüft", protokoll.output[0])
+            self.assertEqual(self.abrufe, 1)
+            # Über der Grenze, Stand gemerkt: weiter gesperrt.
+            with self.assertLogs("app.core.projekt_git", level="WARNING"):
+                self.assertFalse((await self._pruefen(db, ziel))["erlaubt"])
+            # Über der Grenze, Stand nicht (mehr) gemerkt: gesperrt, ohne neue Abfrage.
+            self.redis.client.werte.clear()
+            r = await self._pruefen(db, ziel)
+            self.assertEqual(r, {"erlaubt": False, "grund": projekt_git.ZU_VIELE_FRAGEN_GRUND})
+            # Auch ein freier Branch: ohne gemerkten Stand nicht neu fragen.
+            r = await self._pruefen(db, [{"branch": "13-x", "remote": "https://github.com/o/r"}])
+            self.assertFalse(r["erlaubt"])
+        self.assertEqual(self.abrufe, 1)
+
+    async def test_git_server_nicht_erreichbar_bleibt_fail_open(self):
+        async def kaputt(*a, **kw):
+            raise httpx.ConnectError("weg")
+
+        self.gh.get_issue = kaputt
+        async with self.Session() as db:
+            self.assertTrue((await self._pruefen(db, [{"branch": "12-x", "remote": "https://github.com/o/r"}]))
+                            ["erlaubt"])
 
     async def test_projekte_per_abfrage_ohne_teiltreffer(self):
         async with self.Session() as db:
