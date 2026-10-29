@@ -34,7 +34,8 @@ class _RepoMitKommentaren(_Anbieter):
 
     async def list_issue_comments(self, client, token, repo, nummer, hoechstens=300):
         self.kommentar_abrufe += 1
-        return list(self.kommentare_je_issue.get(nummer, []))
+        # Wie bei GitHub: die Rolle am Repo steht am Kommentar; ohne Angabe Mitarbeiter.
+        return [{"vertraut": True, **k} for k in self.kommentare_je_issue.get(nummer, [])]
 
     async def standard_branch(self, client, token, repo):
         return "main"
@@ -57,9 +58,10 @@ class _RepoMitKommentaren(_Anbieter):
         return "https://github.com/o/r/pull/500"
 
 
-def _kopf(wer, kid=1, zeit="2026-10-29T10:00:00Z", **felder):
+def _kopf(wer, kid=1, zeit="2026-10-29T10:00:00Z", vertraut=True, **felder):
     teile = " ".join(f'{k}="{v}"' for k, v in {"wer": wer, **felder}.items())
-    return {"id": kid, "body": f"<!-- ai-employee:claim {teile} -->\nÜbernommen.", "erstellt": zeit}
+    return {"id": kid, "body": f"<!-- ai-employee:claim {teile} -->\nÜbernommen.", "erstellt": zeit,
+            "vertraut": vertraut}
 
 
 class _Basis(Basis):
@@ -208,7 +210,7 @@ class UebernahmeMitKopfzeile(_Basis):
             await projekt_git.uebernahme_melden("p1", k.id, None, agent_name="A1", agent_id="a1", lauf="t-1")
             await projekt_git.uebernahme_melden("p1", k.id, None, agent_name="A1", agent_id="a1", lauf="t-1",
                                                 uebernehmen=False)
-        uebernahme, rueckgabe = [{"id": i, "body": b, "erstellt": f"2026-10-29T1{i}:00:00Z"}
+        uebernahme, rueckgabe = [{"id": i, "body": b, "erstellt": f"2026-10-29T0{i}:00:00Z", "vertraut": True}
                                  for i, (_, b) in enumerate(self.gh.kommentare)]
         gelesen = u.lesen(uebernahme, ANLAGE)
         self.assertEqual((gelesen.art, gelesen.agent_id, gelesen.lauf, gelesen.branch), (u.PLATTFORM, "a1", "t-1", "30-…"))
@@ -226,7 +228,7 @@ class UebernahmeMitKopfzeile(_Basis):
                 await projekt_git.extern_freigeben(db, None, team, k)
             self.assertEqual((k.spalte, k.extern_bearbeiter, k.bearbeiter_art, k.uebernahme),
                              ("bereit", None, None, None))
-        freigabe = {"id": 9, "body": self.gh.kommentare[-1][1], "erstellt": "2026-10-29T12:00:00Z"}
+        freigabe = {"id": 9, "body": self.gh.kommentare[-1][1], "erstellt": "2026-10-29T10:30:00Z", "vertraut": True}
         self.assertIsNone(u.inhaber(self.gh.kommentare_je_issue[31] + [freigabe], ANLAGE))
 
 

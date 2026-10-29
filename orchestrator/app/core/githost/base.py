@@ -13,6 +13,10 @@ from abc import ABC, abstractmethod
 import httpx
 
 
+#: Rollen mit Schreibrecht am Repo (GitHub ``author_association``).
+VERTRAUTE_ROLLEN = frozenset({"OWNER", "MEMBER", "COLLABORATOR"})
+
+
 def kommentar_form(roh) -> dict | None:
     """Issue-Kommentar in der Form, die ``core/uebernahme`` liest — gleich für alle Anbieter.
 
@@ -21,7 +25,12 @@ def kommentar_form(roh) -> dict | None:
     if not isinstance(roh, dict) or not isinstance(roh.get("id"), int) or isinstance(roh.get("id"), bool):
         return None
     nutzer = roh.get("user") if isinstance(roh.get("user"), dict) else {}
+    # Darf der Autor ins Repo schreiben? GitHub sagt es am Kommentar
+    # (``author_association``); Forgejo/Gitea nicht — dort ergänzt es der Anbieter.
+    # Nur dann zählen Übernahme-Kopfzeilen, Rückgaben und Ansprachen (core/uebernahme).
+    vertraut = roh.get("author_association") in VERTRAUTE_ROLLEN
     return {
+        "vertraut": vertraut,
         "id": roh["id"],
         "body": str(roh.get("body") or "")[:20000],
         "autor": str(nutzer.get("login") or "")[:60] or None,

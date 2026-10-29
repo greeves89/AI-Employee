@@ -1135,7 +1135,7 @@ Mit einem **Arbeitstakt** (Bearbeiten → Arbeitstakt: alle 30 Minuten, stündli
 
 Die eigentliche Arbeit passiert in den vergebenen Läufen. **Im Takt selbst wird nicht gepusht**
 *(seit Stufe 1 von #1116)*: Der Lead koordiniert dort nur. Versucht er im Takt ein `git push`,
-wird es technisch gesperrt, mit dem Hinweis, die Karte an sich selbst zu vergeben und im Lauf der
+wird er gebremst (Zusammenstoß-Schutz, keine Sicherheitsgrenze), mit dem Hinweis, die Karte an sich selbst zu vergeben und im Lauf der
 Karte zu arbeiten. Gearbeitet wird an dem, was in
 **Bereit** liegt: Einplanen ist deine Entscheidung (Knopf **Einplanen** oder im Repo das Tag
 `status/ready`); Klares plant auch der Lead selbst ein.
@@ -1433,11 +1433,20 @@ anderen übergeben ihren Stand.
 **Der Branch gehört dem Übernehmer** *(seit Stufe 1 von #1116)*: Will ein Agent dieser Anlage in
 einen Branch pushen, der die Nummer eines Issues trägt (z. B. `feat/12-login`), fragt die Plattform
 vorher live im Repo, wem das Issue gehört. Hat es ein anderer übernommen (eine Claude-Code-Sitzung,
-ein anderer Agent, eine andere Anlage, ein Mensch), wird der Push gesperrt. Der Agent erfährt, wer
+ein anderer Agent, eine andere Anlage, ein Mensch), wird der Push gebremst
+(Zusammenstoß-Schutz, keine Sicherheitsgrenze). Der Agent erfährt, wer
 seit wann dran ist, und was er stattdessen tun soll: im Issue nachfragen, einen eigenen Branch mit
 Pull Request in den fremden Branch stellen oder dich um Freigabe bitten. Sein eigener Branch und
 der Lauf, an den das Board die Karte vergeben hat, sind frei. Ist das Repo gerade nicht
 erreichbar, wird nicht gesperrt — es geht darum, Zusammenstöße unter Kollegen zu vermeiden.
+
+Wer was übernommen hat, liest das Board nur aus Kommentaren von Konten mit Schreibrecht am Repo
+(Eigentümer, Mitglied, Mitarbeiter) und vom Konto des Projekt-Schlüssels. Schreibt sonst jemand
+eine Übernahme-Kopfzeile, gilt sie nur als „extern dran“ ohne Ablaufzeit; eine Rückgabe von ihm
+gilt gar nicht. Ein `bis` reicht höchstens 24 Stunden in die Zukunft. Übernahme-Kommentare nennen
+den Projektnamen nicht, denn das Repo kann öffentlich sein. Die Anlage zeigt sich in Kommentaren
+mit einer zufälligen Kennung (z. B. `anlage-1a2b3c4d`); einen sprechenden Namen setzt die
+Einstellung `ANLAGE_KENNUNG`.
 
 **Regeln für Agenten ins Repo** *(seit Stufe 1 von #1116)*: Damit auch Agenten außerhalb der
 Plattform dieselben Regeln kennen, gehört ein Abschnitt in die `AGENTS.md` des Repos:

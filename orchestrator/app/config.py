@@ -332,8 +332,9 @@ class Settings(BaseSettings):
     # Telegram/chat/voice. Empty → only a relative path is available (web UI only).
     public_app_url: str = ""
     # Name dieser Anlage in Übernahme-Kommentaren an Issues (core/uebernahme.py),
-    # z. B. "anlage-nord". Leer: der Host aus public_app_url. Nicht geheim — er
-    # steht in Repos, an denen mehrere Anlagen arbeiten.
+    # z. B. "anlage-nord". Leer: eine zufällige Kennung, einmal erzeugt und in
+    # platform_settings gespeichert. Nicht geheim — sie steht in Repos, an denen
+    # die Anlage arbeitet.
     anlage_kennung: str = ""
 
     # Expose the MS Graph MCP server to external LLM clients (e.g. OpenWebUI) via
