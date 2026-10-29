@@ -231,7 +231,35 @@ class ForgejoHostProvider(GitHostProvider):
                                   hoechstens: int = 300) -> list[dict]:
         """Kommentare eines Issues, älteste zuerst (``core/uebernahme`` liest die Übernahmen daraus)."""
         rows = await self._seiten(client, token, f"/repos/{repo}/issues/{nummer}/comments", {}, hoechstens)
-        return [k for k in (kommentar_form(r) for r in rows) if k]
+        kommentare = [k for k in (kommentar_form(r) for r in rows) if k]
+        # Forgejo/Gitea nennen am Kommentar keine Rolle: Eigentümer des Repos oder
+        # Mitarbeiter (je Autor eine Abfrage, höchstens zehn) gelten als vertraut.
+        besitzer = repo.split("/", 1)[0].lower()
+        geprueft: dict[str, bool] = {}
+        for k in kommentare:
+            autor = (k.get("autor") or "").lower()
+            if not autor:
+                continue
+            if autor not in geprueft:
+                if autor == besitzer:
+                    geprueft[autor] = True
+                elif len(geprueft) < 10 and token:
+                    from urllib.parse import quote
+
+                    resp = await client.get(f"{self.api_base}/repos/{repo}/collaborators/{quote(k['autor'], safe='')}",
+                                            headers=self._headers(token), follow_redirects=False)
+                    geprueft[autor] = resp.status_code == 204
+                else:
+                    geprueft[autor] = False
+            k["vertraut"] = geprueft[autor]
+        return kommentare
+
+    async def eigenes_konto(self, client: httpx.AsyncClient, token: str) -> str | None:
+        """Login des Kontos hinter dem Schlüssel — None ohne Schlüssel oder wenn nicht lesbar."""
+        if not token:
+            return None
+        status, daten = await _json_holen(client, f"{self.api_base}/user", self._headers(token))
+        return str(daten.get("login") or "") or None if status == 200 and isinstance(daten, dict) else None
 
     # ── Abschnitt für die AGENTS.md als Pull Request (core/projekt_git.agents_md_pr) ──
 

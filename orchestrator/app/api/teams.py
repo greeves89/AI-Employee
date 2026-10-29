@@ -1335,6 +1335,7 @@ async def agents_md_text(team_id: str, user=Depends(require_auth), db: AsyncSess
     from app.core import uebernahme
 
     t = await _projekt(team_id, user, db)
+    await uebernahme.anlage_laden(db)
     return {"pfad": "AGENTS.md", "text": uebernahme.agents_md_abschnitt(), "anlage": uebernahme.anlage_kennung(),
             "hat_repo": bool(t.repo)}
 
