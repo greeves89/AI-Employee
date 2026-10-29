@@ -385,6 +385,44 @@ class StatusAnDerQuelle(_Arbeitsraum):
         _, gefragt = await self._abschluss({}, punkte=[punkt])
         self.assertEqual(len(gefragt), projekt_termine.MAX_STATUSABFRAGEN)
 
+    async def test_rollback_beim_zugang_kostet_die_karten_nicht(self):
+        """`zugang` kann auf der ÜBERGEBENEN Sitzung ein `rollback` auslösen —
+        `oauth_service` tut das, wenn sein `commit` scheitert, und `projekt_git`
+        schluckt die Ausnahme danach und liefert normal zurück. Lief die Abfrage auf
+        der Sitzung der Besprechung, entwertete das alle geladenen Objekte: das
+        Kartenanlegen lud `team` nachträglich nach (MissingGreenlet), und Karten,
+        Protokollnachricht und Übersprungen-Spur gingen still verloren."""
+
+        class _Anbieter:
+            async def issue_state(self, client, token, repo, nummer):
+                return "open"
+
+            async def pull_state(self, client, token, repo, nummer):
+                return None
+
+        async def _zugang(db, r, team):
+            await db.rollback()
+            return "tok", _Anbieter()
+
+        @contextlib.asynccontextmanager
+        async def _sitzung():
+            async with self.Session() as db:
+                yield db
+
+        with patch("app.db.session.async_session_factory", _sitzung), \
+                patch("app.core.projekt_git.zugang", _zugang):
+            await projekt_termine.abschluss("raum1", "p1", "Daily: Projekt",
+                                            f"## Action Items\n- [ ] {self.ITEM}\n", ["a1"],
+                                            redis="redis-attrappe")
+        async with self.Session() as db:
+            from sqlalchemy import select
+
+            karten = (await db.execute(select(ProjektKarte).where(
+                ProjektKarte.team_id == "p1", ProjektKarte.notiz == "Aus Besprechung"))).scalars().all()
+            nachrichten = [n for n in await projekt_gespraech.liste(db, "p1") if n.art == "protokoll"]
+        self.assertEqual([k.titel for k in karten], [self.ITEM])
+        self.assertEqual(len(nachrichten), 1)
+
     async def test_frist_bricht_die_abfrage_ab_und_legt_die_karte_an(self):
         """Die zugesagte Gesamtfrist. Eine hängende Quelle darf die Besprechung nicht
         festhalten — und der Punkt muss danach eine Karte werden, nicht verschwinden."""
