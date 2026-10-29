@@ -929,10 +929,13 @@ async def push_pruefen(db: AsyncSession, redis, agent_id: str, *, lauf: str | No
     agent = await db.get(Agent, agent_id)
     if agent is None:
         return {"erlaubt": True, "grund": None}
-    if not await _push_fragen_frei(redis, agent_id):
-        log.warning("[Push-Sperre] Agent %s fragt öfter als %s-mal je Minute — nicht geprüft, Push erlaubt",
+    # Die Grenze stoppt nur NEUE Abfragen beim Git-Server, nie die Entscheidung:
+    # darüber zählt der gemerkte Stand, ohne ihn wird gesperrt. Sonst hebelte ein
+    # Agent in einer Schleife die Sperre durch Hämmern aus.
+    frei = await _push_fragen_frei(redis, agent_id)
+    if not frei:
+        log.warning("[Push-Sperre] Agent %s fragt öfter als %s-mal je Minute — nur noch gemerkte Stände",
                     agent_id, PUSH_FRAGEN_JE_MINUTE)
-        return {"erlaubt": True, "grund": None}
     await uebernahme.anlage_laden(db)
     task = await db.get(Task, lauf) if lauf else None
     if task is not None and task.agent_id != agent_id:
@@ -965,7 +968,10 @@ async def push_pruefen(db: AsyncSession, redis, agent_id: str, *, lauf: str | No
             log.info("[Push-Sperre] Agent %s, Branch %s: kein Projekt-Repo zugeordnet — nicht geprüft",
                      agent_id, branch)
         for team in kandidaten[:3]:
-            grund = await _fremde_uebernahme(db, redis, team, int(nummern[0]), branch, agent, lauf)
+            try:
+                grund = await _fremde_uebernahme(db, redis, team, int(nummern[0]), branch, agent, lauf, frei)
+            except _ZuVieleFragen:
+                return {"erlaubt": False, "grund": ZU_VIELE_FRAGEN_GRUND}
             if grund:
                 log.info("[Push-Sperre] Agent %s, Lauf %s, Branch %s: gesperrt", agent_id, lauf, branch)
                 return {"erlaubt": False, "grund": grund}
@@ -984,11 +990,18 @@ def _redis_client(redis):
     return getattr(redis, "client", None)
 
 
+ZU_VIELE_FRAGEN_GRUND = "Zu viele Push-Prüfungen in kurzer Zeit — in einer Minute erneut versuchen."
+
+
+class _ZuVieleFragen(Exception):
+    """Über der Grenze und kein gemerkter Stand: neu fragen geht nicht, also sperren."""
+
+
 async def _push_fragen_frei(redis, agent_id: str) -> bool:
-    """Zählt die Anfragen je Agent und Minute; darüber wird nicht mehr geprüft (fail-open).
+    """Zählt die Anfragen je Agent und Minute — darüber keine neuen Abfragen beim Git-Server.
 
     Ohne Grenze löste ein Agent in einer Schleife je Anfrage zwei Abfragen beim
-    Git-Server aus. Ohne Redis wird nicht gezählt.
+    Git-Server aus. Ohne Redis (oder bei einer Störung) wird nicht gezählt.
     """
     import time
 
@@ -1022,8 +1035,8 @@ async def _projekte_mit_repo(db: AsyncSession, agent_id: str) -> list[Team]:
             if agent_id in set(t.member_agent_ids or []) | ({t.lead_agent_id} if t.lead_agent_id else set())]
 
 
-async def _uebernahme_im_repo(db: AsyncSession, redis, team: Team,
-                              nr: int) -> tuple[bool, uebernahme.Uebernahme | None]:
+async def _uebernahme_im_repo(db: AsyncSession, redis, team: Team, nr: int,
+                              frei: bool = True) -> tuple[bool, uebernahme.Uebernahme | None]:
     """(übernommen?, Inhaber) live aus dem Repo — je (Projekt, Issue) 30 s gemerkt.
 
     Ein Push kommt selten allein (Wiederholung, mehrere Branches); ohne Merken
@@ -1042,6 +1055,8 @@ async def _uebernahme_im_repo(db: AsyncSession, redis, team: Team,
                 return bool(stand.get("uebernommen")), uebernahme.Uebernahme.aus_dict(stand.get("inhaber"))
         except Exception:  # noqa: BLE001 — Redis gestört: frisch fragen
             pass
+    if not frei:
+        raise _ZuVieleFragen()
     try:
         token, anbieter = await zugang(db, redis, team)
         repo = repo_ziel(team.repo).pfad
@@ -1066,14 +1081,14 @@ async def _uebernahme_im_repo(db: AsyncSession, redis, team: Team,
 
 
 async def _fremde_uebernahme(db: AsyncSession, redis, team: Team, nr: int, branch: str, agent,
-                             lauf: str | None) -> str | None:
+                             lauf: str | None, frei: bool = True) -> str | None:
     """Sperrgrund, wenn Issue ``nr`` im Repo des Projekts einem anderen gehört — sonst None."""
     karte = (await db.execute(select(ProjektKarte).where(
         ProjektKarte.team_id == team.id, ProjektKarte.quelle == "issue", ProjektKarte.extern_nr == nr)
     )).scalars().first()
     if karte is not None and lauf and karte.task_id == lauf:
         return None  # der Lauf, an den das Board die Karte vergeben hat
-    uebernommen, u = await _uebernahme_im_repo(db, redis, team, nr)
+    uebernommen, u = await _uebernahme_im_repo(db, redis, team, nr, frei)
     if not uebernommen:
         return None
     if u is not None and u.gehoert(agent_id=agent.id, lauf=lauf, agent_name=agent.name):
