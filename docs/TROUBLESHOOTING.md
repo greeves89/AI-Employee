@@ -87,7 +87,7 @@ docker logs ai-employee-frontend --tail=30
 
 | Error | Fix |
 |-------|-----|
-| `NEXT_PUBLIC_API_URL not set` | Set in `.env` and rebuild: `docker compose build frontend` |
+| `NEXT_PUBLIC_API_URL not set` | Expected — the frontend image is built WITHOUT it on purpose (one image for every installation, #889). The API URL is resolved at runtime from the browser's own host; see `frontend/src/lib/config.ts`. Setting it in `.env` changes nothing. |
 | `Error: Cannot find module` | Rebuild: `docker compose build frontend` |
 | Port 3000 already in use | Stop conflicting process: `lsof -i :3000` |
 

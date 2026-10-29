@@ -120,6 +120,14 @@ class Settings(BaseSettings):
 
     # Docker
     agent_image: str = "ai-employee-agent:latest"
+    # Fertige Abbilder aus der Registry (#889). Fehlt das Agenten-Abbild lokal,
+    # holt der Orchestrator es von hier — es ist kein Compose-Dienst, also
+    # erfasst "docker compose pull" es nicht. Dieselbe Vorgabe wie in
+    # scripts/lib/abbilder.sh; ein eigener Spiegel wird in .env eingetragen.
+    ai_employee_registry: str = "ghcr.io/greeves89"
+    # Aus, wenn eine Anlage ausschliesslich selbst gebaute Abbilder benutzen soll
+    # (abgeschottetes Netz). Dann meldet das Protokoll den fehlenden Bau statt zu holen.
+    abbild_holen: bool = True
     # Platform container names for admin system control (restart/status from the UI)
     orchestrator_container_name: str = "ai-employee-orchestrator"
     frontend_container_name: str = "ai-employee-frontend"

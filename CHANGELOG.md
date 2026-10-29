@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.395.0] - 2026-10-29
+
+### Behoben
+- **Ein Agent liess sich auf einer Anlage nicht anlegen, die ihre Abbilder aus der Registry holt.** Das Agenten-Abbild ist kein Compose-Dienst: `docker compose pull` holt es nicht mit, und ein `docker image prune` nimmt es wieder mit. Fehlte es, brach das Anlegen oder Neuaufsetzen eines Agenten mit einer Docker-Meldung über einen unbekannten Abbild-Namen ab — ohne Hinweis, was zu tun ist. Jetzt holt der Orchestrator das fertige Abbild genau dieser Freigabe selbst und benennt es lokal um. Die Nummer kommt aus der VERSION-Datei, nicht aus der Umgebung: Code und Abbild gehören damit zur selben Freigabe, und ein beweglicher Tag wie `latest` wird abgelehnt. Diese Abkürzung prüft **keine** Signatur (cosign liegt nicht im Orchestrator-Abbild) — der geprüfte Weg bleibt `./scripts/update.sh`. Wer ausschließlich selbst gebaute Abbilder zulassen will, setzt `AI_EMPLOYEE_ABBILD_HOLEN=0`.
+- **Das Frontend-Abbild bekam eine Adresse mitgegeben, die es nie angenommen hat.** Vier Compose-Dateien übergaben `NEXT_PUBLIC_API_URL` und `NEXT_PUBLIC_WS_URL` als Bau-Argument oder Laufzeitwert, obwohl das Frontend-Dockerfile sie bewusst nicht annimmt (ein Abbild für alle Anlagen). Docker warnte einmal und baute weiter. Im Produktions-Beispiel stand dort `https://<Domain>` — mit klarer Absicht und ohne jede Wirkung. Die Einträge sind entfernt; die Adresse ergibt sich weiterhin im Browser aus der aufgerufenen Seite, hinter einem Reverse-Proxy also genau die eigene Domain. Ein Test lässt kein Bau-Argument mehr zu, das das zugehörige Dockerfile nicht kennt.
+
+### Dokumentation
+- `.env.example` nennt jetzt die Schalter der Abbild-Bereitstellung: eigener Spiegel (`AI_EMPLOYEE_REGISTRY`), Abbild-Version (`AI_EMPLOYEE_VERSION`), Selbst-Holen (`AI_EMPLOYEE_ABBILD_HOLEN`) und den fehlenden Signatur-Aussteller (`AI_EMPLOYEE_SIGNATUR_AUSSTELLER`). Die Upgrade-Anleitung schickt den Betreiber ausdrücklich zum Vergleich mit dieser Datei — wer dort einen Schalter nicht findet, hält ihn für nicht vorhanden. Ein Test prüft, dass jeder aus `.env` gelesene Name dort steht.
+- Die Fehlertabelle zu `NEXT_PUBLIC_API_URL not set` riet weiter zum Setzen in `.env` und Neubauen. Sie erklärt jetzt, dass das Abbild diesen Wert absichtlich nicht enthält.
+
 ## [1.394.2] - 2026-10-29
 
 ### Dokumentation

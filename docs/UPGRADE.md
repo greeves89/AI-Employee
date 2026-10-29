@@ -164,6 +164,19 @@ cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.
   -a dienst=orchestrator ghcr.io/OWNER/ai-employee-orchestrator:VERSION
 ```
 
+**The agent image is not a compose service.** `docker compose pull` does not fetch it, and
+`docker image prune` removes it. If `ai-employee-agent:latest` is missing when an agent is
+created or rebuilt, the orchestrator now pulls
+`<registry>/ai-employee-agent:<VERSION>` itself and tags it locally — on an installation that
+never built locally, agent creation used to fail with a Docker error about an unknown image
+name. The version comes from the `VERSION` file (code and image stay on the same release),
+never from the environment, and a moving tag such as `latest` is refused.
+
+This shortcut performs **no signature check** — cosign is not part of the orchestrator image.
+It is the rescue path, not the supported one: the verified path stays `./scripts/update.sh`.
+Set `AI_EMPLOYEE_ABBILD_HOLEN=0` on an installation that must only ever run locally built
+images; the orchestrator then logs the missing image instead of pulling it.
+
 ### Step 4: Stop Current Services
 
 ```bash

@@ -203,6 +203,10 @@ services:
       ANBIETER_URL: ${ANBIETER_URL-https://agents.future-app.de}
       ANBIETER_KONTAKT: ${ANBIETER_KONTAKT:-}
       AGENT_IMAGE: ai-employee-agent:latest
+      # Herkunft der fertigen Abbilder (#889): fehlt das Agenten-Abbild lokal,
+      # holt der Orchestrator es hier. Ein eigener Spiegel wird in .env gesetzt.
+      AI_EMPLOYEE_REGISTRY: ${AI_EMPLOYEE_REGISTRY:-ghcr.io/greeves89}
+      AI_EMPLOYEE_ABBILD_HOLEN: ${AI_EMPLOYEE_ABBILD_HOLEN:-1}
       AGENT_MEMORY_LIMIT: ${AGENT_MEMORY_LIMIT-8g}
       # Kiosk voice: enables POST /kiosk/ws-ticket (mints a WS ticket for the local
       # kiosk). Empty by default → endpoint 404s. Set to "true" ONLY on the single-
@@ -321,8 +325,6 @@ services:
       dockerfile: Dockerfile
       target: production
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:8000}
         APP_VERSION: ${APP_VERSION:-dev}
     container_name: ai-employee-frontend
     ports:

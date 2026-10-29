@@ -237,9 +237,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       target: production
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:8000}
+      # Keine NEXT_PUBLIC_*-Bau-Argumente: frontend/Dockerfile nimmt sie bewusst
+      # nicht an (ein Abbild fuer alle Anlagen, #889).
     container_name: ai-employee-frontend
     ports:
     - '3000'

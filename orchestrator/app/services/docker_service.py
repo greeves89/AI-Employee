@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import threading
 import time
 import uuid
@@ -609,6 +610,11 @@ class DockerService:
         if _SECCOMP_PROFILE is not None:
             security_opts.append(f"seccomp={_SECCOMP_PROFILE}")
 
+        # Fehlt das Abbild lokal, aus der Registry holen (#889). Davor scheiterte
+        # das Anlegen eines Agenten mit einer Docker-Meldung ueber einen
+        # unbekannten Namen — auf jeder Anlage, die nie lokal gebaut hat.
+        self.abbild_sicherstellen(image)
+
         container = self.client.containers.run(
             image=image,
             name=name,
@@ -921,6 +927,103 @@ class DockerService:
                             self._platz_laeuft.discard(container_id)
                 threading.Thread(target=_messen, name=f"du-{container_id[:12]}", daemon=True).start()
         return _platz_auswerten(eintrag[1], limit_gb) if eintrag else None
+
+    #: Registry-Pfad: ``<host>/<konto>[/<unterpfad>]``, klein geschrieben wie
+    #: ghcr.io es verlangt. Kein Schema, keine Pfad-Rueckwaertsschritte — der
+    #: Wert landet in einer Abbild-Referenz, die an den Docker-Dienst geht.
+    _REGISTRY_FORM = re.compile(r"^[a-z0-9][a-z0-9.:-]*(/[a-z0-9]+([._-][a-z0-9]+)*)+$")
+    #: Nur eine echte Freigabenummer. "latest" ist bewusst nicht erlaubt: ein
+    #: beweglicher Tag koennte nach der Freigabe auf ein anderes Abbild zeigen.
+    _VERSION_FORM = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+
+    def abbild_sicherstellen(self, image: str) -> str:
+        """Sorgt dafuer, dass ``image`` lokal vorliegt (#889).
+
+        Fehlt das Agenten-Abbild, wird das fertige Abbild DIESER Version aus der
+        Registry geholt und auf den lokalen Namen getaggt. Ohne diesen Schritt
+        scheitert das Anlegen eines Agenten auf einer Anlage, auf der das Abbild
+        nie lokal entstanden ist: ``docker compose pull`` erfasst es nicht (es ist
+        kein Compose-Dienst), und ein aufgeraeumtes ``docker image prune`` nimmt es
+        mit. Die Fehlermeldung von Docker nennt dann nur einen unbekannten Namen.
+
+        Rueckgabe: ``"lokal"`` (war schon da), ``"registry"`` (geholt) oder
+        ``"fehlt"`` (nicht holbar — der Aufrufer laeuft in den Docker-Fehler).
+
+        Die Version kommt aus der VERSION-Datei, nicht aus der Umgebung: Code und
+        Abbild gehoeren damit zur selben Freigabe, und niemand kann die Anlage per
+        Umgebungsvariable auf eine andere Nummer umlenken.
+
+        ACHTUNG, bewusste Einschraenkung: hier wird KEINE Signatur geprueft —
+        cosign liegt nicht im Orchestrator-Abbild. Der gepruefte Weg bleibt
+        ``./scripts/update.sh`` (#938); dieser Griff ist der Rettungsweg, wenn der
+        nie gelaufen ist. Abschaltbar mit ``AI_EMPLOYEE_ABBILD_HOLEN=0``.
+        """
+        from app.config import get_agent_version, settings
+
+        try:
+            self.client.images.get(image)
+            return "lokal"
+        except NotFound:
+            pass
+        except APIError as e:
+            logger.warning(f"Abbild {scrub_log(image)} nicht pruefbar: {scrub_log(e)}")
+            return "fehlt"
+
+        if image != settings.agent_image:
+            # Nur fuer das Agenten-Abbild ist bekannt, wo das fertige Abbild
+            # liegt. Fuer jeden anderen Namen waere die Registry-Referenz geraten.
+            return "fehlt"
+        if not settings.abbild_holen:
+            logger.warning(
+                f"Abbild {scrub_log(image)} fehlt und AI_EMPLOYEE_ABBILD_HOLEN=0 — "
+                "nicht geholt. Bereitstellen mit ./scripts/update.sh (#889)."
+            )
+            return "fehlt"
+
+        registry = (settings.ai_employee_registry or "").strip().rstrip("/")
+        version = get_agent_version().strip()
+        if not self._REGISTRY_FORM.match(registry):
+            logger.error(
+                f"AI_EMPLOYEE_REGISTRY ({scrub_log(registry)}) ist kein gueltiger "
+                "Registry-Pfad — Abbild wird nicht geholt (#889)."
+            )
+            return "fehlt"
+        if not self._VERSION_FORM.match(version):
+            logger.error(
+                f"Keine gueltige Freigabenummer ({scrub_log(version)}) — Abbild wird "
+                "nicht geholt (#889). Liegt die VERSION-Datei im Behaelter?"
+            )
+            return "fehlt"
+
+        referenz = f"{registry}/ai-employee-agent:{version}"
+        logger.warning(
+            f"Agenten-Abbild {scrub_log(image)} fehlt lokal — hole {scrub_log(referenz)} "
+            "aus der Registry. Diese Abkuerzung prueft KEINE Signatur; der "
+            "gepruefte Weg ist ./scripts/update.sh (#889/#938)."
+        )
+        try:
+            geholt = self.client.images.pull(referenz)
+        except (NotFound, APIError) as e:
+            logger.error(
+                f"{scrub_log(referenz)} nicht abrufbar: {scrub_log(e)}. Abbild lokal "
+                "bauen: ./scripts/update.sh --lokal-bauen (#889)."
+            )
+            return "fehlt"
+        try:
+            # Nur ein Doppelpunkt NACH dem letzten "/" ist ein Tag: in
+            # "host:5000/ai-employee-agent" gehoert er zum Port, und ohne Tag
+            # gilt "latest". Sonst entstuende der Tag "ai-employee-agent".
+            kopf, trenner, rest = image.rpartition(":")
+            if trenner and "/" not in rest:
+                name, tag = kopf, rest
+            else:
+                name, tag = image, "latest"
+            geholt.tag(name, tag)
+        except APIError as e:
+            logger.error(f"{scrub_log(referenz)} liess sich nicht als {scrub_log(image)} taggen: {scrub_log(e)}")
+            return "fehlt"
+        logger.info(f"Agenten-Abbild {scrub_log(version)} aus der Registry geholt und als {scrub_log(image)} getaggt.")
+        return "registry"
 
     def get_image_id(self, image_name: str) -> str | None:
         """Get the current image ID for a given image name."""
