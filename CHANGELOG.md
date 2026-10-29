@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.398.2] - 2026-10-29
+
+### Behoben
+- **Microsoft-Verbindung galt plötzlich als getrennt (#1013).** Microsoft tauscht den Refresh-Token bei jeder Erneuerung aus. Erneuerten zwei Stellen gleichzeitig dasselbe Token (Seite „Heute“, Mail-Freigabe, ein Agent über MCP, die Sprachfront, Besprechungen, der Hintergrund-Job), verbrauchte die erste den Token, und die zweite scheiterte mit einem bereits ungültigen. Die Verbindung wurde als getrennt gemeldet.
+  - Jetzt erneuert je Integration immer nur einer (Sperre in der Datenbank).
+  - Wer wartet, übernimmt danach das Ergebnis, statt noch einmal zu erneuern.
+  - Dieselbe Sperre wie bei MCP-Servern (#462), jetzt gemeinsam in `core/db_sperre`.
+  - Ist der Token nach dem Warten ohnehin frisch, wird nicht noch einmal erneuert. Die erzwungene Erneuerung für Anthropic bleibt erzwungen.
+  - Gewartet wird höchstens 30 Sekunden.
+  - Ein Fehlschlag gibt die Sperre frei, ohne die Arbeit der übrigen Sitzung zu verwerfen. Der Hintergrund-Job erneuert nach einem Fehler die übrigen Integrationen weiter.
+
+## [1.398.1] - 2026-10-29
+
+### Behoben
+- **`update.sh` räumt alte Abbilder weg.** Jedes Update holte die Abbilder der neuen Version (das Agenten-Abbild allein hat über 6 GB) und ließ die alten liegen. Auf einer Anlage mit vielen Updates lagen so rund 20 Versionen je Abbild, über 100 GB, bis die Platte voll war und die Sicherung vor dem nächsten Update scheiterte.
+  - Nach einem erfolgreichen Start löscht das Skript jetzt die eigenen Abbilder älterer Versionen. Es behält die neue und die vorige Version (Rücksprung) und alles, was ein Container noch benutzt; gelöscht wird nie erzwungen.
+  - Dazu entfernt es Build-Cache, der älter als drei Tage ist. Volumes bleiben unberührt.
+  - Abschaltbar mit `AI_EMPLOYEE_ABBILDER_AUFRAEUMEN=0`.
+
 ## [1.398.0] - 2026-10-29
 
 ### Sekretariat / Seite „Heute“

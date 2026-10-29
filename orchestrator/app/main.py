@@ -319,7 +319,7 @@ async def _refresh_claude_token() -> None:
                             )
                             integration = result.scalar_one_or_none()
                             if integration and integration.refresh_token_encrypted:
-                                await oauth_svc._refresh_token(integration)
+                                await oauth_svc._refresh_token(integration, erzwingen=True)
                                 await db.commit()
                                 # Re-sync to shared volume
                                 await service.refresh_access_token()
