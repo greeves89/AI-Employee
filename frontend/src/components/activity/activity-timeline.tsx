@@ -654,7 +654,7 @@ function DayAgenda({
                 role="button"
                 onClick={
                   item.task_id
-                    ? () => aufgabeOeffnen(item.task_id)
+                    ? () => aufgabeOeffnen(item.task_id!)
                     : () => openEditor(item)
                 }
                 title={
