@@ -6,6 +6,7 @@ so extracting the interface did not change GitHub behaviour.
 """
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
 
 from app.core.githost.github import GitHubHostProvider
@@ -165,3 +166,40 @@ async def test_list_open_issues_with_label_non_200_returns_empty():
     client = _client(get_resp=_resp(500, {}))
     items = await GitHubHostProvider().list_open_issues_with_label(client, "tok", "org/repo", "auto-test")
     assert items == []
+
+
+# --- #1106: get_issue muss eine unlesbare Antwort schlucken, nicht werfen ---
+#
+# Der Aufrufer misst MEHRERE Nummern in einer Schleife. Verlaesst eine Ausnahme
+# diese Methode, verliert er alle noch nicht gefragten Nummern mit — aus einem
+# unlesbaren Issue wird so ein stilles Doppel fuer jeden folgenden Punkt. Eine
+# eigene Installation hinter Anmeldeportal oder Fehlerseite antwortet durchaus
+# mit ``200 text/html``. Forgejo faengt das seit 66330dd ab, GitHub musste nach.
+#
+# Die Antworten sind ECHTE ``httpx.Response``-Objekte, keine Attrappe mit
+# ``side_effect``: nur so wirft ``.json()`` wirklich das, was es im Betrieb wirft.
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "name,antwort",
+    [
+        ("200 mit HTML statt JSON", httpx.Response(200, content=b"<html>Anmeldung</html>")),
+        ("200 mit JSON, aber keine Abbildung", httpx.Response(200, json=["a", "b"])),
+        ("200 mit JSON-Zeichenkette", httpx.Response(200, json="nope")),
+        ("404", httpx.Response(404, json={"message": "Not Found"})),
+        ("500", httpx.Response(500, content=b"")),
+    ],
+)
+async def test_get_issue_gibt_none_statt_zu_werfen(name, antwort):
+    client = _client(get_resp=antwort)
+    assert await GitHubHostProvider().get_issue(client, "tok", "org/repo", 961) is None, name
+
+
+@pytest.mark.asyncio
+async def test_get_issue_reicht_die_lesbare_antwort_durch():
+    """Gegenprobe: der gute Fall darf von der Absicherung nicht mitgenommen werden."""
+    client = _client(get_resp=httpx.Response(200, json={"number": 961, "state": "closed"}))
+    assert await GitHubHostProvider().get_issue(client, "tok", "org/repo", 961) == {
+        "number": 961,
+        "state": "closed",
+    }

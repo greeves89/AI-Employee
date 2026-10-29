@@ -168,9 +168,22 @@ class GitHubHostProvider(GitHostProvider):
         return "geschlossen" if daten.get("state") == "closed" else "offen"
 
     async def get_issue(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int) -> dict | None:
-        """Ein Issue mit Tags und Zuständigen — None, wenn es nicht lesbar ist."""
+        """Ein Issue mit Tags und Zuständigen — None, wenn es nicht lesbar ist.
+
+        „Nicht lesbar" umfasst auch einen Körper, der kein JSON ist: ein Proxy, ein
+        Anmeldeportal oder eine Fehlerseite einer eigenen Installation antwortet
+        durchaus mit ``200 text/html``. Ohne diesen Zweig verließe die Ausnahme den
+        Aufrufer, und ein Aufrufer, der mehrere Nummern messen will, verlöre alle
+        noch nicht gefragten mit. Forgejo macht das hier gleich (``forgejo.py``).
+        """
         resp = await client.get(f"{self.api_base}/repos/{repo}/issues/{nummer}", headers=self._headers(token))
-        return resp.json() if resp.status_code == 200 else None
+        if resp.status_code != 200:
+            return None
+        try:
+            daten = resp.json()
+        except ValueError:
+            return None
+        return daten if isinstance(daten, dict) else None
 
     async def list_labels(self, client: httpx.AsyncClient, token: str, repo: str, hoechstens: int = 300) -> list[str]:
         """Namen aller Tags (Labels) des Repos — das Board setzt das hier übliche."""

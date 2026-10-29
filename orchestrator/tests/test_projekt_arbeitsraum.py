@@ -328,8 +328,11 @@ class StatusAnDerQuelle(_Arbeitsraum):
                 gefragt.append((repo, nummer))
                 if kaputt:
                     raise RuntimeError("Hoster antwortet nicht")
-                if langsam:
-                    await asyncio.sleep(langsam)
+                # ``langsam`` entweder als Zahl (gilt fuer alle) oder je Nummer —
+                # nur so laesst sich eine Abfrage messen, die VOR der haengenden liegt.
+                warte = langsam.get(nummer, 0.0) if isinstance(langsam, dict) else langsam
+                if warte:
+                    await asyncio.sleep(warte)
                 if nummer not in zustaende:
                     return None                     # nicht lesbar (404/401/403/Grenze)
                 antwort = {"number": nummer, "state": zustaende[nummer]}
@@ -408,12 +411,12 @@ class StatusAnDerQuelle(_Arbeitsraum):
         Kartenanlegen lud `team` nachträglich nach (MissingGreenlet), und Karten,
         Protokollnachricht und Übersprungen-Spur gingen still verloren."""
 
-        class _Anbieter:
-            async def issue_state(self, client, token, repo, nummer):
-                return "open"
+        gefragt = []
 
-            async def pull_state(self, client, token, repo, nummer):
-                return None
+        class _Anbieter:
+            async def get_issue(self, client, token, repo, nummer):
+                gefragt.append(nummer)
+                return {"number": nummer, "state": "open"}
 
         async def _zugang(db, r, team):
             await db.rollback()
@@ -437,6 +440,10 @@ class StatusAnDerQuelle(_Arbeitsraum):
             nachrichten = [n for n in await projekt_gespraech.liste(db, "p1") if n.art == "protokoll"]
         self.assertEqual([k.titel for k in karten], [self.ITEM])
         self.assertEqual(len(nachrichten), 1)
+        # Und die Abfrage hat wirklich stattgefunden: liefe der Test nur durch den
+        # Sammel-Fehlerzweig (etwa weil die Attrappe die Schnittstelle verfehlt),
+        # waere der Fall "zugang rollt zurueck UND danach wird gemessen" ungedeckt.
+        self.assertEqual(gefragt, [961])
 
     async def test_eine_abfrage_je_nummer(self):
         """Die Zusage „ein Lesevorgang je Nummer". Der frühere Weg (``issue_state`` und
@@ -488,6 +495,22 @@ class StatusAnDerQuelle(_Arbeitsraum):
         with patch.object(projekt_termine, "STATUS_FRIST_SEKUNDEN", 0.2):
             titel, gefragt = await self._abschluss({961: "closed"}, zugang_langsam=0.5)
         self.assertEqual((titel, gefragt), ([], [("o/r", 961)]))
+
+    async def test_abbruch_durch_die_frist_behaelt_das_schon_gemessene(self):
+        """Die Zusage „bricht die Abfrage nach der Haelfte ab, zaehlt die Haelfte" —
+        gefunden vom Gegenleser als EINZIGE Luecke der Batterie: wird im Fehlerzweig
+        `set()` statt des schon Gemessenen zurueckgegeben, bleiben alle Tests gruen.
+
+        Lage: #961 antwortet sofort „closed", #970 haengt laenger als die Frist. Danach
+        muss #961 gemessen BLEIBEN (kein Karten-Doppel), #970 aber eine Karte werden.
+        Raeumt jemand den Fehlerzweig „auf", verliert die Wache bei einem langsamen
+        Hoster still die halbe Wirkung von #1106 — ohne dass etwas rot wird."""
+        with patch.object(projekt_termine, "STATUS_FRIST_SEKUNDEN", 0.3):
+            titel, gefragt = await self._abschluss(
+                {961: "closed", 970: "open"}, langsam={970: 5.0},
+                punkte=["Zu #961 nachfassen", "Fuer #970 die Inventur abschliessen"])
+        self.assertEqual(gefragt, [("o/r", 961), ("o/r", 970)])
+        self.assertEqual(titel, ["Fuer #970 die Inventur abschliessen"])
 
     async def test_frist_bricht_die_abfrage_ab_und_legt_die_karte_an(self):
         """Die zugesagte Gesamtfrist. Eine hängende Quelle darf die Besprechung nicht

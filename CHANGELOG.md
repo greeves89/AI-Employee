@@ -15,6 +15,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   - Die 15-Sekunden-Frist deckt die Abfragen ab, ausdrücklich **nicht** das Beschaffen des Zugangs. Dabei wird bei Bedarf der OAuth-Token erneuert; ein Abbruch mitten in diesem Tausch verbrennt den Refresh-Token und lässt die Verbindung als getrennt gelten (dieselbe Fehlerklasse wie #1013). Eine Besprechung, die 15 Sekunden früher endet, ist das nicht wert.
   - Eine Nummer, die beim Hoster ein **Pull Request** ist, zählt nicht als erledigtes Issue: „PR #1126 nachziehen" bliebe sonst lautlos aus — in einem gewachsenen Repo ist fast jede Zahl geschlossen. Das schützt PR-Nummern; eine Zahl, die im Protokoll etwas ganz anderes meint („Punkt #3 priorisieren"), ist davon nicht erfasst — ist Issue #3 geschlossen, wird dieser Punkt weiter übersprungen.
   - Die Abfrage läuft in einer eigenen Datenbanksitzung. Sonst konnte das Beschaffen des Zugangs die Sitzung der Besprechung zurückrollen — Karten, Protokollnachricht und Übersprungen-Spur gingen dann still verloren, obwohl die Besprechung als beendet galt.
+  - Antwortet der Hoster mit einer Seite statt mit Daten — ein Anmeldeportal oder eine Fehlerseite einer eigenen Installation tut das mit vollem Erfolgscode —, betrifft das nur diese eine Nummer. Vorher riss sie alle noch nicht gefragten Nummern derselben Besprechung mit, und jede davon bekam ihre Karte ein zweites Mal.
   - Unverändert bleibt: ein Punkt, der neben einer geschlossenen auch eine offene Nummer nennt, wird weiterhin zur Karte.
 
 ## [1.411.0] - 2026-10-31
