@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.397.0] - 2026-10-29
+
+### Neu
+- **Karten öffnen sich im Fenster.** Ein Klick auf eine Karte im Projekt-Board öffnet ein Fenster mit der ganzen Beschreibung (das Board kürzt auf 600 Zeichen), allen Tags, Ticket, Pull Request, Stand und Ergebnis bzw. Fehler des Laufs. Dazu kommen dieselben Knöpfe wie auf der Karte. **Lauf ansehen** öffnet den Lauf in einem zweiten Fenster.
+  - Neuer Endpunkt `GET /teams/{id}/karten/{karte_id}` mit vollem Text. Das Ergebnis eines Laufs sieht nur, wem der ausführende Agent gehört, wie im Board.
+- **Aufgaben öffnen sich überall im selben Fenster:** Aufgabenliste, Agenten-Seite, Leitstand, Aktivitätsverlauf, Benachrichtigungen und Aufgaben-Kacheln im Chat.
+  - Strg/Cmd-Klick öffnet weiterhin die eigene Seite in einem neuen Tab.
+  - Die beiden bisherigen Sonderfenster (Benachrichtigungen, Chat-Kachel) sind durch das gemeinsame ersetzt.
+- Liegen mehrere Fenster übereinander, schließt **Esc** nur das oberste.
+
 ## [1.396.1] - 2026-10-29
 
 ### Geändert
