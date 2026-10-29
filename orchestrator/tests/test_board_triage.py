@@ -529,3 +529,115 @@ class ForgejoTags(Basis):
             # Am Issue, aber die Kennung ist keine Zahl: abgelehnt, nichts gelöscht.
             self.assertFalse(await f.remove_label(c, "t", "team/repo", 5, "status/ready"))
         self.assertFalse([a for a in anfragen if a[0] in ("POST", "DELETE")])
+
+
+class Nachpruefung(_git.Abgleich):
+    """Nachprüfung: Audit-Notiz hängt an, Notizen von Agenten nur an erlaubten Karten,
+    Zugang vor der Frist, keine fremden Tags mit Halter, Titel einzeilig."""
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        self.gh = _Repo(tags=["status/ready", "status/triage"])
+        projekt_git._REPO_TAGS.clear()
+
+    async def test_audit_notiz_haengt_an_und_bleibt_in_der_spalte(self):
+        self.gh.issues = [_issue(40)]
+        async with self.Session() as db:
+            await self._lauf(db)
+            k = (await self._karten(db))[("issue", 40)]
+            k.notiz = "Antwort: API v2 nehmen"
+            await db.commit()
+            self.gh.issues[0]["labels"] = [{"name": "status/ready"}]
+            await self._lauf(db)
+            k = (await self._karten(db))[("issue", 40)]
+            self.assertEqual(k.spalte, "bereit")
+            self.assertTrue(k.notiz.startswith("Antwort: API v2 nehmen · Freigabe per Tag im Repo ("), k.notiz)
+        lang = ProjektKarte(id="x", team_id="p1", titel="T", notiz="x" * 500)
+        projekt_git._per_tag_freigegeben(lang, None)
+        self.assertLessEqual(len(lang.notiz), 500)
+        self.assertIn("Freigabe per Tag im Repo (", lang.notiz)
+
+    async def test_agent_notiz_nur_an_erlaubten_karten(self):
+        async with self.Session() as db:
+            await self._karte(db, "fremd", "in_arbeit", task_id="t2", agent_id="a2")
+            await self._karte(db, "frage", "triage", agent_id="a2")
+            await self._karte(db, "fertig", "erledigt")
+            await self._karte(db, "draussen", "bereit", extern_bearbeiter="@jemand")
+            for kid in ("fremd", "frage", "fertig", "draussen"):
+                with self.assertRaises(HTTPException) as e:
+                    await api.karte_aendern("p1", kid, api.KarteAendern(notiz="Hinweis"), user=agent("a1"), db=db,
+                                            redis=None)
+                self.assertEqual(e.exception.status_code, 409, kid)
+            await self._karte(db, "eigen", "in_arbeit", task_id="t1", agent_id="a1")
+            await self._karte(db, "neu", "eingang")
+            await self._karte(db, "rev", "pruefung")
+            for kid in ("eigen", "neu", "rev"):
+                r = await api.karte_aendern("p1", kid, api.KarteAendern(notiz="Hinweis"), user=agent("a1"), db=db,
+                                            redis=None)
+                self.assertEqual(r["notiz"], "Hinweis", kid)
+
+    async def test_zugang_steht_vor_der_frist(self):
+        """Ein langsamer Zugang (Datenbank) zählt nicht zur Frist des Netzwerkteils."""
+        import asyncio
+
+        async def langsam(*_a, **_kw):
+            await asyncio.sleep(0.2)
+            return "t", self.gh
+
+        async with self.Session() as db:
+            k = projekte.neue_karte("p1", "Issue 41", "Text", quelle="issue", extern_nr=41)
+            db.add(k)
+            await db.commit()
+            self.gh.issues.append(_issue(41))
+            with patch.object(projekt_git, "zugang", side_effect=langsam), \
+                    patch.object(api, "REPO_FRIST_SEKUNDEN", 0.1):
+                r = await api.karte_aendern("p1", k.id, api.KarteAendern(spalte="bereit"), user=MITGLIED, db=db,
+                                            redis=None)
+        self.assertEqual((r["spalte"], r["labels"]), ("bereit", ["status/ready"]))
+
+    async def test_halter_nimmt_bei_fremder_uebernahme_keine_tags_weg(self):
+        self.gh.issues = [_issue(42, labels=["status/in-arbeit", "status/ready"])]
+        async with self.Session() as db:
+            await self._lauf(db)
+            team = await db.get(Team, "p1")
+            k = (await self._karten(db))[("issue", 42)]
+            k.extern_bearbeiter = "@jemand"
+            with patch.object(projekt_git, "zugang", return_value=("t", self.gh)):
+                tags = await projekt_git.status_ins_repo(db, None, team, k, "triage", agent_name="A1", agent_id="a1",
+                                                         lauf="t1")
+        self.assertEqual(self.gh.geschrieben, [("+", 42, ("status/triage",))])
+        self.assertEqual(set(tags), {"status/in-arbeit", "status/ready", "status/triage"})
+
+    def test_titel_in_texten_einzeilig(self):
+        k = ProjektKarte(id="k1", team_id="p1", titel="Zeile eins\n## Neue Überschrift", text="x", quelle="eigen")
+        self.assertNotIn("\n## Neue", projekte.karten_auftrag(k, "P"))
+        b = {"kennzahlen": {"eingang": 1, "bereit": 0, "in_arbeit": 0, "pruefung": 0, "wartet_auf_merge": 0,
+                            "heute_fertig": 0},
+             "laufend": [], "spalten": {"eingang": [projekte.karte_dict(ProjektKarte(
+                 id="k1", team_id="p1", titel="A\n## B", labels=[], prioritaet=2, spalte="eingang"))]}}
+        self.assertNotIn("\n## B", projekte.board_als_text({"name": "P", "id": "p1"}, b, {}))
+
+
+class ForgejoRobust(Basis):
+    async def test_unbrauchbare_antworten_ergeben_false_statt_absturz(self):
+        import httpx
+
+        from app.core.githost.forgejo import ForgejoHostProvider
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            if req.url.path.endswith("/labels") and req.method == "GET":
+                return httpx.Response(200, json=[])
+            if req.url.path.endswith("/labels") and req.method == "POST":
+                return httpx.Response(201, json=["keine", "kennung"])
+            return httpx.Response(500)
+
+        def verweigert(req: httpx.Request) -> httpx.Response:
+            return httpx.Response(403)
+
+        f = ForgejoHostProvider("https://git.example.com")
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+            self.assertIsNone(await f._label_id(c, "t", "team/repo", "status/triage"))
+            self.assertFalse(await f.add_labels(c, "t", "team/repo", 5, ["status/triage"]))
+        async with httpx.AsyncClient(transport=httpx.MockTransport(verweigert)) as c:
+            self.assertFalse(await f.add_labels(c, "t", "team/repo", 5, ["status/triage"]))
+            self.assertFalse(await f.remove_label(c, "t", "team/repo", 5, "status/triage"))

@@ -506,9 +506,16 @@ def extern_nachziehen(karte, labels: list[str], zustaendige: list[str],
 
 
 def _per_tag_freigegeben(karte, jetzt: datetime | None) -> None:
-    """Audit-Spur: Die Freigabe kam über ein Tag im Repo, nicht über das Board."""
+    """Audit-Spur: Die Freigabe kam über ein Tag im Repo, nicht über das Board.
+
+    Wird an eine vorhandene Notiz angehängt (sie kann eine Antwort oder Frage
+    tragen), gekürzt auf die 500 Zeichen der Spalte."""
     zeit = (jetzt or datetime.now(timezone.utc)).astimezone(projekte._zone()).strftime("%d.%m.%Y %H:%M")
-    karte.notiz = f"Freigabe per Tag im Repo ({zeit})"
+    vermerk = f"Freigabe per Tag im Repo ({zeit})"
+    bisher = (karte.notiz or "").strip()
+    if bisher:
+        vermerk = bisher[: max(0, 500 - len(vermerk) - 3)].rstrip() + " · " + vermerk
+    karte.notiz = vermerk[:500]
 
 
 def _triage_verlassen(karte, spalte: str) -> None:
@@ -1435,7 +1442,7 @@ REPO_SPALTEN = ("triage", "bereit", "eingang", "verworfen")
 
 async def status_ins_repo(db: AsyncSession, redis, team: Team, karte: ProjektKarte, stand: str, *,
                           agent_name: str | None = None, agent_id: str | None = None,
-                          lauf: str | None = None) -> list[str]:
+                          lauf: str | None = None, zugang_daten: tuple | None = None) -> list[str]:
     """Die neue Spalte einer Issue-Karte als Tag ins Issue — der Abgleich liest sie von dort.
 
     * ``triage`` (Rückfrage): Triage-Tag setzen. Nur mit Halter (``agent_id``: der
@@ -1452,13 +1459,15 @@ async def status_ins_repo(db: AsyncSession, redis, team: Team, karte: ProjektKar
     nach Triage. Gesetzt wird das Tag, das es im Repo schon gibt (``passendes_tag``).
     Liefert die Tags des Issues danach (``karte.labels`` bleibt unverändert — der
     Aufrufer übernimmt sie unter seiner Sperre); GitFehler, wenn das Repo nicht
-    erreichbar oder nicht beschreibbar ist.
+    erreichbar oder nicht beschreibbar ist. ``zugang_daten``: (Token, Anbieter),
+    schon vorher bestimmt — dann fragt die Funktion die Datenbank nicht mehr und ist
+    reiner Netzwerkteil (für eine Frist mit ``asyncio.wait_for``).
     """
     if stand not in REPO_SPALTEN:
         raise ValueError(stand)
     if karte.quelle != "issue" or not karte.extern_nr or not team.repo:
         return list(karte.labels or [])
-    token, anbieter = await zugang(db, redis, team)
+    token, anbieter = zugang_daten if zugang_daten is not None else await zugang(db, redis, team)
     if not token:
         raise GitFehler("Ohne Schlüssel kann das Board nichts ins Repo schreiben (Bearbeiten → Schlüssel).")
     repo, nr = repo_ziel(team.repo).pfad, karte.extern_nr
@@ -1469,7 +1478,9 @@ async def status_ins_repo(db: AsyncSession, redis, team: Team, karte: ProjektKar
         if stand in ("triage", "bereit"):
             tag = passendes_tag(stand, await repo_tags(anbieter, client, token, repo))
         if stand == "triage":
-            weg = (eigene_tags(aktuell, "in_arbeit") + eigene_tags(aktuell, "bereit")) if agent_id else []
+            # Nur mit Halter — und nie, wenn zugleich jemand von außen übernommen hat.
+            weg = ((eigene_tags(aktuell, "in_arbeit") + eigene_tags(aktuell, "bereit"))
+                   if agent_id and not karte.extern_bearbeiter else [])
         elif stand == "bereit":
             weg = tags_der_art(aktuell, "triage")
         else:

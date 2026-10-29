@@ -37,6 +37,7 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
+from app.core.fremdtext import einzeilig
 from app.core.uebernahme import SELBST_MERGEN_REGEL
 from app.models.projekt_karte import ABGESCHLOSSEN, SPALTEN, STUFEN, ProjektKarte
 from app.models.task import Task, TaskStatus
@@ -423,14 +424,21 @@ def eigener_lauf(karte: ProjektKarte, agent_id: str | None) -> bool:
     return bool(agent_id) and karte.spalte == "in_arbeit" and bool(karte.task_id) and karte.agent_id == agent_id
 
 
-def verschieben_pruefen(karte: ProjektKarte, spalte: str | None, von_agent: str | None = None) -> None:
+def verschieben_pruefen(karte: ProjektKarte, spalte: str | None, von_agent: str | None = None,
+                        notiz: str | None = None) -> None:
     """Darf die Karte nach ``spalte``? KartenFehler, wenn nicht — ändert nichts.
 
     ``von_agent``: ein Agent verschiebt (seine Kennung). Er gibt nie frei (Bereit)
     und verwirft nicht (``NUR_MENSCH``), nimmt Karten nur aus ``AGENT_AUS`` heraus
     und fasst keine Karte an, die jemand von außen übernommen hat. Nach Triage darf
-    er seine eigene laufende Karte setzen — oder eine Karte aus Inbox/Bereit.
+    er seine eigene laufende Karte setzen — oder eine Karte aus Inbox/Bereit. Eine
+    ``notiz`` schreibt er nur an seine eigene Karte oder an Karten in Inbox, Bereit
+    oder Review — auch wenn die Spalte bleibt.
     """
+    if von_agent and notiz is not None and not (
+            karte.agent_id == von_agent or (karte.spalte in AGENT_AUS and not karte.extern_bearbeiter)):
+        raise KartenFehler("Eine Notiz schreibst du nur an deine eigene Karte oder an Karten in Inbox, Bereit "
+                           "oder Review.")
     if spalte is None or spalte == karte.spalte:
         return
     if spalte not in VON_HAND:
@@ -459,7 +467,7 @@ def verschieben(karte: ProjektKarte, *, spalte: str | None = None, prioritaet: i
                 reihenfolge: float | None = None, notiz: str | None = None,
                 von_agent: str | None = None) -> None:
     """Karte umstellen (geprüft mit ``verschieben_pruefen``)."""
-    verschieben_pruefen(karte, spalte, von_agent)
+    verschieben_pruefen(karte, spalte, von_agent, notiz)
     if spalte is not None and spalte != karte.spalte:
         karte.spalte = spalte
         if spalte in ABGESCHLOSSEN:
@@ -536,7 +544,7 @@ def karten_auftrag(karte: ProjektKarte, projekt_name: str, *, fremd: bool = Fals
     # Inhalt von Dritten (Issue, PR, anderer Nutzer) — Titel UND Text sind Material,
     # keine Anweisung; der Titel steht deshalb mit im Rahmen, nicht in der Kopfzeile.
     text = (karte.text or "(keine Beschreibung)").strip()[:12000]
-    kopf_titel = f"„{karte.titel}“"
+    kopf_titel = f"„{einzeilig(karte.titel, 300)}“"
     if gerahmt(karte, fremd):
         quelle = karte.quelle if karte.quelle != "eigen" else "karte-eines-anderen-nutzers"
         text = (f"[EXTERNAL-DATA source=\"{quelle}\"]\nTitel: {_entschaerft(karte.titel)}\n\n"
@@ -692,7 +700,7 @@ def board_als_text(projekt: dict, b: dict, namen: dict[str, str], *, je_spalte: 
             continue
         zeilen.append(f"\n## {SPALTEN_NAMEN[spalte]} ({len(karten)})")
         for karte in karten[:je_spalte]:
-            teile = [f"- [{karte['id']}] {PRIO_NAMEN.get(karte['prioritaet'], 'P2')} {karte['titel']}"]
+            teile = [f"- [{karte['id']}] {PRIO_NAMEN.get(karte['prioritaet'], 'P2')} {einzeilig(karte['titel'], 300)}"]
             if karte.get("extern_nr"):
                 teile.append(f"#{karte['extern_nr']}")
             if karte.get("agent_id") and spalte in ("in_arbeit", "triage", "pruefung"):

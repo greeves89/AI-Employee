@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.tasks import _get_task_router, _get_user_agent_ids
+from app.core.fremdtext import einzeilig
 from app.core.task_router import TaskRouter
 from app.db.session import get_db
 from app.dependencies import get_redis_service, is_agent_principal, require_auth, require_auth_or_agent
@@ -844,7 +845,7 @@ async def karte_aendern(team_id: str, karte_id: str, body: KarteAendern, user=De
     agent_id = str(user.id) if is_agent_principal(user) else None
     try:
         karte = await projekte.karte_laden(db, t.id, karte_id)
-        projekte.verschieben_pruefen(karte, body.spalte, agent_id)
+        projekte.verschieben_pruefen(karte, body.spalte, agent_id, body.notiz)
     except (LookupError, projekte.KartenFehler) as e:
         await db.rollback()
         raise _kartenfehler(e)
@@ -920,9 +921,11 @@ async def _status_ins_repo(db: AsyncSession, redis, t: Team, karte, *, ziel: str
     else:
         noetig = False  # Triage ohne Tag holt der Abgleich nicht zurück (projekt_git.extern_nachziehen)
     try:
+        # Zugang (Datenbank) vorher — in der Frist steht nur der Netzwerkteil.
+        zugang_daten = await projekt_git.zugang(db, redis, t)
         return await asyncio.wait_for(
             projekt_git.status_ins_repo(db, redis, t, karte, ziel, agent_name=name, agent_id=halter,
-                                        lauf=karte.task_id if halter else None),
+                                        lauf=karte.task_id if halter else None, zugang_daten=zugang_daten),
             timeout=REPO_FRIST_SEKUNDEN)
     except projekt_git.GitFehler as e:
         meldung = str(e)
@@ -1216,6 +1219,11 @@ async def karte_uebergeben(team_id: str, karte_id: str, body: Uebergeben, reques
     except projekt_git.GitFehler as e:
         await db.rollback()
         raise HTTPException(status_code=424, detail=str(e))
+    except Exception as e:  # noqa: BLE001 — Netz, Antwort des Servers: keine Details nach außen
+        await db.rollback()
+        projekt_git.log.warning("[Projekt] Übergabe der Karte %s nicht ins Repo geschrieben: %r", karte_id, e)
+        raise HTTPException(status_code=424, detail="Die Übergabe ließ sich nicht ins Repo schreiben — das Repo "
+                                                    "hat nicht (richtig) geantwortet. Bitte später noch einmal.")
     karte = await projekte.karte_laden(db, t.id, karte_id, sperren=True)
     karte.task_id = karte.agent_id = karte.stufe = None
     karte.extern_seit = karte.extern_regung_at = karte.extern_branch = karte.extern_bis = None
@@ -1296,14 +1304,15 @@ async def _ergebnis_festhalten(db: AsyncSession, t: Team, karte: dict, task, use
         if len(ergebnis) > 2000:
             ergebnis = ergebnis[:2000].rstrip() + "\n[… gekürzt]"
         nr = f" (#{karte['extern_nr']})" if karte.get("extern_nr") else ""
-        abschnitt = (f"## {datetime.now().strftime('%d.%m.%Y')} — {karte['titel']}{nr}\n"
+        titel = einzeilig(karte["titel"], 200)
+        abschnitt = (f"## {datetime.now().strftime('%d.%m.%Y')} — {titel}{nr}\n"
                      f"Abgenommen; bearbeitet von {agent.name if agent else '—'}.\n\n{ergebnis or '(ohne Ergebnistext)'}")
         brain = await projekt_wissen.sicherstellen(db, t)
         await projekt_wissen.anhaengen(db, brain, "ergebnisse.md", abschnitt, wer=getattr(user, "email", None) or "Abnahme",
                                        kopf=f"Ergebnisse — {team_name}")
         t = await db.get(Team, team_id)
         await projekt_gespraech.posten(db, t, autor_typ="system", autor_id=None, autor_name="Abnahme",
-                                       text=f"Abgenommen: {karte['titel']}{nr} — steht in ergebnisse.md.", art="ergebnis",
+                                       text=f"Abgenommen: {titel}{nr} — steht in ergebnisse.md.", art="ergebnis",
                                        karte_id=karte["id"])
         await db.commit()
     except Exception as e:  # noqa: BLE001

@@ -167,7 +167,13 @@ class ForgejoHostProvider(GitHostProvider):
     async def get_issue(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int) -> dict | None:
         """Ein Issue mit Tags und Zuständigen — None, wenn es nicht lesbar ist."""
         resp = await client.get(f"{self.api_base}/repos/{repo}/issues/{nummer}", headers=self._headers(token))
-        return resp.json() if resp.status_code == 200 else None
+        if resp.status_code != 200:
+            return None
+        try:
+            daten = resp.json()
+        except ValueError:
+            return None
+        return daten if isinstance(daten, dict) else None
 
     @staticmethod
     def _kennung(wert) -> int | None:
@@ -175,13 +181,20 @@ class ForgejoHostProvider(GitHostProvider):
         return wert if isinstance(wert, int) and not isinstance(wert, bool) and wert > 0 else None
 
     async def _label_id(self, client: httpx.AsyncClient, token: str, repo: str, name: str) -> int | None:
-        """Forgejo/Gitea vergeben Tags per Kennung: vorhandenes suchen (alle Seiten), sonst anlegen."""
-        for eintrag in await self._seiten(client, token, f"/repos/{repo}/labels", {}, 1000):
-            if eintrag.get("name") == name:
-                return self._kennung(eintrag.get("id"))
-        neu = await client.post(f"{self.api_base}/repos/{repo}/labels", headers=self._headers(token),
-                                json={"name": name, "color": "#fbca04"})
-        return self._kennung(neu.json().get("id")) if neu.status_code in (200, 201) else None
+        """Forgejo/Gitea vergeben Tags per Kennung: vorhandenes suchen (alle Seiten), sonst anlegen.
+
+        None, wenn der Server ablehnt oder Unbrauchbares liefert — der Aufrufer meldet
+        dann „ließ sich nicht setzen“ statt eines Absturzes."""
+        try:
+            for eintrag in await self._seiten(client, token, f"/repos/{repo}/labels", {}, 1000):
+                if eintrag.get("name") == name:
+                    return self._kennung(eintrag.get("id"))
+            neu = await client.post(f"{self.api_base}/repos/{repo}/labels", headers=self._headers(token),
+                                    json={"name": name, "color": "#fbca04"})
+            daten = neu.json() if neu.status_code in (200, 201) else None
+        except (RuntimeError, LookupError, ValueError):
+            return None
+        return self._kennung(daten.get("id")) if isinstance(daten, dict) else None
 
     async def list_labels(self, client: httpx.AsyncClient, token: str, repo: str, hoechstens: int = 300) -> list[str]:
         """Namen aller Tags (Labels) des Repos — das Board setzt das hier übliche."""
