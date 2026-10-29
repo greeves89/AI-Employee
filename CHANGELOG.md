@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.398.1] - 2026-10-29
+
+### Behoben
+- **`update.sh` räumt alte Abbilder weg.** Jedes Update holte die Abbilder der neuen Version (das Agenten-Abbild allein hat über 6 GB) und ließ die alten liegen. Auf einer Anlage mit vielen Updates lagen so rund 20 Versionen je Abbild, über 100 GB, bis die Platte voll war und die Sicherung vor dem nächsten Update scheiterte.
+  - Nach einem erfolgreichen Start löscht das Skript jetzt die eigenen Abbilder älterer Versionen. Es behält die neue und die vorige Version (Rücksprung) und alles, was ein Container noch benutzt; gelöscht wird nie erzwungen.
+  - Dazu entfernt es Build-Cache, der älter als drei Tage ist. Volumes bleiben unberührt.
+  - Abschaltbar mit `AI_EMPLOYEE_ABBILDER_AUFRAEUMEN=0`.
+
 ## [1.398.0] - 2026-10-29
 
 ### Sekretariat / Seite „Heute“

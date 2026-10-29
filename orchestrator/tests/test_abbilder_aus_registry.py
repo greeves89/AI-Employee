@@ -416,3 +416,72 @@ class EineListeEineNummer(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+_AUFRAEUM_ATTRAPPE = r"""#!/usr/bin/env bash
+echo "$*" >> "$ATTRAPPE_LOG"
+case "$1" in
+  images) for t in $TAGS; do echo "$t"; done ;;
+  image)
+    if [ "$2" = "rm" ]; then
+      for b in $BENUTZT; do [ "$3" = "$b" ] && exit 1; done
+    fi ;;
+esac
+exit 0
+"""
+
+
+class AbbilderAufraeumen(unittest.TestCase):
+    """Jedes Update ließ die alten Abbilder liegen — am 29.10. über 100 GB, die Platte lief voll."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        bin_ = self.tmp / "bin"
+        bin_.mkdir()
+        (bin_ / "docker").write_text(_AUFRAEUM_ATTRAPPE)
+        (bin_ / "docker").chmod(0o755)
+        self.log = self.tmp / "docker.log"
+        self.env = {**os.environ, "PATH": f"{bin_}:{os.environ['PATH']}", "ATTRAPPE_LOG": str(self.log),
+                    "TAGS": "1.398.0 1.396.0 1.394.1 1.391.0 <none>"}
+        for name in ("AI_EMPLOYEE_REGISTRY", "AI_EMPLOYEE_ABBILDER_AUFRAEUMEN"):
+            self.env.pop(name, None)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _lauf(self, *behalten, **env):
+        return subprocess.run(
+            ["bash", "-c", f'set -euo pipefail; source "{HILFSDATEI}"; abbilder_aufraeumen "$@"', "_", *behalten],
+            cwd=self.tmp, env={**self.env, **env}, capture_output=True, text=True, timeout=30,
+        )
+
+    def _geloescht(self):
+        return [z.split()[-1] for z in self.log.read_text().splitlines() if z.startswith("image rm ")]
+
+    def test_behaelt_neue_und_vorige_version(self):
+        lauf = self._lauf("1.398.0", "1.396.0")
+        self.assertEqual(lauf.returncode, 0, lauf.stderr)
+        weg = self._geloescht()
+        self.assertTrue(weg)
+        self.assertFalse([w for w in weg if w.endswith((":1.398.0", ":1.396.0"))])
+        for dienst in ("orchestrator", "frontend", "embedding-service", "stt-service", "agent"):
+            self.assertIn(f"ghcr.io/greeves89/ai-employee-{dienst}:1.391.0", weg)
+        self.assertNotIn("<none>", " ".join(weg))
+        aufrufe = self.log.read_text()
+        self.assertIn("builder prune -f --filter until=72h", aufrufe)
+        self.assertNotIn("volume", aufrufe)
+        self.assertNotIn("image rm -f", aufrufe)  # nie erzwingen: benutzte Abbilder bleiben
+
+    def test_benutztes_abbild_bleibt_und_bricht_nichts_ab(self):
+        lauf = self._lauf("1.398.0", "1.396.0", BENUTZT="ghcr.io/greeves89/ai-employee-agent:1.394.1")
+        self.assertEqual(lauf.returncode, 0, lauf.stderr)
+        self.assertIn("Alte Abbilder entfernt: 9", lauf.stdout)
+
+    def test_abschaltbar(self):
+        lauf = self._lauf("1.398.0", AI_EMPLOYEE_ABBILDER_AUFRAEUMEN="0")
+        self.assertEqual(lauf.returncode, 0, lauf.stderr)
+        self.assertFalse(self.log.exists())
+
+    def test_update_raeumt_erst_nach_dem_start_auf(self):
+        skript = (REPO / "scripts" / "update.sh").read_text()
+        self.assertLess(skript.index('ok "Orchestrator is ready"'), skript.index("abbilder_aufraeumen"))

@@ -3911,6 +3911,13 @@ steht danach als `AI_EMPLOYEE_VERSION` in der `.env`, damit Code und Abbilder
 zusammenpassen. Am Ende nennt das Skript die Agenten, die noch auf dem alten Abbild laufen,
 und den Commit vor dem Update.
 
+**Alte Abbilder räumt das Update selbst weg** *(seit 1.398.1)*. Nach einem erfolgreichen Start
+löscht `update.sh` die Abbilder älterer Versionen. Es behält die neue und die vorige Version
+(für den Rücksprung) und alles, was ein Agent oder ein anderer Container noch benutzt. Dazu
+entfernt es Build-Cache, der älter als drei Tage ist. Daten (Volumes) fasst es nie an. Vorher
+blieben alle Versionen liegen; bei häufigen Updates waren das schnell über 100 GB. Abschalten
+lässt es sich mit `AI_EMPLOYEE_ABBILDER_AUFRAEUMEN=0` in der `.env`.
+
 **Rücksprung** auf den Stand vor dem Update: `git checkout <commit von vorher>`, dann
 `bash -c '. scripts/lib/abbilder.sh && abbilder_bereitstellen 0' && docker compose up -d`
 (holt die Abbilder dieser älteren Version), dann die Sicherung von vorhin mit
