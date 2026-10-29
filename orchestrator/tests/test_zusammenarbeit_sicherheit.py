@@ -169,6 +169,11 @@ class PushPruefenGrenzen(_Basis):
     async def test_hammern_hebelt_die_sperre_nicht_aus(self):
         """Über der Grenze keine neuen Abfragen beim Git-Server — aber die Entscheidung bleibt."""
         ziel = [{"branch": "12-x", "remote": "https://github.com/o/r"}]
+        # Der Zähler gilt je Kalenderminute; fiele ein Minutenwechsel in den Test,
+        # finge er neu an. Deshalb steht die Uhr mitten in einer Minute still.
+        uhr = patch("time.time", return_value=1_800_000_030.0)
+        uhr.start()
+        self.addCleanup(uhr.stop)
         async with self.Session() as db:
             for _ in range(projekt_git.PUSH_FRAGEN_JE_MINUTE):
                 self.assertFalse((await self._pruefen(db, ziel))["erlaubt"])
