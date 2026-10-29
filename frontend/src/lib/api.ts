@@ -4659,6 +4659,16 @@ export interface Team {
   angebundene_brains?: string[];
   /** Monatsbudget des Projekts in USD; leer = keins (setzt der Ersteller unter Finanzen). */
   budget_usd?: number | null;
+  /** Wie lange eine Übernahme ohne Lebenszeichen gilt (Stunden; leer = 2). */
+  uebernahme_stunden?: number | null;
+  /** Höchstens so viele offene Übernahmen je Bearbeiter (leer = 2). */
+  max_uebernahmen?: number | null;
+  /** Dürfen Agenten abgelaufene fremde Übernahmen nach einer Karenzzeit übernehmen? */
+  abgelaufene_uebernehmen?: boolean;
+  /** Rückkanal „@ai-employee …“ im Issue: an, aus oder auto (an nur bei privatem Repo mit Schlüssel). */
+  rueckkanal?: "an" | "aus" | "auto";
+  /** Ob das Repo öffentlich ist (beim Abgleich gelesen; leer = unbekannt). */
+  repo_oeffentlich?: boolean | null;
 }
 
 // ─── Finanzen (orchestrator: core/finanzen) — alle Beträge in USD ───
@@ -4988,6 +4998,10 @@ export async function updateTeam(
     repo?: string;
     repo_secret_id?: number;
     angebundene_brains?: string[];
+    uebernahme_stunden?: number;
+    max_uebernahmen?: number;
+    abgelaufene_uebernehmen?: boolean;
+    rueckkanal?: "an" | "aus" | "auto";
   },
 ): Promise<Team> {
   return fetchJSON(`${getBase()}/teams/${id}`, {
@@ -5042,6 +5056,16 @@ export async function projektRepoAbgleichen(
 ): Promise<{ neu?: number; aktualisiert?: number; erledigt?: number; offene_issues?: number; offene_prs?: number; uebersprungen?: boolean }> {
   const q = beimOeffnen ? "?beim_oeffnen=true" : "";
   return fetchJSON(`${getBase()}/teams/${id}/repo/abgleichen${q}`, { method: "POST" });
+}
+
+/** Abschnitt „Zusammenarbeit mit AI Employee“ für die AGENTS.md des Repos — als Text. */
+export async function projektAgentsMd(id: string): Promise<{ pfad: string; text: string; anlage: string; hat_repo: boolean }> {
+  return fetchJSON(`${getBase()}/teams/${id}/repo/agents-md`);
+}
+
+/** Denselben Abschnitt als Pull Request ins Repo stellen (nie direkt auf den Standard-Branch). */
+export async function projektAgentsMdPr(id: string): Promise<{ url: string | null; aktuell: boolean }> {
+  return fetchJSON(`${getBase()}/teams/${id}/repo/agents-md`, { method: "POST" });
 }
 
 export async function projektGespraech(id: string, limit = 100): Promise<{ nachrichten: ProjektNachricht[] }> {
@@ -5140,6 +5164,19 @@ export async function karteHolen(id: string, karteId: string): Promise<ProjektKa
 
 export async function karteAbnehmen(id: string, karteId: string): Promise<ProjektKarte> {
   return fetchJSON(`${getBase()}/teams/${id}/karten/${karteId}/abnehmen`, { method: "POST" });
+}
+
+/** „Übergeben an …“: Stand und nächster Schritt ins Issue, die Übernahme geht an den Empfänger
+ *  (ein Agent des Projekts bekommt einen neuen Lauf; jemand außerhalb: claude-code:…, mensch:<login>). */
+export async function karteUebergeben(
+  id: string,
+  karteId: string,
+  body: { agent_id?: string; an?: string; stand: string; naechster_schritt: string },
+): Promise<ProjektKarte> {
+  return fetchJSON(`${getBase()}/teams/${id}/karten/${karteId}/uebergeben`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 /** Liegen gebliebene fremde Übernahme lösen: Tag und Zuständige im Repo weg, Karte nach Bereit. */

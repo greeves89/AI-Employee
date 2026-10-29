@@ -5,6 +5,41 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.401.0] - 2026-10-29
+
+### Neu
+- Neu: Externe erreichen Agenten aus dem Issue mit `@ai-employee <Agent>: <Frage>`; die Frage landet im Projektgespräch und weckt den Agenten.
+- Neu: Agenten stellen Rückfragen an Externe direkt im Issue (Werkzeug `projekt_issue_kommentar`).
+- Neu: Mehrere AI-Employee-Anlagen am selben Repo werden unterschieden (`@ai-employee <anlage>/<Agent>: …`, „Anlage …“ auf dem Board, Push-Sperre zwischen Anlagen).
+
+## [1.400.0] - 2026-10-29
+
+### Neu
+- Neu: Übernahmen von Issues laufen ohne Lebenszeichen ab (Standard 2 Stunden, je Projekt einstellbar); Agenten der Plattform verlängern ihre eigenen automatisch, solange sie arbeiten.
+- Neu: Obergrenze offener Übernahmen je Bearbeiter (Standard 2).
+- Neu: „Übergeben an …“ auf dem Board und als Agenten-Werkzeug, mit Stand und nächstem Schritt im Issue.
+- Neu: Konflikt-Warnung bei zwei gleichzeitigen Übernahmen oder fremden Commits auf dem Branch einer Übernahme.
+- Neu: Projekteinstellung, mit der Agenten abgelaufene fremde Übernahmen nach einer Karenzzeit übernehmen dürfen (Standard aus).
+
+## [1.399.0] - 2026-10-29
+
+### Neu
+- Neu: Übernahmen von Issues tragen eine maschinenlesbare Kopfzeile; das Board zeigt, wer übernommen hat (Agent dieser Anlage, Claude Code, andere Anlage, Mensch, extern).
+- Neu: Agenten der Plattform können nicht mehr in den Branch einer fremden Übernahme pushen; Läufe des Arbeitstakts pushen gar nicht.
+- Neu: Knopf „Regeln für Agenten“ erzeugt den Abschnitt „Zusammenarbeit mit AI Employee“ für die AGENTS.md des Repos, als Text oder als Pull Request.
+- Neu: Einstellung `ANLAGE_KENNUNG` (Name der Anlage in Übernahme-Kommentaren).
+
+## [1.398.2] - 2026-10-29
+
+### Behoben
+- **Microsoft-Verbindung galt plötzlich als getrennt (#1013).** Microsoft tauscht den Refresh-Token bei jeder Erneuerung aus. Erneuerten zwei Stellen gleichzeitig dasselbe Token (Seite „Heute“, Mail-Freigabe, ein Agent über MCP, die Sprachfront, Besprechungen, der Hintergrund-Job), verbrauchte die erste den Token, und die zweite scheiterte mit einem bereits ungültigen. Die Verbindung wurde als getrennt gemeldet.
+  - Jetzt erneuert je Integration immer nur einer (Sperre in der Datenbank).
+  - Wer wartet, übernimmt danach das Ergebnis, statt noch einmal zu erneuern.
+  - Dieselbe Sperre wie bei MCP-Servern (#462), jetzt gemeinsam in `core/db_sperre`.
+  - Ist der Token nach dem Warten ohnehin frisch, wird nicht noch einmal erneuert. Die erzwungene Erneuerung für Anthropic bleibt erzwungen.
+  - Gewartet wird höchstens 30 Sekunden.
+  - Ein Fehlschlag gibt die Sperre frei, ohne die Arbeit der übrigen Sitzung zu verwerfen. Der Hintergrund-Job erneuert nach einem Fehler die übrigen Integrationen weiter.
+
 ## [1.398.1] - 2026-10-29
 
 ### Behoben

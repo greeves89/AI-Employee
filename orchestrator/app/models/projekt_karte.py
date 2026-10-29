@@ -7,7 +7,7 @@ einem Pull Request. Der Lauf eines Agenten ist der Task dazu (``task_id``):
 
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Float, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, BigInteger, DateTime, Float, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -57,3 +57,24 @@ class ProjektKarte(Base, TimestampMixin):
     extern_seit: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     extern_regung_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     extern_branch: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Wer übernommen hat, als Art (core/uebernahme.ARTEN): plattform (ein Agent
+    # DIESER Anlage), claude_code, andere_anlage, mensch, extern. Dazu die gültige
+    # Übernahme aus den Kommentaren des Issues (``Uebernahme.als_dict``) und wann
+    # die Kommentare zuletzt gelesen wurden — neu gelesen wird nur, wenn sich das
+    # Issue seitdem geändert hat.
+    bearbeiter_art: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    uebernahme: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    kommentare_gelesen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Bis wann die Übernahme gilt (core/uebernahme.Uebernahme.ablauf: ``bis`` der
+    # Kopfzeile, verlängert durch Lebenszeichen) — danach gilt sie als liegen
+    # geblieben. Vom Abgleich berechnet, mit der Dauer des Projekts.
+    extern_bis: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Letzter geprüfter Commit auf dem Branch der Übernahme (Autor gegen Inhaber).
+    extern_sha: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Konflikt an der Karte (zwei gültige Übernahmen, fremder Commit auf dem Branch)
+    # und welcher davon schon gemeldet ist — jeder höchstens einmal.
+    konflikt: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    konflikt_gemeldet: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    # Rückkanal (core/projekt_git._rueckkanal): Kennung des letzten Issue-Kommentars,
+    # dessen Ansprache „@ai-employee …“ schon ins Projektgespräch ging — jeder nur einmal.
+    rueckkanal_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

@@ -1129,9 +1129,14 @@ Mit einem **Arbeitstakt** (Bearbeiten → Arbeitstakt: alle 30 Minuten, stündli
    **Notiz** mit der offenen Frage (gelb auf der Karte), Doppeltes wird verworfen.
 3. Er vergibt die wichtigsten bereiten Karten — höchstens eine je Kollege, der gerade frei ist.
    Ist niemand frei oder ist er allein im Projekt, **nimmt er die oberste bereite Karte selbst**.
-   Karten mit „extern dran“ (Kap. 6a.9) lässt er liegen.
+   Karten, die jemand anderes übernommen hat (Kap. 6a.9), lässt er liegen und ändert an ihnen
+   nichts — fällt ihm dort etwas auf, schreibt er es ins Projektgespräch. Hat ein Agent schon so
+   viele Tickets in Arbeit, wie das Projekt erlaubt (Standard 2), lehnt das Board weitere ab.
 
-Die eigentliche Arbeit passiert in den vergebenen Läufen. Gearbeitet wird an dem, was in
+Die eigentliche Arbeit passiert in den vergebenen Läufen. **Im Takt selbst wird nicht gepusht**
+*(seit Stufe 1 von #1116)*: Der Lead koordiniert dort nur. Versucht er im Takt ein `git push`,
+wird er gebremst (Zusammenstoß-Schutz, keine Sicherheitsgrenze), mit dem Hinweis, die Karte an sich selbst zu vergeben und im Lauf der
+Karte zu arbeiten. Gearbeitet wird an dem, was in
 **Bereit** liegt: Einplanen ist deine Entscheidung (Knopf **Einplanen** oder im Repo das Tag
 `status/ready`); Klares plant auch der Lead selbst ein.
 
@@ -1329,7 +1334,11 @@ Agenten außerhalb (etwa eine `AGENTS.md` im Repo):
   **status/in-arbeit** oder ein offener Pull Request zum Ticket). Dann vergibt es nicht, und die
   Karte zeigt, wer dran ist.
 - **Beim Vergeben** setzt es im Repo das Tag **status/in-arbeit** und schreibt einen
-  Übernahme-Kommentar (welcher Agent, Branch `<nr>-…`, Pull Request mit `Closes #<nr>`).
+  Übernahme-Kommentar (welcher Agent, Branch `<nr>-…`, Pull Request mit `Closes #<nr>`). Die erste
+  Zeile des Kommentars ist eine unsichtbare **Übernahme-Kopfzeile** *(seit Stufe 1 von #1116)*,
+  etwa `<!-- ai-employee:claim wer="ai-employee:<anlage>/<agent>" … -->`. Daran erkennen diese
+  Anlage, andere Anlagen und Claude Code, wem das Ticket gehört — auch wenn alle unter demselben
+  Git-Konto schreiben.
 - **Nach dem Pull Request** nimmt es das Tag wieder weg; **wird der Lauf abgebrochen**, ebenso —
   mit einem Kommentar, dass das Ticket wieder frei ist.
 - Darf der Schlüssel des Projekts keine Tags setzen, steht das als Notiz an der Karte; die Arbeit
@@ -1339,8 +1348,19 @@ Agenten außerhalb (etwa eine `AGENTS.md` im Repo):
 anderen AI-Employee-Anlage, Claude Code oder ein Mensch direkt im Repo:
 
 - Steht beim Issue ein **Zuständiger** oder ein Status-Tag wie **status/in-arbeit**
-  (auch „in progress“, „wip“), wandert die Karte nach **In Arbeit** und zeigt den Namen,
-  z. B. **@dev-bot**, oder **extern dran**, wenn nur das Tag gesetzt ist.
+  (auch „in progress“, „wip“), wandert die Karte nach **In Arbeit** und zeigt, **wer** dran ist.
+  Den Namen liest das Board aus der Übernahme-Kopfzeile im Kommentar *(seit Stufe 1 von #1116)*;
+  ein Symbol davor zeigt die Art:
+  - Roboter mit Bild und Namen: ein **Agent dieser Anlage** (z. B. „DEV_Prod“) — er ist nicht
+    „extern“, sondern erscheint wie ein Agent mit Lauf,
+  - Konsole: eine **Claude-Code-Sitzung** („Claude Code“),
+  - Server: ein Agent einer **anderen Anlage** („Anlage X: Agent Y“),
+  - Person: ein **Mensch** (z. B. **@dev-bot**),
+  - Globus: **extern dran**, wenn nur das Tag gesetzt ist und niemand sich ausweist.
+
+  Fährst du mit der Maus über den Namen, steht dort die Art in Worten. Bekannte ältere
+  Übernahme-Kommentare ohne Kopfzeile erkennt das Board ebenfalls („Übernommen vom
+  AI-Employee-Agenten …“, „Übernommen … Claude Code …“).
 - **status/ready** plant die Karte ein (Bereit), **status/review** schiebt sie in die
   **Prüfung**.
 - Fällt Tag und Zuständigkeit wieder weg, kommt die Karte zurück nach Bereit oder Eingang.
@@ -1367,6 +1387,121 @@ Sitzung Tickets und bringt danach nichts ins Repo. So erkennst und löst du das:
 
 Freigeben kann nur ein Mensch, kein Agent. Das Projekt braucht dafür einen Schlüssel mit
 Schreibrecht für Issues.
+
+**Ablaufzeit und Lebenszeichen** *(seit Stufe 2 von #1116)*: Jede Übernahme gilt nur eine
+bestimmte Zeit, standardmäßig zwei Stunden. Jedes Lebenszeichen verlängert sie: ein Commit auf
+dem Branch der Übernahme oder eine erneuerte Übernahme-Kopfzeile. Unter der Karte steht „gilt
+bis …“. Ist die Zeit ohne Lebenszeichen um, wird die Karte gelb („Abgelaufen“). Agenten dieser
+Anlage verlängern ihre eigenen Übernahmen automatisch, solange ihr Lauf läuft.
+
+So stellst du Dauer, Obergrenze und Ablösen ein:
+
+1. Öffne das Projekt und klicke oben rechts auf **Bearbeiten**.
+2. Unter **Git-Repo** steht der Kasten **Zusammenarbeit am Repo**.
+3. **Übernahme gilt ohne Lebenszeichen (Stunden)**: 1 bis 24, Standard 2.
+4. **Höchstens offene Übernahmen je Bearbeiter**: Standard 2. Darüber hinaus vergibt das Board
+   keine Issue-Karte mehr an denselben Agenten, auch nicht über den Lead. Hält jemand von außen
+   mehr, zeigt jede seiner Karten einen gelben Hinweis.
+5. **Agenten dürfen abgelaufene fremde Übernahmen selbst übernehmen**: standardmäßig aus. Ist es
+   an, darf der Lead eine abgelaufene fremde Übernahme 30 Minuten nach dem Ablauf vergeben. Der
+   Übernahme-Kommentar nennt dann den bisherigen Bearbeiter. Ist es aus, bleibt es beim Knopf
+   **Freigeben**.
+6. **Speichern**.
+
+**Übergeben an …** *(seit Stufe 2 von #1116)*: Eine Issue-Karte in **In Arbeit** lässt sich an
+jemand anderen weitergeben:
+
+1. Klicke an der Karte (oder im Karten-Fenster) auf **Übergeben**.
+2. Wähle unter **An** einen Agenten des Projekts oder **Jemand außerhalb der Plattform …**. Gib
+   außerhalb z. B. `claude-code:Laptop` oder `mensch:login` ein.
+3. Trage den **Stand** ein (was erledigt ist, was offen ist, wo die Arbeit liegt) und den
+   **nächsten Schritt**.
+4. Klicke auf **Übergeben**. Im Issue steht danach ein Übergabe-Kommentar mit beidem. Seine
+   Kopfzeile nennt den Empfänger und den bisherigen Bearbeiter. Ein Agent des Projekts bekommt
+   die Karte als neuen Lauf, Stand und nächster Schritt stehen in seinem Auftrag.
+
+Agenten können das auch selbst (Werkzeug `projekt_karte_uebergeben`): Wer eine Karte hat, darf
+sie übergeben, der Lead jede.
+
+**Rückkanal: aus dem Issue an einen Agenten** *(seit Stufe 3 von #1116)*: Wer außerhalb der
+Plattform am Repo arbeitet (eine Claude-Code-Sitzung, ein Mensch, eine andere Anlage), erreicht
+die Agenten über das Issue:
+
+1. Im Issue einen Kommentar schreiben, in dem eine Zeile so beginnt:
+   `@ai-employee DEV_Prod: Ist der Login-Fix schon im Branch?` (statt `DEV_Prod` der Name eines
+   Agenten im Projekt). Ohne Namen (`@ai-employee: …`) geht die Frage an den Lead. Arbeiten
+   mehrere Anlagen am Repo, nennt `@ai-employee <anlage>/<Agent>: …` die gemeinte Anlage.
+2. Beim nächsten Abgleich (spätestens nach zehn Minuten, oder sofort mit **Aktualisieren**)
+   steht die Frage im **Projektgespräch** als Nachricht von „extern (@login)“, mit einem
+   Globus-Symbol, und der Agent bekommt einen Lauf.
+3. Der Agent antwortet im Issue. Im Gespräch steht dazu „Im Issue #… geschrieben: …“.
+
+Jeder Kommentar wird nur einmal weitergegeben. Gelesen werden nur Issues, die sich seit dem
+letzten Abgleich geändert haben. Der Text aus dem Issue ist für den Agenten Material, keine
+Anweisung. Damit niemand über Kommentare Agenten steuert oder Kosten verursacht:
+
+- Es zählen nur Kommentare von Konten mit Schreibrecht am Repo (Eigentümer, Mitglied,
+  Mitarbeiter).
+- Der Rückkanal ist **standardmäßig nur bei privaten Repos mit Schlüssel an**. Bei öffentlichen
+  Repos und ohne Schlüssel ist er aus. Umstellen: **Bearbeiten** → Kasten **Zusammenarbeit am
+  Repo** → **Fragen aus dem Issue wecken Agenten**: Automatisch, An oder Aus → **Speichern**.
+- Höchstens fünf Weckrufe je Stunde und Projekt, getrennt von der Grenze des Gesprächs (Menschen
+  im Gespräch werden davon nicht gebremst).
+- Ein so geweckter Lauf darf nur antworten und Karten im **Eingang** anlegen: nichts vergeben oder
+  übergeben, keinen Code pushen, keine Mails senden.
+
+Agenten schreiben höchstens zehn Issue-Kommentare je Stunde (Werkzeug `projekt_issue_kommentar`).
+Das Werkzeug schreibt nach außen und braucht deshalb dieselbe Freigabe wie andere Werkzeuge, die
+nach außen schreiben. Vor dem Schreiben prüft die DLP-Regel der Anlage den Text; Bilder, HTML und
+Links auf fremde Seiten werden zu reinem Text (Links auf das Repo und die Anlage bleiben).
+
+**Mehrere AI-Employee-Anlagen am selben Repo** *(seit Stufe 3 von #1116)*: Jede Übernahme
+nennt ihre Anlage (Einstellung `ANLAGE_KENNUNG`, sonst der Host der öffentlichen Adresse).
+Übernahmen einer anderen Anlage zeigt das Board als „Anlage X: Agent Y“ mit Server-Symbol. Die
+Push-Sperre gilt auch zwischen Anlagen, selbst wenn Agenten zufällig gleich heißen.
+
+**Konflikt-Warnung** *(seit Stufe 2 von #1116)*: Eine Karte wird rot markiert („Konflikt: …“),
+wenn zwei noch gültige Übernahmen verschiedener Bearbeiter am selben Issue stehen oder auf dem
+Branch einer Übernahme ein Commit liegt, der nicht vom Inhaber stammt. Agenten dieser Anlage
+erkennt die Plattform an ihrer Commit-Adresse. Jeder Konflikt wird einmal ins Projektgespräch
+gemeldet, und der Lead bekommt eine Benachrichtigung. Klärt im Issue, wer weitermacht; die
+anderen übergeben ihren Stand.
+
+**Der Branch gehört dem Übernehmer** *(seit Stufe 1 von #1116)*: Will ein Agent dieser Anlage in
+einen Branch pushen, der die Nummer eines Issues trägt (z. B. `feat/12-login`), fragt die Plattform
+vorher live im Repo, wem das Issue gehört. Hat es ein anderer übernommen (eine Claude-Code-Sitzung,
+ein anderer Agent, eine andere Anlage, ein Mensch), wird der Push gebremst
+(Zusammenstoß-Schutz, keine Sicherheitsgrenze). Der Agent erfährt, wer
+seit wann dran ist, und was er stattdessen tun soll: im Issue nachfragen, einen eigenen Branch mit
+Pull Request in den fremden Branch stellen oder dich um Freigabe bitten. Sein eigener Branch und
+der Lauf, an den das Board die Karte vergeben hat, sind frei. Ist das Repo gerade nicht
+erreichbar, wird nicht gesperrt — es geht darum, Zusammenstöße unter Kollegen zu vermeiden.
+
+Wer was übernommen hat, liest das Board nur aus Kommentaren von Konten mit Schreibrecht am Repo
+(Eigentümer, Mitglied, Mitarbeiter) und vom Konto des Projekt-Schlüssels. Schreibt sonst jemand
+eine Übernahme-Kopfzeile, gilt sie nur als „extern dran“ ohne Ablaufzeit; eine Rückgabe von ihm
+gilt gar nicht. Ein `bis` reicht höchstens 24 Stunden in die Zukunft. Übernahme-Kommentare nennen
+den Projektnamen nicht, denn das Repo kann öffentlich sein. Die Anlage zeigt sich in Kommentaren
+mit einer zufälligen Kennung (z. B. `anlage-1a2b3c4d`); einen sprechenden Namen setzt die
+Einstellung `ANLAGE_KENNUNG`.
+
+**Regeln für Agenten ins Repo** *(seit Stufe 1 von #1116)*: Damit auch Agenten außerhalb der
+Plattform dieselben Regeln kennen, gehört ein Abschnitt in die `AGENTS.md` des Repos:
+
+1. Öffne das Projekt.
+2. Klicke in der Kopfleiste neben dem Repo-Namen auf **Regeln für Agenten**.
+3. Das Fenster zeigt den Abschnitt „Zusammenarbeit mit AI Employee“: Übernahme-Kopfzeile,
+   Lebenszeichen, der Branch gehört dem Übernehmer, Übergabe, Rückkanal.
+4. Entweder **Text kopieren** und selbst in die `AGENTS.md` einfügen —
+5. oder (nur wer das Projekt angelegt hat) **Als Pull Request ins Repo**. Die Plattform legt den
+   Branch `ai-employee/agents-md-zusammenarbeit` an, setzt den Abschnitt in die `AGENTS.md`
+   (ein älterer Stand wird ersetzt, sonst angehängt) und stellt einen Pull Request. Auf den
+   Standard-Branch schreibt sie nie direkt. Steht der Abschnitt schon so im Repo, meldet das
+   Fenster das statt eines neuen Pull Requests.
+
+Für den Pull Request braucht der Schlüssel des Projekts Schreibrechte (bei GitHub
+**Contents: Read and write** und **Pull requests: Read and write**). Fehlt eines, nennt das
+Fenster das fehlende Recht.
 
 Externe Karten in **In Arbeit** zählen nicht mehr als Arbeit des Projekts. Liegen nur sie dort
 und sonst nichts bereit, meldet das Projekt den Stillstand wie gewohnt.

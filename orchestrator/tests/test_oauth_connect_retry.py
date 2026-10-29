@@ -95,7 +95,8 @@ async def test_integration_refresh_retries_and_persists_once(method):
          patch("app.services.oauth_service.encrypt_token", side_effect=lambda v: "enc:" + v), \
          patch("app.services.oauth_service.httpx.AsyncClient", return_value=client), \
          patch("app.core.oauth_retry.asyncio.sleep", new_callable=AsyncMock):
-        await OAuthService(db, None)._refresh_token(integration)
+        # Die HTTP-Erneuerung selbst; die Sperre davor prüft test_oauth_refresh_sperre.py.
+        await OAuthService(db, None)._erneuern(integration)
     assert client.post.await_count == 2
     assert integration.refresh_token_encrypted == "enc:rotated"
     assert integration.access_token_encrypted == "enc:access"

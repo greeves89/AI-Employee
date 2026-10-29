@@ -45,6 +45,11 @@ export function CreateTeamModal({
   const [geteilt, setGeteilt] = useState<string[]>([]);
   const [repo, setRepo] = useState("");
   const [schluessel, setSchluessel] = useState<number>(0);
+  // Zusammenarbeit am Repo: Dauer einer Übernahme, Obergrenze je Bearbeiter, Ablösen erlaubt?
+  const [uebernahmeStunden, setUebernahmeStunden] = useState<number>(2);
+  const [maxUebernahmen, setMaxUebernahmen] = useState<number>(2);
+  const [abloesen, setAbloesen] = useState(false);
+  const [rueckkanal, setRueckkanal] = useState<"an" | "aus" | "auto">("auto");
   const [schluesselListe, setSchluesselListe] = useState<{ id: number; name: string; key_name: string }[]>([]);
   const [brains, setBrains] = useState<string[]>([]);
   const [brainListe, setBrainListe] = useState<{ label: string; name: string; description: string | null }[]>([]);
@@ -65,6 +70,10 @@ export function CreateTeamModal({
       setGeteilt(team?.geteilt_mit ?? []);
       setRepo(team?.repo ?? "");
       setSchluessel(team?.repo_secret_id ?? 0);
+      setUebernahmeStunden(team?.uebernahme_stunden ?? 2);
+      setMaxUebernahmen(team?.max_uebernahmen ?? 2);
+      setAbloesen(!!team?.abgelaufene_uebernehmen);
+      setRueckkanal(team?.rueckkanal ?? "auto");
       setBrains(team?.angebundene_brains ?? []);
       setError(null);
     }
@@ -109,6 +118,10 @@ export function CreateTeamModal({
         lead_agent_id: leadAgentId || null,
         ...(projekt ? { farbe, takt_minuten: takt, geteilt_mit: geteilt } : {}),
         ...(projekt ? { repo: repo.trim(), repo_secret_id: repo.trim() ? schluessel : 0 } : {}),
+        ...(projekt && isEdit && repo.trim() ? {
+          uebernahme_stunden: uebernahmeStunden, max_uebernahmen: maxUebernahmen, abgelaufene_uebernehmen: abloesen,
+          rueckkanal,
+        } : {}),
         // Nur bei Änderung mitschicken — sonst blockierte ein inzwischen entzogenes
         // Brain das Speichern jeder anderen Einstellung.
         ...(projekt && brains.join("\n") !== (team?.angebundene_brains ?? []).join("\n") ? { angebundene_brains: brains } : {}),
@@ -246,6 +259,44 @@ export function CreateTeamModal({
                               wählen, bei GitHub ein GitHub-Token, bei Forgejo/Gitea ein Token dieses Servers.
                               Öffentliche Repos gehen ohne (abgeglichen alle 30 Min.).
                             </p>
+                          </div>
+                        )}
+                        {repo.trim() && isEdit && (
+                          <div className="mt-3 space-y-2 rounded-lg border border-foreground/[0.08] p-3">
+                            <p className="text-xs font-medium text-muted-foreground">Zusammenarbeit am Repo</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              <label className="block text-[11px] text-muted-foreground">
+                                Übernahme gilt ohne Lebenszeichen (Stunden)
+                                <input type="number" min={1} max={24} value={uebernahmeStunden}
+                                  onChange={(e) => setUebernahmeStunden(Math.min(24, Math.max(1, Number(e.target.value) || 2)))}
+                                  className="mt-1 w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-sm outline-none focus:border-primary/50" />
+                              </label>
+                              <label className="block text-[11px] text-muted-foreground">
+                                Höchstens offene Übernahmen je Bearbeiter
+                                <input type="number" min={1} max={20} value={maxUebernahmen}
+                                  onChange={(e) => setMaxUebernahmen(Math.min(20, Math.max(1, Number(e.target.value) || 2)))}
+                                  className="mt-1 w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-sm outline-none focus:border-primary/50" />
+                              </label>
+                            </div>
+                            <label className="flex items-start gap-2 text-[11px] text-muted-foreground">
+                              <input type="checkbox" checked={abloesen} onChange={(e) => setAbloesen(e.target.checked)} className="mt-0.5" />
+                              <span>
+                                Agenten dürfen abgelaufene fremde Übernahmen selbst übernehmen (30 Minuten nach dem Ablauf,
+                                mit Kommentar an den bisherigen Bearbeiter). Aus: nur ein Mensch gibt sie im Board frei.
+                              </span>
+                            </label>
+                            <label className="block text-[11px] text-muted-foreground">
+                              Fragen aus dem Issue („@ai-employee Agent: …“) wecken Agenten
+                              <select value={rueckkanal} onChange={(e) => setRueckkanal(e.target.value as "an" | "aus" | "auto")}
+                                className="mt-1 w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-sm outline-none focus:border-primary/50">
+                                <option value="auto">
+                                  Automatisch — {team?.repo_oeffentlich === false && schluessel ? "an (privates Repo mit Schlüssel)" : "aus (öffentliches Repo oder ohne Schlüssel)"}
+                                </option>
+                                <option value="an">An — auch bei öffentlichem Repo</option>
+                                <option value="aus">Aus</option>
+                              </select>
+                              <span className="mt-1 block">Nur Kommentare von Konten mit Schreibrecht am Repo zählen; höchstens fünf Weckrufe je Stunde.</span>
+                            </label>
                           </div>
                         )}
                       </div>

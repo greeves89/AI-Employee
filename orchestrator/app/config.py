@@ -364,6 +364,11 @@ class Settings(BaseSettings):
     # shareable app links (the app-proxy URL) that an agent can hand to the user via
     # Telegram/chat/voice. Empty → only a relative path is available (web UI only).
     public_app_url: str = ""
+    # Name dieser Anlage in Übernahme-Kommentaren an Issues (core/uebernahme.py),
+    # z. B. "anlage-nord". Leer: eine zufällige Kennung, einmal erzeugt und in
+    # platform_settings gespeichert. Nicht geheim — sie steht in Repos, an denen
+    # die Anlage arbeitet.
+    anlage_kennung: str = ""
 
     # Expose the MS Graph MCP server to external LLM clients (e.g. OpenWebUI) via
     # our built-in OAuth 2.1 AS. Admin-only; only effective when a Microsoft app

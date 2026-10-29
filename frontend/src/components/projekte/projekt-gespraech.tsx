@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bot, Gavel, Loader2, Send, User, Wand2 } from "lucide-react";
+import { Bot, Gavel, Globe, Loader2, Send, User, Wand2 } from "lucide-react";
 import type { Agent } from "@/lib/types";
 import * as api from "@/lib/api";
 import { apiFehlertext } from "@/lib/api-fehler";
@@ -113,7 +113,9 @@ export function ProjektGespraech({
                     <AgentAvatar config={agent?.config} size="sm" />
                   ) : (
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-foreground/[0.06]">
-                      {system ? <Wand2 className="h-4 w-4 text-muted-foreground" /> : <User className="h-4 w-4 text-muted-foreground" />}
+                      {system ? <Wand2 className="h-4 w-4 text-muted-foreground" />
+                        : n.autor_typ === "extern" ? <Globe className="h-4 w-4 text-muted-foreground" />
+                          : <User className="h-4 w-4 text-muted-foreground" />}
                     </div>
                   )}
                 </div>

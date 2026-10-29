@@ -41,6 +41,9 @@ TOOL_CATEGORY_MAP: dict[str, str] = {
     "send_telegram": "external_communication",
     "notify_user": "external_communication",
     "send_voice": "external_communication",
+    # Schreibt in ein fremdes, vielleicht öffentliches Repo (Rückfrage ins Issue) —
+    # dieselbe Klasse wie andere nach außen schreibende Werkzeuge, nicht frei.
+    "projekt_issue_kommentar": "external_communication",
     # Second Brain mutations (write category covers contribute/update/delete)
     "brain_contribute": "knowledge_write",
     "brain_update": "knowledge_write",
@@ -93,7 +96,7 @@ ALWAYS_ALLOWED_TOOLS = frozenset({
     # Projekt-Board und Projektwissen: Arbeit unter Agenten desselben Projekts
     # planen und festhalten — dieselbe Klasse wie create_task/secondbrain_write.
     # Der Server prueft bei jedem Aufruf die Mitgliedschaft im Projekt.
-    "projekt_board", "projekt_karte_anlegen", "projekt_karte_verschieben", "projekt_karte_vergeben",
+    "projekt_board", "projekt_karte_anlegen", "projekt_karte_verschieben", "projekt_karte_vergeben", "projekt_karte_uebergeben",
     "projekt_karte_stand", "projekt_wissen_suchen", "projekt_wissen_lesen", "projekt_wissen_schreiben",
     "projekt_gespraech_lesen", "projekt_gespraech_schreiben", "projekt_wissen_ergaenzen", "projekt_termine",
     "projekt_termin_anlegen",
@@ -328,6 +331,9 @@ class ToolExecutor:
 
     def __init__(self, workspace_dir: str | None = None):
         self.workspace_dir = workspace_dir or settings.workspace_dir
+        # Der Lauf (Task), für den dieser Executor arbeitet — setzt der Runner; die
+        # Push-Sperre fragt damit, ob es ein Lauf des Arbeitstakts ist.
+        self.lauf: str | None = None
         self._api_client = None  # Lazy init
         self._mcp_client = None  # Lazy init for custom MCP servers
         self._cache = _ToolCache()
@@ -419,6 +425,13 @@ class ToolExecutor:
                     f"You MUST call `request_approval` first and wait for "
                     f"user approval before attempting this action."
                 )
+
+        # Läufe aus dem Rückkanal: dieselbe Prüfung wie im Hook von Claude Code und Codex.
+        from app.tools.push_sperre import werkzeug_pruefen
+
+        lauf_grund = await werkzeug_pruefen(tool_name, tool_input, self.lauf)
+        if lauf_grund:
+            return f"[GESPERRT] {lauf_grund}"
 
         if tool_name in CONCURRENT_SAFE_TOOLS:
             async with self._semaphore:
@@ -515,6 +528,13 @@ class ToolExecutor:
             )
             if approval_error:
                 return approval_error
+        # Push-Sperre (#1117) — dieselbe Entscheidung wie im PreToolUse-Hook von
+        # Claude Code und Codex: kein Push im Arbeitstakt, keiner in fremde Übernahmen.
+        from app.tools.push_sperre import pruefen as push_pruefen
+
+        push_grund = await push_pruefen(command, self.workspace_dir, self.lauf)
+        if push_grund:
+            return f"[PUSH GESPERRT]\n{push_grund}"
 
         try:
             process = await asyncio.create_subprocess_shell(

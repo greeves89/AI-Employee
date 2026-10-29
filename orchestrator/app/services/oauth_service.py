@@ -32,6 +32,14 @@ from app.core.oauth_providers import (
 from app.models.oauth_integration import OAuthIntegration, OAuthProvider, PER_USER_PROVIDERS
 from app.services.redis_service import RedisService
 
+def _utc(t: datetime) -> datetime:
+    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+
+
+#: Namensraum der Erneuerungs-Sperre je Integration (#1013) — fest, „oau\0“;
+#: MCP-Server nutzen „mcp\0“ (mcp_oauth_refresh).
+_OAUTH_SPERRE = 0x6F61_7500
+
 logger = logging.getLogger(__name__)
 
 STATE_TTL_SECONDS = 600  # 10 minutes
@@ -345,8 +353,47 @@ class OAuthService:
 
         return decrypt_token(integration.access_token_encrypted)
 
-    async def _refresh_token(self, integration: OAuthIntegration) -> OAuthIntegration:
-        """Refresh an expired access token."""
+    async def _refresh_token(self, integration: OAuthIntegration, erzwingen: bool = False) -> OAuthIntegration:
+        """Erneuern — nur einer je Integration gleichzeitig (#1013).
+
+        Microsoft (und andere) tauschen den Refresh-Token bei jeder Erneuerung aus.
+        Erneuerten zwei Aufrufe gleichzeitig — die Seite „Heute“, ein Agent über
+        MCP, die Sprachfront, der Hintergrund-Job —, verbrauchte der erste den
+        Token, und der zweite scheiterte mit einem bereits ungültigen: die
+        Verbindung galt als getrennt. Jetzt wartet der zweite auf den ersten und
+        nimmt dessen Ergebnis, statt selbst noch einmal zu erneuern.
+        """
+        from app.core.db_sperre import transaktionssperre
+
+        gelesen = integration.refresh_token_encrypted
+        try:
+            async with transaktionssperre(self.db, _OAUTH_SPERRE, integration.id, hoechstens_warten_s=30):
+                aktuell = await self.db.scalar(
+                    select(OAuthIntegration).where(OAuthIntegration.id == integration.id)
+                    .execution_options(populate_existing=True))
+                if aktuell is None:
+                    raise ValueError("Integration ist inzwischen getrennt worden.")
+                frisch = aktuell.expires_at is not None and _utc(aktuell.expires_at) > (
+                    datetime.now(timezone.utc) + timedelta(minutes=5))
+                if aktuell.access_token_encrypted and (
+                        aktuell.refresh_token_encrypted != gelesen or (frisch and not erzwingen)):
+                    # Ein anderer hat erneuert, während wir gewartet haben — dessen Token nehmen.
+                    await self.db.commit()
+                    return aktuell
+                return await self._erneuern(aktuell)
+        except BaseException:
+            # Sperre lösen (sie gilt bis zum Ende der Transaktion). Bewusst commit, nicht
+            # rollback: ein rollback ließe alle geladenen Objekte der Sitzung verfallen —
+            # der nächste Zugriff wäre ein Nachladen außerhalb des Async-Kontexts
+            # (MissingGreenlet), und Schreibarbeit des Aufrufers ginge verloren.
+            try:
+                await self.db.commit()
+            except Exception:  # noqa: BLE001 — Sitzung schon im Fehlerzustand
+                await self.db.rollback()
+            raise
+
+    async def _erneuern(self, integration: OAuthIntegration) -> OAuthIntegration:
+        """Die eigentliche Erneuerung beim Anbieter. Nur unter der Sperre aufrufen."""
         provider = get_provider(integration.provider.value)
         client_id = get_provider_client_id(provider)
         client_secret = get_provider_client_secret(provider)
@@ -757,7 +804,9 @@ class OAuthService:
             )
         )
         for integration in result.scalars().all():
+            # Vorher festhalten: nach einem Fehler kann das Objekt verfallen sein.
+            anbieter, kennung = integration.provider.value, integration.id
             try:
                 await self._refresh_token(integration)
             except Exception as e:
-                logger.error("Failed to refresh token for %s: %s", integration.provider.value, e)
+                logger.error("Failed to refresh token for %s (%s): %s", anbieter, kennung, e)

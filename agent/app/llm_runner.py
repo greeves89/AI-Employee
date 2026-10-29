@@ -346,6 +346,9 @@ class LLMRunner:
         self.is_running = True
         start_time = time.time()
         provider = self._get_provider()
+        # Je Aufgabe ein eigener Runner (task_consumer): der Executor kennt so seinen
+        # Lauf — die Push-Sperre erkennt daran Läufe des Arbeitstakts (#1117).
+        self._tool_executor.lauf = task_id
 
         # Build system prompt
         base_system = settings.llm_system_prompt or (

@@ -220,7 +220,8 @@ def _decide_kategorie(tool_name: str, tool_input: dict | None = None) -> dict:
     )
 
 
-async def decide_async(tool_name: str, tool_input: dict | None = None) -> dict:
+async def decide_async(tool_name: str, tool_input: dict | None = None, *, cwd: str | None = None,
+                       lauf: str | None = None) -> dict:
     """Same category gate as ``decide()``, plus the regex command-policy layer
     for Bash (issue #787 Punkt 1).
 
@@ -231,10 +232,21 @@ async def decide_async(tool_name: str, tool_input: dict | None = None) -> dict:
     other shell_exec call. ``decide()`` itself stays untouched and synchronous
     (60+ existing tests call it directly) — this wraps it instead of changing
     it, and only adds the extra check for ``Bash``.
+
+    Danach die Push-Sperre (#1117, ``push_sperre.pruefen``): kein ``git push`` im
+    Arbeitstakt und keiner in den Branch einer fremden Übernahme. ``cwd`` und
+    ``lauf`` (der Task) liefert der Aufrufer des Hooks mit; beides darf fehlen.
     """
     base = decide(tool_name, tool_input)
     if base["hookSpecificOutput"]["permissionDecision"] == "deny":
         return base  # category gate already said no — nothing finer to check
+    # Läufe aus dem Rückkanal (Frage aus einem Issue) dürfen nur antworten und Karten
+    # im Eingang anlegen (push_sperre.werkzeug_pruefen, Entscheidung im Orchestrator).
+    from app.tools.push_sperre import werkzeug_pruefen
+
+    lauf_grund = await werkzeug_pruefen(tool_name, tool_input, lauf)
+    if lauf_grund:
+        return _deny(lauf_grund)
     if tool_name not in _SHELL_WERKZEUGE:
         return base
     eingabe = tool_input or {}
@@ -252,6 +264,11 @@ async def decide_async(tool_name: str, tool_input: dict | None = None) -> dict:
             "`request_approval` zuerst aufrufen und auf Freigabe warten, dann "
             "erneut versuchen."
         )
+    from app.tools.push_sperre import pruefen as push_pruefen
+
+    grund = await push_pruefen(command, cwd, lauf)
+    if grund:
+        return _deny(grund)
     return base  # None or "allow" → category decision stands
 
 

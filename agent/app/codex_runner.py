@@ -286,6 +286,10 @@ class CodexAgentRunner:
         # chat_search: das Gespraech dieses Zuges — nur im Chat, nie in einer
         # Aufgabe. Codex reicht die Variable per ``env_vars`` an den
         # Orchestrator-MCP-Server weiter (siehe _ensure_codex_mcp_config).
+        # Der Lauf fuer die Push-Sperre (#1117): der Codex-Hook (mcp/codex-hook.mjs)
+        # liest ihn aus der Umgebung. Im Chat gibt es keinen Lauf.
+        from app.tools.push_sperre import LAUF_ENV
+        env[LAUF_ENV] = target_id if stream != "chat" else ""
         if stream == "chat":
             chat_suche_env(env)
         else:
