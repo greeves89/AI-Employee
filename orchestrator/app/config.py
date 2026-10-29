@@ -1,12 +1,24 @@
 import logging
 import os
 import pathlib
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
 #: Mindestlänge des Herzschlag-Schlüssels der Datensicherung (#892). Dieselbe
 #: Zahl steht in scripts/lib/sicherung.sh, das kürzere Schlüssel ersetzt.
 BACKUP_TOKEN_MINDESTLAENGE = 32
+
+#: Einstellungen, die NUR aus der Umgebung kommen und nie aus der Datenbank
+#: (#889). Sie bestimmen, welches Abbild der Orchestrator ueber den Docker-Dienst
+#: holt und startet — ohne Signaturpruefung. ``load_into_config`` uebernimmt
+#: sonst JEDEN gespeicherten Schluessel, zu dem es ein Feld gibt; eine Zeile in
+#: der Einstellungstabelle duerfte dann eine fremde Registry vorgeben.
+NUR_AUS_DER_UMGEBUNG = frozenset({
+    "agent_image",
+    "abbild_registry",
+    "abbild_holen",
+    "abbild_abgelehnt",
+})
 
 def _read_version() -> str:
     for candidate in [
@@ -120,6 +132,27 @@ class Settings(BaseSettings):
 
     # Docker
     agent_image: str = "ai-employee-agent:latest"
+    # Fertige Abbilder aus der Registry (#889). Fehlt das Agenten-Abbild lokal,
+    # holt der Orchestrator es von hier — es ist kein Compose-Dienst, also
+    # erfasst "docker compose pull" es nicht. Dieselbe Vorgabe wie in
+    # scripts/lib/abbilder.sh; ein eigener Spiegel wird in .env eingetragen.
+    #
+    # Die drei Schalter hoeren per ``validation_alias`` auf ihren dokumentierten
+    # Umgebungsnamen (AI_EMPLOYEE_...). env_prefix ist leer: ohne Alias waere der
+    # Feldname der Umgebungsname — als "abbild_holen" hoerte das Feld frueher auf
+    # ABBILD_HOLEN, und der dokumentierte Schalter wirkte nicht. Die Feldnamen
+    # selbst tragen bewusst kein "employee": CodeQL haelt jeden Wert aus einem
+    # Feld mit "employee" im Namen fuer eine Personenangabe und meldete jede
+    # Protokollzeile mit der Registry-Adresse als Klartext-Leck.
+    abbild_registry: str = Field("ghcr.io/greeves89", validation_alias="AI_EMPLOYEE_REGISTRY")
+    # Aus, wenn eine Anlage ausschliesslich selbst gebaute Abbilder benutzen soll
+    # (abgeschottetes Netz). Dann meldet das Protokoll den fehlenden Bau statt zu holen.
+    abbild_holen: bool = Field(True, validation_alias="AI_EMPLOYEE_ABBILD_HOLEN")
+    # Von scripts/lib/abbilder.sh gesetzt, wenn die Signaturpruefung einer Version
+    # fehlgeschlagen ist (#938): diese Version wird dann auch hier nicht geholt.
+    # Ohne diesen Vermerk haette ein spaeteres "docker image prune" das verworfene
+    # Abbild wieder hereingelassen — die Ablehnung war nicht dauerhaft.
+    abbild_abgelehnt: str = Field("", validation_alias="AI_EMPLOYEE_ABBILD_ABGELEHNT")
     # Platform container names for admin system control (restart/status from the UI)
     orchestrator_container_name: str = "ai-employee-orchestrator"
     frontend_container_name: str = "ai-employee-frontend"
@@ -331,6 +364,11 @@ class Settings(BaseSettings):
     # shareable app links (the app-proxy URL) that an agent can hand to the user via
     # Telegram/chat/voice. Empty → only a relative path is available (web UI only).
     public_app_url: str = ""
+    # Name dieser Anlage in Übernahme-Kommentaren an Issues (core/uebernahme.py),
+    # z. B. "anlage-nord". Leer: eine zufällige Kennung, einmal erzeugt und in
+    # platform_settings gespeichert. Nicht geheim — sie steht in Repos, an denen
+    # die Anlage arbeitet.
+    anlage_kennung: str = ""
 
     # Expose the MS Graph MCP server to external LLM clients (e.g. OpenWebUI) via
     # our built-in OAuth 2.1 AS. Admin-only; only effective when a Microsoft app

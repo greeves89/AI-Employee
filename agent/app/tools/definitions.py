@@ -1153,6 +1153,41 @@ ORCHESTRATOR_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "projekt_karte_uebergeben",
+            "description": "Hand over an issue card you hold (or, as lead, any card) to someone else: writes a handover comment with the current state and the next step into the issue and moves the claim to the recipient. Give agent_id for a project member (it gets a new run with your handover), or an for someone outside the platform: claude-code:<name>, mensch:<login> or ai-employee:<installation>/<agent>.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "projekt_id": {"type": "string", "description": "Project (team) id — from list_my_team (team_id)."},
+                    "karte_id": {"type": "string", "description": "Card id from projekt_board."},
+                    "agent_id": {"type": "string", "description": "Project member who takes over."},
+                    "an": {"type": "string", "description": "Recipient outside the platform (instead of agent_id)."},
+                    "stand": {"type": "string", "description": "What is done, what is open, where the work lies (branch, PR)."},
+                    "naechster_schritt": {"type": "string", "description": "The very next step for the recipient."}
+                },
+                "required": ["projekt_id", "karte_id", "stand", "naechster_schritt"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "projekt_issue_kommentar",
+            "description": "Write a question or note for people outside the platform (Claude Code sessions, humans, other installations) as a comment into the issue of a card. Use it to ask whoever holds or reported the ticket. Their answers ('@ai-employee <your name>: …' in the issue) reach you through the project conversation. Do not post status spam; at most 10 comments per hour.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "projekt_id": {"type": "string", "description": "Project (team) id — from list_my_team (team_id)."},
+                    "karte_id": {"type": "string", "description": "Card of the issue (from projekt_board)."},
+                    "text": {"type": "string", "description": "The comment (Markdown, max. 4000 chars)."}
+                },
+                "required": ["projekt_id", "karte_id", "text"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "projekt_karte_stand",
             "description": "Report progress on the card you are working on: stage (planung, bau, tests, pr, ci, merge), the URL of your pull request, and/or a short note. Report every new stage so the project overview stays true.",
             "parameters": {

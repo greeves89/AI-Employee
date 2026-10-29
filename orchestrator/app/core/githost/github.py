@@ -7,7 +7,7 @@ previously inlined in `agent_manager` and `self_test_service` (#532 phase 1)
 
 import httpx
 
-from app.core.githost.base import GitHostProvider
+from app.core.githost.base import GitHostProvider, kommentar_form
 
 
 #: Was GitHub in ``x-accepted-github-permissions`` verlangt → wie es im
@@ -205,6 +205,114 @@ class GitHubHostProvider(GitHostProvider):
             return None
         commit = (resp.json() or {}).get("commit") or {}
         return (commit.get("committer") or {}).get("date") or (commit.get("author") or {}).get("date")
+
+    async def commit_info(self, client: httpx.AsyncClient, token: str, repo: str, sha: str) -> dict | None:
+        """Zeit und Autor eines Commits — ``{"zeit", "autor_name", "autor_mail"}`` oder None."""
+        resp = await client.get(f"{self.api_base}/repos/{repo}/commits/{sha}", headers=self._headers(token))
+        if resp.status_code != 200:
+            return None
+        commit = (resp.json() or {}).get("commit") or {}
+        autor = commit.get("author") or {}
+        return {"zeit": (commit.get("committer") or {}).get("date") or autor.get("date"),
+                "autor_name": str(autor.get("name") or "")[:100], "autor_mail": str(autor.get("email") or "")[:200]}
+
+    async def kommentar_aendern(self, client: httpx.AsyncClient, token: str, repo: str, kommentar_id: int,
+                                body: str) -> bool:
+        """Einen Issue-Kommentar ersetzen (Übernahme verlängern)."""
+        resp = await client.patch(f"{self.api_base}/repos/{repo}/issues/comments/{kommentar_id}",
+                                  headers=self._headers(token), json={"body": body})
+        return resp.status_code == 200
+
+    async def repo_oeffentlich(self, client: httpx.AsyncClient, token: str, repo: str) -> bool | None:
+        """Ist das Repo öffentlich? None, wenn nicht lesbar."""
+        resp = await client.get(f"{self.api_base}/repos/{repo}", headers=self._headers(token))
+        if resp.status_code != 200:
+            return None
+        daten = resp.json() or {}
+        if "private" not in daten:
+            return None
+        return not bool(daten.get("private")) and daten.get("visibility", "public") == "public"
+
+    async def eigenes_konto(self, client: httpx.AsyncClient, token: str) -> str | None:
+        """Login des Kontos hinter dem Schlüssel — None ohne Schlüssel oder wenn nicht lesbar."""
+        if not token:
+            return None
+        resp = await client.get(f"{self.api_base}/user", headers=self._headers(token))
+        return str((resp.json() or {}).get("login") or "") or None if resp.status_code == 200 else None
+
+    async def list_issue_comments(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int,
+                                  hoechstens: int = 300) -> list[dict]:
+        """Kommentare eines Issues, älteste zuerst (``core/uebernahme`` liest die Übernahmen daraus)."""
+        rows = await self._seiten(client, token, f"/repos/{repo}/issues/{nummer}/comments", {}, hoechstens)
+        return [k for k in (kommentar_form(r) for r in rows) if k]
+
+    # ── Abschnitt für die AGENTS.md als Pull Request (core/projekt_git.agents_md_pr) ──
+
+    async def standard_branch(self, client: httpx.AsyncClient, token: str, repo: str) -> str | None:
+        resp = await client.get(f"{self.api_base}/repos/{repo}", headers=self._headers(token))
+        if resp.status_code != 200:
+            raise RuntimeError(_zugriff_verweigert(resp) if resp.status_code in (401, 403)
+                               else f"Repo {repo} nicht lesbar (GitHub {resp.status_code}).")
+        return (resp.json() or {}).get("default_branch")
+
+    async def datei_holen(self, client: httpx.AsyncClient, token: str, repo: str, pfad: str,
+                          ref: str) -> tuple[str | None, str | None]:
+        """(Inhalt, sha) einer Datei — (None, None), wenn es sie nicht gibt."""
+        import base64
+
+        resp = await client.get(f"{self.api_base}/repos/{repo}/contents/{pfad}", headers=self._headers(token),
+                                params={"ref": ref})
+        if resp.status_code == 404:
+            return None, None
+        if resp.status_code != 200:
+            raise RuntimeError(_zugriff_verweigert(resp) if resp.status_code in (401, 403)
+                               else f"{pfad} nicht lesbar (GitHub {resp.status_code}).")
+        daten = resp.json() or {}
+        roh = base64.b64decode(str(daten.get("content") or "")).decode("utf-8", errors="replace")
+        return roh, daten.get("sha")
+
+    async def branch_anlegen(self, client: httpx.AsyncClient, token: str, repo: str, neu: str, von: str) -> None:
+        resp = await client.get(f"{self.api_base}/repos/{repo}/git/ref/heads/{von}", headers=self._headers(token))
+        if resp.status_code != 200:
+            raise RuntimeError(f"Branch {von} nicht lesbar (GitHub {resp.status_code}).")
+        sha = ((resp.json() or {}).get("object") or {}).get("sha")
+        resp = await client.post(f"{self.api_base}/repos/{repo}/git/refs", headers=self._headers(token),
+                                 json={"ref": f"refs/heads/{neu}", "sha": sha})
+        if resp.status_code == 422:
+            return  # gibt es schon — die Datei wird darauf aktualisiert
+        if resp.status_code not in (200, 201):
+            raise RuntimeError(_zugriff_verweigert(resp) if resp.status_code in (401, 403, 404)
+                               else f"Branch {neu} nicht angelegt (GitHub {resp.status_code}).")
+
+    async def datei_schreiben(self, client: httpx.AsyncClient, token: str, repo: str, pfad: str, inhalt: str,
+                              branch: str, nachricht: str, sha: str | None) -> None:
+        import base64
+
+        nutzlast = {"message": nachricht, "branch": branch,
+                    "content": base64.b64encode(inhalt.encode("utf-8")).decode("ascii")}
+        if sha:
+            nutzlast["sha"] = sha
+        resp = await client.put(f"{self.api_base}/repos/{repo}/contents/{pfad}", headers=self._headers(token),
+                                json=nutzlast)
+        if resp.status_code not in (200, 201):
+            raise RuntimeError(_zugriff_verweigert(resp) if resp.status_code in (401, 403, 404)
+                               else f"{pfad} nicht geschrieben (GitHub {resp.status_code}).")
+
+    async def pull_anlegen(self, client: httpx.AsyncClient, token: str, repo: str, head: str, base: str,
+                           titel: str, text: str) -> str | None:
+        resp = await client.post(f"{self.api_base}/repos/{repo}/pulls", headers=self._headers(token),
+                                 json={"title": titel, "head": head, "base": base, "body": text})
+        if resp.status_code in (200, 201):
+            return (resp.json() or {}).get("html_url")
+        if resp.status_code == 422:
+            # Es gibt schon einen offenen PR aus diesem Branch — der bekommt den neuen Stand.
+            besitzer = repo.split("/", 1)[0]
+            offen = await client.get(f"{self.api_base}/repos/{repo}/pulls", headers=self._headers(token),
+                                     params={"head": f"{besitzer}:{head}", "state": "open"})
+            if offen.status_code == 200 and offen.json():
+                return offen.json()[0].get("html_url")
+        raise RuntimeError(_zugriff_verweigert(resp) if resp.status_code in (401, 403, 404)
+                           else f"Pull Request nicht angelegt (GitHub {resp.status_code}).")
 
     async def issue_state(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int) -> str | None:
         resp = await client.get(f"{self.api_base}/repos/{repo}/issues/{nummer}", headers=self._headers(token))

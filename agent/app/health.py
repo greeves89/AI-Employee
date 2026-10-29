@@ -117,7 +117,15 @@ async def pretooluse_hook_handler(request: web.Request) -> web.Response:
     tool_name = body.get("tool_name") or ""
     tool_input = body.get("tool_input") or {}
     from app.tools.pretooluse_hook import decide_async
-    return web.json_response(await decide_async(tool_name, tool_input))
+    from app.tools.push_sperre import LAUF_HEADER
+
+    # Arbeitsverzeichnis und Lauf (Task) fuer die Push-Sperre: Claude Code schickt
+    # ``cwd`` im Hook-Aufruf und den Lauf als Kopfzeile (aus AI_EMPLOYEE_LAUF,
+    # ``allowedEnvVars``), der Codex-Hook beides im Aufruf.
+    cwd = body.get("cwd") if isinstance(body.get("cwd"), str) else None
+    lauf = request.headers.get(LAUF_HEADER) or body.get("lauf")
+    lauf = lauf.strip() if isinstance(lauf, str) and lauf.strip() else None
+    return web.json_response(await decide_async(tool_name, tool_input, cwd=cwd, lauf=lauf))
 
 
 def _deny_malformed() -> dict:

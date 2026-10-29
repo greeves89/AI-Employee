@@ -144,11 +144,22 @@ def karte_dict(k: ProjektKarte, task: Task | None = None, *, lauf_sichtbar: bool
         "stufe": stufe_aus(k, task),
         "notiz": k.notiz,
         "extern_bearbeiter": k.extern_bearbeiter,
+        # Wer übernommen hat: plattform (Agent dieser Anlage), claude_code,
+        # andere_anlage, mensch, extern — und bei plattform der Agent dazu.
+        "bearbeiter_art": k.bearbeiter_art if k.extern_bearbeiter else None,
+        "extern_agent_id": ((k.uebernahme or {}).get("agent_id")
+                            if k.extern_bearbeiter and k.bearbeiter_art == "plattform" else None),
         # Fremde Übernahme: seit wann, letzte Regung, Branch — und ob sie liegt.
         "extern_seit": _utc(k.extern_seit),
         "extern_regung": _utc(_extern_regung(k)),
         "extern_branch": k.extern_branch,
         "extern_stockt": _extern_stockt(k),
+        # Bis wann die fremde Übernahme ohne weiteres Lebenszeichen gilt.
+        "extern_bis": _utc(k.extern_bis) if k.extern_bearbeiter and not k.task_id else None,
+        # Zwei gültige Übernahmen oder ein fremder Commit auf dem Branch (rot markiert).
+        "konflikt": k.konflikt,
+        # Hält der Bearbeiter von außen mehr Übernahmen als erlaubt? (setzt ``board``)
+        "bearbeiter_uebernahmen": None,
         "pr_nr": k.pr_nr,
         "pr_url": k.pr_url,
         "pr_zustand": k.pr_zustand,
@@ -192,6 +203,7 @@ async def board(db: AsyncSession, team_id: str, sichtbar: list[str] | None) -> d
         t = tasks.get(k.task_id) if k.task_id else None
         spalten[k.spalte if k.spalte in spalten else "eingang"].append(karte_dict(k, t, lauf_sichtbar=_sichtbar(t)))
     spalten["erledigt"] = [karte_dict(k) for k in erledigt]
+    obergrenze = await _obergrenze_markieren(db, team_id, spalten["in_arbeit"])
 
     laufend = await _laufende_laeufe(db, team_id, sichtbar, {k.id: k for k in offen})
     fertig = await _fertig_verlauf(db, team_id, jetzt)
@@ -209,9 +221,33 @@ async def board(db: AsyncSession, team_id: str, sichtbar: list[str] | None) -> d
             "wartet_auf_merge": sum(1 for k in spalten["pruefung"] if k["pr_zustand"] in PR_OFFEN),
             "laeufe": len(laufend),
             "kosten_monat_usd": round(kosten_monat, 4),
+            # Höchstens so viele offene Übernahmen je Bearbeiter (Projekteinstellung).
+            "obergrenze_uebernahmen": obergrenze,
+            "konflikte": sum(1 for s in spalten.values() for k in s if k.get("konflikt")),
             **fertig,
         },
     }
+
+
+async def _obergrenze_markieren(db: AsyncSession, team_id: str, in_arbeit: list[dict]) -> int:
+    """Hält jemand von außen mehr Übernahmen als erlaubt, bekommen seine Karten die Zahl.
+
+    Eigene Agenten lehnt der Server schon beim Vergeben ab; Externe kann er nicht
+    aufhalten — also zeigt das Board es. Gibt die Obergrenze des Projekts zurück.
+    """
+    from app.core import uebernahme
+    from app.models.team import Team
+
+    grenze = uebernahme.obergrenze_fuer(await db.get(Team, team_id))
+    je_bearbeiter: dict[tuple, list[dict]] = {}
+    for k in in_arbeit:
+        if k.get("extern_bearbeiter") and not k.get("task_id") and k.get("extern_bearbeiter") != "extern":
+            je_bearbeiter.setdefault((k.get("bearbeiter_art"), k["extern_bearbeiter"]), []).append(k)
+    for karten in je_bearbeiter.values():
+        if len(karten) > grenze:
+            for k in karten:
+                k["bearbeiter_uebernahmen"] = len(karten)
+    return grenze
 
 
 async def _laufende_laeufe(db: AsyncSession, team_id: str, sichtbar, karten: dict[str, ProjektKarte]) -> list[dict]:
@@ -256,6 +292,7 @@ WERKZEUG_TAETIGKEIT = {
     "create_task": "gibt eine Aufgabe weiter", "send_message": "schreibt einem Kollegen",
     "projekt_board": "liest das Projekt-Board", "projekt_karte_stand": "meldet den Stand",
     "projekt_karte_anlegen": "legt eine Karte an", "projekt_karte_vergeben": "vergibt eine Karte",
+    "projekt_karte_uebergeben": "übergibt eine Karte", "projekt_issue_kommentar": "schreibt ins Issue",
     "projekt_wissen_suchen": "sucht im Projektwissen", "projekt_wissen_lesen": "liest im Projektwissen",
     "projekt_wissen_schreiben": "schreibt ins Projektwissen", "memory_save": "merkt sich etwas",
     "memory_search": "erinnert sich", "browser": "bedient den Browser",
@@ -450,7 +487,14 @@ def karten_auftrag(karte: ProjektKarte, projekt_name: str, *, fremd: bool = Fals
             "im Text, mit Testnachweis und offenen Punkten.\n"
             "- Gilt im Repo eine `AGENTS.md` oder `CONTRIBUTING.md`, halte dich an ihre Regeln.\n"
             "- Merkst du, dass schon jemand anderes daran arbeitet (fremder Branch oder PR zur Nummer), hör auf "
-            "und melde das im Ergebnis, statt doppelt zu arbeiten."
+            "und melde das im Ergebnis, statt doppelt zu arbeiten.\n"
+            "- Der Branch einer fremden Übernahme gehört dem Übernehmer: Ein Push dorthin wird gesperrt. Frag "
+            "stattdessen im Issue nach oder stelle einen Pull Request in seinen Branch.\n"
+            "- Musst du aufhören, bevor es fertig ist, übergib mit `projekt_karte_uebergeben` (Stand und nächster "
+            "Schritt) — an einen Kollegen oder an jemanden außerhalb.\n"
+            "- Fragen an Menschen oder Agenten außerhalb der Plattform stellst du im Issue mit "
+            "`projekt_issue_kommentar`; ihre Antworten (`@ai-employee <dein Name>: …`) kommen über das "
+            "Projektgespräch zu dir."
             if karte.quelle == "issue" and karte.extern_nr else ""
         )
     )
@@ -477,6 +521,7 @@ async def lauf_beendet(db: AsyncSession, task: Task, redis=None) -> None:
     if karte is None or karte.task_id != task.id or karte.spalte != "in_arbeit":
         return
     if task.status == TaskStatus.CANCELLED:
+        bisher_agent = karte.agent_id
         karte.spalte = "bereit"
         karte.task_id = None
         karte.agent_id = None
@@ -486,7 +531,7 @@ async def lauf_beendet(db: AsyncSession, task: Task, redis=None) -> None:
             from app.core import projekt_git
 
             projekt_git.uebernahme_im_hintergrund(karte.team_id, karte.id, redis, agent_name=None,
-                                                  uebernehmen=False)
+                                                  uebernehmen=False, agent_id=bisher_agent, lauf=task.id)
     else:
         karte.spalte = "pruefung"
 
@@ -561,12 +606,20 @@ def board_als_text(projekt: dict, b: dict, namen: dict[str, str], *, je_spalte: 
                 teile.append(f"→ {wer(karte['agent_id'])}")
             if karte.get("extern_bearbeiter"):
                 # Name kommt aus dem Repo (fremder Text): gekürzt, ohne Zeilenumbruch.
-                bearbeiter = " ".join(str(karte["extern_bearbeiter"]).split())[:80]
+                bearbeiter = _entschaerft(" ".join(str(karte["extern_bearbeiter"]).split()))[:80]
+                if karte.get("bearbeiter_art") == "plattform":
+                    bearbeiter = f"{bearbeiter} (Agent dieser Anlage)"
                 if karte.get("extern_stockt"):
-                    teile.append(f"(extern übernommen von {bearbeiter}, liegt ohne Bewegung — nicht selbst "
-                                 "übernehmen; der Mensch kann sie im Board freigeben)")
+                    teile.append(f"(übernommen von {bearbeiter}, liegt ohne Bewegung — nicht selbst "
+                                 "übernehmen, nicht in den Branch pushen; der Mensch kann sie im Board freigeben)")
                 else:
-                    teile.append(f"(extern in Arbeit: {bearbeiter} — nicht übernehmen)")
+                    teile.append(f"(übernommen von {bearbeiter} — nicht übernehmen, nichts daran ändern, "
+                                 "nicht in den Branch pushen)")
+            if karte.get("konflikt"):
+                teile.append(f"KONFLIKT: {_entschaerft(' '.join(str(karte['konflikt']).split()))[:200]}")
+            if karte.get("bearbeiter_uebernahmen"):
+                teile.append(f"(dieser Bearbeiter hält {karte['bearbeiter_uebernahmen']} Übernahmen — mehr als "
+                             "erlaubt)")
             if karte.get("stufe") and spalte == "in_arbeit":
                 teile.append(f"[{karte['stufe']}]")
             if karte.get("pr_url"):

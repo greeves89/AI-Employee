@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 import httpx
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.encryption import decrypt_token, encrypt_token
@@ -54,10 +54,9 @@ def _debounced(server_id: int) -> bool:
 
 
 def _is_postgres(db: AsyncSession) -> bool:
-    try:
-        return db.bind.dialect.name == "postgresql"
-    except Exception:
-        return False
+    from app.core.db_sperre import ist_postgres
+
+    return ist_postgres(db)
 
 
 @asynccontextmanager
@@ -76,12 +75,10 @@ async def _refresh_lock(db: AsyncSession, server_id: int):
     On any other backend (e.g. the SQLite unit tests) it is a no-op: there is no
     cross-process race to guard.
     """
-    if _is_postgres(db):
-        await db.execute(
-            text("SELECT pg_advisory_xact_lock(:ns, :oid)"),
-            {"ns": _REFRESH_LOCK_NAMESPACE, "oid": int(server_id)},
-        )
-    yield
+    from app.core.db_sperre import transaktionssperre
+
+    async with transaktionssperre(db, _REFRESH_LOCK_NAMESPACE, server_id):
+        yield
 
 
 class OAuthTokenError(Exception):

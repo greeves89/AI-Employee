@@ -11,6 +11,7 @@ import { ProjektRaum } from "@/components/projekte/projekt-raum";
 import { ProjektBoardAnsicht, ProjektVerlauf, type BoardAktionen } from "@/components/projekte/projekt-board";
 import { ProjektLeitstand } from "@/components/projekte/projekt-leitstand";
 import { ProjektKopfleiste } from "@/components/projekte/projekt-kopfleiste";
+import { ProjektAgentenRegeln } from "@/components/projekte/projekt-agenten-regeln";
 import { ProjektWissen } from "@/components/projekte/projekt-wissen";
 import { ProjektGespraech } from "@/components/projekte/projekt-gespraech";
 import { ProjektTermine } from "@/components/projekte/projekt-termine";
@@ -50,6 +51,8 @@ export default function ProjektPage() {
   const [board, setBoard] = useState<ProjektBoard | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
   const [bearbeiten, setBearbeiten] = useState(false);
+  const [regelnOffen, setRegelnOffen] = useState(false);
+  const regelnSchliessen = useCallback(() => setRegelnOffen(false), []);
   const [reiter, setReiter] = useState<Reiter>("board");
   // Zuletzt gewählter Reiter je Betrachter (nur Bequemlichkeit, darf fehlen).
   useEffect(() => {
@@ -154,6 +157,17 @@ export default function ProjektPage() {
         await laden();
       } catch (e) {
         toast.error("Nicht freigegeben", apiFehlertext(e));
+      }
+    },
+    uebergeben: async (k, body) => {
+      try {
+        const neu = await api.karteUebergeben(id, k.id, body);
+        toast.success("Übergeben", `#${k.extern_nr} an ${neu.extern_bearbeiter ?? "den Agenten"} — Stand und nächster Schritt stehen im Issue.`);
+        await laden();
+        agentenNeu();
+      } catch (e) {
+        toast.error("Nicht übergeben", apiFehlertext(e));
+        throw e;
       }
     },
     zurueckgeben: async (k, hinweis, agentId) => {
@@ -298,7 +312,10 @@ export default function ProjektPage() {
 
         <ProjektKopfleiste board={board} projektId={projekt.id} budgetUsd={projekt.budget_usd} farbe={farbe}
           repo={projekt.repo} repoAbgleichAt={projekt.repo_abgleich_at} repoFehler={projekt.repo_fehler}
-          gleichtAb={gleichtAb} onAbgleichen={darfSchreiben ? repoAbgleichen : undefined} onBoard={zumBoard} />
+          gleichtAb={gleichtAb} onAbgleichen={darfSchreiben ? repoAbgleichen : undefined} onBoard={zumBoard}
+          onRegeln={() => setRegelnOffen(true)} />
+        <ProjektAgentenRegeln projektId={projekt.id} offen={regelnOffen} schliessen={regelnSchliessen}
+          darfPr={darfSchreiben && !!projekt.darf_verwalten} />
 
         {darfSchreiben && (
           <div className="rounded-2xl border border-foreground/[0.08] bg-card p-2.5">

@@ -5,6 +5,63 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.402.0] - 2026-10-29
+
+### Neu
+### Hinzugefügt
+- **Drei Schalter für die Abbild-Bereitstellung, alle in `.env.example` beschrieben.** `AI_EMPLOYEE_REGISTRY` für einen eigenen Spiegel in einem abgeschotteten Netz, `AI_EMPLOYEE_ABBILD_HOLEN=0` für eine Anlage, die ausschließlich selbst gebaute Abbilder benutzen soll, und `AI_EMPLOYEE_ABBILD_ABGELEHNT` als Vermerk der Bereitstellung (nicht von Hand zu pflegen). Bisher stand keiner davon in `.env.example` — die Upgrade-Anleitung schickt den Betreiber aber ausdrücklich zum Vergleich mit dieser Datei, wer einen Schalter dort nicht findet, hält ihn für nicht vorhanden. Dasselbe galt für `AI_EMPLOYEE_SIGNATUR_AUSSTELLER`, der schon vorher fehlte.
+- **Eine Version, deren Signatur bei der Bereitstellung durchgefallen ist, bleibt abgelehnt.** Bisher endete die Ablehnung mit dem Lauf: `./scripts/update.sh` verwarf das Abbild und baute lokal, aber ein späteres `docker image prune` nahm den lokalen Bau wieder mit — und das Nachholen hätte genau das verworfene Abbild zurückgeholt. Die durchgefallene Nummer wird jetzt festgehalten und auf diesem Weg nicht mehr geholt. Die nächste geprüfte Freigabe hebt den Vermerk auf, damit eine Anlage nicht dauerhaft am lokalen Bau hängen bleibt.
+
+### Behoben
+- **Der Orchestrator holt nur noch genau das eigene Agenten-Abbild.** Geholt wird ausschließlich `<AI_EMPLOYEE_REGISTRY>/ai-employee-agent:<x.y.z>` — auch wenn `AGENT_IMAGE` schon eine vollständige Referenz enthält. Ein anderer Host, ein anderes Konto, ein anderer Name oder ein beweglicher Tag wie `latest` werden nicht selbst geholt. Welches Abbild geholt wird, bestimmt nur die Umgebung des Betreibers: gespeicherte Werte in der Einstellungstabelle werden für diese Schlüssel ignoriert.
+- **Eine verworfene Version kam bei vollständiger Referenz doch herein.** Die Sperre verglich mit der VERSION-Datei, die in der Community-Zusammenstellung nicht eingebunden ist; außerdem hätte Docker ein fehlendes Abbild beim Start selbst nachgeholt. Verglichen wird jetzt die Nummer, die tatsächlich geholt würde, und ein Agent mit gesperrter, lokal fehlender Version wird nicht gestartet.
+- **Das Aufräumen nach dem Update behielt Registry-Namen einer verworfenen Version.** Es behält jetzt keine Namen der in `AI_EMPLOYEE_ABBILD_ABGELEHNT` vermerkten Version und fasst den lokalen Namen `ai-employee-agent:latest`, mit dem neue Agenten starten, nie an.
+- **Ein Agent liess sich auf einer Anlage nicht anlegen, die ihre Abbilder aus der Registry holt.** Das Agenten-Abbild ist kein Compose-Dienst: `docker compose pull` holt es nicht mit, und ein `docker image prune` nimmt es wieder mit. Fehlte es, brach das Anlegen oder Neuaufsetzen eines Agenten mit einer Docker-Meldung über einen unbekannten Abbild-Namen ab — ohne Hinweis, was zu tun ist. Jetzt holt der Orchestrator das fertige Abbild genau dieser Freigabe selbst und benennt es lokal um. Die Nummer kommt aus der VERSION-Datei, nicht aus der Umgebung: Code und Abbild gehören damit zur selben Freigabe, und ein beweglicher Tag wie `latest` wird abgelehnt. Diese Abkürzung prüft **keine** Signatur (cosign liegt nicht im Orchestrator-Abbild) — der geprüfte Weg bleibt `./scripts/update.sh`. Wer ausschließlich selbst gebaute Abbilder zulassen will, setzt `AI_EMPLOYEE_ABBILD_HOLEN=0`.
+- **Das Abbild-Nachholen hielt den ganzen Orchestrator an.** Das Holen eines mehrere Gigabyte großen Abbilds lief auf demselben Faden, der auch die Oberfläche, die Schnittstelle, die Zeitpläne und die Zustandsprüfung bedient. Auf einer frischen Anlage — genau dem Fall, für den das Nachholen gedacht ist — hätte die Zustandsprüfung den Orchestrator nach etwa 90 Sekunden für krank erklärt, und die Selbstheilung hätte ihn mitten im Laden neu gestartet. Das Holen läuft jetzt in einem eigenen Faden.
+- **Fehlschläge beim Nachholen können keinen Start und kein Aufräumen mehr verhindern.** Das Nachholen ist eine Bequemlichkeit: wer ohne es ausgekommen wäre, kommt weiterhin ohne es aus. Die Schranke sitzt in der Bereitstellung selbst, nicht bei den Aufrufern — zweimal während dieser Arbeit hat genau diese Verwechslung erst den Agentenstart und dann das Aufräumen eines Arbeitsbereichs mitgerissen.
+- **Das Aufräumen eines Arbeitsbereichs benutzte einen Abbild-Namen, den es auf einer Registry-Anlage nicht gibt.** Beide Volume-Hilfen trugen `ai-employee-agent:latest` fest eingetippt, während dort eine vollständige Registry-Adresse gilt. Ein wegen Plattenplatz gestoppter Agent wurde damit stillschweigend nie aufgeräumt — genau in der Lage, in der er es am dringendsten braucht. Sie nehmen den Namen jetzt aus den Einstellungen.
+- **Das Frontend-Abbild bekam eine Adresse mitgegeben, die es nie angenommen hat.** Vier Compose-Dateien übergaben `NEXT_PUBLIC_API_URL` und `NEXT_PUBLIC_WS_URL` als Bau-Argument oder Laufzeitwert, obwohl das Frontend-Dockerfile sie bewusst nicht annimmt (ein Abbild für alle Anlagen). Docker warnte einmal und baute weiter. Im Produktions-Beispiel stand dort `https://<Domain>` — mit klarer Absicht und ohne jede Wirkung. Die Einträge sind entfernt; die Adresse ergibt sich weiterhin im Browser aus der aufgerufenen Seite, hinter einem Reverse-Proxy also genau die eigene Domain. Ein Test lässt kein Bau-Argument mehr zu, das das zugehörige Dockerfile nicht kennt.
+
+### Dokumentation
+- `.env.example` nennt auch `AI_EMPLOYEE_ABBILDER_AUFRAEUMEN`; die Upgrade-Anleitung beschreibt die strenge Abbild-Regel und das Zusammenspiel mit dem Aufräumen.
+- `.env.example` nennt jetzt die Schalter der Abbild-Bereitstellung: eigener Spiegel (`AI_EMPLOYEE_REGISTRY`), Abbild-Version (`AI_EMPLOYEE_VERSION`), Selbst-Holen (`AI_EMPLOYEE_ABBILD_HOLEN`) und den fehlenden Signatur-Aussteller (`AI_EMPLOYEE_SIGNATUR_AUSSTELLER`). Die Upgrade-Anleitung schickt den Betreiber ausdrücklich zum Vergleich mit dieser Datei — wer dort einen Schalter nicht findet, hält ihn für nicht vorhanden. Ein Test prüft, dass jeder aus `.env` gelesene Name dort steht.
+- Die Fehlertabelle zu `NEXT_PUBLIC_API_URL not set` riet weiter zum Setzen in `.env` und Neubauen. Sie erklärt jetzt, dass das Abbild diesen Wert absichtlich nicht enthält.
+
+## [1.401.0] - 2026-10-29
+
+### Neu
+- Neu: Externe erreichen Agenten aus dem Issue mit `@ai-employee <Agent>: <Frage>`; die Frage landet im Projektgespräch und weckt den Agenten.
+- Neu: Agenten stellen Rückfragen an Externe direkt im Issue (Werkzeug `projekt_issue_kommentar`).
+- Neu: Mehrere AI-Employee-Anlagen am selben Repo werden unterschieden (`@ai-employee <anlage>/<Agent>: …`, „Anlage …“ auf dem Board, Push-Sperre zwischen Anlagen).
+
+## [1.400.0] - 2026-10-29
+
+### Neu
+- Neu: Übernahmen von Issues laufen ohne Lebenszeichen ab (Standard 2 Stunden, je Projekt einstellbar); Agenten der Plattform verlängern ihre eigenen automatisch, solange sie arbeiten.
+- Neu: Obergrenze offener Übernahmen je Bearbeiter (Standard 2).
+- Neu: „Übergeben an …“ auf dem Board und als Agenten-Werkzeug, mit Stand und nächstem Schritt im Issue.
+- Neu: Konflikt-Warnung bei zwei gleichzeitigen Übernahmen oder fremden Commits auf dem Branch einer Übernahme.
+- Neu: Projekteinstellung, mit der Agenten abgelaufene fremde Übernahmen nach einer Karenzzeit übernehmen dürfen (Standard aus).
+
+## [1.399.0] - 2026-10-29
+
+### Neu
+- Neu: Übernahmen von Issues tragen eine maschinenlesbare Kopfzeile; das Board zeigt, wer übernommen hat (Agent dieser Anlage, Claude Code, andere Anlage, Mensch, extern).
+- Neu: Agenten der Plattform können nicht mehr in den Branch einer fremden Übernahme pushen; Läufe des Arbeitstakts pushen gar nicht.
+- Neu: Knopf „Regeln für Agenten“ erzeugt den Abschnitt „Zusammenarbeit mit AI Employee“ für die AGENTS.md des Repos, als Text oder als Pull Request.
+- Neu: Einstellung `ANLAGE_KENNUNG` (Name der Anlage in Übernahme-Kommentaren).
+
+## [1.398.2] - 2026-10-29
+
+### Behoben
+- **Microsoft-Verbindung galt plötzlich als getrennt (#1013).** Microsoft tauscht den Refresh-Token bei jeder Erneuerung aus. Erneuerten zwei Stellen gleichzeitig dasselbe Token (Seite „Heute“, Mail-Freigabe, ein Agent über MCP, die Sprachfront, Besprechungen, der Hintergrund-Job), verbrauchte die erste den Token, und die zweite scheiterte mit einem bereits ungültigen. Die Verbindung wurde als getrennt gemeldet.
+  - Jetzt erneuert je Integration immer nur einer (Sperre in der Datenbank).
+  - Wer wartet, übernimmt danach das Ergebnis, statt noch einmal zu erneuern.
+  - Dieselbe Sperre wie bei MCP-Servern (#462), jetzt gemeinsam in `core/db_sperre`.
+  - Ist der Token nach dem Warten ohnehin frisch, wird nicht noch einmal erneuert. Die erzwungene Erneuerung für Anthropic bleibt erzwungen.
+  - Gewartet wird höchstens 30 Sekunden.
+  - Ein Fehlschlag gibt die Sperre frei, ohne die Arbeit der übrigen Sitzung zu verwerfen. Der Hintergrund-Job erneuert nach einem Fehler die übrigen Integrationen weiter.
+
 ## [1.398.1] - 2026-10-29
 
 ### Behoben

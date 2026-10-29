@@ -125,7 +125,7 @@ export function projektGerahmt(quelle, text) {
   return wrapData(quelle, sauber);
 }
 
-export const PROJEKT_WERKZEUGE = new Set(["projekt_board", "projekt_karte_anlegen", "projekt_karte_verschieben", "projekt_karte_vergeben", "projekt_karte_stand", "projekt_wissen_suchen", "projekt_wissen_lesen", "projekt_wissen_schreiben", "projekt_gespraech_lesen", "projekt_gespraech_schreiben", "projekt_wissen_ergaenzen", "projekt_termine", "projekt_termin_anlegen"]);
+export const PROJEKT_WERKZEUGE = new Set(["projekt_board", "projekt_karte_anlegen", "projekt_karte_verschieben", "projekt_karte_vergeben", "projekt_karte_uebergeben", "projekt_issue_kommentar", "projekt_karte_stand", "projekt_wissen_suchen", "projekt_wissen_lesen", "projekt_wissen_schreiben", "projekt_gespraech_lesen", "projekt_gespraech_schreiben", "projekt_wissen_ergaenzen", "projekt_termine", "projekt_termin_anlegen"]);
 
 export async function projektWerkzeug(name, args = {}) {
   switch (name) {
@@ -161,6 +161,26 @@ export async function projektWerkzeug(name, args = {}) {
         { method: "POST", body: JSON.stringify({ agent_id: args.agent_id || null }) },
       );
       return { content: [{ type: "text", text: `Karte [${k.id}] ${k.titel} vergeben an ${k.agent_id} — Lauf ${k.task_id}.` }] };
+    }
+
+    case "projekt_karte_uebergeben": {
+      const body = { stand: args.stand, naechster_schritt: args.naechster_schritt };
+      if (args.agent_id) body.agent_id = args.agent_id;
+      if (args.an) body.an = args.an;
+      const k = await apiCall(
+        `/teams/${encodeURIComponent(args.projekt_id)}/karten/${encodeURIComponent(args.karte_id)}/uebergeben`,
+        { method: "POST", body: JSON.stringify(body) },
+      );
+      const an = k.agent_id ? `${k.agent_id} — Lauf ${k.task_id}` : (k.extern_bearbeiter || args.an);
+      return { content: [{ type: "text", text: `Karte [${k.id}] übergeben an ${an}. Stand und nächster Schritt stehen im Issue.` }] };
+    }
+
+    case "projekt_issue_kommentar": {
+      const r = await apiCall(
+        `/teams/${encodeURIComponent(args.projekt_id)}/karten/${encodeURIComponent(args.karte_id)}/issue-kommentar`,
+        { method: "POST", body: JSON.stringify({ text: args.text }) },
+      );
+      return { content: [{ type: "text", text: `Im Issue #${r.issue} geschrieben${r.url ? ` (${r.url})` : ""}. Antworten kommen über das Projektgespräch zu dir.` }] };
     }
 
     case "projekt_karte_stand": {
@@ -632,6 +652,43 @@ export function buildServer() {
             agent_id: { type: "string", description: "Member to assign; omit to take it yourself." },
           },
           required: ["projekt_id", "karte_id"],
+        },
+      },
+      {
+        name: "projekt_karte_uebergeben",
+        description:
+          "Hand over an issue card you hold (or, as lead, any card) to someone else: writes a handover comment " +
+          "with the current state and the next step into the issue and moves the claim to the recipient. Give " +
+          "agent_id for a project member (it gets a new run with your handover), or an for someone outside the " +
+          "platform: claude-code:<name>, mensch:<login> or ai-employee:<installation>/<agent>.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            projekt_id: { type: "string" },
+            karte_id: { type: "string" },
+            agent_id: { type: "string", description: "Project member who takes over." },
+            an: { type: "string", description: "Recipient outside the platform (instead of agent_id)." },
+            stand: { type: "string", description: "What is done, what is open, where the work lies (branch, PR)." },
+            naechster_schritt: { type: "string", description: "The very next step for the recipient." },
+          },
+          required: ["projekt_id", "karte_id", "stand", "naechster_schritt"],
+        },
+      },
+      {
+        name: "projekt_issue_kommentar",
+        description:
+          "Write a question or note for people outside the platform (Claude Code sessions, humans, other " +
+          "installations) as a comment into the issue of a card. Use it to ask whoever holds or reported the " +
+          "ticket. Their answers ('@ai-employee <your name>: …' in the issue) reach you through the project " +
+          "conversation. Do not post status spam; at most 10 comments per hour.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            projekt_id: { type: "string" },
+            karte_id: { type: "string", description: "Card of the issue (from projekt_board)." },
+            text: { type: "string", description: "The comment (Markdown, max. 4000 chars)." },
+          },
+          required: ["projekt_id", "karte_id", "text"],
         },
       },
       {
@@ -1958,6 +2015,8 @@ export function buildServer() {
       case "projekt_karte_anlegen":
       case "projekt_karte_verschieben":
       case "projekt_karte_vergeben":
+      case "projekt_karte_uebergeben":
+      case "projekt_issue_kommentar":
       case "projekt_karte_stand":
       case "projekt_wissen_suchen":
       case "projekt_wissen_lesen":

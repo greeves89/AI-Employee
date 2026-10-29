@@ -52,3 +52,15 @@ class Team(Base, TimestampMixin):
     # Angebundene Second Brains (Labels): die Projektsuche durchsucht sie mit,
     # gelesen werden sie nur (core/projekt_wissen.angebundene).
     angebundene_brains: Mapped[list] = mapped_column(JSONB, default=list)
+    # Zusammenarbeit am Repo (core/uebernahme.py): wie lange eine Übernahme ohne
+    # Lebenszeichen gilt (Stunden, leer = 2), wie viele offene Übernahmen ein
+    # Bearbeiter höchstens hält (leer = 2), und ob ein Plattform-Agent eine
+    # abgelaufene fremde Übernahme selbst übernehmen darf (Standard: nein).
+    uebernahme_stunden: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    max_uebernahmen: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    abgelaufene_uebernehmen: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Rückkanal „@ai-employee …“ im Issue weckt Agenten: None = automatisch (an nur bei
+    # privatem Repo mit Schlüssel), sonst ausdrücklich an/aus. Ob das Repo öffentlich
+    # ist, liest der Abgleich (None = unbekannt).
+    rueckkanal: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
+    repo_oeffentlich: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)

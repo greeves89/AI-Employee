@@ -62,9 +62,14 @@ export async function entscheide(roh) {
     const res = await fetch(HOOK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      // cwd und lauf: fuer die Push-Sperre (#1117, agent/app/tools/push_sperre.py)
+      // — Arbeitsverzeichnis des Befehls und der laufende Task (AI_EMPLOYEE_LAUF
+      // setzt der Codex-Runner). Beides darf fehlen.
       body: JSON.stringify({
         tool_name: eingabe.tool_name || "",
         tool_input: eingabe.tool_input || {},
+        ...(typeof eingabe.cwd === "string" ? { cwd: eingabe.cwd } : {}),
+        ...(process.env.AI_EMPLOYEE_LAUF ? { lauf: process.env.AI_EMPLOYEE_LAUF } : {}),
       }),
       signal: controller.signal,
     });

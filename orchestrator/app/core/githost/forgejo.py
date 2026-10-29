@@ -19,7 +19,7 @@ import json
 
 import httpx
 
-from app.core.githost.base import GitHostProvider
+from app.core.githost.base import GitHostProvider, kommentar_form
 
 #: Forgejo/Gitea cap a page at 50 items unless the server raises MAX_RESPONSE_ITEMS.
 SEITE = 50
@@ -226,6 +226,126 @@ class ForgejoHostProvider(GitHostProvider):
             return None
         commit = daten.get("commit") or {}
         return (commit.get("committer") or {}).get("date") or daten.get("created")
+
+    async def commit_info(self, client: httpx.AsyncClient, token: str, repo: str, sha: str) -> dict | None:
+        """Zeit und Autor eines Commits — ``{"zeit", "autor_name", "autor_mail"}`` oder None."""
+        status, daten = await _json_holen(client, f"{self.api_base}/repos/{repo}/git/commits/{sha}",
+                                          self._headers(token))
+        if status != 200 or not isinstance(daten, dict):
+            return None
+        commit = daten.get("commit") or {}
+        autor = commit.get("author") or {}
+        return {"zeit": (commit.get("committer") or {}).get("date") or daten.get("created"),
+                "autor_name": str(autor.get("name") or "")[:100], "autor_mail": str(autor.get("email") or "")[:200]}
+
+    async def kommentar_aendern(self, client: httpx.AsyncClient, token: str, repo: str, kommentar_id: int,
+                                body: str) -> bool:
+        """Einen Issue-Kommentar ersetzen (Übernahme verlängern)."""
+        resp = await client.patch(f"{self.api_base}/repos/{repo}/issues/comments/{kommentar_id}",
+                                  headers=self._headers(token), json={"body": body}, follow_redirects=False)
+        return resp.status_code in (200, 201)
+
+    async def list_issue_comments(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int,
+                                  hoechstens: int = 300) -> list[dict]:
+        """Kommentare eines Issues, älteste zuerst (``core/uebernahme`` liest die Übernahmen daraus)."""
+        rows = await self._seiten(client, token, f"/repos/{repo}/issues/{nummer}/comments", {}, hoechstens)
+        kommentare = [k for k in (kommentar_form(r) for r in rows) if k]
+        # Forgejo/Gitea nennen am Kommentar keine Rolle: Eigentümer des Repos oder
+        # Mitarbeiter (je Autor eine Abfrage, höchstens zehn) gelten als vertraut.
+        besitzer = repo.split("/", 1)[0].lower()
+        geprueft: dict[str, bool] = {}
+        for k in kommentare:
+            autor = (k.get("autor") or "").lower()
+            if not autor:
+                continue
+            if autor not in geprueft:
+                if autor == besitzer:
+                    geprueft[autor] = True
+                elif len(geprueft) < 10 and token:
+                    from urllib.parse import quote
+
+                    resp = await client.get(f"{self.api_base}/repos/{repo}/collaborators/{quote(k['autor'], safe='')}",
+                                            headers=self._headers(token), follow_redirects=False)
+                    geprueft[autor] = resp.status_code == 204
+                else:
+                    geprueft[autor] = False
+            k["vertraut"] = geprueft[autor]
+        return kommentare
+
+    async def repo_oeffentlich(self, client: httpx.AsyncClient, token: str, repo: str) -> bool | None:
+        """Ist das Repo öffentlich? None, wenn nicht lesbar."""
+        status, daten = await _json_holen(client, f"{self.api_base}/repos/{repo}", self._headers(token))
+        if status != 200 or not isinstance(daten, dict) or "private" not in daten:
+            return None
+        return not bool(daten.get("private"))
+
+    async def eigenes_konto(self, client: httpx.AsyncClient, token: str) -> str | None:
+        """Login des Kontos hinter dem Schlüssel — None ohne Schlüssel oder wenn nicht lesbar."""
+        if not token:
+            return None
+        status, daten = await _json_holen(client, f"{self.api_base}/user", self._headers(token))
+        return str(daten.get("login") or "") or None if status == 200 and isinstance(daten, dict) else None
+
+    # ── Abschnitt für die AGENTS.md als Pull Request (core/projekt_git.agents_md_pr) ──
+
+    def _abgelehnt(self, status: int, was: str) -> RuntimeError:
+        if status in (401, 403):
+            return RuntimeError(f"{self.host} verweigert {was} ({status}) — darf der Schlüssel ins Repo schreiben?")
+        return RuntimeError(f"{self.host}: {was} gescheitert ({status}).")
+
+    async def standard_branch(self, client: httpx.AsyncClient, token: str, repo: str) -> str | None:
+        status, daten = await _json_holen(client, f"{self.api_base}/repos/{repo}", self._headers(token))
+        if status != 200 or not isinstance(daten, dict):
+            raise self._abgelehnt(status, "das Lesen des Repos")
+        return daten.get("default_branch")
+
+    async def datei_holen(self, client: httpx.AsyncClient, token: str, repo: str, pfad: str,
+                          ref: str) -> tuple[str | None, str | None]:
+        import base64
+
+        status, daten = await _json_holen(client, f"{self.api_base}/repos/{repo}/contents/{pfad}",
+                                          self._headers(token), {"ref": ref})
+        if status == 404:
+            return None, None
+        if status != 200 or not isinstance(daten, dict):
+            raise self._abgelehnt(status, f"das Lesen von {pfad}")
+        roh = base64.b64decode(str(daten.get("content") or "")).decode("utf-8", errors="replace")
+        return roh, daten.get("sha")
+
+    async def branch_anlegen(self, client: httpx.AsyncClient, token: str, repo: str, neu: str, von: str) -> None:
+        resp = await client.post(f"{self.api_base}/repos/{repo}/branches", headers=self._headers(token),
+                                 json={"new_branch_name": neu, "old_branch_name": von}, follow_redirects=False)
+        if resp.status_code in (200, 201, 409):
+            return  # 409: gibt es schon — die Datei wird darauf aktualisiert
+        raise self._abgelehnt(resp.status_code, f"das Anlegen von {neu}")
+
+    async def datei_schreiben(self, client: httpx.AsyncClient, token: str, repo: str, pfad: str, inhalt: str,
+                              branch: str, nachricht: str, sha: str | None) -> None:
+        import base64
+
+        nutzlast = {"message": nachricht, "branch": branch,
+                    "content": base64.b64encode(inhalt.encode("utf-8")).decode("ascii")}
+        if sha:
+            nutzlast["sha"] = sha
+        resp = await client.request("PUT" if sha else "POST", f"{self.api_base}/repos/{repo}/contents/{pfad}",
+                                    headers=self._headers(token), json=nutzlast, follow_redirects=False)
+        if resp.status_code not in (200, 201):
+            raise self._abgelehnt(resp.status_code, f"das Schreiben von {pfad}")
+
+    async def pull_anlegen(self, client: httpx.AsyncClient, token: str, repo: str, head: str, base: str,
+                           titel: str, text: str) -> str | None:
+        resp = await client.post(f"{self.api_base}/repos/{repo}/pulls", headers=self._headers(token),
+                                 json={"title": titel, "head": head, "base": base, "body": text},
+                                 follow_redirects=False)
+        if resp.status_code in (200, 201):
+            return resp.json().get("html_url")
+        if resp.status_code == 409:
+            status, offen = await _json_holen(client, f"{self.api_base}/repos/{repo}/pulls", self._headers(token),
+                                              {"state": "open", "limit": SEITE})
+            for pr in offen if status == 200 and isinstance(offen, list) else []:
+                if isinstance(pr, dict) and (pr.get("head") or {}).get("ref") == head:
+                    return pr.get("html_url")
+        raise self._abgelehnt(resp.status_code, "das Anlegen des Pull Requests")
 
     async def issue_state(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int) -> str | None:
         status, daten = await _json_holen(client, f"{self.api_base}/repos/{repo}/issues/{nummer}", self._headers(token))

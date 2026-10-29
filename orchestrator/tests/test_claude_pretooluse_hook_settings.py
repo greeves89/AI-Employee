@@ -54,6 +54,14 @@ class ClaudePreToolUseSettingsTests(unittest.TestCase):
         hook = cfg["hooks"]["PreToolUse"][0]["hooks"][0]
         self.assertLessEqual(hook["timeout"], 15)
 
+    def test_der_lauf_geht_als_kopfzeile_mit(self):
+        # Push-Sperre (#1117): der Hook erkennt Laeufe des Arbeitstakts am Task.
+        # Claude Code setzt die Variable nur ein, wenn sie freigegeben ist.
+        cfg = json.loads(_CLAUDE_PRETOOLUSE_SETTINGS_JSON)
+        hook = cfg["hooks"]["PreToolUse"][0]["hooks"][0]
+        self.assertEqual(hook["headers"], {"X-AI-Employee-Lauf": "$AI_EMPLOYEE_LAUF"})
+        self.assertEqual(hook["allowedEnvVars"], ["AI_EMPLOYEE_LAUF"])
+
 
 if __name__ == "__main__":
     unittest.main()

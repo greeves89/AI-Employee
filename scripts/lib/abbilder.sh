@@ -167,6 +167,20 @@ abbilder_verwerfen() {
     done
 }
 
+# abbilder_env_setzen <NAME> <wert> — Schluessel in .env eintragen/ersetzen.
+#
+# Nur Namen und Werte ohne Sonderzeichen; beides kommt hier aus VERSION bzw. aus
+# festen Zeichenketten, nie von aussen.
+abbilder_env_setzen() {
+    local name="$1" wert="$2"
+    [ -f .env ] || return 0
+    if grep -q "^${name}=" .env; then
+        sed -i.bak "s|^${name}=.*|${name}=${wert}|" .env && rm -f .env.bak
+    else
+        printf '%s=%s\n' "$name" "$wert" >> .env
+    fi
+}
+
 abbilder_bereitstellen() {
     local lokal_bauen="${1:-0}" version registry
     version="$(tr -d '[:space:]' < VERSION 2>/dev/null || true)"
@@ -176,13 +190,7 @@ abbilder_bereitstellen() {
     export AI_EMPLOYEE_VERSION="$version"
     # Fuer den lokalen Bau: Version ins Frontend-Bundle (update-banner.tsx).
     export APP_VERSION="$version"
-    if [ -f .env ]; then
-        if grep -q '^AI_EMPLOYEE_VERSION=' .env; then
-            sed -i.bak "s/^AI_EMPLOYEE_VERSION=.*/AI_EMPLOYEE_VERSION=${version}/" .env && rm -f .env.bak
-        else
-            printf 'AI_EMPLOYEE_VERSION=%s\n' "$version" >> .env
-        fi
-    fi
+    abbilder_env_setzen AI_EMPLOYEE_VERSION "$version"
 
     ABBILD_QUELLE="lokal"
     if [ "$lokal_bauen" != "1" ]; then
@@ -194,11 +202,18 @@ abbilder_bereitstellen() {
             # shellcheck disable=SC2086  # bewusst getrennte Liste
             if abbilder_signatur_pruefen "$registry" "$version" $ABBILD_DIENSTE agent; then
                 docker tag "${registry}/ai-employee-agent:${version}" ai-employee-agent:latest
+                # Ein frueherer Vermerk gilt nicht mehr: diese Version ist geprueft.
+                abbilder_env_setzen AI_EMPLOYEE_ABBILD_ABGELEHNT ""
                 ABBILD_QUELLE="registry"
                 return 0
             fi
             # shellcheck disable=SC2086  # bewusst getrennte Liste
             abbilder_verwerfen "$registry" "$version" $ABBILD_DIENSTE agent
+            # Dauerhaft festhalten, WELCHE Version durchgefallen ist (#889):
+            # der Orchestrator holt das Agenten-Abbild sonst selbst nach, wenn es
+            # lokal fehlt — und damit kaeme genau das verworfene Abbild wieder
+            # herein, sobald ein "docker image prune" den lokalen Bau wegnimmt.
+            abbilder_env_setzen AI_EMPLOYEE_ABBILD_ABGELEHNT "$version"
         else
             echo "Abbilder ${version} nicht abrufbar (Registry nicht erreichbar oder Version noch nicht gebaut) — baue lokal."
         fi
@@ -219,16 +234,35 @@ abbilder_bereitstellen() {
 # OHNE ``-f`` lehnt solche Abbilder ab. Dazu Build-Cache älter als drei Tage
 # (Agenten-Apps, lokale Bauten). Daten (Volumes) werden nie angefasst.
 #   AI_EMPLOYEE_ABBILDER_AUFRAEUMEN=0   abschalten
+#
+# Zusammenspiel mit dem Orchestrator, der das Agenten-Abbild selbst holt (#889):
+#  - Angefasst werden NUR Registry-Namen (<registry>/ai-employee-<dienst>:<tag>).
+#    Der lokale Name ai-employee-agent:latest, auf den AGENT_IMAGE zeigt und mit
+#    dem neue Agenten starten, bleibt immer stehen. ``docker image rm`` auf einen
+#    Registry-Namen nimmt bei einem Abbild mit mehreren Namen nur diesen einen
+#    weg — das Abbild hinter ai-employee-agent:latest bleibt also auch dann,
+#    wenn es aus einer älteren Version stammt. Der Orchestrator findet es und
+#    holt nichts nach.
+#  - Der Orchestrator holt nur <registry>/ai-employee-agent:<VERSION> — genau die
+#    neue Version, die hier behalten wird. Ein laufendes Holen verliert also
+#    weder seinen Namen noch wird es vom ``image prune`` erfasst.
+#  - Eine Version mit verworfener Signatur (AI_EMPLOYEE_ABBILD_ABGELEHNT) wird
+#    NICHT behalten, auch wenn sie die neue ist: hätte ``abbilder_verwerfen``
+#    einen ihrer Registry-Namen nicht entfernen können, räumt dieser Lauf ihn
+#    weg. Der lokale Ersatzbau unter ai-employee-agent:latest bleibt (s. o.).
 abbilder_aufraeumen() {
-    local registry dienst tag behalten geloescht=0
+    local registry dienst tag behalten abgelehnt geloescht=0
     [ "$(abbilder_env AI_EMPLOYEE_ABBILDER_AUFRAEUMEN)" = "0" ] && return 0
     registry="$(abbilder_env AI_EMPLOYEE_REGISTRY)"
     registry="${registry:-ghcr.io/greeves89}"
+    abgelehnt="$(abbilder_env AI_EMPLOYEE_ABBILD_ABGELEHNT)"
     behalten=" $* "
     for dienst in $ABBILD_DIENSTE agent; do
         for tag in $(docker images "${registry}/ai-employee-${dienst}" --format '{{.Tag}}' 2>/dev/null); do
-            case "$behalten" in *" ${tag} "*) continue ;; esac
             [ "$tag" = "<none>" ] && continue
+            if [ -z "$abgelehnt" ] || [ "$tag" != "$abgelehnt" ]; then
+                case "$behalten" in *" ${tag} "*) continue ;; esac
+            fi
             if docker image rm "${registry}/ai-employee-${dienst}:${tag}" >/dev/null 2>&1; then
                 geloescht=$((geloescht + 1))
             fi
