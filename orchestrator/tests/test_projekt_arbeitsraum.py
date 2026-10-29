@@ -291,6 +291,72 @@ class BesprechungKenntDenStand(_Arbeitsraum):
             self.assertEqual(await projekt_termine.stand_jetzt(db, "gibt-es-nicht"), "")
 
 
+class StatusAnDerQuelle(_Arbeitsraum):
+    """#1106: Ein Punkt zu einem geschlossenen Issue, zu dem KEINE Karte (mehr) liegt,
+    wurde bei jedem Protokoll neu angelegt — die Wache las die Board-Spalte „erledigt“
+    statt den Status beim Hoster. Gemessen am 28.10.2026 kannte sie dadurch 4 Nummern,
+    während im Repo hunderte Issues geschlossen waren."""
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        async with self.Session() as db:
+            (await db.get(Team, "p1")).repo = "o/r"
+            await db.commit()
+
+    ITEM = "Für #961 die Inventur wiederholen"
+
+    async def _abschluss(self, zustaende, *, redis="redis-attrappe", kaputt=False):
+        """``zustaende``: Issue-Nummer → Status beim Hoster. ``kaputt``: Quelle antwortet nicht."""
+        gefragt = []
+
+        class _Anbieter:
+            async def issue_state(self, client, token, repo, nummer):
+                gefragt.append((repo, nummer))
+                if kaputt:
+                    raise RuntimeError("Hoster antwortet nicht")
+                return zustaende.get(nummer)
+
+        @contextlib.asynccontextmanager
+        async def _sitzung():
+            async with self.Session() as db:
+                yield db
+
+        async def _zugang(db, r, team):
+            return "tok", _Anbieter()
+
+        with patch("app.db.session.async_session_factory", _sitzung), \
+                patch("app.core.projekt_git.zugang", _zugang):
+            await projekt_termine.abschluss("raum1", "p1", "Daily: Projekt",
+                                            f"## Action Items\n- [ ] {self.ITEM}\n", ["a1"], redis=redis)
+        async with self.Session() as db:
+            from sqlalchemy import select
+
+            neu = (await db.execute(select(ProjektKarte).where(
+                ProjektKarte.team_id == "p1", ProjektKarte.notiz == "Aus Besprechung"))).scalars().all()
+        return [k.titel for k in neu], gefragt
+
+    async def test_geschlossenes_issue_ohne_karte_wird_keine_karte(self):
+        titel, gefragt = await self._abschluss({961: "closed"})
+        self.assertEqual(titel, [])
+        self.assertEqual(gefragt, [("o/r", 961)])   # am Repo gemessen, nicht am Board
+
+    async def test_offenes_issue_wird_sehr_wohl_eine_karte(self):
+        """Gegenprobe mit derselben Attrappe: antwortet die Quelle „offen“, entsteht die
+        Karte — sonst würde der Test oben auch bei einer Wache bestehen, die nichts fragt."""
+        titel, gefragt = await self._abschluss({961: "open"})
+        self.assertEqual((titel, gefragt), ([self.ITEM], [("o/r", 961)]))
+
+    async def test_quelle_nicht_erreichbar_legt_die_karte_an(self):
+        """Bewusst so festgelegt: ein doppelter Punkt ist billiger als ein verlorener."""
+        titel, _ = await self._abschluss({961: "closed"}, kaputt=True)
+        self.assertEqual(titel, [self.ITEM])
+
+    async def test_ohne_redis_wird_nicht_gefragt(self):
+        """Aufrufer ohne ``redis`` (Bestand, Tests): Verhalten wie bisher, kein Absturz."""
+        titel, gefragt = await self._abschluss({961: "closed"}, redis=None)
+        self.assertEqual((titel, gefragt), ([self.ITEM], []))
+
+
 class TerminText(unittest.TestCase):
     def test_lesbar_statt_kuerzel(self):
         self.assertEqual(projekt_termine.beschreibung({"art": "daily", "uhrzeit": "09:00"}), "Daily (Mo–Fr) um 09:00")
