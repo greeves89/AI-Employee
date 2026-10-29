@@ -35,9 +35,11 @@ class _Sek(Basis):
     async def asyncSetUp(self):
         await super().asyncSetUp()
         from app.models.memory import AgentMemoryLink, AgentMemoryTag
+        from app.models.sekretariat_protokoll import SekretariatProtokoll
 
         async with self.engine.begin() as conn:
-            for model in (Erinnerung, AgentMemory, AgentMemoryTag, AgentMemoryLink, Notification, CommandApproval):
+            for model in (Erinnerung, AgentMemory, AgentMemoryTag, AgentMemoryLink, Notification, CommandApproval,
+                          SekretariatProtokoll):
                 await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
         # Gedächtnis ohne Einbettungsdienst (der läuft im Test nicht).
         self.p_einbettung = patch("app.api.memory._get_embedding_service", return_value=None, create=True)

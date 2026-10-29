@@ -848,6 +848,26 @@ class SchedulerService:
                     continue
                 await advance_run(run, wf, db, router)
 
+    @staticmethod
+    async def _sekretariat_briefing(db: AsyncSession, schedule: Schedule, prompt: str) -> str:
+        """Tagesbriefing eines Sekretariats: der Lauf bekommt die Daten, die die Seite
+        „Heute“ liest (Termine, Mails, Freigaben, Erinnerungen — mit dem Zugang des
+        Besitzers). Vorher holte der Agent sie selbst und meldete „M365 getrennt“, während
+        die Seite dieselben Mails zeigte. Scheitert das Lesen, bleibt der gespeicherte Auftrag."""
+        from app.core import sekretariat
+        from app.models.team import Team
+
+        if schedule.name != f"{sekretariat.PRAEFIX}{sekretariat.BRIEFING_NAME}":
+            return prompt
+        try:
+            team = await db.get(Team, schedule.team_id)
+            if team is None or team.art != sekretariat.ART:
+                return prompt
+            return await sekretariat.briefing_auftrag(db, team)
+        except Exception as e:  # noqa: BLE001 — ein Briefing ohne Daten ist besser als keins
+            logger.warning("[Scheduler] %s — Daten fuer das Briefing nicht gelesen: %s", schedule.name, e)
+            return prompt
+
     async def _execute_schedule(
         self,
         db: AsyncSession,
@@ -1126,6 +1146,8 @@ class SchedulerService:
                 )
         else:
             prompt = schedule.prompt
+            if schedule.team_id:
+                prompt = await self._sekretariat_briefing(db, schedule, prompt)
 
         # Adaptiver Takt (#941, Punkt 3): Der Lauf muss WISSEN, dass er am Ende
         # melden soll. Rechenregel und Werkzeug allein genuegen nicht — ohne

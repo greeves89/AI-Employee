@@ -37,7 +37,9 @@ VERLAUF_IM_LAUF = 15
 
 
 def _entschaerft(text: str) -> str:
-    return (text or "").replace("[EXTERNAL-DATA", "(EXTERNAL-DATA").replace("[/EXTERNAL-DATA", "(/EXTERNAL-DATA")
+    from app.core.fremdtext import entschaerft
+
+    return entschaerft(text)
 
 
 def nachricht_dict(n: ProjektNachricht) -> dict:
