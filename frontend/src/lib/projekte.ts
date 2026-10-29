@@ -2,6 +2,16 @@
  *  (orchestrator: core/projekte.py, api/teams.py). */
 
 export type ProjektSpalte = "eingang" | "bereit" | "in_arbeit" | "pruefung" | "erledigt";
+/** Wer ein Issue übernommen hat (orchestrator: core/uebernahme.py). */
+export type BearbeiterArt = "plattform" | "claude_code" | "andere_anlage" | "mensch" | "extern";
+
+export const BEARBEITER_ART: Record<BearbeiterArt, string> = {
+  plattform: "Agent dieser Anlage",
+  claude_code: "Claude-Code-Sitzung",
+  andere_anlage: "Agent einer anderen AI-Employee-Anlage",
+  mensch: "Mensch (Zuständige im Repo)",
+  extern: "Jemand außerhalb des Boards (Status-Tag im Repo)",
+};
 export type ProjektStufe = "planung" | "bau" | "tests" | "pr" | "ci" | "merge";
 
 export interface ProjektKarte {
@@ -20,8 +30,12 @@ export interface ProjektKarte {
   task_status: string | null;
   stufe: ProjektStufe | null;
   notiz: string | null;
-  /** Wer das Issue außerhalb des Boards bearbeitet („@name“ oder „extern“). */
+  /** Wer das Issue übernommen hat (Name aus der Übernahme-Kopfzeile, „@name“ oder „extern“). */
   extern_bearbeiter: string | null;
+  /** Art des Bearbeiters: Agent dieser Anlage, Claude Code, andere Anlage, Mensch, sonst extern. */
+  bearbeiter_art?: BearbeiterArt | null;
+  /** Bei einem Agenten dieser Anlage: seine Kennung (für Bild und Namen). */
+  extern_agent_id?: string | null;
   /** Seit wann jemand von außen dran ist (geschätzt aus dem Repo). */
   extern_seit?: string | null;
   /** Letztes Lebenszeichen von außen: Änderung am Issue oder Commit auf dem Branch. */

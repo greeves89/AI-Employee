@@ -13,6 +13,23 @@ from abc import ABC, abstractmethod
 import httpx
 
 
+def kommentar_form(roh) -> dict | None:
+    """Issue-Kommentar in der Form, die ``core/uebernahme`` liest — gleich für alle Anbieter.
+
+    Fremder Server: nur Einträge mit ganzzahliger Kennung, Text gekürzt.
+    """
+    if not isinstance(roh, dict) or not isinstance(roh.get("id"), int) or isinstance(roh.get("id"), bool):
+        return None
+    nutzer = roh.get("user") if isinstance(roh.get("user"), dict) else {}
+    return {
+        "id": roh["id"],
+        "body": str(roh.get("body") or "")[:20000],
+        "autor": str(nutzer.get("login") or "")[:60] or None,
+        "erstellt": roh.get("created_at") if isinstance(roh.get("created_at"), str) else None,
+        "geaendert": roh.get("updated_at") if isinstance(roh.get("updated_at"), str) else None,
+    }
+
+
 class GitHostProvider(ABC):
     """Operations agents and the orchestrator perform against a Git host."""
 

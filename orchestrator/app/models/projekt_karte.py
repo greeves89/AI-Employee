@@ -57,3 +57,11 @@ class ProjektKarte(Base, TimestampMixin):
     extern_seit: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     extern_regung_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     extern_branch: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Wer übernommen hat, als Art (core/uebernahme.ARTEN): plattform (ein Agent
+    # DIESER Anlage), claude_code, andere_anlage, mensch, extern. Dazu die gültige
+    # Übernahme aus den Kommentaren des Issues (``Uebernahme.als_dict``) und wann
+    # die Kommentare zuletzt gelesen wurden — neu gelesen wird nur, wenn sich das
+    # Issue seitdem geändert hat.
+    bearbeiter_art: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    uebernahme: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    kommentare_gelesen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

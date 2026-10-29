@@ -174,6 +174,10 @@ class AgentRunner:
         ]
 
         env = os.environ.copy()
+        # Der Lauf fuer die Push-Sperre (#1117): Claude Code reicht ihn als Kopfzeile
+        # an den PreToolUse-Hook weiter (``allowedEnvVars`` in .claude/settings.json).
+        from app.tools.push_sperre import LAUF_ENV
+        env[LAUF_ENV] = task_id or ""
         # Standard-Denktiefe des Agenten: Aufgaben haben keine Stufen-Wahl am Lauf,
         # also zaehlt hier die Einstellung aus den Agenten-Einstellungen. "off"
         # raeumt ein etwaiges Container-Budget weg statt darauf zurueckzufallen.

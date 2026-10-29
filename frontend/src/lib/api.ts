@@ -5044,6 +5044,16 @@ export async function projektRepoAbgleichen(
   return fetchJSON(`${getBase()}/teams/${id}/repo/abgleichen${q}`, { method: "POST" });
 }
 
+/** Abschnitt „Zusammenarbeit mit AI Employee“ für die AGENTS.md des Repos — als Text. */
+export async function projektAgentsMd(id: string): Promise<{ pfad: string; text: string; anlage: string; hat_repo: boolean }> {
+  return fetchJSON(`${getBase()}/teams/${id}/repo/agents-md`);
+}
+
+/** Denselben Abschnitt als Pull Request ins Repo stellen (nie direkt auf den Standard-Branch). */
+export async function projektAgentsMdPr(id: string): Promise<{ url: string | null; aktuell: boolean }> {
+  return fetchJSON(`${getBase()}/teams/${id}/repo/agents-md`, { method: "POST" });
+}
+
 export async function projektGespraech(id: string, limit = 100): Promise<{ nachrichten: ProjektNachricht[] }> {
   return fetchJSON(`${getBase()}/teams/${id}/gespraech?limit=${limit}`);
 }

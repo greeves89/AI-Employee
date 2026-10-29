@@ -7,13 +7,13 @@
  */
 
 import Link from "next/link";
-import { ChevronRight, GitBranch, RefreshCw, Timer, TriangleAlert, Wallet } from "lucide-react";
+import { ChevronRight, GitBranch, RefreshCw, ScrollText, Timer, TriangleAlert, Wallet } from "lucide-react";
 import { useMoney } from "@/hooks/use-money";
 import { TAKTE, bis, repoAdresse, repoName, type ProjektBoard } from "@/lib/projekte";
 import { cn, timeAgo } from "@/lib/utils";
 
 export function ProjektKopfleiste({
-  board, projektId, budgetUsd, farbe, repo, repoAbgleichAt, repoFehler, gleichtAb, onAbgleichen, onBoard,
+  board, projektId, budgetUsd, farbe, repo, repoAbgleichAt, repoFehler, gleichtAb, onAbgleichen, onBoard, onRegeln,
 }: {
   board: ProjektBoard;
   projektId: string;
@@ -25,6 +25,8 @@ export function ProjektKopfleiste({
   gleichtAb: boolean;
   onAbgleichen?: () => void;
   onBoard: () => void;
+  /** Öffnet „Regeln für Agenten ins Repo“ (Abschnitt für die AGENTS.md). */
+  onRegeln?: () => void;
 }) {
   const money = useMoney();
   const { kennzahlen: k, takt } = board;
@@ -86,6 +88,14 @@ export function ProjektKopfleiste({
                   className="inline-flex items-center gap-1 rounded-md border border-foreground/[0.1] px-1.5 py-0.5 text-foreground hover:bg-foreground/[0.06] disabled:opacity-50">
                   <RefreshCw className={cn("h-3.5 w-3.5", gleichtAb && "animate-spin")} />
                   {gleichtAb ? "Holt …" : "Aktualisieren"}
+                </button>
+              )}
+              {onRegeln && (
+                <button type="button" onClick={onRegeln}
+                  title="Abschnitt „Zusammenarbeit mit AI Employee“ für die AGENTS.md des Repos — zum Kopieren oder als Pull Request"
+                  className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-foreground/[0.1] px-1.5 py-0.5 text-foreground hover:bg-foreground/[0.06]">
+                  <ScrollText className="h-3.5 w-3.5" />
+                  Regeln für Agenten
                 </button>
               )}
             </span>

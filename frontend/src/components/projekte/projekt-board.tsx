@@ -8,13 +8,13 @@
 
 import { useEffect, useState } from "react";
 import { UserRound,
-  ArrowLeft, ArrowRight, Check, CircleDot, CornerUpLeft, ExternalLink, GitBranch, GitPullRequest, Loader2, Play, Plus,
-  ScrollText, Trash2, TriangleAlert, Unlock,
+  ArrowLeft, ArrowRight, Bot, Check, CircleDot, CornerUpLeft, ExternalLink, GitBranch, GitPullRequest, Globe, Loader2,
+  Play, Plus, ScrollText, Server, Terminal, Trash2, TriangleAlert, Unlock,
 } from "lucide-react";
 import type { Agent } from "@/lib/types";
 import {
-  PRIORITAETEN, PR_ZUSTAND, SPALTEN, wochentag,
-  type ProjektBoard, type ProjektKarte, type ProjektKennzahlen,
+  BEARBEITER_ART, PRIORITAETEN, PR_ZUSTAND, SPALTEN, wochentag,
+  type BearbeiterArt, type ProjektBoard, type ProjektKarte, type ProjektKennzahlen,
 } from "@/lib/projekte";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { Fenster } from "@/components/ui/fenster";
@@ -222,6 +222,39 @@ function KartenAktionen({
   );
 }
 
+const BEARBEITER_SYMBOL: Record<BearbeiterArt, typeof UserRound> = {
+  plattform: Bot,
+  claude_code: Terminal,
+  andere_anlage: Server,
+  mensch: UserRound,
+  extern: Globe,
+};
+
+/** Wer ein Issue übernommen hat — mit Art und Namen aus der Übernahme im Repo. Ein
+ *  Agent dieser Anlage erscheint wie ein Agent mit Lauf (Bild und Name). */
+function Bearbeiter({ karte, agents }: { karte: ProjektKarte; agents: Map<string, Agent> }) {
+  const art: BearbeiterArt = karte.bearbeiter_art ?? (karte.extern_bearbeiter === "extern" ? "extern" : "mensch");
+  const eigen = art === "plattform" && karte.extern_agent_id ? agents.get(karte.extern_agent_id) : undefined;
+  const Icon = BEARBEITER_SYMBOL[art] ?? UserRound;
+  const name = eigen?.name ?? (karte.extern_bearbeiter === "extern" ? "extern dran" : karte.extern_bearbeiter);
+  return (
+    <span
+      title={`Übernommen von: ${BEARBEITER_ART[art]}. Der Branch der Übernahme gehört dem Übernehmer.`}
+      className={cn(
+        "inline-flex max-w-[14rem] items-center gap-1 rounded-full px-1.5 py-px font-medium text-foreground",
+        art === "plattform" ? "bg-foreground/[0.06]" : "bg-primary/10",
+      )}
+    >
+      {eigen ? (
+        <AgentAvatar config={eigen.config} size="sm" className="h-4 w-4 rounded" />
+      ) : (
+        <Icon className="h-3 w-3 shrink-0 text-primary" />
+      )}
+      <span className="truncate">{name}</span>
+    </span>
+  );
+}
+
 /** Kopfzeile einer Karte: Ticket, Agent, Bearbeiter von außen, Zeit, Kosten. */
 function KartenMeta({ karte, agents }: { karte: ProjektKarte; agents: Map<string, Agent> }) {
   const money = useMoney();
@@ -240,15 +273,7 @@ function KartenMeta({ karte, agents }: { karte: ProjektKarte; agents: Map<string
           {agent.name}
         </span>
       )}
-      {karte.extern_bearbeiter && (
-        <span
-          title="Bearbeitet außerhalb des Boards (Zuständige oder Status-Tag im Repo)"
-          className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-1.5 py-px font-medium text-foreground"
-        >
-          <UserRound className="h-3 w-3 text-primary" />
-          {karte.extern_bearbeiter === "extern" ? "extern dran" : karte.extern_bearbeiter}
-        </span>
-      )}
+      {karte.extern_bearbeiter && <Bearbeiter karte={karte} agents={agents} />}
       {wann && <span>{timeAgo(wann)}</span>}
       {karte.kosten_usd ? <span title={money.title(karte.kosten_usd)}>{money.fmt(karte.kosten_usd)}</span> : null}
     </div>
