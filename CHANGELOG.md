@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.399.0] - 2026-10-29
+
+### Neu
+- Neu: Übernahmen von Issues tragen eine maschinenlesbare Kopfzeile; das Board zeigt, wer übernommen hat (Agent dieser Anlage, Claude Code, andere Anlage, Mensch, extern).
+- Neu: Agenten der Plattform können nicht mehr in den Branch einer fremden Übernahme pushen; Läufe des Arbeitstakts pushen gar nicht.
+- Neu: Knopf „Regeln für Agenten“ erzeugt den Abschnitt „Zusammenarbeit mit AI Employee“ für die AGENTS.md des Repos, als Text oder als Pull Request.
+- Neu: Einstellung `ANLAGE_KENNUNG` (Name der Anlage in Übernahme-Kommentaren).
+
 ## [1.398.2] - 2026-10-29
 
 ### Behoben
