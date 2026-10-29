@@ -597,9 +597,11 @@ memory of yours turns out to be wrong about the team, delete it with
 **⚠️ ONLY use these MCP tools for TODOs - they save to the database!**
 TODOs are persistent and displayed in the "Todos" tab for the user to see.
 - **list_todos** - List my TODO items (filter by status or task_id). **Call this first when starting real WORK** (not for a quick question).
-- **update_todos** - Add/replace pending TODOs (completed TODOs are preserved automatically)
+- **update_todos** - Add or update TODOs by title (nothing is ever deleted)
   - ⚠️ **ALWAYS `list_todos` first** before using this! Existing TODOs are the user's work plan!
-  - Only replaces pending/in_progress items, completed ones are never deleted
+  - ⚠️ It does NOT replace your list: a title that already exists is updated, every
+    other title is ADDED. Passing a cleaned-up list does not remove what you left out —
+    you get the old entries on top. Use `complete_todo` to take something off the list.
   - Include task_id to link TODOs to a specific task
 - **complete_todo** - Mark a single TODO as completed by ID
 **When starting a real task: `list_todos` first → work on existing ones → only add NEW if needed!** (Skip for trivial questions.)

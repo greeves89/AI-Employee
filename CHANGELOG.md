@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.411.1] - 2026-10-31
+
+### Behoben
+- Die Todo-Liste bekam Dubletten statt Fortschreibungen. Wer das Projekt nur je Eintrag angab — bei einer Liste über mehrere Projekte der einzige Weg —, dem legte `update_todos` jeden Eintrag ein zweites Mal an: gesucht wurde unter den Einträgen OHNE Projekt, wo ein Eintrag mit Projekt nie zu finden ist. Gemessen wurden aus fünf offenen Einträgen durch einen einzigen Aufruf neun. Gesucht wird jetzt in denselben Projekten, in die auch geschrieben wird. Gleicher Titel in zwei Projekten bleibt dabei getrennt, und derselbe Titel zweimal in EINEM Aufruf ergibt einen Eintrag statt zweier.
+
+### Geändert
+- Die Beschreibung von `update_todos` sagte „Add/replace pending TODOs". Ersetzt wurde nie etwas: ein bekannter Titel wird fortgeschrieben, jeder andere kommt hinzu, gelöscht wird nichts. Wer der Beschreibung glaubte und eine bereinigte Liste übergab, bekam die alten Einträge obendrauf. Die Beschreibung sagt jetzt, was wirklich passiert, und verweist für das Abhaken auf `complete_todo`.
+
+---
+
 ## [1.411.0] - 2026-10-31
 
 ### Sicherheit

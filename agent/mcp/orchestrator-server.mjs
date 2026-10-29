@@ -1371,10 +1371,12 @@ export function buildServer() {
       {
         name: "update_todos",
         description:
-          "Add or replace pending TODOs. Completed TODOs are NEVER deleted (preserved automatically). " +
+          "Add or update TODOs, matched by title. Nothing is ever deleted. " +
           "IMPORTANT: ALWAYS call list_todos FIRST to check existing TODOs before using this! " +
           "Existing TODOs represent the user's work plan - review and work on them before creating new ones. " +
-          "Only pending/in_progress items are replaced; completed items are always kept. " +
+          "This does NOT replace your list: a title that already exists is updated, every other " +
+          "title is ADDED. Passing a cleaned-up list does not remove the entries you left out - " +
+          "you get them on top. Use complete_todo to take something off the list. " +
           "ALWAYS set the 'project' field to group TODOs by project (e.g. 'Deeskalator', 'Entscheidungs-App'). " +
           "Set project_path to the workspace path of the project (e.g. '/workspace/deeskalator/').",
         inputSchema: {
