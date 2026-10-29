@@ -916,7 +916,13 @@ DESKTOP_TOOL = {
             "Bedienungshilfen-Baum und liefert seine Koordinaten; target = Beschriftung "
             "oder Rolle. NUR fuer NATIVE Programme (Finder, Excel, Einstellungen) — fuer "
             "Inhalte INNERHALB eines Browsers (eine Website) funktioniert das NICHT "
-            "zuverlaessig, dafuer IMMER 'ego' nehmen. action='wait' — wartet, bis so ein "
+            "zuverlaessig, dafuer IMMER 'ego' nehmen. action='press' — BEDIENT ein Element "
+            "direkt (Knopf, Menüeintrag, Häkchen) über Windows UI Automation bzw. macOS, "
+            "target = Beschriftung; ohne Koordinaten, das ist bei nativen Programmen der "
+            "sichere Weg statt find+click. action='set' — füllt ein Feld, target = "
+            "Beschriftung des Felds, text = Inhalt. Weitere Schritte (toggle, select, "
+            "expand) über action='element_press', params={query, aktion, value}. "
+            "action='wait' — wartet, bis so ein "
             "Element erscheint. action='key' — Tastenkombination, text z. B. 'cmd+f' oder "
             "'enter'. action='scroll' — scrollt (text = Anzahl, negativ = nach unten).\n"
             "action='ego' — DEIN NORMALER WEG FUER ALLES IN EINEM BROWSER, nicht nur "
@@ -957,7 +963,8 @@ DESKTOP_TOOL = {
             "demselben display=N. Die Koordinaten gelten immer fuer den Bildschirm, "
             "den du gerade angesehen hast.\n"
             "SO BEDIENST DU EINE APP (eine NATIVE App — fuer Browser-Inhalte siehe 'ego' "
-            "oben): oeffnen → `find` auf das Element → `click` → `type`/`key` → wieder "
+            "oben): oeffnen → `press`/`set` auf das Element (sonst `find` → `click` → "
+            "`type`/`key`) → wieder "
             "nachsehen (`screenshot` oder `find`). Sage NIEMALS, du koennest 'nur oeffnen, aber nicht navigieren' — das stimmt nicht.\n"
             "Läuft keine Bridge, sag ihm genau das (Bridge-App starten), weiche NICHT auf "
             "etwas anderes aus. Beschreibe NIEMALS einen Bildschirm, dessen Screenshot "
@@ -985,7 +992,8 @@ DESKTOP_TOOL = {
             "type": "object",
             "properties": {
                 "action": {"type": "string", "description": (
-                    "open | screenshot | find | click | type | key | wait | scroll | ego — "
+                    "open | screenshot | find | press | set | click | type | key | wait | "
+                    "scroll | ego — "
                     "oder JEDER echte Bridge-Aktionsname (siehe Beschreibung) fuer alles "
                     "andere, zusammen mit `params`."
                 )},
@@ -3634,6 +3642,7 @@ class RealtimeVoiceSession:
     #: andere Aktion geht als Rohdurchreiche direkt durch (siehe _desktop unten).
     _DESKTOP_SHORTHANDS = frozenset({
         "open", "screenshot", "click", "type", "find", "wait", "key", "scroll", "ego",
+        "press", "set",
     })
 
     async def _desktop(self, action: str, target: str = "", text: str = "",
@@ -3716,6 +3725,16 @@ class RealtimeVoiceSession:
             if not target.strip():
                 return "Wonach soll ich auf dem Bildschirm suchen?"
             act, params = "find_element", {"query": target.strip()}
+        elif action == "press":
+            # Das Element SELBST ausloesen (UI Automation / AX) — kein Klick auf
+            # eine Koordinate, die bei Skalierung oder zweitem Monitor danebengeht.
+            if not target.strip():
+                return "Welches Element soll ich bedienen?"
+            act, params = "element_press", {"query": target.strip(), "aktion": "press"}
+        elif action == "set":
+            if not target.strip():
+                return "Welches Feld soll ich ausfüllen?"
+            act, params = "element_set_value", {"query": target.strip(), "value": text}
         elif action == "wait":
             if not target.strip():
                 return "Worauf soll ich warten?"
@@ -3832,6 +3851,12 @@ class RealtimeVoiceSession:
                     + _bildschirm_hinweis(result))
         if act in ("open_app", "open_url"):
             return f"'{target.strip()}' wurde geöffnet — die Bridge meldet Erfolg."
+        if act in ("element_press", "element_set_value"):
+            el = result.get("element") or {}
+            name = el.get("title") or el.get("label") or target.strip()
+            stand = result.get("zustand") or {}
+            return (f"Erledigt: '{name}' bedient ({result.get('methode', '')})."
+                    + (f" Stand jetzt: {json.dumps(stand, ensure_ascii=False)}" if stand else ""))
         if act == "ego_run":
             out = str(result.get("output") or "").strip()
             return out if out else "Erledigt — das Skript hat nichts über cliLog() zurückgegeben."

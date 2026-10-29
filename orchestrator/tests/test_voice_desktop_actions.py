@@ -57,9 +57,22 @@ class WindowsSupportTests(unittest.TestCase):
         self.assertIn("import uiautomation as auto", BRIDGE)
 
     def test_both_platforms_share_ONE_search(self):
-        self.assertIn("def search_tree(", BRIDGE)
+        """Eine Suche fuer Finden, Warten und Bedienen, auf beiden Systemen."""
+        self.assertEqual(BRIDGE.count("def _breitensuche("), 1)
+        self.assertEqual(BRIDGE.count("def search_tree("), 0)
         self.assertEqual(BRIDGE.count("def _search(node"), 0)
         self.assertEqual(BRIDGE.count("def _find(node"), 0)
+
+    def test_elements_are_operated_not_just_clicked(self):
+        """Windows UI Automation bedient das Element selbst — kein Koordinaten-Klick."""
+        for muster in ("Invoke", "Toggle", "SelectionItem", "ExpandCollapse", "Value"):
+            self.assertIn(f'"{muster}"', BRIDGE)
+        self.assertIn('act, params = "element_press"', DESKTOP)
+        self.assertIn('act, params = "element_set_value"', DESKTOP)
+
+    def test_uia_is_initialised_per_thread(self):
+        """Befehle laufen im Thread-Pool; COM braucht je Thread ein CoInitialize."""
+        self.assertIn("UIAutomationInitializerInThread", BRIDGE)
 
     def test_role_names_work_across_platforms(self):
         """`button` muss AXButton (macOS) UND ButtonControl (Windows) treffen."""

@@ -98,3 +98,38 @@ class ScopeViolationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ElementActionScopeTests(unittest.TestCase):
+    """Elemente direkt bedienen: gleiche Freigaben wie Klicken und Tippen."""
+
+    def test_needs_mouse_or_keyboard_not_just_reading(self):
+        from app.api.computer_use import _ACTION_TO_GROUP
+
+        self.assertEqual(_ACTION_TO_GROUP["element_press"], "mouse")
+        self.assertEqual(_ACTION_TO_GROUP["element_set_value"], "keyboard")
+
+    def test_app_is_checked_against_the_list(self):
+        sess = {"allowed_apps": ["Excel"]}
+        for action in ("element_press", "element_set_value"):
+            with self.subTest(action=action):
+                self.assertIsNone(_scope_violation(action, {"app": "EXCEL.EXE"}, sess))
+                self.assertIsNotNone(_scope_violation(action, {"app": "Terminal"}, sess))
+
+    def test_without_app_a_limited_session_refuses(self):
+        """Ohne `app` waere es „irgendwo auf dem Desktop" — an der Liste vorbei."""
+        self.assertIsNotNone(_scope_violation("element_press", {"query": "OK"},
+                                              {"allowed_apps": ["Excel"]}))
+
+    def test_unlimited_session_needs_no_app(self):
+        self.assertIsNone(_scope_violation("element_press", {"query": "OK"},
+                                           {"allowed_apps": None}))
+
+    def test_typed_value_is_redacted_in_the_audit(self):
+        from app.api.computer_use import _redacted_params
+
+        out = _redacted_params("element_set_value",
+                               {"query": "Kennwort", "value": "geheim123", "aktion": "press"})
+        self.assertEqual(out["query"], "Kennwort")
+        self.assertEqual(out["aktion"], "press")
+        self.assertNotIn("geheim123", str(out))
