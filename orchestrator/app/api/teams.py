@@ -1100,7 +1100,7 @@ async def karte_uebergeben(team_id: str, karte_id: str, body: Uebergeben, reques
     try:
         neu = await projekt_git.uebergabe_schreiben(
             db, redis, t, karte, an_wer=an_wer, an_name=an_name, an_agent_id=body.agent_id, von_name=von_name,
-            stand=body.stand, naechster_schritt=body.naechster_schritt)
+            stand=body.stand, naechster_schritt=body.naechster_schritt, agent_id=von.id if von else None)
     except projekt_git.GitFehler as e:
         await db.rollback()
         raise HTTPException(status_code=424, detail=str(e))
@@ -1505,6 +1505,7 @@ async def agents_md_text(team_id: str, user=Depends(require_auth), db: AsyncSess
     from app.core import uebernahme
 
     t = await _projekt(team_id, user, db)
+    await uebernahme.anlage_laden(db)
     return {"pfad": "AGENTS.md", "text": uebernahme.agents_md_abschnitt(), "anlage": uebernahme.anlage_kennung(),
             "hat_repo": bool(t.repo)}
 

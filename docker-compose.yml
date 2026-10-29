@@ -187,7 +187,7 @@ services:
       # Bridge-facing base URL, when it differs from PUBLIC_APP_URL (e.g. an
       # identity-aware-proxy bypass hostname dedicated to desktop bridges).
       BRIDGE_PUBLIC_URL: ${BRIDGE_PUBLIC_URL:-}
-      # Name dieser Anlage in Übernahme-Kommentaren an Issues (leer: Host aus PUBLIC_APP_URL).
+      # Name dieser Anlage in Übernahme-Kommentaren an Issues (leer: zufällige, gespeicherte Kennung).
       ANLAGE_KENNUNG: ${ANLAGE_KENNUNG:-}
       API_SECRET_KEY: ${API_SECRET_KEY:-change-me-in-production}
       CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN:-}

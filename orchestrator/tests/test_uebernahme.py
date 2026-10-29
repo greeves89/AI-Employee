@@ -5,7 +5,7 @@ Freitext erkennen, den gültigen Inhaber bestimmen, Abschnitt für die AGENTS.md
 """
 
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from app.core import uebernahme as u
@@ -13,13 +13,13 @@ from app.core import uebernahme as u
 ANLAGE = "agents.example.com"
 
 
-def _k(kid, body, erstellt="2026-10-29T10:00:00Z"):
-    return {"id": kid, "body": body, "erstellt": erstellt}
+def _k(kid, body, erstellt="2026-10-29T10:00:00Z", vertraut=True):
+    return {"id": kid, "body": body, "erstellt": erstellt, "vertraut": vertraut}
 
 
 class KopfzeileSchreibenUndLesen(unittest.TestCase):
     def test_eigener_kommentar_wird_wieder_gelesen(self):
-        jetzt = datetime(2026, 10, 29, 14, 3, tzinfo=timezone.utc)
+        jetzt = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(hours=1)
         with patch.object(u, "anlage_kennung", return_value=ANLAGE):
             text = u.uebernahme_kommentar(agent_name="DEV", agent_id="a1", lauf="t-1", nr=12,
                                           projekt_name="Projekt", jetzt=jetzt)
@@ -163,15 +163,15 @@ class Inhaber(unittest.TestCase):
 
 
 class AnlageUndAgentsMd(unittest.TestCase):
-    def test_anlage_aus_einstellung_oder_adresse(self):
-        with patch.multiple("app.config.settings", anlage_kennung="", public_app_url="https://Agents.Example.com/x",
-                            oauth_redirect_base_url="http://localhost:8000"):
-            self.assertEqual(u.anlage_kennung(), "agents.example.com")
-        with patch.multiple("app.config.settings", anlage_kennung="anlage-nord", public_app_url="https://x.example.com"):
+    def test_anlage_ist_zufaellig_und_verraet_keinen_host(self):
+        with patch.object(u, "_ANLAGE_GELADEN", None), \
+                patch.multiple("app.config.settings", anlage_kennung="", public_app_url="https://agents.example.com"):
+            self.assertEqual(u.anlage_kennung(), "anlage")  # noch nicht geladen: Ersatzname, nie der Host
+        with patch.object(u, "_ANLAGE_GELADEN", "anlage-1a2b3c4d"), \
+                patch.multiple("app.config.settings", anlage_kennung="", public_app_url="https://agents.example.com"):
+            self.assertEqual(u.anlage_kennung(), "anlage-1a2b3c4d")
+        with patch.multiple("app.config.settings", anlage_kennung="anlage-nord"):
             self.assertEqual(u.anlage_kennung(), "anlage-nord")
-        with patch.multiple("app.config.settings", anlage_kennung="", public_app_url="",
-                            oauth_redirect_base_url="http://localhost:8000"):
-            self.assertEqual(u.anlage_kennung(), "anlage")
 
     def test_abschnitt_ersetzen_oder_anhaengen(self):
         abschnitt = u.agents_md_abschnitt(ANLAGE)

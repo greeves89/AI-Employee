@@ -223,6 +223,13 @@ class GitHubHostProvider(GitHostProvider):
                                   headers=self._headers(token), json={"body": body})
         return resp.status_code == 200
 
+    async def eigenes_konto(self, client: httpx.AsyncClient, token: str) -> str | None:
+        """Login des Kontos hinter dem Schlüssel — None ohne Schlüssel oder wenn nicht lesbar."""
+        if not token:
+            return None
+        resp = await client.get(f"{self.api_base}/user", headers=self._headers(token))
+        return str((resp.json() or {}).get("login") or "") or None if resp.status_code == 200 else None
+
     async def list_issue_comments(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int,
                                   hoechstens: int = 300) -> list[dict]:
         """Kommentare eines Issues, älteste zuerst (``core/uebernahme`` liest die Übernahmen daraus)."""

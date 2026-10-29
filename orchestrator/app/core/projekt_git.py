@@ -391,6 +391,48 @@ def extern_nachziehen(karte, labels: list[str], zustaendige: list[str],
     return vorher != (karte.spalte, karte.extern_bearbeiter, karte.bearbeiter_art)
 
 
+#: Login hinter einem Schlüssel, je Schlüssel eine Stunde gemerkt (Prüfsumme, nie der Schlüssel).
+_KONTEN: dict[str, tuple[str | None, float]] = {}
+
+
+async def schluessel_konto(anbieter, client, token: str) -> str | None:
+    """Das Konto des Projekt-Schlüssels — seine Kommentare schreibt die Plattform selbst."""
+    import hashlib
+    import time
+
+    if not token or not hasattr(anbieter, "eigenes_konto"):
+        return None
+    schluessel = hashlib.sha256(token.encode()).hexdigest()[:24]
+    gemerkt = _KONTEN.get(schluessel)
+    if gemerkt and gemerkt[1] > time.monotonic():
+        return gemerkt[0]
+    try:
+        konto = await anbieter.eigenes_konto(client, token)
+    except Exception as e:  # noqa: BLE001 — ohne Konto zählt nur die Rolle am Repo
+        log.info("[Projekt] Konto des Schlüssels nicht lesbar: %s", e)
+        konto = None
+    _KONTEN[schluessel] = (konto, time.monotonic() + 3600)
+    return konto
+
+
+async def kommentare_holen(anbieter, client, token: str, repo: str, nummer: int) -> list[dict]:
+    """Kommentare eines Issues; ``vertraut`` auch für das Konto des Projekt-Schlüssels.
+
+    Der Anbieter setzt ``vertraut`` nach der Rolle am Repo (OWNER, MEMBER,
+    COLLABORATOR); die Plattform schreibt mit dem Schlüssel des Projekts, und
+    dessen Kommentare gelten immer. Ohne ``list_issue_comments``: keine.
+    """
+    if not hasattr(anbieter, "list_issue_comments"):
+        return []
+    kommentare = await anbieter.list_issue_comments(client, token, repo, nummer)
+    konto = (await schluessel_konto(anbieter, client, token) or "").lower()
+    if konto:
+        for k in kommentare:
+            if isinstance(k, dict) and (k.get("autor") or "").lower() == konto:
+                k["vertraut"] = True
+    return kommentare
+
+
 def _uebernommen(labels: list[str], zustaendige: list[str]) -> bool:
     """Zeigt das Issue, dass jemand dran ist (Zuständige oder In-Arbeit-Tag)?"""
     return bool(zustaendige) or _status_aus_tags(labels) == "in_arbeit"
@@ -418,7 +460,7 @@ async def _kommentare_lesen(anbieter, client, token: str, repo: str, karte, geae
     if gelesen is not None and geaendert_am is not None and geaendert_am <= gelesen:
         return False
     try:
-        kommentare = await anbieter.list_issue_comments(client, token, repo, karte.extern_nr)
+        kommentare = await kommentare_holen(anbieter, client, token, repo, karte.extern_nr)
     except Exception as e:  # noqa: BLE001 — ohne Kommentare bleibt es bei Zuständigen/Tag
         log.info("[Projekt] Kommentare von #%s nicht lesbar: %s", karte.extern_nr, e)
         return True
@@ -430,8 +472,8 @@ async def _kommentare_lesen(anbieter, client, token: str, repo: str, karte, geae
     befund = uebernahme.auswerten(kommentare, jetzt=jetzt, dauer=dauer)
     karte.uebernahme = befund.inhaber.als_dict() if befund.inhaber else None
     if befund.konkurrent is not None:
-        karte.konflikt = (f"{KONFLIKT_UEBERNAHMEN}: {befund.konkurrent.name} und {befund.inhaber.name} "
-                          "arbeiten am selben Ticket.")[:300]
+        karte.konflikt = (f"{KONFLIKT_UEBERNAHMEN}: {einzeilig(befund.konkurrent.name, 60)} und "
+                          f"{einzeilig(befund.inhaber.name, 60)} arbeiten am selben Ticket.")[:300]
     elif (karte.konflikt or "").startswith(KONFLIKT_UEBERNAHMEN):
         karte.konflikt = None
     return True
@@ -506,6 +548,9 @@ async def _eigene_verlaengern(db: AsyncSession, team: Team, anbieter, client, to
 
     Ist die Hälfte der Dauer um, schreibt das Board die Kopfzeile neu (``bis``
     rückt vor, ``seit`` bleibt). Höchstens zehn je Abgleich; ohne Schlüssel nicht.
+    Geändert werden nur Kommentare, die die Plattform selbst geschrieben hat: Autor
+    ist das Konto des Projekt-Schlüssels UND die Kopfzeile trägt diese Anlage —
+    sonst überschriebe das Board den Kommentar eines anderen.
     """
     from app.core.projekte import AKTIV
     from app.models.agent import Agent
@@ -513,10 +558,15 @@ async def _eigene_verlaengern(db: AsyncSession, team: Team, anbieter, client, to
 
     if not token or not hasattr(anbieter, "kommentar_aendern"):
         return
+    konto = (await schluessel_konto(anbieter, client, token) or "").lower()
+    if not konto:
+        return
     kandidaten = []
     for karte in karten:
         u = uebernahme.Uebernahme.aus_dict(karte.uebernahme)
         if (karte.quelle != "issue" or not karte.task_id or u is None or not u.kopfzeile or not u.kommentar_id
+                or u.art != uebernahme.PLATTFORM or u.anlage != uebernahme.anlage_kennung()
+                or (u.autor or "").lower() != konto
                 or not u.gehoert(agent_id=karte.agent_id, lauf=karte.task_id)):
             continue
         if u.bis is not None and u.bis - jetzt > dauer / 2:
@@ -539,15 +589,33 @@ async def _eigene_verlaengern(db: AsyncSession, team: Team, anbieter, client, to
             log.info("[Projekt] Übernahme #%s nicht verlängert: %s", karte.extern_nr, e)
 
 
-async def konflikte_melden(db: AsyncSession, team: Team, karten: list) -> int:
-    """Neue Konflikte ins Projektgespräch und an den Lead — jeden höchstens einmal.
+#: Höchstens eine Konflikt-Meldung je Issue in diesem Zeitraum — auch wenn die
+#: Beteiligten wechseln (sonst ließe sich das Gespräch mit wechselnden Kopfzeilen fluten).
+KONFLIKT_PAUSE = timedelta(hours=24)
+
+
+async def konflikte_melden(db: AsyncSession, team: Team, karten: list, jetzt: datetime | None = None) -> int:
+    """Neue Konflikte ins Projektgespräch und an den Lead — höchstens einer je Issue und Tag.
 
     Gibt die Zahl der neu gemeldeten zurück. Der Aufrufer committet.
     """
+    from sqlalchemy import func
+
     from app.core import projekt_gespraech
     from app.models.notification import Notification
+    from app.models.projekt_nachricht import ProjektNachricht
 
-    neu = [k for k in karten if k.konflikt and k.konflikt != k.konflikt_gemeldet]
+    jetzt = jetzt or datetime.now(timezone.utc)
+    kandidaten = [k for k in karten if k.konflikt and k.konflikt != k.konflikt_gemeldet]
+    neu = []
+    for karte in kandidaten:
+        schon = await db.scalar(select(func.count(ProjektNachricht.id)).where(
+            ProjektNachricht.team_id == team.id, ProjektNachricht.karte_id == karte.id,
+            ProjektNachricht.autor_typ == "system", ProjektNachricht.text.startswith("Konflikt an #"),
+            ProjektNachricht.created_at > jetzt - KONFLIKT_PAUSE))
+        karte.konflikt_gemeldet = karte.konflikt
+        if not schon:
+            neu.append(karte)
     for karte in neu[:10]:
         text = (f"Konflikt an #{karte.extern_nr}: {karte.konflikt} Bitte im Issue klären, wer weitermacht — "
                 "die anderen hören auf und übergeben ihren Stand.")
@@ -583,6 +651,7 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
 
     jetzt = datetime.now(timezone.utc)
     dauer = uebernahme.dauer_fuer(team)
+    await uebernahme.anlage_laden(db)
     vorhanden = {
         (k.quelle, k.extern_nr): k
         for k in (await db.execute(
@@ -768,9 +837,9 @@ async def _extern_branches(anbieter, client: httpx.AsyncClient, token: str, repo
             if info:
                 karte.extern_sha = sha
                 if not uebernahme.commit_passt(u, info.get("autor_mail")):
-                    autor = einzeilig(str(info.get("autor_name") or info.get("autor_mail") or "?"), 80)
+                    autor = einzeilig(str(info.get("autor_name") or info.get("autor_mail") or "?"), 60)
                     karte.konflikt = (f"{KONFLIKT_COMMIT}: {sha[:7]} auf {karte.extern_branch} ist von {autor}, "
-                                      f"übernommen hat aber {u.name}.")[:300]
+                                      f"übernommen hat aber {einzeilig(u.name, 60)}.")[:300]
                 elif (karte.konflikt or "").startswith(KONFLIKT_COMMIT):
                     karte.konflikt = None
         if zeit is None and sha and abfragen < MAX_BRANCH_ZEITEN and hasattr(anbieter, "commit_zeit"):
@@ -937,6 +1006,7 @@ async def uebernahme_live(db: AsyncSession, redis, team: Team,
     if karte.pr_nr and karte.pr_zustand not in ("gemergt", "geschlossen") and not karte.task_id:
         return f"PR #{karte.pr_nr}", None
     zuletzt = uebernahme.Uebernahme.aus_dict(karte.uebernahme)
+    await uebernahme.anlage_laden(db)
     try:
         token, anbieter = await zugang(db, redis, team)
         repo = repo_ziel(team.repo).pfad
@@ -946,8 +1016,7 @@ async def uebernahme_live(db: AsyncSession, redis, team: Team,
                 return karte.extern_bearbeiter, zuletzt
             if not _uebernommen(_labels(issue), _zustaendige(issue)):
                 return None, None
-            kommentare = (await anbieter.list_issue_comments(client, token, repo, karte.extern_nr)
-                          if hasattr(anbieter, "list_issue_comments") else [])
+            kommentare = await kommentare_holen(anbieter, client, token, repo, karte.extern_nr)
     except Exception as e:  # noqa: BLE001 — Repo nicht erreichbar: nicht blockieren
         log.info("[Projekt] Übernahme-Prüfung #%s übersprungen: %s", karte.extern_nr, e)
         return karte.extern_bearbeiter, zuletzt
@@ -987,9 +1056,36 @@ async def offene_uebernahmen(db: AsyncSession, team_id: str, agent_id: str) -> i
         ProjektKarte.agent_id == agent_id)) or 0)
 
 
+def erlaubte_hosts(team: Team) -> set[str]:
+    """Hosts, auf die ein Kommentar der Plattform verlinken darf: der des Repos und der der Anlage."""
+    from app.config import settings
+
+    ziel = repo_ziel(team.repo or "")
+    hosts = {"github.com"} if ziel.art == "github" else {urlsplit(ziel.basis or "").hostname or ""}
+    try:
+        hosts.add(urlsplit(getattr(settings, "public_app_url", "") or "").hostname or "")
+    except ValueError:
+        pass
+    return {h.lower() for h in hosts if h}
+
+
+async def ausgehend_pruefen(text: str, *, agent_id: str | None, kanal: str, team: Team) -> str:
+    """Text, der in ein (vielleicht öffentliches) Repo geht: DLP, dann entschärfen.
+
+    Die DLP-Regeln der Anlage (``core/dlp.evaluate_egress``) können maskieren oder
+    sperren; gesperrt → GitFehler. Danach ``uebernahme.neutralisieren``.
+    """
+    from app.core.dlp import evaluate_egress
+
+    urteil = await evaluate_egress(text or "", agent_id=agent_id, channel=kanal)
+    if urteil.blocked:
+        raise GitFehler("Der Text enthält geschützte Daten (DLP-Regel) und geht nicht ins Repo.")
+    return uebernahme.neutralisieren(urteil.output, erlaubte_hosts(team))
+
+
 async def uebergabe_schreiben(db: AsyncSession, redis, team: Team, karte: ProjektKarte, *, an_wer: str,
                               an_name: str, an_agent_id: str | None, von_name: str, stand: str,
-                              naechster_schritt: str) -> uebernahme.Uebernahme:
+                              naechster_schritt: str, agent_id: str | None = None) -> uebernahme.Uebernahme:
     """„Übergeben an …“: Kommentar mit Stand, nächstem Schritt und Kopfzeile des Empfängers.
 
     Die Kopfzeile trägt ``vorher`` = bisheriger Inhaber — damit endet dessen
@@ -1009,6 +1105,9 @@ async def uebergabe_schreiben(db: AsyncSession, redis, team: Team, karte: Projek
     else:
         vorher_wer = (karte.uebernahme or {}).get("wer") or "extern"
     jetzt = datetime.now(timezone.utc)
+    stand = await ausgehend_pruefen(stand, agent_id=agent_id, kanal="issue_uebergabe", team=team)
+    naechster_schritt = await ausgehend_pruefen(naechster_schritt, agent_id=agent_id, kanal="issue_uebergabe",
+                                                team=team)
     text = uebernahme.uebergabe_kommentar(an_wer=an_wer, an_name=an_name, an_agent_id=an_agent_id,
                                           von_name=von_name, vorher_wer=vorher_wer, stand=stand,
                                           naechster_schritt=naechster_schritt, nr=karte.extern_nr, jetzt=jetzt,
@@ -1018,7 +1117,8 @@ async def uebergabe_schreiben(db: AsyncSession, redis, team: Team, karte: Projek
         if not await anbieter.add_labels(client, token, repo, karte.extern_nr, [UEBERNAHME_TAG]):
             raise GitFehler(f"Tag {UEBERNAHME_TAG} ließ sich nicht setzen (Schreibrecht für Issues?).")
         await anbieter.comment_issue(client, token, repo, karte.extern_nr, text)
-    neu = uebernahme.lesen({"id": None, "body": text, "erstellt": jetzt.isoformat()})
+    # Selbst geschrieben, mit dem Schlüssel des Projekts: vertraut.
+    neu = uebernahme.lesen({"id": None, "body": text, "erstellt": jetzt.isoformat(), "vertraut": True})
     return neu
 
 
@@ -1041,6 +1141,7 @@ async def uebernahme_melden(team_id: str, karte_id: str, redis, *, agent_name: s
         if team is None or karte is None or karte.quelle != "issue" or not karte.extern_nr or not team.repo:
             return
         nr = karte.extern_nr
+        await uebernahme.anlage_laden(db)
         try:
             token, anbieter = await zugang(db, redis, team)
             if not token:
@@ -1211,6 +1312,14 @@ async def push_pruefen(db: AsyncSession, redis, agent_id: str, *, lauf: str | No
     agent = await db.get(Agent, agent_id)
     if agent is None:
         return {"erlaubt": True, "grund": None}
+    # Die Grenze stoppt nur NEUE Abfragen beim Git-Server, nie die Entscheidung:
+    # darüber zählt der gemerkte Stand, ohne ihn wird gesperrt. Sonst hebelte ein
+    # Agent in einer Schleife die Sperre durch Hämmern aus.
+    frei = await _push_fragen_frei(redis, agent_id)
+    if not frei:
+        log.warning("[Push-Sperre] Agent %s fragt öfter als %s-mal je Minute — nur noch gemerkte Stände",
+                    agent_id, PUSH_FRAGEN_JE_MINUTE)
+    await uebernahme.anlage_laden(db)
     task = await db.get(Task, lauf) if lauf else None
     if task is not None and task.agent_id != agent_id:
         task = None
@@ -1227,12 +1336,8 @@ async def push_pruefen(db: AsyncSession, redis, agent_id: str, *, lauf: str | No
         log.info("[Push-Sperre] Agent %s, Takt-Lauf %s: Push gesperrt", agent_id, task.id)
         return {"erlaubt": False, "grund": TAKT_PUSH_GRUND}
 
-    projekte_des_agenten = [
-        t for t in (await db.execute(
-            select(Team).where(Team.is_active.is_(True), Team.repo.is_not(None)))).scalars().all()
-        if agent_id in set(t.member_agent_ids or []) | ({t.lead_agent_id} if t.lead_agent_id else set())
-    ]
-    for ziel in ziele[:10]:
+    projekte_des_agenten = await _projekte_mit_repo(db, agent_id)
+    for ziel in ziele[:MAX_PUSH_ZIELE]:
         branch = einzeilig(str(ziel.get("branch") or ""), 200)
         nummern = _BRANCH_NR.findall(branch)
         if not nummern:
@@ -1246,35 +1351,129 @@ async def push_pruefen(db: AsyncSession, redis, agent_id: str, *, lauf: str | No
             log.info("[Push-Sperre] Agent %s, Branch %s: kein Projekt-Repo zugeordnet — nicht geprüft",
                      agent_id, branch)
         for team in kandidaten[:3]:
-            grund = await _fremde_uebernahme(db, redis, team, int(nummern[0]), branch, agent, lauf)
+            try:
+                grund = await _fremde_uebernahme(db, redis, team, int(nummern[0]), branch, agent, lauf, frei)
+            except _ZuVieleFragen:
+                return {"erlaubt": False, "grund": ZU_VIELE_FRAGEN_GRUND}
             if grund:
                 log.info("[Push-Sperre] Agent %s, Lauf %s, Branch %s: gesperrt", agent_id, lauf, branch)
                 return {"erlaubt": False, "grund": grund}
     return {"erlaubt": True, "grund": None}
 
 
+#: Höchstens so viele Ziel-Branches je Anfrage, so viele Anfragen je Agent und
+#: Minute, und so lange gilt ein gelesener Stand je (Projekt, Issue).
+MAX_PUSH_ZIELE = 3
+PUSH_FRAGEN_JE_MINUTE = 30
+PUSH_STAND_SEKUNDEN = 30
+
+
+def _redis_client(redis):
+    """Der aioredis-Client hinter dem RedisService — None ohne (Tests, Ausfall)."""
+    return getattr(redis, "client", None)
+
+
+ZU_VIELE_FRAGEN_GRUND = "Zu viele Push-Prüfungen in kurzer Zeit — in einer Minute erneut versuchen."
+
+
+class _ZuVieleFragen(Exception):
+    """Über der Grenze und kein gemerkter Stand: neu fragen geht nicht, also sperren."""
+
+
+async def _push_fragen_frei(redis, agent_id: str) -> bool:
+    """Zählt die Anfragen je Agent und Minute — darüber keine neuen Abfragen beim Git-Server.
+
+    Ohne Grenze löste ein Agent in einer Schleife je Anfrage zwei Abfragen beim
+    Git-Server aus. Ohne Redis (oder bei einer Störung) wird nicht gezählt.
+    """
+    import time
+
+    client = _redis_client(redis)
+    if client is None:
+        return True
+    try:
+        schluessel = f"push_pruefen:anzahl:{agent_id}:{int(time.time() // 60)}"
+        anzahl = await client.incr(schluessel)
+        if anzahl == 1:
+            await client.expire(schluessel, 70)
+        return anzahl <= PUSH_FRAGEN_JE_MINUTE
+    except Exception:  # noqa: BLE001 — Redis gestört: prüfen wie ohne
+        return True
+
+
+async def _projekte_mit_repo(db: AsyncSession, agent_id: str) -> list[Team]:
+    """Aktive Projekte mit Repo, in denen der Agent Mitglied oder Lead ist — per Abfrage.
+
+    ``member_agent_ids`` ist eine JSON-Liste; die Textsuche nach ``"<id>"`` grenzt
+    in der Datenbank vor, die genaue Prüfung folgt hier (eine Kennung, die in einer
+    anderen steckt, fällt dabei heraus).
+    """
+    from sqlalchemy import String, cast, or_
+
+    kandidaten = (await db.execute(select(Team).where(
+        Team.is_active.is_(True), Team.repo.is_not(None),
+        or_(Team.lead_agent_id == agent_id, cast(Team.member_agent_ids, String).like(f'%"{agent_id}"%')),
+    ).limit(50))).scalars().all()
+    return [t for t in kandidaten
+            if agent_id in set(t.member_agent_ids or []) | ({t.lead_agent_id} if t.lead_agent_id else set())]
+
+
+async def _uebernahme_im_repo(db: AsyncSession, redis, team: Team, nr: int,
+                              frei: bool = True) -> tuple[bool, uebernahme.Uebernahme | None]:
+    """(übernommen?, Inhaber) live aus dem Repo — je (Projekt, Issue) 30 s gemerkt.
+
+    Ein Push kommt selten allein (Wiederholung, mehrere Branches); ohne Merken
+    kostete jeder zwei Abfragen beim Git-Server. Nicht erreichbar: (False, None),
+    also nicht sperren.
+    """
+    import json
+
+    client = _redis_client(redis)
+    schluessel = f"push_pruefen:stand:{team.id}:{nr}"
+    if client is not None:
+        try:
+            roh = await client.get(schluessel)
+            if roh:
+                stand = json.loads(roh)
+                return bool(stand.get("uebernommen")), uebernahme.Uebernahme.aus_dict(stand.get("inhaber"))
+        except Exception:  # noqa: BLE001 — Redis gestört: frisch fragen
+            pass
+    if not frei:
+        raise _ZuVieleFragen()
+    try:
+        token, anbieter = await zugang(db, redis, team)
+        repo = repo_ziel(team.repo).pfad
+        # Knapp: der Hook wartet höchstens 15 s auf die ganze Entscheidung.
+        async with httpx.AsyncClient(timeout=httpx.Timeout(4.0), follow_redirects=False) as http:
+            issue = await anbieter.get_issue(http, token, repo, nr)
+            if not isinstance(issue, dict):
+                return False, None
+            uebernommen = _uebernommen(_labels(issue), _zustaendige(issue))
+            u = uebernahme.inhaber(await kommentare_holen(anbieter, http, token, repo, nr)) if uebernommen else None
+    except Exception as e:  # noqa: BLE001 — nicht erreichbar: nicht sperren (siehe push_pruefen)
+        log.info("[Push-Sperre] #%s in %s nicht prüfbar, Push erlaubt: %s", nr, team.id, e)
+        return False, None
+    if client is not None:
+        try:
+            await client.set(schluessel, json.dumps({"uebernommen": uebernommen,
+                                                     "inhaber": u.als_dict() if u else None}),
+                             ex=PUSH_STAND_SEKUNDEN)
+        except Exception:  # noqa: BLE001
+            pass
+    return uebernommen, u
+
+
 async def _fremde_uebernahme(db: AsyncSession, redis, team: Team, nr: int, branch: str, agent,
-                             lauf: str | None) -> str | None:
+                             lauf: str | None, frei: bool = True) -> str | None:
     """Sperrgrund, wenn Issue ``nr`` im Repo des Projekts einem anderen gehört — sonst None."""
     karte = (await db.execute(select(ProjektKarte).where(
         ProjektKarte.team_id == team.id, ProjektKarte.quelle == "issue", ProjektKarte.extern_nr == nr)
     )).scalars().first()
     if karte is not None and lauf and karte.task_id == lauf:
         return None  # der Lauf, an den das Board die Karte vergeben hat
-    try:
-        token, anbieter = await zugang(db, redis, team)
-        repo = repo_ziel(team.repo).pfad
-        # Knapp: der Hook wartet höchstens 15 s auf die ganze Entscheidung.
-        async with httpx.AsyncClient(timeout=httpx.Timeout(4.0), follow_redirects=False) as client:
-            issue = await anbieter.get_issue(client, token, repo, nr)
-            if not isinstance(issue, dict) or not _uebernommen(_labels(issue), _zustaendige(issue)):
-                return None
-            kommentare = (await anbieter.list_issue_comments(client, token, repo, nr)
-                          if hasattr(anbieter, "list_issue_comments") else [])
-    except Exception as e:  # noqa: BLE001 — nicht erreichbar: nicht sperren (siehe push_pruefen)
-        log.info("[Push-Sperre] #%s in %s nicht prüfbar, Push erlaubt: %s", nr, team.id, e)
+    uebernommen, u = await _uebernahme_im_repo(db, redis, team, nr, frei)
+    if not uebernommen:
         return None
-    u = uebernahme.inhaber(kommentare)
     if u is not None and u.gehoert(agent_id=agent.id, lauf=lauf, agent_name=agent.name):
         return None
     if u is None and karte is not None and karte.agent_id == agent.id:
@@ -1305,6 +1504,7 @@ async def agents_md_pr(db: AsyncSession, redis, team: Team) -> dict:
     if not hasattr(anbieter, "pull_anlegen"):
         raise GitFehler("Dieser Git-Server kann hier keine Pull Requests anlegen — bitte den Text kopieren.")
     repo = repo_ziel(team.repo).pfad
+    await uebernahme.anlage_laden(db)
     abschnitt = uebernahme.agents_md_abschnitt()
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(15.0), follow_redirects=False) as client:

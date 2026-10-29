@@ -37,7 +37,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from urllib.parse import urlsplit
 
 from app.core.fremdtext import einzeilig, entschaerft
 
@@ -111,27 +110,62 @@ def _kennung(wert) -> str | None:
     return wert if isinstance(wert, str) and _KENNUNG.match(wert) else None
 
 
+#: Gespeicherte Kennung dieser Anlage (``anlage_laden``) — einmal je Prozess gelesen.
+_ANLAGE_GELADEN: str | None = None
+#: Schlüssel in ``platform_settings``. Bewusst NICHT in den Einstellungen der Oberfläche
+#: (``settings_service.ALLOWED_KEYS``): ändert man ihn, erkennt die Anlage ihre
+#: eigenen Übernahmen in den Repos nicht mehr.
+ANLAGE_SCHLUESSEL = "anlage_kennung_uebernahmen"
+
+
 def anlage_kennung() -> str:
     """Stabiler, nicht geheimer Name DIESER Anlage — für ``wer`` und das Board.
 
-    Eine eigene Kennung gibt es nicht (Lizenz und Lebenszeichen tragen keine);
-    der Host der öffentlichen Adresse ist stabil und ohnehin bekannt. Wer ihn
-    nicht preisgeben will oder mehrere Anlagen hinter einem Host betreibt,
-    setzt ``ANLAGE_KENNUNG``.
+    Standard ist eine zufällige Kennung (``anlage-1a2b3c4d``), einmal erzeugt und in
+    ``platform_settings`` gespeichert (``anlage_laden``): Sie verrät nichts über die
+    Anlage — der Host der öffentlichen Adresse stünde sonst in jedem Repo, an dem
+    sie arbeitet. ``ANLAGE_KENNUNG`` setzt einen sprechenden Namen.
     """
     from app.config import settings
 
     eigen = _wert(getattr(settings, "anlage_kennung", "") or "", 100)
     if eigen and _ANLAGE.match(eigen):
         return eigen
-    for adresse in (getattr(settings, "public_app_url", ""), getattr(settings, "oauth_redirect_base_url", "")):
-        try:
-            host = (urlsplit(adresse or "").hostname or "").lower()
-        except ValueError:
-            host = ""
-        if host and host not in ("localhost", "127.0.0.1", "::1") and _ANLAGE.match(host):
-            return host
-    return "anlage"
+    return _ANLAGE_GELADEN or "anlage"
+
+
+async def anlage_laden(db) -> str:
+    """Die gespeicherte Kennung laden — beim ersten Mal erzeugen und speichern.
+
+    Jeder Weg, der Übernahmen schreibt oder liest, ruft das vorher auf; nach dem
+    ersten Mal ist es ein Blick in den Speicher des Prozesses.
+    """
+    global _ANLAGE_GELADEN
+    if _ANLAGE_GELADEN:
+        return anlage_kennung()
+    import secrets
+
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.models.platform_settings import PlatformSettings
+
+    try:
+        # Eigene Sitzung auf derselben Verbindung: ein Rollback des Aufrufers darf
+        # die neue Kennung nicht verwerfen, sonst entstünde beim nächsten Mal eine andere.
+        async with AsyncSession(bind=db.bind, expire_on_commit=False) as eigene:
+            zeile = (await eigene.execute(
+                select(PlatformSettings).where(PlatformSettings.key == ANLAGE_SCHLUESSEL))).scalar_one_or_none()
+            if zeile is not None and _ANLAGE.match(zeile.value or ""):
+                _ANLAGE_GELADEN = zeile.value
+            else:
+                neu = f"anlage-{secrets.token_hex(4)}"
+                eigene.add(PlatformSettings(key=ANLAGE_SCHLUESSEL, value=neu, is_secret=False))
+                await eigene.commit()
+                _ANLAGE_GELADEN = neu
+    except Exception:  # noqa: BLE001 — ohne Speicher (Tests ohne Tabelle): Ersatzname, nächstes Mal neu
+        return anlage_kennung()
+    return anlage_kennung()
 
 
 @dataclass
@@ -149,6 +183,8 @@ class Uebernahme:
     seit: datetime | None = None
     bis: datetime | None = None
     kommentar_id: int | None = None
+    # Login, der den Kommentar geschrieben hat (``Verlängern`` nur eigener Kommentare).
+    autor: str | None = None
     kopfzeile: bool = False
     freigabe: bool = False
     # Wann der Kommentar zuletzt geändert wurde — eine aktualisierte Kopfzeile ist
@@ -166,7 +202,7 @@ class Uebernahme:
             "seit": self.seit.isoformat() if self.seit else None,
             "bis": self.bis.isoformat() if self.bis else None,
             "geaendert": self.geaendert.isoformat() if self.geaendert else None,
-            "kommentar_id": self.kommentar_id, "kopfzeile": self.kopfzeile,
+            "kommentar_id": self.kommentar_id, "kopfzeile": self.kopfzeile, "autor": self.autor,
         }
 
     @classmethod
@@ -179,7 +215,8 @@ class Uebernahme:
                    anlage=d.get("anlage"), agent=d.get("agent"), agent_id=_kennung(d.get("agent_id")),
                    lauf=_kennung(d.get("lauf")), branch=d.get("branch"), seit=_zeit(d.get("seit")),
                    bis=_zeit(d.get("bis")), kommentar_id=kid if isinstance(kid, int) else None,
-                   kopfzeile=bool(d.get("kopfzeile")), geaendert=_zeit(d.get("geaendert")))
+                   kopfzeile=bool(d.get("kopfzeile")), geaendert=_zeit(d.get("geaendert")),
+                   autor=str(d["autor"])[:60] if isinstance(d.get("autor"), str) else None)
 
     def ablauf(self, dauer: timedelta = DAUER, regung: datetime | None = None) -> datetime | None:
         """Bis wann die Übernahme gilt.
@@ -239,11 +276,43 @@ def _wer_lesen(roh: str, eigene_anlage: str) -> tuple[str, str, str, str | None,
     return "extern", EXTERN, "extern", None, None
 
 
+#: Ein ``bis`` reicht höchstens so weit in die Zukunft — sonst hielte eine Kopfzeile
+#: mit ``bis="2099-…"`` ein Ticket für immer.
+MAX_BIS = timedelta(hours=24)
+
+
 def lesen(kommentar: dict, eigene_anlage: str | None = None) -> Uebernahme | None:
     """Übernahme oder Rückgabe aus einem Kommentar — None, wenn er keine ist.
 
-    ``kommentar``: ``{"id", "body", "erstellt"}`` (so liefern es die Anbieter).
+    ``kommentar``: ``{"id", "body", "erstellt", "autor", "vertraut"}`` (so liefern es
+    die Anbieter). ``vertraut`` heißt: der Autor darf ins Repo schreiben (OWNER,
+    MEMBER, COLLABORATOR) oder ist das Konto des Projekt-Schlüssels.
+
+    Nur von Vertrauten gelten Kopfzeile, Rückgabe und Übergabe. Von allen anderen
+    — bei öffentlichen Repos kann jeder kommentieren — ist eine Übernahme „extern“
+    ohne ``bis``, ohne Agent, ohne Lauf; eine Rückgabe gilt gar nicht. So kann ein
+    Fremder weder eine Plattform-Identität vortäuschen noch eine Übernahme löschen.
     """
+    u = _lesen(kommentar, eigene_anlage)
+    if u is None:
+        return None
+    jetzt = _jetzt()
+    if u.seit is not None and u.seit > jetzt:
+        u.seit = jetzt
+    if u.bis is not None and u.bis > jetzt + MAX_BIS:
+        u.bis = jetzt + MAX_BIS
+    autor = kommentar.get("autor")
+    u.autor = str(autor)[:60] if isinstance(autor, str) and autor else None
+    if kommentar.get("vertraut") is True:
+        return u
+    if u.freigabe:
+        return None
+    return Uebernahme(wer="extern", art=EXTERN, name="extern", seit=u.seit, kommentar_id=u.kommentar_id,
+                      autor=u.autor)
+
+
+def _lesen(kommentar: dict, eigene_anlage: str | None = None) -> Uebernahme | None:
+    """Kopfzeile oder Freitext eines Kommentars lesen — ohne Blick auf den Autor (``lesen``)."""
     if not isinstance(kommentar, dict):
         return None
     eigene_anlage = eigene_anlage or anlage_kennung()
@@ -375,8 +444,9 @@ def uebernahme_kommentar(*, agent_name: str | None, agent_id: str | None, lauf: 
     name = _wert(agent_name or "Lead", 80) or "Lead"
     kopf = kopfzeile("claim", wer=wer_plattform(name), agent_id=agent_id, lauf=lauf, branch=f"{nr}-…",
                      seit=seit or jetzt, bis=jetzt + dauer, vorher=vorgaenger.wer if vorgaenger else None)
-    text = (f"{kopf}\nÜbernommen vom AI-Employee-Agenten „{name}“ (Projekt-Board, Projekt "
-            f"„{_wert(projekt_name, 120)}“). Branch `{nr}-…`, Pull Request mit `Closes #{nr}`. "
+    # Kein Projektname: Das Repo kann öffentlich sein, der Name ist interne Information.
+    text = (f"{kopf}\nÜbernommen vom AI-Employee-Agenten „{name}“ (Projekt-Board). Branch `{nr}-…`, "
+            f"Pull Request mit `Closes #{nr}`. "
             "Der Branch gehört dem Übernehmer: Bitte nicht hineinpushen, sondern hier nachfragen.")
     if vorgaenger is not None:
         text += (f"\n\nDie Übernahme von {_wert(vorgaenger.name, 120)} (seit {_wann(vorgaenger.seit)}) war ohne "
@@ -436,6 +506,50 @@ def commit_passt(u: Uebernahme, autor_mail: str | None) -> bool:
     if u.art == PLATTFORM:
         return True  # alte Freitext-Übernahme ohne Kennung: nicht prüfbar
     return not plattform
+
+
+# ── Text, den die Plattform in fremde Repos schreibt ─────────────────────────
+
+_BILD = re.compile(r"!\[([^\]\n]*)\]\(([^)\n]*)\)")
+#: Markdown-Link ``[Text](Adresse)`` ODER nackte Adresse — in EINEM Durchgang, damit
+#: die Adresse eines Links nicht noch einmal als nackte Adresse gilt.
+_LINK_ODER_URL = re.compile(r"\[([^\]\n]*)\]\(([^)\s]+)(?:\s+\"[^\"\n]*\")?\)|(?<!`)\bhttps?://[^\s<>`)\]]+",
+                            re.I)
+
+
+def _host(url: str) -> str:
+    from urllib.parse import urlsplit
+
+    try:
+        return (urlsplit(url).hostname or "").lower()
+    except ValueError:
+        return ""
+
+
+def _als_text(url: str) -> str:
+    """Eine Adresse als Code-Text: sichtbar, aber nicht anklickbar und ohne Vorschau."""
+    return "`" + url.replace("`", "")[:200] + "`"
+
+
+def neutralisieren(text: str | None, erlaubte_hosts: set[str] | frozenset[str] = frozenset()) -> str:
+    """Text für einen Issue-Kommentar entschärfen — er stammt von einem Agenten.
+
+    * Kein rohes HTML (``<`` wird ``&lt;``) — damit auch keine Kopfzeile ``<!-- … -->``.
+    * Keine Bilder: ``![…](…)`` lädt beim Lesen eine fremde Adresse (Zählpixel,
+      Datenabfluss über die Adresse). Es bleibt der Text, die Adresse als Code.
+    * Links nur auf den Host des Repos und den der Anlage; alle anderen nur als Text.
+    """
+    erlaubt = {h.lower() for h in erlaubte_hosts if h}
+    t = entschaerft(text or "").replace("<", "&lt;")
+    t = _BILD.sub(lambda m: f"Bild „{m.group(1).strip() or 'ohne Titel'}“: {_als_text(m.group(2))}", t)
+    t = t.replace("![", "!\\[")
+
+    def ersetzen(m):
+        if m.group(2) is not None:  # [Text](Adresse)
+            return m.group(0) if _host(m.group(2)) in erlaubt else f"{m.group(1)} ({_als_text(m.group(2))})"
+        return m.group(0) if _host(m.group(0)) in erlaubt else _als_text(m.group(0))
+
+    return _LINK_ODER_URL.sub(ersetzen, t)
 
 
 def wer_aus_eingabe(roh: str | None) -> tuple[str, str, str] | None:
@@ -568,7 +682,7 @@ Mensch kann sie dann freigeben. Höchstens zwei offene Übernahmen je Bearbeiter
 
 ### Der Branch gehört dem Übernehmer
 Niemand sonst pusht in den Branch einer fremden Übernahme. Agenten von AI
-Employee werden dabei technisch gesperrt. Stattdessen: im Issue nachfragen,
+Employee werden dabei gebremst (Zusammenstoß-Schutz, keine Sicherheitsgrenze). Stattdessen: im Issue nachfragen,
 einen eigenen Branch anlegen und einen Pull Request **in den fremden Branch**
 stellen, oder den Menschen bitten, die Übernahme freizugeben.
 
@@ -595,6 +709,9 @@ Ohne Namen (`@ai-employee: …`) geht sie an den Lead des Projekts; arbeiten
 mehrere Anlagen am Repo, nennt `@ai-employee <anlage>/<Agent>: …` die Anlage.
 Die Frage landet im Projektgespräch und weckt den Agenten. Seine Rückfragen
 schreibt er ins Issue.
+Kopfzeilen, Rückgaben und Fragen zählen nur von Konten mit Schreibrecht am
+Repo. Der Rückkanal ist bei privaten Repos mit Schlüssel an, sonst aus
+(Projekteinstellung).
 {AGENTS_MD_ENDE}
 """
 
