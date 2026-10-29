@@ -401,13 +401,16 @@ KONFLIKT_UEBERNAHMEN = "Zwei gültige Übernahmen"
 KONFLIKT_COMMIT = "Fremder Commit"
 
 
-async def _uebernahme_lesen(anbieter, client, token: str, repo: str, karte, geaendert_am: datetime | None,
-                            jetzt: datetime, dauer: timedelta = uebernahme.DAUER) -> bool:
-    """Kommentare eines übernommenen Issues lesen und den Inhaber an der Karte merken.
+async def _kommentare_lesen(anbieter, client, token: str, repo: str, karte, geaendert_am: datetime | None,
+                             jetzt: datetime, dauer: timedelta = uebernahme.DAUER, *, uebernommen: bool = True,
+                             ansprachen: list | None = None) -> bool:
+    """Kommentare eines Issues lesen: Inhaber der Übernahme und neue Ansprachen (Rückkanal).
 
     Nur, wenn sich das Issue seit dem letzten Lesen geändert hat (ein neuer
     Kommentar ändert es). Gibt zurück, ob gelesen wurde (für die Obergrenze).
-    Zwei gültige Übernahmen verschiedener Inhaber sind ein Konflikt (``konflikt``).
+    ``uebernommen``: das Issue zeigt eine Übernahme — dann Inhaber und Konflikt
+    (zwei gültige Übernahmen verschiedener Inhaber) an der Karte merken.
+    ``ansprachen``: hierhin kommen neue „@ai-employee …“-Kommentare (``uebernahme.ansprachen``).
     """
     if not hasattr(anbieter, "list_issue_comments"):
         return False
@@ -419,15 +422,82 @@ async def _uebernahme_lesen(anbieter, client, token: str, repo: str, karte, geae
     except Exception as e:  # noqa: BLE001 — ohne Kommentare bleibt es bei Zuständigen/Tag
         log.info("[Projekt] Kommentare von #%s nicht lesbar: %s", karte.extern_nr, e)
         return True
+    karte.kommentare_gelesen_at = jetzt
+    if ansprachen is not None:
+        ansprachen.extend((karte, a) for a in _neue_ansprachen(karte, kommentare))
+    if not uebernommen:
+        return True
     befund = uebernahme.auswerten(kommentare, jetzt=jetzt, dauer=dauer)
     karte.uebernahme = befund.inhaber.als_dict() if befund.inhaber else None
-    karte.kommentare_gelesen_at = jetzt
     if befund.konkurrent is not None:
         karte.konflikt = (f"{KONFLIKT_UEBERNAHMEN}: {befund.konkurrent.name} und {befund.inhaber.name} "
                           "arbeiten am selben Ticket.")[:300]
     elif (karte.konflikt or "").startswith(KONFLIKT_UEBERNAHMEN):
         karte.konflikt = None
     return True
+
+
+def _neue_ansprachen(karte, kommentare: list[dict]) -> list:
+    """Ansprachen aus Kommentaren, die noch nicht weitergegeben wurden.
+
+    Neu heißt: Kennung größer als die zuletzt weitergegebene (``rueckkanal_id``;
+    GitHub und Forgejo vergeben aufsteigend) und jünger als die Karte — ältere
+    Kommentare standen schon im Issue, bevor das Board es kannte.
+    """
+    seit = _aware(getattr(karte, "created_at", None))
+    bisher = karte.rueckkanal_id or 0
+    neu = []
+    for k in kommentare or []:
+        kid = k.get("id") if isinstance(k, dict) else None
+        if not isinstance(kid, int) or kid <= bisher:
+            continue
+        erstellt = _zeit(k.get("erstellt"))
+        if seit is not None and (erstellt is None or erstellt <= seit):
+            continue
+        a = uebernahme.ansprachen(k)
+        if a is not None:
+            neu.append(a)
+    hoechste = max((k.get("id") for k in kommentare or [] if isinstance(k, dict) and isinstance(k.get("id"), int)),
+                   default=bisher)
+    karte.rueckkanal_id = max(bisher, hoechste)
+    return neu
+
+
+#: Höchstens so viele Ansprachen aus Issues je Abgleich und Projekt.
+MAX_ANSPRACHEN = 10
+
+
+async def _rueckkanal(db: AsyncSession, team: Team, ansprachen: list) -> list:
+    """Ansprachen aus Issues ins Projektgespräch — als Nachricht von „extern (…)“ an den Agenten.
+
+    Ohne Namen bzw. mit unbekanntem Namen geht sie an den Lead (oder das einzige
+    Mitglied). Der Text ist fremder Text: entschärft gespeichert, im Weck-Auftrag
+    gerahmt (``projekt_gespraech.gespraechs_auftrag``). Gibt die neuen Nachrichten
+    zurück; geweckt wird nach dem Commit (``projekt_abgleichen``) mit den
+    Weck-Grenzen des Gesprächs.
+    """
+    from app.core import projekt_gespraech
+
+    if not ansprachen:
+        return []
+    namen = await projekt_gespraech.mitglieder_namen(db, team)
+    je_name = {n.strip().lower(): aid for aid, n in namen.items()}
+    standard = team.lead_agent_id or (team.member_agent_ids[0] if len(team.member_agent_ids or []) == 1 else None)
+    nachrichten = []
+    for karte, a in ansprachen[:MAX_ANSPRACHEN]:
+        ziel = je_name.get((a.agent or "").strip().lower())
+        hinweis = ""
+        if a.agent and ziel is None:
+            hinweis = f"(angesprochen: „{a.agent}“ — kein Agent dieses Namens im Projekt, darum an den Lead) "
+        ziel = ziel or standard
+        text = f"Zu Issue #{karte.extern_nr}{f' ({karte.url})' if karte.url else ''}: {hinweis}{a.text}"
+        nachrichten.append(await projekt_gespraech.posten(
+            db, team, autor_typ="extern", autor_id=None, autor_name=f"extern ({a.von})", text=text, art="frage",
+            an=[ziel] if ziel else [], karte_id=karte.id))
+    if len(ansprachen) > MAX_ANSPRACHEN:
+        log.info("[Projekt] %s: %s Ansprachen aus Issues übersprungen (Grenze)", team.id,
+                 len(ansprachen) - MAX_ANSPRACHEN)
+    return nachrichten
 
 
 async def _eigene_verlaengern(db: AsyncSession, team: Team, anbieter, client, token: str, repo: str,
@@ -521,6 +591,8 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
     }
     neu = aktualisiert = erledigt = 0
     kommentar_abfragen = 0
+    vorheriger_abgleich = _aware(team.repo_abgleich_at)
+    ansprachen: list = []
 
     # Issues
     offen_issues = set()
@@ -547,8 +619,17 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
                 # Wieder geöffnet: zurück in den Eingang.
                 karte.spalte, karte.erledigt_at, karte.notiz = "eingang", None, "Issue wieder geöffnet"
         geaendert_am = _zeit(issue.get("updated_at"))
-        if _uebernommen(_labels(issue), _zustaendige(issue)) and kommentar_abfragen < MAX_KOMMENTAR_ABFRAGEN:
-            if await _uebernahme_lesen(anbieter, client, token, repo, karte, geaendert_am, jetzt, dauer):
+        uebernommen = _uebernommen(_labels(issue), _zustaendige(issue))
+        # Rückkanal: nur Issues, die sich seit dem letzten Abgleich geändert haben und
+        # Kommentare tragen — nicht beim ersten Abgleich und nicht bei neuen Karten
+        # (deren Kommentare standen schon vor dem Board im Issue).
+        rueckkanal = (karte.created_at is not None and vorheriger_abgleich is not None
+                      and geaendert_am is not None and geaendert_am > vorheriger_abgleich
+                      and issue.get("comments") != 0)
+        if (uebernommen or rueckkanal) and kommentar_abfragen < MAX_KOMMENTAR_ABFRAGEN:
+            if await _kommentare_lesen(anbieter, client, token, repo, karte, geaendert_am, jetzt, dauer,
+                                       uebernommen=uebernommen,
+                                       ansprachen=ansprachen if karte.created_at is not None else None):
                 kommentar_abfragen += 1
         if extern_nachziehen(karte, _labels(issue), _zustaendige(issue), seit=geaendert_am, jetzt=jetzt) \
                 and karte.extern_bearbeiter is not None:
@@ -635,11 +716,15 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
             karte.konflikt = None  # niemand mehr dran: kein Konflikt mehr
     await _eigene_verlaengern(db, team, anbieter, client, token, repo, alle, dauer, jetzt)
     await konflikte_melden(db, team, alle)
+    nachrichten = await _rueckkanal(db, team, ansprachen)
+    if nachrichten:
+        await db.flush()  # Kennungen fürs Wecken nach dem Commit
 
     team.repo_abgleich_at = jetzt
     team.repo_fehler = None
     return {"neu": neu, "aktualisiert": aktualisiert, "erledigt": erledigt,
-            "offene_issues": len(issues), "offene_prs": len(pulls)}
+            "offene_issues": len(issues), "offene_prs": len(pulls),
+            "rueckkanal": [n.id for n in nachrichten if n.an]}
 
 
 async def _extern_branches(anbieter, client: httpx.AsyncClient, token: str, repo: str, karten: list) -> None:
@@ -698,7 +783,38 @@ async def _extern_branches(anbieter, client: httpx.AsyncClient, token: str, repo
             karte.extern_regung_at = zeit
 
 
-async def projekt_abgleichen(db: AsyncSession, redis, team: Team) -> dict:
+async def _rueckkanal_wecken(db: AsyncSession, redis, docker, team_id: str, nachricht_ids: list[int]) -> None:
+    """Agenten wecken, die aus einem Issue angesprochen wurden — nach dem Commit, mit den
+    Weck-Grenzen des Gesprächs (``projekt_gespraech.wecken``)."""
+    if not nachricht_ids or redis is None:
+        return
+    from app.core import projekt_gespraech
+    from app.core.load_balancer import LoadBalancer
+    from app.core.task_router import TaskRouter
+    from app.models.projekt_nachricht import ProjektNachricht
+
+    try:
+        if docker is None:
+            # Ohne Docker startet der Router keinen gestoppten Agenten — die Ansprache
+            # bliebe liegen. Den Dienst legt man an wie an anderen Stellen auch.
+            from app.services.docker_service import DockerService
+
+            try:
+                docker = DockerService()
+            except Exception:  # noqa: BLE001 — ohne Docker (Tests, Entwicklung): Lauf wartet in der Schlange
+                docker = None
+        router = TaskRouter(db, redis, LoadBalancer(redis), docker_service=docker)
+        team = await db.get(Team, team_id)
+        for nid in nachricht_ids:
+            nachricht = await db.get(ProjektNachricht, nid)
+            if team is not None and nachricht is not None:
+                await projekt_gespraech.wecken(db, router, team, nachricht)
+        await db.commit()
+    except Exception as e:  # noqa: BLE001 — die Nachricht steht im Gespräch, nur das Wecken fehlt
+        log.warning("[Projekt] %s: Ansprache aus dem Issue nicht geweckt: %s", team_id, e)
+
+
+async def projekt_abgleichen(db: AsyncSession, redis, team: Team, docker=None) -> dict:
     """Ein Projekt abgleichen und den Ausgang am Projekt festhalten (auch Fehler)."""
     # Kennung VOR dem Abgleich merken: nach einem Rollback ist ``team`` verfallen,
     # ein Zugriff darauf lüde nach — in der asynchronen Sitzung ein 500er.
@@ -712,6 +828,7 @@ async def projekt_abgleichen(db: AsyncSession, redis, team: Team) -> dict:
             async with httpx.AsyncClient(timeout=httpx.Timeout(10.0), follow_redirects=False) as client:
                 ergebnis = await abgleichen(db, team, token, anbieter, client)
         await db.commit()
+        await _rueckkanal_wecken(db, redis, docker, team_id, ergebnis.get("rueckkanal") or [])
         return ergebnis
     except TimeoutError as e:
         fehler = GitFehler(f"Der Server antwortet zu langsam (Abgleich nach {ABGLEICH_FRIST_SEKUNDEN} s abgebrochen).")
@@ -747,7 +864,8 @@ def _sekunden_seit(zuletzt: datetime | None, jetzt: datetime) -> float | None:
     return (jetzt - (zuletzt if zuletzt.tzinfo else zuletzt.replace(tzinfo=timezone.utc))).total_seconds()
 
 
-async def beim_oeffnen(db: AsyncSession, redis, team: Team, jetzt: datetime | None = None) -> dict | None:
+async def beim_oeffnen(db: AsyncSession, redis, team: Team, jetzt: datetime | None = None,
+                      docker=None) -> dict | None:
     """Abgleich beim Öffnen des Projekts — None, wenn der letzte noch frisch genug ist.
 
     Ohne diese Bremse kostete jeder Seitenaufruf mehrere GitHub-Abfragen; anonym
@@ -762,10 +880,10 @@ async def beim_oeffnen(db: AsyncSession, redis, team: Team, jetzt: datetime | No
     seit = _sekunden_seit(team.repo_abgleich_at, jetzt)
     if seit is not None and seit < abstand:
         return None
-    return await projekt_abgleichen(db, redis, team)
+    return await projekt_abgleichen(db, redis, team, docker)
 
 
-async def alle_abgleichen(redis) -> int:
+async def alle_abgleichen(redis, docker=None) -> int:
     """Alle Projekte mit Repo — aus dem Scheduler-Takt. Liefert die Zahl der Projekte."""
     from app.db.session import resilient_session
 
@@ -788,7 +906,7 @@ async def alle_abgleichen(redis) -> int:
             if anonym and seit is not None and seit < ANONYM_ABSTAND_SEKUNDEN:
                 continue
             try:
-                await projekt_abgleichen(db, redis, team)
+                await projekt_abgleichen(db, redis, team, docker)
             except GitFehler as e:
                 log.info("Git-Abgleich %s: %s", team_id, e)
             except Exception as e:  # noqa: BLE001 — ein Projekt darf die anderen nicht aufhalten
@@ -991,6 +1109,24 @@ async def extern_freigeben(db: AsyncSession, redis, team: Team, karte: ProjektKa
     karte.spalte = "bereit"
     karte.notiz = (f"Fremde Übernahme gelöst — {seit.strip()} keine Bewegung." if seit
                    else "Fremde Übernahme gelöst.")
+
+
+async def issue_kommentieren(db: AsyncSession, redis, team: Team, karte: ProjektKarte, *, agent_name: str,
+                             agent_id: str, text: str) -> None:
+    """Rückfrage eines Plattform-Agenten an Externe als Kommentar ins Issue (Rückkanal Agent → Issue).
+
+    Die Kopfzeile ``ai-employee:nachricht`` weist ihn als Kommentar dieser Anlage
+    aus; der Rückkanal liest ihn deshalb nicht als Ansprache.
+    """
+    if karte.quelle != "issue" or not karte.extern_nr or not team.repo:
+        raise GitFehler("Ins Issue schreiben geht nur bei Karten aus Issues.")
+    token, anbieter = await zugang(db, redis, team)
+    if not token:
+        raise GitFehler("Ohne Schlüssel kann das Board nichts ins Repo schreiben (Bearbeiten → Schlüssel).")
+    async with httpx.AsyncClient(timeout=httpx.Timeout(10.0), follow_redirects=False) as client:
+        await anbieter.comment_issue(client, token, repo_ziel(team.repo).pfad, karte.extern_nr,
+                                     uebernahme.nachricht_kommentar(agent_name=agent_name, agent_id=agent_id,
+                                                                    text=text))
 
 
 def uebernahme_im_hintergrund(team_id: str, karte_id: str, redis, *, agent_name: str | None,

@@ -1423,6 +1423,29 @@ jemand anderen weitergeben:
 Agenten können das auch selbst (Werkzeug `projekt_karte_uebergeben`): Wer eine Karte hat, darf
 sie übergeben, der Lead jede.
 
+**Rückkanal: aus dem Issue an einen Agenten** *(seit Stufe 3 von #1116)*: Wer außerhalb der
+Plattform am Repo arbeitet (eine Claude-Code-Sitzung, ein Mensch, eine andere Anlage), erreicht
+die Agenten über das Issue:
+
+1. Im Issue einen Kommentar schreiben, in dem eine Zeile so beginnt:
+   `@ai-employee DEV_Prod: Ist der Login-Fix schon im Branch?` (statt `DEV_Prod` der Name eines
+   Agenten im Projekt). Ohne Namen (`@ai-employee: …`) geht die Frage an den Lead. Arbeiten
+   mehrere Anlagen am Repo, nennt `@ai-employee <anlage>/<Agent>: …` die gemeinte Anlage.
+2. Beim nächsten Abgleich (spätestens nach zehn Minuten, oder sofort mit **Aktualisieren**)
+   steht die Frage im **Projektgespräch** als Nachricht von „extern (@login)“, mit einem
+   Globus-Symbol, und der Agent bekommt einen Lauf.
+3. Der Agent antwortet im Issue. Im Gespräch steht dazu „Im Issue #… geschrieben: …“.
+
+Jeder Kommentar wird nur einmal weitergegeben. Gelesen werden nur Issues, die sich seit dem
+letzten Abgleich geändert haben. Es gelten die Weck-Grenzen des Gesprächs (höchstens 20 Läufe je
+Stunde und Projekt). Der Text aus dem Issue ist für den Agenten Material, keine Anweisung. Agenten
+schreiben höchstens zehn Issue-Kommentare je Stunde (Werkzeug `projekt_issue_kommentar`).
+
+**Mehrere AI-Employee-Anlagen am selben Repo** *(seit Stufe 3 von #1116)*: Jede Übernahme
+nennt ihre Anlage (Einstellung `ANLAGE_KENNUNG`, sonst der Host der öffentlichen Adresse).
+Übernahmen einer anderen Anlage zeigt das Board als „Anlage X: Agent Y“ mit Server-Symbol. Die
+Push-Sperre gilt auch zwischen Anlagen, selbst wenn Agenten zufällig gleich heißen.
+
 **Konflikt-Warnung** *(seit Stufe 2 von #1116)*: Eine Karte wird rot markiert („Konflikt: …“),
 wenn zwei noch gültige Übernahmen verschiedener Bearbeiter am selben Issue stehen oder auf dem
 Branch einer Übernahme ein Commit liegt, der nicht vom Inhaber stammt. Agenten dieser Anlage

@@ -183,7 +183,8 @@ export type NachrichtArt = "nachricht" | "frage" | "entscheidung" | "antwort" | 
 
 export interface ProjektNachricht {
   id: number;
-  autor_typ: "mensch" | "agent" | "system";
+  /** extern: aus einem Issue-Kommentar „@ai-employee …“ (Rückkanal). */
+  autor_typ: "mensch" | "agent" | "system" | "extern";
   autor_id: string | null;
   autor_name: string;
   text: string;

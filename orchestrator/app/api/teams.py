@@ -1129,6 +1129,57 @@ async def karte_uebergeben(team_id: str, karte_id: str, body: Uebergeben, reques
     return antwort
 
 
+class IssueKommentar(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+
+
+#: Höchstens so viele Issue-Kommentare je Agent und Stunde — eine Schleife darf das
+#: Repo nicht fluten.
+ISSUE_KOMMENTARE_JE_STUNDE = 10
+
+
+@router.post("/{team_id}/karten/{karte_id}/issue-kommentar", status_code=201)
+async def karte_issue_kommentar(team_id: str, karte_id: str, body: IssueKommentar,
+                                user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db),
+                                redis=Depends(get_redis_service)):
+    """Rückfrage eines Agenten an Externe ins Issue (Rückkanal Agent → Issue).
+
+    Nur Agenten des Projekts — Menschen schreiben direkt im Issue. Im
+    Projektgespräch steht danach, was der Agent gefragt hat.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from app.core import projekt_gespraech, projekt_git, projekte
+    from app.models.projekt_nachricht import ProjektNachricht
+
+    if not is_agent_principal(user):
+        raise HTTPException(status_code=403, detail="Nur für Agenten — Menschen schreiben direkt im Issue.")
+    t = await _projekt(team_id, user, db)
+    try:
+        karte = await projekte.karte_laden(db, t.id, karte_id)
+    except LookupError as e:
+        raise _kartenfehler(e)
+    ich = await db.get(Agent, str(user.id))
+    seit = datetime.now(timezone.utc) - timedelta(hours=1)
+    bisher = await db.scalar(select(func.count(ProjektNachricht.id)).where(
+        ProjektNachricht.autor_id == str(user.id), ProjektNachricht.text.startswith("Im Issue #"),
+        ProjektNachricht.created_at >= seit))
+    if (bisher or 0) >= ISSUE_KOMMENTARE_JE_STUNDE:
+        raise HTTPException(status_code=429, detail=f"Höchstens {ISSUE_KOMMENTARE_JE_STUNDE} Issue-Kommentare je "
+                                                    "Stunde — bitte später weiter.")
+    try:
+        await projekt_git.issue_kommentieren(db, redis, t, karte, agent_name=ich.name if ich else "Agent",
+                                             agent_id=str(user.id), text=body.text)
+    except projekt_git.GitFehler as e:
+        raise HTTPException(status_code=424, detail=str(e))
+    await projekt_gespraech.posten(db, t, autor_typ="agent", autor_id=str(user.id),
+                                   autor_name=ich.name if ich else "Agent",
+                                   text=f"Im Issue #{karte.extern_nr} geschrieben: {body.text.strip()}",
+                                   art="frage", karte_id=karte.id)
+    await db.commit()
+    return {"issue": karte.extern_nr, "url": karte.url}
+
+
 async def _ergebnis_festhalten(db: AsyncSession, t: Team, karte: dict, task, user) -> None:
     """Abgenommenes Ergebnis ins Projektwissen (ergebnisse.md) und ins Gespräch.
 

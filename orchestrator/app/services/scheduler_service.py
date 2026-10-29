@@ -389,7 +389,7 @@ class SchedulerService:
                     try:
                         from app.core import projekt_git
 
-                        await projekt_git.alle_abgleichen(self.redis)
+                        await projekt_git.alle_abgleichen(self.redis, docker=self.docker)
                     except Exception as e:
                         logger.warning("[Scheduler] Git-Abgleich: %s", e)
                 # Fällige Erinnerungen (Sekretariat) — einmal je Takt (30 s), eine kleine Abfrage.
