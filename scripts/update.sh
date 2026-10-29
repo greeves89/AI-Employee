@@ -108,6 +108,12 @@ until curl -sf http://localhost:8000/health >/dev/null 2>&1; do
 done
 ok "Orchestrator is ready"
 
+# ── 6b. Alte Abbilder wegräumen (erst nach erfolgreichem Start) ───────────────
+# Behalten: die neue Version und die vorige für den Rücksprung (siehe unten).
+VORHER_VERSION="$(git show "${VORHER_COMMIT}:VERSION" 2>/dev/null | tr -d '[:space:]' || true)"
+info "Räume alte Abbilder auf..."
+abbilder_aufraeumen "${AI_EMPLOYEE_VERSION:-}" "${VORHER_VERSION}" || warn "Aufräumen nicht vollständig — Update ist trotzdem fertig."
+
 # ── 7. Report agents still running the OLD image ──────────────────────────────
 # Agent containers are launched dynamically and labelled ai-employee.type=agent.
 # A rebuild retags ai-employee-agent:latest to a new id but leaves running

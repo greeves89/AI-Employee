@@ -153,6 +153,7 @@ Switches (environment or `.env` — the update scripts now read both for these k
 | `AI_EMPLOYEE_SIGNATUR_PRUEFEN=0` | Skip the check (only `0`/`false`/`no`/`off`/`nein`/`aus` switch it off) |
 | `AI_EMPLOYEE_SIGNATUR_IDENTITAET` | Expected signer identity as a regexp — required for an internal mirror, which carries your own signature instead of ours. Without it, a non-`ghcr.io` registry is pulled but not verified. |
 | `AI_EMPLOYEE_SIGNATUR_AUSSTELLER` | Expected OIDC issuer (default: GitHub Actions) |
+| `AI_EMPLOYEE_ABBILDER_AUFRAEUMEN=0` | Keep old image versions. By default `update.sh` removes images of older versions after a successful start (it keeps the new and the previous version and anything a container still uses) and build cache older than three days. |
 
 Not covered: pulling the images without `./scripts/update.sh` (plain
 `docker compose pull` with `docker-compose.community.yml`, or the demo VM setup) performs no
