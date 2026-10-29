@@ -615,7 +615,18 @@ class DockerService:
         # unbekannten Namen — auf jeder Anlage, die nie lokal gebaut hat.
         # abbild_sicherstellen wirft nicht — ein Start, der ohne den Griff
         # gelaufen waere, scheitert also nicht an ihm.
-        self.abbild_sicherstellen(image)
+        #
+        # Einzige Ausnahme: "gesperrt". Dann fehlt das Abbild lokal UND seine
+        # Version ist bei der Signaturpruefung durchgefallen (#938).
+        # ``containers.run`` holte ein fehlendes Abbild sonst selbst nach — bei
+        # einer vollstaendigen Referenz also genau das verworfene Abbild, an der
+        # Schranke vorbei. Ein lokaler Name waere ohnehin gescheitert.
+        if self.abbild_sicherstellen(image) == "gesperrt":
+            raise RuntimeError(
+                "Das Agenten-Abbild dieser Version wurde bei der Signaturprüfung "
+                "verworfen und liegt nicht lokal vor. Lokal bauen: "
+                "./scripts/update.sh --lokal-bauen"
+            )
 
         container = self.client.containers.run(
             image=image,
@@ -955,6 +966,10 @@ class DockerService:
     _VERSION_FORM = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
     #: Ersatzwert von config._read_version(), wenn keine VERSION-Datei da ist.
     _KEINE_VERSION = "0.0.0"
+    #: Der einzige Abbild-Name, den der Orchestrator selbst holt.
+    _AGENT_NAME = "ai-employee-agent"
+    #: Lokaler Name des Agenten-Abbilds, optional mit Tag (Docker-Tag-Regeln).
+    _LOKAL_FORM = re.compile(r"^ai-employee-agent(:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?$")
 
     def abbild_sicherstellen(self, image: str) -> str:
         """Sorgt dafuer, dass ``image`` lokal vorliegt (#889) — und wirft NIE.
@@ -988,15 +1003,23 @@ class DockerService:
         kein Compose-Dienst), und ein aufgeraeumtes ``docker image prune`` nimmt es
         mit. Die Fehlermeldung von Docker nennt dann nur einen unbekannten Namen.
 
-        Rueckgabe: ``"lokal"`` (war schon da), ``"registry"`` (geholt) oder
-        ``"fehlt"`` (nicht holbar — der Aufrufer laeuft in den Docker-Fehler).
+        Rueckgabe: ``"lokal"`` (war schon da), ``"registry"`` (geholt),
+        ``"fehlt"`` (nicht holbar — der Aufrufer laeuft in den Docker-Fehler) oder
+        ``"gesperrt"`` (diese Version ist bei der Signaturpruefung durchgefallen;
+        ``create_container`` startet dann bewusst nicht, siehe dort).
 
-        Steht in ``AGENT_IMAGE`` schon eine vollstaendige Registry-Referenz (die
-        Community-Zusammenstellung macht das), wird genau sie geholt. Sonst wird
-        sie aus ``AI_EMPLOYEE_REGISTRY`` und der VERSION-Datei gebaut: die NUMMER
-        kommt damit aus dem Code, nicht aus der Umgebung, und Code und Abbild
-        gehoeren zur selben Freigabe. WOHER geholt wird, bestimmt die Umgebung
-        weiterhin (``AI_EMPLOYEE_REGISTRY``, fuer einen eigenen Spiegel).
+        Geholt wird AUSSCHLIESSLICH ``<AI_EMPLOYEE_REGISTRY>/ai-employee-agent:<x.y.z>``:
+        feste Registry aus der Umgebung, fester Name, eine echte Freigabenummer —
+        kein ``latest``, kein fremder Host, kein anderer Name. Beide Werte kommen
+        nur aus der Umgebung des Betreibers, nie aus der Datenbank
+        (``config.NUR_AUS_DER_UMGEBUNG``).
+
+        * Lokaler Name (``AGENT_IMAGE=ai-employee-agent:latest``): die Nummer kommt
+          aus der VERSION-Datei, nicht aus der Umgebung — Code und Abbild gehoeren
+          zur selben Freigabe. Danach wird auf den lokalen Namen getaggt.
+        * Vollstaendige Referenz (die Community-Zusammenstellung setzt
+          ``AGENT_IMAGE`` so): sie wird nur geholt, wenn sie genau diese Form hat.
+          Sonst holt der Orchestrator nichts selbst.
 
         ACHTUNG, bewusste Einschraenkung: hier wird KEINE Signatur geprueft —
         cosign liegt nicht im Orchestrator-Abbild. Der gepruefte Weg bleibt
@@ -1020,53 +1043,69 @@ class DockerService:
             # Nur fuer das Agenten-Abbild ist bekannt, wo das fertige Abbild
             # liegt. Fuer jeden anderen Namen waere die Registry-Referenz geraten.
             return "fehlt"
-        if not settings.ai_employee_abbild_holen:
+        if not settings.abbild_holen:
             logger.warning(
                 f"Abbild {scrub_log(image)} fehlt und AI_EMPLOYEE_ABBILD_HOLEN=0 — "
                 "nicht geholt. Bereitstellen mit ./scripts/update.sh (#889)."
             )
             return "fehlt"
 
-        version = get_agent_version().strip()
+        registry = (settings.abbild_registry or "").strip().rstrip("/")
+        if not self._REGISTRY_FORM.match(registry):
+            logger.error(
+                f"AI_EMPLOYEE_REGISTRY ({scrub_log(registry)}) ist kein gueltiger "
+                "Registry-Pfad — Abbild wird nicht geholt (#889)."
+            )
+            return "fehlt"
+        praefix = f"{registry}/{self._AGENT_NAME}:"
+
         if "/" in image:
-            # Schon eine vollstaendige Referenz (Community-Zusammenstellung setzt
-            # AGENT_IMAGE auf ghcr.io/<konto>/ai-employee-agent:<version>). Dann
-            # ist nichts zu bauen und nichts umzubenennen: genau diese Referenz
-            # holen. Eine aus VERSION gebaute Nummer waere hier sogar falsch — in
-            # dieser Zusammenstellung ist die VERSION-Datei nicht eingebunden.
-            referenz, neuer_name = image, None
+            # Schon eine vollstaendige Referenz. Die VERSION-Datei ist in dieser
+            # Zusammenstellung nicht eingebunden, die Nummer steht im Tag. Geholt
+            # wird nur genau unser Abbild aus genau der eingestellten Registry —
+            # ein anderer Host oder Name in AGENT_IMAGE holt der Orchestrator nicht.
+            if not image.startswith(praefix):
+                logger.warning(
+                    f"AGENT_IMAGE ({scrub_log(image)}) liegt nicht unter "
+                    f"{scrub_log(praefix)}<Version> — der Orchestrator holt es nicht "
+                    "selbst (#889)."
+                )
+                return "fehlt"
+            version, neuer_name = image[len(praefix):], None
         else:
-            registry = (settings.ai_employee_registry or "").strip().rstrip("/")
-            if not self._REGISTRY_FORM.match(registry):
-                logger.error(
-                    f"AI_EMPLOYEE_REGISTRY ({scrub_log(registry)}) ist kein gueltiger "
-                    "Registry-Pfad — Abbild wird nicht geholt (#889)."
+            if not self._LOKAL_FORM.match(image):
+                logger.warning(
+                    f"AGENT_IMAGE ({scrub_log(image)}) ist nicht ai-employee-agent[:tag] — "
+                    "der Orchestrator holt es nicht selbst (#889)."
                 )
                 return "fehlt"
-            if not self._VERSION_FORM.match(version) or version == self._KEINE_VERSION:
-                # "0.0.0" ist der Ersatzwert aus config._read_version(), wenn keine
-                # VERSION-Datei im Behaelter liegt — eine Freigabe mit dieser Nummer
-                # gibt es nicht. Ohne diese Zeile entstuende eine Referenz, die es
-                # nirgends gibt, und im Protokoll stuende ein 404 statt des Grundes.
-                logger.error(
-                    f"Keine gueltige Freigabenummer ({scrub_log(version)}) — Abbild wird "
-                    "nicht geholt (#889). Liegt die VERSION-Datei im Behaelter?"
-                )
-                return "fehlt"
-            referenz, neuer_name = f"{registry}/ai-employee-agent:{version}", image
+            version, neuer_name = get_agent_version().strip(), image
+
+        if not self._VERSION_FORM.match(version) or version == self._KEINE_VERSION:
+            # Ein beweglicher Tag ("latest") koennte nach der Freigabe auf ein
+            # anderes Abbild zeigen. "0.0.0" ist der Ersatzwert aus
+            # config._read_version(), wenn keine VERSION-Datei im Behaelter liegt —
+            # eine Freigabe mit dieser Nummer gibt es nicht.
+            logger.error(
+                f"Keine gueltige Freigabenummer ({scrub_log(version)}) — Abbild wird "
+                "nicht geholt (#889). Erlaubt ist nur x.y.z, kein beweglicher Tag."
+            )
+            return "fehlt"
 
         # Eine Version, deren Signatur bei der geprueften Bereitstellung
         # durchgefallen ist, darf hier nicht durch die Hintertuer hereinkommen
-        # (#938). Sonst holte ein spaeteres "docker image prune" genau das
-        # verworfene Abbild zurueck.
-        abgelehnt = (settings.ai_employee_abbild_abgelehnt or "").strip()
+        # (#938). Verglichen wird die Nummer, die TATSAECHLICH geholt wuerde —
+        # bei einer vollstaendigen Referenz also der Tag, nicht die VERSION-Datei.
+        abgelehnt = (settings.abbild_abgelehnt or "").strip()
         if abgelehnt and abgelehnt == version:
             logger.error(
                 f"Version {scrub_log(version)} wurde bei der Signaturpruefung verworfen "
                 "(AI_EMPLOYEE_ABBILD_ABGELEHNT) — Abbild wird nicht geholt. Lokal bauen: "
                 "./scripts/update.sh --lokal-bauen (#889/#938)."
             )
-            return "fehlt"
+            return "gesperrt"
+
+        referenz = f"{praefix}{version}"
         logger.warning(
             f"Agenten-Abbild {scrub_log(image)} fehlt lokal — hole {scrub_log(referenz)} "
             "aus der Registry. Diese Abkuerzung prueft KEINE Signatur; der "
@@ -1084,10 +1123,9 @@ class DockerService:
             logger.info(f"Agenten-Abbild {scrub_log(referenz)} aus der Registry geholt.")
             return "registry"
         try:
-            # Hier steht immer ein reiner lokaler Name ohne "/" (alles mit
-            # Registry-Host nimmt den Zweig oben). Ein Doppelpunkt ist damit
-            # eindeutig ein Tag; fehlt er, gilt "latest" — sonst entstuende der
-            # Tag "ai-employee-agent".
+            # Hier steht immer ein lokaler Name aus _LOKAL_FORM. Ein Doppelpunkt
+            # ist damit eindeutig ein Tag; fehlt er, gilt "latest" — sonst
+            # entstuende der Tag "ai-employee-agent".
             kopf, trenner, rest = neuer_name.rpartition(":")
             name, tag = (kopf, rest) if trenner else (neuer_name, "latest")
             geholt.tag(name, tag)

@@ -95,9 +95,9 @@ class AbbildSicherstellen(unittest.TestCase):
 
     def _lauf(self, dienst, abbild=None, version="1.394.2",
               registry="ghcr.io/greeves89", holen=True, abgelehnt=""):
-        with patch("app.config.settings.ai_employee_registry", registry), \
-             patch("app.config.settings.ai_employee_abbild_holen", holen), \
-             patch("app.config.settings.ai_employee_abbild_abgelehnt", abgelehnt), \
+        with patch("app.config.settings.abbild_registry", registry), \
+             patch("app.config.settings.abbild_holen", holen), \
+             patch("app.config.settings.abbild_abgelehnt", abgelehnt), \
              patch("app.config.get_agent_version", return_value=version):
             return dienst.abbild_sicherstellen(abbild or self.AGENT)
 
@@ -128,16 +128,49 @@ class AbbildSicherstellen(unittest.TestCase):
             self.assertEqual("registry", self._lauf(d, abbild="ai-employee-agent"))
         self.assertEqual([("ai-employee-agent", "latest")], d.client.geholt[0].tags)
 
-    def test_eigener_registry_host_wird_direkt_geholt(self):
-        """"host:5000/ai-employee-agent" ist schon eine vollstaendige Referenz
-        (eigener Spiegel mit Port). Dann wird genau sie geholt und nichts
-        umbenannt — eine aus AI_EMPLOYEE_REGISTRY gebaute Referenz wuerde am
-        ausdruecklich gesetzten AGENT_IMAGE vorbeigreifen."""
+    def test_fremder_registry_host_in_agent_image_wird_nicht_geholt(self):
+        """Der Orchestrator holt ohne Signaturpruefung. Er holt deshalb nur
+        ``<AI_EMPLOYEE_REGISTRY>/ai-employee-agent:<x.y.z>`` — ein anderer Host,
+        ein anderer Name oder ein anderes Konto in AGENT_IMAGE nicht."""
+        for fremd in ("host:5000/ai-employee-agent",
+                      "evil.example.com/greeves89/ai-employee-agent:1.394.2",
+                      "ghcr.io/anderes-konto/ai-employee-agent:1.394.2",
+                      "ghcr.io/greeves89/ai-employee-orchestrator:1.394.2",
+                      "ghcr.io/greeves89/ai-employee-agent:1.394.2@sha256:00"):
+            with self.subTest(abbild=fremd):
+                d = _dienst()
+                with patch("app.config.settings.agent_image", fremd):
+                    self.assertEqual("fehlt", self._lauf(d, abbild=fremd))
+                self.assertEqual([], d.client.pulls)
+
+    def test_eigener_spiegel_mit_voller_referenz_wird_geholt(self):
+        """Ein eigener Spiegel ist erlaubt, wenn AI_EMPLOYEE_REGISTRY auf ihn zeigt."""
         d = _dienst()
-        with patch("app.config.settings.agent_image", "host:5000/ai-employee-agent"):
-            self.assertEqual("registry", self._lauf(d, abbild="host:5000/ai-employee-agent"))
-        self.assertEqual(["host:5000/ai-employee-agent"], d.client.pulls)
-        self.assertEqual([], d.client.geholt[0].tags)
+        voll = "host:5000/ai/ai-employee-agent:1.394.2"
+        with patch("app.config.settings.agent_image", voll):
+            self.assertEqual("registry", self._lauf(d, abbild=voll, registry="host:5000/ai"))
+        self.assertEqual([voll], d.client.pulls)
+
+    def test_beweglicher_tag_in_voller_referenz_wird_nicht_geholt(self):
+        """Auch in der vollen Referenz nur x.y.z: ``latest`` koennte nach der
+        Freigabe auf ein anderes Abbild zeigen."""
+        for tag in ("latest", "0.0.0", "1.394", "1.394.2-rc1", ""):
+            with self.subTest(tag=tag):
+                d = _dienst()
+                voll = f"ghcr.io/greeves89/ai-employee-agent:{tag}"
+                with patch("app.config.settings.agent_image", voll):
+                    self.assertEqual("fehlt", self._lauf(d, abbild=voll))
+                self.assertEqual([], d.client.pulls)
+
+    def test_fremder_lokaler_name_wird_nicht_unter_unserem_abbild_angelegt(self):
+        """Der lokale Name bekommt das geholte Abbild als Tag. Ein beliebiger Name
+        (etwa ``postgres``) duerfte damit nie ueberschrieben werden."""
+        for name in ("postgres:16", "ai-employee-agentx:latest", "ai-employee-agent:bad tag"):
+            with self.subTest(name=name):
+                d = _dienst()
+                with patch("app.config.settings.agent_image", name):
+                    self.assertEqual("fehlt", self._lauf(d, abbild=name))
+                self.assertEqual([], d.client.pulls)
 
     def test_eigener_spiegel_wird_benutzt(self):
         d = _dienst()
@@ -198,8 +231,8 @@ class AbbildSicherstellen(unittest.TestCase):
 
         d = DockerService.__new__(DockerService)
         d.client = _ClientOhneImages()
-        with patch("app.config.settings.ai_employee_registry", "ghcr.io/greeves89"), \
-             patch("app.config.settings.ai_employee_abbild_holen", True), \
+        with patch("app.config.settings.abbild_registry", "ghcr.io/greeves89"), \
+             patch("app.config.settings.abbild_holen", True), \
              patch("app.config.get_agent_version", return_value="1.395.0"):
             behaelter = d.create_container(
                 image=self.AGENT,
@@ -216,7 +249,7 @@ class AbbildSicherstellen(unittest.TestCase):
         diese Schranke holte ein spaeteres "docker image prune" genau dieses
         Abbild wieder herein — die Ablehnung waere nicht dauerhaft."""
         d = _dienst()
-        self.assertEqual("fehlt", self._lauf(d, version="1.395.0", abgelehnt="1.395.0"))
+        self.assertEqual("gesperrt", self._lauf(d, version="1.395.0", abgelehnt="1.395.0"))
         self.assertEqual([], d.client.pulls)
 
     def test_eine_andere_verworfene_version_blockiert_nicht(self):
@@ -225,6 +258,46 @@ class AbbildSicherstellen(unittest.TestCase):
         d = _dienst()
         self.assertEqual("registry", self._lauf(d, version="1.395.1", abgelehnt="1.395.0"))
         self.assertEqual(["ghcr.io/greeves89/ai-employee-agent:1.395.1"], d.client.pulls)
+
+    def test_verworfene_version_in_voller_referenz_wird_nicht_geholt(self):
+        """Bisher wurde mit der VERSION-Datei verglichen — in der
+        Community-Zusammenstellung ist die gar nicht eingebunden ("0.0.0"), die
+        verworfene Nummer im Tag kam also durch. Verglichen wird jetzt die Nummer,
+        die tatsaechlich geholt wuerde."""
+        d = _dienst()
+        voll = "ghcr.io/greeves89/ai-employee-agent:1.395.0"
+        with patch("app.config.settings.agent_image", voll):
+            self.assertEqual("gesperrt",
+                             self._lauf(d, abbild=voll, version="0.0.0", abgelehnt="1.395.0"))
+        self.assertEqual([], d.client.pulls)
+
+    def test_verworfene_version_startet_keinen_behaelter(self):
+        """``containers.run`` holt ein fehlendes Abbild sonst selbst nach — bei
+        einer vollen Referenz also genau das verworfene, an der Schranke vorbei.
+        Bei "gesperrt" wird deshalb gar nicht erst gestartet."""
+        d = _dienst()
+        voll = "ghcr.io/greeves89/ai-employee-agent:1.395.0"
+        with patch("app.config.settings.abbild_registry", "ghcr.io/greeves89"), \
+             patch("app.config.settings.abbild_holen", True), \
+             patch("app.config.settings.abbild_abgelehnt", "1.395.0"), \
+             patch("app.config.settings.agent_image", voll), \
+             patch("app.config.get_agent_version", return_value="0.0.0"):
+            with self.assertRaises(RuntimeError):
+                d.create_container(
+                    image=voll,
+                    name="ai-agent-test-abc123",
+                    environment={},
+                    volume_name="vol-abc123",
+                    network="ai-employee-network",
+                )
+        self.assertEqual([], d.client.ablauf)
+
+    def test_lokal_gebaute_verworfene_version_startet_weiter(self):
+        """Nach einer verworfenen Signatur baut update.sh lokal. Dieses Abbild
+        liegt vor und muss starten — die Sperre gilt nur dem Holen."""
+        d = _dienst(vorhanden=[self.AGENT])
+        self.assertEqual("lokal", self._lauf(d, version="1.395.0", abgelehnt="1.395.0"))
+        self.assertEqual([], d.client.pulls)
 
     def test_volle_registry_referenz_wird_genau_so_geholt(self):
         """Die Community-Zusammenstellung setzt AGENT_IMAGE auf
@@ -243,8 +316,8 @@ class AbbildSicherstellen(unittest.TestCase):
         """Die Gegenprobe gegen das Wegfallen des Aufrufs in create_container:
         erst holen, dann starten. Umgekehrt waere der Griff wirkungslos."""
         d = _dienst()
-        with patch("app.config.settings.ai_employee_registry", "ghcr.io/greeves89"), \
-             patch("app.config.settings.ai_employee_abbild_holen", True), \
+        with patch("app.config.settings.abbild_registry", "ghcr.io/greeves89"), \
+             patch("app.config.settings.abbild_holen", True), \
              patch("app.config.settings.agent_image", self.AGENT), \
              patch("app.config.get_agent_version", return_value="1.394.2"):
             d.create_container(
@@ -261,6 +334,49 @@ class AbbildSicherstellen(unittest.TestCase):
             d.client.ablauf,
         )
         self.assertEqual([("ai-employee-agent", "latest")], d.client.geholt[0].tags)
+
+
+class AbbildKommtNurAusDerUmgebung(unittest.TestCase):
+    """Welches Abbild der Orchestrator ohne Signaturpruefung holt und startet,
+    bestimmt nur der Betreiber ueber die Umgebung. ``load_into_config``
+    uebernimmt sonst JEDEN gespeicherten Schluessel, zu dem es ein Feld gibt —
+    eine Zeile in der Einstellungstabelle haette eine fremde Registry oder ein
+    fremdes Abbild vorgeben koennen."""
+
+    def test_gespeicherte_abbild_schluessel_werden_ignoriert(self):
+        import asyncio
+
+        from app.config import NUR_AUS_DER_UMGEBUNG, settings
+        from app.services.settings_service import SettingsService
+
+        gespeichert = {
+            "agent_image": "evil.example.com/x/agent:latest",
+            "abbild_registry": "evil.example.com/x",
+            "abbild_holen": "true",
+            "abbild_abgelehnt": "",
+        }
+        self.assertEqual(set(gespeichert), set(NUR_AUS_DER_UMGEBUNG))
+        svc = SettingsService.__new__(SettingsService)
+
+        async def _alle():
+            return dict(gespeichert, abbild_abgelehnt="9.9.9")
+
+        svc.get_all = _alle
+        with patch("app.config.settings.agent_image", "ai-employee-agent:latest"), \
+             patch("app.config.settings.abbild_registry", "ghcr.io/greeves89"), \
+             patch("app.config.settings.abbild_abgelehnt", "1.2.3"):
+            asyncio.run(svc.load_into_config())
+            self.assertEqual("ai-employee-agent:latest", settings.agent_image)
+            self.assertEqual("ghcr.io/greeves89", settings.abbild_registry)
+            self.assertEqual("1.2.3", settings.abbild_abgelehnt)
+
+    def test_kein_abbild_schluessel_ist_speicherbar(self):
+        """Die zweite Haelfte der Schranke: ueber die Einstellungs-API laesst sich
+        keiner dieser Schluessel ueberhaupt erst ablegen."""
+        from app.config import NUR_AUS_DER_UMGEBUNG
+        from app.services.settings_service import ALLOWED_KEYS
+
+        self.assertEqual(set(), set(NUR_AUS_DER_UMGEBUNG) & set(ALLOWED_KEYS))
 
 
 if __name__ == "__main__":

@@ -153,6 +153,7 @@ Switches (environment or `.env` — the update scripts now read both for these k
 | `AI_EMPLOYEE_SIGNATUR_PRUEFEN=0` | Skip the check (only `0`/`false`/`no`/`off`/`nein`/`aus` switch it off) |
 | `AI_EMPLOYEE_SIGNATUR_IDENTITAET` | Expected signer identity as a regexp — required for an internal mirror, which carries your own signature instead of ours. Without it, a non-`ghcr.io` registry is pulled but not verified. |
 | `AI_EMPLOYEE_SIGNATUR_AUSSTELLER` | Expected OIDC issuer (default: GitHub Actions) |
+| `AI_EMPLOYEE_ABBILDER_AUFRAEUMEN=0` | Keep old image versions. By default `update.sh` removes images of older versions after a successful start (it keeps the new and the previous version and anything a container still uses) and build cache older than three days. |
 
 Not covered: pulling the images without `./scripts/update.sh` (plain
 `docker compose pull` with `docker-compose.community.yml`, or the demo VM setup) performs no
@@ -177,8 +178,20 @@ It is the rescue path, not the supported one: the verified path stays `./scripts
 Set `AI_EMPLOYEE_ABBILD_HOLEN=0` on an installation that must only ever run locally built
 images; the orchestrator then logs the missing image instead of pulling it.
 
+The orchestrator only ever pulls `<AI_EMPLOYEE_REGISTRY>/ai-employee-agent:<x.y.z>`. If
+`AGENT_IMAGE` already holds a full reference (as `docker-compose.community.yml` does), it is
+pulled only when it has exactly that form — no other host, account or image name, no moving
+tag. `AGENT_IMAGE`, `AI_EMPLOYEE_REGISTRY` and the two switches are read from the environment
+only; values stored in the settings table are ignored for them.
+
+The cleanup after an update (`AI_EMPLOYEE_ABBILDER_AUFRAEUMEN`) only removes registry names.
+The local name `ai-employee-agent:latest` that new agents start from always stays, so the
+orchestrator does not have to pull it again after an update.
+
 If the signature check above rejected a version, `abbilder_bereitstellen` records that
 number as `AI_EMPLOYEE_ABBILD_ABGELEHNT` in `.env`, and the orchestrator refuses to pull it.
+If that image is missing locally, the agent is not started at all — otherwise Docker would
+fetch the full reference implicitly. The cleanup does not keep registry names of that version.
 Without that note the rejection would only last for the run: a later `docker image prune`
 removes the locally built image, and the next agent would have pulled the rejected one. The
 next verified release clears the note.

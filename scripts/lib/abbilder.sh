@@ -221,3 +221,54 @@ abbilder_bereitstellen() {
     docker build -t ai-employee-agent:latest ./agent
     docker compose build
 }
+
+# abbilder_aufraeumen <version...> — eigene Abbilder älterer Versionen löschen.
+#
+# Jedes Update holt die Abbilder der neuen Version (das Agenten-Abbild allein
+# hat über 6 GB) und ließ die alten liegen. Auf einer Anlage mit vielen Updates
+# lagen so rund 20 Versionen je Abbild — über 100 GB, bis die Platte voll war
+# und die Sicherung vor dem nächsten Update scheiterte (29.10.).
+#
+# Behalten werden die übergebenen Versionen (die neue und die vorige für den
+# Rücksprung) und alles, was ein Container noch benutzt: ``docker image rm``
+# OHNE ``-f`` lehnt solche Abbilder ab. Dazu Build-Cache älter als drei Tage
+# (Agenten-Apps, lokale Bauten). Daten (Volumes) werden nie angefasst.
+#   AI_EMPLOYEE_ABBILDER_AUFRAEUMEN=0   abschalten
+#
+# Zusammenspiel mit dem Orchestrator, der das Agenten-Abbild selbst holt (#889):
+#  - Angefasst werden NUR Registry-Namen (<registry>/ai-employee-<dienst>:<tag>).
+#    Der lokale Name ai-employee-agent:latest, auf den AGENT_IMAGE zeigt und mit
+#    dem neue Agenten starten, bleibt immer stehen. ``docker image rm`` auf einen
+#    Registry-Namen nimmt bei einem Abbild mit mehreren Namen nur diesen einen
+#    weg — das Abbild hinter ai-employee-agent:latest bleibt also auch dann,
+#    wenn es aus einer älteren Version stammt. Der Orchestrator findet es und
+#    holt nichts nach.
+#  - Der Orchestrator holt nur <registry>/ai-employee-agent:<VERSION> — genau die
+#    neue Version, die hier behalten wird. Ein laufendes Holen verliert also
+#    weder seinen Namen noch wird es vom ``image prune`` erfasst.
+#  - Eine Version mit verworfener Signatur (AI_EMPLOYEE_ABBILD_ABGELEHNT) wird
+#    NICHT behalten, auch wenn sie die neue ist: hätte ``abbilder_verwerfen``
+#    einen ihrer Registry-Namen nicht entfernen können, räumt dieser Lauf ihn
+#    weg. Der lokale Ersatzbau unter ai-employee-agent:latest bleibt (s. o.).
+abbilder_aufraeumen() {
+    local registry dienst tag behalten abgelehnt geloescht=0
+    [ "$(abbilder_env AI_EMPLOYEE_ABBILDER_AUFRAEUMEN)" = "0" ] && return 0
+    registry="$(abbilder_env AI_EMPLOYEE_REGISTRY)"
+    registry="${registry:-ghcr.io/greeves89}"
+    abgelehnt="$(abbilder_env AI_EMPLOYEE_ABBILD_ABGELEHNT)"
+    behalten=" $* "
+    for dienst in $ABBILD_DIENSTE agent; do
+        for tag in $(docker images "${registry}/ai-employee-${dienst}" --format '{{.Tag}}' 2>/dev/null); do
+            [ "$tag" = "<none>" ] && continue
+            if [ -z "$abgelehnt" ] || [ "$tag" != "$abgelehnt" ]; then
+                case "$behalten" in *" ${tag} "*) continue ;; esac
+            fi
+            if docker image rm "${registry}/ai-employee-${dienst}:${tag}" >/dev/null 2>&1; then
+                geloescht=$((geloescht + 1))
+            fi
+        done
+    done
+    docker image prune -f >/dev/null 2>&1 || true
+    docker builder prune -f --filter until=72h >/dev/null 2>&1 || true
+    echo "Alte Abbilder entfernt: ${geloescht} (behalten:${behalten}und alles, was ein Container nutzt)"
+}

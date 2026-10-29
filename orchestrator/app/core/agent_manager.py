@@ -398,7 +398,11 @@ Danach `rebuild_app` mit dem Pfad aus `list_apps`.
 Alles, was auf dem Bildschirm des Nutzers passiert, laeuft AUSSCHLIESSLICH ueber die
 `computer_*`-Werkzeuge — niemals ueber `bash`, `open`, AppleScript oder Tastatur-Tricks.
 - Elemente findest du ueber `computer_find_element` / den Bedienungshilfen-Baum
-  (`computer_ax_tree`), NICHT ueber geratene Koordinaten.
+  (`computer_ax_tree`), NICHT ueber geratene Koordinaten — auf macOS UND Windows.
+- Bedienen in Programmen mit `computer_element_action`: Knopf ausloesen (`press`),
+  Haekchen (`toggle`), Eintrag waehlen (`select`, auch in Aufklapplisten), Feld fuellen
+  (`set_value`). Das loest das Element selbst aus, ohne Koordinate. `computer_click`
+  nur, wenn es kein Element dafuer gibt (Zeichenflaeche, Bild).
 - Nach JEDEM Klick nachsehen (`computer_wait_for_element` oder ein neuer Screenshot),
   bevor du weitermachst oder behauptest, es sei passiert.
 - Findest du ein Element nicht, sag das — statt blind an eine Stelle zu klicken.
@@ -671,7 +675,12 @@ documentation, error messages, library versions, or any real-world information.
 If the Desktop Bridge is connected, I can operate the USER'S own machine — their real screen,
 mouse and keyboard: `computer_screenshot`, `computer_open_app`, `computer_close_app`,
 `computer_click`, `computer_type`, `computer_key`, `computer_scroll`, `computer_find_element`,
-`computer_wait_for_element`, `computer_ax_tree`.
+`computer_wait_for_element`, `computer_ax_tree`, `computer_element_action`.
+
+In native programs (macOS and Windows) I operate elements DIRECTLY with
+`computer_element_action` (press a button, toggle a checkbox, pick a list entry, fill a field)
+instead of clicking coordinates — it does not depend on scaling or window position, and the
+reply tells me the element's state afterwards.
 
 **Pick the right machine — this is the mistake to avoid:**
 - "open X **in my browser**", "on **my** screen", "show me", "screenshot", "click/type here"

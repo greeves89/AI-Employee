@@ -186,6 +186,26 @@ class GitHubHostProvider(GitHostProvider):
                                    headers=self._headers(token))
         return resp.status_code in (200, 204, 404)
 
+    async def remove_assignees(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int,
+                               logins: list[str]) -> bool:
+        resp = await client.request("DELETE", f"{self.api_base}/repos/{repo}/issues/{nummer}/assignees",
+                                    headers=self._headers(token), json={"assignees": logins})
+        return resp.status_code in (200, 201)
+
+    async def list_branches(self, client: httpx.AsyncClient, token: str, repo: str,
+                            hoechstens: int = 300) -> list[dict]:
+        """Branches als ``{"name", "sha"}`` — woran jemand von außen arbeitet."""
+        rows = await self._seiten(client, token, f"/repos/{repo}/branches", {}, hoechstens)
+        return [{"name": r.get("name"), "sha": (r.get("commit") or {}).get("sha")} for r in rows if r.get("name")]
+
+    async def commit_zeit(self, client: httpx.AsyncClient, token: str, repo: str, sha: str) -> str | None:
+        """Zeitpunkt eines Commits (ISO) — None, wenn nicht lesbar."""
+        resp = await client.get(f"{self.api_base}/repos/{repo}/commits/{sha}", headers=self._headers(token))
+        if resp.status_code != 200:
+            return None
+        commit = (resp.json() or {}).get("commit") or {}
+        return (commit.get("committer") or {}).get("date") or (commit.get("author") or {}).get("date")
+
     async def issue_state(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int) -> str | None:
         resp = await client.get(f"{self.api_base}/repos/{repo}/issues/{nummer}", headers=self._headers(token))
         if resp.status_code != 200:

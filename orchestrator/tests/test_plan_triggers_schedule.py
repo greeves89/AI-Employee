@@ -140,8 +140,8 @@ class StatusFeedbackTests(unittest.TestCase):
         self.assertIn("function statusLabel(", tl)
         self.assertIn('"läuft"', tl)
         self.assertIn('"erledigt"', tl)
-        # ... und ein gelaufener Block fuehrt zum Ergebnis.
-        self.assertIn("router.push(`/tasks/${item.task_id}`)", tl)
+        # ... und ein gelaufener Block fuehrt zum Ergebnis — im Aufgaben-Fenster.
+        self.assertIn("aufgabeOeffnen(item.task_id!)", tl)
 
     def test_blocks_that_already_fired_are_caught_up(self):
         """Bloecke, deren Zeitplan vor dieser Rueckmeldung gefeuert hat, stuenden sonst

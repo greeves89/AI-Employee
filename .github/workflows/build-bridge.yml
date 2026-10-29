@@ -58,7 +58,7 @@ jobs:
         working-directory: computer-use-bridge
         run: |
           pip install -r requirements-test.txt
-          python -m pytest -q tests
+          python -m pytest -q -rs tests
 
       - name: Set bridge artifact version
         id: bridge_version
@@ -272,7 +272,7 @@ jobs:
         working-directory: computer-use-bridge
         run: |
           pip install -r requirements-test.txt
-          python -m pytest -q tests
+          python -m pytest -q -rs tests
 
       - name: Set bridge version
         shell: pwsh

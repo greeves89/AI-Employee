@@ -438,3 +438,141 @@ class EineListeEineNummer(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+_AUFRAEUM_ATTRAPPE = r"""#!/usr/bin/env bash
+echo "$*" >> "$ATTRAPPE_LOG"
+case "$1" in
+  images) for t in $TAGS; do echo "$t"; done ;;
+  image)
+    if [ "$2" = "rm" ]; then
+      for b in $BENUTZT; do [ "$3" = "$b" ] && exit 1; done
+    fi ;;
+esac
+exit 0
+"""
+
+
+class AbbilderAufraeumen(unittest.TestCase):
+    """Jedes Update ließ die alten Abbilder liegen — am 29.10. über 100 GB, die Platte lief voll."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        bin_ = self.tmp / "bin"
+        bin_.mkdir()
+        (bin_ / "docker").write_text(_AUFRAEUM_ATTRAPPE)
+        (bin_ / "docker").chmod(0o755)
+        self.log = self.tmp / "docker.log"
+        self.env = {**os.environ, "PATH": f"{bin_}:{os.environ['PATH']}", "ATTRAPPE_LOG": str(self.log),
+                    "TAGS": "1.398.0 1.396.0 1.394.1 1.391.0 <none>"}
+        for name in ("AI_EMPLOYEE_REGISTRY", "AI_EMPLOYEE_ABBILDER_AUFRAEUMEN"):
+            self.env.pop(name, None)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _lauf(self, *behalten, **env):
+        return subprocess.run(
+            ["bash", "-c", f'set -euo pipefail; source "{HILFSDATEI}"; abbilder_aufraeumen "$@"', "_", *behalten],
+            cwd=self.tmp, env={**self.env, **env}, capture_output=True, text=True, timeout=30,
+        )
+
+    def _geloescht(self):
+        return [z.split()[-1] for z in self.log.read_text().splitlines() if z.startswith("image rm ")]
+
+    def test_behaelt_neue_und_vorige_version(self):
+        lauf = self._lauf("1.398.0", "1.396.0")
+        self.assertEqual(lauf.returncode, 0, lauf.stderr)
+        weg = self._geloescht()
+        self.assertTrue(weg)
+        self.assertFalse([w for w in weg if w.endswith((":1.398.0", ":1.396.0"))])
+        for dienst in ("orchestrator", "frontend", "embedding-service", "stt-service", "agent"):
+            self.assertIn(f"ghcr.io/greeves89/ai-employee-{dienst}:1.391.0", weg)
+        self.assertNotIn("<none>", " ".join(weg))
+        aufrufe = self.log.read_text()
+        self.assertIn("builder prune -f --filter until=72h", aufrufe)
+        self.assertNotIn("volume", aufrufe)
+        self.assertNotIn("image rm -f", aufrufe)  # nie erzwingen: benutzte Abbilder bleiben
+
+    def test_benutztes_abbild_bleibt_und_bricht_nichts_ab(self):
+        lauf = self._lauf("1.398.0", "1.396.0", BENUTZT="ghcr.io/greeves89/ai-employee-agent:1.394.1")
+        self.assertEqual(lauf.returncode, 0, lauf.stderr)
+        self.assertIn("Alte Abbilder entfernt: 9", lauf.stdout)
+
+    def test_abschaltbar(self):
+        lauf = self._lauf("1.398.0", AI_EMPLOYEE_ABBILDER_AUFRAEUMEN="0")
+        self.assertEqual(lauf.returncode, 0, lauf.stderr)
+        self.assertFalse(self.log.exists())
+
+    def test_update_raeumt_erst_nach_dem_start_auf(self):
+        skript = (REPO / "scripts" / "update.sh").read_text()
+        self.assertLess(skript.index('ok "Orchestrator is ready"'), skript.index("abbilder_aufraeumen"))
+
+    def test_lokaler_agenten_name_wird_nie_angefasst(self):
+        """Neue Agenten starten mit ai-employee-agent:latest (AGENT_IMAGE). Fiele
+        dieser Name weg, holte der Orchestrator das Abbild bei jedem Start eines
+        Agenten neu (#889). Aufgeraeumt werden nur Registry-Namen."""
+        lauf = self._lauf("1.398.0", "1.396.0")
+        self.assertEqual(lauf.returncode, 0, lauf.stderr)
+        abfragen = [z for z in self.log.read_text().splitlines() if z.startswith("images ")]
+        self.assertTrue(abfragen)
+        for z in abfragen:
+            self.assertTrue(z.split()[1].startswith("ghcr.io/greeves89/ai-employee-"), z)
+        self.assertFalse([w for w in self._geloescht() if w.startswith("ai-employee-agent")])
+        # Nur haengende Abbilder; "-a" naehme ai-employee-agent:latest mit, sobald
+        # gerade kein Behaelter es benutzt.
+        self.assertNotIn("image prune -a", self.log.read_text())
+        self.assertIn("image prune -f", self.log.read_text())
+
+    def test_verworfene_version_wird_nicht_behalten(self):
+        """Eine Version mit verworfener Signatur (#938) bleibt nicht liegen, auch
+        wenn sie die neue ist — sonst ueberlebte ein Registry-Name, den
+        abbilder_verwerfen nicht entfernen konnte, jedes Aufraeumen."""
+        lauf = self._lauf("1.398.0", "1.396.0", AI_EMPLOYEE_ABBILD_ABGELEHNT="1.398.0")
+        self.assertEqual(lauf.returncode, 0, lauf.stderr)
+        weg = self._geloescht()
+        self.assertIn("ghcr.io/greeves89/ai-employee-agent:1.398.0", weg)
+        self.assertNotIn("ghcr.io/greeves89/ai-employee-agent:1.396.0", weg)
+
+    def test_verworfene_version_auch_aus_der_env_datei(self):
+        """update.sh schreibt den Vermerk nur in die .env, exportiert ihn nicht."""
+        (self.tmp / ".env").write_text("AI_EMPLOYEE_ABBILD_ABGELEHNT=1.398.0\n")
+        lauf = self._lauf("1.398.0", "1.396.0")
+        self.assertEqual(lauf.returncode, 0, lauf.stderr)
+        self.assertIn("ghcr.io/greeves89/ai-employee-agent:1.398.0", self._geloescht())
+
+    def test_ohne_vermerk_bleibt_die_neue_version(self):
+        lauf = self._lauf("1.398.0", "1.396.0", AI_EMPLOYEE_ABBILD_ABGELEHNT="")
+        self.assertEqual(lauf.returncode, 0, lauf.stderr)
+        self.assertFalse([w for w in self._geloescht() if w.endswith(":1.398.0")])
+
+
+class AufraeumenUndHolenMeinenDasselbeAbbild(unittest.TestCase):
+    """Vertrag zwischen update.sh (behalten) und dem Orchestrator (holen, #889):
+    der Orchestrator holt <registry>/ai-employee-agent:<VERSION> und taggt es als
+    AGENT_IMAGE. Aufgeraeumt wird danach mit genau dieser VERSION in der
+    Behalten-Liste. Laufen die beiden auseinander, loescht das Aufraeumen das
+    Abbild, das neue Agenten brauchen."""
+
+    def test_update_behaelt_die_version_der_version_datei(self):
+        skript = (REPO / "scripts" / "update.sh").read_text()
+        lib = HILFSDATEI.read_text()
+        self.assertRegex(skript, r'abbilder_aufraeumen "\$\{AI_EMPLOYEE_VERSION:-\}"')
+        # ... und AI_EMPLOYEE_VERSION ist die Nummer aus der VERSION-Datei.
+        self.assertIn("version=\"$(tr -d '[:space:]' < VERSION", lib)
+        self.assertIn('export AI_EMPLOYEE_VERSION="$version"', lib)
+
+    def test_orchestrator_liest_dieselbe_version_datei(self):
+        compose = (REPO / "docker-compose.yml").read_text()
+        self.assertIn("./VERSION:/VERSION:ro", compose)
+        config = (REPO / "orchestrator" / "app" / "config.py").read_text()
+        self.assertIn('pathlib.Path("/VERSION")', config)
+
+    def test_lokaler_name_ist_ueberall_derselbe(self):
+        """abbilder.sh taggt, Compose setzt AGENT_IMAGE, der Orchestrator holt nur
+        fuer diesen Namen. Ein anderer Name hiesse: Holen bei jedem Start."""
+        lib = HILFSDATEI.read_text()
+        self.assertIn("ai-employee-agent:latest", lib)
+        for datei in ("docker-compose.yml", "docker-compose.aiemployee.yml"):
+            with self.subTest(datei=datei):
+                self.assertIn("AGENT_IMAGE: ai-employee-agent:latest", (REPO / datei).read_text())

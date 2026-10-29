@@ -13,7 +13,7 @@ import {
   respondToApproval,
 } from "@/lib/api";
 import type { Notification } from "@/lib/types";
-import { TaskDetailModal } from "@/components/layout/task-detail-modal";
+import { useAufgabeFenster } from "@/components/tasks/aufgabe-fenster";
 import { useAuthStore } from "@/lib/auth";
 
 import { getWsUrl, getApiUrl } from "@/lib/config";
@@ -50,7 +50,8 @@ export function NotificationBell({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [taskModalId, setTaskModalId] = useState<string | null>(null);
+  // Aufgabe zur Meldung: dasselbe Fenster wie überall (vorher ein eigenes, knapperes).
+  const { oeffnen: aufgabeOeffnen } = useAufgabeFenster();
   const [unreadCount, setUnreadCount] = useState(0);
   const panelRef = useRef<HTMLDivElement>(null);
   // Das Feld hängt nicht mehr im Seitenstreifen, sondern direkt am Dokument
@@ -404,7 +405,7 @@ export function NotificationBell({
                     onClick={() => {
                       const tid = taskIdOf(notif);
                       if (tid) {
-                        setTaskModalId(tid);
+                        aufgabeOeffnen(tid);
                         if (!notif.read) handleMarkRead(notif.id);
                       }
                     }}
@@ -482,7 +483,6 @@ export function NotificationBell({
         </div>,
         document.body,
       )}
-      <TaskDetailModal taskId={taskModalId} onClose={() => setTaskModalId(null)} />
     </div>
   );
 }

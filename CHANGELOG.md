@@ -5,22 +5,98 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.395.0] - 2026-10-29
-
-### Hinzugefügt
-- **Drei Schalter für die Abbild-Bereitstellung, alle in `.env.example` beschrieben.** `AI_EMPLOYEE_REGISTRY` für einen eigenen Spiegel in einem abgeschotteten Netz, `AI_EMPLOYEE_ABBILD_HOLEN=0` für eine Anlage, die ausschließlich selbst gebaute Abbilder benutzen soll, und `AI_EMPLOYEE_ABBILD_ABGELEHNT` als Vermerk der Bereitstellung (nicht von Hand zu pflegen). Bisher stand keiner davon in `.env.example` — die Upgrade-Anleitung schickt den Betreiber aber ausdrücklich zum Vergleich mit dieser Datei, wer einen Schalter dort nicht findet, hält ihn für nicht vorhanden. Dasselbe galt für `AI_EMPLOYEE_SIGNATUR_AUSSTELLER`, der schon vorher fehlte.
-- **Eine Version, deren Signatur bei der Bereitstellung durchgefallen ist, bleibt abgelehnt.** Bisher endete die Ablehnung mit dem Lauf: `./scripts/update.sh` verwarf das Abbild und baute lokal, aber ein späteres `docker image prune` nahm den lokalen Bau wieder mit — und das Nachholen hätte genau das verworfene Abbild zurückgeholt. Die durchgefallene Nummer wird jetzt festgehalten und auf diesem Weg nicht mehr geholt. Die nächste geprüfte Freigabe hebt den Vermerk auf, damit eine Anlage nicht dauerhaft am lokalen Bau hängen bleibt.
+## [1.398.1] - 2026-10-29
 
 ### Behoben
-- **Ein Agent liess sich auf einer Anlage nicht anlegen, die ihre Abbilder aus der Registry holt.** Das Agenten-Abbild ist kein Compose-Dienst: `docker compose pull` holt es nicht mit, und ein `docker image prune` nimmt es wieder mit. Fehlte es, brach das Anlegen oder Neuaufsetzen eines Agenten mit einer Docker-Meldung über einen unbekannten Abbild-Namen ab — ohne Hinweis, was zu tun ist. Jetzt holt der Orchestrator das fertige Abbild genau dieser Freigabe selbst und benennt es lokal um. Die Nummer kommt aus der VERSION-Datei, nicht aus der Umgebung: Code und Abbild gehören damit zur selben Freigabe, und ein beweglicher Tag wie `latest` wird abgelehnt. Diese Abkürzung prüft **keine** Signatur (cosign liegt nicht im Orchestrator-Abbild) — der geprüfte Weg bleibt `./scripts/update.sh`. Wer ausschließlich selbst gebaute Abbilder zulassen will, setzt `AI_EMPLOYEE_ABBILD_HOLEN=0`.
-- **Das Abbild-Nachholen hielt den ganzen Orchestrator an.** Das Holen eines mehrere Gigabyte großen Abbilds lief auf demselben Faden, der auch die Oberfläche, die Schnittstelle, die Zeitpläne und die Zustandsprüfung bedient. Auf einer frischen Anlage — genau dem Fall, für den das Nachholen gedacht ist — hätte die Zustandsprüfung den Orchestrator nach etwa 90 Sekunden für krank erklärt, und die Selbstheilung hätte ihn mitten im Laden neu gestartet. Das Holen läuft jetzt in einem eigenen Faden.
-- **Fehlschläge beim Nachholen können keinen Start und kein Aufräumen mehr verhindern.** Das Nachholen ist eine Bequemlichkeit: wer ohne es ausgekommen wäre, kommt weiterhin ohne es aus. Die Schranke sitzt in der Bereitstellung selbst, nicht bei den Aufrufern — zweimal während dieser Arbeit hat genau diese Verwechslung erst den Agentenstart und dann das Aufräumen eines Arbeitsbereichs mitgerissen.
-- **Das Aufräumen eines Arbeitsbereichs benutzte einen Abbild-Namen, den es auf einer Registry-Anlage nicht gibt.** Beide Volume-Hilfen trugen `ai-employee-agent:latest` fest eingetippt, während dort eine vollständige Registry-Adresse gilt. Ein wegen Plattenplatz gestoppter Agent wurde damit stillschweigend nie aufgeräumt — genau in der Lage, in der er es am dringendsten braucht. Sie nehmen den Namen jetzt aus den Einstellungen.
-- **Das Frontend-Abbild bekam eine Adresse mitgegeben, die es nie angenommen hat.** Vier Compose-Dateien übergaben `NEXT_PUBLIC_API_URL` und `NEXT_PUBLIC_WS_URL` als Bau-Argument oder Laufzeitwert, obwohl das Frontend-Dockerfile sie bewusst nicht annimmt (ein Abbild für alle Anlagen). Docker warnte einmal und baute weiter. Im Produktions-Beispiel stand dort `https://<Domain>` — mit klarer Absicht und ohne jede Wirkung. Die Einträge sind entfernt; die Adresse ergibt sich weiterhin im Browser aus der aufgerufenen Seite, hinter einem Reverse-Proxy also genau die eigene Domain. Ein Test lässt kein Bau-Argument mehr zu, das das zugehörige Dockerfile nicht kennt.
+- **`update.sh` räumt alte Abbilder weg.** Jedes Update holte die Abbilder der neuen Version (das Agenten-Abbild allein hat über 6 GB) und ließ die alten liegen. Auf einer Anlage mit vielen Updates lagen so rund 20 Versionen je Abbild, über 100 GB, bis die Platte voll war und die Sicherung vor dem nächsten Update scheiterte.
+  - Nach einem erfolgreichen Start löscht das Skript jetzt die eigenen Abbilder älterer Versionen. Es behält die neue und die vorige Version (Rücksprung) und alles, was ein Container noch benutzt; gelöscht wird nie erzwungen.
+  - Dazu entfernt es Build-Cache, der älter als drei Tage ist. Volumes bleiben unberührt.
+  - Abschaltbar mit `AI_EMPLOYEE_ABBILDER_AUFRAEUMEN=0`.
 
-### Dokumentation
-- `.env.example` nennt jetzt die Schalter der Abbild-Bereitstellung: eigener Spiegel (`AI_EMPLOYEE_REGISTRY`), Abbild-Version (`AI_EMPLOYEE_VERSION`), Selbst-Holen (`AI_EMPLOYEE_ABBILD_HOLEN`) und den fehlenden Signatur-Aussteller (`AI_EMPLOYEE_SIGNATUR_AUSSTELLER`). Die Upgrade-Anleitung schickt den Betreiber ausdrücklich zum Vergleich mit dieser Datei — wer dort einen Schalter nicht findet, hält ihn für nicht vorhanden. Ein Test prüft, dass jeder aus `.env` gelesene Name dort steht.
-- Die Fehlertabelle zu `NEXT_PUBLIC_API_URL not set` riet weiter zum Setzen in `.env` und Neubauen. Sie erklärt jetzt, dass das Abbild diesen Wert absichtlich nicht enthält.
+## [1.398.0] - 2026-10-29
+
+### Sekretariat / Seite „Heute“
+- Behoben: Die Termine auf der Seite „Heute“ ließen sich nicht laden, weil Microsoft die Kalenderabfrage wegen falsch kodierter Zeitangaben ablehnte.
+- Der Posteingang zeigt die echte Zahl ungelesener Mails und ordnet sie in „Braucht dich“, „Weitere“ und „Automatisch“. Je Mail gibt es Öffnen, Antwort entwerfen, Erinnern und Erledigt (als gelesen markieren, archivieren oder in einen Ordner ablegen).
+- Fehlen Termine oder Posteingang, nennt die Seite den Grund (nicht verbunden, abgelaufen, Berechtigung fehlt, Störung, Zeitüberschreitung) und bietet „Erneut versuchen“ und „Verbinden“ an.
+- Das Tagesbriefing nutzt dieselben Daten wie die Seite, hat eine feste Gliederung (Top 3 heute, Termine, Wartet auf dich, Fristen), zeigt seine Uhrzeit und lässt sich mit „Neu erstellen“ sofort anstoßen.
+- Mail-Entwürfe lassen sich vor dem Freigeben bearbeiten. Beim Ablehnen kann man eine Begründung angeben: Sie geht an den Agenten, und daraus entsteht ein Regel-Vorschlag. Rückfragen sind deutlich von Mail-Freigaben unterschieden.
+- Regeln lassen sich bearbeiten. Das Löschen fragt vorher nach und meldet Fehler. Bei leerer Liste gibt es Vorschläge aus dem Posteingang.
+- Erinnerungen: „Später“ (1 Std., morgen 9:00, nächste Woche), „Nachfassen“ nach einer gesendeten Mail, Fristen aus Mails übernehmen.
+- Neu: Protokoll „Was das Sekretariat heute getan hat“, Termine von morgen und ein Hinweis, welches Modell die Mailinhalte verarbeitet.
+
+### Sicherheit
+- **Fremder Text kann den Datenrahmen nicht mehr schließen.**
+  - Mails, Issues, Gespräche und Ergebnisse stehen in Aufträgen in `[EXTERNAL-DATA]`. Die Marke wurde an fünf Stellen nur in exakter Schreibweise entschärft. Kleinschreibung, Leerzeichen, Klammern voller Breite und unsichtbare Zeichen liefen durch.
+  - Jetzt gibt es eine gemeinsame Stelle (`core/fremdtext`), die alle Schreibweisen erfasst und unsichtbare Zeichen entfernt.
+  - Mail-Felder (Betreff, Absender, Vorschau) gehen einzeilig in den Auftrag.
+- Der Betreff eines abgelehnten Entwurfs (bei Antworten aus der fremden Mail) geht nur noch entschärft, einzeilig und gekürzt an den Agenten.
+- **Kostenbremsen:** „Antwort entwerfen“ je Mail höchstens einmal in 10 Minuten. „Briefing neu erstellen“ frühestens 5 Minuten nach dem letzten. Beides wird über die Datenbank geprüft und hält auch mit mehreren Workern.
+- Ändert sich beim Bearbeiten eines Entwurfs gleichzeitig Bcc, Antwort-an oder ein Anhang, bricht die Änderung ab. Die Freigabe bleibt dann ungültig, statt etwas zu senden, das niemand gesehen hat.
+- Das Protokoll zeigt nur Läufe der eigenen Agenten. Einträge älter als 30 Tage werden weggeräumt.
+
+### Datenbank
+- Migration `a8b9c0d1e2f3`: Tabelle `sekretariat_protokoll`, Spalte `erinnerungen.bezug`.
+
+## [1.397.0] - 2026-10-29
+
+### Neu
+- **Karten öffnen sich im Fenster.** Ein Klick auf eine Karte im Projekt-Board öffnet ein Fenster mit der ganzen Beschreibung (das Board kürzt auf 600 Zeichen), allen Tags, Ticket, Pull Request, Stand und Ergebnis bzw. Fehler des Laufs. Dazu kommen dieselben Knöpfe wie auf der Karte. **Lauf ansehen** öffnet den Lauf in einem zweiten Fenster.
+  - Neuer Endpunkt `GET /teams/{id}/karten/{karte_id}` mit vollem Text. Das Ergebnis eines Laufs sieht nur, wem der ausführende Agent gehört, wie im Board.
+- **Aufgaben öffnen sich überall im selben Fenster:** Aufgabenliste, Agenten-Seite, Leitstand, Aktivitätsverlauf, Benachrichtigungen und Aufgaben-Kacheln im Chat.
+  - Strg/Cmd-Klick öffnet weiterhin die eigene Seite in einem neuen Tab.
+  - Die beiden bisherigen Sonderfenster (Benachrichtigungen, Chat-Kachel) sind durch das gemeinsame ersetzt.
+- Liegen mehrere Fenster übereinander, schließt **Esc** nur das oberste.
+
+## [1.396.1] - 2026-10-29
+
+### Geändert
+- Projektgespräch: Die Auswahl „Nachricht / Frage / Entscheidung“ neben dem Eingabefeld ist durch einen Umschalter **Entscheidung** ersetzt. „Frage“ bewirkte nur ein Etikett. Eine Entscheidung landet wie bisher zusätzlich in `entscheidungen.md`. Agenten können weiterhin alle Arten schreiben.
+
+## [1.396.0] - 2026-10-29
+
+### Neu
+- **Projekt-Board: Liegen gebliebene Übernahmen von außen erkennen und freigeben.** Übernimmt eine andere Sitzung oder Anlage Tickets (Tag `status/in-arbeit` oder Zuständige) und bringt danach nichts ins Repo, standen die Karten bisher unbegrenzt in „In Arbeit“. Niemand bemerkte es, und der Lead durfte sie nicht nehmen. Jetzt:
+  - Eine extern übernommene Karte zeigt ihren Stand **Übernommen → Branch → PR**, den Branch mit der Ticketnummer und die letzte Bewegung.
+  - Als Bewegung zählen eine Änderung am Issue und ein Commit auf dem Branch. Der Abgleich holt dafür einmal die Branches und höchstens zehn Commit-Zeiten.
+  - Nach zwei Stunden ohne Bewegung wird die Karte gelb markiert.
+  - Mit Arbeitstakt meldet das Projekt das einmal am Tag im Gespräch und beim Lead.
+  - **Freigeben** (nur Menschen): Im Repo kommen In-Arbeit-Tag und Zuständige weg, dazu ein Kommentar ohne Namen. Die Karte geht nach Bereit. Scheitert das Schreiben ins Repo, bleibt alles unverändert.
+  - Git-Anbieter (GitHub, Forgejo): `list_branches`, `commit_zeit`, `remove_assignees`.
+
+### Behoben
+- Ein Board voller extern übernommener Karten in „In Arbeit“ verdeckte den Stillstand des Projekts. Fremde Übernahmen zählen jetzt nicht mehr als Arbeit.
+
+### Datenbank
+- Migration `f2a3b4c5d6e7`: `projekt_karten.extern_seit`, `extern_regung_at`, `extern_branch`.
+
+## [1.395.0] - 2026-10-29
+
+### Neu
+- **Desktop-Bridge bedient Elemente direkt — unter Windows über UI Automation, auf dem Mac über die Bedienungshilfen.** Bisher konnte die Bridge Elemente nur finden und dann auf ihre Mitte klicken. Das ging bei skalierten Anzeigen, zweiten Monitoren oder halb verdeckten Fenstern daneben. Neu:
+  - Bridge-Aktionen `element_press` (Schritte `press`, `toggle`, `select`, `expand`, `collapse`, `focus`) und `element_set_value`. Sie lösen das Element über seine eigenen Muster aus: Invoke, Toggle, SelectionItem, ExpandCollapse und Value unter Windows, AXPress und AXValue auf dem Mac.
+  - `select` mit einem Wert klappt eine Auswahlliste auf und wählt den Eintrag. `toggle` mit `true`/`false` bringt ein Häkchen auf genau diesen Stand.
+  - Das Ergebnis nennt den genutzten Weg und den Stand des Elements danach (Inhalt, Häkchen, Auswahl, aufgeklappt).
+  - Hat ein Element keinen eigenen Weg, klickt bzw. tippt die Bridge an seiner Mitte, mit derselben Overlay-Sperre wie `click`, und sagt das dazu.
+  - Für Agenten als MCP-Werkzeug `computer_element_action`, für Codex/eigene Modelle über `computer_use`, in der Sprachfront als Kurzformen `press` und `set`.
+- Die Suche nach Elementen läuft jetzt direkt über die lebende Oberfläche (Breite vor Tiefe, mit Obergrenze), statt erst einen ganzen Baum aufzubauen. Eine genaue Beschriftung schlägt einen Teiltreffer: „Speichern“ trifft nicht mehr „Speichern unter …“. `wait_for_element` wartet auch, solange die Anwendung noch startet.
+
+### Behoben
+- **Der Elementbaum war auf dem Mac immer leer.** Die Bridge las Attribute als `elem.AXRole`, das es in pyobjc nicht gibt. Jeder Knoten wurde verworfen, `find_element` fand auf dem Mac nie etwas. Ohne Programmnamen las sie das systemweite Element, das keine Kinder hat; jetzt die Anwendung im Vordergrund. Knöpfe ohne Beschriftung (Schließen, Minimieren) sind über ihre Rollenbeschreibung auffindbar.
+- **UI Automation unter Windows lief nur im ersten Thread.** Die Bridge führt Befehle im Thread-Pool aus, COM braucht aber je Thread eine Initialisierung. Alle Zugriffe laufen jetzt in einem eigenen Initialisierungskontext.
+- `list_windows` unter Windows nennt den Prozessnamen statt des Fensterklassennamens. `focus_window` findet das Fenster auch über den Prozessnamen.
+- Werte von Passwortfeldern werden unter Windows weder in den Baum noch in Suchtreffer übernommen.
+
+### Sicherheit
+- `element_press` gehört zur Freigabe *Maus steuern*, `element_set_value` zu *Tastatureingabe*. Wer nur das Lesen der Oberfläche freigibt, kann damit nichts auslösen.
+- Ist eine Sitzung auf bestimmte Anwendungen beschränkt, verlangen beide Aktionen das Programm (`app`) und prüfen es gegen die Freigabeliste.
+- Bei solchen Sitzungen löst die Bridge das Programm nur noch über den genauen Prozess- bzw. App-Namen auf, auch bei `focus_window`. Vorher genügte ein Teiltreffer im Fenstertitel: Bei freigegebenem „Excel“ hätte so ein Browserfenster „Excel-Tipps – Chrome“ bedient werden können.
+- `element_press` trägt keinen Text ein (kein `set_value`, kein freier Text in Auswahllisten). Das bleibt `element_set_value` mit Tastatur-Freigabe.
+- Vor einem Rückfall-Klick holt die Bridge das genannte Programm nach vorn. Klappt das nicht, klickt sie nicht.
+- Eigene Fenster der Bridge (Overlay, Einstellungen) werden nie gesucht oder bedient.
+- Passwortfelder auf dem Mac werden über die Unterrolle erkannt und nie ausgelesen.
+- Suche und Baum haben eine Zeitgrenze (8 s), höchstens 300 Kinder je Element und höchstens 10 Ebenen. Eine hängende Anwendung blockiert die Bridge nicht mehr.
+- Eingetragene Werte erscheinen im Prüfprotokoll nur geschwärzt.
 
 ## [1.394.2] - 2026-10-29
 

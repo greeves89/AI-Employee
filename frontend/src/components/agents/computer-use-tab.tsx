@@ -96,7 +96,7 @@ const CAPABILITY_META: CapabilityMeta[] = [
   {
     id: "mouse",
     label: "Maus steuern",
-    description: "Zeiger bewegen, klicken, scrollen und ziehen",
+    description: "Zeiger bewegen, klicken, scrollen, ziehen – und Knöpfe, Häkchen und Auswahllisten direkt auslösen",
     icon: <MousePointer2 className="h-3.5 w-3.5" />,
     risk: "medium",
     defaultOn: true,
@@ -104,7 +104,7 @@ const CAPABILITY_META: CapabilityMeta[] = [
   {
     id: "keyboard",
     label: "Tastatureingabe",
-    description: "Text tippen und Tastenkürzel drücken",
+    description: "Text tippen, Eingabefelder ausfüllen und Tastenkürzel drücken",
     icon: <Keyboard className="h-3.5 w-3.5" />,
     risk: "medium",
     defaultOn: true,

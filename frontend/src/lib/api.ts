@@ -4742,14 +4742,27 @@ export interface HeuteTermin {
   ort: string;
   online: boolean;
   ganztags: boolean;
+  link?: string | null;
 }
 
+/** Gruppe im Posteingang — nach Absender und Kopfzeilen, ohne Modellaufruf. */
+export type HeuteMailGruppe = "braucht_dich" | "weitere" | "automatisch";
+
 export interface HeuteMail {
+  id: string | null;
   betreff: string;
   von: string;
+  von_adresse?: string;
   eingang: string | null;
   vorschau: string;
   wichtig: boolean;
+  /** Outlook-Link (webLink), nur https. */
+  link?: string | null;
+  gruppe: HeuteMailGruppe;
+  /** Warum die Mail in ihrer Gruppe steht. */
+  gruende: string[];
+  /** Erkannte Frist (JJJJ-MM-TT) aus Betreff oder Vorschau. */
+  frist: string | null;
 }
 
 export interface HeuteWartet {
@@ -4760,6 +4773,19 @@ export interface HeuteWartet {
   frage: string | null;
   view: { name: string; data: Record<string, unknown> } | null;
   erstellt: string | null;
+  /** Lässt sich der Entwurf hier bearbeiten (Vorschau zeigt den ganzen Text)? */
+  bearbeitbar?: boolean;
+  bearbeitet?: boolean;
+  optionen?: string[] | null;
+}
+
+export interface ErinnerungBezug {
+  art: "mail" | "freigabe";
+  mail_id?: string;
+  approval_id?: string;
+  link?: string | null;
+  betreff?: string;
+  von?: string;
 }
 
 export interface Erinnerung {
@@ -4769,12 +4795,42 @@ export interface Erinnerung {
   von: string;
   gemeldet: string | null;
   erledigt: string | null;
+  bezug?: ErinnerungBezug | null;
 }
 
 export interface SekretariatRegel {
   schluessel: string;
   text: string;
   seit: string | null;
+}
+
+/** Fehlt eine Quelle (Termine, Posteingang): Code und kurzer Grund vom Server. */
+export interface HeuteQuellenFehler {
+  code: "nicht_verbunden" | "abgelaufen" | "berechtigung" | "stoerung" | "zeitueberschreitung";
+  grund: string;
+}
+
+export interface HeuteRegelVorschlag {
+  /** Gesetzt, wenn der Vorschlag aus einer abgelehnten Freigabe stammt. */
+  approval_id: string | null;
+  text: string;
+  anlass: string;
+}
+
+export interface HeuteProtokollEintrag {
+  zeit: string | null;
+  art: string;
+  text: string;
+  agent_id: string | null;
+  approval_id?: string;
+}
+
+export interface HeuteVerarbeitung {
+  agent_id: string;
+  name: string;
+  laufzeit: string;
+  anbieter: string;
+  modell: string;
 }
 
 export interface Heute {
@@ -4784,11 +4840,21 @@ export interface Heute {
   m365_entwurf_frei: boolean;
   team: { id: string; name: string; lead_agent_id: string | null; member_agent_ids: string[] } | null;
   termine: HeuteTermin[] | null;
+  termine_morgen: HeuteTermin[] | null;
   ungelesen: HeuteMail[] | null;
+  /** Echte Zahl der ungelesenen im Posteingang (die Liste zeigt höchstens 15). */
+  ungelesen_gesamt: number | null;
+  gruppen: Record<HeuteMailGruppe, number>;
+  fehler: { termine: HeuteQuellenFehler | null; posteingang: HeuteQuellenFehler | null };
   wartet: HeuteWartet[];
   regeln: SekretariatRegel[];
+  regel_vorschlaege: HeuteRegelVorschlag[];
   erinnerungen: Erinnerung[];
+  frist_vorschlaege: { mail_id: string; betreff: string; von: string; frist: string }[];
   briefing: { text: string; task_id: string; erstellt: string | null } | null;
+  briefing_laeuft: boolean;
+  protokoll: HeuteProtokollEintrag[];
+  verarbeitung: HeuteVerarbeitung[];
 }
 
 export interface ErsterSchritt {
@@ -4827,12 +4893,60 @@ export async function sekretariatRegelLoeschen(schluessel: string): Promise<{ re
   return fetchJSON(`${getBase()}/sekretariat/regeln/${encodeURIComponent(schluessel)}`, { method: "DELETE" });
 }
 
-export async function erinnerungAnlegen(text: string, faellig: string): Promise<Erinnerung> {
-  return fetchJSON(`${getBase()}/sekretariat/erinnerungen`, { method: "POST", body: JSON.stringify({ text, faellig }) });
+export async function sekretariatRegelAendern(schluessel: string, text: string): Promise<{ schluessel: string; regeln: SekretariatRegel[] }> {
+  return fetchJSON(`${getBase()}/sekretariat/regeln/${encodeURIComponent(schluessel)}`, { method: "PUT", body: JSON.stringify({ text }) });
+}
+
+/** Regel-Vorschlag aus einer Ablehnung übernehmen (wird Regel) oder verwerfen. */
+export async function sekretariatRegelVorschlag(approvalId: string, uebernehmen: boolean): Promise<{ regeln: SekretariatRegel[] }> {
+  return fetchJSON(`${getBase()}/sekretariat/regel-vorschlaege/${encodeURIComponent(approvalId)}`, { method: "POST", body: JSON.stringify({ uebernehmen }) });
+}
+
+/** `faellig`: ISO-Zeitpunkt; ohne Zeitzone gilt die der Anlage. `mailId`: Bezug auf eine Mail des eigenen Postfachs. */
+export async function erinnerungAnlegen(text: string, faellig: string, mailId?: string): Promise<Erinnerung> {
+  return fetchJSON(`${getBase()}/sekretariat/erinnerungen`, { method: "POST", body: JSON.stringify({ text, faellig, mail_id: mailId || null }) });
 }
 
 export async function erinnerungErledigt(id: number): Promise<Erinnerung> {
   return fetchJSON(`${getBase()}/sekretariat/erinnerungen/${id}/erledigt`, { method: "POST" });
+}
+
+export type SpaeterOption = "1h" | "morgen" | "woche";
+
+export async function erinnerungSpaeter(id: number, wann: SpaeterOption): Promise<Erinnerung> {
+  return fetchJSON(`${getBase()}/sekretariat/erinnerungen/${id}/spaeter`, { method: "POST", body: JSON.stringify({ wann }) });
+}
+
+/** Entwurf vor dem Freigeben ändern — Freigeben sendet danach genau diesen Stand. */
+export async function sekretariatEntwurfAendern(
+  approvalId: string, body: { an: string[]; cc: string[]; betreff: string; text: string },
+): Promise<{ view: { name: string; data: Record<string, unknown> } }> {
+  return fetchJSON(`${getBase()}/sekretariat/freigaben/${encodeURIComponent(approvalId)}/entwurf`, { method: "PUT", body: JSON.stringify(body) });
+}
+
+/** Ablehnen mit optionaler Begründung; daraus entsteht ein Regel-Vorschlag. */
+export async function sekretariatAblehnen(approvalId: string, grund?: string): Promise<{ status: string; regel_vorschlag: string | null }> {
+  return fetchJSON(`${getBase()}/sekretariat/freigaben/${encodeURIComponent(approvalId)}/ablehnen`, { method: "POST", body: JSON.stringify({ grund: grund || null }) });
+}
+
+export async function sekretariatNachfassen(approvalId: string, faellig: string): Promise<Erinnerung> {
+  return fetchJSON(`${getBase()}/sekretariat/freigaben/${encodeURIComponent(approvalId)}/nachfassen`, { method: "POST", body: JSON.stringify({ faellig }) });
+}
+
+export async function sekretariatBriefingNeu(): Promise<{ task_id: string | null }> {
+  return fetchJSON(`${getBase()}/sekretariat/briefing`, { method: "POST" });
+}
+
+export async function sekretariatMailErledigt(mailId: string, ordner?: string | null, ordnerName?: string | null): Promise<{ betreff: string; ordner: string | null }> {
+  return fetchJSON(`${getBase()}/sekretariat/mails/erledigt`, { method: "POST", body: JSON.stringify({ mail_id: mailId, ordner: ordner || null, ordner_name: ordnerName || null }) });
+}
+
+export async function sekretariatMailOrdner(): Promise<{ ordner: { id: string; name: string }[] }> {
+  return fetchJSON(`${getBase()}/sekretariat/mails/ordner`);
+}
+
+export async function sekretariatAntwortEntwerfen(mailId: string, hinweis?: string): Promise<unknown> {
+  return fetchJSON(`${getBase()}/sekretariat/mails/antwort`, { method: "POST", body: JSON.stringify({ mail_id: mailId, hinweis: hinweis || null }) });
 }
 
 export async function listTeams(): Promise<{ teams: Team[] }> {
@@ -5019,8 +5133,18 @@ export async function karteVergeben(id: string, karteId: string, agentId?: strin
   });
 }
 
+/** Eine Karte vollständig (ganzer Text, Ergebnis des Laufs) — für das Karten-Fenster. */
+export async function karteHolen(id: string, karteId: string): Promise<ProjektKarte & { lauf_sichtbar: boolean }> {
+  return fetchJSON(`${getBase()}/teams/${id}/karten/${karteId}`);
+}
+
 export async function karteAbnehmen(id: string, karteId: string): Promise<ProjektKarte> {
   return fetchJSON(`${getBase()}/teams/${id}/karten/${karteId}/abnehmen`, { method: "POST" });
+}
+
+/** Liegen gebliebene fremde Übernahme lösen: Tag und Zuständige im Repo weg, Karte nach Bereit. */
+export async function karteExternFreigeben(id: string, karteId: string): Promise<ProjektKarte> {
+  return fetchJSON(`${getBase()}/teams/${id}/karten/${karteId}/extern-freigeben`, { method: "POST" });
 }
 
 export async function karteZurueckgeben(id: string, karteId: string, hinweis: string, agentId?: string | null): Promise<ProjektKarte> {

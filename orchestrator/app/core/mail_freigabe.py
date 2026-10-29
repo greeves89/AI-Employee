@@ -11,6 +11,9 @@ Postfach ihres Besitzers. Den reicht ``anfragen`` als Freigabe ein (Art
   Freigeben liest ``senden`` den Entwurf erneut; hat er sich seitdem geändert (etwa
   ein anderer Empfänger), wird NICHT gesendet.
 * Freigeben darf nur der Besitzer des Agenten — es ist sein Postfach.
+* Bearbeitet der Besitzer den Entwurf auf der Seite „Heute“ (core/sekretariat.entwurf_aendern),
+  werden Vorschau und Fingerabdruck dort neu gesetzt — gesendet wird dann genau der
+  geänderte Stand.
 
 Diese Art legt nur der Server an (``api/approvals.SERVER_ARTEN``).
 """

@@ -5,10 +5,10 @@
  * was als Nächstes kommt, was auf den Merge wartet, und der Arbeitstakt.
  */
 
-import Link from "next/link";
 import { ExternalLink, GitPullRequest, Timer } from "lucide-react";
 import type { Agent } from "@/lib/types";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
+import { AufgabeLink } from "@/components/tasks/aufgabe-fenster";
 import {
   PRIORITAETEN, PR_ZUSTAND, STUFEN, TAKTE, bis,
   type ProjektBoard, type ProjektStufe,
@@ -84,9 +84,9 @@ export function ProjektLeitstand({
                   <div className="flex items-center gap-2.5">
                     <AgentAvatar config={a?.config} size="sm" />
                     <div className="min-w-0 flex-1">
-                      <Link href={`/tasks/${l.task_id}`} className="block truncate text-sm font-medium hover:underline">
+                      <AufgabeLink taskId={l.task_id} className="block truncate text-sm font-medium hover:underline">
                         {l.karte_titel ?? l.titel}
-                      </Link>
+                      </AufgabeLink>
                       {l.letzte_ausgabe && (
                         <p className="line-clamp-2 text-[11px] italic text-foreground/70" title={l.letzte_ausgabe}>
                           „{l.letzte_ausgabe}“

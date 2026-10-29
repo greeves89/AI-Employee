@@ -94,5 +94,42 @@ async def mcp_msgraph_endpoint(agent_id: str, request: Request):
         async def entwurf(message_id: str, betreff: str) -> str:
             return await anfragen(agent_id, message_id, betreff)
 
+    verschieben = (im_sekretariat and body.get("method") == "tools/call"
+                   and (body.get("params") or {}).get("name") == "ms_move_email")
+    betreff = await _betreff_vor_dem_verschieben(body, resolve_token) if verschieben else None
     resp, status = await handle_mcp_request(body, resolve_token, write_enabled=may_write, entwurf_freigabe=entwurf)
+    if verschieben and not ((resp.get("result") or {}).get("isError")):
+        await _verschieben_protokollieren(agent, body, betreff)
     return JSONResponse(resp, status_code=status)
+
+
+async def _betreff_vor_dem_verschieben(body: dict, resolve_token) -> str | None:
+    """Betreff der Mail, die ein Sekretariats-Agent gleich verschiebt — fürs Protokoll.
+    Danach trägt die Mail eine neue Kennung; deshalb vorher."""
+    from app.core.msgraph_mcp import _gid, _graph
+
+    mail_id = ((body.get("params") or {}).get("arguments") or {}).get("email_id")
+    try:
+        token = await resolve_token()
+        if not token or not mail_id:
+            return None
+        return (await _graph("GET", f"/me/messages/{_gid(mail_id)}", token, params={"$select": "subject"})).get("subject")
+    except Exception:  # noqa: BLE001 — das Protokoll darf das Verschieben nie verhindern
+        return None
+
+
+async def _verschieben_protokollieren(agent, body: dict, betreff: str | None) -> None:
+    """Protokoll „Was das Sekretariat heute getan hat“ (core/sekretariat.protokoll)."""
+    from app.core.sekretariat import protokollieren
+
+    ziel = str(((body.get("params") or {}).get("arguments") or {}).get("folder") or "").strip()
+    namen = {"archive": "Archiv", "deleteditems": "Gelöschte Elemente", "junkemail": "Junk-E-Mail"}
+    ziel = namen.get(ziel.lower(), ziel if len(ziel) <= 40 else "einen eigenen Ordner")
+    try:
+        async with async_session_factory() as db:
+            await protokollieren(db, str(agent.user_id or ""), "verschoben",
+                                 f"Mail „{(betreff or '(ohne Betreff)')[:200]}“ nach „{ziel}“ verschoben",
+                                 agent_id=agent.id)
+            await db.commit()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Sekretariat: Verschieben nicht protokolliert: %s", e)

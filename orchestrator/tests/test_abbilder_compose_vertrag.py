@@ -108,17 +108,18 @@ class EnvBeispielNenntDieSchalter(unittest.TestCase):
 
 class SchalterHoerenAufIhrenDokumentiertenNamen(unittest.TestCase):
     """Die Einstellungen haben KEIN env_prefix (config.py: ``env_prefix: ""``) —
-    der Feldname IST der Umgebungsname. Ein Feld ``abbild_holen`` hoerte deshalb
-    auf ``ABBILD_HOLEN``, waehrend Compose, ``.env.example`` und die Anleitung
+    ohne ``validation_alias`` ist der Feldname der Umgebungsname. Ein Feld
+    ``abbild_holen`` hoerte deshalb frueher auf ``ABBILD_HOLEN``, waehrend Compose,
+    ``.env.example`` und die Anleitung
     ``AI_EMPLOYEE_ABBILD_HOLEN`` versprachen: der Schalter wirkte nicht, und kein
     Test sah es, weil alle Tests das FELD patchen statt die Umgebung zu setzen.
     Dieser hier setzt die Umgebung.
     """
 
     SCHALTER = {
-        "AI_EMPLOYEE_REGISTRY": ("ai_employee_registry", "registry.example.com/ai", "registry.example.com/ai"),
-        "AI_EMPLOYEE_ABBILD_HOLEN": ("ai_employee_abbild_holen", "0", False),
-        "AI_EMPLOYEE_ABBILD_ABGELEHNT": ("ai_employee_abbild_abgelehnt", "1.2.3", "1.2.3"),
+        "AI_EMPLOYEE_REGISTRY": ("abbild_registry", "registry.example.com/ai", "registry.example.com/ai"),
+        "AI_EMPLOYEE_ABBILD_HOLEN": ("abbild_holen", "0", False),
+        "AI_EMPLOYEE_ABBILD_ABGELEHNT": ("abbild_abgelehnt", "1.2.3", "1.2.3"),
     }
 
     def test_jeder_schalter_wirkt_unter_seinem_namen(self):
@@ -146,6 +147,28 @@ class SchalterHoerenAufIhrenDokumentiertenNamen(unittest.TestCase):
                     f"{umgebung}={wert} wirkt nicht auf Settings.{feld} — "
                     "heisst das Feld noch wie die Umgebungsvariable?",
                 )
+
+    def test_der_blosse_feldname_wirkt_nicht(self):
+        """Gegenprobe zum Alias: nur der dokumentierte Name zaehlt. Hoerte das
+        Feld zusaetzlich auf ``ABBILD_HOLEN``, gaebe es zwei Schalter, von denen
+        einer nirgends beschrieben ist."""
+        import os
+        import subprocess
+        import sys
+        code = (
+            "import sys; sys.path.insert(0, '.');"
+            "from app.config import Settings;"
+            "print(repr(Settings().abbild_holen))"
+        )
+        umgebung = {k: v for k, v in os.environ.items() if k.upper() != "AI_EMPLOYEE_ABBILD_HOLEN"}
+        r = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=WURZEL / "orchestrator",
+            env={**umgebung, "ABBILD_HOLEN": "0"},
+            capture_output=True, text=True,
+        )
+        self.assertEqual(0, r.returncode, r.stderr[-800:])
+        self.assertEqual("True", r.stdout.strip())
 
     def test_die_namen_stehen_in_compose_und_env_example(self):
         """Ein Schalter, der im Code wirkt, aber nirgends durchgereicht wird, ist

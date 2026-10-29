@@ -68,6 +68,7 @@ MCP_SERVER_TOOLS: dict[str, list[str]] = {
         "ego_run", "ego_navigate", "ego_snapshot", "ego_click", "ego_fill",
         "ego_wait", "ego_capture", "ego_tabs", "ego_close",
         "computer_ax_tree", "computer_click", "computer_close_app", "computer_drag",
+        "computer_element_action",
         "computer_find_element", "computer_focus_window", "computer_get_clipboard",
         "computer_key", "computer_list_sessions", "computer_list_windows",
         "computer_move", "computer_open_app",

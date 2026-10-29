@@ -4,6 +4,7 @@ import { GeistMono } from "geist/font/mono";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthGuard } from "@/components/auth/auth-guard";
 import { DialogProvider } from "@/components/ui/dialog-provider";
+import { AufgabeFensterProvider } from "@/components/tasks/aufgabe-fenster";
 import { PwaRegistrar } from "@/components/pwa-registrar";
 import { ConciergeWidget } from "@/components/concierge/concierge-widget";
 import { TutorialFenster } from "@/components/tutorials/tutorial-fenster";
@@ -51,6 +52,7 @@ export default function RootLayout({
         <ThemeProvider>
           <DialogProvider>
             <AuthGuard>
+              <AufgabeFensterProvider>
               {children}
               {/* Nur für Administratoren; blendet sich sonst selbst aus. */}
               <ConciergeWidget />
@@ -58,6 +60,7 @@ export default function RootLayout({
               <TutorialFenster />
               {/* Feedback-Gedöns: auf jeder Route, blendet sich ohne Session aus. */}
               <FeedbackWidget />
+              </AufgabeFensterProvider>
             </AuthGuard>
           </DialogProvider>
         </ThemeProvider>
