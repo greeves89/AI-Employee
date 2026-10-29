@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.396.0] - 2026-10-29
+
+### Neu
+- **Produktivitätsmonitor: Koordination gegen Fortschritt.** Arbeiten mehrere Agenten lange zusammen, wächst oft der Anteil an Abstimmung — Rückfragen, Übergaben, Meetings, Folgemeetings, Freigaben, Wiederholungen —, während am Ende weniger fertig wird. Das sah bisher niemand: jeder einzelne Schritt ist für sich sinnvoll, und kein Agent kennt die Summe. Der Systemzustand zeigt jetzt je Team (und je „Agenten ohne Team") das Verhältnis beider Größen, aufklappbar nach Art der Aktivität, Anteil je Agent und Beispielen. Kippt es — viel Abstimmung, kaum gelieferte Ergebnisse —, steht dort eine Warnung und der Team-Lead bekommt eine Benachrichtigung. Standardmäßig frühestens einmal pro Tag je Gruppe, damit die Meldung nicht zur Tapete wird. Die Schwellen sind einstellbar (Vorgaben und Begründung in `docs/OPERATIONS.md`); ein ruhiger Tag löst nichts aus, und echter Fortschritt unterdrückt die Warnung. Optional — standardmäßig aus, weil es einen Modelllauf kostet — stellt der Monitor dem Team-Lead zusätzlich einen Analyse-Auftrag, welche Abstimmungsschritte Arbeit ersetzen statt sie vorzubereiten.
+
+---
+
 ## [1.394.2] - 2026-10-29
 
 ### Dokumentation

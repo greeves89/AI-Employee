@@ -136,6 +136,12 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "improvement_min_skill_usages",
     "improvement_skill_threshold",
     "improvement_analysis_interval",
+    # Produktivitaetsmonitor (#882)
+    "produktivitaet_fenster_stunden",
+    "produktivitaet_min_koordination",
+    "produktivitaet_verhaeltnis",
+    "produktivitaet_melde_pause_stunden",
+    "produktivitaet_analyse_auftrag",
     # Voice provider config
     "voice_stt_provider",
     "voice_tts_provider",

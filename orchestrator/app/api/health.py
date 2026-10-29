@@ -418,3 +418,38 @@ async def get_auto_metrics(
         "success_rate": overall_success_rate,
         "agents": agent_metrics,
     }
+
+
+@router.get("/produktivitaet")
+async def get_produktivitaet(
+    stunden: int = Query(0, ge=0, le=720, description="Fenster in Stunden; 0 = Einstellung der Anlage"),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Koordination gegen Fortschritt je Gruppe (#882).
+
+    Ein Eintrag je Team und je „Agenten ohne Team" eines Nutzers, mit
+    Aufschluesselung nach Art der Aktivitaet, Anteil je Agent und Beispielen
+    (Drill-down fuer die Health-Seite).
+
+    Gerechnet wird AUSSCHLIESSLICH ueber die fuer den Aufrufer sichtbaren
+    Agenten (``visible_agent_ids``). Eine leere Menge heisst „nichts", nie
+    „alles" — sonst saehe ein frischer Nutzer die Bilanz der ganzen Anlage.
+    """
+    from app.core.ownership import visible_agent_ids
+    from app.services import produktivitaet_service as ps
+
+    sichtbar = await visible_agent_ids(user, db)
+    schwellen = await ps.lade_schwellen(db)
+    if stunden:
+        schwellen["fenster_stunden"] = stunden
+    befunde = await ps.befunde_fuer(db, sichtbar, schwellen)
+    return {
+        "fenster_stunden": int(schwellen["fenster_stunden"]),
+        "schwellen": {
+            "min_koordination": int(schwellen["min_koordination"]),
+            "verhaeltnis": float(schwellen["verhaeltnis"]),
+        },
+        "warnungen": sum(1 for b in befunde if b.warnung),
+        "gruppen": [b.zu_dict() for b in befunde],
+    }
