@@ -24,6 +24,8 @@ export interface ProjektKarte {
   url: string | null;
   labels: string[];
   spalte: ProjektSpalte;
+  /** Rückfrage offen: in Triage oder im Review mit Triage-Tag (orchestrator: projekte.wartet_auf_dich). */
+  wartet_auf_dich?: boolean;
   /** 1 hoch, 2 normal, 3 niedrig */
   prioritaet: number;
   agent_id: string | null;
@@ -80,7 +82,7 @@ export interface ProjektKennzahlen {
   eingang: number;
   bereit: number;
   in_arbeit: number;
-  /** Offene Rückfragen: Karten in Triage, warten auf einen Menschen. */
+  /** Offene Rückfragen: Karten in Triage und Review-Karten mit Triage-Tag — warten auf einen Menschen. */
   triage?: number;
   pruefung: number;
   /** Verworfen in den letzten 30 Tagen. */

@@ -649,6 +649,20 @@ def nachricht_kommentar(*, agent_name: str | None, agent_id: str | None, text: s
 
 # ── Abschnitt für die AGENTS.md ──────────────────────────────────────────────
 
+#: Wann ein Agent seinen Pull Request selbst mergen darf — EINE Quelle für den
+#: Auftrag an die Agenten (``projekte.karten_auftrag``) und die ``AGENTS.md``.
+SELBST_MERGEN_REGEL = (
+    "Selbst mergen (Squash) ist erlaubt, wenn die `AGENTS.md`/`CONTRIBUTING.md` des Repos nichts anderes "
+    "sagt und ALLES erfüllt ist: Der Branch enthält das aktuelle main (danach erneut geprüft); Tests grün, bei "
+    "Oberflächen-Änderungen auch ein Browser-Test; CI grün auf dem letzten Commit (den Lauf zum headSha "
+    "prüfen, nicht nur `gh pr checks` direkt nach dem Push); ein Review durch jemand anderen als den Autor "
+    "(Mensch oder frischer Review-Agent; bei Login, Rollen, Personendaten, Uploads oder neuen öffentlichen "
+    "Endpunkten zusätzlich ein Security-Review); niemand sonst arbeitet gerade am PR. Mehrere PRs nacheinander "
+    "mergen, danach den nächsten Branch auf das neue main bringen. Fremde Branches nie überschreiben (kein "
+    "`--force`). Ohne Recht auf PRs: den PR-Text als Kommentar ins Issue. Den Lauf erst nach dem Merge "
+    "abschließen."
+)
+
 AGENTS_MD_START = "<!-- ai-employee:zusammenarbeit:start -->"
 AGENTS_MD_ENDE = "<!-- ai-employee:zusammenarbeit:ende -->"
 
@@ -662,6 +676,9 @@ def agents_md_abschnitt(anlage: str | None = None) -> str:
     anlage = anlage or anlage_kennung()
     beispiel = kopfzeile("claim", wer="claude-code:Sitzung am Laptop", branch="12-login-fehler",
                          seit="2026-10-29T14:00:00+00:00", bis="2026-10-29T16:00:00+00:00")
+    import textwrap
+
+    selbst_mergen = textwrap.fill(SELBST_MERGEN_REGEL, 78, break_on_hyphens=False)
     return f"""{AGENTS_MD_START}
 ## Zusammenarbeit mit AI Employee
 
@@ -715,13 +732,7 @@ erledigt, als „not planned“ geschlossen heißt verworfen. Hat das Repo schon
 eigene Tags dafür (z. B. `agent:blocked` für Rückfragen), gelten diese.
 
 ### Selbst mergen
-Erlaubt (Squash), sofern dieses Repo nichts anderes sagt, wenn alles erfüllt
-ist: Branch enthält das aktuelle main (danach erneut geprüft); Tests grün, bei
-Oberflächen-Änderungen auch ein Browser-Test; CI grün auf dem letzten Commit
-(Lauf zum headSha prüfen); Review durch jemand anderen als den Autor (bei
-Login, Rollen, Personendaten, Uploads oder neuen öffentlichen Endpunkten
-zusätzlich ein Security-Review); niemand sonst arbeitet am PR. Fremde Branches
-nie überschreiben (kein `--force`).
+{selbst_mergen}
 
 ### Konflikte
 Zwei gültige Übernahmen am selben Issue oder ein Commit eines anderen auf dem

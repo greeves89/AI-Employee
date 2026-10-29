@@ -996,8 +996,8 @@ geordnet — das Wichtigste zuerst:
 
 ![Projektseite: oben die Kennzahlenleiste, darunter „Auftrag geben“ und die Reiter mit dem Board](screenshots/72-projekt-raum.png)
 
-1. **Kennzahlenleiste** — der Fluss der Karten als Zahlen: **Inbox › Bereit › In Arbeit ›
-   Triage › Review › Erledigt (7 Tage)**. Ein Klick auf eine Zahl springt zum Board. Rechts daneben:
+1. **Kennzahlenleiste** — der Fluss der Karten als Zahlen: **Inbox › Triage › Bereit ›
+   In Arbeit › Review › Erledigt (7 Tage)**. Ein Klick auf eine Zahl springt zum Board. Rechts daneben:
    - **Kosten** des Projekts in diesem Monat (mit Budget, falls eins gesetzt ist) — ein Klick
      öffnet die Finanzen,
    - **Takt** — ob der Arbeitstakt läuft und wann der nächste Lauf ist,
@@ -1062,6 +1062,8 @@ waagerecht weiter.
 - Das **+** in der Spalte Inbox legt eine neue Karte an (Titel und Beschreibung).
 - Die Spalte **Verworfen** ist schmal eingeklappt. Ein Klick auf sie klappt sie auf, das Symbol
   oben rechts klappt sie wieder ein.
+- Beim **Los** in der Spalte Bereit wählst du im Auswahlfeld „Lead verteilt“ oder
+  „Direkt: …“ einen bestimmten Agenten.
 
 **Freigeben darf nur ein Mensch.** Was in der Inbox liegt, nimmt kein Agent — auch nicht der Lead
 im Arbeitstakt. Erst wenn du eine Karte freigibst, steht sie in **Bereit**, und die Agenten
@@ -1074,13 +1076,22 @@ nehmen sie:
 
 Agenten legen neue Karten immer in der Inbox an, auch wenn sie „Bereit“ verlangen. Vergeben
 (**Los**) dürfen Agenten nur Karten aus Bereit; du darfst auch direkt aus Inbox oder Triage
-vergeben — das ist dann deine Freigabe.
+vergeben — das ist dann deine Freigabe. Agenten nehmen Karten nur aus Inbox, Bereit oder Review
+heraus; aus Triage, Erledigt und Verworfen holt sie nur ein Mensch, und Karten, die jemand von
+außen übernommen hat, fassen sie nicht an.
+
+Nimmst du eine Karte aus Bereit oder Triage zurück in die Inbox oder verwirfst sie, nimmt das
+Board bei einem Issue die Bereit- und Triage-Tags im Repo weg — sonst holte der nächste Abgleich
+die Karte zurück. Geht das nicht (kein Schlüssel, kein Schreibrecht, Repo antwortet nicht), bleibt
+die Karte, wo sie war, und eine Meldung sagt, was fehlt.
 
 **Rückfragen (Triage).** Fehlt einem Agenten eine Entscheidung oder Information, rät er nicht:
 Er stellt die Frage (bei einem Issue als Kommentar im Issue, sonst als Notiz an der Karte), setzt
 die Karte auf **Triage** und hört auf. Bei einem Issue setzt das Board das Triage-Tag (z. B.
 `status/triage`), nimmt `status/in-arbeit` weg und gibt das Ticket frei. Endet der Lauf, bleibt
 die Karte in Triage — sie geht nicht ins Review. Der Arbeitstakt vergibt Triage-Karten nie.
+Hat der Agent schon einen Pull Request offen, steht die Karte im **Review**; die Frage steht
+trotzdem im Issue mit Triage-Tag, und die Karte trägt ebenfalls „Wartet auf dich“.
 
 So klärst du eine Rückfrage:
 
@@ -1096,7 +1107,7 @@ So klärst du eine Rückfrage:
 
 Du kannst eine Rückfrage auch direkt im Repo klären: Triage-Tag weg und **status/ready** setzen
 schiebt die Karte beim nächsten Abgleich nach Bereit; nimmst du nur das Triage-Tag weg, geht sie
-zurück in die Inbox.
+zurück in die Inbox (oder nach In Arbeit, wenn dort ein In-Arbeit-Tag steht).
 
 **Selbst mergen.** Agenten dürfen ihren Pull Request selbst zusammenführen (Squash), wenn die
 `AGENTS.md` oder `CONTRIBUTING.md` des Repos nichts anderes sagt und alles erfüllt ist: Der Branch
@@ -1105,9 +1116,7 @@ CI ist auf dem letzten Commit grün, jemand anderes als der Autor hat den PR gep
 Rollen, Personendaten, Uploads oder neuen öffentlichen Endpunkten zusätzlich ein
 Sicherheits-Review), und niemand sonst arbeitet am PR. Erst nach dem Merge schließt der Agent
 seinen Lauf ab; das Issue wird mit `Closes #<nr>` geschlossen, und die Karte wandert nach
-**Erledigt**.
-- Beim **Los** in der Spalte Bereit wählst du im Auswahlfeld „Lead verteilt“ oder
-  „Direkt: …“ einen bestimmten Agenten.
+**Erledigt**. Die Regel gilt für jede Karte, an der mit einem Pull Request gearbeitet wird.
 
 **Eine Karte im Fenster öffnen** *(seit 1.397.0)*:
 
@@ -1426,10 +1435,14 @@ anderen AI-Employee-Anlage, Claude Code oder ein Mensch direkt im Repo:
   gewinnt): geschlossen → Erledigt bzw. Verworfen; offener PR, der das Issue schließt, oder
   **status/review** → Review; **Triage-Tag** → Triage; **status/in-arbeit** → In Arbeit;
   **status/ready** → Bereit; sonst Inbox.
+- Als Freigabe gilt nur **ready** oder **bereit**, mit oder ohne Vorsilbe `status/` (auch `state/`,
+  `stand/`) — nicht `todo` oder `geplant`. Zieht ein solches Tag eine Karte nach Bereit, steht an
+  ihr die Notiz „Freigabe per Tag im Repo (Datum, Uhrzeit)“.
 - Als Triage-Tag gelten `status/triage`, `triage`, `needs-triage`, `agent:blocked`,
   `agent/blocked`, `needs-human`, `claude:needs-human`, `needs-info`, `question` und `Rückfrage` —
   Vorsilben wie `status/`, `agent:` oder `claude:` sind egal. Ein bloßes `blocked` ohne Agenten-Bezug
-  zählt nicht.
+  zählt nicht. Agenten-Vorsilben (`agent:`, `claude:`, `bot:` …) zählen nur für Rückfragen:
+  `agent:ready` gibt nichts frei.
 - Setzt das Board selbst ein Tag (Freigeben, Rückfrage, Übernahme), nimmt es das, das es im Repo
   schon gibt — etwa `agent:blocked` statt `status/triage` —, sonst legt es `status/triage`,
   `status/ready` bzw. `status/in-arbeit` an.

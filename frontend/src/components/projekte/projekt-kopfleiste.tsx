@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Kopfleiste eines Projekts: der Fluss Inbox › Bereit › In Arbeit › Triage › Review ›
+ * Kopfleiste eines Projekts: der Fluss Inbox › Triage › Bereit › In Arbeit › Review ›
  * Erledigt als Zahlen, dazu Kosten, Takt und Repo-Stand — eine Zeile statt vier
  * Kästen. Ein Klick auf eine Zahl führt zum Board.
  */
@@ -35,9 +35,9 @@ export function ProjektKopfleiste({
   const taktLabel = TAKTE.find((t) => t.minuten === (takt.minuten ?? 0))?.label ?? "Aus";
   const fluss = [
     { label: "Inbox", wert: k.eingang },
+    { label: "Triage", wert: k.triage ?? 0, achtung: (k.triage ?? 0) > 0 },
     { label: "Bereit", wert: k.bereit },
     { label: "In Arbeit", wert: k.in_arbeit, aktiv: k.in_arbeit > 0 },
-    { label: "Triage", wert: k.triage ?? 0, achtung: (k.triage ?? 0) > 0 },
     { label: "Review", wert: k.pruefung, achtung: k.pruefung > 0 },
     { label: "Erledigt", zusatz: " · 7 Tage", wert: k.fertig_7_tage },
   ];

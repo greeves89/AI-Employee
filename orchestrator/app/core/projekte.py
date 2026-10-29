@@ -37,6 +37,7 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
+from app.core.uebernahme import SELBST_MERGEN_REGEL
 from app.models.projekt_karte import ABGESCHLOSSEN, SPALTEN, STUFEN, ProjektKarte
 from app.models.task import Task, TaskStatus
 
@@ -50,6 +51,10 @@ VERLAUF_TAGE = 7
 VON_HAND = ("eingang", "bereit", "triage", "pruefung", "erledigt", "verworfen")
 # Was nur ein Mensch darf: freigeben (→ Bereit) und verwerfen.
 NUR_MENSCH = ("bereit", "verworfen")
+# Aus diesen Spalten darf ein Agent eine Karte herausnehmen. Triage verlässt eine
+# Karte nur durch einen Menschen; Abgeschlossenes holt nur ein Mensch zurück. Seine
+# eigene laufende Karte (In Arbeit) darf er zusätzlich nach Triage setzen.
+AGENT_AUS = ("eingang", "bereit", "pruefung")
 PR_OFFEN = ("offen", "ci_laeuft", "ci_rot", "ci_gruen")
 
 
@@ -146,6 +151,9 @@ def karte_dict(k: ProjektKarte, task: Task | None = None, *, lauf_sichtbar: bool
         "url": k.url,
         "labels": k.labels or [],
         "spalte": k.spalte,
+        # Rückfrage offen — in Triage oder im Review mit Triage-Tag (ein offener PR
+        # geht im Vorrang vor, die Frage im Issue wartet trotzdem auf einen Menschen).
+        "wartet_auf_dich": wartet_auf_dich(k),
         "prioritaet": k.prioritaet,
         "agent_id": k.agent_id,
         "task_id": k.task_id,
@@ -179,6 +187,17 @@ def karte_dict(k: ProjektKarte, task: Task | None = None, *, lauf_sichtbar: bool
         "ergebnis": (task.result if voll else _kurz(task.result, 400)) if zeigen else None,
         "fehler": (task.error if voll else _kurz(task.error, 300)) if zeigen else None,
     }
+
+
+def wartet_auf_dich(k: ProjektKarte) -> bool:
+    """Wartet die Karte auf die Antwort eines Menschen (offene Rückfrage)?"""
+    if k.spalte == "triage":
+        return True
+    if k.spalte != "pruefung" or not k.labels:
+        return False
+    from app.core.projekt_git import tags_der_art
+
+    return bool(tags_der_art(k.labels, "triage"))
 
 
 def _ordnung(k: ProjektKarte):
@@ -230,8 +249,8 @@ async def board(db: AsyncSession, team_id: str, sichtbar: list[str] | None) -> d
             "eingang": len(spalten["eingang"]),
             "bereit": len(spalten["bereit"]),
             "in_arbeit": len(spalten["in_arbeit"]),
-            # Offene Rückfragen: warten auf einen Menschen.
-            "triage": len(spalten["triage"]),
+            # Offene Rückfragen: warten auf einen Menschen (auch Review-Karten mit Triage-Tag).
+            "triage": sum(1 for spalte in ("triage", "pruefung") for k in spalten[spalte] if k["wartet_auf_dich"]),
             "pruefung": len(spalten["pruefung"]),
             "verworfen": len(spalten["verworfen"]),
             "wartet_auf_merge": sum(1 for k in spalten["pruefung"] if k["pr_zustand"] in PR_OFFEN),
@@ -399,23 +418,49 @@ def neue_karte(team_id: str, titel: str, text: str = "", *, spalte: str = "einga
     )
 
 
+def eigener_lauf(karte: ProjektKarte, agent_id: str | None) -> bool:
+    """Bearbeitet ``agent_id`` diese Karte gerade selbst (In Arbeit, sein Lauf)?"""
+    return bool(agent_id) and karte.spalte == "in_arbeit" and bool(karte.task_id) and karte.agent_id == agent_id
+
+
+def verschieben_pruefen(karte: ProjektKarte, spalte: str | None, von_agent: str | None = None) -> None:
+    """Darf die Karte nach ``spalte``? KartenFehler, wenn nicht — ändert nichts.
+
+    ``von_agent``: ein Agent verschiebt (seine Kennung). Er gibt nie frei (Bereit)
+    und verwirft nicht (``NUR_MENSCH``), nimmt Karten nur aus ``AGENT_AUS`` heraus
+    und fasst keine Karte an, die jemand von außen übernommen hat. Nach Triage darf
+    er seine eigene laufende Karte setzen — oder eine Karte aus Inbox/Bereit.
+    """
+    if spalte is None or spalte == karte.spalte:
+        return
+    if spalte not in VON_HAND:
+        raise KartenFehler("In Arbeit kommt eine Karte nur, indem sie vergeben wird.")
+    if von_agent:
+        eigen = eigener_lauf(karte, von_agent)
+        if spalte in NUR_MENSCH:
+            raise KartenFehler(
+                "Freigeben (nach Bereit) darf nur ein Mensch. Hast du eine Rückfrage, setz die Karte auf „triage“ "
+                "und stell die Frage (bei Issues im Issue)." if spalte == "bereit"
+                else "Verwerfen entscheidet ein Mensch. Schlag es im Projektgespräch vor.")
+        if karte.extern_bearbeiter and not eigen:
+            raise KartenFehler("Diese Karte hat jemand von außen übernommen — nichts daran ändern. Fällt dir "
+                               "etwas auf, schreib es ins Projektgespräch.")
+        if karte.spalte == "triage":
+            raise KartenFehler("Die Karte wartet auf eine Antwort eines Menschen — aus Triage holt sie nur er.")
+        if not (karte.spalte in AGENT_AUS or (eigen and spalte == "triage")):
+            raise KartenFehler("Aus dieser Spalte verschiebt nur ein Mensch.")
+        if spalte == "triage" and not eigen and karte.spalte not in ("eingang", "bereit"):
+            raise KartenFehler("Nach Triage setzt du nur deine eigene laufende Karte oder eine aus Inbox/Bereit.")
+    if karte.spalte == "in_arbeit" and karte.task_id and not (spalte == "triage" and eigener_lauf(karte, von_agent)):
+        raise KartenFehler("Die Karte ist gerade in Arbeit. Warte das Ende des Laufs ab.")
+
+
 def verschieben(karte: ProjektKarte, *, spalte: str | None = None, prioritaet: int | None = None,
                 reihenfolge: float | None = None, notiz: str | None = None,
                 von_agent: str | None = None) -> None:
-    """Karte umstellen. ``von_agent``: ein Agent verschiebt (seine Kennung) — er gibt
-    nie frei (Bereit) und verwirft nicht; das bleibt dem Menschen. Eine Rückfrage
-    (Triage) darf er stellen, auch an der Karte, die er gerade bearbeitet."""
+    """Karte umstellen (geprüft mit ``verschieben_pruefen``)."""
+    verschieben_pruefen(karte, spalte, von_agent)
     if spalte is not None and spalte != karte.spalte:
-        if spalte not in VON_HAND:
-            raise KartenFehler("In Arbeit kommt eine Karte nur, indem sie vergeben wird.")
-        if von_agent and spalte == "bereit":
-            raise KartenFehler("Freigeben (nach Bereit) darf nur ein Mensch. Hast du eine Rückfrage, setz die "
-                               "Karte auf „triage“ und stell die Frage (bei Issues im Issue).")
-        if von_agent and spalte == "verworfen":
-            raise KartenFehler("Verwerfen entscheidet ein Mensch. Schlag es im Projektgespräch vor.")
-        if karte.spalte == "in_arbeit" and karte.task_id and not (
-                spalte == "triage" and von_agent and von_agent == karte.agent_id):
-            raise KartenFehler("Die Karte ist gerade in Arbeit. Warte das Ende des Laufs ab.")
         karte.spalte = spalte
         if spalte in ABGESCHLOSSEN:
             karte.erledigt_at = datetime.now(timezone.utc)
@@ -506,6 +551,7 @@ def karten_auftrag(karte: ProjektKarte, projekt_name: str, *, fremd: bool = Fals
         "- Legst du einen Pull Request an, gib seine Adresse als `pr_url` mit.\n"
         "- Erkenntnisse, die das ganze Projekt betreffen, hältst du mit `projekt_wissen_schreiben` fest.\n"
         + RUECKFRAGE_REGEL
+        + f"- Arbeitest du mit einem Pull Request: {SELBST_MERGEN_REGEL}\n"
         + "- Bist du fertig, schließ den Lauf mit einem kurzen Ergebnis ab — die Karte geht dann ins Review."
         + (
             f"\n\n## Regeln für das Issue #{karte.extern_nr}\n"
@@ -515,7 +561,7 @@ def karten_auftrag(karte: ProjektKarte, projekt_name: str, *, fremd: bool = Fals
             "im Text, mit Testnachweis und offenen Punkten.\n"
             "- Rückfrage: die Frage mit `projekt_issue_kommentar` ins Issue, dann die Karte auf „triage“ — das "
             "Board setzt das Triage-Tag und gibt das Ticket frei.\n"
-            + SELBST_MERGEN_REGEL +
+            +
             "- Gilt im Repo eine `AGENTS.md` oder `CONTRIBUTING.md`, halte dich an ihre Regeln.\n"
             "- Merkst du, dass schon jemand anderes daran arbeitet (fremder Branch oder PR zur Nummer), hör auf "
             "und melde das im Ergebnis, statt doppelt zu arbeiten.\n"
@@ -533,22 +579,12 @@ def karten_auftrag(karte: ProjektKarte, projekt_name: str, *, fremd: bool = Fals
 
 #: Rückfrage statt Raten — für jede Karte. Freigeben bleibt dem Menschen.
 RUECKFRAGE_REGEL = (
-    "- Fehlt dir eine Entscheidung oder Information, rate nicht: stell die Frage (bei eigenen Karten als "
-    "`notiz`), setz die Karte mit `projekt_karte_verschieben` auf „triage“ und arbeite NICHT weiter — schließ "
-    "den Lauf mit der Frage als Ergebnis ab. Die Karte bleibt in Triage, bis ein Mensch sie freigibt. Nach "
-    "„bereit“ schiebst du nie: freigeben darf nur ein Mensch.\n"
-)
-
-#: Wann ein Agent seinen Pull Request selbst mergen darf (auch im AGENTS.md-Abschnitt).
-SELBST_MERGEN_REGEL = (
-    "- Selbst mergen (Squash) darfst du, wenn die `AGENTS.md`/`CONTRIBUTING.md` des Repos nichts anderes sagt "
-    "und ALLES erfüllt ist: Der Branch enthält das aktuelle main (danach erneut geprüft); Tests grün, bei "
-    "Oberflächen-Änderungen auch ein Browser-Test; CI grün auf dem letzten Commit (den Lauf zum headSha prüfen, "
-    "nicht nur `gh pr checks` direkt nach dem Push); ein Review durch jemand anderen (Mensch oder frischer "
-    "Review-Agent, nie du selbst; bei Login, Rollen, Personendaten, Uploads oder neuen öffentlichen Endpunkten "
-    "zusätzlich ein Security-Review); niemand sonst arbeitet gerade am PR. Mehrere PRs nacheinander mergen, "
-    "danach den nächsten Branch auf das neue main bringen. Fremde Branches nie überschreiben (kein `--force`). "
-    "Ohne Recht auf PRs: den PR-Text als Kommentar ins Issue. Den Lauf schließt du erst nach dem Merge ab.\n"
+    "- Fehlt dir eine Entscheidung oder Information, rate nicht: stell die Frage (bei Issues mit "
+    "`projekt_issue_kommentar` im Issue, bei eigenen Karten als `notiz`), setz die Karte mit "
+    "`projekt_karte_verschieben` auf „triage“ und arbeite NICHT weiter — schließ den Lauf mit der Frage als "
+    "Ergebnis ab. Die Karte bleibt in Triage, bis ein Mensch sie freigibt. Hast du schon einen PR offen, bleibt "
+    "die Karte in Review; die Frage steht trotzdem im Issue, mit Triage-Tag. Nach „bereit“ schiebst du nie: "
+    "freigeben darf nur ein Mensch.\n"
 )
 
 

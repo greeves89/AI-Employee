@@ -302,17 +302,20 @@ async def rueckfragen_melden(db: AsyncSession, team: Team, jetzt: datetime | Non
     """Offene Rückfragen (Karten in Triage) dem Menschen melden — höchstens einmal am Tag.
 
     Ein Agent hat gefragt und arbeitet nicht weiter; der Takt vergibt Triage-Karten
-    nie. Ohne Meldung blieben sie liegen. Gibt die Zahl der Karten in Triage zurück.
+    nie. Mitgezählt: Review-Karten mit Triage-Tag (offener PR, Frage im Issue). Ohne Meldung blieben sie liegen. Gibt die Zahl der Karten in Triage zurück.
     """
     from app.core import projekt_gespraech
     from app.models.notification import Notification
     from app.models.projekt_nachricht import ProjektNachricht
 
     jetzt = jetzt or datetime.now(timezone.utc)
-    karten = (await db.execute(
-        select(ProjektKarte).where(ProjektKarte.team_id == team.id, ProjektKarte.spalte == "triage")
-        .order_by(ProjektKarte.updated_at.asc()).limit(50)
-    )).scalars().all()
+    from app.core.fremdtext import einzeilig
+    from app.core.projekte import wartet_auf_dich
+
+    karten = [k for k in (await db.execute(
+        select(ProjektKarte).where(ProjektKarte.team_id == team.id, ProjektKarte.spalte.in_(("triage", "pruefung")))
+        .order_by(ProjektKarte.updated_at.asc()).limit(200)
+    )).scalars().all() if wartet_auf_dich(k)]
     if not karten:
         return 0
     schon = await db.scalar(
@@ -323,7 +326,7 @@ async def rueckfragen_melden(db: AsyncSession, team: Team, jetzt: datetime | Non
     )
     if schon:
         return len(karten)
-    namen = ", ".join(f"#{k.extern_nr}" if k.extern_nr else f"„{k.titel[:60]}“" for k in karten[:12])
+    namen = ", ".join(f"#{k.extern_nr}" if k.extern_nr else f"„{einzeilig(k.titel, 60)}“" for k in karten[:12])
     text = (f"{_RUECKFRAGE_KOPF} {len(karten)} Rückfrage(n) offen — {namen}{' …' if len(karten) > 12 else ''}. "
             "Die Agenten arbeiten daran nicht weiter, bis du antwortest (im Issue bzw. in der Notiz der Karte) "
             "und die Karte mit „Freigeben“ zurück nach Bereit stellst.")

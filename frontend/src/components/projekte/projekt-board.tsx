@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Board eines Projekts: Inbox → Bereit → In Arbeit → Triage → Review → Erledigt
+ * Board eines Projekts: Inbox → Triage → Bereit → In Arbeit → Review → Erledigt
  * (und Verworfen). Karten werden per Klick weitergeschoben: freigeben (nur ein
  * Mensch — Agenten nehmen nur Freigegebenes), Priorität setzen, vergeben („Los“),
  * Rückfragen beantworten (Triage → Freigeben), abnehmen oder zurückgeben.
@@ -159,9 +159,10 @@ function ExternStand({ karte, farbe, onFreigeben }: { karte: ProjektKarte; farbe
   );
 }
 
-/** Triage: ein Agent hat gefragt und arbeitet nicht weiter — die Karte wartet auf dich. */
+/** Rückfrage offen: in Triage — oder im Review mit Triage-Tag (offener PR, die Frage
+ *  steht trotzdem im Issue). Ein Agent hat gefragt und wartet auf dich. */
 function WartetAufDich({ karte, gross = false }: { karte: ProjektKarte; gross?: boolean }) {
-  if (karte.spalte !== "triage") return null;
+  if (!(karte.wartet_auf_dich ?? karte.spalte === "triage")) return null;
   return (
     <p className={cn("flex items-start gap-1 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300",
       gross ? "px-3 py-2 text-xs" : "mt-1.5 px-2 py-1 text-[11px]")}>
@@ -169,7 +170,8 @@ function WartetAufDich({ karte, gross = false }: { karte: ProjektKarte; gross?: 
       <span>
         <span className="font-medium">Wartet auf dich:</span>{" "}
         {karte.quelle === "issue"
-          ? "Rückfrage im Issue beantworten, dann freigeben."
+          ? (karte.spalte === "triage" ? "Rückfrage im Issue beantworten, dann freigeben."
+            : "Rückfrage im Issue beantworten und das Triage-Tag dort entfernen.")
           : "Rückfrage in der Notiz beantworten, dann freigeben."}
       </span>
     </p>

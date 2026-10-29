@@ -138,10 +138,6 @@ class Beschreibung(unittest.TestCase):
         mcp_namen = set(re.findall(r'name: "(projekt_[a-z_]+)"', quelltext))
         self.assertEqual(mcp_namen, WERKZEUGE)
 
-
-if __name__ == "__main__":
-    unittest.main()
-
     def test_spalten_gleich_und_ohne_freigabe(self):
         """Agenten geben nie frei: weder Claude Code/Codex (MCP) noch Custom-LLM bieten
         „bereit“ an; eine Rückfrage („triage“) dürfen alle Laufzeiten setzen."""
@@ -156,3 +152,7 @@ if __name__ == "__main__":
             self.assertEqual(custom, re.findall(r'"([a-z_]+)"', mcp), name)
             self.assertNotIn("bereit", custom, name)
         self.assertIn("triage", custom)
+
+
+if __name__ == "__main__":
+    unittest.main()

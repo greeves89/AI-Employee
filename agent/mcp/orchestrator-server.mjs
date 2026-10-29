@@ -627,8 +627,10 @@ export function buildServer() {
         description:
           "Plan a card: move it to eingang, triage, pruefung or erledigt, change its priority (1-3) or attach a " +
           "note. 'triage' = you have an open question: ask it (issue: projekt_issue_kommentar, own card: notiz), " +
-          "set triage and stop working — also allowed for the card you are working on. Only a human releases a " +
-          "card to 'bereit' or discards it. A card goes to 'In Arbeit' only via projekt_karte_vergeben.",
+          "set triage and stop working — allowed for the card you are working on or one in eingang/bereit. You " +
+          "move cards only out of eingang, bereit or pruefung; only a human releases a card to 'bereit', takes it " +
+          "out of triage or discards it, and cards held by someone outside are not touched. A card goes to " +
+          "'In Arbeit' only via projekt_karte_vergeben.",
         inputSchema: {
           type: "object",
           properties: {

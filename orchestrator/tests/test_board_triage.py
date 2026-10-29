@@ -289,3 +289,243 @@ class LaufUndTakt(Basis):
         self.assertIn("headSha", auftrag)
         takt = projekt_takt.takt_auftrag(Team(id="p1", name="P"))
         self.assertIn("Freigeben (nach „bereit“) darf nur ein Mensch", takt)
+
+
+class FreigabeNurDurchMenschen(_git.Abgleich):
+    """Sicherheitsfunde aus dem Review: Freigabe per Tag nur mit „ready“/„bereit“,
+    Agenten fassen fremde und Triage-Karten nicht an, Tags nur gezielt entfernen."""
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        self.gh = _Repo(tags=["status/ready", "status/triage"])
+        projekt_git._REPO_TAGS.clear()
+
+    async def _issue_karte(self, db, nr, spalte, labels=(), **kw):
+        k = projekte.neue_karte("p1", f"Issue {nr}", "Text", quelle="issue", extern_nr=nr, labels=list(labels))
+        k.spalte = spalte
+        for feld, wert in kw.items():
+            setattr(k, feld, wert)
+        db.add(k)
+        await db.commit()
+        self.gh.issues.append(_issue(nr, labels=labels))
+        return k.id
+
+    def test_nur_ready_und_bereit_geben_frei(self):
+        for tag in ("todo", "to-do", "geplant", "agent:ready", "claude:bereit", "bot:in-progress", "agent:review"):
+            self.assertIsNone(projekt_git.tag_stand(tag), tag)
+        for tag in ("ready", "status/ready", "Bereit", "state/ready", "stand/bereit"):
+            self.assertEqual(projekt_git.tag_stand(tag), "bereit", tag)
+
+    def test_board_setzt_nur_tags_die_es_selbst_liest(self):
+        for art, namen in projekt_git.STATUS_TAG_WAHL.items():
+            for name in namen:
+                self.assertEqual(projekt_git.tag_stand(name), art, name)
+                self.assertEqual(projekt_git._status_aus_tags([name]), art, name)
+
+    async def test_freigabe_per_tag_hinterlaesst_eine_notiz(self):
+        self.gh.issues = [_issue(1, labels=["todo"]), _issue(2, labels=["geplant"]), _issue(3, labels=["agent:ready"]),
+                          _issue(4, labels=["status/ready"]), _issue(5, labels=["ready"])]
+        async with self.Session() as db:
+            await self._lauf(db)
+            karten = await self._karten(db)
+        for nr in (1, 2, 3):
+            self.assertEqual(karten[("issue", nr)].spalte, "eingang", nr)
+        for nr in (4, 5):
+            self.assertEqual(karten[("issue", nr)].spalte, "bereit", nr)
+            self.assertTrue(karten[("issue", nr)].notiz.startswith("Freigabe per Tag im Repo ("), nr)
+
+    async def test_agent_setzt_fremd_uebernommene_karte_nicht_auf_triage(self):
+        async with self.Session() as db:
+            kid = await self._issue_karte(db, 30, "in_arbeit", labels=["status/in-arbeit", "wip"],
+                                          extern_bearbeiter="@jemand", bearbeiter_art="mensch")
+            with patch.object(projekt_git, "zugang", return_value=("t", self.gh)), \
+                    self.assertRaises(HTTPException) as e:
+                await api.karte_aendern("p1", kid, api.KarteAendern(spalte="triage"), user=agent("a1"), db=db,
+                                        redis=None)
+            self.assertEqual(e.exception.status_code, 409)
+            self.assertEqual((await db.get(ProjektKarte, kid)).spalte, "in_arbeit")
+        self.assertFalse(getattr(self.gh, "geschrieben", []))
+
+    async def test_agent_ohne_halter_setzt_nur_das_triage_tag(self):
+        """Bereite Karte mit fremden Tags: nur Triage dazu, nichts weg, kein Rückgabe-Kommentar."""
+        async with self.Session() as db:
+            kid = await self._issue_karte(db, 31, "bereit", labels=["status/ready", "wip"])
+            with patch.object(projekt_git, "zugang", return_value=("t", self.gh)):
+                r = await api.karte_aendern("p1", kid, api.KarteAendern(spalte="triage"), user=agent("a1"),
+                                            db=db, redis=None)
+        self.assertEqual(r["spalte"], "triage")
+        self.assertEqual(self.gh.geschrieben, [("+", 31, ("status/triage",))])
+        self.assertFalse(getattr(self.gh, "kommentare", []))
+
+    async def test_agent_holt_nichts_aus_triage_erledigt_verworfen(self):
+        async with self.Session() as db:
+            for kid, spalte in (("t", "triage"), ("e", "erledigt"), ("v", "verworfen")):
+                await self._karte(db, kid, spalte)
+                for ziel in ("eingang", "erledigt", "pruefung"):
+                    if ziel == spalte:
+                        continue
+                    with self.assertRaises(HTTPException) as e:
+                        await api.karte_aendern("p1", kid, api.KarteAendern(spalte=ziel), user=agent("a1"),
+                                                db=db, redis=None)
+                    self.assertEqual(e.exception.status_code, 409, (spalte, ziel))
+            await self._karte(db, "r", "pruefung")
+            with self.assertRaises(HTTPException):  # aus dem Review nur zur eigenen Rückfrage
+                await api.karte_aendern("p1", "r", api.KarteAendern(spalte="triage"), user=agent("a1"), db=db,
+                                        redis=None)
+            r = await api.karte_aendern("p1", "r", api.KarteAendern(spalte="erledigt"), user=agent("a1"), db=db,
+                                        redis=None)
+            self.assertEqual(r["spalte"], "erledigt")
+
+    async def test_haengendes_repo_haelt_keine_sperre_und_aendert_nichts(self):
+        import asyncio
+
+        class _Haengt(_Repo):
+            async def get_issue(self, client, token, repo, nummer):
+                await asyncio.sleep(30)
+
+        self.gh = _Haengt()
+        async with self.Session() as db:
+            kid = await self._issue_karte(db, 32, "triage", labels=["status/triage"])
+            with patch.object(projekt_git, "zugang", return_value=("t", self.gh)), \
+                    patch.object(api, "REPO_FRIST_SEKUNDEN", 0.05), \
+                    patch.object(projekte, "karte_laden", wraps=projekte.karte_laden) as laden, \
+                    self.assertRaises(HTTPException) as e:
+                await api.karte_aendern("p1", kid, api.KarteAendern(spalte="bereit"), user=MITGLIED, db=db,
+                                        redis=None)
+            self.assertEqual(e.exception.status_code, 424)
+            # Vor dem Repo nur ohne Sperre geladen; zur Sperre kam es gar nicht.
+            self.assertEqual([c.kwargs.get("sperren", False) for c in laden.call_args_list], [False])
+            self.assertEqual((await db.get(ProjektKarte, kid)).spalte, "triage")
+
+    async def test_zurueck_in_die_inbox_nimmt_die_tags_weg(self):
+        """Freigeben → zurück in die Inbox → der Abgleich lässt die Karte in der Inbox."""
+        async with self.Session() as db:
+            kid = await self._issue_karte(db, 33, "eingang")
+            with patch.object(projekt_git, "zugang", return_value=("t", self.gh)):
+                await api.karte_aendern("p1", kid, api.KarteAendern(spalte="bereit"), user=MITGLIED, db=db,
+                                        redis=None)
+                self.gh.issues[-1]["labels"] = [{"name": "status/ready"}]
+                r = await api.karte_aendern("p1", kid, api.KarteAendern(spalte="eingang"), user=MITGLIED, db=db,
+                                            redis=None)
+            self.assertEqual((r["spalte"], r["labels"]), ("eingang", []))
+            self.assertIn(("-", 33, "status/ready"), self.gh.geschrieben)
+            self.gh.issues[-1]["labels"] = []
+            await self._lauf(db)
+            self.assertEqual((await db.get(ProjektKarte, kid)).spalte, "eingang")
+
+    async def test_verwerfen_ohne_schluessel_bleibt_stehen(self):
+        async with self.Session() as db:
+            kid = await self._issue_karte(db, 34, "bereit", labels=["status/ready"])
+            with patch.object(projekt_git, "zugang", return_value=("", self.gh)), \
+                    self.assertRaises(HTTPException) as e:
+                await api.karte_aendern("p1", kid, api.KarteAendern(spalte="verworfen"), user=MITGLIED, db=db,
+                                        redis=None)
+            self.assertEqual(e.exception.status_code, 424)
+            self.assertEqual((await db.get(ProjektKarte, kid)).spalte, "bereit")
+
+    async def test_nicht_lesbarer_abschluss_wird_erneut_versucht(self):
+        class _Stumm(_Repo):
+            async def get_issue(self, client, token, repo, nummer):
+                raise RuntimeError("Server antwortet nicht")
+
+        self.gh = _Stumm()
+        self.gh.issues = [_issue(35)]
+        async with self.Session() as db:
+            await self._lauf(db)
+            self.gh.issues = []
+            await self._lauf(db)
+            self.assertEqual((await self._karten(db))[("issue", 35)].spalte, "eingang")
+
+    async def test_triage_weg_nur_zustaendiger_heisst_inbox(self):
+        self.gh.issues = [_issue(36, labels=["status/triage"])]
+        async with self.Session() as db:
+            await self._lauf(db)
+            k = (await self._karten(db))[("issue", 36)]
+            self.assertEqual(k.spalte, "triage")
+            projekt_git.extern_nachziehen(k, [], ["antwortende"], labels_vorher=["status/triage"])
+            self.assertEqual(k.spalte, "eingang")
+
+    async def test_review_mit_triage_tag_wartet_auf_dich(self):
+        self.gh.issues = [_issue(37, labels=["agent:blocked"])]
+        self.gh.pulls = [_pr(70, body="Closes #37")]
+        async with self.Session() as db:
+            await self._lauf(db)
+            b = await projekte.board(db, "p1", None)
+            karte = b["spalten"]["pruefung"][0]
+            self.assertTrue(karte["wartet_auf_dich"])
+            self.assertEqual(b["kennzahlen"]["triage"], 1)
+            team = await db.get(Team, "p1")
+            self.assertEqual(await projekt_takt.rueckfragen_melden(db, team), 1)
+
+    async def test_pr_nimmt_fremdes_in_arbeit_tag_nicht_weg(self):
+        self.gh.issues = [_issue(38, labels=["status/in-arbeit"])]
+        async with self.Session() as db:
+            await self._lauf(db)
+            k = (await self._karten(db))[("issue", 38)]
+            k.spalte, k.task_id = "in_arbeit", "t-eigen"
+            await db.commit()
+            self.gh.issues[0]["assignees"] = [{"login": "jemand"}]
+            self.gh.pulls = [_pr(80, body="Closes #38")]
+            await self._lauf(db)
+        self.assertNotIn(("-", 38, "status/in-arbeit"), getattr(self.gh, "geschrieben", []))
+
+
+class TagsDesRepos(Basis):
+    async def test_cache_je_zugang_ohne_fehler_mit_grenze(self):
+        class _A:
+            api_base = "https://api.example.invalid"
+            aufrufe = 0
+            fehler = False
+
+            async def list_labels(self, client, token, repo):
+                _A.aufrufe += 1
+                if _A.fehler:
+                    raise RuntimeError("weg")
+                return [f"tag-{token}"]
+
+        projekt_git._REPO_TAGS.clear()
+        a = _A()
+        self.assertEqual(await projekt_git.repo_tags(a, None, "geheim-x", "o/r"), ["tag-geheim-x"])
+        self.assertEqual(await projekt_git.repo_tags(a, None, "geheim-y", "o/r"), ["tag-geheim-y"])  # anderer Zugang
+        self.assertEqual(await projekt_git.repo_tags(a, None, "geheim-x", "o/r"), ["tag-geheim-x"])
+        self.assertEqual(_A.aufrufe, 2)
+        self.assertTrue(all("geheim" not in k for k in projekt_git._REPO_TAGS))  # kein Klartext-Token
+        _A.fehler = True
+        self.assertEqual(await projekt_git.repo_tags(a, None, "z", "o/r"), [])
+        self.assertEqual(await projekt_git.repo_tags(a, None, "z", "o/r"), [])
+        self.assertEqual(_A.aufrufe, 4)  # Fehler nicht gemerkt
+        _A.fehler = False
+        with patch.object(projekt_git, "REPO_TAGS_MAX", 3):
+            for i in range(5):
+                await projekt_git.repo_tags(a, None, f"t{i}", "o/r")
+            self.assertEqual(len(projekt_git._REPO_TAGS), 3)
+
+
+class ForgejoTags(Basis):
+    async def test_label_auf_seite_zwei_und_entfernen_legt_nichts_an(self):
+        import httpx
+
+        from app.core.githost.forgejo import ForgejoHostProvider
+
+        anfragen = []
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            anfragen.append((req.method, req.url.path))
+            if req.url.path.endswith("/labels") and req.method == "GET":
+                if req.url.params.get("page", "1") == "1":
+                    return httpx.Response(200, json=[{"id": i, "name": f"x{i}"} for i in range(1, 51)])
+                return httpx.Response(200, json=[{"id": 77, "name": "status/triage"}])
+            if req.url.path.endswith("/issues/5") and req.method == "GET":
+                return httpx.Response(200, json={"number": 5, "labels": [{"id": "77", "name": "status/ready"}]})
+            if req.method == "DELETE":
+                return httpx.Response(204)
+            return httpx.Response(500)
+
+        f = ForgejoHostProvider("https://git.example.com")
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+            self.assertEqual(await f._label_id(c, "t", "team/repo", "status/triage"), 77)
+            # Nicht am Issue: nichts zu entfernen, nichts angelegt.
+            self.assertTrue(await f.remove_label(c, "t", "team/repo", 5, "status/triage"))
+            # Am Issue, aber die Kennung ist keine Zahl: abgelehnt, nichts gelöscht.
+            self.assertFalse(await f.remove_label(c, "t", "team/repo", 5, "status/ready"))
+        self.assertFalse([a for a in anfragen if a[0] in ("POST", "DELETE")])

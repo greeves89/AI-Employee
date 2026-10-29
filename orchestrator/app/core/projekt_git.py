@@ -248,7 +248,9 @@ def _labels(issue: dict) -> list[str]:
 
 #: Status-Tags, an denen ein Board außerhalb von AI Employee seinen Stand zeigt —
 #: andere Instanzen, Claude Code, Menschen. Verglichen wird ohne ein Präfix wie
-#: ``status/``, ``agent:`` oder ``claude:`` und ohne Groß-/Kleinschreibung.
+#: ``status/`` und ohne Groß-/Kleinschreibung. Agenten-Präfixe (``agent:``,
+#: ``claude:`` …) gelten NUR für Triage: Ein Agent darf eine Rückfrage anzeigen,
+#: aber nie freigeben (``agent:ready`` ist kein Bereit-Tag).
 _STATUS_TAGS = {
     "in_arbeit": {"in-arbeit", "in arbeit", "in-bearbeitung", "in bearbeitung", "in-progress",
                   "in progress", "wip", "doing"},
@@ -257,11 +259,13 @@ _STATUS_TAGS = {
     # nicht (blockiert kann vieles sein) — nur mit Agenten-Präfix (``agent:blocked``).
     "triage": {"triage", "needs-triage", "needs triage", "needs-human", "needs human", "needs-info",
                "needs info", "question", "rückfrage", "rueckfrage"},
-    "bereit": {"ready", "bereit", "todo", "to-do", "geplant"},
+    # Freigabe durch einen Menschen: nur „ready“/„bereit“ (mit oder ohne status/).
+    # Kein „todo“/„geplant“ — die stehen in vielen Repos an Ungesichtetem.
+    "bereit": {"ready", "bereit"},
 }
 #: Präfixe, die vor einem Status-Tag stehen dürfen (``status/ready``, ``agent:blocked``).
 _STATUS_PRAEFIX = re.compile(r"^(status|state|stand|agent|agents|claude|ai|ki|bot|codex)\s*[/:]\s*", re.I)
-#: ``blocked`` heißt nur mit einem dieser Präfixe „Rückfrage des Agenten“.
+#: Präfixe von Agenten — nur für Triage (und ``blocked`` heißt nur mit ihnen „Rückfrage“).
 _AGENT_PRAEFIXE = {"agent", "agents", "claude", "ai", "ki", "bot", "codex"}
 #: Vorrang beim Abgleich: der erste gefundene Stand gewinnt.
 _STAND_VORRANG = ("pruefung", "triage", "in_arbeit", "bereit")
@@ -270,7 +274,7 @@ _STAND_VORRANG = ("pruefung", "triage", "in_arbeit", "bereit")
 STATUS_TAG_WAHL = {
     "triage": ("status/triage", "agent:blocked", "agent/blocked", "triage", "needs-triage", "status/needs-human",
                "claude:needs-human", "needs-human", "needs-info", "status/rückfrage", "rückfrage", "rueckfrage"),
-    "bereit": ("status/ready", "ready", "status/bereit", "bereit", "status/todo", "todo"),
+    "bereit": ("status/ready", "ready", "status/bereit", "bereit"),
     "in_arbeit": ("status/in-arbeit", "status/in-progress", "in-progress", "in-arbeit", "status/wip", "wip"),
 }
 #: Branch-Namen wie ``feat/1044-deckel`` oder ``issue-91`` tragen die Issue-Nummer.
@@ -283,8 +287,9 @@ def tag_stand(roh: str) -> str | None:
     treffer = _STATUS_PRAEFIX.match(text)
     praefix = treffer.group(1) if treffer else ""
     name = text[treffer.end():] if treffer else text
-    if name == "blocked" and praefix in _AGENT_PRAEFIXE:
-        return "triage"
+    if praefix in _AGENT_PRAEFIXE:
+        # Agenten zeigen nur Rückfragen an — nie Freigabe, Übernahme oder Review.
+        return "triage" if name == "blocked" or name in _STATUS_TAGS["triage"] else None
     for stand, namen in _STATUS_TAGS.items():
         if name in namen:
             return stand
@@ -298,30 +303,47 @@ def _status_aus_tags(labels: list[str]) -> str | None:
 
 
 def tags_der_art(labels: list[str], stand: str) -> list[str]:
-    """Alle Tags aus ``labels``, die für ``stand`` stehen (zum Entfernen)."""
+    """Alle Tags aus ``labels``, die für ``stand`` stehen (erkannt, auch fremde)."""
     return [t for t in labels or [] if tag_stand(t) == stand]
 
 
-#: Tags je Repo, kurz gemerkt — das Board setzt das Tag, das es im Repo schon gibt.
+def eigene_tags(labels: list[str], stand: str) -> list[str]:
+    """Tags aus ``labels``, die das Board selbst für ``stand`` setzt (``STATUS_TAG_WAHL``).
+
+    Nur diese nimmt das Board weg, wenn es aufräumt — ein Tag, das jemand anderes
+    gesetzt hat (``wip``, ``claude:needs-human``), bleibt."""
+    eigene = {t.lower() for t in STATUS_TAG_WAHL[stand]}
+    return [t for t in labels or [] if t.strip().lower() in eigene]
+
+
+#: Tags je Repo und Zugang, kurz gemerkt — das Board setzt das Tag, das es im Repo
+#: schon gibt. Schlüssel mit Prüfsumme des Tokens (ein anderer Zugang sieht vielleicht
+#: anderes); Fehler werden nicht gemerkt; höchstens ``REPO_TAGS_MAX`` Einträge.
 _REPO_TAGS: dict[str, tuple[list[str], float]] = {}
 REPO_TAGS_SEKUNDEN = 600
+REPO_TAGS_MAX = 256
 
 
 async def repo_tags(anbieter, client, token: str, repo: str) -> list[str]:
     """Die Tags (Labels) eines Repos, zehn Minuten gemerkt. Leer, wenn nicht lesbar."""
+    import hashlib
     import time
 
     if not hasattr(anbieter, "list_labels"):
         return []
-    schluessel = f"{getattr(anbieter, 'api_base', '')}|{repo}".lower()
+    zugang_kurz = hashlib.sha256((token or "").encode()).hexdigest()[:12]
+    schluessel = f"{getattr(anbieter, 'api_base', '')}|{repo}|{zugang_kurz}".lower()
     gemerkt = _REPO_TAGS.get(schluessel)
     if gemerkt and gemerkt[1] > time.monotonic():
         return gemerkt[0]
     try:
         tags = [str(t) for t in await anbieter.list_labels(client, token, repo) if t][:500]
-    except Exception as e:  # noqa: BLE001 — dann eben das Standard-Tag
+    except Exception as e:  # noqa: BLE001 — dann eben das Standard-Tag, nicht gemerkt
         log.info("[Projekt] Tags von %s nicht lesbar: %s", repo, e)
-        tags = []
+        return []
+    _REPO_TAGS.pop(schluessel, None)
+    while len(_REPO_TAGS) >= REPO_TAGS_MAX:
+        _REPO_TAGS.pop(next(iter(_REPO_TAGS)))  # ältester Eintrag (Einfügereihenfolge)
     _REPO_TAGS[schluessel] = (tags, time.monotonic() + REPO_TAGS_SEKUNDEN)
     return tags
 
@@ -460,10 +482,13 @@ def extern_nachziehen(karte, labels: list[str], zustaendige: list[str],
     elif karte.spalte == "triage" and stand != "triage":
         # Die Rückfrage ist im Repo geklärt: Bereit-Tag → Bereit, sonst zurück in
         # die Inbox (oder In Arbeit, wenn jemand von außen übernommen hat).
+        # Als „jemand ist dran“ zählt hier nur ein In-Arbeit-TAG — ein Zuständiger
+        # ist oft nur der Mensch, der die Frage beantwortet hat.
         gesehen = bool(tags_der_art(labels_vorher or [], "triage"))
         if stand == "bereit":
             _triage_verlassen(karte, "bereit")
-        elif extern_dran and not karte.task_id:
+            _per_tag_freigegeben(karte, jetzt)
+        elif tags_der_art(labels, "in_arbeit") and not karte.task_id:
             _triage_verlassen(karte, "in_arbeit")
         elif gesehen:
             _triage_verlassen(karte, "eingang")
@@ -472,9 +497,18 @@ def extern_nachziehen(karte, labels: list[str], zustaendige: list[str],
     elif not extern_dran and karte.spalte == "in_arbeit":
         # Extern niemand mehr dran (Tag entfernt, Zuständigkeit gelöst): zurück.
         karte.spalte = "bereit" if stand == "bereit" else "eingang"
+        if stand == "bereit":
+            _per_tag_freigegeben(karte, jetzt)
     elif stand == "bereit" and karte.spalte == "eingang":
         karte.spalte = "bereit"
+        _per_tag_freigegeben(karte, jetzt)
     return vorher != (karte.spalte, karte.extern_bearbeiter, karte.bearbeiter_art)
+
+
+def _per_tag_freigegeben(karte, jetzt: datetime | None) -> None:
+    """Audit-Spur: Die Freigabe kam über ein Tag im Repo, nicht über das Board."""
+    zeit = (jetzt or datetime.now(timezone.utc)).astimezone(projekte._zone()).strftime("%d.%m.%Y %H:%M")
+    karte.notiz = f"Freigabe per Tag im Repo ({zeit})"
 
 
 def _triage_verlassen(karte, spalte: str) -> None:
@@ -633,23 +667,22 @@ NOTIZ_GESCHLOSSEN = "Issue geschlossen"
 NOTIZ_VERWORFEN = "Issue geschlossen: wird nicht umgesetzt"
 
 
-async def _abschluss(anbieter, client, token: str, repo: str, nr: int, gekappt: bool) -> tuple[str | None, str | None]:
+async def _abschluss(anbieter, client, token: str, repo: str, nr: int) -> tuple[str | None, str | None]:
     """(Zustand, Abschlussgrund) eines Issues, das nicht mehr in der offenen Liste steht.
 
-    Nicht lesbar: geschlossen ohne Grund — es fehlt ja in der vollständigen Liste.
-    Nur bei gekappter Liste heißt „nicht lesbar“ „weiß nicht“ (dann bleibt die Karte).
+    Erst das ganze Issue (mit ``state_reason``), sonst nur der Zustand. Ist beides
+    nicht lesbar: (None, None) — die Karte bleibt offen, der nächste Abgleich fragt
+    erneut.
     """
     try:
         issue = await anbieter.get_issue(client, token, repo, nr) if hasattr(anbieter, "get_issue") else None
-    except Exception as e:  # noqa: BLE001 — Grund ist Beiwerk
+        if isinstance(issue, dict) and issue.get("state"):
+            grund = issue.get("state_reason")
+            return issue.get("state"), (grund if isinstance(grund, str) else None)
+        return await anbieter.issue_state(client, token, repo, nr), None
+    except Exception as e:  # noqa: BLE001 — nächster Abgleich versucht es wieder
         log.info("[Projekt] Abschluss von #%s nicht lesbar: %s", nr, e)
-        issue = None
-    if not isinstance(issue, dict):
-        if gekappt:
-            return await anbieter.issue_state(client, token, repo, nr), None
-        return "closed", None
-    grund = issue.get("state_reason")
-    return issue.get("state"), (grund if isinstance(grund, str) else None)
+        return None, None
 
 
 #: Höchstens so viele Ansprachen aus Issues je Abgleich und Projekt.
@@ -865,11 +898,12 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
             continue
         # Nicht mehr in der Liste: wirklich geschlossen — und warum? (Die Liste ist
         # bei MAX_ISSUES gekappt; „not planned“ heißt verworfen, nicht erledigt.)
-        gekappt = len(issues) >= MAX_ISSUES
-        zustand, grund = "closed", None
-        if gekappt or abschluss_abfragen < MAX_ABSCHLUSS_ABFRAGEN:
-            abschluss_abfragen += 1
-            zustand, grund = await _abschluss(anbieter, client, token, repo, nr, gekappt)
+        # Über der Grenze oder nicht lesbar: Karte bleibt offen, der nächste Abgleich
+        # fragt erneut — sonst wäre ein „not planned“ für immer „erledigt“.
+        if abschluss_abfragen >= MAX_ABSCHLUSS_ABFRAGEN:
+            continue
+        abschluss_abfragen += 1
+        zustand, grund = await _abschluss(anbieter, client, token, repo, nr)
         if zustand != "closed":
             continue
         if karte.spalte == "in_arbeit":
@@ -905,11 +939,12 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
                     # Ein offener PR schließt das Issue: es wartet auf Review und Merge
                     # (Vorrang vor Triage, In Arbeit und Bereit).
                     karte.spalte = "pruefung"
-                eigene_tags = tags_der_art(karte.labels, "in_arbeit")
-                if karte.task_id and eigene_tags and token:
+                board_tags = eigene_tags(karte.labels, "in_arbeit")
+                if karte.task_id and not karte.extern_bearbeiter and board_tags and token:
                     # Eigener Agent hat den PR gestellt: das Ticket ist nicht mehr „in Arbeit“,
-                    # sondern wartet auf Review — wie es die Übernahmeregeln verlangen.
-                    for tag in eigene_tags:
+                    # sondern wartet auf Review — wie es die Übernahmeregeln verlangen. Nur
+                    # das eigene Tag, und nie, wenn zugleich jemand von außen übernommen hat.
+                    for tag in board_tags:
                         try:
                             if await anbieter.remove_label(client, token, repo, karte.extern_nr, tag):
                                 karte.labels = [x for x in karte.labels if x != tag]
@@ -937,7 +972,7 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
             karte.pr_zustand = zustand
             if zustand == "gemergt":
                 karte.stufe = "merge"
-            if karte.quelle == "pr" and karte.spalte != "erledigt":
+            if karte.quelle == "pr" and karte.spalte not in ABGESCHLOSSEN:
                 karte.spalte, karte.erledigt_at = "erledigt", jetzt
                 erledigt += 1
 
@@ -1283,6 +1318,11 @@ async def uebergabe_schreiben(db: AsyncSession, redis, team: Team, karte: Projek
         tag = passendes_tag("in_arbeit", await repo_tags(anbieter, client, token, repo))
         if not await anbieter.add_labels(client, token, repo, karte.extern_nr, [tag]):
             raise GitFehler(f"Tag {tag} ließ sich nicht setzen (Schreibrecht für Issues?).")
+        # Übergeben heißt weiterarbeiten: keine Rückfrage mehr offen — sonst zöge der
+        # Abgleich die Karte über das Triage-Tag gleich wieder nach Triage.
+        for alt in tags_der_art(karte.labels, "triage"):
+            if await anbieter.remove_label(client, token, repo, karte.extern_nr, alt):
+                karte.labels = [x for x in karte.labels if x != alt]
         await anbieter.comment_issue(client, token, repo, karte.extern_nr, text)
     # Selbst geschrieben, mit dem Schlüssel des Projekts: vertraut.
     neu = uebernahme.lesen({"id": None, "body": text, "erstellt": jetzt.isoformat(), "vertraut": True})
@@ -1327,8 +1367,11 @@ async def uebernahme_melden(team_id: str, karte_id: str, redis, *, agent_name: s
                 else:
                     tag = UEBERNAHME_TAG
                     ok = True
-                    for alt in tags_der_art(karte.labels, "in_arbeit") or [UEBERNAHME_TAG]:
-                        ok = await anbieter.remove_label(client, token, repo, nr, alt) and ok
+                    # Nur das Tag, das das Board selbst setzt — und keins, wenn zugleich
+                    # jemand von außen übernommen hat (dessen Tag ist nicht unseres).
+                    if not karte.extern_bearbeiter:
+                        for alt in eigene_tags(karte.labels, "in_arbeit") or [UEBERNAHME_TAG]:
+                            ok = await anbieter.remove_label(client, token, repo, nr, alt) and ok
                     await anbieter.comment_issue(client, token, repo, nr, uebernahme.rueckgabe_kommentar(
                         agent_name=agent_name, agent_id=agent_id, lauf=lauf))
             if not ok:
@@ -1386,21 +1429,32 @@ async def extern_freigeben(db: AsyncSession, redis, team: Team, karte: ProjektKa
                    else "Fremde Übernahme gelöst.")
 
 
+#: Spalten, die ``status_ins_repo`` ins Issue schreibt.
+REPO_SPALTEN = ("triage", "bereit", "eingang", "verworfen")
+
+
 async def status_ins_repo(db: AsyncSession, redis, team: Team, karte: ProjektKarte, stand: str, *,
                           agent_name: str | None = None, agent_id: str | None = None,
                           lauf: str | None = None) -> list[str]:
-    """Triage oder Bereit als Tag ins Issue schreiben — der Abgleich liest die Spalte von dort.
+    """Die neue Spalte einer Issue-Karte als Tag ins Issue — der Abgleich liest sie von dort.
 
-    * ``triage`` (ein Agent hat eine Rückfrage): Triage-Tag setzen, In-Arbeit- und
-      Bereit-Tags weg. Hielt ein Agent dieser Anlage das Ticket (``agent_id``),
-      gibt ein Kommentar mit Rückgabe-Kopfzeile die Übernahme frei.
+    * ``triage`` (Rückfrage): Triage-Tag setzen. Nur mit Halter (``agent_id``: der
+      Agent seiner eigenen laufenden Karte) kommen dessen In-Arbeit- und Bereit-Tags
+      weg (nur die, die das Board selbst setzt) und ein Kommentar mit
+      Rückgabe-Kopfzeile gibt die Übernahme frei. Ohne Halter fasst es keine
+      anderen Tags an.
     * ``bereit`` (ein Mensch gibt frei): Bereit-Tag setzen, alle Triage-Tags weg.
+    * ``eingang``/``verworfen`` (ein Mensch nimmt Bereit oder Triage zurück):
+      Bereit- und Triage-Tags weg — sonst holte der Abgleich die Karte zurück.
 
-    Gesetzt wird das Tag, das es im Repo schon gibt (``passendes_tag``: etwa
-    ``agent:blocked`` statt ``status/triage``). Liefert die Tags des Issues danach;
-    GitFehler, wenn das Repo nicht erreichbar oder nicht beschreibbar ist.
+    Triage-Tags entfernt das Board alle, die es als Triage liest — auch fremde wie
+    ``claude:needs-human``: Ein verbliebenes zöge die Karte sonst gleich wieder
+    nach Triage. Gesetzt wird das Tag, das es im Repo schon gibt (``passendes_tag``).
+    Liefert die Tags des Issues danach (``karte.labels`` bleibt unverändert — der
+    Aufrufer übernimmt sie unter seiner Sperre); GitFehler, wenn das Repo nicht
+    erreichbar oder nicht beschreibbar ist.
     """
-    if stand not in ("triage", "bereit"):
+    if stand not in REPO_SPALTEN:
         raise ValueError(stand)
     if karte.quelle != "issue" or not karte.extern_nr or not team.repo:
         return list(karte.labels or [])
@@ -1408,16 +1462,23 @@ async def status_ins_repo(db: AsyncSession, redis, team: Team, karte: ProjektKar
     if not token:
         raise GitFehler("Ohne Schlüssel kann das Board nichts ins Repo schreiben (Bearbeiten → Schlüssel).")
     repo, nr = repo_ziel(team.repo).pfad, karte.extern_nr
-    weg_arten = ("in_arbeit", "bereit") if stand == "triage" else ("triage",)
     async with httpx.AsyncClient(timeout=httpx.Timeout(10.0), follow_redirects=False) as client:
         issue = await anbieter.get_issue(client, token, repo, nr) if hasattr(anbieter, "get_issue") else None
         aktuell = _labels(issue) if isinstance(issue, dict) else list(karte.labels or [])
-        tag = passendes_tag(stand, await repo_tags(anbieter, client, token, repo))
-        if tag.lower() not in {t.lower() for t in aktuell}:
+        tag = None
+        if stand in ("triage", "bereit"):
+            tag = passendes_tag(stand, await repo_tags(anbieter, client, token, repo))
+        if stand == "triage":
+            weg = (eigene_tags(aktuell, "in_arbeit") + eigene_tags(aktuell, "bereit")) if agent_id else []
+        elif stand == "bereit":
+            weg = tags_der_art(aktuell, "triage")
+        else:
+            weg = tags_der_art(aktuell, "bereit") + tags_der_art(aktuell, "triage")
+        if tag and tag.lower() not in {t.lower() for t in aktuell}:
             if not await anbieter.add_labels(client, token, repo, nr, [tag]):
                 raise GitFehler(f"Tag {tag} ließ sich nicht setzen (Schreibrecht für Issues?).")
             aktuell.append(tag)
-        for alt in [t for t in aktuell if tag_stand(t) in weg_arten and t.lower() != tag.lower()]:
+        for alt in [t for t in weg if not tag or t.lower() != tag.lower()]:
             if not await anbieter.remove_label(client, token, repo, nr, alt):
                 raise GitFehler(f"Tag {alt} ließ sich nicht entfernen (Schreibrecht für Issues?).")
             aktuell.remove(alt)
@@ -1425,8 +1486,7 @@ async def status_ins_repo(db: AsyncSession, redis, team: Team, karte: ProjektKar
             bereit_tag = passendes_tag("bereit", await repo_tags(anbieter, client, token, repo))
             await anbieter.comment_issue(client, token, repo, nr, uebernahme.rueckfrage_kommentar(
                 agent_name=agent_name, agent_id=agent_id, lauf=lauf, triage_tag=tag, bereit_tag=bereit_tag))
-    karte.labels = aktuell[:20]
-    return karte.labels
+    return aktuell[:20]
 
 
 #: Höchstens so viele Issue-Kommentare je Agent und Stunde — atomar in Redis gezählt,

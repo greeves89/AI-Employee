@@ -816,73 +816,128 @@ class KarteAendern(BaseModel):
     text: str | None = Field(default=None, max_length=20000)
 
 
+#: Gesamtfrist für das Schreiben ins Repo beim Umstellen einer Karte — ohne Zeilensperre.
+REPO_FRIST_SEKUNDEN = 20
+#: So lange wartet das Umstellen danach höchstens auf die Sperre der Karte.
+SPERRE_WARTEN_SEKUNDEN = 3
+
+
 @router.patch("/{team_id}/karten/{karte_id}")
 async def karte_aendern(team_id: str, karte_id: str, body: KarteAendern, user=Depends(require_auth_or_agent),
                         db: AsyncSession = Depends(get_db), redis=Depends(get_redis_service)):
     """Karte umstellen. Agenten geben nie frei (Bereit) und verwerfen nicht; eine
-    Rückfrage (Triage) dürfen sie stellen. Bei Issue-Karten schreibt das Board
-    Triage bzw. Bereit als Tag ins Issue (``projekt_git.status_ins_repo``)."""
+    Rückfrage (Triage) dürfen sie stellen (``projekte.verschieben_pruefen``).
+
+    Bei Issue-Karten schreibt das Board die neue Spalte ins Issue
+    (``projekt_git.status_ins_repo``) — OHNE Zeilensperre: erst prüfen, dann ins
+    Repo (Gesamtfrist ``REPO_FRIST_SEKUNDEN``), dann kurz sperren, nachsehen, dass
+    sich die Karte nicht bewegt hat, umstellen. Muss das Repo es wissen (sonst holte
+    der Abgleich die Karte zurück) und klappt es nicht: 424, nichts geändert.
+    """
+    from sqlalchemy.exc import DBAPIError
+
     from app.core import projekte
+    from app.core.db_sperre import warten_hoechstens
 
     _kein_betrachter(user)
     t = await _projekt(team_id, user, db)
     agent_id = str(user.id) if is_agent_principal(user) else None
     try:
-        karte = await projekte.karte_laden(db, t.id, karte_id, sperren=True)
-        vorher, lauf = karte.spalte, karte.task_id
-        projekte.verschieben(karte, spalte=body.spalte, prioritaet=body.prioritaet,
-                             reihenfolge=body.reihenfolge, notiz=body.notiz, von_agent=agent_id)
+        karte = await projekte.karte_laden(db, t.id, karte_id)
+        projekte.verschieben_pruefen(karte, body.spalte, agent_id)
     except (LookupError, projekte.KartenFehler) as e:
         await db.rollback()
         raise _kartenfehler(e)
     # Titel und Text: nur eigene Karten (Issues kommen aus dem Repo), nur in der Inbox
     # (danach ist sie eingeplant oder vergeben) und nur vom Nutzer, dem die Karte
     # gehoert — sonst liesse sich ein Auftrag an fremde Agenten unterschieben.
-    if body.titel is not None or body.text is not None:
-        # Auch fuer Administratoren: sonst liesse sich die Rahmung fremder Karten umgehen.
-        if karte.quelle != "eigen" or karte.spalte != "eingang" or (
-            karte.ersteller_user_id != await _besitzer(user, db)
-        ):
-            await db.rollback()
-            raise HTTPException(status_code=409, detail="Titel und Text ändert nur, wem die Karte gehört — und nur in der Inbox.")
-        if body.titel is not None:
-            karte.titel = body.titel.strip()
-        if body.text is not None:
-            karte.text = body.text.strip()
-    if karte.quelle == "issue" and t.repo and karte.spalte != vorher and karte.spalte in ("triage", "bereit"):
-        await _status_ins_repo(db, redis, t, karte, vorher=vorher, lauf=lauf, agent_id=agent_id)
+    # Auch fuer Administratoren: sonst liesse sich die Rahmung fremder Karten umgehen.
+    if (body.titel is not None or body.text is not None) and (
+            karte.quelle != "eigen" or (body.spalte or karte.spalte) != "eingang"
+            or karte.ersteller_user_id != await _besitzer(user, db)):
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Titel und Text ändert nur, wem die Karte gehört — und nur in der Inbox.")
+    vorher, lauf = karte.spalte, karte.task_id
+    labels = await _status_ins_repo(db, redis, t, karte, ziel=body.spalte, agent_id=agent_id)
+
+    try:
+        await warten_hoechstens(db, SPERRE_WARTEN_SEKUNDEN)
+        karte = await projekte.karte_laden(db, t.id, karte_id, sperren=True)
+    except LookupError as e:
+        await db.rollback()
+        raise _kartenfehler(e)
+    except DBAPIError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Die Karte wird gerade geändert — bitte gleich noch einmal.")
+    if (karte.spalte, karte.task_id) != (vorher, lauf):
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Die Karte hat sich inzwischen bewegt — bitte neu laden.")
+    try:
+        projekte.verschieben(karte, spalte=body.spalte, prioritaet=body.prioritaet,
+                             reihenfolge=body.reihenfolge, notiz=body.notiz, von_agent=agent_id)
+    except projekte.KartenFehler as e:
+        await db.rollback()
+        raise _kartenfehler(e)
+    if body.titel is not None:
+        karte.titel = body.titel.strip()
+    if body.text is not None:
+        karte.text = body.text.strip()
+    if labels is not None:
+        karte.labels = labels
     await db.commit()
     return projekte.karte_dict(karte)
 
 
-async def _status_ins_repo(db: AsyncSession, redis, t: Team, karte, *, vorher: str, lauf: str | None,
-                           agent_id: str | None) -> None:
-    """Triage/Bereit ins Issue schreiben — mit der Karte, die schon umgestellt ist.
+async def _status_ins_repo(db: AsyncSession, redis, t: Team, karte, *, ziel: str | None,
+                           agent_id: str | None) -> list[str] | None:
+    """Die neue Spalte einer Issue-Karte ins Repo — VOR dem Umstellen, ohne Sperre.
 
-    Freigabe durch einen Menschen (Bereit) an einer Karte mit Triage-Tag MUSS im
-    Repo ankommen — sonst holte der nächste Abgleich sie zurück nach Triage: dann
-    bleibt alles, wie es war (424). Sonst ist das Tag Beiwerk: ein Fehler steht
-    im Protokoll, die Karte ist trotzdem umgestellt.
+    Liefert die neuen Tags (oder None, wenn nichts zu schreiben war bzw. es nicht
+    geklappt hat und es nicht nötig ist). Nötig ist es, wenn die Karte Tags trägt,
+    die sie sonst beim nächsten Abgleich zurückholten: Triage-Tags beim Freigeben,
+    Bereit-/Triage-Tags beim Zurücknehmen in die Inbox oder beim Verwerfen. Dann
+    424 — mit der Meldung des Repos nur bei einem GitFehler, sonst allgemein.
     """
-    from app.core import projekt_git
+    import asyncio
 
-    name = None
-    if agent_id:
-        name = await db.scalar(select(Agent.name).where(Agent.id == agent_id))
+    from app.core import projekt_git, projekte
+
+    if karte.quelle != "issue" or not t.repo or not ziel or ziel == karte.spalte:
+        return None
+    # Was ins Repo gehört: jede Rückfrage; die Freigabe durch einen Menschen; und wenn
+    # ein Mensch Bereit oder Triage zurück in die Inbox nimmt oder verwirft.
+    mensch = agent_id is None
+    if not (ziel == "triage" or (mensch and ziel == "bereit")
+            or (mensch and ziel in ("eingang", "verworfen") and karte.spalte in ("bereit", "triage"))):
+        return None
+    halter = agent_id if projekte.eigener_lauf(karte, agent_id) else None
+    name = await db.scalar(select(Agent.name).where(Agent.id == halter)) if halter else None
+    if ziel == "bereit":
+        noetig = bool(projekt_git.tags_der_art(karte.labels, "triage"))
+    elif ziel in ("eingang", "verworfen"):
+        noetig = bool(projekt_git.tags_der_art(karte.labels, "triage")
+                      or projekt_git.tags_der_art(karte.labels, "bereit"))
+    else:
+        noetig = False  # Triage ohne Tag holt der Abgleich nicht zurück (projekt_git.extern_nachziehen)
     try:
-        await projekt_git.status_ins_repo(
-            db, redis, t, karte, karte.spalte, agent_name=name,
-            # Die Übernahme gibt nur frei, wer sie hielt (der Agent seiner eigenen Karte).
-            agent_id=agent_id if agent_id and vorher == "in_arbeit" and karte.agent_id == agent_id else None,
-            lauf=lauf)
-    except Exception as e:  # noqa: BLE001 — GitFehler, Netz
-        if karte.spalte == "bereit" and projekt_git.tags_der_art(karte.labels, "triage"):
-            await db.rollback()
-            raise HTTPException(status_code=424, detail=(
-                f"Freigabe nicht ins Repo geschrieben: {e} Ohne das wäre die Karte beim nächsten Abgleich "
-                "wieder in Triage — bitte das Triage-Tag im Issue selbst entfernen."))
-        projekt_git.log.warning("[Projekt] Spalte %s von #%s nicht ins Repo geschrieben: %s",
-                                karte.spalte, karte.extern_nr, e)
+        return await asyncio.wait_for(
+            projekt_git.status_ins_repo(db, redis, t, karte, ziel, agent_name=name, agent_id=halter,
+                                        lauf=karte.task_id if halter else None),
+            timeout=REPO_FRIST_SEKUNDEN)
+    except projekt_git.GitFehler as e:
+        meldung = str(e)
+    except Exception as e:  # noqa: BLE001 — Netz, Zeitüberschreitung, Antwort des Servers
+        projekt_git.log.warning("[Projekt] Spalte %s von #%s nicht ins Repo geschrieben: %r",
+                                ziel, karte.extern_nr, e)
+        meldung = "Das Repo hat nicht (rechtzeitig) geantwortet."
+    if not noetig:
+        projekt_git.log.info("[Projekt] Spalte %s von #%s nicht ins Repo geschrieben: %s",
+                             ziel, karte.extern_nr, meldung)
+        return None
+    await db.rollback()
+    raise HTTPException(status_code=424, detail=(
+        f"Nicht umgestellt: {meldung} Das Tag im Issue bliebe sonst stehen und der nächste Abgleich holte die "
+        "Karte zurück — bitte die Tags im Issue selbst anpassen oder später noch einmal."))
 
 
 class Vergeben(BaseModel):
