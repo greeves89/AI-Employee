@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.398.0] - 2026-10-29
+
+### Sekretariat / Seite „Heute“
+- Behoben: Die Termine auf der Seite „Heute“ ließen sich nicht laden, weil Microsoft die Kalenderabfrage wegen falsch kodierter Zeitangaben ablehnte.
+- Der Posteingang zeigt die echte Zahl ungelesener Mails und ordnet sie in „Braucht dich“, „Weitere“ und „Automatisch“. Je Mail gibt es Öffnen, Antwort entwerfen, Erinnern und Erledigt (als gelesen markieren, archivieren oder in einen Ordner ablegen).
+- Fehlen Termine oder Posteingang, nennt die Seite den Grund (nicht verbunden, abgelaufen, Berechtigung fehlt, Störung, Zeitüberschreitung) und bietet „Erneut versuchen“ und „Verbinden“ an.
+- Das Tagesbriefing nutzt dieselben Daten wie die Seite, hat eine feste Gliederung (Top 3 heute, Termine, Wartet auf dich, Fristen), zeigt seine Uhrzeit und lässt sich mit „Neu erstellen“ sofort anstoßen.
+- Mail-Entwürfe lassen sich vor dem Freigeben bearbeiten. Beim Ablehnen kann man eine Begründung angeben: Sie geht an den Agenten, und daraus entsteht ein Regel-Vorschlag. Rückfragen sind deutlich von Mail-Freigaben unterschieden.
+- Regeln lassen sich bearbeiten. Das Löschen fragt vorher nach und meldet Fehler. Bei leerer Liste gibt es Vorschläge aus dem Posteingang.
+- Erinnerungen: „Später“ (1 Std., morgen 9:00, nächste Woche), „Nachfassen“ nach einer gesendeten Mail, Fristen aus Mails übernehmen.
+- Neu: Protokoll „Was das Sekretariat heute getan hat“, Termine von morgen und ein Hinweis, welches Modell die Mailinhalte verarbeitet.
+
+### Datenbank
+- Migration `a8b9c0d1e2f3`: Tabelle `sekretariat_protokoll`, Spalte `erinnerungen.bezug`.
+
 ## [1.397.0] - 2026-10-29
 
 ### Neu
