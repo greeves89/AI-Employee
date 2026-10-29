@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.398.2] - 2026-10-29
+
+### Behoben
+- **Microsoft-Verbindung galt plötzlich als getrennt (#1013).** Microsoft tauscht den Refresh-Token bei jeder Erneuerung aus. Erneuerten zwei Stellen gleichzeitig dasselbe Token (Seite „Heute“, Mail-Freigabe, ein Agent über MCP, die Sprachfront, Besprechungen, der Hintergrund-Job), verbrauchte die erste den Token, und die zweite scheiterte mit einem bereits ungültigen. Die Verbindung wurde als getrennt gemeldet.
+  - Jetzt erneuert je Integration immer nur einer (Sperre in der Datenbank).
+  - Wer wartet, übernimmt danach das Ergebnis, statt noch einmal zu erneuern.
+  - Dieselbe Sperre wie bei MCP-Servern (#462), jetzt gemeinsam in `core/db_sperre`.
+  - Ist der Token nach dem Warten ohnehin frisch, wird nicht noch einmal erneuert. Die erzwungene Erneuerung für Anthropic bleibt erzwungen.
+  - Gewartet wird höchstens 30 Sekunden.
+  - Ein Fehlschlag gibt die Sperre frei, ohne die Arbeit der übrigen Sitzung zu verwerfen. Der Hintergrund-Job erneuert nach einem Fehler die übrigen Integrationen weiter.
+
 ## [1.398.1] - 2026-10-29
 
 ### Behoben
