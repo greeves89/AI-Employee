@@ -382,7 +382,7 @@ export default function ProjektPage() {
           </div>
 
           {reiter === "board" && (
-            <ProjektBoardAnsicht board={board} agents={agents} mitglieder={mitgliederIds} leadId={projekt.lead_agent_id}
+            <ProjektBoardAnsicht projektId={id} board={board} agents={agents} mitglieder={mitgliederIds} leadId={projekt.lead_agent_id}
               farbe={farbe} aktionen={aktionen} />
           )}
           {reiter === "raum" && (

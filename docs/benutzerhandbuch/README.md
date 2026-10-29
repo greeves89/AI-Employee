@@ -1045,7 +1045,7 @@ Der Reiter **Board** hat fünf Spalten:
 |---|---|---|
 | **Eingang** | Neu, noch nicht gesichtet | **Einplanen** (→ Bereit) oder **verwerfen** (Papierkorb) |
 | **Bereit** | Eingeplant, wartet auf einen Agenten | Empfänger wählen und **Los** klicken — der Agent legt los |
-| **In Arbeit** | Ein Agent arbeitet daran | Letzte Ausgabe, Stufe und Pull Request ansehen; Klick auf den Titel öffnet den Lauf |
+| **In Arbeit** | Ein Agent arbeitet daran | Letzte Ausgabe, Stufe und Pull Request ansehen |
 | **Prüfung** | Der Agent ist fertig (oder gescheitert) | **Abnehmen** oder **Zurückgeben** |
 | **Erledigt** | Abgenommen oder verworfen (letzte 30 Tage) | — |
 
@@ -1056,6 +1056,25 @@ Der Reiter **Board** hat fünf Spalten:
 - Das **+** in der Spalte Eingang legt eine neue Karte an (Titel und Beschreibung).
 - Beim **Los** in der Spalte Bereit wählst du im Auswahlfeld „Lead verteilt“ oder
   „Direkt: …“ einen bestimmten Agenten.
+
+**Eine Karte im Fenster öffnen** *(seit 1.397.0)*:
+
+1. Klicke irgendwo auf die Karte, nur nicht auf einen ihrer Knöpfe. Es öffnet sich ein Fenster
+   über dem Board, du bleibst auf der Seite.
+2. Im Fenster stehen:
+   - die **ganze Beschreibung** (auf der Karte ist sie gekürzt),
+   - alle Tags, das Ticket im Repo und der Pull Request,
+   - der Stand der Arbeit und, falls schon gelaufen, das Ergebnis oder der Fehler des Laufs.
+3. Unten stehen dieselben Knöpfe wie auf der Karte: Einplanen, Los, Abnehmen, Zurückgeben,
+   Freigeben. Die Änderung siehst du sofort im Fenster.
+4. **Lauf ansehen** öffnet den ganzen Lauf mit Verlauf und Dateien in einem zweiten Fenster
+   darüber. **Esc** schließt immer nur das oberste Fenster.
+
+**Aufgaben öffnen sich überall im Fenster** *(seit 1.397.0)*: Ein Klick auf eine Aufgabe öffnet
+sie über der Seite, in einem einheitlichen Fenster. Das gilt in der Aufgabenliste, auf der
+Agenten-Seite, im Leitstand, im Aktivitätsverlauf, in den Benachrichtigungen und bei den
+Aufgaben-Kacheln im Chat. Mit **Strg/Cmd-Klick** öffnest du die Aufgabe wie bisher als eigene
+Seite in einem neuen Tab.
 
 ### 6a.4 Einen Auftrag geben
 

@@ -34,6 +34,7 @@ import { ApprovalPrompt, type ApprovalPromptData } from "@/components/agents/app
 import { useAuthStore } from "@/lib/auth";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
+import { useAufgabeFenster } from "@/components/tasks/aufgabe-fenster";
 import { einfuegenTaste, inZwischenablage } from "@/lib/zwischenablage";
 import { ohneZielMarke, type ZielStand } from "@/lib/ziel-marke";
 import { gemeldetesGespraech, offeneRueckfrage, rueckfrageErgebnis, zielBannerSichtbar } from "@/lib/chat-zustand";
@@ -626,8 +627,8 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   }, []);
   const auftraegeGesamt = alleAuftraege.length;
   // Aufgabe, deren Einzelheiten gerade im Fenster stehen (null = zu).
-  const [cardDetail, setCardDetail] = useState<TaskCard | null>(null);
-  const [cardDetailFull, setCardDetailFull] = useState<Record<string, unknown> | null>(null);
+  // Kachel ansehen: das gemeinsame Aufgaben-Fenster (vorher ein eigenes, knapperes).
+  const { oeffnen: aufgabeOeffnen } = useAufgabeFenster();
   const [input, setInput] = useState("");
   // Reasoning depth, picked by the user (like the thinking selector in
   // ChatGPT/Claude Code). "" = leave the agent's harness at its default.
@@ -1866,16 +1867,9 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
    * Rueckweg kostet einen Klick, und wer nur kurz nachsehen wollte, verliert den
    * Faden. Die vollstaendige Aufgabe wird nachgeladen; die Kachel selbst zeigt
    * sofort, was sie schon weiss. */
-  const openCardDetail = useCallback(async (card: TaskCard) => {
-    setCardDetail(card);
-    setCardDetailFull(null);
-    try {
-      const task = await api.getTask(card.task_id);
-      setCardDetailFull(task as unknown as Record<string, unknown>);
-    } catch {
-      setCardDetailFull(null);   // Kachelangaben genuegen dann
-    }
-  }, []);
+  const openCardDetail = useCallback((card: TaskCard) => {
+    aufgabeOeffnen(card.task_id);
+  }, [aufgabeOeffnen]);
 
   const jumpToLatest = useCallback(() => {
     followRef.current = true;
@@ -2898,77 +2892,6 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
 
       {/* Einzelheiten einer Auftrags-Kachel — im Fenster, damit das Gespraech
           stehen bleibt. */}
-      {cardDetail && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
-          onClick={() => setCardDetail(null)}
-        >
-          <div
-            className="max-h-[80dvh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start gap-3">
-              <h3 className="min-w-0 flex-1 text-sm font-semibold">{cardDetail.title}</h3>
-              <button
-                type="button"
-                onClick={() => setCardDetail(null)}
-                className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent"
-                aria-label="Schließen"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
-              <dt className="text-muted-foreground">Bearbeiter</dt>
-              <dd>{cardDetail.assigned_agent_name || "—"}</dd>
-              <dt className="text-muted-foreground">Stand</dt>
-              <dd>
-                {cardDetail.phase === "done"
-                  ? cardDetail.status === "failed" ? "fehlgeschlagen" : "abgeschlossen"
-                  : "in Arbeit"}
-              </dd>
-              <dt className="text-muted-foreground">Kennung</dt>
-              <dd className="font-mono">{cardDetail.task_id}</dd>
-              {cardDetail.duration_ms ? (
-                <>
-                  <dt className="text-muted-foreground">Dauer</dt>
-                  <dd>{Math.round(cardDetail.duration_ms / 1000)} s</dd>
-                </>
-              ) : null}
-            </dl>
-
-            {cardDetailFull?.prompt ? (
-              <>
-                <h4 className="mt-4 text-xs font-semibold text-muted-foreground">Auftrag</h4>
-                <pre className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg bg-foreground/[0.04] p-3 text-xs">
-                  {String(cardDetailFull.prompt)}
-                </pre>
-              </>
-            ) : null}
-
-            {(cardDetailFull?.result || cardDetail.result_preview) ? (
-              <>
-                <h4 className="mt-4 text-xs font-semibold text-muted-foreground">Ergebnis</h4>
-                <div className="mt-1 max-h-72 overflow-y-auto rounded-lg bg-foreground/[0.04] p-3 text-xs">
-                  <MarkdownContent content={String(cardDetailFull?.result || cardDetail.result_preview)} />
-                </div>
-              </>
-            ) : cardDetail.phase !== "done" ? (
-              <p className="mt-4 text-xs text-muted-foreground">
-                Läuft noch — das Ergebnis erscheint hier, sobald es vorliegt.
-              </p>
-            ) : null}
-
-            <a
-              href={`/tasks/${cardDetail.task_id}`}
-              className="mt-4 inline-block text-xs underline-offset-2 hover:underline"
-            >
-              Vollständige Aufgabenseite öffnen
-            </a>
-          </div>
-        </div>
-      )}
 
       {/* L3 Approval Request Banner */}
       {/* Tafeln für /tools und /compact. Beides sind Auskuenfte, keine Auftraege
