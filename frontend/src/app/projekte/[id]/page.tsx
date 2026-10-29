@@ -159,6 +159,17 @@ export default function ProjektPage() {
         toast.error("Nicht freigegeben", apiFehlertext(e));
       }
     },
+    uebergeben: async (k, body) => {
+      try {
+        const neu = await api.karteUebergeben(id, k.id, body);
+        toast.success("Übergeben", `#${k.extern_nr} an ${neu.extern_bearbeiter ?? "den Agenten"} — Stand und nächster Schritt stehen im Issue.`);
+        await laden();
+        agentenNeu();
+      } catch (e) {
+        toast.error("Nicht übergeben", apiFehlertext(e));
+        throw e;
+      }
+    },
     zurueckgeben: async (k, hinweis, agentId) => {
       try {
         await api.karteZurueckgeben(id, k.id, hinweis, agentId);

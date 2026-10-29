@@ -48,8 +48,26 @@ MENSCH = "mensch"
 EXTERN = "extern"
 ARTEN = (PLATTFORM, CLAUDE_CODE, ANDERE_ANLAGE, MENSCH, EXTERN)
 
-#: Standard-Dauer einer Übernahme ab dem letzten Lebenszeichen (Stufe 2 macht sie wirksam).
+#: Standard-Dauer einer Übernahme ab dem letzten Lebenszeichen; je Projekt
+#: einstellbar (``teams.uebernahme_stunden``, ``dauer_fuer``).
 DAUER = timedelta(hours=2)
+STANDARD_STUNDEN = 2
+#: Höchstens so viele offene Übernahmen je Bearbeiter (``teams.max_uebernahmen``).
+STANDARD_OBERGRENZE = 2
+#: So lange nach dem Ablauf einer fremden Übernahme wartet ein Plattform-Agent, bevor
+#: er sie (mit ausdrücklicher Erlaubnis des Projekts) selbst übernimmt.
+KARENZ = timedelta(minutes=30)
+
+
+def dauer_fuer(team) -> timedelta:
+    """Dauer einer Übernahme in diesem Projekt (1–24 Stunden, Standard 2)."""
+    stunden = getattr(team, "uebernahme_stunden", None) or STANDARD_STUNDEN
+    return timedelta(hours=min(24, max(1, int(stunden))))
+
+
+def obergrenze_fuer(team) -> int:
+    """Höchstens so viele offene Übernahmen je Bearbeiter in diesem Projekt (Standard 2)."""
+    return min(20, max(1, int(getattr(team, "max_uebernahmen", None) or STANDARD_OBERGRENZE)))
 
 _KOPF = re.compile(r"^<!--\s*ai-employee:(claim|release)\b(.*?)-->", re.S)
 _FELD = re.compile(r'\b([a-z_]{2,12})="([^"\n]{0,400})"')
@@ -133,6 +151,11 @@ class Uebernahme:
     kommentar_id: int | None = None
     kopfzeile: bool = False
     freigabe: bool = False
+    # Wann der Kommentar zuletzt geändert wurde — eine aktualisierte Kopfzeile ist
+    # ein Lebenszeichen.
+    geaendert: datetime | None = None
+    # Übergabe oder Übernahme nach Ablauf: wessen Übernahme damit endet (``wer``).
+    vorher: str | None = None
     extra: dict = field(default_factory=dict)
 
     def als_dict(self) -> dict:
@@ -142,6 +165,7 @@ class Uebernahme:
             "agent_id": self.agent_id, "lauf": self.lauf, "branch": self.branch,
             "seit": self.seit.isoformat() if self.seit else None,
             "bis": self.bis.isoformat() if self.bis else None,
+            "geaendert": self.geaendert.isoformat() if self.geaendert else None,
             "kommentar_id": self.kommentar_id, "kopfzeile": self.kopfzeile,
         }
 
@@ -155,7 +179,27 @@ class Uebernahme:
                    anlage=d.get("anlage"), agent=d.get("agent"), agent_id=_kennung(d.get("agent_id")),
                    lauf=_kennung(d.get("lauf")), branch=d.get("branch"), seit=_zeit(d.get("seit")),
                    bis=_zeit(d.get("bis")), kommentar_id=kid if isinstance(kid, int) else None,
-                   kopfzeile=bool(d.get("kopfzeile")))
+                   kopfzeile=bool(d.get("kopfzeile")), geaendert=_zeit(d.get("geaendert")))
+
+    def ablauf(self, dauer: timedelta = DAUER, regung: datetime | None = None) -> datetime | None:
+        """Bis wann die Übernahme gilt.
+
+        ``bis`` aus der Kopfzeile (sonst ``seit`` plus Dauer) — verlängert durch jedes
+        Lebenszeichen: eine geänderte Kopfzeile oder ``regung`` (Commit auf dem
+        Branch, Bewegung am Issue) plus Dauer.
+        """
+        kandidaten = [self.bis or (self.seit + dauer if self.seit else None)]
+        if self.kopfzeile and self.geaendert:
+            kandidaten.append(self.geaendert + dauer)
+        if regung is not None:
+            kandidaten.append(_zeit(regung) + dauer)
+        kandidaten = [k for k in kandidaten if k is not None]
+        return max(kandidaten) if kandidaten else None
+
+    def abgelaufen(self, jetzt: datetime | None = None, dauer: timedelta = DAUER,
+                   regung: datetime | None = None) -> bool:
+        ende = self.ablauf(dauer, regung)
+        return ende is not None and (jetzt or _jetzt()) > ende
 
     def gehoert(self, *, agent_id: str | None = None, lauf: str | None = None,
                 agent_name: str | None = None) -> bool:
@@ -213,12 +257,14 @@ def lesen(kommentar: dict, eigene_anlage: str | None = None) -> Uebernahme | Non
             felder.setdefault(name, wert)
         wer, art, name, anlage, agent = _wer_lesen(felder.get("wer", ""), eigene_anlage)
         branch = _wert(felder.get("branch", ""), 200)
+        vorher = _wer_lesen(felder["vorher"], eigene_anlage)[0] if felder.get("vorher") else None
         return Uebernahme(
             wer=wer, art=art, name=name, anlage=anlage, agent=agent,
             agent_id=_kennung(felder.get("agent_id")), lauf=_kennung(felder.get("lauf")),
             branch=branch if branch and _BRANCH.match(branch) else None,
             seit=_zeit(felder.get("seit")) or erstellt, bis=_zeit(felder.get("bis")),
             kommentar_id=kid, kopfzeile=True, freigabe=kopf.group(1) == "release",
+            geaendert=_zeit(kommentar.get("geaendert")), vorher=vorher,
         )
     erste = next((z.strip() for z in text.splitlines() if z.strip()), "")[:400]
     if not erste or erste.startswith(">"):
@@ -245,31 +291,65 @@ def _reihenfolge(k: dict):
     return (zeit or datetime.min.replace(tzinfo=timezone.utc), kid)
 
 
-def inhaber(kommentare: list[dict], eigene_anlage: str | None = None) -> Uebernahme | None:
-    """Die jüngste Übernahme, die nicht zurückgegeben wurde — oder None.
+def _selbe(a: Uebernahme, b: Uebernahme) -> bool:
+    """Derselbe Inhaber? (gleiches ``wer`` — oder gleicher Agent derselben Anlage)"""
+    return a.wer == b.wer or bool(a.agent_id and a.agent_id == b.agent_id and a.anlage == b.anlage)
 
-    Eine Rückgabe mit ``wer`` gibt nur die Übernahme DIESES Inhabers frei; eine
-    Rückgabe ohne (Freitext, „Übernahme gelöst“ über das Board) jede.
+
+@dataclass
+class Auswertung:
+    """Was die Kommentare eines Issues über seine Übernahme sagen."""
+
+    inhaber: Uebernahme | None = None
+    # Eine zweite, noch gültige Übernahme eines ANDEREN — zwei arbeiten am selben Ticket.
+    konkurrent: Uebernahme | None = None
+
+
+def auswerten(kommentare: list[dict], eigene_anlage: str | None = None, *, jetzt: datetime | None = None,
+              dauer: timedelta = DAUER) -> Auswertung:
+    """Inhaber und Konkurrent aus den Kommentaren, in zeitlicher Reihenfolge gelesen.
+
+    Offen bleibt jede Übernahme, bis sie zurückgegeben wird: Eine Rückgabe mit
+    ``wer`` gibt nur die Übernahme DIESES Inhabers frei, eine ohne (Freitext,
+    „Übernahme gelöst“ über das Board) jede. Eine Übergabe bzw. Übernahme nach
+    Ablauf (Feld ``vorher``) beendet die Übernahme des Vorgängers. Inhaber ist die
+    jüngste offene Übernahme; ist daneben eine ältere eines anderen noch gültig
+    (nicht abgelaufen), ist das ein Konflikt.
     """
     eigene_anlage = eigene_anlage or anlage_kennung()
-    aktuell: Uebernahme | None = None
+    jetzt = jetzt or _jetzt()
+    offen: list[Uebernahme] = []
     for k in sorted((k for k in kommentare or [] if isinstance(k, dict)), key=_reihenfolge):
         u = lesen(k, eigene_anlage)
         if u is None:
             continue
         if u.freigabe:
-            if aktuell is not None and (not u.kopfzeile or u.wer in (aktuell.wer, "extern")
-                                        or (u.lauf and u.lauf == aktuell.lauf)):
-                aktuell = None
+            if not u.kopfzeile or u.wer == "extern":
+                offen = []
+            else:
+                offen = [o for o in offen if not (_selbe(o, u) or (u.lauf and u.lauf == o.lauf))]
             continue
-        aktuell = u
-    return aktuell
+        if u.vorher:
+            offen = [o for o in offen if o.wer != u.vorher]
+        offen = [o for o in offen if not _selbe(o, u)] + [u]
+    if not offen:
+        return Auswertung()
+    inhaber_ = offen[-1]
+    konkurrent = next((o for o in reversed(offen[:-1]) if not o.abgelaufen(jetzt, dauer)), None)
+    if konkurrent is not None and inhaber_.abgelaufen(jetzt, dauer):
+        konkurrent = None
+    return Auswertung(inhaber=inhaber_, konkurrent=konkurrent)
+
+
+def inhaber(kommentare: list[dict], eigene_anlage: str | None = None) -> Uebernahme | None:
+    """Die jüngste Übernahme, die nicht zurückgegeben wurde — oder None (``auswerten``)."""
+    return auswerten(kommentare, eigene_anlage).inhaber
 
 
 def kopfzeile(art: str, **felder) -> str:
     """``<!-- ai-employee:claim … -->`` — alle Werte entschärft, leere weggelassen."""
     teile = [f"ai-employee:{'release' if art == 'release' else 'claim'}"]
-    for name in ("wer", "agent_id", "lauf", "branch", "seit", "bis"):
+    for name in ("wer", "agent_id", "lauf", "branch", "seit", "bis", "vorher"):
         wert = felder.get(name)
         if isinstance(wert, datetime):
             wert = wert.astimezone(timezone.utc).isoformat(timespec="seconds")
@@ -279,17 +359,43 @@ def kopfzeile(art: str, **felder) -> str:
     return "<!-- " + " ".join(teile) + " -->"
 
 
+def _wann(t: datetime | None) -> str:
+    return t.astimezone(timezone.utc).strftime("%d.%m. %H:%M UTC") if t else "unbekannt"
+
+
 def uebernahme_kommentar(*, agent_name: str | None, agent_id: str | None, lauf: str | None, nr: int,
-                         projekt_name: str, jetzt: datetime | None = None,
-                         dauer: timedelta = DAUER) -> str:
-    """Kommentar beim Übernehmen: Kopfzeile plus Text für Menschen."""
+                         projekt_name: str, jetzt: datetime | None = None, dauer: timedelta = DAUER,
+                         seit: datetime | None = None, vorgaenger: Uebernahme | None = None) -> str:
+    """Kommentar beim Übernehmen: Kopfzeile plus Text für Menschen.
+
+    ``seit``: beim Verlängern bleibt der Beginn, nur ``bis`` rückt vor.
+    ``vorgaenger``: Übernahme nach Ablauf einer fremden — der Kommentar nennt sie.
+    """
     jetzt = jetzt or _jetzt()
     name = _wert(agent_name or "Lead", 80) or "Lead"
     kopf = kopfzeile("claim", wer=wer_plattform(name), agent_id=agent_id, lauf=lauf, branch=f"{nr}-…",
-                     seit=jetzt, bis=jetzt + dauer)
-    return (f"{kopf}\nÜbernommen vom AI-Employee-Agenten „{name}“ (Projekt-Board, Projekt "
+                     seit=seit or jetzt, bis=jetzt + dauer, vorher=vorgaenger.wer if vorgaenger else None)
+    text = (f"{kopf}\nÜbernommen vom AI-Employee-Agenten „{name}“ (Projekt-Board, Projekt "
             f"„{_wert(projekt_name, 120)}“). Branch `{nr}-…`, Pull Request mit `Closes #{nr}`. "
             "Der Branch gehört dem Übernehmer: Bitte nicht hineinpushen, sondern hier nachfragen.")
+    if vorgaenger is not None:
+        text += (f"\n\nDie Übernahme von {_wert(vorgaenger.name, 120)} (seit {_wann(vorgaenger.seit)}) war ohne "
+                 f"Lebenszeichen abgelaufen ({_wann(vorgaenger.ablauf(dauer))}); das Projekt erlaubt dann die "
+                 "Übernahme. Wer noch daran arbeitet, meldet sich bitte hier.")
+    return text
+
+
+def uebergabe_kommentar(*, an_wer: str, an_name: str, an_agent_id: str | None = None, von_name: str,
+                        vorher_wer: str | None, stand: str, naechster_schritt: str, nr: int,
+                        jetzt: datetime | None = None, dauer: timedelta = DAUER) -> str:
+    """Übergabe: neue Kopfzeile für den Empfänger, darunter Stand und nächster Schritt."""
+    jetzt = jetzt or _jetzt()
+    kopf = kopfzeile("claim", wer=an_wer, agent_id=an_agent_id, branch=f"{nr}-…", seit=jetzt, bis=jetzt + dauer,
+                     vorher=vorher_wer or "extern")
+    stand = einzeilig(stand, 1500) or "—"
+    naechster = einzeilig(naechster_schritt, 800) or "—"
+    return (f"{kopf}\nÜbergeben von {_wert(von_name, 120)} an {_wert(an_name, 120)}.\n\n"
+            f"**Stand:** {stand}\n\n**Nächster Schritt:** {naechster}")
 
 
 def rueckgabe_kommentar(*, agent_name: str | None, agent_id: str | None = None, lauf: str | None = None) -> str:
@@ -301,8 +407,47 @@ def anzeige(u: Uebernahme | None) -> str:
     """Kurz für Meldungen: „Claude Code (seit 29.10. 14:03)“."""
     if u is None:
         return "jemand außerhalb des Boards"
-    seit = f" (seit {u.seit.astimezone(timezone.utc).strftime('%d.%m. %H:%M')} UTC)" if u.seit else ""
+    seit = f" (seit {_wann(u.seit)})" if u.seit else ""
     return f"{u.name}{seit}"
+
+
+#: So committen Plattform-Agenten (agent/app/main.py: ``<agent_id>@ai-employee.local``,
+#: Name = Agentenname) — die Mail-Adresse ist der verlässliche Teil.
+PLATTFORM_MAIL = "@ai-employee.local"
+
+
+def commit_passt(u: Uebernahme, autor_mail: str | None) -> bool:
+    """Passt der Autor eines Commits auf dem Übernahme-Branch zum Inhaber?
+
+    Alle schreiben oft unter demselben Git-Konto; unterscheiden lassen sich nur
+    Plattform-Agenten (eigene Mail-Adresse je Agent). Darum: Hat ein Agent der
+    Plattform übernommen, muss ER committen. Hat jemand anderes übernommen (Claude
+    Code, Mensch), darf kein Plattform-Agent auf seinem Branch committen — genau
+    der Zusammenstoß vom 29.10.
+    """
+    mail = (autor_mail or "").strip().lower()
+    if not mail:
+        return True
+    plattform = mail.endswith(PLATTFORM_MAIL)
+    if u.agent_id:
+        if plattform:
+            return mail == f"{u.agent_id.lower()}{PLATTFORM_MAIL}"
+        return u.art not in (PLATTFORM, ANDERE_ANLAGE)
+    if u.art == PLATTFORM:
+        return True  # alte Freitext-Übernahme ohne Kennung: nicht prüfbar
+    return not plattform
+
+
+def wer_aus_eingabe(roh: str | None) -> tuple[str, str, str] | None:
+    """Empfänger einer Übergabe außerhalb der Plattform → (wer, art, Name), sonst None.
+
+    Erlaubt: ``claude-code[:<freitext>]``, ``mensch:<login>`` und Agenten anderer
+    Anlagen ``ai-employee:<anlage>/<agent>``.
+    """
+    wer, art, name, _, _ = _wer_lesen(roh or "", anlage_kennung())
+    if art == EXTERN:
+        return None
+    return wer, art, name
 
 
 # ── Abschnitt für die AGENTS.md ──────────────────────────────────────────────
@@ -343,10 +488,11 @@ Issue ist die einzige Wahrheit darüber, wer woran arbeitet.
 3. Ein Issue, ein Branch: `<nr>-<kurzer-name>` (z. B. `12-login-fehler`).
    Pull Request mit `Closes #<nr>`.
 
-### Lebenszeichen
-Wer arbeitet, zeigt es: ein Push auf den eigenen Branch oder eine aktualisierte
-Kopfzeile. Eine Übernahme ohne Bewegung zeigt das Board nach zwei Stunden als
-liegen geblieben; ein Mensch kann sie dann freigeben.
+### Lebenszeichen und Ablauf
+Eine Übernahme gilt bis `bis` (üblich: zwei Stunden). Jedes Lebenszeichen
+verlängert sie: ein Push auf den eigenen Branch oder eine aktualisierte
+Kopfzeile (neues `bis`). Ohne Lebenszeichen gilt sie als liegen geblieben; ein
+Mensch kann sie dann freigeben. Höchstens zwei offene Übernahmen je Bearbeiter.
 
 ### Der Branch gehört dem Übernehmer
 Niemand sonst pusht in den Branch einer fremden Übernahme. Agenten von AI
@@ -355,9 +501,15 @@ einen eigenen Branch anlegen und einen Pull Request **in den fremden Branch**
 stellen, oder den Menschen bitten, die Übernahme freizugeben.
 
 ### Übergabe und Rückgabe
-Wer aufhört, schreibt einen Kommentar mit dem Stand und dem nächsten Schritt,
-dessen erste Zeile `<!-- ai-employee:release wer="…" -->` ist, und nimmt das
-Tag `status/in-arbeit` weg.
+Wer an jemand anderen übergibt, schreibt einen Kommentar mit Stand und nächstem
+Schritt, dessen erste Zeile die Kopfzeile des Empfängers ist, mit
+`vorher="<wer bisher>"`. Wer einfach aufhört, schreibt einen Kommentar, dessen
+erste Zeile `<!-- ai-employee:release wer="…" -->` ist, und nimmt das Tag
+`status/in-arbeit` weg.
+
+### Konflikte
+Zwei gültige Übernahmen am selben Issue oder ein Commit eines anderen auf dem
+Branch einer Übernahme markiert das Board rot und meldet es den Menschen.
 
 ### Rückkanal
 Fragen an die Agenten von AI Employee stellt man im Issue; sie lesen die

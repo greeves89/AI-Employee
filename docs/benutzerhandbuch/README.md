@@ -1130,7 +1130,8 @@ Mit einem **Arbeitstakt** (Bearbeiten → Arbeitstakt: alle 30 Minuten, stündli
 3. Er vergibt die wichtigsten bereiten Karten — höchstens eine je Kollege, der gerade frei ist.
    Ist niemand frei oder ist er allein im Projekt, **nimmt er die oberste bereite Karte selbst**.
    Karten, die jemand anderes übernommen hat (Kap. 6a.9), lässt er liegen und ändert an ihnen
-   nichts — fällt ihm dort etwas auf, schreibt er es ins Projektgespräch.
+   nichts — fällt ihm dort etwas auf, schreibt er es ins Projektgespräch. Hat ein Agent schon so
+   viele Tickets in Arbeit, wie das Projekt erlaubt (Standard 2), lehnt das Board weitere ab.
 
 Die eigentliche Arbeit passiert in den vergebenen Läufen. **Im Takt selbst wird nicht gepusht**
 *(seit Stufe 1 von #1116)*: Der Lead koordiniert dort nur. Versucht er im Takt ein `git push`,
@@ -1386,6 +1387,48 @@ Sitzung Tickets und bringt danach nichts ins Repo. So erkennst und löst du das:
 
 Freigeben kann nur ein Mensch, kein Agent. Das Projekt braucht dafür einen Schlüssel mit
 Schreibrecht für Issues.
+
+**Ablaufzeit und Lebenszeichen** *(seit Stufe 2 von #1116)*: Jede Übernahme gilt nur eine
+bestimmte Zeit, standardmäßig zwei Stunden. Jedes Lebenszeichen verlängert sie: ein Commit auf
+dem Branch der Übernahme oder eine erneuerte Übernahme-Kopfzeile. Unter der Karte steht „gilt
+bis …“. Ist die Zeit ohne Lebenszeichen um, wird die Karte gelb („Abgelaufen“). Agenten dieser
+Anlage verlängern ihre eigenen Übernahmen automatisch, solange ihr Lauf läuft.
+
+So stellst du Dauer, Obergrenze und Ablösen ein:
+
+1. Öffne das Projekt und klicke oben rechts auf **Bearbeiten**.
+2. Unter **Git-Repo** steht der Kasten **Zusammenarbeit am Repo**.
+3. **Übernahme gilt ohne Lebenszeichen (Stunden)**: 1 bis 24, Standard 2.
+4. **Höchstens offene Übernahmen je Bearbeiter**: Standard 2. Darüber hinaus vergibt das Board
+   keine Issue-Karte mehr an denselben Agenten, auch nicht über den Lead. Hält jemand von außen
+   mehr, zeigt jede seiner Karten einen gelben Hinweis.
+5. **Agenten dürfen abgelaufene fremde Übernahmen selbst übernehmen**: standardmäßig aus. Ist es
+   an, darf der Lead eine abgelaufene fremde Übernahme 30 Minuten nach dem Ablauf vergeben. Der
+   Übernahme-Kommentar nennt dann den bisherigen Bearbeiter. Ist es aus, bleibt es beim Knopf
+   **Freigeben**.
+6. **Speichern**.
+
+**Übergeben an …** *(seit Stufe 2 von #1116)*: Eine Issue-Karte in **In Arbeit** lässt sich an
+jemand anderen weitergeben:
+
+1. Klicke an der Karte (oder im Karten-Fenster) auf **Übergeben**.
+2. Wähle unter **An** einen Agenten des Projekts oder **Jemand außerhalb der Plattform …**. Gib
+   außerhalb z. B. `claude-code:Laptop` oder `mensch:login` ein.
+3. Trage den **Stand** ein (was erledigt ist, was offen ist, wo die Arbeit liegt) und den
+   **nächsten Schritt**.
+4. Klicke auf **Übergeben**. Im Issue steht danach ein Übergabe-Kommentar mit beidem. Seine
+   Kopfzeile nennt den Empfänger und den bisherigen Bearbeiter. Ein Agent des Projekts bekommt
+   die Karte als neuen Lauf, Stand und nächster Schritt stehen in seinem Auftrag.
+
+Agenten können das auch selbst (Werkzeug `projekt_karte_uebergeben`): Wer eine Karte hat, darf
+sie übergeben, der Lead jede.
+
+**Konflikt-Warnung** *(seit Stufe 2 von #1116)*: Eine Karte wird rot markiert („Konflikt: …“),
+wenn zwei noch gültige Übernahmen verschiedener Bearbeiter am selben Issue stehen oder auf dem
+Branch einer Übernahme ein Commit liegt, der nicht vom Inhaber stammt. Agenten dieser Anlage
+erkennt die Plattform an ihrer Commit-Adresse. Jeder Konflikt wird einmal ins Projektgespräch
+gemeldet, und der Lead bekommt eine Benachrichtigung. Klärt im Issue, wer weitermacht; die
+anderen übergeben ihren Stand.
 
 **Der Branch gehört dem Übernehmer** *(seit Stufe 1 von #1116)*: Will ein Agent dieser Anlage in
 einen Branch pushen, der die Nummer eines Issues trägt (z. B. `feat/12-login`), fragt die Plattform

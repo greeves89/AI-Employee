@@ -65,3 +65,13 @@ class ProjektKarte(Base, TimestampMixin):
     bearbeiter_art: Mapped[str | None] = mapped_column(String(20), nullable=True)
     uebernahme: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     kommentare_gelesen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Bis wann die Übernahme gilt (core/uebernahme.Uebernahme.ablauf: ``bis`` der
+    # Kopfzeile, verlängert durch Lebenszeichen) — danach gilt sie als liegen
+    # geblieben. Vom Abgleich berechnet, mit der Dauer des Projekts.
+    extern_bis: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Letzter geprüfter Commit auf dem Branch der Übernahme (Autor gegen Inhaber).
+    extern_sha: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Konflikt an der Karte (zwei gültige Übernahmen, fremder Commit auf dem Branch)
+    # und welcher davon schon gemeldet ist — jeder höchstens einmal.
+    konflikt: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    konflikt_gemeldet: Mapped[str | None] = mapped_column(String(300), nullable=True)

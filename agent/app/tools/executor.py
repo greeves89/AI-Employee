@@ -93,7 +93,7 @@ ALWAYS_ALLOWED_TOOLS = frozenset({
     # Projekt-Board und Projektwissen: Arbeit unter Agenten desselben Projekts
     # planen und festhalten — dieselbe Klasse wie create_task/secondbrain_write.
     # Der Server prueft bei jedem Aufruf die Mitgliedschaft im Projekt.
-    "projekt_board", "projekt_karte_anlegen", "projekt_karte_verschieben", "projekt_karte_vergeben",
+    "projekt_board", "projekt_karte_anlegen", "projekt_karte_verschieben", "projekt_karte_vergeben", "projekt_karte_uebergeben",
     "projekt_karte_stand", "projekt_wissen_suchen", "projekt_wissen_lesen", "projekt_wissen_schreiben",
     "projekt_gespraech_lesen", "projekt_gespraech_schreiben", "projekt_wissen_ergaenzen", "projekt_termine",
     "projekt_termin_anlegen",
