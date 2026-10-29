@@ -8,8 +8,9 @@ den Vorlagen (``core/meeting_templates``).
 Am Ende einer Projekt-Besprechung (``abschluss``):
 * das Protokoll (Zusammenfassung mit Action Items) wird eine Seite im
   Projektwissen (``protokolle/…``) und eine Nachricht im Projektgespräch;
-* jedes Action Item wird eine Karte unter „Eingang“ — der Lead (oder der Mensch)
-  plant sie erst ein und vergibt sie dann. Es entstehen keine Aufträge an Agenten vorbei am Board.
+* jedes Action Item wird eine Karte in der „Inbox“ — ein Mensch gibt sie erst frei,
+  danach vergibt der Lead (oder der Takt) sie aus „Bereit“. Es entstehen keine
+  Aufträge an Agenten vorbei am Board.
 """
 
 from __future__ import annotations
