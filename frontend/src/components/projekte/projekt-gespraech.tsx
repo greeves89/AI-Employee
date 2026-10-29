@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bot, Loader2, Send, User, Wand2 } from "lucide-react";
+import { Bot, Gavel, Loader2, Send, User, Wand2 } from "lucide-react";
 import type { Agent } from "@/lib/types";
 import * as api from "@/lib/api";
 import { apiFehlertext } from "@/lib/api-fehler";
@@ -34,7 +34,10 @@ export function ProjektGespraech({
   toastRef.current = toast;
   const [nachrichten, setNachrichten] = useState<ProjektNachricht[] | null>(null);
   const [text, setText] = useState("");
-  const [art, setArt] = useState<"nachricht" | "frage" | "entscheidung">("nachricht");
+  // Eine Nachricht ist eine Nachricht. Nur eine Entscheidung tut mehr: Sie landet
+  // zusätzlich in entscheidungen.md. Eine eigene Art „Frage“ bewirkte nichts außer
+  // einem Etikett — die Auswahl dafür verwirrte mehr, als sie half.
+  const [entscheidung, setEntscheidung] = useState(false);
   const [sendet, setSendet] = useState(false);
   // Angesprochene Agenten, deren Antwort noch aussteht (Wecken läuft im Hintergrund).
   const [wartetAuf, setWartetAuf] = useState<{ id: string; seit: number; ab: number }[]>([]);
@@ -70,9 +73,11 @@ export function ProjektGespraech({
     if (!text.trim()) return;
     setSendet(true);
     try {
-      const r = await api.projektGespraechSchreiben(projektId, { text: text.trim(), art });
+      const r = await api.projektGespraechSchreiben(projektId, {
+        text: text.trim(), art: entscheidung ? "entscheidung" : "nachricht",
+      });
       setText("");
-      setArt("nachricht");
+      setEntscheidung(false);
       if (r.geweckt.length) {
         setWartetAuf((w) => [...w.filter((x) => !r.geweckt.includes(x.id)), ...r.geweckt.map((id) => ({ id, seit: r.id, ab: Date.now() }))]);
       }
@@ -156,18 +161,26 @@ export function ProjektGespraech({
               placeholder={`Nachricht ans Projekt — ohne @Name antwortet ${lead ? lead.name : "der Lead"}`}
               className="min-w-0 flex-1 resize-none rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-sm outline-none focus:border-primary/50"
             />
-            <select value={art} onChange={(e) => setArt(e.target.value as typeof art)} aria-label="Art der Nachricht"
-              className="rounded-lg border border-foreground/[0.1] bg-background/80 px-2 py-2 text-xs">
-              <option value="nachricht">Nachricht</option>
-              <option value="frage">Frage</option>
-              <option value="entscheidung">Entscheidung</option>
-            </select>
+            <button
+              type="button"
+              onClick={() => setEntscheidung((e) => !e)}
+              aria-pressed={entscheidung}
+              title="Als Entscheidung festhalten — landet zusätzlich in entscheidungen.md im Projektwissen"
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-medium transition-colors",
+                entscheidung
+                  ? "border-primary/40 bg-primary/10 text-primary"
+                  : "border-foreground/[0.1] text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground",
+              )}
+            >
+              <Gavel className="h-3.5 w-3.5" /> Entscheidung
+            </button>
             <button type="button" onClick={senden} disabled={sendet || !text.trim()} aria-label="Senden" title="Senden (Strg/Cmd + Enter)"
               className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
               {sendet ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </button>
           </div>
-          {art === "entscheidung" && (
+          {entscheidung && (
             <p className="mt-1.5 text-[11px] text-muted-foreground">Entscheidungen landen zusätzlich in entscheidungen.md im Projektwissen.</p>
           )}
         </div>

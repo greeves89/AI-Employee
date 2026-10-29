@@ -1191,8 +1191,10 @@ Reiter **Gespräch**: Hier sprechen du und die Agenten des Projekts miteinander.
 1. Nachricht ins Feld schreiben.
 2. Wen du ansprechen willst, klickst du über dem Feld an (fügt **@Name** ein) — oder du tippst
    @Name selbst. Sprichst du niemanden an, antwortet der **Lead**.
-3. Im Auswahlfeld daneben die Art wählen: **Nachricht**, **Frage** oder **Entscheidung**.
-   Entscheidungen landen zusätzlich in `entscheidungen.md` im Projektwissen.
+3. Soll die Nachricht als **Entscheidung** gelten, klicke vor dem Senden auf den Knopf
+   **Entscheidung** neben dem Eingabefeld (*seit 1.396.1*; vorher eine Auswahlliste). Er färbt sich,
+   und die Nachricht landet zusätzlich in `entscheidungen.md` im Projektwissen. Ohne den Knopf ist
+   es eine normale Nachricht.
 4. **Senden** (oder Strg/Cmd + Enter).
 
 ![Reiter „Gespräch“: Fragen, Entscheidungen, Antworten der Agenten; unten Ansprechen und Senden](screenshots/77-projekt-gespraech.png)
