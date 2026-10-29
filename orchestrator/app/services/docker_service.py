@@ -613,17 +613,9 @@ class DockerService:
         # Fehlt das Abbild lokal, aus der Registry holen (#889). Davor scheiterte
         # das Anlegen eines Agenten mit einer Docker-Meldung ueber einen
         # unbekannten Namen — auf jeder Anlage, die nie lokal gebaut hat.
-        #
-        # Breit gefangen, und das ist Absicht: dieser Griff ist eine
-        # BEQUEMLICHKEIT. Ein Start, der ohne ihn gelaufen waere, darf nicht an
-        # ihm scheitern — egal was der Docker-Zugang hier Unerwartetes tut.
-        try:
-            self.abbild_sicherstellen(image)
-        except Exception as e:  # noqa: BLE001
-            logger.warning(
-                f"Abbild-Pruefung fuer {scrub_log(image)} fehlgeschlagen, "
-                f"starte trotzdem: {scrub_log(e)}"
-            )
+        # abbild_sicherstellen wirft nicht — ein Start, der ohne den Griff
+        # gelaufen waere, scheitert also nicht an ihm.
+        self.abbild_sicherstellen(image)
 
         container = self.client.containers.run(
             image=image,
@@ -722,13 +714,13 @@ class DockerService:
         Runs a short-lived helper container that mounts both volumes.
         """
         # Vorgabe aus den Einstellungen, nicht als Literal: in der
-        # Community-Zusammenstellung ist AGENT_IMAGE eine Registry-Referenz, das
-        # feste "ai-employee-agent:latest" gibt es dort gar nicht. Und derselbe
-        # Griff nach dem Abbild wie beim Agentenstart (#889) — ohne ihn blieb ein
-        # quota-gestoppter Agent auf einer Registry-Anlage still unaufgeraeumt.
+        # Community-Zusammenstellung ist AGENT_IMAGE eine Registry-Referenz
+        # (ghcr.io/...), das feste "ai-employee-agent:latest" gibt es dort gar
+        # nicht — ein quota-gestoppter Agent blieb deshalb still unaufgeraeumt.
+        # Bewusst OHNE abbild_sicherstellen: das hier ist ein Ueberwachungspfad,
+        # und eine vollstaendige Referenz holt ``containers.run`` selbst nach.
         from app.config import settings as _einstellungen
         image = image or _einstellungen.agent_image
-        self.abbild_sicherstellen(image)
         script = (
             "cp -a /from/. /to/ 2>/dev/null || true; "
             "rm -rf /to/.git /to/.agent_state.md; "
@@ -764,13 +756,13 @@ class DockerService:
         or ``None`` if the helper run itself failed.
         """
         # Vorgabe aus den Einstellungen, nicht als Literal: in der
-        # Community-Zusammenstellung ist AGENT_IMAGE eine Registry-Referenz, das
-        # feste "ai-employee-agent:latest" gibt es dort gar nicht. Und derselbe
-        # Griff nach dem Abbild wie beim Agentenstart (#889) — ohne ihn blieb ein
-        # quota-gestoppter Agent auf einer Registry-Anlage still unaufgeraeumt.
+        # Community-Zusammenstellung ist AGENT_IMAGE eine Registry-Referenz
+        # (ghcr.io/...), das feste "ai-employee-agent:latest" gibt es dort gar
+        # nicht — ein quota-gestoppter Agent blieb deshalb still unaufgeraeumt.
+        # Bewusst OHNE abbild_sicherstellen: das hier ist ein Ueberwachungspfad,
+        # und eine vollstaendige Referenz holt ``containers.run`` selbst nach.
         from app.config import settings as _einstellungen
         image = image or _einstellungen.agent_image
-        self.abbild_sicherstellen(image)
         try:
             prune_output = self.client.containers.run(
                 image=image,
@@ -965,7 +957,29 @@ class DockerService:
     _KEINE_VERSION = "0.0.0"
 
     def abbild_sicherstellen(self, image: str) -> str:
-        """Sorgt dafuer, dass ``image`` lokal vorliegt (#889).
+        """Sorgt dafuer, dass ``image`` lokal vorliegt (#889) — und wirft NIE.
+
+        Das Bereitstellen ist eine BEQUEMLICHKEIT: jeder Aufrufer hier arbeitete
+        vorher auch ohne. Wuerde diese Methode werfen, braeche sie genau das, was
+        sie verbessern soll — gemessen zweimal beim Bau dieser Aenderung, erst
+        beim Agentenstart, dann beim Aufraeumen eines Volumes: ein Docker-Zugang
+        ohne ``images`` liess beides mit AttributeError sterben. Darum liegt die
+        Schranke HIER und nicht bei den Aufrufern: wer neu dazukommt, kann sie
+        nicht vergessen.
+
+        Rueckgabe wie ``_abbild_holen``, im Fehlerfall ``"fehlt"``.
+        """
+        try:
+            return self._abbild_holen(image)
+        except Exception as e:  # noqa: BLE001 — siehe Docstring
+            logger.warning(
+                f"Abbild-Bereitstellung fuer {scrub_log(image)} fehlgeschlagen, "
+                f"weiter ohne: {scrub_log(e)}"
+            )
+            return "fehlt"
+
+    def _abbild_holen(self, image: str) -> str:
+        """Die eigentliche Arbeit hinter ``abbild_sicherstellen``.
 
         Fehlt das Agenten-Abbild, wird das fertige Abbild DIESER Version aus der
         Registry geholt und auf den lokalen Namen getaggt. Ohne diesen Schritt

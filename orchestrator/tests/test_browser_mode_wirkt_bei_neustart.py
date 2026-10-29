@@ -111,10 +111,20 @@ class BrowserSchalterWirktUeberall(unittest.TestCase):
             for k in klasse.body
             if isinstance(k, (ast.AsyncFunctionDef, ast.FunctionDef))
         ]
-        bauend = {
-            k.name for k in methoden
-            if "create_container" in (ast.get_source_segment(text, k) or "")
-        }
+        # Ein AUFRUF zaehlt, nicht eine Erwaehnung: ein Methoden-Docstring, der
+        # auf ``create_container`` verweist, ist kein Bauweg. Die Teilketten-Suche
+        # meldete genau das als vierten Weg (#889) — und eine Wache, die auf Prosa
+        # anspringt, erzieht dazu, die Prosa zu aendern statt den Code.
+        def _ruft_create_container(knoten) -> bool:
+            for k in ast.walk(knoten):
+                if isinstance(k, ast.Call):
+                    ziel = k.func
+                    name = getattr(ziel, "attr", None) or getattr(ziel, "id", None)
+                    if name == "create_container":
+                        return True
+            return False
+
+        bauend = {k.name for k in methoden if _ruft_create_container(k)}
         unbekannt = bauend - set(BAUWEGE)
         self.assertEqual(
             unbekannt, set(),
