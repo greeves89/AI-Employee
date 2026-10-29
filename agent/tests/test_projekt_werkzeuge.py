@@ -138,6 +138,21 @@ class Beschreibung(unittest.TestCase):
         mcp_namen = set(re.findall(r'name: "(projekt_[a-z_]+)"', quelltext))
         self.assertEqual(mcp_namen, WERKZEUGE)
 
+    def test_spalten_gleich_und_ohne_freigabe(self):
+        """Agenten geben nie frei: weder Claude Code/Codex (MCP) noch Custom-LLM bieten
+        „bereit“ an; eine Rückfrage („triage“) dürfen alle Laufzeiten setzen."""
+        from app.tools.definitions import ORCHESTRATOR_TOOLS
+
+        quelltext = MCP.read_text(encoding="utf-8")
+        for name in ("projekt_karte_anlegen", "projekt_karte_verschieben"):
+            definition = next(t["function"] for t in ORCHESTRATOR_TOOLS if t["function"]["name"] == name)
+            custom = definition["parameters"]["properties"]["spalte"]["enum"]
+            abschnitt = quelltext[quelltext.index(f'name: "{name}"'):]
+            mcp = re.search(r'spalte: \{ type: "string", enum: \[([^\]]*)\]', abschnitt).group(1)
+            self.assertEqual(custom, re.findall(r'"([a-z_]+)"', mcp), name)
+            self.assertNotIn("bereit", custom, name)
+        self.assertIn("triage", custom)
+
 
 if __name__ == "__main__":
     unittest.main()

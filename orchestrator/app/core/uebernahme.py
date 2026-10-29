@@ -473,6 +473,15 @@ def rueckgabe_kommentar(*, agent_name: str | None, agent_id: str | None = None, 
     return f"{kopf}\nZurückgegeben: Der AI-Employee-Agent arbeitet nicht mehr daran — das Ticket ist wieder frei."
 
 
+def rueckfrage_kommentar(*, agent_name: str | None, agent_id: str | None = None, lauf: str | None = None,
+                         triage_tag: str = "status/triage", bereit_tag: str = "status/ready") -> str:
+    """Rückgabe mit offener Rückfrage: Der Agent hört auf, bis ein Mensch geklärt hat."""
+    kopf = kopfzeile("release", wer=wer_plattform(agent_name or "Lead"), agent_id=agent_id, lauf=lauf)
+    return (f"{kopf}\nRückfrage offen: Der AI-Employee-Agent arbeitet nicht weiter, bis sie beantwortet ist "
+            f"(Frage im Kommentar dazu). Nach der Klärung bitte `{_wert(triage_tag, 60).replace('`', '')}` entfernen "
+            f"und `{_wert(bereit_tag, 60).replace('`', '')}` setzen — dann geht das Ticket zurück nach Bereit.")
+
+
 def anzeige(u: Uebernahme | None) -> str:
     """Kurz für Meldungen: „Claude Code (seit 29.10. 14:03)“."""
     if u is None:
@@ -640,6 +649,20 @@ def nachricht_kommentar(*, agent_name: str | None, agent_id: str | None, text: s
 
 # ── Abschnitt für die AGENTS.md ──────────────────────────────────────────────
 
+#: Wann ein Agent seinen Pull Request selbst mergen darf — EINE Quelle für den
+#: Auftrag an die Agenten (``projekte.karten_auftrag``) und die ``AGENTS.md``.
+SELBST_MERGEN_REGEL = (
+    "Selbst mergen (Squash) ist erlaubt, wenn die `AGENTS.md`/`CONTRIBUTING.md` des Repos nichts anderes "
+    "sagt und ALLES erfüllt ist: Der Branch enthält das aktuelle main (danach erneut geprüft); Tests grün, bei "
+    "Oberflächen-Änderungen auch ein Browser-Test; CI grün auf dem letzten Commit (den Lauf zum headSha "
+    "prüfen, nicht nur `gh pr checks` direkt nach dem Push); ein Review durch jemand anderen als den Autor "
+    "(Mensch oder frischer Review-Agent; bei Login, Rollen, Personendaten, Uploads oder neuen öffentlichen "
+    "Endpunkten zusätzlich ein Security-Review); niemand sonst arbeitet gerade am PR. Mehrere PRs nacheinander "
+    "mergen, danach den nächsten Branch auf das neue main bringen. Fremde Branches nie überschreiben (kein "
+    "`--force`). Ohne Recht auf PRs: den PR-Text als Kommentar ins Issue. Den Lauf erst nach dem Merge "
+    "abschließen."
+)
+
 AGENTS_MD_START = "<!-- ai-employee:zusammenarbeit:start -->"
 AGENTS_MD_ENDE = "<!-- ai-employee:zusammenarbeit:ende -->"
 
@@ -653,6 +676,9 @@ def agents_md_abschnitt(anlage: str | None = None) -> str:
     anlage = anlage or anlage_kennung()
     beispiel = kopfzeile("claim", wer="claude-code:Sitzung am Laptop", branch="12-login-fehler",
                          seit="2026-10-29T14:00:00+00:00", bis="2026-10-29T16:00:00+00:00")
+    import textwrap
+
+    selbst_mergen = textwrap.fill(SELBST_MERGEN_REGEL, 78, break_on_hyphens=False)
     return f"""{AGENTS_MD_START}
 ## Zusammenarbeit mit AI Employee
 
@@ -694,6 +720,19 @@ Schritt, dessen erste Zeile die Kopfzeile des Empfängers ist, mit
 `vorher="<wer bisher>"`. Wer einfach aufhört, schreibt einen Kommentar, dessen
 erste Zeile `<!-- ai-employee:release wer="…" -->` ist, und nimmt das Tag
 `status/in-arbeit` weg.
+
+### Ablauf und Status-Tags
+Neue Issues landen in der Inbox. Nur ein Mensch gibt frei: Tag `status/ready`
+(→ Bereit); Agenten nehmen nur freigegebene Issues. Wer übernimmt, setzt
+`status/in-arbeit`. Bei einer Rückfrage: die Frage als Kommentar ins Issue,
+`status/triage` setzen, `status/in-arbeit` entfernen und nicht weiterarbeiten.
+Der Mensch antwortet, entfernt `status/triage` und setzt wieder `status/ready`.
+Ein offener PR mit `Closes #<nr>` heißt Review; gemergt bzw. geschlossen heißt
+erledigt, als „not planned“ geschlossen heißt verworfen. Hat das Repo schon
+eigene Tags dafür (z. B. `agent:blocked` für Rückfragen), gelten diese.
+
+### Selbst mergen
+{selbst_mergen}
 
 ### Konflikte
 Zwei gültige Übernahmen am selben Issue oder ein Commit eines anderen auf dem

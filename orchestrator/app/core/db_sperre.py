@@ -38,7 +38,15 @@ async def transaktionssperre(db: AsyncSession, namensraum: int, schluessel: int,
     """
     if ist_postgres(db):
         if hoechstens_warten_s:
-            await db.execute(text(f"SET LOCAL lock_timeout = '{int(hoechstens_warten_s)}s'"))
+            await warten_hoechstens(db, hoechstens_warten_s)
         await db.execute(text("SELECT pg_advisory_xact_lock(:ns, :oid)"),
                          {"ns": int(namensraum), "oid": int(schluessel)})
     yield
+
+
+async def warten_hoechstens(db: AsyncSession, sekunden: int) -> None:
+    """Auf Sperren (``FOR UPDATE``, beratende Sperren) in dieser Transaktion höchstens
+    ``sekunden`` warten (``SET LOCAL lock_timeout``) — danach wirft die Datenbank
+    einen Fehler, statt die Verbindung festzuhalten. Auf SQLite wirkungslos."""
+    if ist_postgres(db):
+        await db.execute(text(f"SET LOCAL lock_timeout = '{int(sekunden)}s'"))

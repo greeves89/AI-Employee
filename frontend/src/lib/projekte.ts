@@ -1,7 +1,8 @@
 /** Projekte: ein Projekt ist ein Team mit Board aus Karten, Raum, Takt und Wissen
  *  (orchestrator: core/projekte.py, api/teams.py). */
 
-export type ProjektSpalte = "eingang" | "bereit" | "in_arbeit" | "pruefung" | "erledigt";
+/** Gespeicherte Schlüssel der Spalten — angezeigt heißt „eingang“ Inbox und „pruefung“ Review. */
+export type ProjektSpalte = "eingang" | "bereit" | "in_arbeit" | "triage" | "pruefung" | "erledigt" | "verworfen";
 /** Wer ein Issue übernommen hat (orchestrator: core/uebernahme.py). */
 export type BearbeiterArt = "plattform" | "claude_code" | "andere_anlage" | "mensch" | "extern";
 
@@ -23,6 +24,8 @@ export interface ProjektKarte {
   url: string | null;
   labels: string[];
   spalte: ProjektSpalte;
+  /** Rückfrage offen: in Triage oder im Review mit Triage-Tag (orchestrator: projekte.wartet_auf_dich). */
+  wartet_auf_dich?: boolean;
   /** 1 hoch, 2 normal, 3 niedrig */
   prioritaet: number;
   agent_id: string | null;
@@ -79,7 +82,11 @@ export interface ProjektKennzahlen {
   eingang: number;
   bereit: number;
   in_arbeit: number;
+  /** Offene Rückfragen: Karten in Triage und Review-Karten mit Triage-Tag — warten auf einen Menschen. */
+  triage?: number;
   pruefung: number;
+  /** Verworfen in den letzten 30 Tagen. */
+  verworfen?: number;
   wartet_auf_merge: number;
   laeufe: number;
   /** Kosten der Läufe des Projekts im laufenden Monat (USD). */
@@ -107,13 +114,20 @@ export interface ProjektBoard {
   takt: ProjektTakt;
 }
 
-export const SPALTEN: { key: ProjektSpalte; label: string; leer: string }[] = [
-  { key: "eingang", label: "Eingang", leer: "Nichts Neues." },
-  { key: "bereit", label: "Bereit", leer: "Nichts eingeplant." },
-  { key: "in_arbeit", label: "In Arbeit", leer: "Gerade arbeitet niemand an einer Karte." },
-  { key: "pruefung", label: "Prüfung", leer: "Nichts abzunehmen." },
-  { key: "erledigt", label: "Erledigt", leer: "Noch nichts erledigt." },
+/** Spalten des Boards in ihrer Reihenfolge. ``beschreibung``: graue Zeile unter dem Namen.
+ *  ``schmal``: lässt sich einklappen (Verworfen). */
+export const SPALTEN: { key: ProjektSpalte; label: string; beschreibung: string; leer: string; schmal?: boolean }[] = [
+  { key: "eingang", label: "Inbox", beschreibung: "Neu angelegt, noch nicht gesichtet", leer: "Nichts Neues." },
+  { key: "triage", label: "Triage", beschreibung: "Rückfragen offen, wartet auf einen Menschen", leer: "Keine offenen Rückfragen." },
+  { key: "bereit", label: "Bereit", beschreibung: "Freigegeben von einem Menschen, Agenten nehmen sie", leer: "Nichts freigegeben." },
+  { key: "in_arbeit", label: "In Arbeit", beschreibung: "In Umsetzung", leer: "Gerade arbeitet niemand an einer Karte." },
+  { key: "pruefung", label: "Review", beschreibung: "PR offen, wartet auf Prüfung und Merge", leer: "Nichts abzunehmen." },
+  { key: "erledigt", label: "Erledigt", beschreibung: "Gemergt bzw. Issue geschlossen", leer: "Noch nichts erledigt." },
+  { key: "verworfen", label: "Verworfen", beschreibung: "Wird nicht umgesetzt, Begründung am Issue", leer: "Nichts verworfen.", schmal: true },
 ];
+
+/** Anzeigename einer Spalte (für Texte außerhalb des Boards). */
+export const spaltenName = (key: string) => SPALTEN.find((s) => s.key === key)?.label ?? key;
 
 export const STUFEN: { key: ProjektStufe; label: string }[] = [
   { key: "planung", label: "Planung" },

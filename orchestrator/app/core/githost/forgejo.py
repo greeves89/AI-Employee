@@ -167,19 +167,39 @@ class ForgejoHostProvider(GitHostProvider):
     async def get_issue(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int) -> dict | None:
         """Ein Issue mit Tags und Zuständigen — None, wenn es nicht lesbar ist."""
         resp = await client.get(f"{self.api_base}/repos/{repo}/issues/{nummer}", headers=self._headers(token))
-        return resp.json() if resp.status_code == 200 else None
+        if resp.status_code != 200:
+            return None
+        try:
+            daten = resp.json()
+        except ValueError:
+            return None
+        return daten if isinstance(daten, dict) else None
+
+    @staticmethod
+    def _kennung(wert) -> int | None:
+        """Kennung eines Tags — nur eine echte Zahl (fremder Server)."""
+        return wert if isinstance(wert, int) and not isinstance(wert, bool) and wert > 0 else None
 
     async def _label_id(self, client: httpx.AsyncClient, token: str, repo: str, name: str) -> int | None:
-        """Forgejo/Gitea vergeben Tags per Kennung: vorhandenes suchen, sonst anlegen."""
-        resp = await client.get(f"{self.api_base}/repos/{repo}/labels", headers=self._headers(token),
-                                params={"limit": 50})
-        if resp.status_code == 200:
-            for eintrag in resp.json() or []:
-                if isinstance(eintrag, dict) and eintrag.get("name") == name:
-                    return eintrag.get("id")
-        neu = await client.post(f"{self.api_base}/repos/{repo}/labels", headers=self._headers(token),
-                                json={"name": name, "color": "#fbca04"})
-        return neu.json().get("id") if neu.status_code in (200, 201) else None
+        """Forgejo/Gitea vergeben Tags per Kennung: vorhandenes suchen (alle Seiten), sonst anlegen.
+
+        None, wenn der Server ablehnt oder Unbrauchbares liefert — der Aufrufer meldet
+        dann „ließ sich nicht setzen“ statt eines Absturzes."""
+        try:
+            for eintrag in await self._seiten(client, token, f"/repos/{repo}/labels", {}, 1000):
+                if eintrag.get("name") == name:
+                    return self._kennung(eintrag.get("id"))
+            neu = await client.post(f"{self.api_base}/repos/{repo}/labels", headers=self._headers(token),
+                                    json={"name": name, "color": "#fbca04"})
+            daten = neu.json() if neu.status_code in (200, 201) else None
+        except (RuntimeError, LookupError, ValueError):
+            return None
+        return self._kennung(daten.get("id")) if isinstance(daten, dict) else None
+
+    async def list_labels(self, client: httpx.AsyncClient, token: str, repo: str, hoechstens: int = 300) -> list[str]:
+        """Namen aller Tags (Labels) des Repos — das Board setzt das hier übliche."""
+        rows = await self._seiten(client, token, f"/repos/{repo}/labels", {}, hoechstens)
+        return [str(r["name"]) for r in rows if isinstance(r, dict) and isinstance(r.get("name"), str)]
 
     async def add_labels(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int,
                          labels: list[str]) -> bool:
@@ -192,9 +212,19 @@ class ForgejoHostProvider(GitHostProvider):
 
     async def remove_label(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int,
                            label: str) -> bool:
-        lid = await self._label_id(client, token, repo, label)
-        if lid is None:
+        """Tag vom Issue nehmen — die Kennung kommt vom Issue selbst, angelegt wird nie etwas.
+
+        Hängt das Tag nicht am Issue, gibt es nichts zu entfernen (True); ist das
+        Issue nicht lesbar oder die Kennung keine Zahl, False."""
+        issue = await self.get_issue(client, token, repo, nummer)
+        if not isinstance(issue, dict):
+            return False
+        treffer = [t for t in issue.get("labels") or [] if isinstance(t, dict) and t.get("name") == label]
+        if not treffer:
             return True
+        lid = self._kennung(treffer[0].get("id"))
+        if lid is None:
+            return False
         resp = await client.delete(f"{self.api_base}/repos/{repo}/issues/{nummer}/labels/{lid}",
                                    headers=self._headers(token))
         return resp.status_code in (200, 204, 404)

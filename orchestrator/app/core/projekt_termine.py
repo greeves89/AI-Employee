@@ -158,9 +158,10 @@ async def entfernen(db: AsyncSession, team_id: str, schedule_id: str) -> None:
 
 
 #: Was eine Projekt-Besprechung vom Board sieht: alles, worüber man spricht —
-#: nicht der Eingang (Kennzahl genügt), dafür das kürzlich Erledigte, damit
-#: niemand ein längst geschlossenes Issue erneut aufgreift.
-STAND_SPALTEN = ("bereit", "in_arbeit", "pruefung", "erledigt")
+#: nicht die Inbox (Kennzahl genügt), dafür offene Rückfragen (Triage) und das
+#: kürzlich Erledigte/Verworfene, damit niemand ein längst geschlossenes Issue
+#: erneut aufgreift.
+STAND_SPALTEN = ("bereit", "in_arbeit", "triage", "pruefung", "erledigt", "verworfen")
 
 
 async def stand_jetzt(db: AsyncSession, team_id: str) -> str:
@@ -259,7 +260,8 @@ async def abschluss(room_id: str, team_id: str, raum_name: str, zusammenfassung:
                    ProjektKarte.erledigt_at)
             .where(ProjektKarte.team_id == team.id)
         )).all()
-        geschlossen = {nr for quelle, nr, spalte, _, _ in karten if quelle == "issue" and spalte == "erledigt" and nr}
+        geschlossen = {nr for quelle, nr, spalte, _, _ in karten
+                       if quelle == "issue" and spalte in ("erledigt", "verworfen") and nr}
         # Verglichen wird mit allem Offenen, mit kürzlich Erledigtem und mit jedem
         # geschlossenen Issue — per Wortüberlappung. Gemessen 26.–28.10.: Das Daily
         # legte jeden Morgen bis zu zehn Karten zum längst geschlossenen #961 an,
@@ -268,7 +270,7 @@ async def abschluss(room_id: str, team_id: str, raum_name: str, zusammenfassung:
         grenze = datetime.now(timezone.utc) - ERLEDIGT_FENSTER
         vergleich = [
             _woerter(titel) for quelle, _, spalte, titel, erledigt_at in karten
-            if spalte != "erledigt" or quelle == "issue"
+            if spalte not in ("erledigt", "verworfen") or quelle == "issue"
             or (erledigt_at is not None and (erledigt_at if erledigt_at.tzinfo else
                                              erledigt_at.replace(tzinfo=timezone.utc)) >= grenze)
         ]
@@ -288,8 +290,8 @@ async def abschluss(room_id: str, team_id: str, raum_name: str, zusammenfassung:
             # Ohne Ersteller: die Items schreiben Agenten (womöglich nach Issue-Texten) —
             # der Text geht deshalb gerahmt als Material an den Bearbeiter, nicht als
             # Anweisung im Namen des Projekt-Erstellers.
-            # In den Eingang, nicht nach Bereit: Was eine Besprechung vorschlägt, plant
-            # der Lead (oder der Mensch) erst ein — gearbeitet wird nur an Bereitem.
+            # In die Inbox, nicht nach Bereit: Was eine Besprechung vorschlägt, gibt
+            # ein Mensch erst frei — gearbeitet wird nur an Bereitem.
             karte = projekte.neue_karte(team.id, item[:300], f"Aus der Besprechung „{raum_name}“ ({jetzt:%d.%m.%Y}).",
                                         spalte="eingang", von=f"besprechung:{room_id}", ersteller_user_id=None)
             karte.notiz = "Aus Besprechung"
@@ -300,7 +302,7 @@ async def abschluss(room_id: str, team_id: str, raum_name: str, zusammenfassung:
         db.add(ProjektNachricht(
             team_id=team.id, autor_typ="system", autor_id=None, autor_name="Besprechung",
             text=(f"Protokoll „{raum_name}“" + (f" (Projektwissen: {pfad})" if pfad else "") +
-                  (f" — {len(items)} Karte(n) im Eingang angelegt" if items else "") +
+                  (f" — {len(items)} Karte(n) in der Inbox angelegt" if items else "") +
                   (f", {uebersprungen} Punkt(e) übersprungen (schon als Karte da, kürzlich erledigt, Issue "
                    f"geschlossen oder mehr als {MAX_KARTEN})"
                    if uebersprungen else "") + f"\n\n{kurz}"),

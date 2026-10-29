@@ -235,7 +235,7 @@ export function CreateTeamModal({
                         />
                         <p className="text-[11px] text-muted-foreground/50 mt-1">
                           GitHub als owner/name, ein eigener Forgejo- oder Gitea-Server mit voller Adresse. Offene
-                          Issues kommen in den Eingang, Pull Requests mit CI-Stand unter „Wartet auf Merge“.
+                          Issues kommen in die Inbox, Pull Requests mit CI-Stand ins Review („Wartet auf Merge“).
                         </p>
                         {repo.trim() && (
                           <div className="mt-2">
@@ -438,7 +438,7 @@ export function CreateTeamModal({
                           ))}
                         </select>
                         <p className="text-[11px] text-muted-foreground/50 mt-1">
-                          Im Takt sichtet der Lead den Eingang, plant ein und vergibt die nächsten Karten. Ohne offene
+                          Im Takt sichtet der Lead die Inbox und vergibt die nächsten freigegebenen Karten. Ohne offene
                           Karten fällt der Lauf aus — er kostet dann nichts. Braucht einen Lead (oder genau ein Mitglied).
                         </p>
                       </div>

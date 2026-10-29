@@ -3,17 +3,24 @@
 Ein Projekt ist ein Team (``models/team.py``). Seine Arbeit liegt als Karten
 (``models/projekt_karte.py``) auf dem Board:
 
-    Eingang → Bereit → In Arbeit → Prüfung → Erledigt
+    Inbox → (Triage) → Bereit → In Arbeit → Review → Erledigt | Verworfen
 
-* **Eingang** — neu (selbst angelegt, aus einem Issue); noch nicht gesichtet.
-* **Bereit** — gesichtet und eingeplant; Priorität und Reihenfolge bestimmen,
-  was als Nächstes drankommt.
+(Gespeicherte Schlüssel: eingang, bereit, in_arbeit, triage, pruefung, erledigt,
+verworfen — „eingang“ heißt angezeigt Inbox, „pruefung“ Review.)
+
+* **Inbox** — neu (selbst angelegt, von einem Agenten, aus einem Issue); noch
+  nicht gesichtet.
+* **Bereit** — von einem MENSCHEN freigegeben; Priorität und Reihenfolge
+  bestimmen, was als Nächstes drankommt. Agenten geben nie frei (``verschieben``).
 * **In Arbeit** — vergeben: der Lauf eines Agenten (Task) gehört zur Karte
   (``task_id``, ``metadata.karte_id``). Der Agent meldet die Stufe
   (Planung → Bau → Tests → PR → CI → Merge).
-* **Prüfung** — der Lauf ist vorbei; der Mensch nimmt ab oder gibt zurück.
-  Mit offenem Pull Request heißt das „Wartet auf Merge“.
-* **Erledigt** — abgenommen, verworfen, oder das Issue/der PR ist zu.
+* **Triage** — Rückfrage offen: der Agent hat gefragt und arbeitet nicht weiter;
+  ein Mensch klärt und gibt wieder frei (→ Bereit).
+* **Review** — der Lauf ist vorbei oder ein PR ist offen; der Mensch nimmt ab
+  oder gibt zurück. Mit offenem Pull Request heißt das „Wartet auf Merge“.
+* **Erledigt** — abgenommen, gemergt, oder das Issue/der PR ist zu.
+* **Verworfen** — wird nicht umgesetzt (Issue als „not planned“ geschlossen).
 
 Die Sicht ist nutzergetrennt: Ergebnis und Fehler eines Laufs sieht nur, wem
 der ausführende Agent gehört (``sichtbar``; Administratoren ``None``). Karten
@@ -30,7 +37,9 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
-from app.models.projekt_karte import SPALTEN, STUFEN, ProjektKarte
+from app.core.fremdtext import einzeilig
+from app.core.uebernahme import SELBST_MERGEN_REGEL
+from app.models.projekt_karte import ABGESCHLOSSEN, SPALTEN, STUFEN, ProjektKarte
 from app.models.task import Task, TaskStatus
 
 AKTIV = (TaskStatus.PENDING, TaskStatus.QUEUED, TaskStatus.RUNNING)
@@ -40,7 +49,13 @@ MAX_OFFEN = 500
 VERLAUF_TAGE = 7
 # Spalten, in die eine Karte von Hand (oder per Werkzeug) geschoben werden darf.
 # In Arbeit kommt sie nur über „vergeben“ — dann gehört ein Lauf dazu.
-VON_HAND = ("eingang", "bereit", "pruefung", "erledigt")
+VON_HAND = ("eingang", "bereit", "triage", "pruefung", "erledigt", "verworfen")
+# Was nur ein Mensch darf: freigeben (→ Bereit) und verwerfen.
+NUR_MENSCH = ("bereit", "verworfen")
+# Aus diesen Spalten darf ein Agent eine Karte herausnehmen. Triage verlässt eine
+# Karte nur durch einen Menschen; Abgeschlossenes holt nur ein Mensch zurück. Seine
+# eigene laufende Karte (In Arbeit) darf er zusätzlich nach Triage setzen.
+AGENT_AUS = ("eingang", "bereit", "pruefung")
 PR_OFFEN = ("offen", "ci_laeuft", "ci_rot", "ci_gruen")
 
 
@@ -127,7 +142,7 @@ def karte_dict(k: ProjektKarte, task: Task | None = None, *, lauf_sichtbar: bool
                voll: bool = False) -> dict:
     """Karte für Board und Fenster. ``voll``: für das Fenster einer einzelnen Karte —
     ganzer Text, Ergebnis und Fehler des Laufs in jeder Spalte (das Board kürzt)."""
-    zeigen = task is not None and lauf_sichtbar and (voll or k.spalte == "pruefung")
+    zeigen = task is not None and lauf_sichtbar and (voll or k.spalte in ("pruefung", "triage"))
     return {
         "id": k.id,
         "titel": k.titel,
@@ -137,6 +152,9 @@ def karte_dict(k: ProjektKarte, task: Task | None = None, *, lauf_sichtbar: bool
         "url": k.url,
         "labels": k.labels or [],
         "spalte": k.spalte,
+        # Rückfrage offen — in Triage oder im Review mit Triage-Tag (ein offener PR
+        # geht im Vorrang vor, die Frage im Issue wartet trotzdem auf einen Menschen).
+        "wartet_auf_dich": wartet_auf_dich(k),
         "prioritaet": k.prioritaet,
         "agent_id": k.agent_id,
         "task_id": k.task_id,
@@ -172,6 +190,17 @@ def karte_dict(k: ProjektKarte, task: Task | None = None, *, lauf_sichtbar: bool
     }
 
 
+def wartet_auf_dich(k: ProjektKarte) -> bool:
+    """Wartet die Karte auf die Antwort eines Menschen (offene Rückfrage)?"""
+    if k.spalte == "triage":
+        return True
+    if k.spalte != "pruefung" or not k.labels:
+        return False
+    from app.core.projekt_git import tags_der_art
+
+    return bool(tags_der_art(k.labels, "triage"))
+
+
 def _ordnung(k: ProjektKarte):
     return (k.prioritaet or 2, k.reihenfolge or 0.0, _utc(k.created_at) or datetime.min.replace(tzinfo=timezone.utc))
 
@@ -179,15 +208,18 @@ def _ordnung(k: ProjektKarte):
 async def board(db: AsyncSession, team_id: str, sichtbar: list[str] | None) -> dict:
     jetzt = datetime.now(timezone.utc)
     offen = (await db.execute(
-        select(ProjektKarte).where(ProjektKarte.team_id == team_id, ProjektKarte.spalte != "erledigt")
+        select(ProjektKarte).where(ProjektKarte.team_id == team_id, ProjektKarte.spalte.not_in(ABGESCHLOSSEN))
         .limit(MAX_OFFEN)
     )).scalars().all()
-    erledigt = (await db.execute(
-        select(ProjektKarte).where(
-            ProjektKarte.team_id == team_id, ProjektKarte.spalte == "erledigt",
-            ProjektKarte.erledigt_at >= jetzt - FENSTER_ERLEDIGT,
-        ).order_by(ProjektKarte.erledigt_at.desc()).limit(MAX_ERLEDIGT)
-    )).scalars().all()
+    abgeschlossen = {
+        spalte: (await db.execute(
+            select(ProjektKarte).where(
+                ProjektKarte.team_id == team_id, ProjektKarte.spalte == spalte,
+                ProjektKarte.erledigt_at >= jetzt - FENSTER_ERLEDIGT,
+            ).order_by(ProjektKarte.erledigt_at.desc()).limit(MAX_ERLEDIGT)
+        )).scalars().all()
+        for spalte in ABGESCHLOSSEN
+    }
 
     task_ids = [k.task_id for k in offen if k.task_id]
     tasks: dict[str, Task] = {}
@@ -202,7 +234,8 @@ async def board(db: AsyncSession, team_id: str, sichtbar: list[str] | None) -> d
     for k in sorted(offen, key=_ordnung):
         t = tasks.get(k.task_id) if k.task_id else None
         spalten[k.spalte if k.spalte in spalten else "eingang"].append(karte_dict(k, t, lauf_sichtbar=_sichtbar(t)))
-    spalten["erledigt"] = [karte_dict(k) for k in erledigt]
+    for spalte, karten in abgeschlossen.items():
+        spalten[spalte] = [karte_dict(k) for k in karten]
     obergrenze = await _obergrenze_markieren(db, team_id, spalten["in_arbeit"])
 
     laufend = await _laufende_laeufe(db, team_id, sichtbar, {k.id: k for k in offen})
@@ -217,7 +250,10 @@ async def board(db: AsyncSession, team_id: str, sichtbar: list[str] | None) -> d
             "eingang": len(spalten["eingang"]),
             "bereit": len(spalten["bereit"]),
             "in_arbeit": len(spalten["in_arbeit"]),
+            # Offene Rückfragen: warten auf einen Menschen (auch Review-Karten mit Triage-Tag).
+            "triage": sum(1 for spalte in ("triage", "pruefung") for k in spalten[spalte] if k["wartet_auf_dich"]),
             "pruefung": len(spalten["pruefung"]),
+            "verworfen": len(spalten["verworfen"]),
             "wartet_auf_merge": sum(1 for k in spalten["pruefung"] if k["pr_zustand"] in PR_OFFEN),
             "laeufe": len(laufend),
             "kosten_monat_usd": round(kosten_monat, 4),
@@ -343,7 +379,8 @@ async def _fertig_verlauf(db: AsyncSession, team_id: str, jetzt: datetime) -> di
     beginn = datetime.combine(tage[0], time(12), tzinfo=zone) - timedelta(hours=12)
     for fertig in (await db.execute(
         select(ProjektKarte.erledigt_at).where(
-            ProjektKarte.team_id == team_id, ProjektKarte.erledigt_at >= beginn.astimezone(timezone.utc),
+            ProjektKarte.team_id == team_id, ProjektKarte.spalte == "erledigt",
+            ProjektKarte.erledigt_at >= beginn.astimezone(timezone.utc),
         )
     )).scalars():
         tag = _utc(fertig).astimezone(zone).date()
@@ -373,7 +410,7 @@ def neue_karte(team_id: str, titel: str, text: str = "", *, spalte: str = "einga
                url: str | None = None, labels: list | None = None,
                ersteller_user_id: str | None = None) -> ProjektKarte:
     if spalte not in ("eingang", "bereit"):
-        raise KartenFehler("Neue Karten kommen in den Eingang oder nach Bereit.")
+        raise KartenFehler("Neue Karten kommen in die Inbox oder nach Bereit.")
     return ProjektKarte(
         id=uuid.uuid4().hex, team_id=team_id, titel=titel.strip()[:300] or "Ohne Titel", text=(text or "").strip(),
         spalte=spalte, prioritaet=min(3, max(1, int(prioritaet or 2))), erstellt_von=von, quelle=quelle,
@@ -382,15 +419,58 @@ def neue_karte(team_id: str, titel: str, text: str = "", *, spalte: str = "einga
     )
 
 
+def eigener_lauf(karte: ProjektKarte, agent_id: str | None) -> bool:
+    """Bearbeitet ``agent_id`` diese Karte gerade selbst (In Arbeit, sein Lauf)?"""
+    return bool(agent_id) and karte.spalte == "in_arbeit" and bool(karte.task_id) and karte.agent_id == agent_id
+
+
+def verschieben_pruefen(karte: ProjektKarte, spalte: str | None, von_agent: str | None = None,
+                        notiz: str | None = None) -> None:
+    """Darf die Karte nach ``spalte``? KartenFehler, wenn nicht — ändert nichts.
+
+    ``von_agent``: ein Agent verschiebt (seine Kennung). Er gibt nie frei (Bereit)
+    und verwirft nicht (``NUR_MENSCH``), nimmt Karten nur aus ``AGENT_AUS`` heraus
+    und fasst keine Karte an, die jemand von außen übernommen hat. Nach Triage darf
+    er seine eigene laufende Karte setzen — oder eine Karte aus Inbox/Bereit. Eine
+    ``notiz`` schreibt er nur an seine eigene Karte oder an Karten in Inbox, Bereit
+    oder Review — auch wenn die Spalte bleibt.
+    """
+    if von_agent and notiz is not None and not (
+            karte.agent_id == von_agent or (karte.spalte in AGENT_AUS and not karte.extern_bearbeiter)):
+        raise KartenFehler("Eine Notiz schreibst du nur an deine eigene Karte oder an Karten in Inbox, Bereit "
+                           "oder Review.")
+    if spalte is None or spalte == karte.spalte:
+        return
+    if spalte not in VON_HAND:
+        raise KartenFehler("In Arbeit kommt eine Karte nur, indem sie vergeben wird.")
+    if von_agent:
+        eigen = eigener_lauf(karte, von_agent)
+        if spalte in NUR_MENSCH:
+            raise KartenFehler(
+                "Freigeben (nach Bereit) darf nur ein Mensch. Hast du eine Rückfrage, setz die Karte auf „triage“ "
+                "und stell die Frage (bei Issues im Issue)." if spalte == "bereit"
+                else "Verwerfen entscheidet ein Mensch. Schlag es im Projektgespräch vor.")
+        if karte.extern_bearbeiter and not eigen:
+            raise KartenFehler("Diese Karte hat jemand von außen übernommen — nichts daran ändern. Fällt dir "
+                               "etwas auf, schreib es ins Projektgespräch.")
+        if karte.spalte == "triage":
+            raise KartenFehler("Die Karte wartet auf eine Antwort eines Menschen — aus Triage holt sie nur er.")
+        if not (karte.spalte in AGENT_AUS or (eigen and spalte == "triage")):
+            raise KartenFehler("Aus dieser Spalte verschiebt nur ein Mensch.")
+        if spalte == "triage" and not eigen and karte.spalte not in ("eingang", "bereit"):
+            raise KartenFehler("Nach Triage setzt du nur deine eigene laufende Karte oder eine aus Inbox/Bereit.")
+    if karte.spalte == "in_arbeit" and karte.task_id and not (spalte == "triage" and eigener_lauf(karte, von_agent)):
+        raise KartenFehler("Die Karte ist gerade in Arbeit. Warte das Ende des Laufs ab.")
+
+
 def verschieben(karte: ProjektKarte, *, spalte: str | None = None, prioritaet: int | None = None,
-                reihenfolge: float | None = None, notiz: str | None = None) -> None:
+                reihenfolge: float | None = None, notiz: str | None = None,
+                von_agent: str | None = None) -> None:
+    """Karte umstellen (geprüft mit ``verschieben_pruefen``)."""
+    verschieben_pruefen(karte, spalte, von_agent, notiz)
     if spalte is not None and spalte != karte.spalte:
-        if spalte not in VON_HAND:
-            raise KartenFehler("In Arbeit kommt eine Karte nur, indem sie vergeben wird.")
-        if karte.spalte == "in_arbeit" and karte.task_id:
-            raise KartenFehler("Die Karte ist gerade in Arbeit. Warte das Ende des Laufs ab.")
         karte.spalte = spalte
-        if spalte == "erledigt":
+        if spalte in ABGESCHLOSSEN:
             karte.erledigt_at = datetime.now(timezone.utc)
         else:
             karte.erledigt_at = None
@@ -464,7 +544,7 @@ def karten_auftrag(karte: ProjektKarte, projekt_name: str, *, fremd: bool = Fals
     # Inhalt von Dritten (Issue, PR, anderer Nutzer) — Titel UND Text sind Material,
     # keine Anweisung; der Titel steht deshalb mit im Rahmen, nicht in der Kopfzeile.
     text = (karte.text or "(keine Beschreibung)").strip()[:12000]
-    kopf_titel = f"„{karte.titel}“"
+    kopf_titel = f"„{einzeilig(karte.titel, 300)}“"
     if gerahmt(karte, fremd):
         quelle = karte.quelle if karte.quelle != "eigen" else "karte-eines-anderen-nutzers"
         text = (f"[EXTERNAL-DATA source=\"{quelle}\"]\nTitel: {_entschaerft(karte.titel)}\n\n"
@@ -478,13 +558,18 @@ def karten_auftrag(karte: ProjektKarte, projekt_name: str, *, fremd: bool = Fals
         "- Melde jede neue Stufe mit `projekt_karte_stand` (planung, bau, tests, pr, ci, merge).\n"
         "- Legst du einen Pull Request an, gib seine Adresse als `pr_url` mit.\n"
         "- Erkenntnisse, die das ganze Projekt betreffen, hältst du mit `projekt_wissen_schreiben` fest.\n"
-        "- Bist du fertig, schließ den Lauf mit einem kurzen Ergebnis ab — die Karte geht dann zur Prüfung."
+        + RUECKFRAGE_REGEL
+        + f"- Arbeitest du mit einem Pull Request: {SELBST_MERGEN_REGEL}\n"
+        + "- Bist du fertig, schließ den Lauf mit einem kurzen Ergebnis ab — die Karte geht dann ins Review."
         + (
             f"\n\n## Regeln für das Issue #{karte.extern_nr}\n"
-            f"- Das Board hat das Issue im Repo schon als übernommen markiert (Tag `status/in-arbeit` und "
+            f"- Das Board hat das Issue im Repo schon als übernommen markiert (In-Arbeit-Tag und "
             "Kommentar) — andere Agenten und Menschen sehen damit, dass du dran bist.\n"
             f"- Ein Issue, ein Branch: `{karte.extern_nr}-<kurzer-name>`. Pull Request mit `Closes #{karte.extern_nr}` "
             "im Text, mit Testnachweis und offenen Punkten.\n"
+            "- Rückfrage: die Frage mit `projekt_issue_kommentar` ins Issue, dann die Karte auf „triage“ — das "
+            "Board setzt das Triage-Tag und gibt das Ticket frei.\n"
+            +
             "- Gilt im Repo eine `AGENTS.md` oder `CONTRIBUTING.md`, halte dich an ihre Regeln.\n"
             "- Merkst du, dass schon jemand anderes daran arbeitet (fremder Branch oder PR zur Nummer), hör auf "
             "und melde das im Ergebnis, statt doppelt zu arbeiten.\n"
@@ -500,6 +585,17 @@ def karten_auftrag(karte: ProjektKarte, projekt_name: str, *, fremd: bool = Fals
     )
 
 
+#: Rückfrage statt Raten — für jede Karte. Freigeben bleibt dem Menschen.
+RUECKFRAGE_REGEL = (
+    "- Fehlt dir eine Entscheidung oder Information, rate nicht: stell die Frage (bei Issues mit "
+    "`projekt_issue_kommentar` im Issue, bei eigenen Karten als `notiz`), setz die Karte mit "
+    "`projekt_karte_verschieben` auf „triage“ und arbeite NICHT weiter — schließ den Lauf mit der Frage als "
+    "Ergebnis ab. Die Karte bleibt in Triage, bis ein Mensch sie freigibt. Hast du schon einen PR offen, bleibt "
+    "die Karte in Review; die Frage steht trotzdem im Issue, mit Triage-Tag. Nach „bereit“ schiebst du nie: "
+    "freigeben darf nur ein Mensch.\n"
+)
+
+
 def in_arbeit_setzen(karte: ProjektKarte, task: Task, agent_id: str | None) -> None:
     karte.spalte = "in_arbeit"
     karte.task_id = task.id
@@ -509,10 +605,12 @@ def in_arbeit_setzen(karte: ProjektKarte, task: Task, agent_id: str | None) -> N
 
 
 async def lauf_beendet(db: AsyncSession, task: Task, redis=None) -> None:
-    """Ende eines Laufs: seine Karte geht zur Prüfung (abgebrochen: zurück nach Bereit).
+    """Ende eines Laufs: seine Karte geht ins Review (abgebrochen: zurück nach Bereit).
 
     Aufgerufen aus ``TaskRouter.handle_task_completion`` und beim Abbrechen. Nur der
-    AKTUELLE Lauf einer Karte bewegt sie — ein alter (zurückgegebener) nicht.
+    AKTUELLE Lauf einer Karte bewegt sie — ein alter (zurückgegebener) nicht. Hat
+    der Agent die Karte auf Triage gesetzt (Rückfrage), bleibt sie dort: Sie wartet
+    auf einen Menschen, nicht auf ein Review.
     """
     karte_id = (task.metadata_ or {}).get("karte_id")
     if not karte_id:
@@ -538,7 +636,7 @@ async def lauf_beendet(db: AsyncSession, task: Task, redis=None) -> None:
 
 def abnehmen(karte: ProjektKarte, task: Task | None) -> None:
     if karte.spalte != "pruefung":
-        raise KartenFehler("Abnehmen geht nur in der Prüfung.")
+        raise KartenFehler("Abnehmen geht nur im Review.")
     jetzt = datetime.now(timezone.utc)
     karte.spalte = "erledigt"
     karte.erledigt_at = jetzt
@@ -563,17 +661,19 @@ def nacharbeit_prompt(karte: ProjektKarte, task: Task | None, hinweis: str, proj
 
 
 def arbeit_offen(kennzahlen: dict) -> bool:
-    """Gibt es etwas zu sichten oder zu vergeben? Sonst läuft der Takt leer."""
+    """Gibt es etwas zu sichten oder zu vergeben? Sonst läuft der Takt leer.
+    (Triage zählt nicht: dort wartet die Karte auf einen Menschen, nicht auf den Takt.)"""
     return bool(kennzahlen.get("eingang") or kennzahlen.get("bereit"))
 
 
-SPALTEN_NAMEN = {"eingang": "Eingang", "bereit": "Bereit", "in_arbeit": "In Arbeit",
-                 "pruefung": "Prüfung", "erledigt": "Erledigt (30 Tage)"}
+SPALTEN_NAMEN = {"eingang": "Inbox", "bereit": "Bereit", "in_arbeit": "In Arbeit",
+                 "triage": "Triage (Rückfrage offen, wartet auf einen Menschen)",
+                 "pruefung": "Review", "erledigt": "Erledigt (30 Tage)", "verworfen": "Verworfen (30 Tage)"}
 PRIO_NAMEN = {1: "P1", 2: "P2", 3: "P3"}
 
 
 def board_als_text(projekt: dict, b: dict, namen: dict[str, str], *, je_spalte: int = 25,
-                   spalten: tuple[str, ...] = ("eingang", "bereit", "in_arbeit", "pruefung", "erledigt")) -> str:
+                   spalten: tuple[str, ...] = SPALTEN) -> str:
     """Das Board als Text für die Werkzeuge der Agenten — EINE Darstellung für alle Laufzeiten.
 
     ``spalten``: welche Spalten mit ihren Karten erscheinen (die Kennzahlen stehen immer da).
@@ -584,8 +684,9 @@ def board_als_text(projekt: dict, b: dict, namen: dict[str, str], *, je_spalte: 
     k = b["kennzahlen"]
     zeilen = [
         f"Projekt „{projekt['name']}“ (projekt_id={projekt['id']})",
-        f"Eingang {k['eingang']} · Bereit {k['bereit']} · In Arbeit {k['in_arbeit']} · Prüfung {k['pruefung']}"
-        f" (davon wartet auf Merge {k['wartet_auf_merge']}) · heute fertig {k['heute_fertig']}",
+        f"Inbox {k['eingang']} · Bereit {k['bereit']} · In Arbeit {k['in_arbeit']} · Triage {k.get('triage', 0)}"
+        f" · Review {k['pruefung']} (davon wartet auf Merge {k['wartet_auf_merge']}) · heute fertig {k['heute_fertig']}",
+        "Freigeben (Inbox/Triage → Bereit) und Verwerfen darf nur ein Mensch; vergeben wird nur aus Bereit.",
     ]
     if b.get("laufend"):
         zeilen.append("\nGerade laufen:")
@@ -599,10 +700,10 @@ def board_als_text(projekt: dict, b: dict, namen: dict[str, str], *, je_spalte: 
             continue
         zeilen.append(f"\n## {SPALTEN_NAMEN[spalte]} ({len(karten)})")
         for karte in karten[:je_spalte]:
-            teile = [f"- [{karte['id']}] {PRIO_NAMEN.get(karte['prioritaet'], 'P2')} {karte['titel']}"]
+            teile = [f"- [{karte['id']}] {PRIO_NAMEN.get(karte['prioritaet'], 'P2')} {einzeilig(karte['titel'], 300)}"]
             if karte.get("extern_nr"):
                 teile.append(f"#{karte['extern_nr']}")
-            if karte.get("agent_id") and spalte in ("in_arbeit", "pruefung"):
+            if karte.get("agent_id") and spalte in ("in_arbeit", "triage", "pruefung"):
                 teile.append(f"→ {wer(karte['agent_id'])}")
             if karte.get("extern_bearbeiter"):
                 # Name kommt aus dem Repo (fremder Text): gekürzt, ohne Zeilenumbruch.

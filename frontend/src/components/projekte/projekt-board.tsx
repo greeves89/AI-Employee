@@ -1,15 +1,17 @@
 "use client";
 
 /**
- * Board eines Projekts: Eingang → Bereit → In Arbeit → Prüfung → Erledigt.
- * Karten werden per Klick weitergeschoben: einplanen, Priorität setzen,
- * vergeben („Los“), abnehmen oder zurückgeben.
+ * Board eines Projekts: Inbox → Triage → Bereit → In Arbeit → Review → Erledigt
+ * (und Verworfen). Karten werden per Klick weitergeschoben: freigeben (nur ein
+ * Mensch — Agenten nehmen nur Freigegebenes), Priorität setzen, vergeben („Los“),
+ * Rückfragen beantworten (Triage → Freigeben), abnehmen oder zurückgeben.
  */
 
 import { useEffect, useState } from "react";
 import { UserRound,
-  ArrowLeft, ArrowRight, ArrowRightLeft, Bot, Check, CircleDot, CornerUpLeft, ExternalLink, GitBranch, GitPullRequest, Globe, Loader2,
-  Play, Plus, ScrollText, Server, Terminal, Trash2, TriangleAlert, Unlock,
+  ArrowLeft, ArrowRight, ArrowRightLeft, Bot, Check, CircleDot, CornerUpLeft, ExternalLink, FoldHorizontal, GitBranch,
+  GitPullRequest, Globe, Loader2, MessageCircleQuestion, Play, Plus, ScrollText, Server, Terminal, Trash2, TriangleAlert,
+  UnfoldHorizontal, Unlock,
 } from "lucide-react";
 import type { Agent } from "@/lib/types";
 import {
@@ -157,6 +159,25 @@ function ExternStand({ karte, farbe, onFreigeben }: { karte: ProjektKarte; farbe
   );
 }
 
+/** Rückfrage offen: in Triage — oder im Review mit Triage-Tag (offener PR, die Frage
+ *  steht trotzdem im Issue). Ein Agent hat gefragt und wartet auf dich. */
+function WartetAufDich({ karte, gross = false }: { karte: ProjektKarte; gross?: boolean }) {
+  if (!(karte.wartet_auf_dich ?? karte.spalte === "triage")) return null;
+  return (
+    <p className={cn("flex items-start gap-1 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300",
+      gross ? "px-3 py-2 text-xs" : "mt-1.5 px-2 py-1 text-[11px]")}>
+      <MessageCircleQuestion className={cn("mt-px shrink-0", gross ? "h-3.5 w-3.5" : "h-3 w-3")} />
+      <span>
+        <span className="font-medium">Wartet auf dich:</span>{" "}
+        {karte.quelle === "issue"
+          ? (karte.spalte === "triage" ? "Rückfrage im Issue beantworten, dann freigeben."
+            : "Rückfrage im Issue beantworten und das Triage-Tag dort entfernen.")
+          : "Rückfrage in der Notiz beantworten, dann freigeben."}
+      </span>
+    </p>
+  );
+}
+
 /** Rot: zwei gültige Übernahmen am selben Issue oder ein fremder Commit auf dem Branch. */
 function Konflikt({ karte }: { karte: ProjektKarte }) {
   if (!karte.konflikt) return null;
@@ -262,15 +283,24 @@ function KartenAktionen({
   const prOffen = !!karte.pr_url && !["gemergt", "geschlossen"].includes(karte.pr_zustand ?? "");
   return (
     <div className={cn("flex flex-wrap items-center gap-1.5", kompakt ? "mt-1.5 -mb-1 -ml-1" : "mt-2.5")}>
-      {karte.spalte === "eingang" && (
+      {(karte.spalte === "eingang" || karte.spalte === "triage") && (
         <>
-          <Knopf leise titel="Nach Bereit — kommt als Nächstes dran" onClick={() => aktionen.verschieben(karte, { spalte: "bereit" })}>
-            Einplanen <ArrowRight className="h-3 w-3" />
+          <Knopf haupt={karte.spalte === "triage"} leise={karte.spalte === "eingang"}
+            titel={karte.spalte === "triage"
+              ? "Rückfrage geklärt: nach Bereit — Agenten nehmen die Karte wieder (bei Issues: Triage-Tag weg, status/ready)"
+              : "Freigeben: nach Bereit — Agenten nehmen die Karte (bei Issues: Tag status/ready)"}
+            onClick={() => aktionen.verschieben(karte, { spalte: "bereit" })}>
+            Freigeben <ArrowRight className="h-3 w-3" />
           </Knopf>
-          <Knopf gefahr titel="Verwerfen (nach Erledigt)" onClick={() => aktionen.verschieben(karte, { spalte: "erledigt" })}>
+          <Knopf gefahr titel="Verwerfen — wird nicht umgesetzt" onClick={() => aktionen.verschieben(karte, { spalte: "verworfen" })}>
             <Trash2 className="h-3 w-3" />
           </Knopf>
         </>
+      )}
+      {karte.spalte === "verworfen" && (
+        <Knopf leise titel="Doch umsetzen: zurück in die Inbox" onClick={() => aktionen.verschieben(karte, { spalte: "eingang" })}>
+          <ArrowLeft className="h-3 w-3" /> Inbox
+        </Knopf>
       )}
       {karte.spalte === "bereit" && (
         <>
@@ -295,7 +325,7 @@ function KartenAktionen({
           >
             <Play className="h-3 w-3" /> Los
           </Knopf>
-          <Knopf titel="Zurück in den Eingang" onClick={() => aktionen.verschieben(karte, { spalte: "eingang" })}>
+          <Knopf titel="Zurück in die Inbox" onClick={() => aktionen.verschieben(karte, { spalte: "eingang" })}>
             <ArrowLeft className="h-3 w-3" />
           </Knopf>
         </>
@@ -447,7 +477,7 @@ function Karte({
       onClick={(e) => { if (!aufBedienelement(e.target)) onOeffnen(karte); }}
       onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && e.target === e.currentTarget) { e.preventDefault(); onOeffnen(karte); } }}
       className={cn("cursor-pointer rounded-xl border bg-card text-sm shadow-sm transition-colors hover:border-foreground/[0.16] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
-        karte.spalte === "eingang" ? "p-2.5" : "p-3",
+        karte.spalte === "eingang" || karte.spalte === "verworfen" ? "p-2.5" : "p-3",
         gescheitert || karte.konflikt ? "border-red-500/40" : "border-foreground/[0.08]")}
     >
       <div className="flex items-start gap-1.5">
@@ -455,7 +485,7 @@ function Karte({
           type="button"
           title="Priorität ändern"
           onClick={() => aktionen.verschieben(karte, { prioritaet: (karte.prioritaet % 3) + 1 })}
-          disabled={karte.spalte === "erledigt"}
+          disabled={karte.spalte === "erledigt" || karte.spalte === "verworfen"}
           className={cn("mt-0.5 shrink-0 rounded px-1 text-[10px] font-semibold", prio.klasse)}
         >
           {prio.label}
@@ -468,6 +498,7 @@ function Karte({
 
       <Tags labels={karte.labels} />
       <Konflikt karte={karte} />
+      <WartetAufDich karte={karte} />
 
       {karte.notiz && <p className="mt-1.5 rounded-md bg-amber-500/10 px-2 py-1 text-[11px] text-amber-700 dark:text-amber-300">{karte.notiz}</p>}
 
@@ -486,7 +517,7 @@ function Karte({
 
       <PrLink karte={karte} />
 
-      {karte.spalte === "pruefung" && (karte.fehler || karte.ergebnis) && (
+      {(karte.spalte === "pruefung" || karte.spalte === "triage") && (karte.fehler || karte.ergebnis) && (
         <p className={cn("mt-2 line-clamp-4 whitespace-pre-line text-xs", gescheitert ? "text-red-500" : "text-muted-foreground")}>
           {gescheitert && <TriangleAlert className="mr-1 inline h-3 w-3" />}
           {karte.fehler ?? karte.ergebnis}
@@ -494,7 +525,7 @@ function Karte({
       )}
 
       <KartenAktionen karte={karte} agents={agents} mitglieder={mitglieder} leadId={leadId}
-        aktionen={aktionen} onZurueck={onZurueck} kompakt={karte.spalte === "eingang"} />
+        aktionen={aktionen} onZurueck={onZurueck} kompakt={karte.spalte === "eingang" || karte.spalte === "verworfen"} />
     </div>
   );
 }
@@ -545,7 +576,7 @@ function KartenFenster({
                 type="button"
                 title="Priorität ändern"
                 onClick={() => aktionen.verschieben(k, { prioritaet: (k.prioritaet % 3) + 1 })}
-                disabled={k.spalte === "erledigt"}
+                disabled={k.spalte === "erledigt" || k.spalte === "verworfen"}
                 className={cn("mt-1 shrink-0 rounded px-1.5 text-[11px] font-semibold", prio.klasse)}
               >
                 {prio.label}
@@ -558,6 +589,7 @@ function KartenFenster({
             <Konflikt karte={k} />
           </div>
 
+          <WartetAufDich karte={k} gross />
           {k.notiz && <p className="rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">{k.notiz}</p>}
 
           <section>
@@ -643,6 +675,8 @@ export function ProjektBoardAnsicht({
   const boardAktionen: BoardAktionen = { ...aktionen, uebergabeOeffnen: (k) => setUebergabeId(k.id) };
   const ausgabeJeLauf = new Map(board.laufend.map((l) => [l.task_id, l.letzte_ausgabe]));
   const [nacharbeiter, setNacharbeiter] = useState("");
+  // Verworfen ist schmal eingeklappt, bis man es aufklappt.
+  const [verworfenOffen, setVerworfenOffen] = useState(false);
   const imProjekt = [...new Set([...(leadId ? [leadId] : []), ...mitglieder])];
   const bisherDa = !!zurueck?.agent_id && imProjekt.includes(zurueck.agent_id);
   const standardNacharbeit = bisherDa
@@ -653,29 +687,57 @@ export function ProjektBoardAnsicht({
 
   return (
     <>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      {/* Sieben Spalten nebeneinander, feste Breite; ist der Platz zu schmal, scrollt
+          das Board waagerecht. Verworfen ist eingeklappt, bis man es aufklappt. */}
+      <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-2">
         {SPALTEN.map((sp) => {
           const karten = board.spalten[sp.key] ?? [];
+          const zu = sp.schmal && !verworfenOffen;
+          if (zu) {
+            return (
+              <button key={sp.key} type="button" onClick={() => setVerworfenOffen(true)}
+                title={`${sp.label} aufklappen — ${sp.beschreibung}`} aria-label={`${sp.label} aufklappen`}
+                className="flex w-11 shrink-0 flex-col items-center gap-2 rounded-2xl border border-foreground/[0.06] bg-foreground/[0.02] py-3 text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground">
+                <UnfoldHorizontal className="h-3.5 w-3.5" />
+                <span className="rounded-full bg-foreground/[0.06] px-1.5 py-0.5 text-[11px] tabular-nums">{karten.length}</span>
+                <span className="text-xs font-semibold uppercase tracking-wide [writing-mode:vertical-rl]">{sp.label}</span>
+              </button>
+            );
+          }
           return (
-            <section key={sp.key} className="flex min-w-0 flex-col rounded-2xl border border-foreground/[0.06] bg-foreground/[0.02] p-2.5">
-              <h3 className="mb-2 flex items-center justify-between px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {sp.label}
-                <span className="flex items-center gap-1">
-                  <span className={cn("rounded-full px-2 py-0.5 text-[11px] normal-case",
-                    karten.length && sp.key === "pruefung" ? "bg-orange-500/15 text-orange-600 dark:text-orange-400" : "bg-foreground/[0.06]")}>
-                    {karten.length}
+            <section key={sp.key} className="flex w-[17.5rem] shrink-0 flex-col rounded-2xl border border-foreground/[0.06] bg-foreground/[0.02] p-2.5">
+              <div className="mb-2 px-1">
+                <h3 className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    {sp.key === "triage" && <MessageCircleQuestion className="h-3.5 w-3.5" />}
+                    {sp.label}
                   </span>
-                  {sp.key === "eingang" && (
-                    <button type="button" onClick={() => setNeu(true)} title="Neue Karte" aria-label="Neue Karte"
-                      className="rounded-md p-0.5 hover:bg-foreground/[0.08] hover:text-foreground">
-                      <Plus className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </span>
-              </h3>
-              {/* Fünf Spalten nebeneinander: bis zum unteren Rand (nach „Board“-Sprung steht
-                  der Reiter oben), statt bei 34rem leeren Platz zu lassen. */}
-              <div className="flex max-h-[34rem] flex-col gap-2 overflow-y-auto xl:max-h-none xl:h-[calc(100dvh-14rem-var(--betreiber-hinweis-h,0px))] xl:min-h-[24rem]">
+                  <span className="flex items-center gap-1">
+                    <span className={cn("rounded-full px-2 py-0.5 text-[11px] normal-case",
+                      karten.length && sp.key === "pruefung" ? "bg-orange-500/15 text-orange-600 dark:text-orange-400"
+                        : karten.length && sp.key === "triage" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                          : "bg-foreground/[0.06]")}>
+                      {karten.length}
+                    </span>
+                    {sp.key === "eingang" && (
+                      <button type="button" onClick={() => setNeu(true)} title="Neue Karte" aria-label="Neue Karte"
+                        className="rounded-md p-0.5 hover:bg-foreground/[0.08] hover:text-foreground">
+                        <Plus className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    {sp.schmal && (
+                      <button type="button" onClick={() => setVerworfenOffen(false)} title={`${sp.label} einklappen`}
+                        aria-label={`${sp.label} einklappen`} className="rounded-md p-0.5 hover:bg-foreground/[0.08] hover:text-foreground">
+                        <FoldHorizontal className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </span>
+                </h3>
+                <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground/80">{sp.beschreibung}</p>
+              </div>
+              {/* Bis zum unteren Rand (nach „Board“-Sprung steht der Reiter oben), statt bei
+                  34rem leeren Platz zu lassen. */}
+              <div className="flex max-h-[34rem] flex-col gap-2 overflow-y-auto xl:max-h-none xl:h-[calc(100dvh-15rem-var(--betreiber-hinweis-h,0px))] xl:min-h-[24rem]">
                 {karten.length === 0 ? (
                   <p className="px-1 py-3 text-xs text-muted-foreground/70">{sp.leer}</p>
                 ) : (
@@ -696,7 +758,7 @@ export function ProjektBoardAnsicht({
       <UebergabeFenster karte={uebergabeKarte} agents={agentById} mitglieder={imProjekt} aktionen={aktionen}
         schliessen={() => setUebergabeId(null)} />
 
-      <Fenster offen={neu} schliessen={() => setNeu(false)} titel="Neue Karte im Eingang" breite="max-w-lg">
+      <Fenster offen={neu} schliessen={() => setNeu(false)} titel="Neue Karte in der Inbox" breite="max-w-lg">
         <div className="space-y-3 p-5">
           <input value={titel} onChange={(e) => setTitel(e.target.value)} autoFocus placeholder="Titel"
             className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-sm outline-none focus:border-primary/50" />
@@ -719,7 +781,7 @@ export function ProjektBoardAnsicht({
       <Fenster offen={!!zurueck} schliessen={() => setZurueck(null)} titel="Zur Nacharbeit zurückgeben" breite="max-w-lg">
         <div className="space-y-3 p-5">
           <p className="text-sm text-muted-foreground">
-            „{zurueck?.titel}“ geht mit deinem Hinweis zur Nacharbeit. Danach steht die Karte wieder in der Prüfung.
+            „{zurueck?.titel}“ geht mit deinem Hinweis zur Nacharbeit. Danach steht die Karte wieder im Review.
           </p>
           <label className="block text-xs font-medium text-muted-foreground">
             Wer arbeitet nach?

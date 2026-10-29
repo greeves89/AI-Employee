@@ -973,7 +973,7 @@ Ergebnisse ab**. Ein Projekt ist dasselbe wie ein **Team** auf der Agentenseite 
 6. Unter **Mitglieder** die Agenten anklicken, die mitarbeiten sollen. Du kannst nur deine
    eigenen Agenten zuweisen.
 7. Einen **Lead** wählen. Der Lead verteilt Aufträge an die passenden Kollegen und
-   sichtet im Takt den Eingang. Ohne Lead wählst du bei jedem Auftrag selbst, wer ihn bekommt.
+   sichtet im Takt die Inbox. Ohne Lead wählst du bei jedem Auftrag selbst, wer ihn bekommt.
 8. **Arbeitstakt** wählen (siehe 6a.6) — für den Anfang „Aus — nur auf Klick“.
 9. Optional unter **Freigeben für** Kollegen anhaken, die das Projekt sehen sollen. Ohne
    Freigabe siehst **nur du** das Projekt — auch Administratoren nicht.
@@ -983,7 +983,8 @@ Ergebnisse ab**. Ein Projekt ist dasselbe wie ein **Team** auf der Agentenseite 
 ![Fenster „Projekt erstellen“ mit Name, Beschreibung, Farbe und Mitgliedern](screenshots/71-projekt-anlegen.png)
 
 Die Übersicht zeigt je Projekt eine Karte mit dem Raum, den Zahlen **bereit**, **in Arbeit**,
-**Prüfung** und **heute fertig**, dem, was gerade läuft, was als Nächstes kommt, und dem
+**Review** und **heute fertig** (dazu, wie viele Karten in der Inbox liegen und wie viele
+Rückfragen offen sind), dem, was gerade läuft, was als Nächstes kommt, und dem
 Arbeitstakt.
 
 ![Seite „Projekte“ — Menüpunkt in der Seitenleiste, je Projekt eine Karte mit Raum und Zahlen](screenshots/70-projekte-uebersicht.png)
@@ -995,8 +996,8 @@ geordnet — das Wichtigste zuerst:
 
 ![Projektseite: oben die Kennzahlenleiste, darunter „Auftrag geben“ und die Reiter mit dem Board](screenshots/72-projekt-raum.png)
 
-1. **Kennzahlenleiste** — der Fluss der Karten als Zahlen: **Eingang › Bereit › In Arbeit ›
-   Prüfung › Erledigt (7 Tage)**. Ein Klick auf eine Zahl springt zum Board. Rechts daneben:
+1. **Kennzahlenleiste** — der Fluss der Karten als Zahlen: **Inbox › Triage › Bereit ›
+   In Arbeit › Review › Erledigt (7 Tage)**. Ein Klick auf eine Zahl springt zum Board. Rechts daneben:
    - **Kosten** des Projekts in diesem Monat (mit Budget, falls eins gesetzt ist) — ein Klick
      öffnet die Finanzen,
    - **Takt** — ob der Arbeitstakt läuft und wann der nächste Lauf ist,
@@ -1005,8 +1006,9 @@ geordnet — das Wichtigste zuerst:
 2. **Auftrag geben** — eine Zeile zum Schreiben, daneben Empfänger und **Abgeben**
    (siehe 6a.4).
 3. **Reiter** — **Board** (Standard), **Raum**, **Gespräch**, **Termine**, **Wissen**, **Team**.
-   Die Seite merkt sich den zuletzt gewählten Reiter. Eine orange Zahl am Reiter Board heißt:
-   so viele Karten warten auf deine Prüfung. Ein grüner Punkt am Reiter Raum heißt: gerade
+   Die Seite merkt sich den zuletzt gewählten Reiter. Eine gelbe Zahl mit Fragezeichen am Reiter
+   Board heißt: so viele Rückfragen warten auf dich (Triage). Eine orange Zahl heißt: so viele
+   Karten warten auf dein Review. Ein grüner Punkt am Reiter Raum heißt: gerade
    arbeitet jemand.
 
 **Der Reiter Raum** zeigt das Projekt als Büro:
@@ -1017,9 +1019,9 @@ geordnet — das Wichtigste zuerst:
   Projektfarbe, der Bildschirm „schreibt“, der Agent wippt, und rechts oben neben ihm steht,
   was er gerade tut (seine letzte Ausgabe).
 - **Krone** — markiert den Lead.
-- **Papierstapel** neben der Tür — alles, was noch nicht vergeben ist (Eingang und Bereit).
+- **Papierstapel** neben der Tür — alles, was noch nicht vergeben ist (Inbox und Bereit).
   Ein Klick darauf springt zum Board.
-- **Board an der Wand** — farbige Zettel: blau = in Arbeit, orange = Prüfung, grün = heute fertig.
+- **Board an der Wand** — farbige Zettel: blau = in Arbeit, orange = Review, grün = heute fertig.
 - Ein Klick auf einen Agenten trägt ihn als Empfänger unter **Auftrag geben** ein.
 
 Rechts daneben steht der **Leitstand**:
@@ -1037,25 +1039,84 @@ Unter dem Raum zeigt **Erledigt** die fertigen Karten der letzten sieben Tage al
 Auf schmalen Bildschirmen blendet der Raum Namen und Sprechblasen aus; der Reiter **Team**
 zeigt sie weiter.
 
-### 6a.3 Das Board: vom Eingang bis Erledigt
+### 6a.3 Das Board: von der Inbox bis Erledigt
 
-Der Reiter **Board** hat fünf Spalten:
+Der Reiter **Board** hat sieben Spalten. Jede Spalte nennt oben ihren Namen, die Zahl der Karten
+und in einer grauen Zeile, was sie bedeutet. Ist das Fenster zu schmal, schiebst du das Board
+waagerecht weiter.
 
 | Spalte | Bedeutung | Was du tun kannst |
 |---|---|---|
-| **Eingang** | Neu, noch nicht gesichtet | **Einplanen** (→ Bereit) oder **verwerfen** (Papierkorb) |
-| **Bereit** | Eingeplant, wartet auf einen Agenten | Empfänger wählen und **Los** klicken — der Agent legt los |
-| **In Arbeit** | Ein Agent arbeitet daran | Letzte Ausgabe, Stufe und Pull Request ansehen |
-| **Prüfung** | Der Agent ist fertig (oder gescheitert) | **Abnehmen** oder **Zurückgeben** |
-| **Erledigt** | Abgenommen oder verworfen (letzte 30 Tage) | — |
+| **Inbox** | Neu angelegt, noch nicht gesichtet — von dir, einem Agenten oder aus einem Issue | **Freigeben** (→ Bereit) oder **verwerfen** (Papierkorb) |
+| **Triage** | Rückfragen offen, wartet auf einen Menschen | Frage beantworten, dann **Freigeben** (→ Bereit) |
+| **Bereit** | Freigegeben von einem Menschen, Agenten nehmen sie | Empfänger wählen und **Los** klicken — oder der Lead vergibt im Takt |
+| **In Arbeit** | In Umsetzung | Letzte Ausgabe, Stufe und Pull Request ansehen |
+| **Review** | PR offen, wartet auf Prüfung und Merge — oder der Lauf ist fertig | **Abnehmen** oder **Zurückgeben** |
+| **Erledigt** | Gemergt bzw. Issue geschlossen (letzte 30 Tage) | — |
+| **Verworfen** | Wird nicht umgesetzt, Begründung am Issue (letzte 30 Tage) | **Inbox** holt eine Karte zurück |
 
-![Das Board mit den Spalten Eingang, Bereit, In Arbeit, Prüfung und Erledigt](screenshots/73-projekt-board.png)
+![Das Board mit den Spalten Inbox, Triage, Bereit, In Arbeit, Review, Erledigt und Verworfen](screenshots/73-projekt-board.png)
 
 - Das kleine Kürzel **P1/P2/P3** vor dem Titel ist die Priorität. Ein Klick darauf schaltet
   sie weiter. Karten mit P1 stehen oben und kommen zuerst dran.
-- Das **+** in der Spalte Eingang legt eine neue Karte an (Titel und Beschreibung).
+- Das **+** in der Spalte Inbox legt eine neue Karte an (Titel und Beschreibung).
+- Die Spalte **Verworfen** ist schmal eingeklappt. Ein Klick auf sie klappt sie auf, das Symbol
+  oben rechts klappt sie wieder ein.
 - Beim **Los** in der Spalte Bereit wählst du im Auswahlfeld „Lead verteilt“ oder
   „Direkt: …“ einen bestimmten Agenten.
+
+**Freigeben darf nur ein Mensch.** Was in der Inbox liegt, nimmt kein Agent — auch nicht der Lead
+im Arbeitstakt. Erst wenn du eine Karte freigibst, steht sie in **Bereit**, und die Agenten
+nehmen sie:
+
+1. In der Spalte **Inbox** auf der Karte **Freigeben** klicken (oder die Karte öffnen und unten
+   **Freigeben** klicken).
+2. Die Karte steht jetzt in **Bereit**. Bei einer Karte aus einem Issue setzt das Board im Repo
+   das Tag **status/ready**.
+
+Agenten legen neue Karten immer in der Inbox an, auch wenn sie „Bereit“ verlangen. Vergeben
+(**Los**) dürfen Agenten nur Karten aus Bereit; du darfst auch direkt aus Inbox oder Triage
+vergeben — das ist dann deine Freigabe. Agenten nehmen Karten nur aus Inbox, Bereit oder Review
+heraus; aus Triage, Erledigt und Verworfen holt sie nur ein Mensch, und Karten, die jemand von
+außen übernommen hat, fassen sie nicht an.
+
+Nimmst du eine Karte aus Bereit oder Triage zurück in die Inbox oder verwirfst sie, nimmt das
+Board bei einem Issue die Bereit- und Triage-Tags im Repo weg — sonst holte der nächste Abgleich
+die Karte zurück. Geht das nicht (kein Schlüssel, kein Schreibrecht, Repo antwortet nicht), bleibt
+die Karte, wo sie war, und eine Meldung sagt, was fehlt.
+
+**Rückfragen (Triage).** Fehlt einem Agenten eine Entscheidung oder Information, rät er nicht:
+Er stellt die Frage (bei einem Issue als Kommentar im Issue, sonst als Notiz an der Karte), setzt
+die Karte auf **Triage** und hört auf. Bei einem Issue setzt das Board das Triage-Tag (z. B.
+`status/triage`), nimmt `status/in-arbeit` weg und gibt das Ticket frei. Endet der Lauf, bleibt
+die Karte in Triage — sie geht nicht ins Review. Der Arbeitstakt vergibt Triage-Karten nie.
+Hat der Agent schon einen Pull Request offen, steht die Karte im **Review**; die Frage steht
+trotzdem im Issue mit Triage-Tag, und die Karte trägt ebenfalls „Wartet auf dich“.
+
+So klärst du eine Rückfrage:
+
+1. Eine Karte in Triage ist gelb markiert: **„Wartet auf dich“** mit einem Fragezeichen-Symbol.
+   Einmal am Tag meldet das Projekt offene Rückfragen auch im **Gespräch** („Wartet auf dich: …“).
+2. Karte anklicken. Im Fenster stehen die Notiz mit der Frage und das Ergebnis des Laufs; bei
+   einem Issue steht die Frage im Issue (Link **#…** oben auf der Karte).
+3. Antworten: im Issue als Kommentar bzw. im Projektgespräch.
+4. Auf **Freigeben** klicken. Die Karte geht nach **Bereit**; bei einem Issue nimmt das Board das
+   Triage-Tag weg und setzt **status/ready**. Kann das Board das Repo nicht ändern (kein
+   Schlüssel, kein Schreibrecht), bleibt die Karte in Triage und eine Meldung sagt, was fehlt —
+   dann das Triage-Tag im Issue selbst entfernen.
+
+Du kannst eine Rückfrage auch direkt im Repo klären: Triage-Tag weg und **status/ready** setzen
+schiebt die Karte beim nächsten Abgleich nach Bereit; nimmst du nur das Triage-Tag weg, geht sie
+zurück in die Inbox (oder nach In Arbeit, wenn dort ein In-Arbeit-Tag steht).
+
+**Selbst mergen.** Agenten dürfen ihren Pull Request selbst zusammenführen (Squash), wenn die
+`AGENTS.md` oder `CONTRIBUTING.md` des Repos nichts anderes sagt und alles erfüllt ist: Der Branch
+enthält das aktuelle main, Tests sind grün (bei Oberflächen-Änderungen auch ein Browser-Test), die
+CI ist auf dem letzten Commit grün, jemand anderes als der Autor hat den PR geprüft (bei Anmeldung,
+Rollen, Personendaten, Uploads oder neuen öffentlichen Endpunkten zusätzlich ein
+Sicherheits-Review), und niemand sonst arbeitet am PR. Erst nach dem Merge schließt der Agent
+seinen Lauf ab; das Issue wird mit `Closes #<nr>` geschlossen, und die Karte wandert nach
+**Erledigt**. Die Regel gilt für jede Karte, an der mit einem Pull Request gearbeitet wird.
 
 **Eine Karte im Fenster öffnen** *(seit 1.397.0)*:
 
@@ -1065,8 +1126,8 @@ Der Reiter **Board** hat fünf Spalten:
    - die **ganze Beschreibung** (auf der Karte ist sie gekürzt),
    - alle Tags, das Ticket im Repo und der Pull Request,
    - der Stand der Arbeit und, falls schon gelaufen, das Ergebnis oder der Fehler des Laufs.
-3. Unten stehen dieselben Knöpfe wie auf der Karte: Einplanen, Los, Abnehmen, Zurückgeben,
-   Freigeben. Die Änderung siehst du sofort im Fenster.
+3. Unten stehen dieselben Knöpfe wie auf der Karte: Freigeben, Los, Abnehmen, Zurückgeben,
+   Übergeben. Die Änderung siehst du sofort im Fenster.
 4. **Lauf ansehen** öffnet den ganzen Lauf mit Verlauf und Dateien in einem zweiten Fenster
    darüber. **Esc** schließt immer nur das oberste Fenster.
 
@@ -1086,18 +1147,19 @@ Seite in einem neuen Tab.
      Kollegen weiter.
    - **Direkt an …**: genau dieser Agent arbeitet ihn ab.
    Schneller: im Reiter **Raum** auf einen Agenten klicken — er wird als Empfänger eingetragen.
-3. Soll der Auftrag erst einmal nur gesammelt werden, den Haken **nur in den Eingang**
-   setzen — dann entsteht nur eine Karte im Eingang, und niemand legt los.
+3. Soll der Auftrag erst einmal nur gesammelt werden, den Haken **nur in die Inbox**
+   setzen — dann entsteht nur eine Karte in der Inbox, und niemand legt los, bis du sie freigibst.
 4. **Abgeben** klicken (oder Strg/Cmd + Enter).
 
 Über **Chat mit … öffnen** wechselst du in den Chat des gewählten Agenten.
 
 ### 6a.5 Ergebnisse abnehmen oder zurückgeben
 
-Ist ein Lauf fertig (oder gescheitert), steht seine Karte unter **Prüfung** — mit einem
-Auszug aus dem Ergebnis.
+Ist ein Lauf fertig (oder gescheitert), steht seine Karte unter **Review** — mit einem
+Auszug aus dem Ergebnis. Hat der Agent stattdessen eine Rückfrage gestellt, steht sie unter
+**Triage** (siehe 6a.3).
 
-![Karten in der Prüfung mit Ergebnis, Kosten und den Knöpfen Abnehmen und Zurückgeben](screenshots/74-projekt-abnahme.png)
+![Karten im Review mit Ergebnis, Kosten und den Knöpfen Abnehmen und Zurückgeben](screenshots/74-projekt-abnahme.png)
 
 - **Abnehmen** — das Ergebnis passt. Die Karte wandert zu **Erledigt**.
 - **Zurückgeben** — es öffnet sich ein Fenster. Schreibe hinein, was anders werden soll,
@@ -1108,14 +1170,14 @@ Auszug aus dem Ergebnis.
 
   Im selben Feld kannst du auch ein anderes Mitglied direkt wählen. Der Agent bekommt eine
   **Nacharbeit** mit deinem Hinweis, der Karte und dem bisherigen Ergebnis. Danach steht die
-  Karte wieder unter Prüfung.
+  Karte wieder unter Review.
 
 ![Fenster „Zur Nacharbeit zurückgeben“ mit der Auswahl, wer nacharbeitet](screenshots/75-projekt-zurueckgeben.png)
 
 Wird ein Lauf abgebrochen, geht seine Karte zurück nach **Bereit**.
 
 Karten **ohne eigenen Lauf** — ein Pull Request aus dem Repo oder ein Issue, an dem schon ein PR
-hängt — lassen sich in der Prüfung weder abnehmen noch zurückgeben. Solange ihr PR offen ist, steht
+hängt — lassen sich im Review weder abnehmen noch zurückgeben. Solange ihr PR offen ist, steht
 dort „Wandert nach dem Merge von selbst nach Erledigt“: Zusammengeführt wird auf GitHub (Link
 **PR #…** auf der Karte), danach zieht der Abgleich die Karte nach. Den Knopf **Erledigt** gibt es
 nur noch für Karten ohne offenen PR.
@@ -1125,9 +1187,11 @@ nur noch für Karten ohne offenen PR.
 Mit einem **Arbeitstakt** (Bearbeiten → Arbeitstakt: alle 30 Minuten, stündlich, alle 2 oder
 4 Stunden) wird der **Lead** regelmäßig aktiv:
 1. Er liest das Board.
-2. Er sichtet den Eingang: Klares kommt nach Bereit (mit Priorität), Unklares bekommt eine
-   **Notiz** mit der offenen Frage (gelb auf der Karte), Doppeltes wird verworfen.
-3. Er vergibt die wichtigsten bereiten Karten — höchstens eine je Kollege, der gerade frei ist.
+2. Er sichtet die Inbox und bereitet sie vor: Priorität und eine kurze **Notiz** mit seiner
+   Einschätzung (gelb auf der Karte). Unklares setzt er mit der offenen Frage auf **Triage**,
+   Doppeltes oder schon Erledigtes nach Erledigt. **Freigeben** (→ Bereit) darf er nicht — das
+   entscheidest du.
+3. Er vergibt die wichtigsten bereiten Karten (nur aus Bereit, nie aus Inbox oder Triage) — höchstens eine je Kollege, der gerade frei ist.
    Ist niemand frei oder ist er allein im Projekt, **nimmt er die oberste bereite Karte selbst**.
    Karten, die jemand anderes übernommen hat (Kap. 6a.9), lässt er liegen und ändert an ihnen
    nichts — fällt ihm dort etwas auf, schreibt er es ins Projektgespräch. Hat ein Agent schon so
@@ -1137,19 +1201,21 @@ Die eigentliche Arbeit passiert in den vergebenen Läufen. **Im Takt selbst wird
 *(seit Stufe 1 von #1116)*: Der Lead koordiniert dort nur. Versucht er im Takt ein `git push`,
 wird er gebremst (Zusammenstoß-Schutz, keine Sicherheitsgrenze), mit dem Hinweis, die Karte an sich selbst zu vergeben und im Lauf der
 Karte zu arbeiten. Gearbeitet wird an dem, was in
-**Bereit** liegt: Einplanen ist deine Entscheidung (Knopf **Einplanen** oder im Repo das Tag
-`status/ready`); Klares plant auch der Lead selbst ein.
+**Bereit** liegt: Freigeben ist deine Entscheidung (Knopf **Freigeben** oder im Repo das Tag
+`status/ready`).
 
-**Wann der Takt läuft** *(seit 1.393.4)*: wenn etwas in Bereit liegt, neue Karten im Eingang
+**Wann der Takt läuft** *(seit 1.393.4)*: wenn etwas in Bereit liegt, neue Karten in der Inbox
 angekommen sind, jemand im Projektgespräch geschrieben hat oder der Tagesbericht fällig ist.
-Liegt nur Altes im Eingang, das der Lead schon gesichtet hat, fällt der Lauf aus und kostet nichts.
+Liegt nur Altes in der Inbox, das der Lead schon gesichtet hat, oder warten nur Rückfragen
+(Triage) auf dich, fällt der Lauf aus und kostet nichts.
 
 **Stillstand bemerkt das Projekt selbst** *(seit 1.393.4)*: Arbeitet seit zwei Stunden niemand an
 einer Karte, obwohl Karten offen sind, steht im **Gespräch** eine Meldung und der Lead bekommt
 eine Benachrichtigung — höchstens einmal am Tag:
-- **„Nichts ist bereit“** — plane die nächsten Karten ein, dann nimmt der Lead sie beim
+- **„Nichts ist bereit“** — gib die nächsten Karten frei, dann nimmt der Lead sie beim
   nächsten Takt.
 - **„Bereite Karten liegen“** — der Lead vergibt beim nächsten Takt, notfalls an sich selbst.
+- **„Wartet auf dich“** — Karten in Triage: Rückfragen beantworten und freigeben (6a.3).
 
 Der Takt braucht einen Lead (oder genau ein Mitglied).
 
@@ -1228,7 +1294,7 @@ Reiter **Termine** (anlegen darf der Ersteller des Projekts — und der Lead sel
 Zur Zeit treffen sich die Agenten des Projekts in einer Besprechung (Ablauf nach Vorlage: beim
 Daily Stand → Hindernisse → nächster Schritt). Danach:
 - steht das **Protokoll** im Projektwissen (`protokolle/…`) und im Gespräch,
-- wird jedes neue **Action Item** eine Karte im **Eingang** *(seit 1.393.7)* — der Lead plant sie ein,
+- wird jedes neue **Action Item** eine Karte in der **Inbox** *(seit 1.393.7)* — du gibst sie frei,
   wenn sie noch nötig ist. Höchstens fünf je Besprechung. Punkte, die schon als Karte dastehen,
   in den letzten 14 Tagen erledigt wurden oder ein geschlossenes Issue betreffen, werden keine
   Karte, auch wenn sie anders formuliert sind. Das Protokoll im Gespräch nennt, wie viele
@@ -1257,7 +1323,7 @@ bzw. die Beschreibung und schreibt `index.md`, `architektur.md` und `glossar.md`
 ### 6a.7d Der Lead arbeitet mit *(seit 1.371.0)*
 
 Mit **Arbeitstakt** (6a.6) ist der Lead aktiv: Er liest Board und Gespräch, beantwortet offene
-Fragen, sichtet den Eingang, vergibt Karten, legt bei Bedarf selbst ein **Daily** an, hält
+Fragen, sichtet die Inbox, vergibt freigegebene Karten, legt bei Bedarf selbst ein **Daily** an, hält
 `index.md` aktuell und schreibt einmal am Tag einen **Tagesbericht** ins Gespräch (erledigt, in
 Arbeit, blockiert, nächste Schritte, offene Fragen an dich). Der Takt läuft nur, wenn es etwas zu
 tun gibt — neue Karten, neue Nachrichten oder der fällige Tagesbericht.
@@ -1269,9 +1335,9 @@ Jeder Agent eines Projekts hat dafür eigene Werkzeuge — in allen Laufzeiten g
 | Werkzeug | Wozu |
 |---|---|
 | `projekt_board` | Board lesen: Karten je Spalte, wer gerade woran arbeitet |
-| `projekt_karte_anlegen` | Neue Karte in Eingang oder Bereit (z. B. Folgearbeit, gefundene Fehler) |
-| `projekt_karte_verschieben` | Einplanen, Priorität setzen, Notiz anheften, verwerfen |
-| `projekt_karte_vergeben` | Karte an sich oder einen Kollegen geben — der Lauf startet |
+| `projekt_karte_anlegen` | Neue Karte in der Inbox (z. B. Folgearbeit, gefundene Fehler) |
+| `projekt_karte_verschieben` | Priorität setzen, Notiz anheften, Rückfrage stellen (Triage), nach Erledigt — nie freigeben |
+| `projekt_karte_vergeben` | Karte aus Bereit an sich oder einen Kollegen geben — der Lauf startet |
 | `projekt_karte_stand` | Stufe melden (Planung … Merge) und den Pull Request verlinken |
 | `projekt_wissen_suchen` / `_lesen` / `_schreiben` | Im Projektwissen nachsehen und Seiten neu schreiben |
 | `projekt_wissen_ergaenzen` | Einen Abschnitt an eine Seite hängen (überschreibt nichts) |
@@ -1279,7 +1345,8 @@ Jeder Agent eines Projekts hat dafür eigene Werkzeuge — in allen Laufzeiten g
 | `projekt_termine` / `projekt_termin_anlegen` | Termine ansehen; der Lead legt Daily/Weekly/einmalige Besprechungen an |
 
 So kannst du einem Agenten im Chat auch sagen: „Leg im Projekt Website-Relaunch je eine Karte
-für die offenen Punkte aus diesem Protokoll an.“ Abnehmen und Zurückgeben bleiben dir vorbehalten.
+für die offenen Punkte aus diesem Protokoll an.“ Freigeben, Verwerfen, Abnehmen und Zurückgeben
+bleiben dir vorbehalten.
 
 ### 6a.9 Git-Projekte: Issues und Pull Requests auf dem Board *(seit 1.369.0)*
 
@@ -1316,14 +1383,17 @@ Actions (bzw. Gitea Actions) setzen.
 4. **Speichern**.
 
 Ab dann, beim Öffnen des Projekts und regelmäßig (siehe oben):
-- Jedes **offene Issue** erscheint als Karte im **Eingang** (mit Nummer `#12` und Link). Ändert
+- Jedes **offene Issue** erscheint als Karte in der **Inbox** (mit Nummer `#12` und Link). Ändert
   sich Titel oder Text im Repo, zieht die Karte nach — ihre Spalte und Priorität bleiben, wie du
   bzw. der Lead sie gesetzt habt.
-- Wird ein Issue **geschlossen**, wandert seine Karte nach **Erledigt**. Arbeitet gerade ein
-  Agent daran, bekommt sie stattdessen eine Notiz.
-- Offene **Pull Requests** erscheinen in der Spalte **Prüfung** und im Leitstand (Reiter Raum) unter **Wartet auf Merge** — mit dem Stand der Prüfungen
+- Wird ein Issue **geschlossen**, wandert seine Karte nach **Erledigt** — wurde es auf GitHub als
+  „not planned“ (nicht geplant) oder als Duplikat geschlossen, nach **Verworfen**. Forgejo und Gitea
+  nennen keinen Grund; dort ist ein geschlossenes Issue erledigt. Arbeitet gerade ein Agent daran,
+  bekommt die Karte stattdessen eine Notiz. Wird das Issue wieder geöffnet, kommt sie zurück in
+  die Inbox.
+- Offene **Pull Requests** erscheinen in der Spalte **Review** und im Leitstand (Reiter Raum) unter **Wartet auf Merge** — mit dem Stand der Prüfungen
   (CI läuft, CI grün, CI rot). Schreibt der PR „Fixes #12“ oder trägt sein Branch die Nummer
-  (z. B. `feat/12-login`), hängt er an der Karte von Issue #12.
+  (z. B. `feat/12-login`), hängt er an der Karte von Issue #12, und diese steht im **Review**.
 - Ein **gemergter** PR ohne eigenes Issue wird erledigt.
 - **Tags** des Issues stehen als kleine Schilder auf der Karte *(seit 1.392.0)*.
 
@@ -1361,9 +1431,22 @@ anderen AI-Employee-Anlage, Claude Code oder ein Mensch direkt im Repo:
   Fährst du mit der Maus über den Namen, steht dort die Art in Worten. Bekannte ältere
   Übernahme-Kommentare ohne Kopfzeile erkennt das Board ebenfalls („Übernommen vom
   AI-Employee-Agenten …“, „Übernommen … Claude Code …“).
-- **status/ready** plant die Karte ein (Bereit), **status/review** schiebt sie in die
-  **Prüfung**.
-- Fällt Tag und Zuständigkeit wieder weg, kommt die Karte zurück nach Bereit oder Eingang.
+- Die Spalte folgt den **Status-Tags** des Issues, in dieser Reihenfolge (das erste passende
+  gewinnt): geschlossen → Erledigt bzw. Verworfen; offener PR, der das Issue schließt, oder
+  **status/review** → Review; **Triage-Tag** → Triage; **status/in-arbeit** → In Arbeit;
+  **status/ready** → Bereit; sonst Inbox.
+- Als Freigabe gilt nur **ready** oder **bereit**, mit oder ohne Vorsilbe `status/` (auch `state/`,
+  `stand/`) — nicht `todo` oder `geplant`. Zieht ein solches Tag eine Karte nach Bereit, steht an
+  ihr die Notiz „Freigabe per Tag im Repo (Datum, Uhrzeit)“.
+- Als Triage-Tag gelten `status/triage`, `triage`, `needs-triage`, `agent:blocked`,
+  `agent/blocked`, `needs-human`, `claude:needs-human`, `needs-info`, `question` und `Rückfrage` —
+  Vorsilben wie `status/`, `agent:` oder `claude:` sind egal. Ein bloßes `blocked` ohne Agenten-Bezug
+  zählt nicht. Agenten-Vorsilben (`agent:`, `claude:`, `bot:` …) zählen nur für Rückfragen:
+  `agent:ready` gibt nichts frei.
+- Setzt das Board selbst ein Tag (Freigeben, Rückfrage, Übernahme), nimmt es das, das es im Repo
+  schon gibt — etwa `agent:blocked` statt `status/triage` —, sonst legt es `status/triage`,
+  `status/ready` bzw. `status/in-arbeit` an.
+- Fällt Tag und Zuständigkeit wieder weg, kommt die Karte zurück nach Bereit oder in die Inbox.
 - Solche Karten vergibt der Arbeitstakt **nicht** an eigene Agenten — es arbeitet ja schon
   jemand daran. Hat ein eigener Agent die Karte bereits, bleibt sie bei ihm; der fremde Name
   steht dann daneben, damit ihr seht, dass zwei am selben Ticket sitzen.
@@ -1447,7 +1530,7 @@ Anweisung. Damit niemand über Kommentare Agenten steuert oder Kosten verursacht
   Repo** → **Fragen aus dem Issue wecken Agenten**: Automatisch, An oder Aus → **Speichern**.
 - Höchstens fünf Weckrufe je Stunde und Projekt, getrennt von der Grenze des Gesprächs (Menschen
   im Gespräch werden davon nicht gebremst).
-- Ein so geweckter Lauf darf nur antworten und Karten im **Eingang** anlegen: nichts vergeben oder
+- Ein so geweckter Lauf darf nur antworten und Karten in der **Inbox** anlegen: nichts vergeben oder
   übergeben, keinen Code pushen, keine Mails senden.
 
 Agenten schreiben höchstens zehn Issue-Kommentare je Stunde (Werkzeug `projekt_issue_kommentar`).

@@ -107,13 +107,14 @@ export default function ProjektePage() {
                       {pr.description && <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{pr.description}</p>}
                       <p className="mt-0.5 text-[11px] text-muted-foreground">
                         {pr.takt?.aktiv ? `Takt ${TAKTE.find((t) => t.minuten === pr.takt.minuten)?.label.toLowerCase() ?? "an"} · nächster ${bis(pr.takt.naechster_lauf) ?? "—"}` : "Takt aus"}
-                        {pr.kennzahlen.eingang ? ` · ${pr.kennzahlen.eingang} im Eingang` : ""}
+                        {pr.kennzahlen.eingang ? ` · ${pr.kennzahlen.eingang} in der Inbox` : ""}
+                        {pr.kennzahlen.triage ? ` · ${pr.kennzahlen.triage} Rückfrage${pr.kennzahlen.triage === 1 ? "" : "n"} offen` : ""}
                       </p>
                     </div>
                     <div className="flex shrink-0 gap-4">
                       <Zahl wert={pr.kennzahlen.bereit} label="bereit" farbe={farbe} />
                       <Zahl wert={pr.kennzahlen.in_arbeit} label="in Arbeit" />
-                      <Zahl wert={pr.kennzahlen.pruefung} label="Prüfung" farbe="#f97316" />
+                      <Zahl wert={pr.kennzahlen.pruefung} label="Review" farbe="#f97316" />
                       <Zahl wert={pr.kennzahlen.heute_fertig} label="heute fertig" />
                     </div>
                   </div>
