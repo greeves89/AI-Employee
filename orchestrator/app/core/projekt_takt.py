@@ -105,6 +105,7 @@ async def pruefen(db: AsyncSession, schedule: Schedule) -> tuple[str | None, str
         return "Projekt ohne Takt", None
     stand = await _stand(db, team.id)
     await stillstand_melden(db, team, stand)
+    await extern_liegen_melden(db, team)
     # Etwas Bereites wird vergeben. Neue Karten im Eingang sichtet der Lead.
     # Liegt nur Altes im Eingang, das er schon als unklar gesehen hat, bringt ein
     # weiterer Takt nichts — vorher lief er so alle 30 Minuten ins Leere
@@ -135,6 +136,12 @@ async def _stand(db: AsyncSession, team_id: str) -> dict[str, int]:
     )).all()
     stand = {"eingang": 0, "bereit": 0, "in_arbeit": 0}
     stand.update({spalte: int(n) for spalte, n in zeilen})
+    # Von außen übernommene Karten stehen in „In Arbeit“, sind aber keine Arbeit
+    # DIESES Projekts — sonst meldete ein Board voller fremder Übernahmen nie Stillstand.
+    stand["extern"] = int(await db.scalar(
+        select(func.count(ProjektKarte.id)).where(
+            ProjektKarte.team_id == team_id, ProjektKarte.spalte == "in_arbeit",
+            ProjektKarte.extern_bearbeiter.isnot(None), ProjektKarte.task_id.is_(None))) or 0)
     return stand
 
 
@@ -174,7 +181,7 @@ async def stillstand_melden(db: AsyncSession, team: Team, stand: dict[str, int] 
 
     jetzt = jetzt or datetime.now(timezone.utc)
     stand = stand or await _stand(db, team.id)
-    if stand["in_arbeit"] or not (stand["eingang"] or stand["bereit"]):
+    if stand["in_arbeit"] - stand.get("extern", 0) > 0 or not (stand["eingang"] or stand["bereit"]):
         return None
     letzter_lauf = await db.scalar(
         select(func.max(Task.created_at)).where(
@@ -205,3 +212,49 @@ async def stillstand_melden(db: AsyncSession, team: Team, stand: dict[str, int] 
                             title=f"Projekt „{team.name}“ steht still", message=text,
                             action_url=f"/projekte/{team.id}"))
     return art
+
+
+_EXTERN_KOPF = "Liegen geblieben:"
+
+
+async def extern_liegen_melden(db: AsyncSession, team: Team, jetzt: datetime | None = None) -> int:
+    """Fremde Übernahmen ohne Bewegung melden — höchstens einmal am Tag.
+
+    Eine andere Sitzung oder Anlage hat Tickets übernommen und bringt nichts ins
+    Repo. Der Lead darf sie nicht nehmen (sonst arbeiten zwei daran) — also muss
+    es der Mensch erfahren: Er gibt sie im Board frei oder fragt nach. Gibt die
+    Zahl der liegen gebliebenen Karten zurück.
+    """
+    from app.core import projekt_gespraech
+    from app.core.projekt_git import EXTERN_STILL_AB, extern_stockt
+    from app.models.notification import Notification
+    from app.models.projekt_nachricht import ProjektNachricht
+
+    jetzt = jetzt or datetime.now(timezone.utc)
+    karten = (await db.execute(
+        select(ProjektKarte).where(ProjektKarte.team_id == team.id, ProjektKarte.spalte == "in_arbeit",
+                                   ProjektKarte.extern_bearbeiter.isnot(None), ProjektKarte.task_id.is_(None))
+    )).scalars().all()
+    liegen = sorted((k for k in karten if extern_stockt(k, jetzt)), key=lambda k: k.extern_nr or 0)
+    if not liegen:
+        return 0
+    schon = await db.scalar(
+        select(func.count(ProjektNachricht.id)).where(
+            ProjektNachricht.team_id == team.id, ProjektNachricht.autor_typ == "system",
+            ProjektNachricht.text.startswith(_EXTERN_KOPF),
+            ProjektNachricht.created_at > jetzt - STILLSTAND_PAUSE)
+    )
+    if schon:
+        return len(liegen)
+    stunden = int(EXTERN_STILL_AB.total_seconds() // 3600)
+    nummern = ", ".join(f"#{k.extern_nr}" for k in liegen[:12]) + (" …" if len(liegen) > 12 else "")
+    text = (f"{_EXTERN_KOPF} {len(liegen)} Karten sind von außen übernommen, aber seit über {stunden} Std. "
+            f"ohne Bewegung (kein Commit, kein Pull Request): {nummern}. Der Lead nimmt sie nicht, solange "
+            "sie übernommen sind. Im Board mit „Freigeben“ lösen — dann vergibt er sie.")
+    await projekt_gespraech.posten(db, team, autor_typ="system", autor_id=None, autor_name="Projekt",
+                                   text=text, art="nachricht")
+    if team.lead_agent_id:
+        db.add(Notification(agent_id=team.lead_agent_id, type="warning", priority="high",
+                            title=f"Projekt „{team.name}“: fremde Übernahmen liegen", message=text,
+                            action_url=f"/projekte/{team.id}"))
+    return len(liegen)

@@ -1327,6 +1327,29 @@ anderen AI-Employee-Anlage, Claude Code oder ein Mensch direkt im Repo:
   jemand daran. Hat ein eigener Agent die Karte bereits, bleibt sie bei ihm; der fremde Name
   steht dann daneben, damit ihr seht, dass zwei am selben Ticket sitzen.
 
+**Wenn eine Übernahme von außen liegen bleibt** *(seit 1.396.0)*: Manchmal übernimmt eine andere
+Sitzung Tickets und bringt danach nichts ins Repo. So erkennst und löst du das:
+
+1. Eine von außen übernommene Karte zeigt unter dem Titel ihren Stand: **Übernommen → Branch →
+   PR**. Liegt im Repo ein Branch mit der Ticketnummer (z. B. `feat/70-…`), steht er darunter.
+   Darunter steht, wann sich zuletzt etwas bewegt hat, ein Kommentar oder ein Commit.
+2. Bewegt sich **zwei Stunden lang nichts** (kein Commit, kein Pull Request, keine Änderung am
+   Issue), wird die Karte gelb markiert: „Liegt: letzte Bewegung vor …“.
+3. Hat das Projekt einen Arbeitstakt, schreibt das Projekt das einmal am Tag ins
+   **Gespräch** („Liegen geblieben: … #71, #70 …“), und der Lead bekommt eine Benachrichtigung.
+   Selbst nimmt der Lead solche Karten nicht, sonst arbeiten zwei am selben Ticket.
+4. Klicke an der gelben Karte auf **Freigeben** und bestätige. Das Board nimmt im Repo das
+   In-Arbeit-Tag und die Zuständigen weg und schreibt einen kurzen Kommentar ohne Namen. Die
+   Karte geht nach **Bereit**, und der Lead vergibt sie beim nächsten Takt.
+5. Arbeitet die andere Sitzung doch noch daran, setzt sie das Tag einfach neu. Dann wandert die
+   Karte wieder nach In Arbeit.
+
+Freigeben kann nur ein Mensch, kein Agent. Das Projekt braucht dafür einen Schlüssel mit
+Schreibrecht für Issues.
+
+Externe Karten in **In Arbeit** zählen nicht mehr als Arbeit des Projekts. Liegen nur sie dort
+und sonst nichts bereit, meldet das Projekt den Stillstand wie gewohnt.
+
 Über dem Board zeigt eine Leiste das Repo, wann zuletzt abgeglichen wurde und gegebenenfalls einen
 Fehler (z. B. „GitHub ist auf dieser Anlage nicht verbunden“). Beim Öffnen des Projekts gleicht die
 Seite von selbst ab — mit Schlüssel höchstens einmal je Minute, ohne Schlüssel höchstens alle fünf

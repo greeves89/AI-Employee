@@ -959,6 +959,34 @@ async def karte_abnehmen(team_id: str, karte_id: str, user=Depends(require_auth)
     return antwort
 
 
+@router.post("/{team_id}/karten/{karte_id}/extern-freigeben")
+async def karte_extern_freigeben(team_id: str, karte_id: str, user=Depends(require_auth),
+                                 db: AsyncSession = Depends(get_db), redis=Depends(get_redis_service)):
+    """Eine fremde Übernahme lösen, die liegen geblieben ist — nur ein Mensch.
+
+    Bewusst ohne Agenten (``require_auth``): Der Lead soll fremde Übernahmen nicht
+    selbst wegräumen, sonst nähme er anderen die Arbeit aus der Hand.
+    """
+    from app.core import projekt_git, projekte
+
+    _kein_betrachter(user)
+    t = await _projekt(team_id, user, db)
+    try:
+        # Ohne Zeilensperre: das Schreiben ins Repo ist Netzwerk und darf andere
+        # Änderungen am Board nicht so lange aufhalten.
+        karte = await projekte.karte_laden(db, t.id, karte_id)
+        await projekt_git.extern_freigeben(db, redis, t, karte)
+    except LookupError as e:
+        await db.rollback()
+        raise _kartenfehler(e)
+    except projekt_git.GitFehler as e:
+        await db.rollback()
+        raise HTTPException(status_code=424, detail=str(e))
+    antwort = projekte.karte_dict(karte)
+    await db.commit()
+    return antwort
+
+
 async def _ergebnis_festhalten(db: AsyncSession, t: Team, karte: dict, task, user) -> None:
     """Abgenommenes Ergebnis ins Projektwissen (ergebnisse.md) und ins Gespräch.
 

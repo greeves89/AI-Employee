@@ -139,6 +139,23 @@ export default function ProjektPage() {
     verschieben: (k, aenderung) => ausfuehren("Nicht verschoben", () => api.karteAendern(id, k.id, aenderung)),
     vergeben: (k, agentId) => ausfuehren("Nicht vergeben", () => api.karteVergeben(id, k.id, agentId)),
     abnehmen: (k) => ausfuehren("Nicht abgenommen", () => api.karteAbnehmen(id, k.id)),
+    freigeben: async (k) => {
+      const ok = await confirm({
+        title: `Ticket #${k.extern_nr} freigeben?`,
+        message: "Im Repo werden das In-Arbeit-Tag und die Zuständigen entfernt, dazu ein kurzer Kommentar. "
+          + "Die Karte geht nach Bereit, und der Lead kann sie vergeben. Arbeitet die andere Sitzung doch noch daran, "
+          + "setzt sie das Tag einfach neu.",
+        confirmLabel: "Freigeben",
+      });
+      if (!ok) return;
+      try {
+        await api.karteExternFreigeben(id, k.id);
+        toast.success("Freigegeben", `#${k.extern_nr} liegt wieder in Bereit.`);
+        await laden();
+      } catch (e) {
+        toast.error("Nicht freigegeben", apiFehlertext(e));
+      }
+    },
     zurueckgeben: async (k, hinweis, agentId) => {
       try {
         await api.karteZurueckgeben(id, k.id, hinweis, agentId);

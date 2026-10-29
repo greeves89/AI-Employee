@@ -22,6 +22,14 @@ export interface ProjektKarte {
   notiz: string | null;
   /** Wer das Issue außerhalb des Boards bearbeitet („@name“ oder „extern“). */
   extern_bearbeiter: string | null;
+  /** Seit wann jemand von außen dran ist (geschätzt aus dem Repo). */
+  extern_seit?: string | null;
+  /** Letztes Lebenszeichen von außen: Änderung am Issue oder Commit auf dem Branch. */
+  extern_regung?: string | null;
+  /** Branch mit der Ticketnummer, auf dem von außen gearbeitet wird. */
+  extern_branch?: string | null;
+  /** Übernommen, aber seit über zwei Stunden ohne Bewegung. */
+  extern_stockt?: boolean;
   pr_nr: number | null;
   pr_url: string | null;
   pr_zustand: string | null;

@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.396.0] - 2026-10-29
+
+### Neu
+- **Projekt-Board: Liegen gebliebene Übernahmen von außen erkennen und freigeben.** Übernimmt eine andere Sitzung oder Anlage Tickets (Tag `status/in-arbeit` oder Zuständige) und bringt danach nichts ins Repo, standen die Karten bisher unbegrenzt in „In Arbeit“. Niemand bemerkte es, und der Lead durfte sie nicht nehmen. Jetzt:
+  - Eine extern übernommene Karte zeigt ihren Stand **Übernommen → Branch → PR**, den Branch mit der Ticketnummer und die letzte Bewegung.
+  - Als Bewegung zählen eine Änderung am Issue und ein Commit auf dem Branch. Der Abgleich holt dafür einmal die Branches und höchstens zehn Commit-Zeiten.
+  - Nach zwei Stunden ohne Bewegung wird die Karte gelb markiert.
+  - Mit Arbeitstakt meldet das Projekt das einmal am Tag im Gespräch und beim Lead.
+  - **Freigeben** (nur Menschen): Im Repo kommen In-Arbeit-Tag und Zuständige weg, dazu ein Kommentar ohne Namen. Die Karte geht nach Bereit. Scheitert das Schreiben ins Repo, bleibt alles unverändert.
+  - Git-Anbieter (GitHub, Forgejo): `list_branches`, `commit_zeit`, `remove_assignees`.
+
+### Behoben
+- Ein Board voller extern übernommener Karten in „In Arbeit“ verdeckte den Stillstand des Projekts. Fremde Übernahmen zählen jetzt nicht mehr als Arbeit.
+
+### Datenbank
+- Migration `f2a3b4c5d6e7`: `projekt_karten.extern_seit`, `extern_regung_at`, `extern_branch`.
+
 ## [1.395.0] - 2026-10-29
 
 ### Neu

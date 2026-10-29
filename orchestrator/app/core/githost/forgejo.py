@@ -199,6 +199,34 @@ class ForgejoHostProvider(GitHostProvider):
                                    headers=self._headers(token))
         return resp.status_code in (200, 204, 404)
 
+    async def remove_assignees(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int,
+                               logins: list[str]) -> bool:
+        # Forgejo/Gitea setzen die Zuständigen als Ganzes: die übrigen behalten.
+        issue = await self.get_issue(client, token, repo, nummer)
+        if not isinstance(issue, dict):
+            return False
+        weg = {login.lower() for login in logins}
+        bleiben = [p.get("login") for p in issue.get("assignees") or []
+                   if isinstance(p, dict) and p.get("login") and p["login"].lower() not in weg]
+        resp = await client.patch(f"{self.api_base}/repos/{repo}/issues/{nummer}",
+                                  headers=self._headers(token), json={"assignees": bleiben})
+        return resp.status_code in (200, 201)
+
+    async def list_branches(self, client: httpx.AsyncClient, token: str, repo: str,
+                            hoechstens: int = 300) -> list[dict]:
+        """Branches als ``{"name", "sha", "zeit"}`` — Forgejo nennt den Zeitpunkt gleich mit."""
+        rows = await self._seiten(client, token, f"/repos/{repo}/branches", {}, hoechstens)
+        return [{"name": r.get("name"), "sha": (r.get("commit") or {}).get("id"),
+                 "zeit": (r.get("commit") or {}).get("timestamp")} for r in rows if r.get("name")]
+
+    async def commit_zeit(self, client: httpx.AsyncClient, token: str, repo: str, sha: str) -> str | None:
+        status, daten = await _json_holen(client, f"{self.api_base}/repos/{repo}/git/commits/{sha}",
+                                          self._headers(token))
+        if status != 200 or not isinstance(daten, dict):
+            return None
+        commit = daten.get("commit") or {}
+        return (commit.get("committer") or {}).get("date") or daten.get("created")
+
     async def issue_state(self, client: httpx.AsyncClient, token: str, repo: str, nummer: int) -> str | None:
         status, daten = await _json_holen(client, f"{self.api_base}/repos/{repo}/issues/{nummer}", self._headers(token))
         if status != 200 or not isinstance(daten, dict):

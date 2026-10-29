@@ -111,6 +111,18 @@ def titel_aus(text: str, n: int = 80) -> str:
 # ─── Darstellung ────────────────────────────────────────────────
 
 
+def _extern_regung(k: ProjektKarte):
+    from app.core.projekt_git import extern_regung
+
+    return extern_regung(k) if k.extern_bearbeiter else None
+
+
+def _extern_stockt(k: ProjektKarte) -> bool:
+    from app.core.projekt_git import extern_stockt
+
+    return extern_stockt(k)
+
+
 def karte_dict(k: ProjektKarte, task: Task | None = None, *, lauf_sichtbar: bool = True) -> dict:
     zeigen = task is not None and lauf_sichtbar and k.spalte == "pruefung"
     return {
@@ -129,6 +141,11 @@ def karte_dict(k: ProjektKarte, task: Task | None = None, *, lauf_sichtbar: bool
         "stufe": stufe_aus(k, task),
         "notiz": k.notiz,
         "extern_bearbeiter": k.extern_bearbeiter,
+        # Fremde Übernahme: seit wann, letzte Regung, Branch — und ob sie liegt.
+        "extern_seit": _utc(k.extern_seit),
+        "extern_regung": _utc(_extern_regung(k)),
+        "extern_branch": k.extern_branch,
+        "extern_stockt": _extern_stockt(k),
         "pr_nr": k.pr_nr,
         "pr_url": k.pr_url,
         "pr_zustand": k.pr_zustand,
@@ -540,7 +557,11 @@ def board_als_text(projekt: dict, b: dict, namen: dict[str, str], *, je_spalte: 
             if karte.get("extern_bearbeiter"):
                 # Name kommt aus dem Repo (fremder Text): gekürzt, ohne Zeilenumbruch.
                 bearbeiter = " ".join(str(karte["extern_bearbeiter"]).split())[:80]
-                teile.append(f"(extern in Arbeit: {bearbeiter} — nicht übernehmen)")
+                if karte.get("extern_stockt"):
+                    teile.append(f"(extern übernommen von {bearbeiter}, liegt ohne Bewegung — nicht selbst "
+                                 "übernehmen; der Mensch kann sie im Board freigeben)")
+                else:
+                    teile.append(f"(extern in Arbeit: {bearbeiter} — nicht übernehmen)")
             if karte.get("stufe") and spalte == "in_arbeit":
                 teile.append(f"[{karte['stufe']}]")
             if karte.get("pr_url"):
