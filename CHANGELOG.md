@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.396.1] - 2026-10-29
+
+### Geändert
+- Projektgespräch: Die Auswahl „Nachricht / Frage / Entscheidung“ neben dem Eingabefeld ist durch einen Umschalter **Entscheidung** ersetzt. „Frage“ bewirkte nur ein Etikett. Eine Entscheidung landet wie bisher zusätzlich in `entscheidungen.md`. Agenten können weiterhin alle Arten schreiben.
+
 ## [1.396.0] - 2026-10-29
 
 ### Neu
