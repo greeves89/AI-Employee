@@ -27,9 +27,18 @@ def ist_postgres(db: AsyncSession) -> bool:
 
 
 @asynccontextmanager
-async def transaktionssperre(db: AsyncSession, namensraum: int, schluessel: int):
-    """Sperre auf (namensraum, schluessel) bis zum Ende der laufenden Transaktion."""
+async def transaktionssperre(db: AsyncSession, namensraum: int, schluessel: int,
+                             hoechstens_warten_s: int | None = None):
+    """Sperre auf (namensraum, schluessel) bis zum Ende der laufenden Transaktion.
+
+    ``hoechstens_warten_s``: länger nicht warten (``lock_timeout``) — sonst halten
+    viele Wartende ihre Datenbank-Verbindungen fest, solange der Erste beim
+    Anbieter hängt. Danach wirft die Datenbank einen Fehler, der Aufrufer
+    behandelt ihn wie einen gescheiterten Versuch.
+    """
     if ist_postgres(db):
+        if hoechstens_warten_s:
+            await db.execute(text(f"SET LOCAL lock_timeout = '{int(hoechstens_warten_s)}s'"))
         await db.execute(text("SELECT pg_advisory_xact_lock(:ns, :oid)"),
                          {"ns": int(namensraum), "oid": int(schluessel)})
     yield

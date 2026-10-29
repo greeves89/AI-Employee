@@ -12,6 +12,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   - Jetzt erneuert je Integration immer nur einer (Sperre in der Datenbank).
   - Wer wartet, übernimmt danach das Ergebnis, statt noch einmal zu erneuern.
   - Dieselbe Sperre wie bei MCP-Servern (#462), jetzt gemeinsam in `core/db_sperre`.
+  - Ist der Token nach dem Warten ohnehin frisch, wird nicht noch einmal erneuert. Die erzwungene Erneuerung für Anthropic bleibt erzwungen.
+  - Gewartet wird höchstens 30 Sekunden.
+  - Ein Fehlschlag gibt die Sperre frei, ohne die Arbeit der übrigen Sitzung zu verwerfen. Der Hintergrund-Job erneuert nach einem Fehler die übrigen Integrationen weiter.
 
 ## [1.398.1] - 2026-10-29
 
