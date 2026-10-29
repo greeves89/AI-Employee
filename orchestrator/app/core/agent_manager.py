@@ -1026,6 +1026,12 @@ def instructions_path(mode: str | None) -> str:
 # Code ist bei einem Hook-Timeout dokumentiert FAIL-OPEN ("A timed-out hook
 # doesn't block the tool call") — ein zu knappes Limit wuerde die gerade
 # geschlossene Luecke bei jedem kalten Cache-Fenster wieder aufreissen.
+#
+# Kopfzeile X-AI-Employee-Lauf (#1117): der laufende Task fuer die Push-Sperre
+# (kein Push im Arbeitstakt). Claude Code setzt Werte aus der Umgebung nur ein,
+# wenn sie in allowedEnvVars stehen; der Runner setzt AI_EMPLOYEE_LAUF je Aufgabe.
+# Timeout 12 -> 15: vor einem ``git push`` kommt die Push-Pruefung beim Orchestrator
+# dazu (Agent wartet hoechstens 8 s, der Orchestrator je Git-Abfrage 4 s).
 _CLAUDE_PRETOOLUSE_SETTINGS_JSON = """{
   "hooks": {
     "PreToolUse": [
@@ -1035,7 +1041,9 @@ _CLAUDE_PRETOOLUSE_SETTINGS_JSON = """{
           {
             "type": "http",
             "url": "http://localhost:8080/hooks/pretooluse",
-            "timeout": 12
+            "timeout": 15,
+            "headers": {"X-AI-Employee-Lauf": "$AI_EMPLOYEE_LAUF"},
+            "allowedEnvVars": ["AI_EMPLOYEE_LAUF"]
           }
         ]
       }

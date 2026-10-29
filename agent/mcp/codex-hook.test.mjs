@@ -76,3 +76,19 @@ test("Fehlerstatus oder Antwort ohne Entscheidung: abgelehnt", async () => {
     await stop(s);
   }
 });
+
+test("Push-Sperre: Arbeitsverzeichnis und Lauf gehen an den Hook (#1117)", async () => {
+  const mitschrift = [];
+  const s = await stub({ hookSpecificOutput: { permissionDecision: "allow" } }, mitschrift);
+  process.env.AI_EMPLOYEE_LAUF = "t-takt";
+  try {
+    const eingabe = JSON.stringify({ tool_name: "Bash", tool_input: { command: "git push" }, cwd: "/workspace/r" });
+    assert.equal(await entscheide(eingabe), "");
+    assert.deepEqual(mitschrift[0], {
+      tool_name: "Bash", tool_input: { command: "git push" }, cwd: "/workspace/r", lauf: "t-takt",
+    });
+  } finally {
+    delete process.env.AI_EMPLOYEE_LAUF;
+    await stop(s);
+  }
+});

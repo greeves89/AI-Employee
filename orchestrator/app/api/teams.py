@@ -913,7 +913,8 @@ async def _vergeben(t: Team, karte_id: str, agent_id: str | None, user, request:
         from app.models.agent import Agent as _Agent
 
         name = await db.scalar(select(_Agent.name).where(_Agent.id == karte.agent_id)) if karte.agent_id else None
-        projekt_git.uebernahme_im_hintergrund(team_id, karte.id, redis, agent_name=name)
+        projekt_git.uebernahme_im_hintergrund(team_id, karte.id, redis, agent_name=name,
+                                              agent_id=karte.agent_id, lauf=task.id)
     return projekte.karte_dict(karte, task)
 
 
@@ -1326,6 +1327,63 @@ async def repo_abgleichen(team_id: str, beim_oeffnen: bool = False, user=Depends
         # 424 statt 502: Cloudflare ersetzt jede 502-Antwort durch seine eigene
         # Fehlerseite — die Meldung („dem Schlüssel fehlt …“) kam nie an.
         raise HTTPException(status_code=424, detail=str(e))
+
+
+@router.get("/{team_id}/repo/agents-md")
+async def agents_md_text(team_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Der Abschnitt „Zusammenarbeit mit AI Employee“ für die AGENTS.md — als Text zum Kopieren."""
+    from app.core import uebernahme
+
+    t = await _projekt(team_id, user, db)
+    await uebernahme.anlage_laden(db)
+    return {"pfad": "AGENTS.md", "text": uebernahme.agents_md_abschnitt(), "anlage": uebernahme.anlage_kennung(),
+            "hat_repo": bool(t.repo)}
+
+
+@router.post("/{team_id}/repo/agents-md")
+async def agents_md_vorschlagen(team_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db),
+                                redis=Depends(get_redis_service)):
+    """Den Abschnitt als Pull Request ins Repo stellen — nie direkt auf den Standard-Branch.
+
+    Nur der Ersteller: es schreibt mit dem Schlüssel des Projekts ins Repo.
+    """
+    from app.core import projekt_git
+
+    _kein_betrachter(user)
+    t = await _projekt(team_id, user, db)
+    _nur_ersteller(t, user)
+    if not t.repo:
+        raise HTTPException(status_code=400, detail="Das Projekt hat kein Repo.")
+    try:
+        return await projekt_git.agents_md_pr(db, redis, t)
+    except projekt_git.GitFehler as e:
+        raise HTTPException(status_code=424, detail=str(e))
+
+
+class PushZiel(BaseModel):
+    branch: str = Field(min_length=1, max_length=250)
+    remote: str | None = Field(default=None, max_length=500)
+
+
+class PushPruefen(BaseModel):
+    # Der Lauf (Task), in dem der Agent pusht — leer im Chat oder bei älteren Abbildern.
+    lauf: str | None = Field(default=None, max_length=64)
+    ziele: list[PushZiel] = Field(default_factory=list, max_length=20)
+
+
+@router.post("/repo/push-pruefen")
+async def push_pruefen(body: PushPruefen, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db),
+                       redis=Depends(get_redis_service)):
+    """Darf der Agent pushen? Gefragt vom Hook vor jedem ``git push`` (``projekt_git.push_pruefen``).
+
+    Nur mit Agenten-Token; geprüft werden nur Projekte, in denen der Agent Mitglied ist.
+    """
+    from app.core import projekt_git
+
+    if not is_agent_principal(user):
+        raise HTTPException(status_code=403, detail="Nur für Agenten.")
+    return await projekt_git.push_pruefen(db, redis, str(user.id), lauf=body.lauf,
+                                          ziele=[z.model_dump() for z in body.ziele])
 
 
 # ─── Projektgespräch ───────────────────────────────────────────

@@ -144,6 +144,11 @@ def karte_dict(k: ProjektKarte, task: Task | None = None, *, lauf_sichtbar: bool
         "stufe": stufe_aus(k, task),
         "notiz": k.notiz,
         "extern_bearbeiter": k.extern_bearbeiter,
+        # Wer übernommen hat: plattform (Agent dieser Anlage), claude_code,
+        # andere_anlage, mensch, extern — und bei plattform der Agent dazu.
+        "bearbeiter_art": k.bearbeiter_art if k.extern_bearbeiter else None,
+        "extern_agent_id": ((k.uebernahme or {}).get("agent_id")
+                            if k.extern_bearbeiter and k.bearbeiter_art == "plattform" else None),
         # Fremde Übernahme: seit wann, letzte Regung, Branch — und ob sie liegt.
         "extern_seit": _utc(k.extern_seit),
         "extern_regung": _utc(_extern_regung(k)),
@@ -450,7 +455,9 @@ def karten_auftrag(karte: ProjektKarte, projekt_name: str, *, fremd: bool = Fals
             "im Text, mit Testnachweis und offenen Punkten.\n"
             "- Gilt im Repo eine `AGENTS.md` oder `CONTRIBUTING.md`, halte dich an ihre Regeln.\n"
             "- Merkst du, dass schon jemand anderes daran arbeitet (fremder Branch oder PR zur Nummer), hör auf "
-            "und melde das im Ergebnis, statt doppelt zu arbeiten."
+            "und melde das im Ergebnis, statt doppelt zu arbeiten.\n"
+            "- Der Branch einer fremden Übernahme gehört dem Übernehmer: Ein Push dorthin wird gesperrt. Frag "
+            "stattdessen im Issue nach oder stelle einen Pull Request in seinen Branch."
             if karte.quelle == "issue" and karte.extern_nr else ""
         )
     )
@@ -477,6 +484,7 @@ async def lauf_beendet(db: AsyncSession, task: Task, redis=None) -> None:
     if karte is None or karte.task_id != task.id or karte.spalte != "in_arbeit":
         return
     if task.status == TaskStatus.CANCELLED:
+        bisher_agent = karte.agent_id
         karte.spalte = "bereit"
         karte.task_id = None
         karte.agent_id = None
@@ -486,7 +494,7 @@ async def lauf_beendet(db: AsyncSession, task: Task, redis=None) -> None:
             from app.core import projekt_git
 
             projekt_git.uebernahme_im_hintergrund(karte.team_id, karte.id, redis, agent_name=None,
-                                                  uebernehmen=False)
+                                                  uebernehmen=False, agent_id=bisher_agent, lauf=task.id)
     else:
         karte.spalte = "pruefung"
 
@@ -561,12 +569,15 @@ def board_als_text(projekt: dict, b: dict, namen: dict[str, str], *, je_spalte: 
                 teile.append(f"→ {wer(karte['agent_id'])}")
             if karte.get("extern_bearbeiter"):
                 # Name kommt aus dem Repo (fremder Text): gekürzt, ohne Zeilenumbruch.
-                bearbeiter = " ".join(str(karte["extern_bearbeiter"]).split())[:80]
+                bearbeiter = _entschaerft(" ".join(str(karte["extern_bearbeiter"]).split()))[:80]
+                if karte.get("bearbeiter_art") == "plattform":
+                    bearbeiter = f"{bearbeiter} (Agent dieser Anlage)"
                 if karte.get("extern_stockt"):
-                    teile.append(f"(extern übernommen von {bearbeiter}, liegt ohne Bewegung — nicht selbst "
-                                 "übernehmen; der Mensch kann sie im Board freigeben)")
+                    teile.append(f"(übernommen von {bearbeiter}, liegt ohne Bewegung — nicht selbst "
+                                 "übernehmen, nicht in den Branch pushen; der Mensch kann sie im Board freigeben)")
                 else:
-                    teile.append(f"(extern in Arbeit: {bearbeiter} — nicht übernehmen)")
+                    teile.append(f"(übernommen von {bearbeiter} — nicht übernehmen, nichts daran ändern, "
+                                 "nicht in den Branch pushen)")
             if karte.get("stufe") and spalte == "in_arbeit":
                 teile.append(f"[{karte['stufe']}]")
             if karte.get("pr_url"):

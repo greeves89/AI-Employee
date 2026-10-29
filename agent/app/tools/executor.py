@@ -328,6 +328,9 @@ class ToolExecutor:
 
     def __init__(self, workspace_dir: str | None = None):
         self.workspace_dir = workspace_dir or settings.workspace_dir
+        # Der Lauf (Task), für den dieser Executor arbeitet — setzt der Runner; die
+        # Push-Sperre fragt damit, ob es ein Lauf des Arbeitstakts ist.
+        self.lauf: str | None = None
         self._api_client = None  # Lazy init
         self._mcp_client = None  # Lazy init for custom MCP servers
         self._cache = _ToolCache()
@@ -515,6 +518,13 @@ class ToolExecutor:
             )
             if approval_error:
                 return approval_error
+        # Push-Sperre (#1117) — dieselbe Entscheidung wie im PreToolUse-Hook von
+        # Claude Code und Codex: kein Push im Arbeitstakt, keiner in fremde Übernahmen.
+        from app.tools.push_sperre import pruefen as push_pruefen
+
+        push_grund = await push_pruefen(command, self.workspace_dir, self.lauf)
+        if push_grund:
+            return f"[PUSH GESPERRT]\n{push_grund}"
 
         try:
             process = await asyncio.create_subprocess_shell(

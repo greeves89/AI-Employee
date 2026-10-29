@@ -32,11 +32,29 @@ def ziel_agent(team: Team) -> str | None:
     return mitglieder[0] if len(mitglieder) == 1 else None
 
 
+def ist_takt_lauf(task, takt_plaene: set[str] | None = None) -> bool:
+    """Ist dieser Lauf ein Lauf des Arbeitstakts? (Zeitplan ``[Projekt] …``)
+
+    Der Scheduler legt ihn mit ``metadata.schedule_id`` = ``teams.takt_schedule_id``
+    und dem Titel ``[Scheduled] [Projekt] <Name>`` an. Im Takt wird nicht gepusht
+    (``projekt_git.push_pruefen``).
+    """
+    if task is None:
+        return False
+    plan = (getattr(task, "metadata_", None) or {}).get("schedule_id")
+    if plan and takt_plaene is not None and plan in takt_plaene:
+        return True
+    return str(getattr(task, "title", "") or "").startswith(f"[Scheduled] {TAKT_PRAEFIX}")
+
+
 def takt_auftrag(team: Team) -> str:
     return (
         f"Arbeitstakt im Projekt „{team.name}“ (projekt_id={team.id}). Du bist der Lead: Du hältst das Projekt "
         "in Bewegung und stimmst selbständig ab, wann was passiert. Die eigentliche Arbeit passiert in den Läufen, "
         "die du vergibst — nicht in diesem.\n\n"
+        "**Im Takt koordinierst du nur.** Code entsteht ausschließlich in Karten-Läufen: kein Branch, kein Commit, "
+        "kein `git push` in diesem Lauf (der Push wird technisch gesperrt). Willst du selbst bauen, vergib die "
+        "Karte an dich und arbeite im Lauf der Karte.\n\n"
         "1. **Lage:** `projekt_board` lesen, dann `projekt_gespraech_lesen` — was ist neu seit deinem letzten Takt?\n"
         "2. **Gespräch:** Offene Fragen an dich oder ans Projekt beantwortest du mit `projekt_gespraech_schreiben`. "
         "Brauchst du einen Kollegen, sprich ihn mit @Name an. Getroffene Entscheidungen hältst du mit "
@@ -47,7 +65,9 @@ def takt_auftrag(team: Team) -> str:
         "4. **Vergeben:** Mit `projekt_karte_vergeben` die wichtigsten bereiten Karten — höchstens eine je Kollege, "
         "der gerade keine Karte in Arbeit hat. Ist kein Kollege frei (oder bist du allein im Projekt), vergibst du "
         "die oberste bereite Karte an dich selbst. Bereite Karten liegen zu lassen, während niemand arbeitet, ist "
-        "ein Fehler. Karten mit „extern in Arbeit“ bearbeitet schon jemand außerhalb — die nimmst du nicht.\n"
+        "ein Fehler. Karten mit „extern in Arbeit“ oder „übernommen von“ bearbeitet schon jemand anderes — die "
+        "nimmst du nicht, und du änderst an ihnen nichts (keine Kommentare, keine Tags, kein Push in ihren Branch). "
+        "Fällt dir dort etwas auf, meldest du es mit `projekt_gespraech_schreiben`.\n"
         "5. **Termine:** Mit `projekt_termine` prüfen, ob das Projekt einen Rhythmus hat. Gibt es noch keinen und "
         "arbeiten mehrere an Karten, lege mit `projekt_termin_anlegen` ein Daily an (art=daily, z. B. 09:00); für "
         "eine anstehende Entscheidung einen einmaligen Termin.\n"

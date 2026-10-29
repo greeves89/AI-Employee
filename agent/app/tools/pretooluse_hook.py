@@ -220,7 +220,8 @@ def _decide_kategorie(tool_name: str, tool_input: dict | None = None) -> dict:
     )
 
 
-async def decide_async(tool_name: str, tool_input: dict | None = None) -> dict:
+async def decide_async(tool_name: str, tool_input: dict | None = None, *, cwd: str | None = None,
+                       lauf: str | None = None) -> dict:
     """Same category gate as ``decide()``, plus the regex command-policy layer
     for Bash (issue #787 Punkt 1).
 
@@ -231,6 +232,10 @@ async def decide_async(tool_name: str, tool_input: dict | None = None) -> dict:
     other shell_exec call. ``decide()`` itself stays untouched and synchronous
     (60+ existing tests call it directly) — this wraps it instead of changing
     it, and only adds the extra check for ``Bash``.
+
+    Danach die Push-Sperre (#1117, ``push_sperre.pruefen``): kein ``git push`` im
+    Arbeitstakt und keiner in den Branch einer fremden Übernahme. ``cwd`` und
+    ``lauf`` (der Task) liefert der Aufrufer des Hooks mit; beides darf fehlen.
     """
     base = decide(tool_name, tool_input)
     if base["hookSpecificOutput"]["permissionDecision"] == "deny":
@@ -252,6 +257,11 @@ async def decide_async(tool_name: str, tool_input: dict | None = None) -> dict:
             "`request_approval` zuerst aufrufen und auf Freigabe warten, dann "
             "erneut versuchen."
         )
+    from app.tools.push_sperre import pruefen as push_pruefen
+
+    grund = await push_pruefen(command, cwd, lauf)
+    if grund:
+        return _deny(grund)
     return base  # None or "allow" → category decision stands
 
 
