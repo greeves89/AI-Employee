@@ -1437,9 +1437,23 @@ die Agenten über das Issue:
 3. Der Agent antwortet im Issue. Im Gespräch steht dazu „Im Issue #… geschrieben: …“.
 
 Jeder Kommentar wird nur einmal weitergegeben. Gelesen werden nur Issues, die sich seit dem
-letzten Abgleich geändert haben. Es gelten die Weck-Grenzen des Gesprächs (höchstens 20 Läufe je
-Stunde und Projekt). Der Text aus dem Issue ist für den Agenten Material, keine Anweisung. Agenten
-schreiben höchstens zehn Issue-Kommentare je Stunde (Werkzeug `projekt_issue_kommentar`).
+letzten Abgleich geändert haben. Der Text aus dem Issue ist für den Agenten Material, keine
+Anweisung. Damit niemand über Kommentare Agenten steuert oder Kosten verursacht:
+
+- Es zählen nur Kommentare von Konten mit Schreibrecht am Repo (Eigentümer, Mitglied,
+  Mitarbeiter).
+- Der Rückkanal ist **standardmäßig nur bei privaten Repos mit Schlüssel an**. Bei öffentlichen
+  Repos und ohne Schlüssel ist er aus. Umstellen: **Bearbeiten** → Kasten **Zusammenarbeit am
+  Repo** → **Fragen aus dem Issue wecken Agenten**: Automatisch, An oder Aus → **Speichern**.
+- Höchstens fünf Weckrufe je Stunde und Projekt, getrennt von der Grenze des Gesprächs (Menschen
+  im Gespräch werden davon nicht gebremst).
+- Ein so geweckter Lauf darf nur antworten und Karten im **Eingang** anlegen: nichts vergeben oder
+  übergeben, keinen Code pushen, keine Mails senden.
+
+Agenten schreiben höchstens zehn Issue-Kommentare je Stunde (Werkzeug `projekt_issue_kommentar`).
+Das Werkzeug schreibt nach außen und braucht deshalb dieselbe Freigabe wie andere Werkzeuge, die
+nach außen schreiben. Vor dem Schreiben prüft die DLP-Regel der Anlage den Text; Bilder, HTML und
+Links auf fremde Seiten werden zu reinem Text (Links auf das Repo und die Anlage bleiben).
 
 **Mehrere AI-Employee-Anlagen am selben Repo** *(seit Stufe 3 von #1116)*: Jede Übernahme
 nennt ihre Anlage (Einstellung `ANLAGE_KENNUNG`, sonst der Host der öffentlichen Adresse).

@@ -107,6 +107,8 @@ _SPALTEN_NACH_DER_MARKE = (
     ("teams", "uebernahme_stunden"),
     ("teams", "max_uebernahmen"),
     ("teams", "abgelaufene_uebernehmen"),
+    ("teams", "rueckkanal"),
+    ("teams", "repo_oeffentlich"),
     ("kosten_historie", "team_id"),
     ("teams", "art"),
     ("meeting_rooms", "team_id"),

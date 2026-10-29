@@ -240,6 +240,13 @@ async def decide_async(tool_name: str, tool_input: dict | None = None, *, cwd: s
     base = decide(tool_name, tool_input)
     if base["hookSpecificOutput"]["permissionDecision"] == "deny":
         return base  # category gate already said no — nothing finer to check
+    # Läufe aus dem Rückkanal (Frage aus einem Issue) dürfen nur antworten und Karten
+    # im Eingang anlegen (push_sperre.werkzeug_pruefen, Entscheidung im Orchestrator).
+    from app.tools.push_sperre import werkzeug_pruefen
+
+    lauf_grund = await werkzeug_pruefen(tool_name, tool_input, lauf)
+    if lauf_grund:
+        return _deny(lauf_grund)
     if tool_name not in _SHELL_WERKZEUGE:
         return base
     eingabe = tool_input or {}

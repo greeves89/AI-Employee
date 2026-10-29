@@ -22,6 +22,8 @@ WERKZEUGE = {
     "projekt_gespraech_lesen", "projekt_gespraech_schreiben", "projekt_wissen_ergaenzen", "projekt_termine",
     "projekt_termin_anlegen",
 }
+#: Schreiben nach außen (fremdes Repo): nicht frei, sondern Kategorie wie Telegram.
+NACH_AUSSEN = {"projekt_issue_kommentar"}
 MCP = Path(__file__).resolve().parents[1] / "mcp" / "orchestrator-server.mjs"
 
 
@@ -47,9 +49,14 @@ class Eingetragen(unittest.TestCase):
             self.assertTrue(callable(getattr(OrchestratorAPIClient, name, None)), name)
 
     def test_rechte_einmal_und_ohne_freigabe(self):
-        for name in WERKZEUGE:
+        for name in WERKZEUGE - NACH_AUSSEN:
             self.assertIn(name, ALWAYS_ALLOWED_TOOLS)
             self.assertNotIn(name, TOOL_CATEGORY_MAP)
+
+    def test_ins_repo_schreiben_braucht_die_freigabe_fuer_aussen(self):
+        for name in NACH_AUSSEN:
+            self.assertNotIn(name, ALWAYS_ALLOWED_TOOLS)
+            self.assertEqual(TOOL_CATEGORY_MAP[name], "external_communication")
 
 
 class CustomLlm(unittest.TestCase):

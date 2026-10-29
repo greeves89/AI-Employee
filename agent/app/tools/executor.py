@@ -41,6 +41,9 @@ TOOL_CATEGORY_MAP: dict[str, str] = {
     "send_telegram": "external_communication",
     "notify_user": "external_communication",
     "send_voice": "external_communication",
+    # Schreibt in ein fremdes, vielleicht öffentliches Repo (Rückfrage ins Issue) —
+    # dieselbe Klasse wie andere nach außen schreibende Werkzeuge, nicht frei.
+    "projekt_issue_kommentar": "external_communication",
     # Second Brain mutations (write category covers contribute/update/delete)
     "brain_contribute": "knowledge_write",
     "brain_update": "knowledge_write",
@@ -94,7 +97,6 @@ ALWAYS_ALLOWED_TOOLS = frozenset({
     # planen und festhalten — dieselbe Klasse wie create_task/secondbrain_write.
     # Der Server prueft bei jedem Aufruf die Mitgliedschaft im Projekt.
     "projekt_board", "projekt_karte_anlegen", "projekt_karte_verschieben", "projekt_karte_vergeben", "projekt_karte_uebergeben",
-    "projekt_issue_kommentar",
     "projekt_karte_stand", "projekt_wissen_suchen", "projekt_wissen_lesen", "projekt_wissen_schreiben",
     "projekt_gespraech_lesen", "projekt_gespraech_schreiben", "projekt_wissen_ergaenzen", "projekt_termine",
     "projekt_termin_anlegen",
@@ -423,6 +425,13 @@ class ToolExecutor:
                     f"You MUST call `request_approval` first and wait for "
                     f"user approval before attempting this action."
                 )
+
+        # Läufe aus dem Rückkanal: dieselbe Prüfung wie im Hook von Claude Code und Codex.
+        from app.tools.push_sperre import werkzeug_pruefen
+
+        lauf_grund = await werkzeug_pruefen(tool_name, tool_input, self.lauf)
+        if lauf_grund:
+            return f"[GESPERRT] {lauf_grund}"
 
         if tool_name in CONCURRENT_SAFE_TOOLS:
             async with self._semaphore:

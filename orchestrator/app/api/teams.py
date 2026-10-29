@@ -60,6 +60,9 @@ class UpdateTeam(BaseModel):
     uebernahme_stunden: int | None = Field(default=None, ge=0, le=24)
     max_uebernahmen: int | None = Field(default=None, ge=0, le=20)
     abgelaufene_uebernehmen: bool | None = None
+    # Rückkanal „@ai-employee …“ im Issue: "an", "aus" oder "auto" (an nur bei privatem
+    # Repo mit Schlüssel).
+    rueckkanal: str | None = Field(default=None, pattern="^(an|aus|auto)$")
 
 
 def _farbe(wert: str | None) -> str | None:
@@ -97,6 +100,8 @@ def _serialize(t: Team) -> dict:
         "uebernahme_stunden": getattr(t, "uebernahme_stunden", None),
         "max_uebernahmen": getattr(t, "max_uebernahmen", None),
         "abgelaufene_uebernehmen": bool(getattr(t, "abgelaufene_uebernehmen", False)),
+        "rueckkanal": {True: "an", False: "aus"}.get(getattr(t, "rueckkanal", None), "auto"),
+        "repo_oeffentlich": getattr(t, "repo_oeffentlich", None),
         "art": getattr(t, "art", None) or "projekt",
     }
 
@@ -446,6 +451,7 @@ async def update_team(team_id: str, body: UpdateTeam, user=Depends(require_auth)
     if body.uebernahme_stunden is not None: t.uebernahme_stunden = body.uebernahme_stunden or None
     if body.max_uebernahmen is not None: t.max_uebernahmen = body.max_uebernahmen or None
     if body.abgelaufene_uebernehmen is not None: t.abgelaufene_uebernehmen = body.abgelaufene_uebernehmen
+    if body.rueckkanal is not None: t.rueckkanal = {"an": True, "aus": False}.get(body.rueckkanal)
     _validate_lead(t.member_agent_ids, t.lead_agent_id)
     await db.commit(); await db.refresh(t)
     await _projekt_nachziehen(db, t)
@@ -1133,11 +1139,6 @@ class IssueKommentar(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
 
 
-#: Höchstens so viele Issue-Kommentare je Agent und Stunde — eine Schleife darf das
-#: Repo nicht fluten.
-ISSUE_KOMMENTARE_JE_STUNDE = 10
-
-
 @router.post("/{team_id}/karten/{karte_id}/issue-kommentar", status_code=201)
 async def karte_issue_kommentar(team_id: str, karte_id: str, body: IssueKommentar,
                                 user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db),
@@ -1147,10 +1148,7 @@ async def karte_issue_kommentar(team_id: str, karte_id: str, body: IssueKommenta
     Nur Agenten des Projekts — Menschen schreiben direkt im Issue. Im
     Projektgespräch steht danach, was der Agent gefragt hat.
     """
-    from datetime import datetime, timedelta, timezone
-
     from app.core import projekt_gespraech, projekt_git, projekte
-    from app.models.projekt_nachricht import ProjektNachricht
 
     if not is_agent_principal(user):
         raise HTTPException(status_code=403, detail="Nur für Agenten — Menschen schreiben direkt im Issue.")
@@ -1160,21 +1158,17 @@ async def karte_issue_kommentar(team_id: str, karte_id: str, body: IssueKommenta
     except LookupError as e:
         raise _kartenfehler(e)
     ich = await db.get(Agent, str(user.id))
-    seit = datetime.now(timezone.utc) - timedelta(hours=1)
-    bisher = await db.scalar(select(func.count(ProjektNachricht.id)).where(
-        ProjektNachricht.autor_id == str(user.id), ProjektNachricht.text.startswith("Im Issue #"),
-        ProjektNachricht.created_at >= seit))
-    if (bisher or 0) >= ISSUE_KOMMENTARE_JE_STUNDE:
-        raise HTTPException(status_code=429, detail=f"Höchstens {ISSUE_KOMMENTARE_JE_STUNDE} Issue-Kommentare je "
-                                                    "Stunde — bitte später weiter.")
     try:
-        await projekt_git.issue_kommentieren(db, redis, t, karte, agent_name=ich.name if ich else "Agent",
-                                             agent_id=str(user.id), text=body.text)
+        geschrieben = await projekt_git.issue_kommentieren(db, redis, t, karte,
+                                                           agent_name=ich.name if ich else "Agent",
+                                                           agent_id=str(user.id), text=body.text)
+    except projekt_git.ZuVieleKommentare as e:
+        raise HTTPException(status_code=429, detail=str(e))
     except projekt_git.GitFehler as e:
         raise HTTPException(status_code=424, detail=str(e))
     await projekt_gespraech.posten(db, t, autor_typ="agent", autor_id=str(user.id),
                                    autor_name=ich.name if ich else "Agent",
-                                   text=f"Im Issue #{karte.extern_nr} geschrieben: {body.text.strip()}",
+                                   text=f"Im Issue #{karte.extern_nr} geschrieben: {geschrieben.strip()}",
                                    art="frage", karte_id=karte.id)
     await db.commit()
     return {"issue": karte.extern_nr, "url": karte.url}
@@ -1554,6 +1548,30 @@ async def push_pruefen(body: PushPruefen, user=Depends(require_auth_or_agent), d
         raise HTTPException(status_code=403, detail="Nur für Agenten.")
     return await projekt_git.push_pruefen(db, redis, str(user.id), lauf=body.lauf,
                                           ziele=[z.model_dump() for z in body.ziele])
+
+
+class WerkzeugPruefen(BaseModel):
+    lauf: str | None = Field(default=None, max_length=64)
+    werkzeug: str = Field(min_length=1, max_length=200)
+    eingabe: dict = Field(default_factory=dict)
+
+
+@router.post("/repo/werkzeug-pruefen")
+async def werkzeug_pruefen(body: WerkzeugPruefen, user=Depends(require_auth_or_agent),
+                           db: AsyncSession = Depends(get_db)):
+    """Darf der Agent dieses Werkzeug in diesem Lauf benutzen? (Läufe aus dem Rückkanal)
+
+    Gefragt vom Hook (Claude Code, Codex) und vom Custom-LLM-Executor, nur für die
+    Werkzeuge aus ``projekt_git.RUECKKANAL_GESPERRT`` und ``projekt_karte_anlegen``.
+    Nur mit Agenten-Token; der Lauf muss dem Agenten gehören.
+    """
+    from app.core import projekt_git
+
+    if not is_agent_principal(user):
+        raise HTTPException(status_code=403, detail="Nur für Agenten.")
+    art = await projekt_git.lauf_art(db, str(user.id), body.lauf)
+    grund = projekt_git.werkzeug_grund(art, body.werkzeug, body.eingabe)
+    return {"erlaubt": grund is None, "grund": grund, "art": art}
 
 
 # ─── Projektgespräch ───────────────────────────────────────────

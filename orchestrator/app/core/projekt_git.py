@@ -505,6 +505,32 @@ def _neue_ansprachen(karte, kommentare: list[dict]) -> list:
     return neu
 
 
+def rueckkanal_aktiv(team: Team, token: str | None) -> bool:
+    """Ist der Rückkanal (``@ai-employee …`` im Issue weckt Agenten) für dieses Projekt an?
+
+    Ausdrücklich gesetzt (``teams.rueckkanal``) gilt das. Sonst: an nur bei einem
+    privaten Repo mit Schlüssel — bei öffentlichen Repos (jeder darf kommentieren)
+    und ohne Schlüssel aus.
+    """
+    eingestellt = getattr(team, "rueckkanal", None)
+    if eingestellt is not None:
+        return bool(eingestellt)
+    return bool(token) and getattr(team, "repo_oeffentlich", None) is False
+
+
+async def _sichtbarkeit_lesen(team: Team, anbieter, client, token: str, repo: str) -> None:
+    """Ob das Repo öffentlich ist — einmal je Abgleich (für den Standard des Rückkanals)."""
+    if not hasattr(anbieter, "repo_oeffentlich"):
+        return
+    try:
+        oeffentlich = await anbieter.repo_oeffentlich(client, token, repo)
+    except Exception as e:  # noqa: BLE001 — unbekannt lassen; ohne Wissen bleibt der Rückkanal aus
+        log.info("[Projekt] Sichtbarkeit von %s nicht lesbar: %s", repo, e)
+        return
+    if oeffentlich is not None:
+        team.repo_oeffentlich = oeffentlich
+
+
 #: Höchstens so viele Ansprachen aus Issues je Abgleich und Projekt.
 MAX_ANSPRACHEN = 10
 
@@ -534,7 +560,8 @@ async def _rueckkanal(db: AsyncSession, team: Team, ansprachen: list) -> list:
         ziel = ziel or standard
         text = f"Zu Issue #{karte.extern_nr}{f' ({karte.url})' if karte.url else ''}: {hinweis}{a.text}"
         nachrichten.append(await projekt_gespraech.posten(
-            db, team, autor_typ="extern", autor_id=None, autor_name=f"extern ({a.von})", text=text, art="frage",
+            db, team, autor_typ="extern", autor_id=None, autor_name=f"extern ({einzeilig(a.von, 60)})", text=text,
+            art="frage",
             an=[ziel] if ziel else [], karte_id=karte.id))
     if len(ansprachen) > MAX_ANSPRACHEN:
         log.info("[Projekt] %s: %s Ansprachen aus Issues übersprungen (Grenze)", team.id,
@@ -662,6 +689,8 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
     kommentar_abfragen = 0
     vorheriger_abgleich = _aware(team.repo_abgleich_at)
     ansprachen: list = []
+    await _sichtbarkeit_lesen(team, anbieter, client, token, repo)
+    rueckkanal_an = rueckkanal_aktiv(team, token)
 
     # Issues
     offen_issues = set()
@@ -692,7 +721,7 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
         # Rückkanal: nur Issues, die sich seit dem letzten Abgleich geändert haben und
         # Kommentare tragen — nicht beim ersten Abgleich und nicht bei neuen Karten
         # (deren Kommentare standen schon vor dem Board im Issue).
-        rueckkanal = (karte.created_at is not None and vorheriger_abgleich is not None
+        rueckkanal = (rueckkanal_an and karte.created_at is not None and vorheriger_abgleich is not None
                       and geaendert_am is not None and geaendert_am > vorheriger_abgleich
                       and issue.get("comments") != 0)
         if (uebernommen or rueckkanal) and kommentar_abfragen < MAX_KOMMENTAR_ABFRAGEN:
@@ -1212,8 +1241,38 @@ async def extern_freigeben(db: AsyncSession, redis, team: Team, karte: ProjektKa
                    else "Fremde Übernahme gelöst.")
 
 
+#: Höchstens so viele Issue-Kommentare je Agent und Stunde — atomar in Redis gezählt,
+#: VOR dem Schreiben.
+ISSUE_KOMMENTARE_JE_STUNDE = 10
+
+
+class ZuVieleKommentare(GitFehler):
+    """Die Grenze der Issue-Kommentare je Stunde ist erreicht."""
+
+
+async def _kommentar_platz(redis, agent_id: str) -> bool:
+    """Einen Platz im Stundenkontingent nehmen — atomar (INCR), vor dem Schreiben.
+
+    Ohne Redis (Tests, Ausfall) wird nicht gezählt — dann schützt nur der Takt der
+    Läufe; ein Fehler im Zähler soll keinen Kommentar verhindern.
+    """
+    import time
+
+    client = _redis_client(redis)
+    if client is None:
+        return True
+    try:
+        schluessel = f"issue_kommentar:{agent_id}:{int(time.time() // 3600)}"
+        anzahl = await client.incr(schluessel)
+        if anzahl == 1:
+            await client.expire(schluessel, 3700)
+        return anzahl <= ISSUE_KOMMENTARE_JE_STUNDE
+    except Exception:  # noqa: BLE001
+        return True
+
+
 async def issue_kommentieren(db: AsyncSession, redis, team: Team, karte: ProjektKarte, *, agent_name: str,
-                             agent_id: str, text: str) -> None:
+                             agent_id: str, text: str) -> str:
     """Rückfrage eines Plattform-Agenten an Externe als Kommentar ins Issue (Rückkanal Agent → Issue).
 
     Die Kopfzeile ``ai-employee:nachricht`` weist ihn als Kommentar dieser Anlage
@@ -1224,10 +1283,17 @@ async def issue_kommentieren(db: AsyncSession, redis, team: Team, karte: Projekt
     token, anbieter = await zugang(db, redis, team)
     if not token:
         raise GitFehler("Ohne Schlüssel kann das Board nichts ins Repo schreiben (Bearbeiten → Schlüssel).")
+    await uebernahme.anlage_laden(db)
+    # DLP und Entschärfen vor dem Zählen: ein gesperrter Text kostet keinen Platz.
+    sauber = await ausgehend_pruefen(text, agent_id=agent_id, kanal="issue_kommentar", team=team)
+    if not await _kommentar_platz(redis, agent_id):
+        raise ZuVieleKommentare(f"Höchstens {ISSUE_KOMMENTARE_JE_STUNDE} Issue-Kommentare je Stunde — bitte "
+                                "später weiter.")
     async with httpx.AsyncClient(timeout=httpx.Timeout(10.0), follow_redirects=False) as client:
         await anbieter.comment_issue(client, token, repo_ziel(team.repo).pfad, karte.extern_nr,
                                      uebernahme.nachricht_kommentar(agent_name=agent_name, agent_id=agent_id,
-                                                                    text=text))
+                                                                    text=sauber))
+    return sauber
 
 
 def uebernahme_im_hintergrund(team_id: str, karte_id: str, redis, *, agent_name: str | None,
@@ -1249,6 +1315,61 @@ TAKT_PUSH_GRUND = (
     "Push gesperrt: Dies ist ein Lauf des Arbeitstakts. Im Takt koordinierst du nur — Code entsteht in "
     "Karten-Läufen. Vergib die Karte mit `projekt_karte_vergeben` (bist du allein im Projekt, an dich selbst) "
     "und arbeite im Lauf der Karte weiter.")
+
+
+#: Was ein Lauf aus dem Rückkanal (Frage aus einem Issue) nicht darf.
+RUECKKANAL_GRUND = (
+    "Gesperrt: Dieser Lauf beantwortet eine Frage aus einem Issue. Darin darfst du nur antworten "
+    "(`projekt_issue_kommentar`, Projektgespräch) und Karten im Eingang anlegen — nichts vergeben oder "
+    "übergeben, keinen Code pushen, keine Mails senden.")
+
+
+async def lauf_art(db: AsyncSession, agent_id: str, lauf: str | None) -> str | None:
+    """Ist dieser Lauf beschränkt? "takt" (Arbeitstakt), "rueckkanal" (Frage aus einem Issue) oder None.
+
+    Ist der Lauf unbekannt (ältere Hook-Einstellung, Chat) und laufen gerade NUR
+    beschränkte Läufe dieses Agenten derselben Art, gehört der Aufruf zu einem davon.
+    """
+    from app.core import projekt_takt
+    from app.models.task import Task, TaskStatus
+
+    takt_plaene = set((await db.execute(
+        select(Team.takt_schedule_id).where(Team.takt_schedule_id.is_not(None)))).scalars().all())
+
+    def art_von(t) -> str | None:
+        if (t.metadata_ or {}).get("rueckkanal"):
+            return "rueckkanal"
+        return "takt" if projekt_takt.ist_takt_lauf(t, takt_plaene) else None
+
+    if lauf:
+        task = await db.get(Task, lauf)
+        return art_von(task) if task is not None and task.agent_id == agent_id else None
+    laufend = (await db.execute(select(Task).where(
+        Task.agent_id == agent_id, Task.status == TaskStatus.RUNNING).limit(10))).scalars().all()
+    arten = {art_von(t) for t in laufend}
+    return arten.pop() if len(arten) == 1 else None
+
+
+#: Werkzeuge, die ein Lauf aus dem Rückkanal nicht benutzen darf (bloßer Name, ohne
+#: ``mcp__<server>__``). ``projekt_karte_anlegen`` nur mit Spalte „eingang“.
+RUECKKANAL_GESPERRT = frozenset({
+    "projekt_karte_vergeben", "projekt_karte_uebergeben", "projekt_karte_verschieben",
+    "create_task", "create_task_batch", "delegate_and_wait",
+    "email_send", "email_reply", "send_email", "reply_email", "ms_send_email",
+    "send_teams_message", "send_teams_chat_message",
+})
+
+
+def werkzeug_grund(art: str | None, werkzeug: str, eingabe: dict | None) -> str | None:
+    """Sperrgrund für ein Werkzeug in einem beschränkten Lauf — None, wenn erlaubt."""
+    if art != "rueckkanal":
+        return None
+    name = werkzeug.rsplit("__", 1)[-1] if werkzeug.startswith("mcp__") else werkzeug
+    if name in RUECKKANAL_GESPERRT:
+        return RUECKKANAL_GRUND
+    if name == "projekt_karte_anlegen" and str((eingabe or {}).get("spalte") or "eingang") != "eingang":
+        return RUECKKANAL_GRUND
+    return None
 
 
 def remote_ziel(remote: str | None) -> tuple[str, str] | None:
@@ -1305,9 +1426,7 @@ async def push_pruefen(db: AsyncSession, redis, agent_id: str, *, lauf: str | No
     vermeiden — keine Sicherheitsgrenze (wer Kommentare schreiben kann, kann jede
     Übernahme schreiben; ein Agent mit Shell kann am Hook vorbei pushen).
     """
-    from app.core import projekt_takt
     from app.models.agent import Agent
-    from app.models.task import Task, TaskStatus
 
     agent = await db.get(Agent, agent_id)
     if agent is None:
@@ -1320,21 +1439,13 @@ async def push_pruefen(db: AsyncSession, redis, agent_id: str, *, lauf: str | No
         log.warning("[Push-Sperre] Agent %s fragt öfter als %s-mal je Minute — nur noch gemerkte Stände",
                     agent_id, PUSH_FRAGEN_JE_MINUTE)
     await uebernahme.anlage_laden(db)
-    task = await db.get(Task, lauf) if lauf else None
-    if task is not None and task.agent_id != agent_id:
-        task = None
-    takt_plaene = set((await db.execute(
-        select(Team.takt_schedule_id).where(Team.takt_schedule_id.is_not(None)))).scalars().all())
-    if task is None and not lauf:
-        # Lauf unbekannt (ältere Hook-Einstellung, Chat): laufen gerade NUR Takt-Läufe
-        # dieses Agenten, gehört der Push zu einem davon.
-        laufend = (await db.execute(select(Task).where(
-            Task.agent_id == agent_id, Task.status == TaskStatus.RUNNING).limit(10))).scalars().all()
-        if laufend and all(projekt_takt.ist_takt_lauf(t, takt_plaene) for t in laufend):
-            task = laufend[0]
-    if task is not None and projekt_takt.ist_takt_lauf(task, takt_plaene):
-        log.info("[Push-Sperre] Agent %s, Takt-Lauf %s: Push gesperrt", agent_id, task.id)
+    art = await lauf_art(db, agent_id, lauf)
+    if art == "takt":
+        log.info("[Push-Sperre] Agent %s, Takt-Lauf %s: Push gesperrt", agent_id, lauf)
         return {"erlaubt": False, "grund": TAKT_PUSH_GRUND}
+    if art == "rueckkanal":
+        log.info("[Push-Sperre] Agent %s, Rückkanal-Lauf %s: Push gesperrt", agent_id, lauf)
+        return {"erlaubt": False, "grund": RUECKKANAL_GRUND}
 
     projekte_des_agenten = await _projekte_mit_repo(db, agent_id)
     for ziel in ziele[:MAX_PUSH_ZIELE]:

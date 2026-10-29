@@ -596,6 +596,8 @@ def ansprachen(kommentar: dict, eigene_anlage: str | None = None) -> Ansprache |
     """
     if not isinstance(kommentar, dict) or not isinstance(kommentar.get("id"), int):
         return None
+    if kommentar.get("vertraut") is not True:
+        return None  # nur Konten mit Schreibrecht am Repo dürfen Agenten wecken
     eigene_anlage = eigene_anlage or anlage_kennung()
     text = str(kommentar.get("body") or "")[:20000].lstrip()
     von = f"@{kommentar['autor']}" if kommentar.get("autor") and _LOGIN.match(str(kommentar["autor"])) else "extern"
@@ -620,7 +622,7 @@ def ansprachen(kommentar: dict, eigene_anlage: str | None = None) -> Ansprache |
     if not inhalt:
         return None
     return Ansprache(kommentar_id=kommentar["id"], agent=einzeilig(ziel, 80) or None, text=inhalt,
-                     von=einzeilig(von, 120))
+                     von=einzeilig(von, 60))
 
 
 def nachricht_kommentar(*, agent_name: str | None, agent_id: str | None, text: str) -> str:
