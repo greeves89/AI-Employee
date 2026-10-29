@@ -306,23 +306,36 @@ class StatusAnDerQuelle(_Arbeitsraum):
     ITEM = "Für #961 die Inventur wiederholen"
 
     async def _abschluss(self, zustaende, *, redis="redis-attrappe", kaputt=False, prs=(), punkte=None,
-                         langsam=0.0):
-        """``zustaende``: Issue-Nummer → Status beim Hoster (fehlende Nummer = ``None``,
-        so melden die Anbieter 404/401/403 und eine erschöpfte Abfragegrenze).
-        ``prs``: Nummern, die beim Hoster ein Pull Request sind. ``kaputt``: Quelle wirft."""
+                         langsam=0.0, karten=(), zugang_langsam=0.0):
+        """``zustaende``: Issue-Nummer → Status beim Hoster (fehlende Nummer = nicht
+        lesbar, also ``None`` — so melden die Anbieter 404/401/403 und eine erschöpfte
+        Abfragegrenze). ``prs``: Nummern, die beim Hoster ein Pull Request sind.
+        ``kaputt``: Quelle wirft. ``karten``: Titel, die vorher schon auf dem Board liegen.
+
+        Die Attrappe spiegelt ``get_issue`` — EINE Abfrage je Nummer, und das Feld
+        ``pull_request`` steht in derselben Antwort (so antworten GitHub und Forgejo)."""
         gefragt = []
+        if karten:
+            from app.core import projekte
+
+            async with self.Session() as db:
+                for titel in karten:
+                    db.add(projekte.neue_karte("p1", titel, spalte="bereit"))
+                await db.commit()
 
         class _Anbieter:
-            async def issue_state(self, client, token, repo, nummer):
+            async def get_issue(self, client, token, repo, nummer):
                 gefragt.append((repo, nummer))
                 if kaputt:
                     raise RuntimeError("Hoster antwortet nicht")
                 if langsam:
                     await asyncio.sleep(langsam)
-                return zustaende.get(nummer)
-
-            async def pull_state(self, client, token, repo, nummer):
-                return "gemergt" if nummer in prs else None
+                if nummer not in zustaende:
+                    return None                     # nicht lesbar (404/401/403/Grenze)
+                antwort = {"number": nummer, "state": zustaende[nummer]}
+                if nummer in prs:
+                    antwort["pull_request"] = {"url": "https://example.invalid/pulls/1"}
+                return antwort
 
         @contextlib.asynccontextmanager
         async def _sitzung():
@@ -330,6 +343,8 @@ class StatusAnDerQuelle(_Arbeitsraum):
                 yield db
 
         async def _zugang(db, r, team):
+            if zugang_langsam:
+                await asyncio.sleep(zugang_langsam)
             return "tok", _Anbieter()
 
         with patch("app.db.session.async_session_factory", _sitzung), \
@@ -423,12 +438,94 @@ class StatusAnDerQuelle(_Arbeitsraum):
         self.assertEqual([k.titel for k in karten], [self.ITEM])
         self.assertEqual(len(nachrichten), 1)
 
+    async def test_eine_abfrage_je_nummer(self):
+        """Die Zusage „ein Lesevorgang je Nummer". Der frühere Weg (``issue_state`` und
+        danach ``pull_state``) brauchte zwei und hatte dadurch den Befund unten."""
+        _, gefragt = await self._abschluss({961: "closed"})
+        self.assertEqual(gefragt, [("o/r", 961)])
+
+    async def test_nicht_lesbarer_pull_request_wird_nicht_zum_erledigten_issue(self):
+        """Der Befund hinter der Umstellung auf ``get_issue``: ``pull_state`` liefert auch
+        bei 403/429/5xx ``None``, und ``None`` hieß „kein Pull Request". Eine NICHT LESBARE
+        Quelle machte aus der PR-Nummer also ein erledigtes Issue, und „PR #1126 nachziehen"
+        verschwand lautlos — genau die Fehlerklasse, die diese Wache vermeiden soll.
+        ``get_issue`` liest beides aus EINER Antwort, es gibt keine halb gelesene Lage mehr."""
+        titel, gefragt = await self._abschluss({1126: "closed"}, prs=(1126,),
+                                               punkte=["PR #1126 nachziehen"])
+        self.assertEqual((titel, gefragt), (["PR #1126 nachziehen"], [("o/r", 1126)]))
+
+    async def test_schon_abgedeckter_punkt_fragt_den_hoster_nicht(self):
+        """Ein Punkt, den die Wortüberlappung mit einer offenen Karte ohnehin abdeckt,
+        wird übersprungen — egal was der Hoster sagt. Dann darf die Wache dafür auch nicht
+        fragen: Abfragen sind begrenzt (20) und halten das Ende der Besprechung auf."""
+        titel, gefragt = await self._abschluss({961: "open"}, karten=[self.ITEM])
+        self.assertEqual((titel, gefragt), ([], []))
+
+    async def test_ein_punkt_deckt_den_naechsten_desselben_protokolls_ab(self):
+        """Gegenprobe zur Vorab-Messung: die Dubletten-Erkennung INNERHALB eines
+        Protokolls hängt daran, dass die Vergleichsliste in der Schleife mitwächst.
+        Zwei Mal fast derselbe Punkt ergibt genau EINE Karte."""
+        titel, _ = await self._abschluss(
+            {}, punkte=["Für #961 die Inventur wiederholen", "Die Inventur für #961 wiederholen"])
+        self.assertEqual(len(titel), 1)
+
+    async def test_eine_nicht_lesbare_nummer_stoppt_die_uebrigen_nicht(self):
+        """Eine Nummer, die der Hoster nicht ausliefert, ist ein Einzelfall — sie darf die
+        Messung der ANDEREN nicht abbrechen. Ohne die Prüfung „ist das überhaupt eine
+        Antwort" liefe die Wache auf ``None.get(...)`` in den Sammel-Fehlerzweig und
+        verlöre jede Nummer dahinter, obwohl sie gemessen werden konnte."""
+        titel, gefragt = await self._abschluss(
+            {970: "closed"}, punkte=["Zu #961 nachfassen", "Für #970 die Inventur abschliessen"])
+        self.assertEqual(titel, ["Zu #961 nachfassen"])       # 961 nicht lesbar -> Karte
+        self.assertEqual(gefragt, [("o/r", 961), ("o/r", 970)])
+
+    async def test_zugang_liegt_nicht_in_der_frist(self):
+        """Das Beschaffen des Zugangs darf die Frist NICHT verbrauchen und erst recht nicht
+        von ihr abgebrochen werden: ``zugang`` erneuert bei Bedarf den OAuth-Token (bis zu
+        30 s Sperre plus Tausch beim Anbieter). Ein Abbruch mitten im Tausch verbrennt den
+        Refresh-Token, der Anbieter hat ihn dann schon gedreht — Fehlerklasse #1013.
+        Läge ``zugang`` in der Frist, käme hier keine Abfrage mehr zustande."""
+        with patch.object(projekt_termine, "STATUS_FRIST_SEKUNDEN", 0.2):
+            titel, gefragt = await self._abschluss({961: "closed"}, zugang_langsam=0.5)
+        self.assertEqual((titel, gefragt), ([], [("o/r", 961)]))
+
     async def test_frist_bricht_die_abfrage_ab_und_legt_die_karte_an(self):
         """Die zugesagte Gesamtfrist. Eine hängende Quelle darf die Besprechung nicht
         festhalten — und der Punkt muss danach eine Karte werden, nicht verschwinden."""
         with patch.object(projekt_termine, "STATUS_FRIST_SEKUNDEN", 0.05):
             titel, _ = await self._abschluss({961: "closed"}, langsam=0.5)
         self.assertEqual(titel, [self.ITEM])
+
+
+class BesprechungReichtRedisDurch(unittest.IsolatedAsyncioTestCase):
+    """Die Statusabfrage beim Hoster braucht ``redis`` (für den OAuth-Zugang). Ohne
+    ``redis`` fragt ``abschluss`` nichts und die Wache fällt stillschweigend auf den
+    alten Board-Stand zurück — der Fix von #1106 wäre dann wirkungslos, ohne dass ein
+    Test rot wird. Genau die eine Stelle, die ``redis`` weitergibt, wird hier gemessen."""
+
+    async def test_abschluss_bekommt_das_redis_der_besprechung(self):
+        from app.api import meeting_rooms
+
+        gesehen = {}
+
+        async def _abschluss(room_id, team_id, raum_name, zusammenfassung, agent_ids, redis=None):
+            gesehen["redis"] = redis
+
+        async def _moderator(room_id, agent_id, prompt, redis, timeout_rounds=24):
+            return "## Action Items\n- [ ] Etwas tun\n"
+
+        class _Client:
+            async def publish(self, *a, **k):
+                return 0
+
+        redis = SimpleNamespace(client=_Client())
+        room = SimpleNamespace(id="raum1", team_id="p1", name="Daily: Projekt", topic="Stand",
+                               agent_ids=["a1"], rounds_completed=1,
+                               messages=[{"role": "agent", "agent_id": "a1", "content": "Hallo"}])
+        with patch.object(meeting_rooms, "_moderator_request", _moderator), \
+                patch.object(projekt_termine, "abschluss", _abschluss):
+            await meeting_rooms._generate_todo_summary(room, redis, "mod1")
+        self.assertIs(gesehen.get("redis"), redis)
 
 
 class TerminText(unittest.TestCase):
