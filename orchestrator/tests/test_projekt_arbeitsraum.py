@@ -451,12 +451,17 @@ class StatusAnDerQuelle(_Arbeitsraum):
         _, gefragt = await self._abschluss({961: "closed"})
         self.assertEqual(gefragt, [("o/r", 961)])
 
-    async def test_nicht_lesbarer_pull_request_wird_nicht_zum_erledigten_issue(self):
-        """Der Befund hinter der Umstellung auf ``get_issue``: ``pull_state`` liefert auch
-        bei 403/429/5xx ``None``, und ``None`` hieß „kein Pull Request". Eine NICHT LESBARE
-        Quelle machte aus der PR-Nummer also ein erledigtes Issue, und „PR #1126 nachziehen"
-        verschwand lautlos — genau die Fehlerklasse, die diese Wache vermeiden soll.
-        ``get_issue`` liest beides aus EINER Antwort, es gibt keine halb gelesene Lage mehr."""
+    async def test_pull_request_bleibt_ein_punkt_und_kostet_genau_eine_abfrage(self):
+        """Zustand UND „ist ein PR" kommen aus EINER Antwort — es gibt keine halb gelesene
+        Lage mehr. Das war der Befund hinter der Umstellung auf ``get_issue``: der frühere
+        Weg fragte ``pull_state`` getrennt, und das lieferte auch bei 403/429/5xx ``None``.
+        ``None`` hieß „kein Pull Request", also machte eine NICHT LESBARE Quelle aus einer
+        PR-Nummer ein erledigtes Issue, und „PR #1126 nachziehen" verschwand lautlos.
+
+        Gemessen wird hier deshalb beides zugleich: der Punkt bleibt stehen, UND es ist bei
+        genau einem Lesevorgang geblieben. (Der Name sagte früher „nicht lesbar" — der
+        Hoster antwortet hier aber sauber; die nicht lesbare Quelle misst
+        ``test_eine_nicht_lesbare_nummer_stoppt_die_uebrigen_nicht``.)"""
         titel, gefragt = await self._abschluss({1126: "closed"}, prs=(1126,),
                                                punkte=["PR #1126 nachziehen"])
         self.assertEqual((titel, gefragt), (["PR #1126 nachziehen"], [("o/r", 1126)]))
