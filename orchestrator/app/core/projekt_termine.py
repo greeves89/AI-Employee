@@ -8,12 +8,13 @@ den Vorlagen (``core/meeting_templates``).
 Am Ende einer Projekt-Besprechung (``abschluss``):
 * das Protokoll (Zusammenfassung mit Action Items) wird eine Seite im
   Projektwissen (``protokolle/…``) und eine Nachricht im Projektgespräch;
-* jedes Action Item wird eine Karte unter „Bereit“ — der Lead (oder der Takt)
-  vergibt sie. Es entstehen keine Aufträge an Agenten vorbei am Board.
+* jedes Action Item wird eine Karte unter „Eingang“ — der Lead (oder der Mensch)
+  plant sie erst ein und vergibt sie dann. Es entstehen keine Aufträge an Agenten vorbei am Board.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -202,6 +203,11 @@ AEHNLICH_AB = 0.6
 ERLEDIGT_FENSTER = timedelta(days=14)
 #: Mehr Karten je Besprechung sind Rauschen, kein Plan.
 MAX_KARTEN = 5
+#: Höchstens so viele Nummern je Besprechung beim Hoster nachfragen — ein Protokoll
+#: voller Nummern darf das Ende der Besprechung nicht aufhalten.
+MAX_STATUSABFRAGEN = 20
+#: Frist für alle Statusabfragen zusammen (die Zeitgrenze von httpx gilt je Lesevorgang).
+STATUS_FRIST_SEKUNDEN = 15
 
 
 def _woerter(text: str) -> frozenset[str]:
@@ -223,7 +229,45 @@ def _items(markdown: str) -> list[str]:
     return [z.strip()[5:].strip() for z in (markdown or "").splitlines() if z.strip().startswith("- [ ]")][:MAX_ITEMS]
 
 
-async def abschluss(room_id: str, team_id: str, raum_name: str, zusammenfassung: str, agent_ids: list[str]) -> None:
+async def _geschlossen_an_der_quelle(db: AsyncSession, redis, team: Team, nummern: set[int]) -> set[int]:
+    """Welche der genannten Issue-Nummern sind beim Hoster wirklich geschlossen?
+
+    Die Board-Spalte taugt dafür nicht: ``spalte == "erledigt"`` kennt nur Nummern,
+    zu denen überhaupt noch eine Karte liegt — gemessen am 28.10.2026 waren das
+    4 von 133 Issue-Karten, während im Repo hunderte Issues geschlossen sind. Ein
+    Protokollpunkt zu einem geschlossenen Issue *ohne* Karte passierte die Wache
+    deshalb jedes Mal und wurde wieder zur Karte; das Aufräumen von Hand half nicht,
+    weil mit der Karte auch das einzige Kennzeichen verschwand.
+
+    Eine nicht erreichbare Quelle heißt ausdrücklich *nicht* geschlossen: ein
+    doppelter Punkt ist billiger als ein verlorener. Schon gemessene Nummern bleiben
+    dabei gültig — bricht die Abfrage nach der Hälfte ab, zählt die Hälfte.
+    """
+    if not nummern or redis is None or not (team.repo or ""):
+        return set()
+
+    import httpx
+
+    from app.core import projekt_git
+
+    zu: set[int] = set()
+    try:
+        ziel = projekt_git.repo_ziel(team.repo)
+        if ziel.art == "ungueltig" or not ziel.pfad:
+            return zu
+        token, anbieter = await projekt_git.zugang(db, redis, team)
+        async with asyncio.timeout(STATUS_FRIST_SEKUNDEN):
+            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0), follow_redirects=False) as client:
+                for nr in sorted(nummern)[:MAX_STATUSABFRAGEN]:
+                    if await anbieter.issue_state(client, token, ziel.pfad, nr) == "closed":
+                        zu.add(nr)
+    except Exception as e:  # noqa: BLE001 — die Besprechung endet auch ohne Hoster
+        log.warning("Issue-Status für Projekt %s nicht vollständig geprüft: %s", team.id, e)
+    return zu
+
+
+async def abschluss(room_id: str, team_id: str, raum_name: str, zusammenfassung: str, agent_ids: list[str],
+                    redis=None) -> None:
     """Ende einer Projekt-Besprechung: Protokoll ins Wissen und ins Gespräch, Items als Karten."""
     from app.core import projekt_wissen, projekte
     from app.db.session import async_session_factory
@@ -274,8 +318,13 @@ async def abschluss(room_id: str, team_id: str, raum_name: str, zusammenfassung:
             or (erledigt_at is not None and (erledigt_at if erledigt_at.tzinfo else
                                              erledigt_at.replace(tzinfo=timezone.utc)) >= grenze)
         ]
+        punkte = _items(zusammenfassung)
+        # Den Status der genannten Issues an der QUELLE messen, nicht am Kartenzustand:
+        # ohne Karte kennt das Board eine geschlossene Nummer gar nicht (#1106).
+        genannt = {int(n) for p in punkte for n in _ISSUE_NR.findall(p)}
+        geschlossen |= await _geschlossen_an_der_quelle(db, redis, team, genannt - geschlossen)
         items, uebersprungen = [], 0
-        for item in _items(zusammenfassung):
+        for item in punkte:
             nummern = {int(n) for n in _ISSUE_NR.findall(item)}
             woerter = _woerter(item)
             if (nummern and nummern <= geschlossen) or any(_aehnlich(woerter, v) for v in vergleich):
