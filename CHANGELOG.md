@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.406.0] - 2026-10-30
+
+### Sicherheit
+- Neue Agenten bekommen kein `sudo` mehr von selbst: L3 fragt jetzt vor einer Software-Installation, Vorlagen und der Anlegen-Dialog wählen kein `sudo` mehr vor. Bestehende L3-Agenten behalten ihr Recht.
+- Hinweis in der Rechte-Matrix: Ein neu erlaubtes „Pakete / Config“ wirkt erst nach „Neu starten“.
+
 ## [1.405.0] - 2026-10-30
 
 ### Sicherheit

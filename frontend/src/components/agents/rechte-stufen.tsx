@@ -21,7 +21,7 @@ export const RECHTE_STUFEN = [
   {
     stufe: "l3",
     name: "Fragt vorher",
-    text: "Erledigt die Arbeit in seinem Bereich selbst und fragt, bevor etwas nach außen geht: Mails, fremde Dienste, Käufe.",
+    text: "Erledigt die Arbeit in seinem Bereich selbst und fragt, bevor er Software installiert oder etwas nach außen geht: Mails, fremde Dienste, Käufe.",
     icon: MessageCircleQuestionMark,
     empfohlen: true,
   },

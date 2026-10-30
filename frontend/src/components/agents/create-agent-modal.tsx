@@ -322,7 +322,7 @@ export function CreateAgentModal({
         setDerivedPermissions(data.derived || {});
       }).catch(() => {
         setPackages([]);
-        setSelectedPermissions(["package-install"]);
+        setSelectedPermissions([]);
         setDerivedPermissions({});
       });
     }
@@ -374,7 +374,7 @@ export function CreateAgentModal({
       setSelectedPermissions(
         template.permissions.length > 0
           ? template.permissions.filter((p) => p !== "full-access")
-          : ["package-install"],
+          : [],
       );
       // Pre-fill system prompt from template for Custom LLM usage
       const templatePrompt = template.knowledge_template
@@ -385,7 +385,7 @@ export function CreateAgentModal({
       setName("");
       setRole("");
       setPermissionsMode("auto");
-      setSelectedPermissions(["package-install"]);
+      setSelectedPermissions([]);
       setLlmSystemPrompt("");
     }
     setStep("configure");

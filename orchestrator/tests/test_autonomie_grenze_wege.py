@@ -374,7 +374,8 @@ class Freigaberegeln(unittest.IsolatedAsyncioTestCase):
 
 class UeberDerGrenze(unittest.TestCase):
     def test_bestand_wird_gemeldet_nicht_geaendert(self):
-        self.assertEqual(ag.ueberschreitung("l4", {}, "l3"), ["Stufe L4"])
+        # L4 bringt sudo mit, L3 nicht mehr (v1.406.0) — beides liegt über der Grenze.
+        self.assertEqual(ag.ueberschreitung("l4", {}, "l3"), ["Stufe L4", "Sudo: package-install, system-config"])
         self.assertEqual(ag.ueberschreitung("l3", {}, "l3"), [])
         self.assertEqual(ag.ueberschreitung("l4", {}, None), [])
         gruende = ag.ueberschreitung("l3", {"permissions": ["full-access"], "permissions_mode": "manual"}, "l3")
