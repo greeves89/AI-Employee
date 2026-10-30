@@ -190,7 +190,20 @@ def _taskforce_dir(room) -> "os.PathLike | str":
     """
     import os
     from app.core.shared_volume import agent_sicht
-    return os.path.realpath(os.path.join(agent_sicht(room.created_by), "taskforce", room.id))
+    # Der Ordner liegt im beschreibbaren Bereich der Agenten. Ein Agent könnte
+    # „taskforce“ oder den Raumordner durch einen Symlink ersetzen — etwa auf den
+    # Ordner eines ANDEREN Nutzers, der für den Orchestrator unter demselben Pfad
+    # liegt. Deshalb: keine Symlinks auf dem Weg, und das Ziel muss im Ordner des
+    # Besitzers bleiben.
+    wurzel = os.path.realpath(agent_sicht(room.created_by))
+    weg = os.path.join(wurzel, "taskforce")
+    for teil in (weg, os.path.join(weg, room.id)):
+        if os.path.islink(teil):
+            raise HTTPException(status_code=400, detail="Ungültiges Taskforce-Verzeichnis")
+    base = os.path.realpath(os.path.join(weg, room.id))
+    if not base.startswith(wurzel + os.sep):
+        raise HTTPException(status_code=400, detail="Ungültiges Taskforce-Verzeichnis")
+    return base
 
 
 def _taskforce_agent_pfad(room) -> str:
@@ -210,21 +223,27 @@ def _ensure_taskforce_dir(room) -> str:
 
     Ownership (chown 1000:1000) + mode 0o770 grants exactly the agents access — NOT
     world-writable — so on multi-tenant boxes stray processes can't tamper with it."""
-    import os, stat
+    import os
     base = _taskforce_dir(room)
     parent = os.path.dirname(base)
     for d in (parent, base):
         try:
             os.makedirs(d, exist_ok=True)
-            # Refuse to touch a symlink (symlink-race hardening) — the dir must be real.
-            if stat.S_ISLNK(os.lstat(d).st_mode):
-                logger.warning("[Taskforce] refusing to chmod symlink %s", d)
+            # Über einen Deskriptor, der keinem Symlink folgt: ein Agent könnte den
+            # Ordner zwischen Prüfung und chown gegen einen Link tauschen.
+            try:
+                fd = os.open(d, os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0))
+            except OSError:
+                logger.warning("[Taskforce] refusing to touch %s (symlink or not a dir)", d)
                 continue
             try:
-                os.chown(d, _AGENT_UID, _AGENT_GID)  # needs root (orchestrator is root)
-            except (PermissionError, OSError):
-                logger.warning("[Taskforce] could not chown %s to agent uid", d)
-            os.chmod(d, 0o770)  # rwx for owner (agent) + group only, no world/other
+                try:
+                    os.fchown(fd, _AGENT_UID, _AGENT_GID)  # needs root (orchestrator is root)
+                except (PermissionError, OSError):
+                    logger.warning("[Taskforce] could not chown %s to agent uid", d)
+                os.fchmod(fd, 0o770)  # rwx for owner (agent) + group only, no world/other
+            finally:
+                os.close(fd)
         except OSError:
             logger.warning("[Taskforce] could not prepare %s", d, exc_info=True)
     return base

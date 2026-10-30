@@ -170,3 +170,42 @@ class TeamtokenDatei(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TaskforceBleibtImEigenenOrdner(unittest.TestCase):
+    """Der Taskforce-Ordner liegt im beschreibbaren Bereich der Agenten. Ein Symlink
+    darf den Orchestrator nicht in den Ordner eines anderen Nutzers führen."""
+
+    def _raum(self):
+        return mock.Mock(created_by="u1", id="raum1")
+
+    def test_symlink_auf_fremden_nutzer_wird_abgewiesen(self):
+        from fastapi import HTTPException
+        from app.api import meeting_rooms
+        with tempfile.TemporaryDirectory() as root:
+            os.makedirs(os.path.join(root, "nutzer", "u1"))
+            os.makedirs(os.path.join(root, "nutzer", "u2", "taskforce", "raum1"))
+            # Agent von u1 ersetzt „taskforce“ durch einen Symlink auf den Ordner von u2.
+            os.symlink(os.path.join(root, "nutzer", "u2", "taskforce"), os.path.join(root, "nutzer", "u1", "taskforce"))
+            with mock.patch("app.core.shared_volume.SHARED_DIR", root), \
+                    mock.patch("app.core.shared_volume.agent_sicht", lambda uid: os.path.join(root, "nutzer", uid)):
+                with self.assertRaises(HTTPException):
+                    meeting_rooms._taskforce_dir(self._raum())
+
+    def test_raumordner_als_symlink_wird_abgewiesen(self):
+        from fastapi import HTTPException
+        from app.api import meeting_rooms
+        with tempfile.TemporaryDirectory() as root:
+            os.makedirs(os.path.join(root, "nutzer", "u1", "taskforce"))
+            os.makedirs(os.path.join(root, "nutzer", "u2"))
+            os.symlink(os.path.join(root, "nutzer", "u2"), os.path.join(root, "nutzer", "u1", "taskforce", "raum1"))
+            with mock.patch("app.core.shared_volume.agent_sicht", lambda uid: os.path.join(root, "nutzer", uid)):
+                with self.assertRaises(HTTPException):
+                    meeting_rooms._taskforce_dir(self._raum())
+
+    def test_normaler_ordner_liegt_beim_besitzer(self):
+        from app.api import meeting_rooms
+        with tempfile.TemporaryDirectory() as root:
+            with mock.patch("app.core.shared_volume.agent_sicht", lambda uid: os.path.join(root, "nutzer", uid)):
+                pfad = meeting_rooms._taskforce_dir(self._raum())
+            self.assertEqual(pfad, os.path.join(os.path.realpath(root), "nutzer", "u1", "taskforce", "raum1"))
