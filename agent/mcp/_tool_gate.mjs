@@ -26,8 +26,8 @@
 import { CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 const HOOK_URL = process.env.AGENT_HOOK_URL || "http://localhost:8080/hooks/pretooluse";
-// Gleicher Wert wie Claude Codes PreToolUse-Hook-Timeout
-// (agent_manager.py::_CLAUDE_PRETOOLUSE_SETTINGS_JSON) — deckt denselben
+// Gleicher Wert wie die Wartezeit des verwalteten PreToolUse-Hooks
+// (pretooluse-hook.mjs, agent/richtlinie/) — deckt denselben
 // Worst-Case ab (zwei sequenzielle, kalte Orchestrator-Aufrufe innerhalb von
 // decide_async()).
 const HOOK_TIMEOUT_MS = 12_000;

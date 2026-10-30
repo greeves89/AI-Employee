@@ -15,7 +15,7 @@ Issue übernommen hat.
 
 EIN Entscheidungsweg für alle Laufzeiten: der PreToolUse-Hook
 (``pretooluse_hook.decide_async``, Claude Code direkt, Codex über
-``mcp/codex-hook.mjs``) und der Custom-LLM-Executor (``executor._tool_bash``).
+``mcp/pretooluse-hook.mjs``) und der Custom-LLM-Executor (``executor._tool_bash``).
 
 Bewusst fail-open: Ist der Orchestrator nicht erreichbar, kennt er den Endpunkt
 nicht (älterer Stand) oder lässt sich der Befehl nicht lesen, wird NICHT gesperrt,

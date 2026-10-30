@@ -5,7 +5,8 @@ import http from "node:http";
 // AGENT_HOOK_URL wird beim Laden gelesen — vor dem Import setzen.
 const port = 39080 + Math.floor(Math.random() * 1000);
 process.env.AGENT_HOOK_URL = `http://127.0.0.1:${port}/hooks/pretooluse`;
-const { entscheide } = await import("./codex-hook.mjs");
+process.env.AGENT_HOOK_TIMEOUT_MS = "300";
+const { entscheide } = await import("./pretooluse-hook.mjs");
 
 function stub(antwort, mitschrift) {
   return new Promise((resolve) => {
@@ -58,8 +59,26 @@ test("Erlaubnis: keine Ausgabe", async () => {
   }
 });
 
-test("Hook nicht erreichbar: keine Ausgabe (fail-open wie bei Claude Code)", async () => {
-  assert.equal(await entscheide(CODEX_EINGABE), "");
+test("Entscheidungspunkt nicht erreichbar: abgelehnt (fail-closed)", async () => {
+  const aus = JSON.parse(await entscheide(CODEX_EINGABE));
+  assert.equal(aus.hookSpecificOutput.permissionDecision, "deny");
+});
+
+test("Entscheidungspunkt haengt: abgelehnt, bevor die CLI den Hook abbricht", async () => {
+  // Ein angehaltener Server nimmt die Verbindung an und antwortet nie.
+  const s = await new Promise((resolve) => {
+    const server = http.createServer(() => {});
+    server.listen(port, "127.0.0.1", () => resolve(server));
+  });
+  try {
+    const start = Date.now();
+    const aus = JSON.parse(await entscheide(CODEX_EINGABE));
+    assert.equal(aus.hookSpecificOutput.permissionDecision, "deny");
+    assert.ok(Date.now() - start < 5_000);
+  } finally {
+    s.closeAllConnections();
+    await stop(s);
+  }
 });
 
 test("kaputte Eingabe: abgelehnt", async () => {

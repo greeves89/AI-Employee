@@ -174,8 +174,8 @@ class AgentRunner:
         ]
 
         env = os.environ.copy()
-        # Der Lauf fuer die Push-Sperre (#1117): Claude Code reicht ihn als Kopfzeile
-        # an den PreToolUse-Hook weiter (``allowedEnvVars`` in .claude/settings.json).
+        # Der Lauf fuer die Push-Sperre (#1117): der verwaltete PreToolUse-Hook
+        # (mcp/pretooluse-hook.mjs) erbt die Umgebung und schickt ihn mit.
         from app.tools.push_sperre import LAUF_ENV
         env[LAUF_ENV] = task_id or ""
         # Standard-Denktiefe des Agenten: Aufgaben haben keine Stufen-Wahl am Lauf,

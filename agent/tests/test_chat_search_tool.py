@@ -139,7 +139,6 @@ class CodexTests(unittest.TestCase):
         runner = self._runner()
         lauf, gesehen = _cli_umgebung(lambda: runner._run_codex("m1", "hi", "gpt-5", stream=stream))
         with patch("app.codex_runner._codex_auth_problem", return_value=None), \
-             patch("app.codex_runner._codex_kennt_hook_trust", return_value=False), \
              patch("app.codex_runner._codex_env", return_value={CHAT_SESSION_ENV: "fremd"}):
             _im_gespraech(session, lauf)
         return gesehen

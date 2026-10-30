@@ -1,29 +1,30 @@
 #!/usr/bin/env node
 /**
- * PreToolUse-Hook fuer Codex CLI (Issue #781 PR 3).
+ * PreToolUse-Hook fuer Claude Code UND Codex CLI (#781, Sicherheit P0-2).
  *
- * Codex kann seit den 0.1xx-Versionen Hooks — aber nur als Kommando, nicht als
- * HTTP-Aufruf wie Claude Code. Dieses Skript ist die Bruecke: es liest die
- * Hook-Eingabe von stdin, fragt denselben lokalen Entscheidungspunkt, den
- * Claude Code direkt anspricht (`agent/app/health.py::pretooluse_hook_handler`),
- * und gibt eine Ablehnung im Format aus, das Codex versteht (dasselbe wie bei
- * Claude Code: `hookSpecificOutput.permissionDecision = "deny"`).
+ * Beide CLIs rufen dieses Skript vor JEDEM Werkzeugaufruf auf. Es liest die
+ * Hook-Eingabe von stdin, fragt den lokalen Entscheidungspunkt
+ * (`agent/app/health.py::pretooluse_hook_handler`) und gibt eine Ablehnung im
+ * gemeinsamen Format aus (`hookSpecificOutput.permissionDecision = "deny"`).
  *
- * Abgedeckt sind damit alle Werkzeuge, die Codex durch PreToolUse schickt:
- * Shell (`Bash`), Dateiaenderungen (`apply_patch`) und MCP-Werkzeuge
- * (`mcp__<server>__<werkzeug>`). Am 15.10.2026 gegen codex-cli 0.159 live
- * geprueft: eine Ablehnung verhindert Befehl und Dateiaenderung, auch mit
- * `--dangerously-bypass-approvals-and-sandbox`.
+ * Eingetragen ist es nicht mehr in Dateien, die der Agent selbst schreiben kann
+ * (`/workspace/.claude/settings.json`, `~/.codex/config.toml`), sondern als
+ * verwalteter Hook im Abbild: `/etc/claude-code/managed-settings.json` und
+ * `/etc/codex/requirements.toml` (Quelle: `agent/richtlinie/`), beide root-eigen,
+ * mit "nur verwaltete Hooks". Live geprueft (Claude Code 2.1.312, Codex 0.165):
+ * `disableAllHooks` in Projekt, Nutzer und `--settings` bzw.
+ * `-c features.hooks=false` schalten ihn nicht ab.
  *
- * Fail-open NUR, wenn der lokale Entscheidungspunkt nicht erreichbar ist (wie
- * Claude Codes HTTP-Hook, Begruendung in `_tool_gate.mjs`). Antwortet er, aber
- * mit Fehlerstatus oder unlesbar, oder ist schon die Eingabe kaputt, wird
- * abgelehnt — das ist ein Fehler im Abbild, kein Netzaussetzer, und soll
- * auffallen statt still durchzulassen.
+ * FAIL-CLOSED: Ist der Entscheidungspunkt nicht erreichbar, antwortet er zu
+ * spaet, mit Fehlerstatus oder unlesbar, wird abgelehnt. Bis 1.405 liess das
+ * Skript bei Nichterreichbarkeit durch, und Claude Codes HTTP-Hook tut das
+ * dokumentiert immer — wer den lokalen Server anhielt, war die Pruefung los.
+ * Die eigene Wartezeit liegt unter dem Hook-Timeout (15 s): ein Hook, den die
+ * CLI wegen Zeitueberschreitung abbricht, blockiert NICHT.
  */
 
 const HOOK_URL = process.env.AGENT_HOOK_URL || "http://localhost:8080/hooks/pretooluse";
-const HOOK_TIMEOUT_MS = 12_000;
+const HOOK_TIMEOUT_MS = Number(process.env.AGENT_HOOK_TIMEOUT_MS) || 12_000;
 
 function ablehnung(grund) {
   return JSON.stringify({
@@ -53,7 +54,7 @@ export async function entscheide(roh) {
   try {
     eingabe = JSON.parse(roh || "{}");
   } catch {
-    console.error("[codex-hook] Eingabe ist kein JSON — abgelehnt");
+    console.error("[pretooluse-hook] Eingabe ist kein JSON — abgelehnt");
     return ablehnung("Werkzeugpruefung: Eingabe unlesbar.");
   }
   const controller = new AbortController();
@@ -74,7 +75,7 @@ export async function entscheide(roh) {
       signal: controller.signal,
     });
     if (!res.ok) {
-      console.error(`[codex-hook] Hook antwortete HTTP ${res.status} — abgelehnt`);
+      console.error(`[pretooluse-hook] Hook antwortete HTTP ${res.status} — abgelehnt`);
       return ablehnung(`Werkzeugpruefung fehlgeschlagen (HTTP ${res.status}).`);
     }
     let out;
@@ -89,8 +90,8 @@ export async function entscheide(roh) {
     }
     return ablehnung("Werkzeugpruefung: keine Entscheidung erhalten.");
   } catch (err) {
-    console.error(`[codex-hook] Hook nicht erreichbar: ${err.message} — laesst durch (fail-open)`);
-    return "";
+    console.error(`[pretooluse-hook] Entscheidungspunkt nicht erreichbar: ${err.message} — abgelehnt`);
+    return ablehnung("Werkzeugpruefung nicht erreichbar — aus Sicherheitsgruenden abgelehnt.");
   } finally {
     clearTimeout(timer);
   }

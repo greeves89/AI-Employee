@@ -136,6 +136,14 @@ ENV BUILD_TOOLS_HOME=/opt/build-tools \
 COPY mcp/ /opt/mcp/
 RUN cd /opt/mcp && npm install --production
 
+# Verwaltete Richtlinie: der PreToolUse-Hook fuer Claude Code und Codex steht hier,
+# root-eigen, statt in Dateien, die der Agent selbst schreiben kann. Beide CLIs
+# fuehren dann nur noch diese Hooks aus (Sicherheit P0-2, agent/richtlinie/).
+COPY richtlinie/managed-settings.json /etc/claude-code/managed-settings.json
+COPY richtlinie/requirements.toml /etc/codex/requirements.toml
+RUN chmod 755 /etc/claude-code /etc/codex /opt/mcp/pretooluse-hook.mjs \
+    && chmod 644 /etc/claude-code/managed-settings.json /etc/codex/requirements.toml
+
 # Create workspace directory owned by agent user
 RUN mkdir -p /workspace && chown agent:agent /workspace
 

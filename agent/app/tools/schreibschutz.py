@@ -17,8 +17,8 @@ import os
 import re
 
 # Konfiguration der Laufzeit selbst — ALLES unter .claude/ und .codex/ sowie
-# .mcp.json: dort stehen Hooks (bei Claude Code auch genau dieser Gate-Hook,
-# /workspace/.claude/settings.json), Codex-Konfiguration und -Hooks (live
+# .mcp.json: dort stehen Hooks (der Gate-Hook selbst liegt seit P0-2 verwaltet
+# unter /etc und laesst sich von hier nicht mehr abschalten), Codex-Konfiguration und -Hooks (live
 # geprueft: Codex fuehrt /workspace/.codex/hooks.json aus) und Projekt-MCP-Server
 # (.mcp.json startet Programme). Auch Skills, Befehle und Subagenten unter
 # .claude/ zaehlen dazu: ihr Kopf kann eigene Hooks tragen, Befehle koennen per

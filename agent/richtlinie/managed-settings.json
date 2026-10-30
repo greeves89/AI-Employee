@@ -1,0 +1,17 @@
+{
+  "allowManagedHooksOnly": true,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/opt/mcp/pretooluse-hook.mjs",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
