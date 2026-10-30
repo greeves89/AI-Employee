@@ -73,9 +73,9 @@ class AutonomyMatrixTests(unittest.TestCase):
         """
         cats = am.allowed_categories_from_matrix(am.matrix_for_level("l3"))
         self.assertEqual(cats, {"file_read", "file_write", "shell_exec",
-                                "system_config", "web_search",
-                                "external_communication"})
+                                "web_search", "external_communication"})
         self.assertNotIn("custom", cats)     # email/API/git stay gated
+        self.assertNotIn("system_config", cats)  # sudo = root, seit v1.406.0 Freigabe
         self.assertNotIn("purchase", cats)
 
     def test_freeing_chat_does_not_open_email_api_or_git(self):

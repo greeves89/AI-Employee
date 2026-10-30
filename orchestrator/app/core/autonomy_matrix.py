@@ -33,7 +33,7 @@ CAPABILITIES: list[dict] = [
     {"key": "shell_exec", "group": GROUP_CONTAINER, "label": "Shell / Befehle",
      "description": "Bash-Befehle ausführen, auch systemverändernd (im Container).", "legacy_category": "shell_exec"},
     {"key": "system_config", "group": GROUP_CONTAINER, "label": "Pakete / Config",
-     "description": "Software installieren, Container-Konfiguration anpassen.", "legacy_category": "system_config"},
+     "description": "Software installieren, Container-Konfiguration anpassen. Gibt sudo im Container, also root.", "legacy_category": "system_config"},
     {"key": "web", "group": GROUP_EXTERNAL, "label": "Web-Recherche (lesen)",
      "description": "Im Web suchen und öffentliche Seiten abrufen (nur lesen).", "legacy_category": "web_search"},
     {"key": "email_m365", "group": GROUP_EXTERNAL, "label": "E-Mail / M365 senden",
@@ -63,8 +63,7 @@ _CAP_BY_KEY = {c["key"]: c for c in CAPABILITIES}
 _ALLOW_BY_LEVEL: dict[str, set[str]] = {
     "l1": {"file_read", "web"},
     "l2": {"file_read", "web", "file_write", "messaging"},
-    "l3": {"file_read", "file_write", "shell_exec", "system_config", "web",
-           "messaging"},
+    "l3": {"file_read", "file_write", "shell_exec", "web", "messaging"},
     "l4": set(CAPABILITY_KEYS),
 }
 # ``messaging`` (Chat/Telegram an Nutzer und Kanäle) ist ab L2 frei. Bis v1.178.3
@@ -73,13 +72,17 @@ _ALLOW_BY_LEVEL: dict[str, set[str]] = {
 # stehenblieben. Eine Nachricht an den eigenen Nutzer ist keine Handlung mit
 # Aussenwirkung; die bleiben (E-Mail/M365, externe APIs, git push, Käufe) bis L4
 # freigabepflichtig.
+# ``system_config`` (Pakete / Config) ist seit v1.406.0 auch bei L3 freigabepflichtig:
+# es bringt sudo für apt-get/dpkg/chmod/chown mit, und das ist root im Container —
+# damit liesse sich jede Leitplanke im Container abschalten. Bestehende L3-Agenten
+# behalten es (Migration e2f3a4b5c6d7 schreibt ``allow`` in ihre Matrix).
 
 LEVEL_LABELS = {
     "l1": "L1 — Nur lesen",
     "l2": "L2 — Empfehlungen",
     # Bis #910 hiess L3 „Ausführen mit Freigabe" — dabei laufen Shell und Pakete
     # im eigenen Container OHNE Rückfrage; nur Außenwirkung braucht eine Freigabe.
-    "l3": "L3 — Arbeitet selbstständig im eigenen Bereich, fragt vor Außenwirkung",
+    "l3": "L3 — Arbeitet selbstständig im eigenen Bereich, fragt vor Software-Installation und Außenwirkung",
     "l4": "L4 — Vollständig autonom",
 }
 

@@ -333,7 +333,7 @@ BUILTIN_TEMPLATES = [
             "Senior Fullstack Developer with expertise in React, Next.js, Python, "
             "FastAPI, TypeScript, databases, and modern web architecture"
         ),
-        "permissions": ["package-install", "system-config"],
+        "permissions": [],
         "integrations": [],
         "mcp_server_ids": [],
         "knowledge_template": (
@@ -386,7 +386,7 @@ BUILTIN_TEMPLATES = [
             "Data Analyst specialized in Python, pandas, matplotlib, statistical "
             "analysis, business intelligence, and automated reporting"
         ),
-        "permissions": ["package-install"],
+        "permissions": [],
         "integrations": ["google"],
         "mcp_server_ids": [],
         "knowledge_template": (
@@ -541,7 +541,7 @@ BUILTIN_TEMPLATES = [
             "DevOps Engineer managing Docker, CI/CD pipelines, infrastructure, "
             "monitoring, security hardening, and automated deployments"
         ),
-        "permissions": ["package-install", "system-config", "full-access"],
+        "permissions": ["full-access"],
         "integrations": [],
         "mcp_server_ids": [],
         "knowledge_template": (
@@ -651,7 +651,7 @@ BUILTIN_TEMPLATES = [
             "Presentation Designer creating compelling slide decks, pitch presentations, "
             "and visual storytelling with Marp, reveal.js, and python-pptx"
         ),
-        "permissions": ["package-install"],
+        "permissions": [],
         "integrations": [],
         "mcp_server_ids": [],
         "knowledge_template": (
@@ -708,7 +708,7 @@ BUILTIN_TEMPLATES = [
             "Marketing Specialist creating social media content, SEO-optimized texts, "
             "campaign strategies, content calendars, and email newsletters"
         ),
-        "permissions": ["package-install"],
+        "permissions": [],
         "integrations": ["google"],
         "mcp_server_ids": [],
         "knowledge_template": (
@@ -878,7 +878,7 @@ BUILTIN_TEMPLATES = [
             "CEO / Manager Agent that delegates tasks to other agents, monitors their "
             "progress, synthesizes results, and makes strategic decisions"
         ),
-        "permissions": ["package-install", "system-config"],
+        "permissions": [],
         "integrations": ["google"],
         "mcp_server_ids": [],
         "knowledge_template": (
@@ -939,7 +939,7 @@ BUILTIN_TEMPLATES = [
         "category": "security",
         "model": "claude-sonnet-4-6",
         "role": "Security Auditor analyzing code for OWASP Top 10 vulnerabilities, dependency risks, and compliance issues",
-        "permissions": ["package-install"],
+        "permissions": [],
         "integrations": [],
         "mcp_server_ids": [],
         "knowledge_template": (
@@ -1033,7 +1033,7 @@ BUILTIN_TEMPLATES = [
         "category": "dev",
         "model": "claude-sonnet-4-6",
         "role": "QA Engineer writing unit, integration, and E2E tests with pytest, Jest, and Playwright",
-        "permissions": ["package-install"],
+        "permissions": [],
         "integrations": [],
         "mcp_server_ids": [],
         "knowledge_template": (
@@ -1085,7 +1085,7 @@ BUILTIN_TEMPLATES = [
         "category": "marketing",
         "model": "claude-sonnet-4-6",
         "role": "SEO Specialist performing keyword research, on-page optimization, and technical audits",
-        "permissions": ["package-install"],
+        "permissions": [],
         "integrations": ["google"],
         "mcp_server_ids": [],
         "knowledge_template": (
@@ -1362,7 +1362,7 @@ BUILTIN_TEMPLATES = [
         "category": "ops",
         "model": "claude-sonnet-4-6",
         "role": "DBA for PostgreSQL, MySQL, MongoDB — schema design, query optimization, migrations",
-        "permissions": ["package-install", "system-config"],
+        "permissions": [],
         "integrations": [],
         "mcp_server_ids": [],
         "knowledge_template": (
@@ -1407,7 +1407,7 @@ BUILTIN_TEMPLATES = [
         "category": "creative",
         "model": "claude-sonnet-4-6",
         "role": "UI/UX Designer for wireframes, design tokens, component specs, and WCAG audits",
-        "permissions": ["package-install"],
+        "permissions": [],
         "integrations": [],
         "mcp_server_ids": [],
         "knowledge_template": (
@@ -1453,7 +1453,7 @@ BUILTIN_TEMPLATES = [
         "category": "dev",
         "model": "claude-sonnet-4-6",
         "role": "API Developer for REST/GraphQL with OpenAPI specs, auth, and rate limiting",
-        "permissions": ["package-install"],
+        "permissions": [],
         "integrations": [],
         "mcp_server_ids": [],
         "knowledge_template": (
@@ -1546,7 +1546,7 @@ BUILTIN_TEMPLATES = [
         "category": "data",
         "model": "claude-sonnet-4-6",
         "role": "Web Crawler for data extraction, site monitoring, and dataset creation",
-        "permissions": ["package-install", "system-config"],
+        "permissions": [],
         "integrations": [],
         "mcp_server_ids": [],
         "knowledge_template": (
@@ -1592,7 +1592,7 @@ BUILTIN_TEMPLATES = [
         "category": "ops",
         "model": "claude-sonnet-4-6",
         "role": "Automation Engineer for bash scripts, Python automation, cron jobs, and workflows",
-        "permissions": ["package-install", "system-config"],
+        "permissions": [],
         "integrations": [],
         "mcp_server_ids": [],
         "knowledge_template": (

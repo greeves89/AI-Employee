@@ -75,11 +75,19 @@ class DeriveTests(unittest.TestCase):
             with self.subTest(level=level):
                 self.assertEqual(am.derive_permissions(am.matrix_for_level(level)), [])
 
-    def test_executing_levels_get_package_and_config(self):
-        for level in ("l3", "l4"):
-            with self.subTest(level=level):
-                got = am.derive_permissions(am.matrix_for_level(level))
-                self.assertEqual(sorted(got), [am.PKG_PACKAGE_INSTALL, am.PKG_SYSTEM_CONFIG])
+    def test_l3_gets_no_sudo_by_default(self):
+        """sudo fuer apt-get/dpkg/chown ist root im Container — das gibt ein Admin
+        bewusst ("Pakete / Config: erlauben"), nicht die Vorgabe der Stufe."""
+        self.assertEqual(am.derive_permissions(am.matrix_for_level("l3")), [])
+
+    def test_l4_gets_package_and_config(self):
+        got = am.derive_permissions(am.matrix_for_level("l4"))
+        self.assertEqual(sorted(got), [am.PKG_PACKAGE_INSTALL, am.PKG_SYSTEM_CONFIG])
+
+    def test_l3_with_explicit_allow_gets_sudo(self):
+        """So behalten bestehende L3-Agenten ihr sudo (Migration e2f3a4b5c6d7)."""
+        cfg = {"autonomy_matrix": {"system_config": am.ALLOW}}
+        self.assertEqual(len(am.effective_permissions(cfg, "l3")), 2)
 
     def test_full_access_is_never_derived(self):
         """Uneingeschraenktes root bleibt eine bewusste Handentscheidung — auch bei L4."""
@@ -106,7 +114,8 @@ class DeriveTests(unittest.TestCase):
 class EffectivePermissionTests(unittest.TestCase):
     def test_auto_follows_the_level(self):
         self.assertEqual(am.effective_permissions({}, "l1"), [])
-        self.assertEqual(len(am.effective_permissions({}, "l3")), 2)
+        self.assertEqual(am.effective_permissions({}, "l3"), [])
+        self.assertEqual(len(am.effective_permissions({}, "l4")), 2)
 
     def test_auto_ignores_a_stale_stored_list(self):
         """Der gespeicherte Wert ist genau der, der frueher auseinanderlief."""

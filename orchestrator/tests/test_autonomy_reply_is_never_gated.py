@@ -52,9 +52,13 @@ class TheMatrixItselfIsUnchangedTests(unittest.TestCase):
 
     def test_l3_still_allows_files_and_shell(self):
         matrix = am.matrix_for_level("l3")
-        for cap in ("file_read", "file_write", "shell_exec", "system_config", "web"):
+        for cap in ("file_read", "file_write", "shell_exec", "web"):
             with self.subTest(cap):
                 self.assertEqual(matrix[cap], am.ALLOW)
+
+    def test_l3_asks_before_sudo(self):
+        """Pakete / Config bringt sudo = root im Container mit (seit v1.406.0 Freigabe)."""
+        self.assertEqual(am.matrix_for_level("l3")["system_config"], am.ASK)
 
     def test_l3_still_asks_before_acting_on_the_outside_world(self):
         matrix = am.matrix_for_level("l3")

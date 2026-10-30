@@ -60,8 +60,10 @@ PERMISSION_PACKAGES = {
     },
 }
 
-# Default permissions for new agents
-DEFAULT_PERMISSIONS = ["package-install"]
+# Vorgabe fuer die Paketauswahl im Anlegen-Dialog: keine. sudo ist root im Container
+# (``apt-get install``/``dpkg -i`` fuehren Paketskripte als root aus) — das gibt ein
+# Admin bewusst, nicht die Vorgabe.
+DEFAULT_PERMISSIONS: list[str] = []
 
 # All Codex (codex_cli) agents share ONE ChatGPT auth.json whose refresh token is
 # single-use and rotates on every use. Recreating several at once makes their CLIs

@@ -234,7 +234,7 @@ export function AutonomyMatrix({
 
       <div className="flex items-center justify-between">
         <p className="text-[11px] text-muted-foreground/60">
-          Änderungen wirken beim nächsten Task des Agenten (kein Neustart nötig).
+          Änderungen wirken beim nächsten Task des Agenten. Ausnahme: Wird „Pakete / Config“ neu erlaubt, braucht der Agent einmal „Neu starten“, erst dann lässt der Container sudo zu.
         </p>
         {dirty && (
           <button
