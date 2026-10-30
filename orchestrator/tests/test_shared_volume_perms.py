@@ -38,26 +38,29 @@ def test_applies_owner_group_and_mode(tmp_path, monkeypatch):
     target = tmp_path / "shared"
     target.mkdir()
     calls = {}
+    target_ino = os.stat(target).st_ino
 
-    def fake_chown(path, uid, gid):
-        calls["chown"] = (path, uid, gid)
+    def fake_fchown(fd, uid, gid):
+        if os.fstat(fd).st_ino == target_ino:
+            calls["chown"] = (uid, gid)
 
-    def fake_chmod(path, mode):
-        calls["chmod"] = (path, mode)
+    def fake_fchmod(fd, mode):
+        if os.fstat(fd).st_ino == target_ino:
+            calls["chmod"] = mode
 
-    monkeypatch.setattr(os, "chown", fake_chown)
-    monkeypatch.setattr(os, "chmod", fake_chmod)
+    monkeypatch.setattr(os, "fchown", fake_fchown)
+    monkeypatch.setattr(os, "fchmod", fake_fchmod)
 
     assert ensure_shared_volume_perms(str(target)) is True
     # owner root (uid 0), group = agent gid
-    assert calls["chown"] == (str(target), 0, AGENT_GID)
-    assert calls["chmod"] == (str(target), 0o3770)
+    assert calls["chown"] == (0, AGENT_GID)
+    assert calls["chmod"] == 0o3770
 
 
 def test_creates_dir_when_missing(tmp_path, monkeypatch):
     target = tmp_path / "shared"  # does not exist yet
-    monkeypatch.setattr(os, "chown", lambda *a: None)
-    monkeypatch.setattr(os, "chmod", lambda *a: None)
+    monkeypatch.setattr(os, "fchown", lambda *a: None)
+    monkeypatch.setattr(os, "fchmod", lambda *a: None)
 
     assert ensure_shared_volume_perms(str(target)) is True
     assert target.is_dir()
@@ -70,7 +73,7 @@ def test_permission_error_is_swallowed_returns_false(tmp_path, monkeypatch):
     def deny(*_a, **_k):
         raise PermissionError("not root")
 
-    monkeypatch.setattr(os, "chown", deny)
+    monkeypatch.setattr(os, "fchown", deny)
     # must not raise -> startup keeps going even without root
     assert ensure_shared_volume_perms(str(target)) is False
 
@@ -82,5 +85,35 @@ def test_generic_error_is_swallowed_returns_false(tmp_path, monkeypatch):
     def boom(*_a, **_k):
         raise OSError("read-only filesystem")
 
-    monkeypatch.setattr(os, "chown", boom)
+    monkeypatch.setattr(os, "fchown", boom)
     assert ensure_shared_volume_perms(str(target)) is False
+
+
+def test_symlink_statt_unterordner_wird_nicht_verfolgt(tmp_path, monkeypatch):
+    """Ein Agent legt .plattform als Symlink auf einen Orchestrator-Pfad an."""
+    target = tmp_path / "shared"
+    target.mkdir()
+    opfer = tmp_path / "opfer"
+    opfer.mkdir()
+    opfer.chmod(0o755)
+    (target / ".plattform").symlink_to(opfer)
+    geaendert = []
+    monkeypatch.setattr(os, "fchown", lambda fd, *a: geaendert.append(os.fstat(fd).st_ino))
+    monkeypatch.setattr(os, "chown", lambda *a, **k: pytest.fail("chown folgt Symlinks"))
+
+    assert ensure_shared_volume_perms(str(target)) is False
+    assert os.stat(opfer).st_ino not in geaendert
+    assert stat.S_IMODE(os.stat(opfer).st_mode) == 0o755
+
+
+def test_symlink_als_teamtoken_wird_nicht_verfolgt(tmp_path, monkeypatch):
+    target = tmp_path / "shared"
+    (target / ".auth").mkdir(parents=True)
+    opfer = tmp_path / "geheim.txt"
+    opfer.write_text("x")
+    opfer.chmod(0o600)
+    (target / ".auth" / "token.json").symlink_to(opfer)
+    monkeypatch.setattr(os, "fchown", lambda *a: None)
+
+    assert ensure_shared_volume_perms(str(target)) is False
+    assert stat.S_IMODE(os.stat(opfer).st_mode) == 0o600

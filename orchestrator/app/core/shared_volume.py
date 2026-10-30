@@ -89,10 +89,30 @@ def agent_sicht(user_id: str | None, root: str = SHARED_DIR) -> str:
     return os.path.join(root, nutzer_teilpfad(user_id))
 
 
+def _rechte_setzen(path: str, mode: int, *, ordner: bool) -> None:
+    """root:agent + ``mode`` für ``path``, ohne einem Symlink zu folgen.
+
+    Der Orchestrator läuft als root; Agenten dürfen in ihrem Nutzerordner (und ohne
+    Trennung in ``/shared``) schreiben. Läge an ``path`` ein Symlink, hätte ein
+    ``os.chown(path)`` Besitzer und Rechte eines beliebigen Pfads im Orchestrator
+    geändert. Deshalb öffnen mit ``O_NOFOLLOW`` und über den Deskriptor ändern:
+    ein Symlink scheitert mit ELOOP, ein Tausch nach dem Öffnen trifft nichts mehr.
+    """
+    flags = os.O_RDONLY | os.O_NOFOLLOW | (os.O_DIRECTORY if ordner else 0)
+    fd = os.open(path, flags)
+    try:
+        os.fchown(fd, 0, AGENT_GID)
+        os.fchmod(fd, mode)
+    finally:
+        os.close(fd)
+
+
 def _ordner(path: str, mode: int) -> None:
-    os.makedirs(path, exist_ok=True)
-    os.chown(path, 0, AGENT_GID)
-    os.chmod(path, mode)
+    try:
+        os.mkdir(path)
+    except FileExistsError:
+        pass
+    _rechte_setzen(path, mode, ordner=True)
 
 
 def nutzer_ordner_anlegen(user_id: str | None, root: str = SHARED_DIR) -> str:
@@ -147,12 +167,10 @@ def ensure_shared_volume_perms(path: str = SHARED_DIR) -> bool:
         for sub in (AUTH_DIR, CODEX_DIR, PLATTFORM_DIR):
             _ordner(os.path.join(path, sub), 0o0750)
         token = os.path.join(path, AUTH_DIR, "token.json")
-        if os.path.exists(token):
+        if os.path.lexists(token):
             # Früher 0644 — für jeden lesbar, der das Volume sah.
-            os.chown(token, 0, AGENT_GID)
-            os.chmod(token, 0o0640)
-        os.chown(path, 0, AGENT_GID)  # root:agent
-        os.chmod(path, SHARED_MODE)
+            _rechte_setzen(token, 0o0640, ordner=False)
+        _rechte_setzen(path, SHARED_MODE, ordner=True)  # root:agent
         logger.info("Shared volume perms ensured (%s -> root:%d, %o)", path, AGENT_GID, SHARED_MODE)
         return True
     except PermissionError:
