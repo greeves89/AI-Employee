@@ -172,7 +172,11 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["tini", "--", "/entrypoint.sh"]
-CMD ["python", "-m", "app.main"]
+# -s: kein Nutzer-site-Ordner. Dieser Prozess beantwortet die Hook-Anfragen; laeuft
+# er unter "agent", koennte eine usercustomize.py in ~/.local sonst beim naechsten
+# Start mitladen und die Pruefung aushebeln. Gilt nur hier, nicht fuer Kindprozesse:
+# Agenten koennen weiter mit pip install --user arbeiten.
+CMD ["python", "-s", "-m", "app.main"]
 
 # Versions-Label GANZ AM ENDE (#889): stand es oben, machte jede neue Versionsnummer
 # alle folgenden Schichten ungueltig — jedes Release baute das ganze Abbild neu.

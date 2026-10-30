@@ -101,6 +101,11 @@ class Abbild(unittest.TestCase):
         # Kein chown auf den Agenten fuer /etc/claude-code, /etc/codex oder das Skript.
         self.assertNotRegex(df, r"chown[^\n]*(/etc/claude-code|/etc/codex|pretooluse-hook)")
 
+    def test_pruefserver_laedt_keinen_nutzer_site_ordner(self):
+        """Der Hook fragt den App-Server; ~/.local gehoert dem Agenten."""
+        df = (AGENT / "Dockerfile").read_text()
+        self.assertIn('CMD ["python", "-s", "-m", "app.main"]', df)
+
     def test_skript_ist_ausfuehrbar_und_startet_node_mit_festem_pfad(self):
         skript = AGENT / "mcp" / "pretooluse-hook.mjs"
         self.assertTrue(skript.read_text().startswith("#!/usr/bin/node\n"))
