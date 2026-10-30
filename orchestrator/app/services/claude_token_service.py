@@ -189,8 +189,16 @@ class ClaudeTokenService:
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }
             tmp_path = SHARED_TOKEN_PATH + ".tmp"
-            with open(tmp_path, "w") as f:
+            # Nur root und die Agentengruppe — nie für alle lesbar (vorher 0644 über die umask).
+            fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o640)
+            with os.fdopen(fd, "w") as f:
                 json.dump(payload, f)
+            try:
+                from app.core.shared_volume import AGENT_GID
+                os.chown(tmp_path, 0, AGENT_GID)
+                os.chmod(tmp_path, 0o640)
+            except OSError:
+                pass  # ohne root (Tests): die Rechte aus os.open bleiben
             os.replace(tmp_path, SHARED_TOKEN_PATH)
         except Exception as e:
             logger.error(f"Failed to write shared token file: {e}")

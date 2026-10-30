@@ -456,7 +456,7 @@ class AgentRunner:
 
         Und nur ein Ergebnis mit ``is_error``. Ein erfolgreiches Werkzeug ist
         gelaufen, egal was in seiner Ausgabe steht — und was drinsteht, ist oft
-        genau diese Meldung: wer ``/shared/platform-errors.log`` liest oder
+        genau diese Meldung: wer ``/shared/.plattform/platform-errors.log`` liest oder
         Container-Protokolle abruft, bekommt fremde ``fork: retry``-Zeilen
         zurueck. Ohne diese Bedingung wuerde ausgerechnet die Untersuchung von
         #628 sich selbst als gescheitert markieren.

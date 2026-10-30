@@ -180,17 +180,29 @@ async def list_rooms(user=Depends(require_auth), db: AsyncSession = Depends(get_
     }
 
 
-def _taskforce_dir(room_id: str) -> "os.PathLike | str":
-    """Absolute path of a meeting's shared taskforce work dir on the /shared volume."""
+def _taskforce_dir(room) -> "os.PathLike | str":
+    """Where the ORCHESTRATOR finds a meeting's taskforce work dir.
+
+    Agents see ``/shared`` as the folder of their owner (``shared_volume.geteilt_plan``),
+    so the dir lives under the room creator's folder. Agents of OTHER users in the
+    same room write into their own owner's folder and do not see this one — a
+    taskforce works with the agents of one owner.
+    """
     import os
-    return os.path.realpath(os.path.join("/shared", "taskforce", room_id))
+    from app.core.shared_volume import agent_sicht
+    return os.path.realpath(os.path.join(agent_sicht(room.created_by), "taskforce", room.id))
+
+
+def _taskforce_agent_pfad(room) -> str:
+    """The same dir as the AGENTS see it."""
+    return f"/shared/taskforce/{room.id}"
 
 
 _AGENT_UID = 1000  # all agent containers run as uid/gid 1000 ("agent")
 _AGENT_GID = 1000
 
 
-def _ensure_taskforce_dir(room_id: str) -> str:
+def _ensure_taskforce_dir(room) -> str:
     """Create the shared taskforce work dir owned by the agent uid BEFORE dispatching
     build tasks. Critical: /shared is root-owned (755) but the agents run as uid 1000 —
     if the orchestrator (root) doesn't pre-create the dir writable-for-the-agent, the
@@ -199,7 +211,7 @@ def _ensure_taskforce_dir(room_id: str) -> str:
     Ownership (chown 1000:1000) + mode 0o770 grants exactly the agents access — NOT
     world-writable — so on multi-tenant boxes stray processes can't tamper with it."""
     import os, stat
-    base = _taskforce_dir(room_id)
+    base = _taskforce_dir(room)
     parent = os.path.dirname(base)
     for d in (parent, base):
         try:
@@ -228,7 +240,7 @@ async def list_deliverable_files(
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
     await _authorize_room(room, user, db)
-    base = _taskforce_dir(room_id)
+    base = _taskforce_dir(room)
     out: list[dict] = []
     # Hide build noise so the listing shows only the actual deliverable.
     _skip_dirs = {".git", "__pycache__", ".venv", "venv", "node_modules", ".pytest_cache", ".mypy_cache"}
@@ -287,7 +299,7 @@ async def get_deliverable_file(
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
     await _authorize_room(room, user, db)
-    base = _taskforce_dir(room_id)
+    base = _taskforce_dir(room)
     target = os.path.realpath(os.path.join(base, path))
     # Containment check — target must stay within the taskforce dir.
     if target != base and not target.startswith(base + os.sep):
@@ -337,7 +349,7 @@ async def launch_deliverable(
         raise HTTPException(status_code=404, detail="Room not found")
     if not room.agent_ids:
         raise HTTPException(status_code=400, detail="Meeting hat keine Agenten")
-    base = _taskforce_dir(room_id)
+    base = _taskforce_dir(room)
     compose_name = next(
         (n for n in ("docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml")
          if os.path.isfile(os.path.join(base, n))),
@@ -378,10 +390,10 @@ async def launch_deliverable(
         launch_name = ".launch-compose.yml"
         with open(os.path.join(base, launch_name), "w", encoding="utf-8") as fh:
             _yaml.safe_dump(spec, fh)
-        compose_path = f"/shared/taskforce/{room_id}/{launch_name}"
+        compose_path = os.path.join(base, launch_name)  # Runner hängt das Volume ebenfalls unter /shared ein
     except Exception as e:  # noqa: BLE001 — fall back to the original file
         logger.warning("[Taskforce %s] compose rewrite failed: %s", scrub_log(room_id), scrub_log(e))
-        compose_path = f"/shared/taskforce/{room_id}/{compose_name}"
+        compose_path = os.path.join(base, compose_name)
 
     def _run():
         return docker.client.containers.run(
@@ -1805,7 +1817,7 @@ async def _assign_tasks_from_summary(room: MeetingRoom, todo_content: str, redis
         # Taskforce: pre-create the shared work dir writable BEFORE the agents get
         # their build tasks — else they hit 'Permission denied' on /shared (root-owned).
         if room.deliverable:
-            _ensure_taskforce_dir(room.id)
+            _ensure_taskforce_dir(room)
 
         created_tasks = []
         for agent_id, agent_items in assignments.items():
@@ -1815,7 +1827,7 @@ async def _assign_tasks_from_summary(room: MeetingRoom, todo_content: str, redis
             if room.deliverable:
                 # Taskforce/build mode: every agent produces REAL files into the shared
                 # taskforce dir so a coordinator can assemble one runnable deliverable.
-                work_dir = f"/shared/taskforce/{room.id}"
+                work_dir = _taskforce_agent_pfad(room)
                 task_prompt = (
                     f"Im Meeting **{room.name}** (Ziel: {room.topic or 'kein Ziel'}) baut ihr GEMEINSAM ein "
                     f"echtes, lauffähiges Ergebnis. Deine Teilaufgaben:\n\n"
@@ -1984,7 +1996,8 @@ async def dispatch_integration_task(room_id: str, redis, docker=None) -> bool:
             return False
         # Coordinator: prefer the moderator, else the first participant.
         coordinator_id = room.agent_ids[0]
-        work_dir = _ensure_taskforce_dir(room.id)
+        _ensure_taskforce_dir(room)
+        work_dir = _taskforce_agent_pfad(room)
         prompt = (
             f"**Taskforce-Integration** für das Meeting **{room.name}** (Ziel: {room.topic or 'kein Ziel'}).\n\n"
             f"Im gemeinsamen Verzeichnis `{work_dir}` liegen die Teilergebnisse aller Agenten. Deine Aufgabe: "

@@ -360,15 +360,16 @@ Match how much context you load to the SIZE of the request. Do NOT run the full 
   will look, find nothing, and report back that there is no such thing — which
   reads like they refused to work. Instead do ONE of these:
   1. **Put the files in `/shared/` first** and delegate THAT path. This is the
-     only directory every agent sees.
+     only directory your colleagues see — the agents of the same owner (agents of
+     other users have their own `/shared/` and cannot see yours).
   2. **Delegate self-contained work** — put everything needed into the task
      prompt itself, and ask for the result as text.
   Same rule in reverse: when a colleague hands you a `/workspace/...` path, say
   so and ask for it under `/shared/` — do not guess what they meant.
-- Shared files: `/shared/` (all agents can read/write) — the ONLY common ground
-- Team directory: `/shared/team.json` (SNAPSHOT from when your container last started — it lists all agents and carries no team membership. For anything about YOUR team, call `list_my_team` instead; this file goes stale as soon as members change.)
-- **Platform errors: `/shared/platform-errors.log`** — the platform's own WARNING/ERROR logs (secret-redacted). Read this file when something on the platform misbehaves or you want to improve the platform itself; turn recurring errors into a GitHub issue or PR.
-  **Always read it with `grep -a` (or `awk`), and across ALL generations: `grep -a MUSTER /shared/platform-errors.log*`.** Two traps, both of which turn a real error into a null finding: (1) an unclean stop can leave NUL bytes in the file, and that makes `grep` treat the whole log as binary — it then prints nothing and exits 1, which looks exactly like an honest "no match". A null finding from a plain `grep` on this file proves nothing. (2) The log rotates at 2 MB into `.1` to `.3`, so anything older than roughly a day is NOT in the active file at all; searching only `/shared/platform-errors.log` measures today, not the period you meant.
+- Shared files: `/shared/` (all agents of your owner can read/write; agents of other users cannot see it) — the ONLY common ground
+- Team directory: `/shared/team.json` (SNAPSHOT from when your container last started — it lists the agents of your owner and carries no team membership. For anything about YOUR team, call `list_my_team` instead; this file goes stale as soon as members change.)
+- **Platform errors: `/shared/.plattform/platform-errors.log`** — only present for agents of administrators (it names agents and errors of every user); if the folder is empty, you do not have it. The platform's own WARNING/ERROR logs (secret-redacted). Read this file when something on the platform misbehaves or you want to improve the platform itself; turn recurring errors into a GitHub issue or PR.
+  **Always read it with `grep -a` (or `awk`), and across ALL generations: `grep -a MUSTER /shared/.plattform/platform-errors.log*`.** Two traps, both of which turn a real error into a null finding: (1) an unclean stop can leave NUL bytes in the file, and that makes `grep` treat the whole log as binary — it then prints nothing and exits 1, which looks exactly like an honest "no match". A null finding from a plain `grep` on this file proves nothing. (2) The log rotates at 2 MB into `.1` to `.3`, so anything older than roughly a day is NOT in the active file at all; searching only `/shared/.plattform/platform-errors.log` measures today, not the period you meant.
 - Knowledge base: `/workspace/knowledge.md` (my role, skills, learnings)
 
 ## Docker: du hast KEIN `docker`-Kommando (WICHTIG)
@@ -1826,6 +1827,7 @@ class AgentManager:
             else autonomy_matrix.effective_permissions({}, autonomy_level)
         )
         needs_sudo = len(agent_permissions) > 0
+        geteilt = await self._geteilt(user_id, mode, env_vars)
         await self._abbild_warmlaufen()
         container = self.docker.create_container(
             image=settings.agent_image,
@@ -1835,6 +1837,7 @@ class AgentManager:
             session_volume_name=session_volume,
             build_tools_volume_name=build_tools_volume(agent_id) if build_tools else None,
             shared_volume_name="ai-employee-shared",
+                    geteilt=geteilt,
             network=settings.agent_network,
             memory_limit=settings.agent_memory_limit,
             cpu_quota=settings.agent_cpu_quota,
@@ -2001,6 +2004,24 @@ class AgentManager:
             )
             logger.info(f"Removed all sudo permissions from container {container_id[:12]}")
 
+    async def _geteilt(self, user_id: str | None, mode: str, env_vars: dict) -> dict:
+        """Was der Agent von ``/shared`` sieht (``shared_volume.geteilt_plan``): den Ordner
+        seines Besitzers, Zugangsdaten nur, wo er sie braucht, das Plattform-Protokoll
+        nur bei Admins. Legt den Ordner an — Docker braucht ihn vor dem Start."""
+        from app.core import shared_volume
+        from app.core.ownership import is_admin
+        from app.models.user import User
+
+        ist_admin = False
+        if user_id:
+            nutzer = await self.db.get(User, user_id)
+            ist_admin = nutzer is not None and is_admin(nutzer)
+        try:
+            shared_volume.nutzer_ordner_anlegen(user_id)
+        except OSError as e:
+            logger.warning("Geteilter Ordner fuer Besitzer %s nicht anlegbar: %s", scrub_log(user_id or "-"), e)
+        return shared_volume.geteilt_plan(user_id, mode=mode, env=env_vars, ist_admin=ist_admin)
+
     def _update_team_registry(self, container_id: str, agent_id: str, name: str, role: str) -> None:
         """Update the shared team.json with this agent's info."""
         import json as json_module
@@ -2162,6 +2183,7 @@ class AgentManager:
         catalog = await get_effective_catalog(self.db)
         mount_entries = resolve_agent_mounts(await mounts_des_agenten(self.db, agent), catalog, config.get("mount_modes", {}))
         bind_mounts = mounts_to_docker_volumes(mount_entries) or None
+        geteilt = await self._geteilt(agent.user_id, mode, env_vars)
         await self._abbild_warmlaufen()
 
         def _create_agent_container():
@@ -2175,6 +2197,7 @@ class AgentManager:
                     session_volume_name=session_volume,
                     build_tools_volume_name=build_tools_volume(agent_id) if build_tools else None,
                     shared_volume_name="ai-employee-shared",
+                    geteilt=geteilt,
                     network=settings.agent_network,
                     memory_limit=settings.agent_memory_limit,
                     cpu_quota=settings.agent_cpu_quota,
@@ -2560,6 +2583,7 @@ class AgentManager:
         catalog = await get_effective_catalog(self.db)
         mount_entries = resolve_agent_mounts(await mounts_des_agenten(self.db, agent), catalog, config.get("mount_modes", {}))
         bind_mounts = mounts_to_docker_volumes(mount_entries) or None
+        geteilt = await self._geteilt(agent.user_id, mode, env_vars)
         await self._abbild_warmlaufen()
 
         def _create_agent_container():
@@ -2576,6 +2600,7 @@ class AgentManager:
                     session_volume_name=session_volume,
                     build_tools_volume_name=build_tools_volume(agent_id) if build_tools else None,
                     shared_volume_name="ai-employee-shared",
+                    geteilt=geteilt,
                     network=settings.agent_network,
                     memory_limit=settings.agent_memory_limit,
                     cpu_quota=settings.agent_cpu_quota,
