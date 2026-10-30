@@ -35,7 +35,7 @@ class TheInstructionsSayWorkspaceIsPrivateTests(unittest.TestCase):
                       "Pfade und wundert sich, dass niemand etwas findet")
 
     def test_shared_is_named_as_the_only_common_ground(self):
-        self.assertIn("only directory every agent sees", self.text)
+        self.assertIn("only directory your colleagues see", self.text)
 
     def test_both_ways_out_are_offered(self):
         """Verbieten allein hilft nicht — der Lead braucht den Ersatzweg."""

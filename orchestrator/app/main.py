@@ -1162,7 +1162,7 @@ async def lifespan(app: FastAPI):
     from app.core.shared_volume import ensure_shared_volume_perms
     ensure_shared_volume_perms()
 
-    # Mirror WARNING+ logs (redacted) to /shared/platform-errors.log so agents can
+    # Mirror WARNING+ logs (redacted) to /shared/.plattform/platform-errors.log so admins' agents can
     # read platform errors from the shared volume and help fix the platform.
     from app.core.platform_error_log import setup_console_logging, setup_platform_error_log
 
@@ -1173,7 +1173,7 @@ async def lifespan(app: FastAPI):
                 logging.getLevelName(_console_level))
 
     if setup_platform_error_log():
-        logger.info("Platform error log active -> /shared/platform-errors.log (secret-redacted)")
+        logger.info("Platform error log active -> /shared/.plattform/platform-errors.log (secret-redacted)")
 
     # Kurzzeitgedaechtnis fuer DNS-/Redis-/DB-Fehler, damit Alarme sagen koennen,
     # ob gleichzeitig die Infrastruktur wackelte (#746 Punkt 3).
@@ -2479,6 +2479,12 @@ written this way is not in the index.
     app.state.redis = RedisService(settings.redis_url)
     await app.state.redis.connect()
     app.state.docker = DockerService()
+    # Früh klären, ob /shared je Nutzer getrennt werden kann (Docker-API >= 1.45) —
+    # die Pfade der Taskforce hängen davon ab (shared_volume.JE_NUTZER_AKTIV).
+    try:
+        app.state.docker.unterordner_moeglich()
+    except Exception as e:  # noqa: BLE001 — Start nie daran scheitern lassen
+        logger.warning(f"Pruefung auf Volume-Unterordner fehlgeschlagen: {e}")
 
     # Redis-ACL-Nutzer der Agenten wiederherstellen.
     #

@@ -559,6 +559,64 @@ class DockerService:
         self._stats_laeuft: set[str] = set()
         self._stats_sperre = threading.Lock()
 
+    #: Ab dieser Docker-API kann ein Volume mit Unterordner eingehängt werden (Engine 26).
+    UNTERORDNER_AB_API = (1, 45)
+
+    def unterordner_moeglich(self) -> bool:
+        """Kann die Engine einen Unterordner eines Volumes einhängen? Einmal gefragt, gemerkt."""
+        if getattr(self, "_unterordner", None) is None:
+            try:
+                api = self.client.version().get("ApiVersion", "0.0")
+                teile = tuple(int(x) for x in str(api).split(".")[:2])
+                self._unterordner = teile >= self.UNTERORDNER_AB_API
+            except Exception as e:  # noqa: BLE001 — im Zweifel das alte Verhalten
+                logger.warning("Docker-API-Version nicht lesbar (%s) — /shared bleibt ungeteilt", e)
+                self._unterordner = False
+            if not self._unterordner:
+                logger.warning(
+                    "Docker-Engine zu alt für Unterordner eines Volumes (API < 1.45): "
+                    "/shared ist NICHT je Nutzer getrennt — alle Agenten sehen das ganze Volume. "
+                    "Docker Engine 26 oder neuer installieren."
+                )
+            from app.core import shared_volume
+            shared_volume.JE_NUTZER_AKTIV = self._unterordner
+        return self._unterordner
+
+    def _geteilt_mounts(self, plan: dict) -> list | None:
+        """Mounts für ``/shared`` nach ``shared_volume.geteilt_plan`` — None, wenn die Engine
+        keine Unterordner kann (dann hängt der Aufrufer das ganze Volume ein)."""
+        if not self.unterordner_moeglich():
+            return None
+        from docker.types import Mount
+
+        def mount(unterordner: str, ziel: str, nur_lesen: bool) -> Mount:
+            m = Mount(target=ziel, source=plan["volume"], type="volume", read_only=nur_lesen)
+            m["VolumeOptions"] = {"Subpath": unterordner}
+            return m
+
+        mounts = [mount(plan["nutzer"], "/shared", False)]
+        mounts += [mount(sub, ziel, True) for sub, ziel in plan.get("nur_lesen", [])]
+        return mounts
+
+    @staticmethod
+    def _unterordner_pruefen(container) -> None:
+        """Fail closed: ignoriert eine Engine den Unterordner, hinge das GANZE Volume
+        unter /shared — mit den Ordnern aller Nutzer. Dann Container weg und abbrechen."""
+        try:
+            container.reload()
+            eingehaengt = (container.attrs.get("HostConfig") or {}).get("Mounts") or []
+        except Exception as e:  # noqa: BLE001
+            raise RuntimeError(f"Einhängepunkte des Agenten nicht prüfbar: {e}") from e
+        shared = [m for m in eingehaengt if m.get("Target") == "/shared"]
+        if not shared or not (shared[0].get("VolumeOptions") or {}).get("Subpath"):
+            try:
+                container.remove(force=True)
+            finally:
+                raise RuntimeError(
+                    "Docker hat /shared ohne Unterordner eingehängt — der Agent sähe die "
+                    "Ordner aller Nutzer. Container entfernt."
+                )
+
     def create_container(
         self,
         image: str,
@@ -573,6 +631,7 @@ class DockerService:
         needs_sudo: bool = False,
         bind_mounts: dict[str, dict] | None = None,
         build_tools_volume_name: str | None = None,
+        geteilt: dict | None = None,
     ) -> docker.models.containers.Container:
         # Ensure named volumes exist (bind-mount host paths are not managed here)
         for vol in [volume_name, session_volume_name, shared_volume_name, build_tools_volume_name]:
@@ -588,7 +647,11 @@ class DockerService:
                 "bind": _session_bind_path(environment),
                 "mode": "rw",
             }
-        if shared_volume_name:
+        # /shared: je Besitzer ein Unterordner des Volumes (``shared_volume.geteilt_plan``),
+        # Zugangsdaten und Protokoll nur lesend und nur, wo sie gebraucht werden.
+        # Kann die Engine keine Unterordner einhängen, gilt das alte Verhalten.
+        mounts = self._geteilt_mounts(geteilt) if geteilt else None
+        if mounts is None and shared_volume_name:
             volumes[shared_volume_name] = {"bind": "/shared", "mode": "rw"}
         # Werkzeugketten fuer .exe-Builds (nur Agenten aus Vorlagen mit
         # build_tools) — eigenes Volume, damit sie Updates ueberstehen, ohne
@@ -634,6 +697,7 @@ class DockerService:
             detach=True,
             environment=environment,
             volumes=volumes,
+            **({"mounts": mounts} if mounts else {}),
             network=network,
             # RAM-Grenze (leer = keine). memswap_limit gleich mem_limit, damit
             # ein Agent nicht in den Swap ausweicht und den Host zaeh macht.
@@ -667,6 +731,8 @@ class DockerService:
             cap_add=["CHOWN", "SETUID", "SETGID", "DAC_OVERRIDE", "FOWNER", "KILL"],
             pids_limit=512,
         )
+        if mounts:
+            self._unterordner_pruefen(container)
         return container
 
     def get_container(self, container_id: str):

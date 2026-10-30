@@ -135,7 +135,7 @@ def test_agent_guidance_warns_about_the_binary_grep_trap():
     # asserted is "this bullet carries the warning", and a character count
     # would quietly start measuring the wrong thing as the text around it
     # grows (see tests/test_character_windows_only_shrink.py).
-    start = text.index("- **Platform errors: `/shared/platform-errors.log`**")
+    start = text.index("- **Platform errors: `/shared/.plattform/platform-errors.log`**")
     rest = text[start + 1:]
     stop = rest.index("\n- ")
     bullet = rest[:stop]
