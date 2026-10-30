@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.407.2] - 2026-10-30
+
+### Dokumentation
+- Handbuch: „Software installieren (sudo)“ Klick für Klick mit Bildern, inklusive des Schritts „Feineinstellung“.
+
 ## [1.407.1] - 2026-10-30
 
 ### Sicherheit
