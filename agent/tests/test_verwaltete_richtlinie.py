@@ -20,14 +20,28 @@ from pathlib import Path
 AGENT = Path(__file__).resolve().parents[1]
 RICHTLINIE = AGENT / "richtlinie"
 SKRIPT_IM_ABBILD = "/opt/mcp/pretooluse-hook.mjs"
-#: Node mit festem Pfad und leerer Umgebung (nur der Lauf): /opt/build-tools gehoert dem
-#: Agenten und steht im PATH vor /usr/bin — ein eigenes "node" dort, oder Code per
-#: NODE_OPTIONS=--require, haette den Hook sonst ersetzt.
-HOOK_KOMMANDO = f'/usr/bin/env -i AI_EMPLOYEE_LAUF="$AI_EMPLOYEE_LAUF" /usr/bin/node {SKRIPT_IM_ABBILD}'
-#: Variablen, die schon die Shell bzw. ``env`` VOR ``env -i`` laden wuerden. Der Agent
-#: kann sie in ~/.claude/settings.json ("env") setzen, die CLI vererbt sie an den Hook
-#: (live geprueft); die verwaltete Richtlinie gewinnt und leert sie.
-LADER_VARIABLEN = {"LD_PRELOAD", "LD_AUDIT", "LD_LIBRARY_PATH", "BASH_ENV", "ENV"}
+#: Claude Code: OHNE Shell (command + args). Mit Shell dazwischen reichten Variablen
+#: aus ~/.claude/settings.json ("env"), etwa CLAUDE_CODE_SHELL_PREFIX, um das
+#: Hook-Kommando zu umhuellen (live belegt). Node mit festem Pfad (/opt/build-tools
+#: gehoert dem Agenten und steht im PATH vor /usr/bin) und leerer Umgebung.
+CLAUDE_KOMMANDO = "/usr/bin/env"
+CLAUDE_ARGS = ["-i", "/usr/bin/node", SKRIPT_IM_ABBILD]
+#: Codex fuehrt Hooks ueber die Shell aus; der Runner schreibt dessen Konfiguration
+#: bei jedem Lauf neu, der Agent kann dort keine Umgebung einschleusen.
+CODEX_KOMMANDO = f'/usr/bin/env -i AI_EMPLOYEE_LAUF="$AI_EMPLOYEE_LAUF" /usr/bin/node {SKRIPT_IM_ABBILD}'
+#: Was das erste Programm (/usr/bin/env) Code oder Pfade laden laesst: aus der Liste,
+#: die glibc selbst als unsicher fuehrt (sysdeps/generic/unsecvars.h), plus
+#: Shell-Startdateien und Claude Codes Kommando-Umhuellung. Verwaltete Werte gewinnen
+#: gegen die des Nutzers. NICHT dabei: Schalter, die schon durch ihr Vorhandensein
+#: wirken (LD_SHOW_AUXV, LD_BIND_NOW, ...) — leer gesetzt waeren sie AN (live gesehen).
+GLIBC_UNSICHER = {
+    "GCONV_PATH", "GETCONF_DIR", "GLIBC_TUNABLES", "HOSTALIASES", "LD_AUDIT", "LD_DEBUG",
+    "LD_DEBUG_OUTPUT", "LD_HWCAP_MASK", "LD_LIBRARY_PATH", "LD_ORIGIN_PATH", "LD_PRELOAD",
+    "LD_PROFILE", "LOCALDOMAIN", "LOCPATH", "MALLOC_TRACE", "NIS_PATH", "NLSPATH",
+    "RESOLV_HOST_CONF", "RES_OPTIONS", "TMPDIR", "TZDIR",
+}
+VORHANDENSEIN_SCHALTET = {"LD_SHOW_AUXV", "LD_BIND_NOW", "LD_BIND_NOT", "LD_DYNAMIC_WEAK", "LD_USE_LOAD_BIAS"}
+LADER_VARIABLEN = GLIBC_UNSICHER | {"BASH_ENV", "ENV", "CLAUDE_CODE_SHELL_PREFIX"}
 
 
 class ClaudeCodeRichtlinie(unittest.TestCase):
@@ -40,6 +54,7 @@ class ClaudeCodeRichtlinie(unittest.TestCase):
     def test_lader_variablen_des_nutzers_werden_geleert(self):
         env = self.r["env"]
         self.assertEqual({k for k, v in env.items() if v == ""}, LADER_VARIABLEN)
+        self.assertFalse(VORHANDENSEIN_SCHALTET & set(env))
 
     def test_jeder_werkzeugaufruf_geht_durch_das_skript(self):
         gruppe = self.r["hooks"]["PreToolUse"][0]
@@ -48,7 +63,8 @@ class ClaudeCodeRichtlinie(unittest.TestCase):
         # Kommando statt http: ein http-Hook laesst bei nicht erreichbarem Server
         # durch (live geprueft, auch mit onFailure); das Skript lehnt dann ab.
         self.assertEqual(hook["type"], "command")
-        self.assertEqual(hook["command"], HOOK_KOMMANDO)
+        self.assertEqual(hook["command"], CLAUDE_KOMMANDO)
+        self.assertEqual(hook["args"], CLAUDE_ARGS)
 
     def test_skript_wartet_kuerzer_als_die_cli(self):
         """Bricht die CLI den Hook wegen Zeitueberschreitung ab, blockiert er nicht."""
@@ -72,7 +88,7 @@ class CodexRichtlinie(unittest.TestCase):
         self.assertEqual(gruppe["matcher"], ".*")
         hook = gruppe["hooks"][0]
         self.assertEqual(hook["type"], "command")
-        self.assertEqual(hook["command"], HOOK_KOMMANDO)
+        self.assertEqual(hook["command"], CODEX_KOMMANDO)
         # Das Skript liegt unter managed_dir.
         self.assertTrue(SKRIPT_IM_ABBILD.startswith(self.r["hooks"]["managed_dir"].rstrip("/") + "/"))
 
@@ -89,6 +105,12 @@ class Abbild(unittest.TestCase):
         skript = AGENT / "mcp" / "pretooluse-hook.mjs"
         self.assertTrue(skript.read_text().startswith("#!/usr/bin/node\n"))
         self.assertTrue(os.access(skript, os.X_OK))
+
+    def test_ablehnung_per_exit_code_2(self):
+        """JSON auf stdout ist zerbrechlich: unlesbar heisst fuer die CLI "kein Einwand"."""
+        skript = (AGENT / "mcp" / "pretooluse-hook.mjs").read_text()
+        self.assertIn("process.exit(2)", skript)
+        self.assertNotIn("process.stdout.write", skript)
 
     def test_adresse_und_wartezeit_kommen_nicht_aus_der_umgebung(self):
         """Die Umgebung des Hooks erbt der Agent von seiner CLI."""

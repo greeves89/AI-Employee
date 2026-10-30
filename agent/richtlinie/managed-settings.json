@@ -1,11 +1,30 @@
 {
   "allowManagedHooksOnly": true,
   "env": {
-    "LD_PRELOAD": "",
+    "GCONV_PATH": "",
+    "GETCONF_DIR": "",
+    "GLIBC_TUNABLES": "",
+    "HOSTALIASES": "",
     "LD_AUDIT": "",
+    "LD_DEBUG": "",
+    "LD_DEBUG_OUTPUT": "",
+    "LD_HWCAP_MASK": "",
     "LD_LIBRARY_PATH": "",
+    "LD_ORIGIN_PATH": "",
+    "LD_PRELOAD": "",
+    "LD_PROFILE": "",
+    "LOCALDOMAIN": "",
+    "LOCPATH": "",
+    "MALLOC_TRACE": "",
+    "NIS_PATH": "",
+    "NLSPATH": "",
+    "RESOLV_HOST_CONF": "",
+    "RES_OPTIONS": "",
+    "TMPDIR": "",
+    "TZDIR": "",
     "BASH_ENV": "",
-    "ENV": ""
+    "ENV": "",
+    "CLAUDE_CODE_SHELL_PREFIX": ""
   },
   "hooks": {
     "PreToolUse": [
@@ -14,7 +33,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/env -i AI_EMPLOYEE_LAUF=\"$AI_EMPLOYEE_LAUF\" /usr/bin/node /opt/mcp/pretooluse-hook.mjs",
+            "command": "/usr/bin/env",
+            "args": [
+              "-i",
+              "/usr/bin/node",
+              "/opt/mcp/pretooluse-hook.mjs"
+            ],
             "timeout": 15
           }
         ]

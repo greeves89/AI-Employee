@@ -15,6 +15,8 @@
  * `disableAllHooks` in Projekt, Nutzer und `--settings` bzw.
  * `-c features.hooks=false` schalten ihn nicht ab.
  *
+ * Abgelehnt wird mit Exit-Code 2 (Grund auf stderr), nicht per JSON auf stdout.
+ *
  * FAIL-CLOSED: Ist der Entscheidungspunkt nicht erreichbar, antwortet er zu
  * spaet, mit Fehlerstatus oder unlesbar, wird abgelehnt. Bis 1.405 liess das
  * Skript bei Nichterreichbarkeit durch, und Claude Codes HTTP-Hook tut das
@@ -22,6 +24,8 @@
  * Die eigene Wartezeit liegt unter dem Hook-Timeout (15 s): ein Hook, den die
  * CLI wegen Zeitueberschreitung abbricht, blockiert NICHT.
  */
+
+import { readFileSync } from "node:fs";
 
 // Fest verdrahtet, NICHT aus der Umgebung: die Umgebung des Hooks erbt der
 // Agent von seiner CLI — eine eigene Adresse dort haette die Pruefung umgeleitet.
@@ -44,6 +48,33 @@ async function stdinLesen() {
   return Buffer.concat(teile).toString("utf8");
 }
 
+const LAUF_ENV = "AI_EMPLOYEE_LAUF";
+const LAUF_FORM = /^[A-Za-z0-9_.:-]{1,128}$/;
+
+/**
+ * Der laufende Task fuer die Push-Sperre (#1117).
+ *
+ * Codex reicht ihn ueber das Hook-Kommando weiter (``env -i AI_EMPLOYEE_LAUF=...``).
+ * Claude Code startet den Hook ohne Shell und mit leerer Umgebung — dort steht
+ * der Lauf in der START-Umgebung der aufrufenden CLI (/proc/<ppid>/environ), die
+ * der Runner setzt. Was der Agent in ~/.claude/settings.json ("env") eintraegt,
+ * landet dort nicht (live geprueft).
+ */
+export function laufErmitteln(env = process.env, ppid = process.ppid) {
+  let wert = env[LAUF_ENV];
+  if (wert === undefined) {
+    try {
+      const zeile = readFileSync(`/proc/${ppid}/environ`, "latin1")
+        .split("\0")
+        .find((z) => z.startsWith(`${LAUF_ENV}=`));
+      wert = zeile ? zeile.slice(LAUF_ENV.length + 1) : undefined;
+    } catch {
+      wert = undefined;
+    }
+  }
+  return typeof wert === "string" && LAUF_FORM.test(wert) ? wert : undefined;
+}
+
 /**
  * Entscheidung fuer eine Codex-Hook-Eingabe. Gibt den auszugebenden Text
  * zurueck ("" = nichts ausgeben = erlaubt).
@@ -52,7 +83,7 @@ async function stdinLesen() {
  * @param {{url?: string, timeoutMs?: number}} [fuerTests] - nur fuer Tests
  * @returns {Promise<string>}
  */
-export async function entscheide(roh, { url = HOOK_URL, timeoutMs = HOOK_TIMEOUT_MS } = {}) {
+export async function entscheide(roh, { url = HOOK_URL, timeoutMs = HOOK_TIMEOUT_MS, lauf = laufErmitteln() } = {}) {
   let eingabe;
   try {
     eingabe = JSON.parse(roh || "{}");
@@ -67,13 +98,12 @@ export async function entscheide(roh, { url = HOOK_URL, timeoutMs = HOOK_TIMEOUT
       method: "POST",
       headers: { "Content-Type": "application/json" },
       // cwd und lauf: fuer die Push-Sperre (#1117, agent/app/tools/push_sperre.py)
-      // — Arbeitsverzeichnis des Befehls und der laufende Task (AI_EMPLOYEE_LAUF
-      // setzt der Codex-Runner). Beides darf fehlen.
+      // — Arbeitsverzeichnis des Befehls und der laufende Task. Beides darf fehlen.
       body: JSON.stringify({
         tool_name: eingabe.tool_name || "",
         tool_input: eingabe.tool_input || {},
         ...(typeof eingabe.cwd === "string" ? { cwd: eingabe.cwd } : {}),
-        ...(process.env.AI_EMPLOYEE_LAUF ? { lauf: process.env.AI_EMPLOYEE_LAUF } : {}),
+        ...(lauf ? { lauf } : {}),
       }),
       signal: controller.signal,
     });
@@ -100,8 +130,20 @@ export async function entscheide(roh, { url = HOOK_URL, timeoutMs = HOOK_TIMEOUT
   }
 }
 
+// Ablehnen mit Exit-Code 2 und Grund auf stderr — NICHT als JSON auf stdout. Ist
+// stdout unlesbar (live gesehen: LD_SHOW_AUXV schreibt Lader-Daten davor), werten
+// beide CLIs das als "kein Einwand". Exit 2 blockiert unabhaengig von stdout.
 if (import.meta.url === `file://${process.argv[1]}`) {
   const ausgabe = await entscheide(await stdinLesen());
-  if (ausgabe) process.stdout.write(ausgabe);
+  if (ausgabe) {
+    let grund = "Werkzeug durch Autonomie-Regeln blockiert.";
+    try {
+      grund = JSON.parse(ausgabe).hookSpecificOutput.permissionDecisionReason || grund;
+    } catch {
+      // Grund bleibt allgemein; abgelehnt wird trotzdem.
+    }
+    process.stderr.write(`${grund}\n`);
+    process.exit(2);
+  }
   process.exit(0);
 }
