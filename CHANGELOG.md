@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.405.0] - 2026-10-30
+
+### Sicherheit
+- `/shared` ist je Nutzer getrennt: Agenten sehen nur noch den Ordner ihres Besitzers. Token der Teamlizenz, gemeinsamer Codex-Zugang und Fehlerprotokoll der Plattform hängen nur noch lesend und nur dort, wo sie gebraucht werden; das Token ist nicht mehr für alle lesbar.
+- Taskforce-Ordner folgen keinen Symlinks aus dem Bereich der Agenten mehr.
+
+### Hinweis
+- Nach dem Update alle Agenten neu erstellen. Docker Engine 26 oder neuer erforderlich, sonst bleibt `/shared` ungeteilt (Warnung im Protokoll).
+
 ## [1.404.1] - 2026-10-30
 
 ### Behoben
