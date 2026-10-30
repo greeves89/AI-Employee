@@ -117,13 +117,11 @@ class CodexHook(unittest.TestCase):
         with open(Path(ordner) / "config.toml", "rb") as fh:
             return tomllib.load(fh)
 
-    def test_hook_steht_in_der_konfiguration_und_ist_gueltiges_toml(self):
+    def test_hook_steht_nicht_in_der_selbst_beschreibbaren_konfiguration(self):
+        """~/.codex/config.toml kann der Agent selbst schreiben — ein Hook dort waere
+        abschaltbar. Er kommt verwaltet aus /etc/codex/requirements.toml."""
         konfig = self._konfiguration()
-        eintraege = konfig["hooks"]["PreToolUse"]
-        self.assertEqual(eintraege[0]["matcher"], ".*")
-        hook_ = eintraege[0]["hooks"][0]
-        self.assertEqual(hook_["type"], "command")
-        self.assertIn("codex-hook.mjs", hook_["command"])
+        self.assertNotIn("hooks", konfig)
         # Der Rest der Datei bleibt gueltig und vollstaendig (hier: Projektvertrauen;
         # die MCP-Server fehlen lokal nur, weil /opt/mcp nicht existiert).
         self.assertEqual(konfig["projects"]["/workspace"]["trust_level"], "trusted")
@@ -146,8 +144,9 @@ def _entscheidung_nativ(werkzeug: str, erlaubt: set[str] | None) -> str:
 
 
 class LaufzeitKonfigurationIstGeschuetzt(unittest.TestCase):
-    """Bei Claude Code steht DIESES Gate in /workspace/.claude/settings.json, bei
-    Codex fuehrt die Laufzeit /workspace/.codex/hooks.json aus (live geprueft).
+    """Bis P0-2 stand DIESES Gate in /workspace/.claude/settings.json, und Codex
+    fuehrt /workspace/.codex/hooks.json aus (live geprueft). Das Gate liegt jetzt
+    verwaltet unter /etc; eigene Hooks und Befehle dort bleiben trotzdem heikel.
     Ein Agent, der nur Dateien schreiben darf, haette darueber das Gate entfernen
     oder eigene Befehle ausfuehren koennen. Schreiben dort braucht system_config."""
 
@@ -216,7 +215,7 @@ class SchreibenNurInDenArbeitsbereichen(unittest.TestCase):
         for pfad in ("~/.bashrc", "/home/agent/.profile", "/root/.bashrc",
                      "/root/.local/lib/python3.12/site-packages/x.pth",
                      "/usr/lib/python3/dist-packages/sitecustomize.py", "/etc/cron.d/x",
-                     "/workspace/../home/agent/.bashrc", "/opt/mcp/codex-hook.mjs"):
+                     "/workspace/../home/agent/.bashrc", "/opt/mcp/pretooluse-hook.mjs"):
             self.assertEqual(self._write(pfad, self.nur_schreiben), "deny", pfad)
             self.assertEqual(self._write(pfad, self.nur_schreiben | {"system_config"}), "allow", pfad)
 

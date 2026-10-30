@@ -9,13 +9,13 @@ pre-existing ``bash-approval-server.mjs`` MCP tool is only a PARALLEL, opt-in
 stays available regardless. In practice the whole autonomy matrix / command
 policy system was unenforceable for this runtime.
 
-Fix: an HTTP-type PreToolUse hook (Claude Code docs confirm this fires for
-EVERY tool call, built-in and MCP alike, is NOT bypassed by
-``--dangerously-skip-permissions``, and can deny via
-``permissionDecision: "deny"``) registered in the agent's own
-``.claude/settings.json`` (see ``agent_manager.py::_claude_pretooluse_settings_json``),
-pointed at this same container's own health server
-(``agent/app/health.py::pretooluse_hook_handler``).
+Fix: a PreToolUse hook (fires for EVERY tool call, built-in and MCP alike, is
+NOT bypassed by ``--dangerously-skip-permissions``, can deny via
+``permissionDecision: "deny"``). Since P0-2 it is a MANAGED command hook
+(``/etc/claude-code/managed-settings.json``, root-owned, ``allowManagedHooksOnly``;
+source ``agent/richtlinie/``) running ``/opt/mcp/pretooluse-hook.mjs``, which asks
+this same container's own health server
+(``agent/app/health.py::pretooluse_hook_handler``) and denies when it cannot.
 
 Deliberately reuses ``executor.py``'s ``ALWAYS_ALLOWED_TOOLS``/
 ``TOOL_CATEGORY_MAP``/``_get_allowed_categories()`` rather than a second,
@@ -33,7 +33,8 @@ Claude Code's HTTP PreToolUse hook is fail-OPEN on timeout by documented
 design ("A timed-out hook doesn't block the tool call") — a second
 sequential network call here makes hitting that timeout more likely on a
 cold cache, which is why the hook's configured timeout was raised alongside
-this change (see ``agent_manager.py::_CLAUDE_PRETOOLUSE_SETTINGS_JSON``).
+this change (now ``agent/richtlinie/managed-settings.json``; the hook script
+itself denies after 12 s, before the CLI would cancel it and let the call through).
 Separately, ``executor.py::_get_command_policies`` is ALSO fail-open on any
 fetch error, not just slowness ("transient orchestrator outages should not
 brick agents") — this is a pre-existing, deliberate tradeoff for the

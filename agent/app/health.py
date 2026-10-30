@@ -100,11 +100,12 @@ async def diag_handler(request: web.Request) -> web.Response:
 
 
 async def pretooluse_hook_handler(request: web.Request) -> web.Response:
-    """Claude Code PreToolUse HTTP hook target (issue #197, Teil 2).
+    """PreToolUse-Entscheidungspunkt fuer Claude Code und Codex (#197, #781).
 
-    Registered in the agent's own ``.claude/settings.json`` (written by
-    ``agent_manager.py`` — only for ``mode=claude_code`` agents), fired by
-    the ``claude`` CLI itself for every tool call, native and MCP alike.
+    Beide CLIs rufen vor JEDEM Werkzeugaufruf den verwalteten Hook
+    ``/opt/mcp/pretooluse-hook.mjs`` auf (eingetragen in
+    ``/etc/claude-code/managed-settings.json`` und ``/etc/codex/requirements.toml``,
+    root-eigen im Abbild, Quelle ``agent/richtlinie/``); das Skript fragt hier.
     Local-only: the hook runs inside the SAME container and calls back into
     this same process's own health server, so no network hop leaves the box.
     """

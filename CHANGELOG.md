@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.407.0] - 2026-10-30
+
+### Sicherheit
+- Der Prüf-Hook für Claude Code und Codex steht jetzt als verwaltete, root-eigene Richtlinie im Agenten-Abbild und lässt sich vom Agenten nicht mehr abschalten.
+- Ist die Werkzeugprüfung nicht erreichbar, wird der Aufruf abgelehnt statt durchgelassen.
+
 ## [1.406.0] - 2026-10-30
 
 ### Sicherheit
