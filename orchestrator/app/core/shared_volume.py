@@ -98,8 +98,12 @@ def _ordner(path: str, mode: int) -> None:
 def nutzer_ordner_anlegen(user_id: str | None, root: str = SHARED_DIR) -> str:
     """Legt den Unterordner eines Besitzers an (root:agent, setgid+sticky) und die
     Einhängepunkte der Zugangsdaten darin. Docker braucht beides vor dem Start."""
-    pfad = os.path.join(root, nutzer_teilpfad(user_id))
-    _ordner(os.path.join(root, NUTZER_DIR), 0o0750)
+    basis = os.path.normpath(os.path.join(root, NUTZER_DIR))
+    pfad = os.path.normpath(os.path.join(root, nutzer_teilpfad(user_id)))
+    # nutzer_teilpfad bereinigt schon; das hier fängt zusätzlich einen Symlink im Volume ab.
+    if not pfad.startswith(basis + os.sep) or os.path.islink(basis) or os.path.islink(pfad):
+        raise OSError(f"Nutzerordner liegt nicht sicher unter {basis}")
+    _ordner(basis, 0o0750)
     _ordner(pfad, SHARED_MODE)
     # Leere, nicht beschreibbare Einhängepunkte: ohne Zugang bleibt der Ordner leer.
     for sub in (AUTH_DIR, CODEX_DIR, PLATTFORM_DIR):
