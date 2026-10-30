@@ -165,7 +165,7 @@ class AnDocker(unittest.TestCase):
 
 class OrdnerUndRechte(unittest.TestCase):
     def test_nutzerordner_mit_leeren_einhaengepunkten(self):
-        with tempfile.TemporaryDirectory() as root, mock.patch("os.chown"):
+        with tempfile.TemporaryDirectory() as root, mock.patch("os.fchown"):
             pfad = shared_volume.nutzer_ordner_anlegen("u1", root=root)
             self.assertEqual(pfad, os.path.join(root, "nutzer", "u1"))
             for sub in (".auth", ".codex", ".plattform"):
@@ -173,7 +173,7 @@ class OrdnerUndRechte(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(os.stat(pfad).st_mode), shared_volume.SHARED_MODE)
 
     def test_vorhandenes_teamtoken_wird_auf_0640_gesetzt(self):
-        with tempfile.TemporaryDirectory() as root, mock.patch("os.chown"):
+        with tempfile.TemporaryDirectory() as root, mock.patch("os.fchown"):
             os.makedirs(os.path.join(root, ".auth"))
             token = os.path.join(root, ".auth", "token.json")
             with open(token, "w") as f:
@@ -181,6 +181,17 @@ class OrdnerUndRechte(unittest.TestCase):
             os.chmod(token, 0o644)
             self.assertTrue(shared_volume.ensure_shared_volume_perms(root))
             self.assertEqual(stat.S_IMODE(os.stat(token).st_mode), 0o640)
+
+    def test_symlink_im_nutzerordner_wird_nicht_verfolgt(self):
+        with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as opfer, \
+                mock.patch("os.fchown"):
+            os.chmod(opfer, 0o755)
+            pfad = os.path.join(root, "nutzer", "u1")
+            os.makedirs(pfad)
+            os.symlink(opfer, os.path.join(pfad, ".codex"))
+            with self.assertRaises(OSError):
+                shared_volume.nutzer_ordner_anlegen("u1", root=root)
+            self.assertEqual(stat.S_IMODE(os.stat(opfer).st_mode), 0o755)
 
     def test_agentensicht_folgt_der_engine(self):
         try:

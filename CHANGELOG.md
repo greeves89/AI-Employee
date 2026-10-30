@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.407.1] - 2026-10-30
+
+### Sicherheit
+- Geteiltes Volume: Der Orchestrator folgt beim Setzen von Besitzer und Rechten keinen Symlinks mehr. So kann ein Agent ihn nicht dazu bringen, Rechte an anderer Stelle zu ändern.
+
 ## [1.407.0] - 2026-10-30
 
 ### Sicherheit
