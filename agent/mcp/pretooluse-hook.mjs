@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/node
 /**
  * PreToolUse-Hook fuer Claude Code UND Codex CLI (#781, Sicherheit P0-2).
  *
@@ -23,8 +23,10 @@
  * CLI wegen Zeitueberschreitung abbricht, blockiert NICHT.
  */
 
-const HOOK_URL = process.env.AGENT_HOOK_URL || "http://localhost:8080/hooks/pretooluse";
-const HOOK_TIMEOUT_MS = Number(process.env.AGENT_HOOK_TIMEOUT_MS) || 12_000;
+// Fest verdrahtet, NICHT aus der Umgebung: die Umgebung des Hooks erbt der
+// Agent von seiner CLI — eine eigene Adresse dort haette die Pruefung umgeleitet.
+const HOOK_URL = "http://localhost:8080/hooks/pretooluse";
+const HOOK_TIMEOUT_MS = 12_000;
 
 function ablehnung(grund) {
   return JSON.stringify({
@@ -46,10 +48,11 @@ async function stdinLesen() {
  * Entscheidung fuer eine Codex-Hook-Eingabe. Gibt den auszugebenden Text
  * zurueck ("" = nichts ausgeben = erlaubt).
  *
- * @param {string} roh - stdin von Codex (JSON)
+ * @param {string} roh - stdin der CLI (JSON)
+ * @param {{url?: string, timeoutMs?: number}} [fuerTests] - nur fuer Tests
  * @returns {Promise<string>}
  */
-export async function entscheide(roh) {
+export async function entscheide(roh, { url = HOOK_URL, timeoutMs = HOOK_TIMEOUT_MS } = {}) {
   let eingabe;
   try {
     eingabe = JSON.parse(roh || "{}");
@@ -58,9 +61,9 @@ export async function entscheide(roh) {
     return ablehnung("Werkzeugpruefung: Eingabe unlesbar.");
   }
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), HOOK_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(HOOK_URL, {
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       // cwd und lauf: fuer die Push-Sperre (#1117, agent/app/tools/push_sperre.py)

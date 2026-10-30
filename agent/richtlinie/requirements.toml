@@ -2,7 +2,9 @@
 # Gleicher Hook wie fuer Claude Code (managed-settings.json daneben), siehe
 # agent/mcp/pretooluse-hook.mjs. Nutzer-, Projekt- und Sitzungs-Hooks zaehlen
 # nicht; features.hooks ist festgenagelt, damit "-c features.hooks=false" den
-# Hook nicht abschaltet (live geprueft mit codex-cli 0.165).
+# Hook nicht abschaltet (live geprueft mit codex-cli 0.165). Node mit festem Pfad
+# und ohne NODE_OPTIONS: /opt/build-tools (dem Agenten gehoerig) steht im PATH vor
+# /usr/bin, ein eigenes "node" dort haette sonst den Hook ersetzt.
 allow_managed_hooks_only = true
 
 [features]
@@ -16,5 +18,5 @@ matcher = ".*"
 
 [[hooks.PreToolUse.hooks]]
 type = "command"
-command = "/opt/mcp/pretooluse-hook.mjs"
+command = "/usr/bin/env -u NODE_OPTIONS -u NODE_PATH /usr/bin/node /opt/mcp/pretooluse-hook.mjs"
 timeout = 15

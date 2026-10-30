@@ -2,11 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 
-// AGENT_HOOK_URL wird beim Laden gelesen — vor dem Import setzen.
+// Adresse und Wartezeit sind im Skript fest verdrahtet; Tests geben sie mit.
 const port = 39080 + Math.floor(Math.random() * 1000);
-process.env.AGENT_HOOK_URL = `http://127.0.0.1:${port}/hooks/pretooluse`;
-process.env.AGENT_HOOK_TIMEOUT_MS = "300";
-const { entscheide } = await import("./pretooluse-hook.mjs");
+const ZIEL = { url: `http://127.0.0.1:${port}/hooks/pretooluse`, timeoutMs: 300 };
+const { entscheide: echt } = await import("./pretooluse-hook.mjs");
+const entscheide = (roh) => echt(roh, ZIEL);
 
 function stub(antwort, mitschrift) {
   return new Promise((resolve) => {

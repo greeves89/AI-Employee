@@ -20,6 +20,10 @@ from pathlib import Path
 AGENT = Path(__file__).resolve().parents[1]
 RICHTLINIE = AGENT / "richtlinie"
 SKRIPT_IM_ABBILD = "/opt/mcp/pretooluse-hook.mjs"
+#: Node mit festem Pfad und ohne NODE_OPTIONS/NODE_PATH: /opt/build-tools gehoert dem
+#: Agenten und steht im PATH vor /usr/bin — ein eigenes "node" dort, oder Code per
+#: NODE_OPTIONS=--require, haette den Hook sonst ersetzt.
+HOOK_KOMMANDO = f"/usr/bin/env -u NODE_OPTIONS -u NODE_PATH /usr/bin/node {SKRIPT_IM_ABBILD}"
 
 
 class ClaudeCodeRichtlinie(unittest.TestCase):
@@ -36,13 +40,13 @@ class ClaudeCodeRichtlinie(unittest.TestCase):
         # Kommando statt http: ein http-Hook laesst bei nicht erreichbarem Server
         # durch (live geprueft, auch mit onFailure); das Skript lehnt dann ab.
         self.assertEqual(hook["type"], "command")
-        self.assertEqual(hook["command"], SKRIPT_IM_ABBILD)
+        self.assertEqual(hook["command"], HOOK_KOMMANDO)
 
     def test_skript_wartet_kuerzer_als_die_cli(self):
         """Bricht die CLI den Hook wegen Zeitueberschreitung ab, blockiert er nicht."""
         hook = self.r["hooks"]["PreToolUse"][0]["hooks"][0]
         skript = (AGENT / "mcp" / "pretooluse-hook.mjs").read_text()
-        ms = int(re.search(r"\|\|\s*([\d_]+)", skript.split("HOOK_TIMEOUT_MS =")[1]).group(1).replace("_", ""))
+        ms = int(re.search(r"const HOOK_TIMEOUT_MS = ([\d_]+);", skript).group(1).replace("_", ""))
         self.assertLess(ms / 1000, hook["timeout"])
 
 
@@ -60,9 +64,9 @@ class CodexRichtlinie(unittest.TestCase):
         self.assertEqual(gruppe["matcher"], ".*")
         hook = gruppe["hooks"][0]
         self.assertEqual(hook["type"], "command")
-        self.assertEqual(hook["command"], SKRIPT_IM_ABBILD)
-        # Verwaltete Kommandos liegen unter managed_dir.
-        self.assertTrue(hook["command"].startswith(self.r["hooks"]["managed_dir"].rstrip("/") + "/"))
+        self.assertEqual(hook["command"], HOOK_KOMMANDO)
+        # Das Skript liegt unter managed_dir.
+        self.assertTrue(SKRIPT_IM_ABBILD.startswith(self.r["hooks"]["managed_dir"].rstrip("/") + "/"))
 
 
 class Abbild(unittest.TestCase):
@@ -73,10 +77,16 @@ class Abbild(unittest.TestCase):
         # Kein chown auf den Agenten fuer /etc/claude-code, /etc/codex oder das Skript.
         self.assertNotRegex(df, r"chown[^\n]*(/etc/claude-code|/etc/codex|pretooluse-hook)")
 
-    def test_skript_ist_ausfuehrbar_und_startet_node(self):
+    def test_skript_ist_ausfuehrbar_und_startet_node_mit_festem_pfad(self):
         skript = AGENT / "mcp" / "pretooluse-hook.mjs"
-        self.assertTrue(skript.read_text().startswith("#!/usr/bin/env node"))
+        self.assertTrue(skript.read_text().startswith("#!/usr/bin/node\n"))
         self.assertTrue(os.access(skript, os.X_OK))
+
+    def test_adresse_und_wartezeit_kommen_nicht_aus_der_umgebung(self):
+        """Die Umgebung des Hooks erbt der Agent von seiner CLI."""
+        skript = (AGENT / "mcp" / "pretooluse-hook.mjs").read_text()
+        self.assertNotIn("AGENT_HOOK_URL", skript)
+        self.assertNotIn("AGENT_HOOK_TIMEOUT_MS", skript)
 
 
 if __name__ == "__main__":

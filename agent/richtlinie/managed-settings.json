@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/opt/mcp/pretooluse-hook.mjs",
+            "command": "/usr/bin/env -u NODE_OPTIONS -u NODE_PATH /usr/bin/node /opt/mcp/pretooluse-hook.mjs",
             "timeout": 15
           }
         ]
