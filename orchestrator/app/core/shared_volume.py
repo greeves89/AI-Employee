@@ -66,7 +66,7 @@ PLATTFORM_DIR = ".plattform"  # Fehlerprotokoll der Plattform (platform_error_lo
 #: Wird vom DockerService gesetzt, sobald feststeht, ob die Engine Unterordner
 #: eines Volumes einhängen kann (Docker-API >= 1.45). Ohne das gilt das alte
 #: Verhalten — alle Agenten sehen das ganze Volume.
-JE_NUTZER_AKTIV = True
+JE_NUTZER_AKTIV = False
 
 _SICHER = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
@@ -75,7 +75,7 @@ def nutzer_teilpfad(user_id: str | None) -> str:
     """Unterordner des Volumes, den die Agenten eines Besitzers als ``/shared`` sehen."""
     if not user_id:
         name = OHNE_BESITZER
-    elif _SICHER.match(str(user_id)):
+    elif _SICHER.fullmatch(str(user_id)):
         name = str(user_id)
     else:
         name = hashlib.sha256(str(user_id).encode()).hexdigest()[:32]

@@ -211,41 +211,68 @@ def _taskforce_agent_pfad(room) -> str:
     return f"/shared/taskforce/{room.id}"
 
 
+def _runner_mounts(room) -> list | None:
+    """Der Compose-Runner sieht nur den Ordner des Raum-Besitzers als /shared —
+    nicht das ganze Volume mit den Ordnern aller Nutzer. None = altes Verhalten."""
+    from app.core import shared_volume
+    if not shared_volume.JE_NUTZER_AKTIV:
+        return None
+    from docker.types import Mount
+    m = Mount(target="/shared", source=shared_volume.SHARED_VOLUME, type="volume")
+    m["VolumeOptions"] = {"Subpath": shared_volume.nutzer_teilpfad(room.created_by)}
+    return [m]
+
+
+def _runner_sicht(room) -> str:
+    """Der Taskforce-Ordner, wie der Compose-Runner ihn sieht."""
+    from app.core import shared_volume
+    if shared_volume.JE_NUTZER_AKTIV:
+        return _taskforce_agent_pfad(room)
+    return str(_taskforce_dir(room))
+
+
 _AGENT_UID = 1000  # all agent containers run as uid/gid 1000 ("agent")
 _AGENT_GID = 1000
 
 
 def _ensure_taskforce_dir(room) -> str:
-    """Create the shared taskforce work dir owned by the agent uid BEFORE dispatching
-    build tasks. Critical: /shared is root-owned (755) but the agents run as uid 1000 —
-    if the orchestrator (root) doesn't pre-create the dir writable-for-the-agent, the
-    agents get 'Permission denied' on mkdir and the build silently produces nothing.
+    """Create the taskforce work dir writable for the agents BEFORE dispatching build
+    tasks (the owner folder is root-owned; agents run as uid 1000).
 
-    Ownership (chown 1000:1000) + mode 0o770 grants exactly the agents access — NOT
-    world-writable — so on multi-tenant boxes stray processes can't tamper with it."""
+    Every component is created and opened RELATIVE to its already opened parent
+    (``dir_fd`` + ``O_NOFOLLOW``): the folder lies in the agents' writable area, and
+    an agent could otherwise swap a component for a symlink between check and
+    chown — into another user's folder or the orchestrator's own files.
+    Ownership 1000:1000 + mode 0o770: exactly the agents, no world access."""
     import os
-    base = _taskforce_dir(room)
-    parent = os.path.dirname(base)
-    for d in (parent, base):
-        try:
-            os.makedirs(d, exist_ok=True)
-            # Über einen Deskriptor, der keinem Symlink folgt: ein Agent könnte den
-            # Ordner zwischen Prüfung und chown gegen einen Link tauschen.
+    from app.core.shared_volume import agent_sicht
+    base = _taskforce_dir(room)  # prüft Symlinks und Ziel, liefert den Pfad
+    wurzel = os.path.realpath(agent_sicht(room.created_by))
+    os.makedirs(wurzel, exist_ok=True)
+    flags = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(wurzel, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for name in ("taskforce", str(room.id)):
+            if not name or "/" in name or name in (".", ".."):
+                raise HTTPException(status_code=400, detail="Ungültiges Taskforce-Verzeichnis")
             try:
-                fd = os.open(d, os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0))
+                os.mkdir(name, 0o770, dir_fd=fd)
+            except FileExistsError:
+                pass
+            try:
+                kind = os.open(name, flags, dir_fd=fd)
             except OSError:
-                logger.warning("[Taskforce] refusing to touch %s (symlink or not a dir)", d)
-                continue
+                logger.warning("[Taskforce] refusing %s in %s (symlink or not a dir)", name, wurzel)
+                raise HTTPException(status_code=400, detail="Ungültiges Taskforce-Verzeichnis")
+            os.close(fd)
+            fd = kind
             try:
-                try:
-                    os.fchown(fd, _AGENT_UID, _AGENT_GID)  # needs root (orchestrator is root)
-                except (PermissionError, OSError):
-                    logger.warning("[Taskforce] could not chown %s to agent uid", d)
-                os.fchmod(fd, 0o770)  # rwx for owner (agent) + group only, no world/other
-            finally:
-                os.close(fd)
-        except OSError:
-            logger.warning("[Taskforce] could not prepare %s", d, exc_info=True)
+                os.fchown(fd, _AGENT_UID, _AGENT_GID)  # needs root (orchestrator is root)
+            except (PermissionError, OSError):
+                logger.warning("[Taskforce] could not chown %s to agent uid", name)
+            os.fchmod(fd, 0o770)
+    finally:
+        os.close(fd)
     return base
 
 
@@ -396,6 +423,10 @@ async def launch_deliverable(
         return parts[-1] if parts and parts[-1].isdigit() else None
 
     web_port = None
+    # Die Dateien legt ein Agent an: keinem Symlink folgen (lesen UND schreiben als root).
+    for name in (compose_name, ".launch-compose.yml"):
+        if os.path.islink(os.path.join(base, name)):
+            raise HTTPException(status_code=400, detail="Ungültige Compose-Datei")
     try:
         with open(os.path.join(base, compose_name), "r", encoding="utf-8") as fh:
             spec = _yaml.safe_load(fh) or {}
@@ -409,10 +440,10 @@ async def launch_deliverable(
         launch_name = ".launch-compose.yml"
         with open(os.path.join(base, launch_name), "w", encoding="utf-8") as fh:
             _yaml.safe_dump(spec, fh)
-        compose_path = os.path.join(base, launch_name)  # Runner hängt das Volume ebenfalls unter /shared ein
+        compose_path = os.path.join(_runner_sicht(room), launch_name)
     except Exception as e:  # noqa: BLE001 — fall back to the original file
         logger.warning("[Taskforce %s] compose rewrite failed: %s", scrub_log(room_id), scrub_log(e))
-        compose_path = os.path.join(base, compose_name)
+        compose_path = os.path.join(_runner_sicht(room), compose_name)
 
     def _run():
         return docker.client.containers.run(
@@ -420,8 +451,9 @@ async def launch_deliverable(
             command=["docker", "compose", "-p", project, "-f", compose_path, "up", "-d", "--build"],
             volumes={
                 "/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"},
-                "ai-employee-shared": {"bind": "/shared", "mode": "rw"},
+                **({} if _runner_mounts(room) else {"ai-employee-shared": {"bind": "/shared", "mode": "rw"}}),
             },
+            **({"mounts": _runner_mounts(room)} if _runner_mounts(room) else {}),
             network="ai-employee-network", remove=True, detach=False, stderr=True,
         )
 
@@ -1819,6 +1851,25 @@ async def _assign_tasks_from_summary(room: MeetingRoom, todo_content: str, redis
         for aid in room.agent_ids:
             a = await db.scalar(select(_Agent).where(_Agent.id == aid))
             agent_name_map[aid] = a.name if a else aid
+
+        # Taskforce: /shared ist je Besitzer getrennt — Agenten ANDERER Nutzer sehen
+        # den Ordner des Raum-Besitzers nicht und bekommen deshalb keinen Bauauftrag.
+        if room.deliverable:
+            from app.core import shared_volume as _sv
+            if _sv.JE_NUTZER_AKTIV:
+                fremde = []
+                for aid in list(agent_name_map):
+                    a = await db.scalar(select(_Agent).where(_Agent.id == aid))
+                    if a is None or str(a.user_id or "") != str(room.created_by or ""):
+                        fremde.append(aid)
+                        agent_name_map.pop(aid, None)
+                if fremde:
+                    logger.warning(
+                        "[Meeting %s] Taskforce: %d Agent(en) anderer Besitzer ohne Bauauftrag "
+                        "(sehen den gemeinsamen Ordner nicht)", room.id, len(fremde),
+                    )
+                if not agent_name_map:
+                    return
 
         # Distribute items across agents (keyword match + round-robin fallback)
         agent_ids = list(agent_name_map.keys())

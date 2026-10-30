@@ -21,13 +21,36 @@ from app.core.shared_volume import geteilt_plan, nutzer_teilpfad
 from app.services.docker_service import DockerService
 
 
+class _FakeContainer:
+    """Was die Engine zurückmeldet: die Mounts, wie sie angekommen sind."""
+
+    def __init__(self, mounts, subpath_ignorieren=False):
+        angekommen = []
+        for m in mounts or []:
+            m = dict(m)
+            if subpath_ignorieren:
+                m.pop("VolumeOptions", None)
+            angekommen.append(m)
+        self.attrs = {"HostConfig": {"Mounts": angekommen}}
+        self.entfernt = False
+
+    def reload(self):
+        pass
+
+    def remove(self, force=False):
+        self.entfernt = True
+
+
 class _FakeContainersApi:
-    def __init__(self):
+    def __init__(self, subpath_ignorieren=False):
         self.run_calls = []
+        self.subpath_ignorieren = subpath_ignorieren
+        self.letzter = None
 
     def run(self, **kwargs):
         self.run_calls.append(kwargs)
-        return object()
+        self.letzter = _FakeContainer(kwargs.get("mounts"), self.subpath_ignorieren)
+        return self.letzter
 
 
 class _FakeVolumesApi:
@@ -39,8 +62,8 @@ class _FakeVolumesApi:
 
 
 class _FakeClient:
-    def __init__(self, api: str):
-        self.containers = _FakeContainersApi()
+    def __init__(self, api: str, subpath_ignorieren=False):
+        self.containers = _FakeContainersApi(subpath_ignorieren)
         self.volumes = _FakeVolumesApi()
         self._api = api
 
@@ -48,9 +71,9 @@ class _FakeClient:
         return {"ApiVersion": self._api}
 
 
-def _run(api: str, geteilt: dict | None):
+def _run(api: str, geteilt: dict | None, subpath_ignorieren=False):
     svc = DockerService.__new__(DockerService)  # __init__ braucht einen echten Daemon
-    svc.client = _FakeClient(api)
+    svc.client = _FakeClient(api, subpath_ignorieren)
     svc.create_container(
         image="ai-employee-agent:latest", name="agent-a1", environment={"AGENT_ID": "a1"},
         volume_name="workspace-a1", network="net", shared_volume_name="ai-employee-shared",
@@ -100,7 +123,20 @@ class Plan(unittest.TestCase):
 
 class AnDocker(unittest.TestCase):
     def tearDown(self):
-        shared_volume.JE_NUTZER_AKTIV = True
+        shared_volume.JE_NUTZER_AKTIV = False
+
+    def test_engine_ignoriert_den_unterordner_dann_abbruch(self):
+        """Fail closed: sonst hinge das ganze Volume mit allen Nutzerordnern unter /shared."""
+        plan = geteilt_plan("u1", mode="claude_code", env={}, ist_admin=False)
+        svc = DockerService.__new__(DockerService)
+        svc.client = _FakeClient("1.55", subpath_ignorieren=True)
+        with self.assertRaises(RuntimeError):
+            svc.create_container(
+                image="ai-employee-agent:latest", name="agent-a1", environment={"AGENT_ID": "a1"},
+                volume_name="workspace-a1", network="net", shared_volume_name="ai-employee-shared",
+                geteilt=plan,
+            )
+        self.assertTrue(svc.client.containers.letzter.entfernt)
 
     def test_neue_engine_haengt_nur_den_nutzerordner_ein(self):
         plan = geteilt_plan("u1", mode="claude_code", env={}, ist_admin=False)
@@ -153,7 +189,7 @@ class OrdnerUndRechte(unittest.TestCase):
             shared_volume.JE_NUTZER_AKTIV = False
             self.assertEqual(shared_volume.agent_sicht("u1", root="/shared"), "/shared")
         finally:
-            shared_volume.JE_NUTZER_AKTIV = True
+            shared_volume.JE_NUTZER_AKTIV = False
 
 
 class TeamtokenDatei(unittest.TestCase):
@@ -209,3 +245,32 @@ class TaskforceBleibtImEigenenOrdner(unittest.TestCase):
             with mock.patch("app.core.shared_volume.agent_sicht", lambda uid: os.path.join(root, "nutzer", uid)):
                 pfad = meeting_rooms._taskforce_dir(self._raum())
             self.assertEqual(pfad, os.path.join(os.path.realpath(root), "nutzer", "u1", "taskforce", "raum1"))
+
+
+class TaskforceOrdnerAnlegen(unittest.TestCase):
+    def _raum(self):
+        return mock.Mock(created_by="u1", id="raum1")
+
+    def test_legt_den_ordner_beim_besitzer_an(self):
+        from app.api import meeting_rooms
+        with tempfile.TemporaryDirectory() as root, mock.patch("os.fchown"):
+            sicht = lambda uid: os.path.join(root, "nutzer", uid)
+            with mock.patch("app.core.shared_volume.agent_sicht", sicht):
+                pfad = meeting_rooms._ensure_taskforce_dir(self._raum())
+            self.assertTrue(os.path.isdir(pfad))
+            self.assertEqual(stat.S_IMODE(os.stat(pfad).st_mode), 0o770)
+
+    def test_symlink_beim_anlegen_wird_nicht_verfolgt(self):
+        from fastapi import HTTPException
+        from app.api import meeting_rooms
+        with tempfile.TemporaryDirectory() as root, mock.patch("os.fchown") as fchown:
+            fremd = os.path.join(root, "nutzer", "u2")
+            os.makedirs(fremd)
+            os.makedirs(os.path.join(root, "nutzer", "u1"))
+            os.symlink(fremd, os.path.join(root, "nutzer", "u1", "taskforce"))
+            sicht = lambda uid: os.path.join(root, "nutzer", uid)
+            with mock.patch("app.core.shared_volume.agent_sicht", sicht):
+                with self.assertRaises(HTTPException):
+                    meeting_rooms._ensure_taskforce_dir(self._raum())
+            fchown.assert_not_called()
+            self.assertEqual(os.listdir(fremd), [], "nichts im fremden Ordner angelegt")

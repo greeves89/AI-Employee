@@ -2016,10 +2016,13 @@ class AgentManager:
         if user_id:
             nutzer = await self.db.get(User, user_id)
             ist_admin = nutzer is not None and is_admin(nutzer)
-        try:
-            shared_volume.nutzer_ordner_anlegen(user_id)
-        except OSError as e:
-            logger.warning("Geteilter Ordner fuer Besitzer %s nicht anlegbar: %s", scrub_log(user_id or "-"), e)
+        if shared_volume.JE_NUTZER_AKTIV:
+            # Nur nötig, wenn die Engine Unterordner einhängt — sonst hängt das ganze
+            # Volume (alte Engine). Ohne den Ordner scheiterte Docker unklar.
+            try:
+                shared_volume.nutzer_ordner_anlegen(user_id)
+            except OSError as e:
+                raise RuntimeError(f"Geteilter Ordner fuer den Besitzer nicht anlegbar: {e}") from e
         return shared_volume.geteilt_plan(user_id, mode=mode, env=env_vars, ist_admin=ist_admin)
 
     def _update_team_registry(self, container_id: str, agent_id: str, name: str, role: str) -> None:

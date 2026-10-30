@@ -598,6 +598,25 @@ class DockerService:
         mounts += [mount(sub, ziel, True) for sub, ziel in plan.get("nur_lesen", [])]
         return mounts
 
+    @staticmethod
+    def _unterordner_pruefen(container) -> None:
+        """Fail closed: ignoriert eine Engine den Unterordner, hinge das GANZE Volume
+        unter /shared — mit den Ordnern aller Nutzer. Dann Container weg und abbrechen."""
+        try:
+            container.reload()
+            eingehaengt = (container.attrs.get("HostConfig") or {}).get("Mounts") or []
+        except Exception as e:  # noqa: BLE001
+            raise RuntimeError(f"Einhängepunkte des Agenten nicht prüfbar: {e}") from e
+        shared = [m for m in eingehaengt if m.get("Target") == "/shared"]
+        if not shared or not (shared[0].get("VolumeOptions") or {}).get("Subpath"):
+            try:
+                container.remove(force=True)
+            finally:
+                raise RuntimeError(
+                    "Docker hat /shared ohne Unterordner eingehängt — der Agent sähe die "
+                    "Ordner aller Nutzer. Container entfernt."
+                )
+
     def create_container(
         self,
         image: str,
@@ -712,6 +731,8 @@ class DockerService:
             cap_add=["CHOWN", "SETUID", "SETGID", "DAC_OVERRIDE", "FOWNER", "KILL"],
             pids_limit=512,
         )
+        if mounts:
+            self._unterordner_pruefen(container)
         return container
 
     def get_container(self, container_id: str):

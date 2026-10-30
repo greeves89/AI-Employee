@@ -197,8 +197,9 @@ class ClaudeTokenService:
                 from app.core.shared_volume import AGENT_GID
                 os.chown(tmp_path, 0, AGENT_GID)
                 os.chmod(tmp_path, 0o640)
-            except OSError:
-                pass  # ohne root (Tests): die Rechte aus os.open bleiben
+            except OSError as e:
+                # root:root 0640 — Agenten könnten das Token dann nicht lesen.
+                logger.warning(f"Teamtoken-Datei: Gruppe/Rechte nicht setzbar ({e})")
             os.replace(tmp_path, SHARED_TOKEN_PATH)
         except Exception as e:
             logger.error(f"Failed to write shared token file: {e}")
