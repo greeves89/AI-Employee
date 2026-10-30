@@ -1440,8 +1440,9 @@ anderen AI-Employee-Anlage, Claude Code oder ein Mensch direkt im Repo:
   ihr die Notiz „Freigabe per Tag im Repo (Datum, Uhrzeit)“.
 - Als Triage-Tag gelten `status/triage`, `triage`, `needs-triage`, `agent:blocked`,
   `agent/blocked`, `needs-human`, `claude:needs-human`, `needs-info`, `question` und `Rückfrage` —
-  Vorsilben wie `status/`, `agent:` oder `claude:` sind egal. Ein bloßes `blocked` ohne Agenten-Bezug
-  zählt nicht. Agenten-Vorsilben (`agent:`, `claude:`, `bot:` …) zählen nur für Rückfragen:
+  Vorsilben wie `status/`, `agent:` oder `claude:` sind egal. Auch `status/blockiert` bzw.
+  `status/blocked` gilt als Triage (so heißt die Triage-Spalte mancher Boards); ein bloßes `blocked`
+  ohne Vorsilbe zählt nicht. Agenten-Vorsilben (`agent:`, `claude:`, `bot:` …) zählen nur für Rückfragen:
   `agent:ready` gibt nichts frei.
 - Setzt das Board selbst ein Tag (Freigeben, Rückfrage, Übernahme), nimmt es das, das es im Repo
   schon gibt — etwa `agent:blocked` statt `status/triage` —, sonst legt es `status/triage`,

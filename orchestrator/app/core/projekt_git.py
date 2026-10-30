@@ -256,7 +256,8 @@ _STATUS_TAGS = {
                   "in progress", "wip", "doing"},
     "pruefung": {"review", "in-review", "in review", "pruefung", "prüfung", "in-pruefung", "needs-review"},
     # Rückfrage offen, wartet auf einen Menschen. Ein bloßes ``blocked`` zählt
-    # nicht (blockiert kann vieles sein) — nur mit Agenten-Präfix (``agent:blocked``).
+    # nicht (blockiert kann vieles sein) — nur als Stand (``status/blockiert``)
+    # oder mit Agenten-Präfix (``agent:blocked``), siehe ``_BLOCKIERT``.
     "triage": {"triage", "needs-triage", "needs triage", "needs-human", "needs human", "needs-info",
                "needs info", "question", "rückfrage", "rueckfrage"},
     # Freigabe durch einen Menschen: nur „ready“/„bereit“ (mit oder ohne status/).
@@ -265,14 +266,18 @@ _STATUS_TAGS = {
 }
 #: Präfixe, die vor einem Status-Tag stehen dürfen (``status/ready``, ``agent:blocked``).
 _STATUS_PRAEFIX = re.compile(r"^(status|state|stand|agent|agents|claude|ai|ki|bot|codex)\s*[/:]\s*", re.I)
-#: Präfixe von Agenten — nur für Triage (und ``blocked`` heißt nur mit ihnen „Rückfrage“).
+#: Präfixe von Agenten — nur für Triage.
 _AGENT_PRAEFIXE = {"agent", "agents", "claude", "ai", "ki", "bot", "codex"}
+#: „Blockiert“ heißt Rückfrage nur mit Präfix: als Stand (``status/blockiert`` — so
+#: nennen manche Boards ihre Triage-Spalte) oder von einem Agenten (``agent:blocked``).
+_BLOCKIERT = {"blocked", "blockiert"}
 #: Vorrang beim Abgleich: der erste gefundene Stand gewinnt.
 _STAND_VORRANG = ("pruefung", "triage", "in_arbeit", "bereit")
 #: Welches Tag das Board setzt, wenn das Repo noch keins dieser Art hat — sonst
 #: das erste aus der Liste, das es im Repo schon gibt (``passendes_tag``).
 STATUS_TAG_WAHL = {
-    "triage": ("status/triage", "agent:blocked", "agent/blocked", "triage", "needs-triage", "status/needs-human",
+    "triage": ("status/triage", "status/blockiert", "status/blocked", "agent:blocked", "agent/blocked", "triage",
+               "needs-triage", "status/needs-human",
                "claude:needs-human", "needs-human", "needs-info", "status/rückfrage", "rückfrage", "rueckfrage"),
     "bereit": ("status/ready", "ready", "status/bereit", "bereit"),
     "in_arbeit": ("status/in-arbeit", "status/in-progress", "in-progress", "in-arbeit", "status/wip", "wip"),
@@ -289,7 +294,9 @@ def tag_stand(roh: str) -> str | None:
     name = text[treffer.end():] if treffer else text
     if praefix in _AGENT_PRAEFIXE:
         # Agenten zeigen nur Rückfragen an — nie Freigabe, Übernahme oder Review.
-        return "triage" if name == "blocked" or name in _STATUS_TAGS["triage"] else None
+        return "triage" if name in _BLOCKIERT or name in _STATUS_TAGS["triage"] else None
+    if praefix and name in _BLOCKIERT:
+        return "triage"
     for stand, namen in _STATUS_TAGS.items():
         if name in namen:
             return stand

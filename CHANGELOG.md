@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.404.1] - 2026-10-30
+
+### Behoben
+- Projekt-Board: Issues mit `status/blockiert` bzw. `status/blocked` landen in Triage statt in der Inbox; das Board setzt beim Verschieben nach Triage ein vorhandenes `status/blockiert`.
+- Projekt-Kopfleiste: Die Spaltenzahlen laufen bei schmalem Inhaltsbereich nicht mehr übereinander.
+
 ## [1.404.0] - 2026-10-29
 
 ### Neu
