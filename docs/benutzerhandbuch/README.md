@@ -499,10 +499,23 @@ von selbst — auch nicht auf der Stufe **Fragt vorher** (L3) und nicht über ei
 Agent jede Leitplanke darin abschalten. Will ein L3-Agent Software installieren, fragt er
 vorher (Kap. 13, Freigaben). Soll er es dauerhaft dürfen, schaltet ein Administrator es frei:
 
-1. Agent öffnen → **Einstellungen → Allgemein** → Abschnitt **Zugriff & Rechte**.
-2. In der Matrix in der Zeile **Pakete / Config** auf **Erlaubt** klicken, dann auf
-   **Matrix speichern**.
-3. Oben auf **Neu starten** klicken. Erst der neu erstellte Container lässt `sudo` zu.
+1. Agent öffnen → **Einstellungen → Allgemein** → Abschnitt **Zugriff & Rechte** aufklappen.
+   Unter den drei Stufen-Karten auf **Feineinstellung** klicken.
+
+   ![Stufen-Karten mit „Feineinstellung“](screenshots/84-rechte-stufen-feineinstellung.png)
+
+2. In der Matrix in der Zeile **Pakete / Config** auf **Erlaubt** klicken.
+
+   ![Matrix: Zeile „Pakete / Config“ auf „Erlaubt“](screenshots/85-matrix-pakete-config-erlaubt.png)
+
+3. Unter der Matrix auf **Matrix speichern** klicken. Der Knopf erscheint erst, wenn sich
+   etwas geändert hat; daneben steht der Hinweis auf den Neustart.
+
+   ![„Matrix speichern“ mit Hinweis auf den Neustart](screenshots/86-matrix-speichern-neustart-hinweis.png)
+
+4. Oben rechts auf **Neu starten** klicken. Erst der neu erstellte Container lässt `sudo` zu.
+
+   ![„Neu starten“ in der Kopfzeile des Agenten](screenshots/87-agent-neu-starten.png)
 
 Bestehende L3-Agenten behalten ihr bisheriges `sudo`; das Update trägt **Erlauben** für sie ein.
 Agenten auf **Darf selbst** (L4) haben es weiterhin.
