@@ -134,7 +134,20 @@ export async function entscheide(roh, { url = HOOK_URL, timeoutMs = HOOK_TIMEOUT
 // stdout unlesbar (live gesehen: LD_SHOW_AUXV schreibt Lader-Daten davor), werten
 // beide CLIs das als "kein Einwand". Exit 2 blockiert unabhaengig von stdout.
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const ausgabe = await entscheide(await stdinLesen());
+  // Jeder unerwartete Fehler endet mit Exit 2: Node beendet sich sonst mit 1, und
+  // jeder andere Code als 2 gilt den CLIs als "kein Einwand".
+  const ablehnen = (fehler) => {
+    process.stderr.write(`Werkzeugpruefung fehlgeschlagen — abgelehnt (${fehler?.message || fehler}).\n`);
+    process.exit(2);
+  };
+  process.on("uncaughtException", ablehnen);
+  process.on("unhandledRejection", ablehnen);
+  let ausgabe;
+  try {
+    ausgabe = await entscheide(await stdinLesen());
+  } catch (fehler) {
+    ablehnen(fehler);
+  }
   if (ausgabe) {
     let grund = "Werkzeug durch Autonomie-Regeln blockiert.";
     try {

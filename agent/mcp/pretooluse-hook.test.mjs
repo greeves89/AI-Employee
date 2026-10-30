@@ -129,3 +129,14 @@ test("Lauf: unpassende Werte werden verworfen", () => {
   assert.equal(laufErmitteln({ AI_EMPLOYEE_LAUF: "a b; rm -rf /" }, 1), undefined);
   assert.equal(laufErmitteln({ AI_EMPLOYEE_LAUF: "" }, 1), undefined);
 });
+
+test("Als Prozess: Ablehnung endet mit Exit 2, Grund auf stderr", () => {
+  const skript = new URL("./pretooluse-hook.mjs", import.meta.url).pathname;
+  for (const eingabe of ["kein json", JSON.stringify({ tool_name: "Bash", tool_input: { command: "x" } })]) {
+    // Ohne Pruefstelle (fester Port 8080 ist im Test nicht belegt) bzw. mit kaputter Eingabe.
+    const r = spawnSync(process.execPath, [skript], { input: eingabe, env: {}, encoding: "utf8", timeout: 20_000 });
+    assert.equal(r.status, 2, r.stderr);
+    assert.equal(r.stdout, "");
+    assert.match(r.stderr, /abgelehnt/);
+  }
+});
