@@ -493,6 +493,20 @@ folgen — der Haken fehlt dann ganz.
 
 ![Vorlage Server & Betrieb mit Root-Haken und Warnung](screenshots/63-neuer-agent-devops-root.png)
 
+**Software installieren (sudo)** *(seit 1.406.0)*. Neue Agenten bekommen kein `sudo` mehr
+von selbst — auch nicht auf der Stufe **Fragt vorher** (L3) und nicht über eine Vorlage.
+`sudo` für `apt-get`, `dpkg`, `chmod` und `chown` heißt root im Container: Damit könnte ein
+Agent jede Leitplanke darin abschalten. Will ein L3-Agent Software installieren, fragt er
+vorher (Kap. 13, Freigaben). Soll er es dauerhaft dürfen, schaltet ein Administrator es frei:
+
+1. Agent öffnen → **Einstellungen → Allgemein** → Abschnitt **Zugriff & Rechte**.
+2. In der Matrix in der Zeile **Pakete / Config** auf **Erlaubt** klicken, dann auf
+   **Matrix speichern**.
+3. Oben auf **Neu starten** klicken. Erst der neu erstellte Container lässt `sudo` zu.
+
+Bestehende L3-Agenten behalten ihr bisheriges `sudo`; das Update trägt **Erlauben** für sie ein.
+Agenten auf **Darf selbst** (L4) haben es weiterhin.
+
 **Schritt 3 — Erstellen.** Auf **Erstellen** klicken. Der Container wird provisioniert und
 startet automatisch; nach wenigen Sekunden erscheint der neue Agent als Kachel mit Status
 *Idle*. Ab jetzt kannst du ihn öffnen und mit ihm arbeiten (Kap. 5).
@@ -838,7 +852,8 @@ Tab **Settings** mit drei Unter-Tabs: **Allgemein · Integrationen · Command Po
     Aktionen. Maximal sicher.
   - **L2 — Empfehlungen erstellen**: erstellt Vorschläge/Entwürfe, **führt aber nichts aus**.
   - **L3 — Aktionen mit Freigabe** *(empfohlen, Standard)*: handelt, **fragt aber vor jeder
-    heiklen Aktion per Freigabe** nach (siehe Kap. 13).
+    heiklen Aktion per Freigabe** nach (siehe Kap. 13) — seit 1.406.0 auch, bevor er
+    Software installiert (`sudo`, siehe Kap. 4.2).
   - **L4 — Vollständig autonom**: handelt eigenständig **ohne Rückfragen**. Nur für
     vertrauenswürdige, gut eingegrenzte Aufgaben.
   - *Hinweis:* Änderungen werden **nach dem nächsten Neustart** des Agenten wirksam.
@@ -2791,7 +2806,7 @@ dürfen — beim Anlegen und beim Ändern. So setzt du sie:
 1. Rolle in der Liste links anklicken (oder **+ Neue Rolle**).
 2. Unter **Autonomie** auf **Höchste Autonomiestufe** klicken, sodass die Zeile aufklappt.
 3. Eine Stufe wählen: **Wie die Grundrolle** (Mitglied L3, Betrachter L1), **L1 — Nur lesen**,
-   **L2 — Empfehlungen**, **L3 — Selbstständig im eigenen Bereich, fragt vor Außenwirkung**,
+   **L2 — Empfehlungen**, **L3 — Selbstständig im eigenen Bereich, fragt vor Software-Installation und Außenwirkung**,
    **L4 — Vollständig autonom** oder **Unbegrenzt** (inklusive Sudo-Paketen und Root).
 4. **Speichern**.
 
