@@ -38,6 +38,7 @@ from app.models.notification import Notification
 from app.models.task import Task, TaskStatus
 from app.models.task_rating import TaskRating
 from app.models.task_step import TaskStep
+from app.models.user import User
 from app.services.docker_service import DockerService
 from app.services.watchdog import docker_startzeit, lauf_nachweislich_weg
 
@@ -213,7 +214,7 @@ class _Basis(unittest.IsolatedAsyncioTestCase):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         async with self.engine.begin() as conn:
             for model in (Agent, Task, Notification, CommandApproval, ApprovalRule,
-                          TaskRating, TaskStep, JobState):
+                          TaskRating, TaskStep, JobState, User):
                 await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
         self.redis = _FakeRedis()

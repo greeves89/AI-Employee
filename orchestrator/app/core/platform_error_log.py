@@ -3,7 +3,8 @@ shared volume so agents can read platform errors and help fix the platform.
 
 The shared volume ``ai-employee-shared`` is already mounted at ``/shared`` in both
 the orchestrator and every agent container, so NO docker access is needed — an
-agent simply reads ``/shared/platform-errors.log`` with its normal file tools.
+agent simply reads ``/shared/.plattform/platform-errors.log`` with its normal file tools
+(only agents of admins see it — it names agents and errors of every user).
 Every line is run through app.core.log_redaction so credentials never land in the
 file. The handler rotates, so the file can never grow unbounded.
 """
@@ -19,7 +20,9 @@ from logging.handlers import RotatingFileHandler
 
 from app.core.log_redaction import redact_logs
 
-_DEFAULT_PATH = "/shared/platform-errors.log"
+# Eigener Unterordner: nur Agenten von Admins hängen ihn ein (shared_volume.geteilt_plan) —
+# das Protokoll nennt Agenten und Fehler aller Nutzer.
+_DEFAULT_PATH = "/shared/.plattform/platform-errors.log"
 
 
 class _RedactingFormatter(logging.Formatter):
@@ -84,7 +87,7 @@ def strip_nul_bytes(path: str, max_bytes: int = _MAX_REPAIR_BYTES) -> int:
     A file being appended to can come back after a hard kill with NUL bytes
     where the last writes were never flushed to disk. That looks harmless and
     is not: a text log with a NUL byte in it counts as BINARY, so
-    ``grep PATTERN /shared/platform-errors.log`` prints nothing and exits 1 —
+    ``grep PATTERN /shared/.plattform/platform-errors.log`` prints nothing and exits 1 —
     indistinguishable from an honest "no match". An agent triaging a recurring
     platform error then concludes the error class is gone when in truth its own
     measurement never read the file.
@@ -300,7 +303,7 @@ def setup_console_logging(level: int | None = None) -> int:
     """Anwendungs-Logs sichtbar machen — im Container-Log.
 
     Ohne das landete **nichts** unterhalb von WARNING irgendwo: die Datei
-    ``/shared/platform-errors.log`` nimmt erst ab WARNING an, und einen
+    ``/shared/.plattform/platform-errors.log`` nimmt erst ab WARNING an, und einen
     Ausgabe-Handler hatte der Wurzel-Logger gar nicht. Sichtbar war nur, was
     jemand mit ``print`` geschrieben hat, plus das Zugriffsprotokoll von uvicorn.
 
