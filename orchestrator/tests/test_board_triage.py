@@ -52,14 +52,23 @@ class TagVorrang(Basis):
         for tag in ("status/triage", "triage", "needs-triage", "agent:blocked", "agent/blocked", "needs-human",
                     "claude:needs-human", "needs-info", "question", "Rückfrage", "rueckfrage", "Agent: Blocked"):
             self.assertEqual(projekt_git.tag_stand(tag), "triage", tag)
-        # Ein bloßes „blocked“ ohne Agenten-Bezug ist keine Rückfrage.
-        for tag in ("blocked", "status/blocked", "type:question-mark"):
+        # Ein bloßes „blocked“ ohne Präfix ist keine Rückfrage.
+        for tag in ("blocked", "blockiert", "type:question-mark", "typ/blockiert"):
             self.assertIsNone(projekt_git.tag_stand(tag), tag)
+
+    def test_blockiert_als_stand_ist_triage(self):
+        # Boards wie „Triage = status/blockiert“: mit Stand-Präfix zählt es als Rückfrage.
+        for tag in ("status/blockiert", "Status/Blockiert", "status/blocked", "state:blocked", "stand/blockiert",
+                    "agent:blockiert"):
+            self.assertEqual(projekt_git.tag_stand(tag), "triage", tag)
+        self.assertEqual(projekt_git._status_aus_tags(["status/blockiert", "status/ready"]), "triage")
+        self.assertEqual(projekt_git._status_aus_tags(["status/blockiert", "status/review"]), "pruefung")
 
     def test_passendes_tag_nimmt_das_vorhandene(self):
         f = projekt_git.passendes_tag
         self.assertEqual(f("triage", ["bug", "agent:blocked", "triage"]), "agent:blocked")
         self.assertEqual(f("triage", ["bug"]), "status/triage")
+        self.assertEqual(f("triage", ["typ/gap", "status/blockiert", "status/ready"]), "status/blockiert")
         self.assertEqual(f("bereit", ["Ready"]), "Ready")
         self.assertEqual(f("in_arbeit", []), "status/in-arbeit")
 
@@ -444,6 +453,13 @@ class FreigabeNurDurchMenschen(_git.Abgleich):
             self.assertEqual(k.spalte, "triage")
             projekt_git.extern_nachziehen(k, [], ["antwortende"], labels_vorher=["status/triage"])
             self.assertEqual(k.spalte, "eingang")
+
+    async def test_status_blockiert_kommt_in_die_triage(self):
+        self.gh.issues = [_issue(39, labels=["bereich/crm", "status/blockiert", "typ/entscheidung"])]
+        async with self.Session() as db:
+            await self._lauf(db)
+            k = (await self._karten(db))[("issue", 39)]
+            self.assertEqual(k.spalte, "triage")
 
     async def test_review_mit_triage_tag_wartet_auf_dich(self):
         self.gh.issues = [_issue(37, labels=["agent:blocked"])]

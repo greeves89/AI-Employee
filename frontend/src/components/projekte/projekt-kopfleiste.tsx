@@ -44,8 +44,10 @@ export function ProjektKopfleiste({
 
   return (
     <div className="rounded-2xl border border-foreground/[0.08] bg-card">
-      <div className="flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:gap-0">
-        <div className="grid min-w-0 flex-1 grid-cols-6 items-center gap-1">
+      {/* Umbruch nach dem Platz der Karte, nicht nach der Fensterbreite: mit Seitenleiste
+          ist die Karte schmal, und die Zahlen dürfen nie unter ihre Mindestbreite fallen. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3 p-3">
+        <div className="grid min-w-[18rem] flex-[1_1_22rem] grid-cols-6 items-center gap-1">
           {fluss.map((f, i) => (
             <button key={f.label} type="button" onClick={onBoard}
               className="group relative flex min-w-0 flex-col items-center rounded-xl px-1 py-1.5 hover:bg-foreground/[0.04]">
@@ -64,7 +66,7 @@ export function ProjektKopfleiste({
           ))}
         </div>
 
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-foreground/[0.06] pt-2.5 text-xs text-muted-foreground lg:ml-3 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0">
+        <div className="flex min-w-0 flex-[1_1_18rem] flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
           <Link href={`/finanzen?projekt=${projektId}`} title={money.title(kosten)}
             className="inline-flex items-center gap-1.5 hover:text-foreground">
             <Wallet className="h-3.5 w-3.5" />
