@@ -20,10 +20,14 @@ from pathlib import Path
 AGENT = Path(__file__).resolve().parents[1]
 RICHTLINIE = AGENT / "richtlinie"
 SKRIPT_IM_ABBILD = "/opt/mcp/pretooluse-hook.mjs"
-#: Node mit festem Pfad und ohne NODE_OPTIONS/NODE_PATH: /opt/build-tools gehoert dem
+#: Node mit festem Pfad und leerer Umgebung (nur der Lauf): /opt/build-tools gehoert dem
 #: Agenten und steht im PATH vor /usr/bin — ein eigenes "node" dort, oder Code per
 #: NODE_OPTIONS=--require, haette den Hook sonst ersetzt.
-HOOK_KOMMANDO = f"/usr/bin/env -u NODE_OPTIONS -u NODE_PATH /usr/bin/node {SKRIPT_IM_ABBILD}"
+HOOK_KOMMANDO = f'/usr/bin/env -i AI_EMPLOYEE_LAUF="$AI_EMPLOYEE_LAUF" /usr/bin/node {SKRIPT_IM_ABBILD}'
+#: Variablen, die schon die Shell bzw. ``env`` VOR ``env -i`` laden wuerden. Der Agent
+#: kann sie in ~/.claude/settings.json ("env") setzen, die CLI vererbt sie an den Hook
+#: (live geprueft); die verwaltete Richtlinie gewinnt und leert sie.
+LADER_VARIABLEN = {"LD_PRELOAD", "LD_AUDIT", "LD_LIBRARY_PATH", "BASH_ENV", "ENV"}
 
 
 class ClaudeCodeRichtlinie(unittest.TestCase):
@@ -32,6 +36,10 @@ class ClaudeCodeRichtlinie(unittest.TestCase):
 
     def test_nur_verwaltete_hooks(self):
         self.assertIs(self.r["allowManagedHooksOnly"], True)
+
+    def test_lader_variablen_des_nutzers_werden_geleert(self):
+        env = self.r["env"]
+        self.assertEqual({k for k, v in env.items() if v == ""}, LADER_VARIABLEN)
 
     def test_jeder_werkzeugaufruf_geht_durch_das_skript(self):
         gruppe = self.r["hooks"]["PreToolUse"][0]

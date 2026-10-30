@@ -3,8 +3,10 @@
 # agent/mcp/pretooluse-hook.mjs. Nutzer-, Projekt- und Sitzungs-Hooks zaehlen
 # nicht; features.hooks ist festgenagelt, damit "-c features.hooks=false" den
 # Hook nicht abschaltet (live geprueft mit codex-cli 0.165). Node mit festem Pfad
-# und ohne NODE_OPTIONS: /opt/build-tools (dem Agenten gehoerig) steht im PATH vor
-# /usr/bin, ein eigenes "node" dort haette sonst den Hook ersetzt.
+# und LEERER Umgebung (nur der Lauf fuer die Push-Sperre): /opt/build-tools (dem
+# Agenten gehoerig) steht im PATH vor /usr/bin, und NODE_OPTIONS & Co. erbt der
+# Hook von der CLI — beides haette ihn sonst ersetzen koennen. Codex fuehrt das
+# Kommando ueber die Shell aus, "$AI_EMPLOYEE_LAUF" wird aufgeloest (live geprueft).
 allow_managed_hooks_only = true
 
 [features]
@@ -18,5 +20,5 @@ matcher = ".*"
 
 [[hooks.PreToolUse.hooks]]
 type = "command"
-command = "/usr/bin/env -u NODE_OPTIONS -u NODE_PATH /usr/bin/node /opt/mcp/pretooluse-hook.mjs"
+command = "/usr/bin/env -i AI_EMPLOYEE_LAUF=\"$AI_EMPLOYEE_LAUF\" /usr/bin/node /opt/mcp/pretooluse-hook.mjs"
 timeout = 15
