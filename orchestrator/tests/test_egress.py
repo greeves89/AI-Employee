@@ -82,6 +82,14 @@ class PlatzhalterTests(unittest.TestCase):
         alt = _h.new(settings.api_secret_key.encode(), b"egress-platzhalter:v1:3", hashlib.sha256).hexdigest()[:12]
         self.assertEqual(egress.platzhalter(3), f"aie-geheim-3-{alt}")
 
+    def test_mcp_ziel(self):
+        self.assertEqual(egress.mcp_ziel("https://MCP.example.com/mcp"), "mcp.example.com")
+        for nein in ("http://mcp.example.com/mcp", "https://test-mcp-server/mcp", "https://192.168.1.5/mcp",
+                     "https://mcp.example.com:8443/mcp", "https://x.internal/mcp", "", "kaputt"):
+            with self.subTest(nein):
+                self.assertIsNone(egress.mcp_ziel(nein))
+        self.assertEqual(logik.platzhalter_in(egress.platzhalter(7, egress.MCP)), {egress.platzhalter(7, egress.MCP)})
+
     def test_ziele_der_git_anbieter(self):
         from app.core.githost.registry import get_git_host_provider
         self.assertEqual(get_git_host_provider("github").egress_ziele(),
@@ -200,9 +208,11 @@ class EgressDatenTests(SecretsTestBasis):
 
     async def asyncSetUp(self):
         await super().asyncSetUp()
+        from app.models.mcp_server import McpServer
         from app.models.oauth_integration import OAuthIntegration
         async with self.engine.begin() as conn:
-            await conn.run_sync(Agent.metadata.create_all, tables=[Agent.__table__, OAuthIntegration.__table__])
+            await conn.run_sync(Agent.metadata.create_all,
+                                tables=[Agent.__table__, OAuthIntegration.__table__, McpServer.__table__])
         self.db.add(User(id="m1", email="m1@example.invalid", name="M1", role=UserRole.MEMBER))
         self.db.add(User(id="m2", email="m2@example.invalid", name="M2", role=UserRole.MEMBER))
         self.db.add(Agent(id="a1", name="A1", user_id="m1"))
@@ -382,6 +392,50 @@ class EgressDatenTests(SecretsTestBasis):
         with patch.object(settings, "egress_proxy_enabled", False):
             (p,) = await _schluessel(self.db)
         self.assertIn("Git-Anbindung", p["text"])
+
+    # --- Zugaenge externer MCP-Server --------------------------------------------------
+    def _mcp_server(self):
+        import json as _j
+        extern = SimpleNamespace(id=7, name="Extern", url="https://mcp.example.com/mcp",
+                                 auth_token_encrypted="enc:mcp_token_123",
+                                 headers_encrypted="enc:" + _j.dumps({"X-Api-Key": "kopf_wert_456", "X-Org": "org_789"}))
+        intern = SimpleNamespace(id=8, name="Intern", url="http://test-mcp-server:8000/mcp",
+                                 auth_token_encrypted="enc:intern_tok", headers_encrypted=None)
+        return [extern, intern]
+
+    async def test_mcp_zugang_ueber_den_proxy(self):
+        server = self._mcp_server()
+        with patch("app.core.agent_mcp_servers.servers_for_agent",
+                   AsyncMock(side_effect=lambda db, aid, cfg: server if aid == "a1" else [])):
+            r = await api_egress.verbindung(api_egress.Verbindung(**self._anm()), db=self.db)
+            self.assertIn("mcp.example.com", r["hosts"])
+            self.assertNotIn("test-mcp-server", r["hosts"], "interne Server nie aufbrechen")
+            m = egress.platzhalter(7, egress.MCP)
+            h0 = egress.platzhalter(7 * egress.KOPF_FAKTOR + 0, egress.MCP_KOPF)   # X-Api-Key (sortiert)
+            h1 = egress.platzhalter(7 * egress.KOPF_FAKTOR + 1, egress.MCP_KOPF)   # X-Org
+            self.assertEqual(await self._aufloesen("mcp.example.com", m, h0, h1),
+                             {"werte": {m: "mcp_token_123", h0: "kopf_wert_456", h1: "org_789"}})
+            self.assertEqual((await self._aufloesen("evil.example.com", m)).status_code, 403)
+            self.assertEqual((await self._aufloesen("mcp.example.com", m, agent="a2")).status_code, 403)
+            # Interner Server: Zugang bleibt beim Agenten, ueber den Proxy gibt es nichts
+            self.assertEqual((await self._aufloesen("test-mcp-server", egress.platzhalter(8, egress.MCP))).status_code, 403)
+
+    async def test_mcp_einspielen(self):
+        import json as _j
+        from app.core.agent_manager import AgentManager
+        mgr = AgentManager.__new__(AgentManager)
+        mgr.db = self.db
+        with patch("app.core.agent_mcp_servers.servers_for_agent", AsyncMock(return_value=self._mcp_server())), \
+                patch("app.core.agent_manager.decrypt_token", lambda w: w[4:]):
+            env = await mgr._get_custom_mcp_env(agent_id="a1", refresh_oauth=False)
+            auth, koepfe = _j.loads(env["CUSTOM_MCP_AUTH"]), _j.loads(env["CUSTOM_MCP_HEADERS"])
+            self.assertEqual(auth["Extern"], egress.platzhalter(7, egress.MCP))
+            self.assertEqual(auth["Intern"], "intern_tok", "interner Server unveraendert")
+            self.assertEqual(koepfe["Extern"]["X-Org"], egress.platzhalter(7 * egress.KOPF_FAKTOR + 1, egress.MCP_KOPF))
+            self.assertNotIn("mcp_token_123", "".join(env.values()))
+            with patch.object(settings, "egress_proxy_enabled", False):
+                env = await mgr._get_custom_mcp_env(agent_id="a1", refresh_oauth=False)
+            self.assertEqual(_j.loads(env["CUSTOM_MCP_AUTH"])["Extern"], "mcp_token_123")
 
     # --- Schluesselverwaltung --------------------------------------------------------
     async def test_ungueltige_ziele_422(self):

@@ -34,10 +34,14 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-#: ``aie-geheim-<id>-…`` = Key aus der Schluesselverwaltung, ``aie-geheim-g<id>-…`` =
-#: Token einer Git-Anbindung der Plattform (oauth_integrations).
-PLATZHALTER_RE = re.compile(r"aie-geheim-(g?)(\d{1,10})-([0-9a-f]{12})")
+#: Arten: ``aie-geheim-<id>-…`` = Key aus der Schluesselverwaltung, ``g`` = Token
+#: einer Git-Anbindung der Plattform, ``m`` = Bearer-Token eines MCP-Servers,
+#: ``h`` = eigene Kopfzeile eines MCP-Servers (id = Server-ID * KOPF_FAKTOR + Nummer).
+PLATZHALTER_RE = re.compile(r"aie-geheim-([gmh]?)(\d{1,10})-([0-9a-f]{12})")
 ANBINDUNG = "g"
+MCP = "m"
+MCP_KOPF = "h"
+KOPF_FAKTOR = 1000
 _PLATZHALTER_DOMAIN = b"egress-platzhalter:v1:"
 
 #: Unter dieser Adresse gibt der Proxy sein oeffentliches CA-Zertifikat heraus —
@@ -157,6 +161,32 @@ async def ca_zertifikat() -> str:
                        "Ohne ihn kann der Agent nicht starten, solange der Proxy eingeschaltet ist.")
 
 
+def _intern(host: str) -> bool:
+    import ipaddress
+    try:
+        return not ipaddress.ip_address(host).is_global
+    except ValueError:
+        return "." not in host or host.endswith((".internal", ".local"))
+
+
+def mcp_ziel(url: str) -> str | None:
+    """Host eines MCP-Servers, dessen Zugang ueber den Proxy laufen kann — sonst None.
+
+    Nur HTTPS auf Port 443 ins Internet: Dort bricht der Proxy auf. Interne Server
+    (Orchestrator, eigene Apps) gehen am Proxy vorbei und behalten ihren Zugang.
+    """
+    teile = urlsplit(url or "")
+    host = (teile.hostname or "").lower()
+    if teile.scheme != "https" or not host or _intern(host):
+        return None
+    try:
+        if teile.port not in (None, 443):
+            return None
+    except ValueError:
+        return None
+    return host
+
+
 def interne_hosts(mcp_server_json: str | None) -> list[str]:
     """Hosts der MCP-Server eines Agenten, die nicht ins Internet gehoeren.
 
@@ -165,7 +195,6 @@ def interne_hosts(mcp_server_json: str | None) -> list[str]:
     an ``HTTPS_PROXY``; der Proxy kennt die App-Netze nicht und antwortete mit 502.
     ``NO_PROXY`` kennt kein Muster fuer „Name ohne Punkt“ — also stehen sie einzeln da.
     """
-    import ipaddress
     import json
     try:
         server = json.loads(mcp_server_json or "{}")
@@ -174,13 +203,7 @@ def interne_hosts(mcp_server_json: str | None) -> list[str]:
     gefunden: list[str] = []
     for url in (server.values() if isinstance(server, dict) else []):
         host = (urlsplit(str(url)).hostname or "").lower()
-        if not host:
-            continue
-        try:
-            intern = not ipaddress.ip_address(host).is_global
-        except ValueError:
-            intern = "." not in host or host.endswith((".internal", ".local"))
-        if intern and host not in gefunden:
+        if host and _intern(host) and host not in gefunden:
             gefunden.append(host)
     return gefunden
 
