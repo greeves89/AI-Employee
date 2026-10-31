@@ -731,6 +731,17 @@ async def _datenschutz_stand(svc: SettingsService) -> dict:
     }
 
 
+@router.get("/sicherheit")
+async def get_sicherheit(
+    user=Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: Sicherheitsstatus der Anlage (nur lesend, core/sicherheitsstatus.py)."""
+    from app.core.sicherheitsstatus import stand
+
+    return await stand(db)
+
+
 @router.get("/datenschutz")
 async def get_datenschutz(
     user=Depends(require_admin),

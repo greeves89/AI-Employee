@@ -344,6 +344,14 @@ def apps_aus_dem_plattformnetz(docker: DockerService, agenten: list[tuple[str, s
             docker.ans_apps_netz(docker.client.containers.get(cid), aid)
         except Exception:  # noqa: BLE001 — gestoppter oder geloeschter Container
             logger.debug("Agent %s nicht ans App-Netz gehaengt", aid, exc_info=True)
+    # Und der Orchestrator selbst: Nach einem Update ist er ein neuer Container ohne
+    # seine Beitritte. Der App-Proxy bindet ihn zwar beim ersten Aufruf nach — andere
+    # Wege (eigene MCP-Server einer App, Sprachfront) gehen aber nicht ueber den Proxy.
+    try:
+        netze = docker.client.networks.list(filters={"label": APPS_NETZ_LABEL})
+        _orchestrator_anbinden(docker, [n.name for n in netze if n.name.startswith(APPS_NETZ_PRAEFIX)])
+    except Exception:  # noqa: BLE001
+        logger.warning("Orchestrator nicht an die App-Netze gehaengt", exc_info=True)
     try:
         plattform = docker.client.networks.get(AGENT_NETWORK)
         plattform.reload()

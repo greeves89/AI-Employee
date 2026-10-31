@@ -660,6 +660,21 @@ class AppNetzTests(unittest.TestCase):
         self.assertEqual(aufrufe, [("agent-abcdef12-projects-todo", "abcdef12"),
                                    ("agent-abcdef12-tf-room123456789xyz", "tf-room12345678")])
 
+    def test_beim_start_tritt_der_orchestrator_den_apps_netzen_bei(self):
+        """Nach einem Update ist der Orchestrator ein neuer Container ohne Beitritte —
+        eigene MCP-Server als App waren dann aus dem Orchestrator nicht erreichbar."""
+        from app.api import docker_apps
+        apps = SimpleNamespace(name="ai-employee-apps-abcdef12")
+        getarnt = SimpleNamespace(name="agent-abcdef12-p_default")
+        plattform = MagicMock(attrs={"Containers": {}})
+        docker = SimpleNamespace(client=SimpleNamespace(
+            networks=SimpleNamespace(get=MagicMock(return_value=plattform),
+                                     list=MagicMock(return_value=[apps, getarnt]))))
+        with patch.object(docker_apps, "_orchestrator_anbinden") as anbinden:
+            docker_apps.apps_aus_dem_plattformnetz(docker, [])
+        anbinden.assert_called_once_with(docker, ["ai-employee-apps-abcdef12"])
+        docker.client.networks.list.assert_called_once_with(filters={"label": docker_apps.APPS_NETZ_LABEL})
+
     def test_orchestrator_tritt_keinem_netz_der_app_bei(self):
         """Im Netz der App heißen Dienste, wie die App will — auch „ai-employee-redis“."""
         import inspect
