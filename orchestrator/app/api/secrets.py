@@ -18,7 +18,7 @@ from app.core.encryption import decrypt_token, encrypt_token
 from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import get_docker_service, get_redis_service, require_auth
-from app.core import secret_zugriff
+from app.core import egress, secret_zugriff
 from app.models.agent_secret import AgentSecret, AgentSecretAssignment, AgentSecretShare, SecretType
 from app.services.docker_service import DockerService
 from app.services.redis_service import RedisService
@@ -45,6 +45,8 @@ class SecretCreate(BaseModel):
     value: str
     secret_type: SecretType = SecretType.API_KEY
     description: str = ""
+    # Ziele, an die der Key darf (core/egress.py) — leer = Klartext im Agenten.
+    erlaubte_hosts: list[str] | None = None
 
 
 class SecretUpdate(BaseModel):
@@ -52,6 +54,14 @@ class SecretUpdate(BaseModel):
     description: str | None = None
     value: str | None = None
     is_active: bool | None = None
+    erlaubte_hosts: list[str] | None = None
+
+
+def _hosts(werte) -> list[str] | None:
+    try:
+        return egress.hosts_pruefen(werte)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 def _mask(value_encrypted: str) -> str:
@@ -84,6 +94,9 @@ def _serialize(s: AgentSecret, include_mask: bool = True, user=None, *,
         "secret_type": s.secret_type,
         "description": s.description,
         "is_active": s.is_active,
+        "erlaubte_hosts": s.erlaubte_hosts or [],
+        # Bekommt der Agent nur einen Platzhalter? (Egress-Proxy an + Ziele gesetzt)
+        "ueber_proxy": bool(egress.aktiv() and s.erlaubte_hosts),
         # Nur wer den Key verwaltet, sieht eine Andeutung des Werts (erste/letzte 4
         # Zeichen) — Empfaenger einer Freigabe nicht (Sicherheitspruefung 03.10.2026).
         "masked_value": _mask(s.value_encrypted) if (include_mask and verwaltbar) else None,
@@ -170,12 +183,17 @@ async def create_secret(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
+    key_name = body.key_name.upper().replace(" ", "_")
+    if secret_zugriff.variable_der_plattform(key_name):
+        raise HTTPException(status_code=422, detail=f"{key_name}: Variablen mit AIE_ oder ENTRYPOINT_ "
+                                                    "gehören der Plattform")
     secret = AgentSecret(
         name=body.name,
-        key_name=body.key_name.upper().replace(" ", "_"),
+        key_name=key_name,
         value_encrypted=encrypt_token(body.value),
         secret_type=body.secret_type,
         description=body.description,
+        erlaubte_hosts=_hosts(body.erlaubte_hosts),
         created_by=getattr(user, "email", None),
         owner_id=None if _ist_admin(user) else user.id,
     )
@@ -248,7 +266,19 @@ async def update_secret(
         raise HTTPException(status_code=404, detail="Secret not found")
     _assert_secret_managed(secret, user)
 
-    should_refresh = body.value is not None or body.is_active is not None
+    aktiv_geaendert = body.is_active is not None and body.is_active != secret.is_active
+    vorher_ueber_proxy = bool(egress.aktiv() and secret.erlaubte_hosts)
+    if "erlaubte_hosts" in body.model_fields_set:
+        secret.erlaubte_hosts = _hosts(body.erlaubte_hosts)
+    nachher_ueber_proxy = bool(egress.aktiv() and secret.erlaubte_hosts)
+    # Agenten neu aufsetzen, wenn sich ihre Umgebung aendert. Geht der Key ueber den
+    # Proxy, steht im Agenten nur der Platzhalter — ein neuer Wert oder andere Ziele
+    # gelten dann sofort, ohne dass jemand neu startet.
+    should_refresh = (
+        aktiv_geaendert
+        or vorher_ueber_proxy != nachher_ueber_proxy
+        or (body.value is not None and not nachher_ueber_proxy)
+    )
     if body.name is not None:
         secret.name = body.name
     if body.description is not None:

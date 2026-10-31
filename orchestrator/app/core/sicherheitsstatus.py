@@ -156,6 +156,54 @@ def _docker(container_ids: list[str]) -> list[dict]:
     return punkte
 
 
+async def _schluessel(db) -> list[dict]:
+    """Wie viele vergebene Keys ein Agent im Klartext sieht (core/egress.py)."""
+    from app.core import egress
+    from app.models.agent_secret import AgentSecret, AgentSecretAssignment
+    from app.models.agent import Agent
+
+    # Je Zuweisung: Key, Ziele und ob der Behaelter des Agenten schon mit dem
+    # Proxy entstand. Ein Agent von vor dem Einschalten hat den Klartext noch in sich.
+    vergeben = (await db.execute(
+        select(AgentSecret.key_name, AgentSecret.erlaubte_hosts, Agent.config)
+        .join(AgentSecretAssignment, AgentSecretAssignment.secret_id == AgentSecret.id)
+        .join(Agent, Agent.id == AgentSecretAssignment.agent_id)
+        .where(AgentSecret.is_active.is_(True))
+    )).all()
+    titel = "Keys in Agenten"
+    if settings.egress_proxy_enabled and not egress.aktiv():
+        return [_punkt("egress", titel, KRITISCH,
+                       "Der Egress-Proxy ist eingeschaltet, aber ohne Dienst-Schlüssel — er bleibt aus.",
+                       "scripts/update.sh legt EGRESS_PROXY_TOKEN in der .env an; danach den Orchestrator "
+                       "neu starten.")]
+    if not vergeben:
+        return [_punkt("egress", titel, OK, "Kein Agent hat einen Key aus der Schlüsselverwaltung.")]
+    klartext = sorted({k for k, hosts, _ in vergeben if not (egress.aktiv() and hosts)})
+    alte_behaelter = {k for k, hosts, cfg in vergeben
+                      if egress.aktiv() and hosts and egress.veraltet(cfg)}
+    if not klartext and not alte_behaelter:
+        return [_punkt("egress", titel, OK,
+                       f"Alle {len({k for k, _, _ in vergeben})} vergebenen Keys sehen Agenten nur als "
+                       "Platzhalter; der Egress-Proxy setzt sie erst am erlaubten Ziel ein.")]
+    if not klartext:
+        return [_punkt("egress", titel, WARNUNG,
+                       f"{len(alte_behaelter)} Key(s) stecken noch im Klartext in Agenten, die vor dem "
+                       f"Einschalten des Egress-Proxys entstanden sind: {', '.join(sorted(alte_behaelter)[:5])}.",
+                       "Die betroffenen Agenten aktualisieren (sie zeigen „Aktualisieren“).")]
+    liste = ", ".join(klartext[:5]) + (" …" if len(klartext) > 5 else "")
+    if not egress.aktiv():
+        return [_punkt("egress", titel, WARNUNG,
+                       f"{len(klartext)} Key(s) liegen im Klartext in Agenten: {liste}. "
+                       "Ein Agent kann sie ausgeben oder an beliebige Ziele schicken.",
+                       "Egress-Proxy einschalten (EGRESS_PROXY_ENABLED=true in der .env) und je Key "
+                       "unter Schlüssel die erlaubten Ziele eintragen.")]
+    dazu = (f" Dazu {len(alte_behaelter)} Key(s) in Agenten von vor dem Einschalten (Aktualisieren)."
+            if alte_behaelter else "")
+    return [_punkt("egress", titel, WARNUNG,
+                   f"{len(klartext)} Key(s) ohne erlaubte Ziele liegen weiter im Klartext in Agenten: {liste}.{dazu}",
+                   "Unter Schlüssel je Key die erlaubten Ziele eintragen, z. B. api.github.com.")]
+
+
 async def stand(db) -> dict:
     """Alle Punkte, kritischste zuerst, plus eine Zusammenfassung."""
     import asyncio
@@ -164,7 +212,8 @@ async def stand(db) -> dict:
 
     ids = [c for (c,) in (await db.execute(
         select(Agent.container_id).where(Agent.container_id.is_not(None)))).all()]
-    punkte = _einstellungen() + await _agenten(db) + await asyncio.to_thread(_docker, ids)
+    punkte = (_einstellungen() + await _agenten(db) + await _schluessel(db)
+              + await asyncio.to_thread(_docker, ids))
     rang = {KRITISCH: 0, WARNUNG: 1, INFO: 2, OK: 3}
     punkte.sort(key=lambda p: rang[p["stand"]])
     zaehlung = {s: sum(1 for p in punkte if p["stand"] == s) for s in (KRITISCH, WARNUNG, OK, INFO)}

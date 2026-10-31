@@ -84,6 +84,7 @@ _TABELLEN_NACH_DER_MARKE = ("app_favorites", "projekt_karten", "projekt_nachrich
 _SPALTEN_NACH_DER_MARKE = (
     ("schedules", "chat_session_id"),
     ("agent_secrets", "owner_id"),
+    ("agent_secrets", "erlaubte_hosts"),
     ("agent_templates", "build_tools"),
     ("users", "tutorial_seen_at"),
     ("users", "ui_preferences"),

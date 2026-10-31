@@ -88,6 +88,9 @@ fi
 if backup_token_sicherstellen .env; then
     ok "Generated BACKUP_STATUS_TOKEN"
 fi
+if egress_token_sicherstellen .env; then
+    ok "Generated EGRESS_PROXY_TOKEN"
+fi
 
 ok ".env ready"
 

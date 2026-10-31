@@ -115,6 +115,13 @@ class APIRateLimitMiddleware:
         if path in ("/health", "/healthz") or request.headers.get("upgrade", "").lower() == "websocket":
             await self.app(scope, receive, send)
             return
+        # Der Egress-Proxy fragt fuer ALLE Agenten von einer Adresse aus nach —
+        # mit gueltigem Dienst-Schluessel zaehlt er nicht gegen die Grenze.
+        if path.startswith("/api/v1/egress/"):
+            from app.core.egress import ist_proxy_anfrage
+            if ist_proxy_anfrage(request.headers.get("Authorization", "")):
+                await self.app(scope, receive, send)
+                return
 
         # Identify caller: user_id from JWT cookie, fallback to IP
         # Dieselbe Ermittlung wie die Anmelde-Bremse (core/client_ip).

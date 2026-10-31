@@ -2359,6 +2359,37 @@ Person eine andere Rolle gibt.
 > Keys, deren Variable Laufzeit, Netzwerk oder die Plattform steuert (z. B.
 > `HTTPS_PROXY`, `ANTHROPIC_BASE_URL`), lassen sich nicht an Personen freigeben.
 
+#### Erlaubte Ziele: Der Agent sieht nur einen Platzhalter *(seit 1.413.0)*
+
+Ohne weitere Angabe steht der Wert eines Keys im Klartext im Agenten. Ein fehlgeleiteter
+Agent könnte ihn ausgeben oder an eine beliebige Adresse schicken. Mit **erlaubten Zielen**
+bekommt der Agent stattdessen nur einen Platzhalter (`aie-geheim-…`). Den echten Wert setzt
+der **Egress-Proxy** erst auf dem Weg zu genau diesen Adressen ein. An jedes andere Ziel geht
+der Key nicht, und ein Versuch steht im Audit-Log (*egress_key_verweigert*). Voraussetzung:
+Die IT hat den Egress-Proxy eingeschaltet (Kap. 37.10).
+
+1. Öffne **Secrets** und klick beim Key auf den **Stift**.
+2. Trag unter **Erlaubte Ziele** die Adressen ein, an die der Key gehen darf, durch Komma
+   getrennt, zum Beispiel `api.github.com, github.com`. Nur genaue Hostnamen, keine Muster
+   wie `*.example.com`: Unter solchen Endungen kann sich oft jeder eine Adresse anlegen. Für
+   bekannte Variablen wie
+   `GITHUB_TOKEN` steht darunter ein **Vorschlag**, den du mit einem Klick übernimmst.
+3. Klick **Speichern**. Der Key trägt jetzt das grüne Abzeichen **„Nur an …“**. Die
+   zugewiesenen Agenten setzt die Plattform einmal neu auf, danach sehen sie nur noch den
+   Platzhalter.
+
+   ![Key mit erlaubten Zielen](screenshots/90-key-erlaubte-ziele.png)
+   *Abbildung 90: Erlaubte Ziele beim Bearbeiten eines Keys und das Abzeichen in der Liste*
+
+Ändert sich später der Wert oder eine Adresse, gilt das sofort, ohne Neustart der Agenten.
+Leerst du das Feld, bekommt der Agent wieder den Klartext.
+
+> Das klappt für Keys, die per HTTPS (Port 443) in einer Kopfzeile oder als
+> Anmelde-Parameter (`key`, `token`, `client_secret` …) mitgeschickt werden, also bei den
+> meisten Web-APIs und bei git über HTTPS. Steht der Key im Pfad der Adresse (etwa bei
+> Telegram-Bots, `/bot<KEY>/…`) oder ist er das Passwort einer anderen Verbindung (etwa einer
+> Datenbank), lässt du das Feld leer.
+
 > Sicherheitshinweis: Gib Geheimnisse **nie** direkt in den Chat — lege sie als Secret an.
 
 ---
@@ -4405,6 +4436,44 @@ zurück.
 
 > Der Netzwächter braucht `iptables` und das Kernelmodul `br_netfilter`. Der Installer lädt
 > das Modul und richtet es so ein, dass es auch nach einem Neustart aktiv ist.
+
+### 37.10 Egress-Proxy: Keys erst am Ausgang einsetzen *(seit 1.413.0)*
+
+Der Egress-Proxy ist der Dienst `egress-proxy` (mitmproxy) in der Compose-Datei. Ist er
+eingeschaltet, gehen Agenten für HTTPS über ihn hinaus:
+
+| | |
+|---|---|
+| Keys mit erlaubten Zielen (Kap. 16) | Agent sieht nur einen Platzhalter, der Proxy setzt den Wert am erlaubten Ziel ein |
+| Alle anderen HTTPS-Ziele | laufen unverändert als Tunnel durch, der Proxy sieht keine Inhalte |
+| Klartext-HTTP (z. B. eigene Apps des Agenten) | geht wie bisher direkt |
+| Adressen im Firmen- oder Docker-Netz | über den Proxy gesperrt |
+
+Der Proxy prüft jede Anmeldung und jeden Key beim Orchestrator mit einem eigenen
+Dienst-Schlüssel. Agenten bekommen nur das öffentliche Zertifikat des Proxys, nie dessen
+privaten Schlüssel.
+
+**Einschalten** (einmal, auf dem Server):
+
+1. `./scripts/update.sh` legt den Dienst-Schlüssel `EGRESS_PROXY_TOKEN` in der `.env` an.
+2. In der `.env` `EGRESS_PROXY_ENABLED=true` setzen und `docker compose up -d` ausführen.
+3. Auf der Seite **Agenten** erscheint **Alle aktualisieren (n)**: Jeder Agent, der noch
+   ohne Proxy entstanden ist, zählt dazu. Klicken. Erst danach gehen die Agenten über den Proxy.
+4. Unter **Admin → Betrieb → Sicherheitsstatus** zeigt der Punkt **Keys in Agenten**, welche
+   Keys noch im Klartext in Agenten liegen.
+
+**Ausschalten:** `EGRESS_PROXY_ENABLED=false`, `docker compose up -d`, dann wieder
+**Alle aktualisieren**. Die Agenten bekommen die Keys danach im Klartext.
+
+Ersetzt wird nur, wo Keys hingehören: in Kopfzeilen (etwa `Authorization`, auch bei git)
+und als ganzer Wert eines Anmelde-Parameters in der Adresse oder einem Formular (`key`,
+`token`, `client_secret` …). Steht ein Platzhalter im Pfad, in einem JSON-Inhalt oder in
+einem anderen Parameter, lehnt der Proxy die Anfrage ab. Sonst könnte ein Agent den echten
+Wert beim Ziel ablegen lassen, etwa als Dateiname, und ihn danach lesen.
+
+> Startet der Orchestrator neu (etwa beim Update), arbeiten Agenten mit bereits geprüften
+> Keys bis zu 10 Minuten weiter. Einen Agenten, der in dieser Zeit neu dazukommt, lässt der
+> Proxy erst danach hinaus.
 
 ---
 

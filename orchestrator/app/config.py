@@ -287,6 +287,12 @@ class Settings(BaseSettings):
     # unwired stubs (see #591), so enabling it today has no observable effect
     # beyond an idle Redis subscription.
     sentinel_enabled: bool = False
+    # Egress-Proxy (core/egress.py, egress/aie_egress.py): Agenten gehen fuer HTTPS ueber
+    # den Proxy, Keys mit erlaubten Zielen bekommen sie nur als Platzhalter. Aus, bis
+    # der Admin ihn einschaltet; ohne Dienst-Schluessel bleibt er aus.
+    egress_proxy_enabled: bool = False
+    egress_proxy_token: str = ""
+    egress_proxy_url: str = "http://ai-employee-egress-proxy:8080"
     # When True, each agent container connects to Redis with its OWN least-privilege
     # ACL user (derived deterministically from api_secret_key, see redis_service.py
     # ensure_agent_acl_user) instead of the single shared admin credential every

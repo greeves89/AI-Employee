@@ -6,7 +6,7 @@ into the agent container using the key_name field (e.g. AZURE_AI_SEARCH_KEY).
 
 from enum import Enum
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -32,6 +32,10 @@ class AgentSecret(Base, TimestampMixin):
     # Wem das Secret gehoert (Nutzer-ID). NULL = Firmen-Secret eines Admins,
     # das Mitglieder nur ueber die Rollen-Freigabe (secret_ids) erreichen.
     owner_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    # Ziele, an die der Key gehen darf (Hostnamen, "*.example.com" fuer Unterdomaenen).
+    # Gesetzt und Egress-Proxy an: der Agent sieht nur einen Platzhalter, den der
+    # Proxy erst auf dem Weg zu genau diesen Zielen ersetzt (core/egress.py).
+    erlaubte_hosts: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     assignments: Mapped[list["AgentSecretAssignment"]] = relationship(
         back_populates="secret", cascade="all, delete-orphan", lazy="selectin"

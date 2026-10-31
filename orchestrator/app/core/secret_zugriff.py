@@ -73,7 +73,7 @@ _RESERVIERT = {
     "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
     "NODE_OPTIONS", "NODE_EXTRA_CA_CERTS", "NODE_PATH", "PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP",
     "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "GIT_SSH_COMMAND",
-    "ENV", "PROMPT_COMMAND", "PS4", "IFS",
+    "ENV", "PROMPT_COMMAND", "PS4", "IFS", "NODE_USE_ENV_PROXY",
 }
 _RESERVIERT_ANFANG = ("ANTHROPIC_", "CLAUDE_", "OPENAI_", "CODEX_", "LLM_", "AGENT_", "ORCHESTRATOR_",
                       "REDIS_", "LD_", "DYLD_", "DOCKER_", "MCP_", "AWS_", "AZURE_OPENAI_", "BEDROCK_", "VERTEX_",
@@ -83,6 +83,71 @@ _RESERVIERT_ANFANG = ("ANTHROPIC_", "CLAUDE_", "OPENAI_", "CODEX_", "LLM_", "AGE
                       "BROWSER_", "COMPUTER_USE_")
 
 
+#: Variablen, die KEIN Key setzen darf, auch kein eigener: Das Startskript des Agenten
+#: liest sie als root (agent/entrypoint.sh, CA des Egress-Proxys, Zielverzeichnisse).
+#: Ein Key namens ENTRYPOINT_MODULE_DIR oder AIE_EGRESS_CA waere ein Weg zu root im
+#: Behaelter — genau das, was der Entzug von sudo abgestellt hat.
+_PLATTFORM_ANFANG = ("AIE_", "ENTRYPOINT_")
+
+
+def variable_der_plattform(name: str) -> bool:
+    return (name or "").strip().upper().startswith(_PLATTFORM_ANFANG)
+
+
 def variable_reserviert(name: str) -> bool:
     n = (name or "").strip().upper()
-    return n in _RESERVIERT or n.startswith(_RESERVIERT_ANFANG)
+    return n in _RESERVIERT or n.startswith(_RESERVIERT_ANFANG) or variable_der_plattform(n)
+
+
+async def nutzbare_secrets_des_besitzers(db: AsyncSession, agent_id: str) -> set[int] | None:
+    """Keys, die der Besitzer dieses Agenten nutzen darf. None = keine Einschraenkung
+    (Admin-Besitzer oder Agent ohne Besitzer, etwa Plattform-Agenten)."""
+    from app.models.agent import Agent
+    from app.models.user import User
+    besitzer_id = (await db.execute(select(Agent.user_id).where(Agent.id == agent_id))).scalar_one_or_none()
+    if not besitzer_id:
+        return None
+    besitzer = await db.get(User, besitzer_id)
+    if besitzer is None:
+        return set()   # Besitzer verschwunden: keine Nutzer-Keys (fail-closed)
+    return await nutzbare_secret_ids(db, besitzer)
+
+
+async def secrets_des_agenten(db: AsyncSession, agent_id: str, erlaubt: set[int] | None) -> list[AgentSecret]:
+    """Die Keys, die ``agent_id`` bekommt: zugewiesen, aktiv, vom Besitzer nutzbar.
+
+    Dieselbe Auswahl gilt beim Einspielen in den Agenten (agent_manager) und am
+    Ausgang (api/egress.py) — ein entzogener Key faellt an beiden Stellen weg.
+    ``erlaubt`` kommt von ``nutzbare_secrets_des_besitzers``.
+    """
+    import logging
+
+    from app.core.log_redaction import scrub_log
+    from app.models.agent import Agent
+    from app.models.agent_secret import AgentSecretAssignment
+    log = logging.getLogger(__name__)
+    ids = (await db.execute(
+        select(AgentSecretAssignment.secret_id).where(AgentSecretAssignment.agent_id == agent_id)
+    )).scalars().all()
+    if not ids:
+        return []
+    besitzer_id = (await db.execute(select(Agent.user_id).where(Agent.id == agent_id))).scalar_one_or_none()
+    zeilen = (await db.execute(
+        select(AgentSecret).where(AgentSecret.id.in_(ids), AgentSecret.is_active.is_(True))
+    )).scalars().all()
+    ergebnis = []
+    for secret in zeilen:
+        if variable_der_plattform(secret.key_name):
+            log.warning("Key %s nicht eingespielt: Variable gehoert der Plattform", scrub_log(secret.key_name))
+            continue
+        if erlaubt is not None and secret.id not in erlaubt:
+            log.info("Key %s nicht eingespielt: Besitzer von %s hat keine Freigabe mehr",
+                     scrub_log(secret.key_name), scrub_log(agent_id))
+            continue
+        # Ein FREMDER Nutzer-Key (per Person freigegeben) setzt nie Laufzeit-,
+        # Netzwerk- oder Plattformvariablen.
+        if secret.owner_id and secret.owner_id != besitzer_id and variable_reserviert(secret.key_name):
+            log.warning("Fremder Key %s nicht eingespielt: Variable ist reserviert", scrub_log(secret.key_name))
+            continue
+        ergebnis.append(secret)
+    return ergebnis

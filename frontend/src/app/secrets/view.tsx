@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   KeyRound, Plus, Trash2, Eye, EyeOff, Pencil, Check, X,
-  Shield, Server, User, Loader2, Copy, Users,
+  Shield, Server, User, Loader2, Copy, Users, Globe,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
@@ -64,6 +64,55 @@ function defaultEnvName(name: string, type: keyof typeof TYPE_COPY) {
   return normalized;
 }
 
+// Bekannte Ziele je Variable — nur als Vorschlag, der Admin entscheidet.
+const GITHUB_ZIELE = "api.github.com, github.com, uploads.github.com";
+const ZIEL_VORSCHLAEGE: Record<string, string> = {
+  GITHUB_TOKEN: GITHUB_ZIELE,
+  GH_TOKEN: GITHUB_ZIELE,
+  GIT_PAT: GITHUB_ZIELE,
+  GITLAB_TOKEN: "gitlab.com",
+  NOTION_API_KEY: "api.notion.com",
+  NOTION_TOKEN: "api.notion.com",
+  SLACK_BOT_TOKEN: "slack.com",
+  STRIPE_SECRET_KEY: "api.stripe.com",
+  TAVILY_API_KEY: "api.tavily.com",
+  BRAVE_API_KEY: "api.search.brave.com",
+};
+
+function zieleListe(text: string): string[] {
+  return text.split(/[\s,]+/).map(z => z.trim()).filter(Boolean);
+}
+
+function fehlerText(e: unknown, ersatz: string): string {
+  const m = e instanceof Error ? e.message.match(/"detail":"([^"]+)"/) : null;
+  return m ? m[1] : ersatz;
+}
+
+/** Erlaubte Ziele eines Keys: gesetzt = Agent sieht nur einen Platzhalter (Egress-Proxy). */
+function ZieleFeld({ wert, keyName, onChange }: { wert: string; keyName: string; onChange: (v: string) => void }) {
+  const vorschlag = ZIEL_VORSCHLAEGE[keyName];
+  return (
+    <div className="col-span-2 flex flex-col gap-1">
+      <label className="text-[11px] font-medium text-muted-foreground/70">Erlaubte Ziele (optional)</label>
+      <input
+        placeholder="z. B. api.github.com, github.com"
+        value={wert}
+        onChange={e => onChange(e.target.value)}
+        className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-mono"
+      />
+      <p className="text-[11px] leading-relaxed text-muted-foreground/60">
+        Mit Zielen bekommt der Agent nur einen Platzhalter. Den echten Wert setzt der Egress-Proxy erst auf dem
+        Weg zu diesen Adressen ein, an jedes andere Ziel geht der Key nicht. Leer = der Agent sieht den Wert.
+        {vorschlag && !wert && (
+          <button type="button" onClick={() => onChange(vorschlag)} className="ml-1 text-primary hover:underline">
+            Vorschlag übernehmen: {vorschlag}
+          </button>
+        )}
+      </p>
+    </div>
+  );
+}
+
 function Toast({ type, message, onClose }: { type: "success" | "error"; message: string; onClose: () => void }) {
   useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t); }, [onClose]);
   return (
@@ -92,6 +141,7 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
     value: "",
     secret_type: "api_key" as "api_key" | "sso_profile" | "oauth_token",
     description: "",
+    ziele: "",
   });
   const [keyNameTouched, setKeyNameTouched] = useState(false);
   const [editForm, setEditForm] = useState<{
@@ -101,9 +151,11 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
     is_active: boolean;
     secret_type: "api_key" | "sso_profile" | "oauth_token";
     key_name: string;
+    ziele: string;
   }>({
-    name: "", description: "", value: "", is_active: true, secret_type: "api_key", key_name: "",
+    name: "", description: "", value: "", is_active: true, secret_type: "api_key", key_name: "", ziele: "",
   });
+  const [editAktivVorher, setEditAktivVorher] = useState(true);
   const [saving, setSaving] = useState(false);
   // Freigabe an Personen (nie an Rollen — das macht ein Admin in den Rollen).
   const [teilen, setTeilen] = useState<AgentSecretEntry | null>(null);
@@ -129,14 +181,15 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
     }
     setSaving(true);
     try {
-      await api.createSecret(form);
+      const { ziele, ...rest } = form;
+      await api.createSecret({ ...rest, erlaubte_hosts: zieleListe(ziele) });
       showToast("success", "Schlüssel angelegt");
       setShowCreate(false);
-      setForm({ name: "", key_name: "", value: "", secret_type: "api_key", description: "" });
+      setForm({ name: "", key_name: "", value: "", secret_type: "api_key", description: "", ziele: "" });
       setKeyNameTouched(false);
       await load();
-    } catch {
-      showToast("error", "Schlüssel konnte nicht angelegt werden");
+    } catch (e) {
+      showToast("error", fehlerText(e, "Schlüssel konnte nicht angelegt werden"));
     } finally {
       setSaving(false);
     }
@@ -164,7 +217,9 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
       is_active: s.is_active,
       secret_type: s.secret_type,
       key_name: s.key_name,
+      ziele: (s.erlaubte_hosts ?? []).join(", "),
     });
+    setEditAktivVorher(s.is_active);
   }
 
   async function handleUpdate(id: number) {
@@ -173,15 +228,17 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
       const payload: Parameters<typeof api.updateSecret>[1] = {
         name: editForm.name,
         description: editForm.description,
-        is_active: editForm.is_active,
+        erlaubte_hosts: zieleListe(editForm.ziele),
       };
+      // Nur bei Änderung mitschicken — sonst setzt der Server alle Agenten neu auf.
+      if (editForm.is_active !== editAktivVorher) payload.is_active = editForm.is_active;
       if (editForm.value) payload.value = editForm.value;
       await api.updateSecret(id, payload);
       showToast("success", "Schlüssel gespeichert");
       setEditingId(null);
       await load();
-    } catch {
-      showToast("error", "Schlüssel konnte nicht gespeichert werden");
+    } catch (e) {
+      showToast("error", fehlerText(e, "Schlüssel konnte nicht gespeichert werden"));
     } finally {
       setSaving(false);
     }
@@ -309,6 +366,7 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                   className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm"
                 />
               </div>
+              <ZieleFeld wert={form.ziele} keyName={form.key_name} onChange={v => setForm(p => ({ ...p, ziele: v }))} />
               <p className="col-span-2 text-[11px] leading-relaxed text-muted-foreground/60">
                 Zugewiesene Agenten bekommen den Wert als <span className="font-mono text-muted-foreground">{form.key_name || createCopy.envPlaceholder}</span>.
                 Das Modell nutzt den Variablennamen in Werkzeugen und Skripten und gibt den Wert nie aus.
@@ -401,6 +459,8 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                             className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm"
                           />
                         </div>
+                        <ZieleFeld wert={editForm.ziele} keyName={editForm.key_name}
+                                   onChange={v => setEditForm(p => ({ ...p, ziele: v }))} />
                       </div>
                       <div className="flex items-center justify-between">
                         <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -437,6 +497,12 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                             {!s.is_active && (
                               <span className="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium bg-foreground/[0.04] text-muted-foreground border-foreground/[0.08]">
                                 Inaktiv
+                              </span>
+                            )}
+                            {s.ueber_proxy && (
+                              <span title={`Agenten sehen nur einen Platzhalter. Erlaubte Ziele: ${(s.erlaubte_hosts ?? []).join(", ")}`}
+                                className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20">
+                                <Globe size={11} /> Nur an {(s.erlaubte_hosts ?? []).length === 1 ? s.erlaubte_hosts?.[0] : `${(s.erlaubte_hosts ?? []).length} Ziele`}
                               </span>
                             )}
                             {s.zugang === "person" && (

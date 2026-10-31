@@ -165,10 +165,38 @@ starte_cli_aktualisierung() {
   ( update_cli "@anthropic-ai/claude-code" "claude"; update_cli "@openai/codex" "codex" ) &
 }
 
+# Egress-Proxy (orchestrator/app/core/egress.py): Fuer Ziele, an die ein Key des
+# Agenten darf, bricht der Proxy TLS auf und setzt dort erst den echten Wert ein.
+# Dafuer muss der Agent seinem CA-Zertifikat trauen. Es kommt als
+# AIE_EGRESS_CA mit (nur das oeffentliche Zertifikat) und geht in den
+# Systemspeicher: git, curl, Python (REQUESTS_CA_BUNDLE/SSL_CERT_FILE) und Node
+# (NODE_EXTRA_CA_CERTS) lesen ihn von dort.
+# Ein anderes Verzeichnis nur im Testmodus -- im Betrieb liest dieses Skript als
+# root, und kein Wert aus der Umgebung darf bestimmen, wohin es schreibt.
+CA_DIR=/usr/local/share/ca-certificates
+[ "${ENTRYPOINT_NUR_DEFINIEREN:-}" = "1" ] && CA_DIR="${ENTRYPOINT_CA_DIR:-$CA_DIR}"
+egress_ca_einspielen() {
+  [ -n "${AIE_EGRESS_CA:-}" ] || return 0
+  case "$AIE_EGRESS_CA" in
+    "-----BEGIN CERTIFICATE-----"*) ;;
+    *) echo "[entrypoint] WARNUNG: AIE_EGRESS_CA ist kein Zertifikat -- nicht eingespielt"; return 0 ;;
+  esac
+  # Scheitern haelt den Start nicht auf (set -e): Ohne CA scheitern nur Aufrufe an
+  # Ziele mit Key, alles andere laeuft.
+  if ! { mkdir -p "$CA_DIR" && printf '%s\n' "$AIE_EGRESS_CA" > "$CA_DIR/aie-egress.crt"; }; then
+    echo "[entrypoint] WARNUNG: CA des Egress-Proxys nicht geschrieben"
+    return 0
+  fi
+  if ! update-ca-certificates >/dev/null 2>&1; then
+    echo "[entrypoint] WARNUNG: CA des Egress-Proxys nicht im Systemspeicher"
+  fi
+}
+
 # Nur die Funktionen bereitstellen -- die Tests binden diese Datei ein und
 # rufen update_cli danach gezielt auf.
 [ "${ENTRYPOINT_NUR_DEFINIEREN:-}" = "1" ] && return 0
 
+egress_ca_einspielen
 starte_cli_aktualisierung
 
 exec gosu agent "$@"

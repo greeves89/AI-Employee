@@ -137,6 +137,11 @@ services:
       # Schalter ueber die .env gar nicht erreichbar: die Compose-Datei reicht
       # Variablen einzeln durch, was nicht dasteht, kommt nicht im Container an.
       SENTINEL_ENABLED: ${SENTINEL_ENABLED:-false}
+      # Egress-Proxy (Dienst egress-proxy, orchestrator/app/core/egress.py): Keys mit
+      # erlaubten Zielen bekommen Agenten nur als Platzhalter. Schluessel legt
+      # setup.sh/update.sh an; eingeschaltet wird mit EGRESS_PROXY_ENABLED=true.
+      EGRESS_PROXY_ENABLED: ${EGRESS_PROXY_ENABLED:-false}
+      EGRESS_PROXY_TOKEN: ${EGRESS_PROXY_TOKEN:-}
       # Eigener, minimal berechtigter Redis-Zugang je Agent statt des geteilten
       # Admin-Zugangs (#589). Standard aus — aendert, wie JEDER Agent sich
       # verbindet.
@@ -346,6 +351,47 @@ services:
       - internal
       - agent-network
 
+  # Egress-Proxy: Agenten gehen fuer HTTPS hier hinaus, sobald EGRESS_PROXY_ENABLED
+  # gesetzt ist. TLS wird nur fuer Ziele aufgebrochen, an die ein Key des Agenten
+  # darf; dort setzt der Proxy den echten Wert ein (egress/aie_egress.py). Kein
+  # Port nach aussen, nur im Agentennetz. Das Abbild ist per Digest festgelegt
+  # (mitmproxy 12.2.3, amd64 + arm64).
+  egress-proxy:
+    image: mitmproxy/mitmproxy:12.2.3@sha256:00b77b5d8804c8ad18cb6caefbf9d5849e895e8986c5ce011f4ae30f4385962f
+    container_name: ai-employee-egress-proxy
+    command:
+      - mitmdump
+      - --listen-port=8080
+      - --scripts=/egress/aie_egress.py
+      # Keine Zeile je Anfrage: In der Ausgabe stuenden sonst Adressen samt
+      # eingesetzter Werte.
+      - --set=flow_detail=0
+      - --set=termlog_verbosity=warn
+      # Grosse Downloads nicht im Speicher puffern (Pi). Darin ersetzt der
+      # Proxy nichts — Keys stehen in Koepfen, Adressen und kleinen Koerpern.
+      - --set=stream_large_bodies=5m
+    environment:
+      ORCHESTRATOR_URL: http://ai-employee-orchestrator:8000
+      EGRESS_PROXY_TOKEN: ${EGRESS_PROXY_TOKEN:-}
+    volumes:
+      - ./egress:/egress:ro
+      # CA des Proxys — bleibt ueber Neustarts gleich, sonst trauten die Agenten
+      # ihm nicht mehr. Der private Schluessel verlaesst dieses Volume nie.
+      - egress_ca:/home/mitmproxy/.mitmproxy
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket; socket.create_connection(('127.0.0.1', 8080), 3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    networks:
+      - agent-network
+
   # Reverse proxy - routes /api and /ws to orchestrator, everything else to frontend
   caddy:
     image: caddy:2-alpine
@@ -423,6 +469,7 @@ volumes:
   embedding_models:
   stt_models:
   feedback_data:
+  egress_ca:
   ai-employee-shared:
     external: true
 

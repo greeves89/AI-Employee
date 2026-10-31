@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.413.0] - 2026-10-31
+
+### Sicherheit
+- **Agenten sehen Keys nur noch als Platzhalter.** Unter Secrets kannst du je Key die **erlaubten Ziele** eintragen, zum Beispiel `api.github.com`. Ist der Egress-Proxy eingeschaltet, bekommt der Agent dann nur einen Platzhalter. Den echten Wert setzt der Proxy erst auf dem Weg zu genau diesen Adressen ein, an jedes andere Ziel geht der Key nicht.
+- **Sicherheitsstatus „Keys in Agenten“** zeigt, welche Keys noch im Klartext in Agenten liegen.
+
+### Behoben
+- Beim Bearbeiten eines Keys wurden alle zugewiesenen Agenten neu aufgesetzt, auch wenn sich nur Name oder Beschreibung änderte.
+
 ## [1.412.1] - 2026-10-31
 
 ### Verbessert
