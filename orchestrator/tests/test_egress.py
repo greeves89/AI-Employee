@@ -634,36 +634,44 @@ class ProxyLogikTests(unittest.TestCase):
     def test_strom_maske(self):
         p = egress.platzhalter(5)
         w = "sk-echter-wert-1234567890"
-        text = f"data: anfang {w} mitte {base64.b64encode(w.encode()).decode()} ende {w}".encode()
+        b64 = base64.b64encode(w.encode()).decode()
+        text = f"data: anfang {w} mitte {b64} ende {w}\n\n".encode()
+
+        def lauf(teile):
+            m = logik.StromMaske({p: w})
+            return b"".join(m(t) for t in teile) + m(b"")
+
+        def dicht(aus):
+            for variante in logik._varianten(w):
+                self.assertNotIn(variante.encode(), aus)
+
         for groesse in (1, 3, 7, 16, 1000):
             with self.subTest(groesse=groesse):
-                m = logik.StromMaske({p: w})
-                aus = b"".join(m(text[i:i + groesse]) for i in range(0, len(text), groesse)) + m(b"")
-                self.assertNotIn(w.encode(), aus)
-                self.assertNotIn(base64.b64encode(w.encode()), aus)
-                for variante in logik._varianten(w):
-                    self.assertNotIn(variante.encode(), aus)
+                aus = lauf([text[i:i + groesse] for i in range(0, len(text), groesse)])
+                dicht(aus)
                 self.assertEqual(aus.count(p.encode()), 3)
-                for teil in (b"data: anfang ", b" mitte ", b" ende "):
+                for teil in (b"data: anfang ", b" mitte ", b" ende ", b"\n\n"):
                     self.assertIn(teil, aus, "uebriger Text bleibt vollstaendig")
-        # Leeres Stueck MITTEN im Strom (Server schickt leeren Rahmen) genau dort, wo ein
-        # Wert beginnt: die Haelften duerfen zusammen nie den Wert ergeben.
+        # Leere Stuecke mitten im Strom — auch mehrere hintereinander — an jeder Schnittstelle
         for schnitt in range(1, len(w)):
-            with self.subTest(schnitt=schnitt):
-                m = logik.StromMaske({p: w})
-                strom = [b"vorher ", f"{w[:schnitt]}".encode(), b"", f"{w[schnitt:]} danach".encode(), b""]
-                aus = b"".join(m(teil) for teil in strom)
-                self.assertNotIn(w.encode(), aus)
-        # Gewoehnlicher Strom ohne Wert, leere Stuecke mittendrin: byte-gleich, nichts doppelt
+            for leer in (1, 2, 5):
+                with self.subTest(schnitt=schnitt, leer=leer):
+                    dicht(lauf([b"vorher ", w[:schnitt].encode()] + [b""] * leer + [f"{w[schnitt:]} danach\n".encode()]))
+        # Zerlegt in Stuecke von 1 bis 3 Zeichen, jeweils mit leeren Rahmen dazwischen
+        for groesse in (1, 2, 3):
+            with self.subTest(zerlegt=groesse):
+                teile = []
+                for i in range(0, len(text), groesse):
+                    teile += [text[i:i + groesse], b"", b""]
+                dicht(lauf(teile))
+        # Gewoehnlicher Strom ohne Wert, mit leeren Stuecken: byte-gleich, nichts doppelt
         normal = b"data: {\"text\": \"Hallo, das ist eine laengere Antwort ohne Geheimnis.\"}\n\n" * 5
         for groesse in (1, 5, 17, 64):
             with self.subTest(normal=groesse):
-                m = logik.StromMaske({p: w})
                 teile = []
                 for i in range(0, len(normal), groesse):
-                    teile += [normal[i:i + groesse], b""] if i % (groesse * 3) == 0 else [normal[i:i + groesse]]
-                aus = b"".join(m(t) for t in teile) + m(b"")
-                self.assertEqual(aus, normal)
+                    teile += [normal[i:i + groesse], b""]
+                self.assertEqual(lauf(teile), normal)
         # Ohne Werte: unveraendert durch
         m = logik.StromMaske({})
         self.assertEqual(m(b"abc") + m(b""), b"abc")

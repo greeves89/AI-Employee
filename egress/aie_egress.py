@@ -191,8 +191,8 @@ class AieEgress:
         """Gibt es fuer diesen Agenten etwas zu verdecken, kommt keine Antwort ungeprueft durch.
 
         * Kopfzeilen: sofort hier — gestreamt waeren sie sonst schon unterwegs.
-        * Ohne feste Laenge (Ereignisstroeme der Sprachmodelle, chunked, git):
-          verdecken im Durchlauf (``StromMaske``), ohne zu puffern.
+        * Ohne feste Laenge (Ereignisstroeme der Sprachmodelle, chunked):
+          verdecken im Durchlauf (``StromMaske``), ohne zu puffern. git-Pakete nicht.
         * Mit fester Laenge oder komprimiert: ganz puffern und in ``response``
           verdecken (eine geaenderte Laenge passte nicht mehr zur Content-Length);
           zu gross → Abbruch statt Durchlass.
@@ -209,6 +209,11 @@ class AieEgress:
             (k, logik.zurueck_maskieren(v.decode("latin-1"), werte).encode("latin-1"))
             for k, v in flow.response.headers.fields
         )
+        # git-Pakete: binaer, mit Pruefsumme am Ende — ein zurueckgehaltener Wert-Anfang
+        # dort verstuemmelte das Paket. Ein Wert gelangt ueber den Proxy nie in ein
+        # Repository (Platzhalter in Inhalten werden nie ersetzt); gestreamt wie bisher.
+        if art.startswith("application/x-git-"):
+            return
         kodierung = (flow.response.headers.get("content-encoding") or "identity").strip().lower()
         laenge = flow.response.headers.get("content-length")
         if kodierung not in ("", "identity") or laenge is not None:

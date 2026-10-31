@@ -264,53 +264,44 @@ def entpacken_begrenzt(daten: bytes, kodierung: str, grenze: int = MAX_ANTWORT) 
 class StromMaske:
     """Verdeckt Werte in einer gestreamten Antwort, Stueck fuer Stueck.
 
-    Haelt jeweils ein Endstueck zurueck, so lang wie die laengste Variante minus eins:
-    Ein Wert, der ueber die Grenze zweier Stuecke reicht, wird so im naechsten erkannt.
+    Zurueckgehalten wird genau das, was der ANFANG eines Werts sein koennte: das
+    laengste Endstueck, das mit dem Anfang einer Variante uebereinstimmt. Alles davor
+    geht verdeckt hinaus. Fuer jedes Stueck gilt dieselbe Regel — auch fuer leere.
 
-    mitmproxy ruft am Ende mit ``b""`` auf — aber auch mitten im Strom, wenn ein Server
-    einen leeren HTTP/2-Datenrahmen schickt (mitmproxy 12.2.3, ``_http2.py``). Ein leeres
-    Stueck ist also nur „vielleicht Ende“. Darum, beim Ausgeben des Endstuecks:
+    Warum keine Sonderbehandlung des leeren Stuecks: mitmproxy ruft am Ende mit ``b""``
+    auf, aber genauso mitten im Strom, wenn ein Server einen leeren HTTP/2-Datenrahmen
+    schickt (mitmproxy 12.2.3, ``_http2.py``). Ein „Ende“ ist von innen nicht sicher
+    erkennbar. So bleibt ein Wert-Anfang zurueck, egal in wie viele Stuecke und Luecken
+    ein Wert zerlegt ist — bis er vollstaendig ist (dann verdeckt) oder abweicht (dann
+    harmlos und ausgegeben).
 
-    * ein Wert-Anfang ab ``KAPPEN_AB`` Zeichen am Ende wird gekappt;
-    * die letzten ``KAPPEN_AB - 1`` ausgegebenen Zeichen bleiben in Erinnerung. Geht der
-      Strom doch weiter, wird gegen „Erinnerung + Neues“ verdeckt — ein Wert, dessen
-      erste 1–3 Zeichen schon draussen sind, wird im Rest erkannt.
+    Preis: Endet eine Antwort genau mit dem Anfang eines Werts, fehlen diese Zeichen.
+    Ereignisstroeme enden mit einer Leerzeile, JSON mit ``}`` — dort nie.
     """
-
-    KAPPEN_AB = 4
 
     def __init__(self, werte: dict[str, str]):
         self.werte = werte
         self.varianten = sorted({v.encode() for w in werte.values() for v in _varianten(w or "")},
                                 key=len, reverse=True)
-        self.halten = max((len(v) for v in self.varianten), default=1) - 1
         self.rest = b""
-        self.vorher = b""
 
-    def _anfang_kappen(self, daten: bytes) -> bytes:
+    def _moeglicher_anfang(self, daten: bytes) -> int:
+        """Laenge des laengsten Endstuecks von ``daten``, das ein Wert-Anfang sein kann."""
+        laengste = 0
         for v in self.varianten:
-            for k in range(len(v) - 1, self.KAPPEN_AB - 1, -1):
+            for k in range(min(len(v) - 1, len(daten)), laengste, -1):
                 if daten.endswith(v[:k]):
-                    return daten[:-k] + b"[...]"
-        return daten
+                    laengste = k
+                    break
+        return laengste
 
     def __call__(self, stueck: bytes) -> bytes:
-        if self.halten <= 0:
+        if not self.varianten:
             return stueck
-        if not stueck:                                   # vielleicht Ende
-            daten = self._anfang_kappen(zurueck_maskieren_bytes(self.rest, self.werte))
-            self.vorher = daten[-(self.KAPPEN_AB - 1):]
-            self.rest = b""
-            return daten
-        daten = zurueck_maskieren_bytes(self.vorher + self.rest + stueck, self.werte)
-        if self.vorher:
-            # Unveraendert → die Erinnerung ist schon draussen, nicht doppelt senden.
-            # Veraendert → dort begann ein Wert; der Platzhalter ersetzt ihn ab hier.
-            if daten.startswith(self.vorher):
-                daten = daten[len(self.vorher):]
-            self.vorher = b""
-        self.rest = daten[-self.halten:]
-        return daten[:-self.halten]
+        daten = zurueck_maskieren_bytes(self.rest + stueck, self.werte)
+        k = self._moeglicher_anfang(daten)
+        self.rest = daten[len(daten) - k:] if k else b""
+        return daten[:len(daten) - k]
 
 
 class Maske:
