@@ -58,11 +58,21 @@ class SecurityHeadersMiddleware:
             if message["type"] == "http.response.start":
                 headers = MutableHeaders(scope=message)
                 headers["X-Content-Type-Options"] = "nosniff"
-                headers["X-Frame-Options"] = "DENY"
-                headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
                 headers["X-XSS-Protection"] = "1; mode=block"
-                headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-                headers["Content-Security-Policy"] = self._CSP
+                # Was ein Endpunkt selbst setzt, bleibt stehen: Der App-Proxy setzt
+                # etwa das strengere „no-referrer“. Ueberschreiben machte es schwaecher.
+                for name, wert in (("X-Frame-Options", "DENY"),
+                                   ("Referrer-Policy", "strict-origin-when-cross-origin"),
+                                   ("Permissions-Policy", "camera=(), microphone=(), geolocation=()")):
+                    if name not in headers:
+                        headers[name] = wert
+                # Eine vorhandene CSP wird ergaenzt, nicht ersetzt: Der Browser setzt
+                # beide durch. Sonst verlor die Sandbox des App-Proxys ihre Wirkung —
+                # Agenten-Code lief auf der Origin der Plattform, mit Sitzungscookie.
+                if "Content-Security-Policy" in headers:
+                    headers.append("Content-Security-Policy", self._CSP)
+                else:
+                    headers["Content-Security-Policy"] = self._CSP
             await send(message)
 
         await self.app(scope, receive, send_with_headers)
