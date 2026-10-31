@@ -631,6 +631,25 @@ class ProxyLogikTests(unittest.TestCase):
             with self.subTest(k), self.assertRaises(logik.Abgelehnt):
                 logik.entpacken_begrenzt(b"x", k)
 
+    def test_strom_maske(self):
+        p = egress.platzhalter(5)
+        w = "sk-echter-wert-1234567890"
+        text = f"data: anfang {w} mitte {base64.b64encode(w.encode()).decode()} ende {w}".encode()
+        for groesse in (1, 3, 7, 16, 1000):
+            with self.subTest(groesse=groesse):
+                m = logik.StromMaske({p: w})
+                aus = b"".join(m(text[i:i + groesse]) for i in range(0, len(text), groesse)) + m(b"")
+                self.assertNotIn(w.encode(), aus)
+                self.assertNotIn(base64.b64encode(w.encode()), aus)
+                for variante in logik._varianten(w):
+                    self.assertNotIn(variante.encode(), aus)
+                self.assertEqual(aus.count(p.encode()), 3)
+                for teil in (b"data: anfang ", b" mitte ", b" ende "):
+                    self.assertIn(teil, aus, "uebriger Text bleibt vollstaendig")
+        # Ohne Werte: unveraendert durch
+        m = logik.StromMaske({})
+        self.assertEqual(m(b"abc") + m(b""), b"abc")
+
     def test_maske_je_agent(self):
         uhr = [0.0]
         m = logik.Maske(jetzt=lambda: uhr[0])

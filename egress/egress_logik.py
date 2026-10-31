@@ -261,6 +261,29 @@ def entpacken_begrenzt(daten: bytes, kodierung: str, grenze: int = MAX_ANTWORT) 
     raise Abgelehnt(502, f"Kodierung {k} wird nicht geprüft")
 
 
+class StromMaske:
+    """Verdeckt Werte in einer gestreamten Antwort, Stueck fuer Stueck.
+
+    Haelt jeweils ein Endstueck zurueck, so lang wie die laengste Variante minus eins:
+    Ein Wert, der ueber die Grenze zweier Stuecke reicht, wird so im naechsten erkannt.
+    mitmproxy ruft am Ende mit ``b""`` auf — dann geht der Rest hinaus.
+    """
+
+    def __init__(self, werte: dict[str, str]):
+        self.werte = werte
+        laengen = [len(v.encode()) for w in werte.values() for v in _varianten(w or "")]
+        self.halten = max(laengen, default=1) - 1
+        self.rest = b""
+
+    def __call__(self, stueck: bytes) -> bytes:
+        daten = zurueck_maskieren_bytes(self.rest + stueck, self.werte)
+        if not stueck or self.halten <= 0:
+            self.rest = b""
+            return daten
+        self.rest = daten[-self.halten:]
+        return daten[:-self.halten]
+
+
 class Maske:
     """Alle Werte, die der Proxy je fuer einen Agenten eingesetzt hat — verdeckt in JEDER
     Antwort an ihn. Sonst liesse ein Agent den Wert beim Ziel ablegen und holte ihn mit
