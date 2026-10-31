@@ -76,14 +76,18 @@ def ist_proxy_anfrage(authorization: str) -> bool:
     return aktiv() and bool(token) and hmac.compare_digest(token.encode(), settings.egress_proxy_token.encode())
 
 
-def veraltet(agent_config: dict | None) -> bool:
+def veraltet(agent_config: dict | None, agent_id: str | None = None) -> bool:
     """Entstand der Behaelter mit einem anderen Ausgang, als jetzt gilt?
 
     Dann zeigt der Agent "Aktualisieren" — sonst bliebe ein Agent nach dem
     Einschalten des Proxys mit Klartext-Keys stehen, ohne dass es jemand merkt.
     Agenten aus der Zeit vor dem Proxy haben keinen Eintrag = ohne Proxy.
+    Mit ``agent_id`` zaehlt auch die Stufe von ``EGRESS_KI_ZUGANG``.
     """
-    return bool((agent_config or {}).get("egress")) != aktiv()
+    cfg = agent_config or {}
+    if bool(cfg.get("egress")) != aktiv():
+        return True
+    return agent_id is not None and bool(cfg.get("egress_ki_stufe")) != ki_ueber_proxy(agent_id)
 
 
 def platzhalter(secret_id: int, art: str = "") -> str:

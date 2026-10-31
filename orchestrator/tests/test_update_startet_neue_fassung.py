@@ -91,5 +91,59 @@ class NeueFassungLaeuft(unittest.TestCase):
         self.assertNotIn("starte die neue Fassung", lauf.stdout)
 
 
+
+# docker-Attrappe mit einem Profil "tunnel" (cloudflared); ein Behaelter davon
+# existiert nur, wenn ATTRAPPE_TUNNEL=1. "up -d" protokolliert COMPOSE_PROFILES.
+_DOCKER_MIT_PROFIL = r"""#!/usr/bin/env bash
+echo "docker $* [profile=${COMPOSE_PROFILES:-}]" >> "$ATTRAPPE_LOG"
+case "$*" in
+  "compose config --services") printf 'orchestrator\npostgres\n' ;;
+  "compose config --profiles") echo tunnel ;;
+  "compose --profile tunnel config --services") printf 'orchestrator\npostgres\ncloudflared\n' ;;
+  "compose --profile tunnel ps -a -q cloudflared") [ "${ATTRAPPE_TUNNEL:-0}" = 1 ] && echo abc123 ;;
+esac
+exit 0
+"""
+
+
+class ProfileWerdenMitgenommen(NeueFassungLaeuft):
+    """cloudflared/autoheal (Profil tunnel) liefen nach jedem Update mit dem alten Abbild weiter."""
+
+    def setUp(self):
+        super().setUp()
+        docker = self.tmp / "bin" / "docker"
+        docker.write_text(_DOCKER_MIT_PROFIL)
+        docker.chmod(0o755)
+        self.env.pop("COMPOSE_PROFILES", None)
+
+    def _up_zeile(self):
+        return [z for z in self.log.read_text().splitlines() if z.startswith("docker compose up -d")]
+
+    def test_aktives_profil_wird_mitgenommen(self):
+        self.env["ATTRAPPE_TUNNEL"] = "1"
+        self._neue_fassung_veroeffentlichen(aendern=False)
+        lauf = self._update()
+        self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
+        self.assertEqual(self._up_zeile(), ["docker compose up -d [profile=tunnel]"])
+
+    def test_profil_aus_der_env_bleibt_erhalten(self):
+        self.env["ATTRAPPE_TUNNEL"] = "1"
+        (self.anlage / ".env").write_text("COMPOSE_PROFILES=extra\n")
+        self._neue_fassung_veroeffentlichen(aendern=False)
+        lauf = self._update()
+        self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
+        self.assertEqual(self._up_zeile(), ["docker compose up -d [profile=extra,tunnel]"])
+
+    def test_ohne_behaelter_kein_profil(self):
+        self._neue_fassung_veroeffentlichen(aendern=False)
+        lauf = self._update()
+        self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
+        self.assertEqual(self._up_zeile(), ["docker compose up -d [profile=]"])
+
+    # Die geerbten Faelle laufen schon in NeueFassungLaeuft
+    test_geaenderte_fassung_wird_neu_gestartet_ohne_doppelte_sicherung = None
+    test_unveraenderte_fassung_laeuft_einfach_weiter = None
+
+
 if __name__ == "__main__":
     unittest.main()

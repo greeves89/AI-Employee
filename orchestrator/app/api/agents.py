@@ -647,7 +647,7 @@ async def list_agents(
                 integrations=config.get("integrations", []),
                 permissions=eff_permissions,
                 update_available=(config.get("agent_version") != current_agent_version
-                                  or egress_veraltet(config)),
+                                  or egress_veraltet(config, agent.id)),
                 budget_usd=agent.budget_usd,
                 budget_exceeded_action=agent.budget_exceeded_action,
                 monthly_cost_usd=round(monatskosten.get(agent.id, 0.0), 4),

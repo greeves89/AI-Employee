@@ -162,6 +162,20 @@ class AktualisierenHinweisTests(unittest.TestCase):
             self.assertFalse(egress.veraltet(None))
             self.assertTrue(egress.veraltet({"egress": True}))     # Proxy wieder aus
 
+    def test_ki_stufe_geaendert(self):
+        """EGRESS_KI_ZUGANG umgestellt: betroffene Agenten zeigen "Aktualisieren"."""
+        with patch.object(settings, "egress_proxy_enabled", True), patch.object(settings, "egress_proxy_token", TOKEN):
+            with patch.object(settings, "egress_ki_zugang", "alle"):
+                self.assertTrue(egress.veraltet({"egress": True}, "a1"))         # vor der Umstellung entstanden
+                self.assertFalse(egress.veraltet({"egress": True, "egress_ki_stufe": True}, "a1"))
+                self.assertFalse(egress.veraltet({"egress": True}), "ohne Kennung zaehlt nur der Proxy")
+            with patch.object(settings, "egress_ki_zugang", "b2"):
+                self.assertFalse(egress.veraltet({"egress": True}, "a1"))        # nicht in der Stufe
+                self.assertTrue(egress.veraltet({"egress": True, "egress_ki_stufe": True}, "a1"))  # zurueckgenommen
+                self.assertTrue(egress.veraltet({"egress": True}, "b2"))
+        with patch.object(settings, "egress_proxy_enabled", False), patch.object(settings, "egress_ki_zugang", "alle"):
+            self.assertFalse(egress.veraltet({}, "a1"), "ohne Proxy keine KI-Stufe")
+
 
 class UmgebungTests(unittest.IsolatedAsyncioTestCase):
     async def test_aus_ist_leer(self):
