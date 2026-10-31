@@ -21,8 +21,8 @@ oder Taskforce-Ordner ausgeführt wird (``api/docker_apps.py``,
      und geteilt mit jedem anderen Agenten, der denselben Pfad nutzte,
    - Container- und Netznamen bekommen das Präfix des Agenten.
 3. ``ausfuehren``: Das geprüfte Modell geht über stdin an ``docker compose -f -``.
-   Zwischen Prüfung und Start liegt keine Datei im Workspace, die der Agent
-   austauschen könnte.
+   Die Compose-Datei wird nach der Prüfung nicht wieder gelesen. Build-Kontext
+   und Dockerfile schon — sie wirken aber nur im Build, nicht auf den Container.
 
 ``$`` bleibt dabei erhalten: ``config`` schreibt es als ``$$``, die zweite
 Auflösung beim Start macht wieder ``$`` daraus (auf dem Pi geprüft).
@@ -38,15 +38,22 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from docker.errors import ContainerError, ImageNotFound
+from docker.errors import ImageNotFound
 from docker.types import Mount
 from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 
 RUNNER_IMAGE = "docker:cli"
+#: Unter diesem Schlüssel hängt das Volume des Agenten im geprüften Modell.
+WORKSPACE_VOLUME = "aie_workspace"
 AGENT_UID = "1000:1000"
 RUNNER_NETZ = "ai-employee-network"
+RUNNER_SPEICHER = "1g"
+RUNNER_PROZESSE = 512
+RUNNER_CPUS = 2_000_000_000
+#: Bauen darf dauern (npm, pip, große Abbilder); alles andere ist schnell.
+ZEITLIMIT_START = 1800
 
 #: Ein Umgebungseintrag darf bei ``execve`` höchstens 128 KiB lang sein.
 _MAX_MODELL_BYTES = 120_000
@@ -106,9 +113,10 @@ _DIENST_GESPERRT = {
 
 _BUILD_FREI = frozenset({
     "args", "cache_from", "dockerfile_inline", "extra_hosts", "labels", "no_cache",
-    "platforms", "provenance", "pull", "sbom", "shm_size", "tags", "target", "ulimits",
+    "platforms", "provenance", "pull", "sbom", "shm_size", "target", "ulimits",
 })
-_BUILD_GEPRUEFT = frozenset({"context", "dockerfile", "additional_contexts", "network", "privileged"})
+#: „tags“ fällt weg: Ein Zusatzname könnte ein Abbild der Plattform überschreiben.
+_BUILD_GEPRUEFT = frozenset({"context", "dockerfile", "additional_contexts", "network", "privileged", "tags"})
 
 _NETZ_FREI = frozenset({"name", "driver", "external", "internal", "attachable", "labels", "ipam", "enable_ipv6", "enable_ipv4"})
 _VOLUME_FREI = frozenset({"name", "external", "driver", "labels"})
@@ -119,6 +127,12 @@ _DEPLOY_FREI = frozenset({
     "placement", "endpoint_mode", "resources",
 })
 _RESSOURCEN_FREI = frozenset({"cpus", "memory", "pids"})
+#: Standardgrenzen je Dienst, wenn die App selbst keine setzt.
+APP_PROZESSE = 4096
+APP_PROZESSE_MAX = 8192
+APP_SPEICHER = "4g"
+APP_KOPIEN_MAX = 5
+
 _NO_NEW_PRIVILEGES = re.compile(r"^no-new-privileges([:=]true)?$")
 _NAME_UNSICHER = re.compile(r"[^a-zA-Z0-9_.-]")
 
@@ -145,6 +159,10 @@ class Quelle:
     sicht: str
     praefix: str
     teilpfad: str = ""
+    #: Nur Pfade darunter sind erlaubt (Standard: alles unter ``sicht``).
+    bereich: str = ""
+    #: Ordner als Mount in die App? Nein im geteilten Volume (siehe meeting_rooms).
+    ordner_erlaubt: bool = True
 
     def mount(self, *, nur_lesen: bool) -> Mount:
         m = Mount(target=self.sicht, source=self.volume, type="volume", read_only=nur_lesen)
@@ -155,6 +173,9 @@ class Quelle:
     def im_volume(self, pfad: str) -> str | None:
         """Runner-Pfad → Unterordner im Volume, oder None, wenn er nicht darin liegt."""
         pfad = posixpath.normpath(pfad)
+        bereich = self.bereich or self.sicht
+        if pfad != bereich and not pfad.startswith(bereich.rstrip("/") + "/"):
+            return None
         if pfad == self.sicht:
             rest = ""
         elif pfad.startswith(self.sicht + "/"):
@@ -173,11 +194,35 @@ def fuer_agent(agent_id: str, volume: str) -> Quelle:
 
 # ── Runner ────────────────────────────────────────────────────────────────────
 
+def _runner_abbild(docker) -> str:
+    """Kennung des Runner-Abbilds — nur eines, das aus der Registry kommt.
+
+    Ein lokal gebautes Abbild hat keine ``RepoDigests``. Hiesse es ``docker:cli``,
+    liefe sonst Code eines Agenten mit dem Docker-Socket. Die Prüfung schreibt
+    Namen gebauter Abbilder zwar auf das Präfix des Agenten um; das hier ist die
+    zweite Linie, falls ein solches Abbild schon vorher da war.
+    """
+    try:
+        abbild = docker.client.images.get(RUNNER_IMAGE)
+        if abbild.attrs.get("RepoDigests"):
+            return abbild.id
+        logger.warning("Runner-Abbild %s ist lokal gebaut — wird neu aus der Registry geholt", RUNNER_IMAGE)
+    except ImageNotFound:
+        pass
+    try:
+        name, tag = RUNNER_IMAGE.split(":", 1)
+        return docker.client.images.pull(name, tag=tag).id
+    except Exception as e:  # noqa: BLE001 — ohne sauberes Abbild läuft gar nichts
+        raise HTTPException(status_code=503, detail=f"Das Abbild '{RUNNER_IMAGE}' ist nicht verfügbar: {e}") from None
+
+
 def _runner(docker, befehl: list[str], *, mounts: list, socket: bool, netz: str | None,
             user: str | None = None, umgebung: dict | None = None,
-            nur_stdout: bool = False) -> tuple[int, str]:
+            nur_stdout: bool = False, zeitlimit: int = 120) -> tuple[int, str]:
     """Einen kurzlebigen ``docker:cli``-Container ausführen. (Exit-Code, Ausgabe).
 
+    Mit Speicher-, Prozess- und Zeitgrenze: Eine Compose-Datei voller YAML-Anker
+    oder ein hängender Build darf weder den Server noch den Aufrufer blockieren.
     ``nur_stdout``: Warnungen auf stderr bleiben aus der Ausgabe (``config`` liefert
     dort JSON). Im Fehlerfall kommt stderr trotzdem mit."""
     volumes = {"/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"}} if socket else {}
@@ -188,21 +233,27 @@ def _runner(docker, befehl: list[str], *, mounts: list, socket: bool, netz: str 
         kwargs["network_mode"] = "none"
     if user:
         kwargs["user"] = user
+    c = docker.client.containers.run(
+        image=_runner_abbild(docker), command=befehl, volumes=volumes, mounts=mounts,
+        environment=umgebung or {}, detach=True, mem_limit=RUNNER_SPEICHER,
+        pids_limit=RUNNER_PROZESSE, nano_cpus=RUNNER_CPUS, **kwargs,
+    )
     try:
-        out = docker.client.containers.run(
-            image=RUNNER_IMAGE, command=befehl, volumes=volumes, mounts=mounts,
-            environment=umgebung or {}, remove=True, detach=False, stdout=True, stderr=not nur_stdout,
-            **kwargs,
-        )
-        return 0, out.decode("utf-8", "replace") if isinstance(out, bytes) else str(out)
-    except ContainerError as e:
-        teile = []
-        for roh in (getattr(e, "stderr", None), getattr(e, "output", None)):
-            if roh:
-                teile.append(roh.decode("utf-8", "replace") if isinstance(roh, bytes) else str(roh))
-        return e.exit_status or 1, "\n".join(teile).strip()
-    except ImageNotFound:
-        raise HTTPException(status_code=503, detail=f"Das Abbild '{RUNNER_IMAGE}' fehlt: docker pull {RUNNER_IMAGE}")
+        try:
+            code = int((c.wait(timeout=zeitlimit) or {}).get("StatusCode", 1))
+        except Exception:  # noqa: BLE001 — Zeitüberschreitung (requests) oder Verbindungsabbruch
+            try:
+                c.kill()
+            except Exception:
+                logger.debug("Runner nach Zeitüberschreitung schon beendet", exc_info=True)
+            return 124, f"Zeitüberschreitung nach {zeitlimit} s"
+        roh = c.logs(stdout=True, stderr=(code != 0 or not nur_stdout))
+        return code, roh.decode("utf-8", "replace") if isinstance(roh, bytes) else str(roh)
+    finally:
+        try:
+            c.remove(force=True)
+        except Exception:
+            logger.debug("Runner nicht entfernt", exc_info=True)
 
 
 def normalisieren(docker, quelle: Quelle, projekt: str, compose_datei: str) -> dict:
@@ -235,7 +286,7 @@ def ausfuehren(docker, quelle: Quelle, projekt: str, modell: dict | None,
     """
     if modell is None:
         return _runner(docker, ["docker", "compose", "-p", projekt, *befehl],
-                       mounts=[], socket=True, netz=RUNNER_NETZ)
+                       mounts=[], socket=True, netz=RUNNER_NETZ, zeitlimit=300)
     text = json.dumps(modell)
     if len(text.encode()) > _MAX_MODELL_BYTES:
         raise HTTPException(status_code=422, detail="Die Compose-Datei ist zu groß (mehr als 120 KB nach dem Auflösen).")
@@ -244,7 +295,7 @@ def ausfuehren(docker, quelle: Quelle, projekt: str, modell: dict | None,
         docker,
         ["sh", "-c", 'printf %s "$AIE_COMPOSE" | docker compose -p "$AIE_PROJEKT" -f - "$@"', "sh", *befehl],
         mounts=[quelle.mount(nur_lesen=True)], socket=True, netz=RUNNER_NETZ,
-        umgebung={"AIE_COMPOSE": text, "AIE_PROJEKT": projekt},
+        umgebung={"AIE_COMPOSE": text, "AIE_PROJEKT": projekt}, zeitlimit=ZEITLIMIT_START,
     )
 
 
@@ -304,19 +355,25 @@ def pruefen(modell: dict, quelle: Quelle, projekt: str) -> tuple[dict, list[str]
     if not isinstance(dienste, dict) or not dienste:
         fehler.append("Die Compose-Datei enthält keine Dienste.")
         dienste = {}
+    # Ein gebautes Abbild bekommt den Namen aus „image“. Hiesse es „docker:cli“
+    # oder „ai-employee-agent:latest“, ueberschriebe der Build ein Abbild, das die
+    # Plattform selbst startet — mit Docker-Socket bzw. als jeder neue Agent.
+    gebaut = {str(d["image"]) for d in dienste.values()
+              if isinstance(d, dict) and d.get("build") is not None and d.get("image")}
+    abbilder = {alt: _abbildname(quelle, alt) for alt in gebaut if not alt.startswith(quelle.praefix)}
     neu_dienste: dict[str, Any] = {}
     for name, dienst in dienste.items():
         if not isinstance(dienst, dict):
             fehler.append(f"Dienst „{name}“: ungültig.")
             continue
         d, nutzt_ws = _dienst_pruefen(name, dienst, quelle, set(dienste), set(volumes),
-                                      netze, fehler, hinweise, ordner)
+                                      netze, fehler, hinweise, ordner, abbilder)
         workspace_genutzt = workspace_genutzt or nutzt_ws
         neu_dienste[name] = d
     neu["services"] = neu_dienste
 
     if workspace_genutzt:
-        volumes["aie_workspace"] = {"external": True, "name": quelle.volume}
+        volumes[WORKSPACE_VOLUME] = {"external": True, "name": quelle.volume}
     if volumes:
         neu["volumes"] = volumes
 
@@ -353,6 +410,9 @@ def _netze_pruefen(netze: dict, quelle: Quelle, fehler: list[str], hinweise: lis
 def _volumes_pruefen(volumes: dict, quelle: Quelle, fehler: list[str]) -> dict:
     neu: dict[str, Any] = {}
     for key, v in volumes.items():
+        if key == WORKSPACE_VOLUME:
+            fehler.append(f"Volume „{key}“: Der Name ist für die Plattform reserviert.")
+            continue
         v = dict(v or {})
         for k in v:
             if k not in _VOLUME_FREI:
@@ -371,7 +431,7 @@ def _volumes_pruefen(volumes: dict, quelle: Quelle, fehler: list[str]) -> dict:
 
 def _dienst_pruefen(name: str, dienst: dict, quelle: Quelle, dienste: set, volumes: set,
                     netze: dict, fehler: list[str], hinweise: list[str],
-                    ordner: list[str]) -> tuple[dict, bool]:
+                    ordner: list[str], abbilder: dict[str, str]) -> tuple[dict, bool]:
     wo = f"Dienst „{name}“"
     d: dict[str, Any] = {}
     workspace_genutzt = False
@@ -486,7 +546,37 @@ def _dienst_pruefen(name: str, dienst: dict, quelle: Quelle, dienste: set, volum
                 d["networks"][netz] = cfg
             hinweise.append(f"{wo}: Containername „{alt}“ heißt am Server „{neu_name}“, im App-Netz weiter „{alt}“.")
 
+    abbild = str(dienst.get("image") or "")
+    if abbild in abbilder:
+        d["image"] = abbilder[abbild]
+        hinweise.append(f"{wo}: Das gebaute Abbild heißt „{abbilder[abbild]}“ statt „{abbild}“.")
+
+    _grenzen(wo, d, fehler, hinweise)
     return d, workspace_genutzt
+
+
+def _abbildname(quelle: Quelle, name: str) -> str:
+    """„meine/app:1.0“ → „agent-<id8>-meine-app:1.0“ (ein Name ohne Registry)."""
+    name = name.lower()
+    repo, _, tag = name.rpartition(":") if ":" in name.rsplit("/", 1)[-1] else (name, "", "latest")
+    repo = re.sub(r"[^a-z0-9._-]+", "-", repo).strip("-.") or "app"
+    tag = re.sub(r"[^a-z0-9_.-]", "-", tag)[:128] or "latest"
+    return f"{quelle.praefix}{repo}:{tag}"
+
+
+def _grenzen(wo: str, d: dict, fehler: list[str], hinweise: list[str]) -> None:
+    """Obergrenzen, damit eine App den Server nicht lahmlegt (Prozesse, Speicher, Kopien)."""
+    pids = d.get("pids_limit")
+    if pids in (None, "") or int(pids) <= 0 or int(pids) > APP_PROZESSE_MAX:
+        if pids not in (None, ""):
+            hinweise.append(f"{wo}: „pids_limit“ auf {APP_PROZESSE} begrenzt.")
+        d["pids_limit"] = APP_PROZESSE
+    limits = (((d.get("deploy") or {}).get("resources") or {}).get("limits") or {})
+    if not d.get("mem_limit") and not limits.get("memory"):
+        d["mem_limit"] = APP_SPEICHER
+    for wert, schluessel in ((d.get("scale"), "scale"), ((d.get("deploy") or {}).get("replicas"), "deploy.replicas")):
+        if wert not in (None, "") and int(wert) > APP_KOPIEN_MAX:
+            fehler.append(f"{wo}: „{schluessel}: {wert}“ ist zu viel, erlaubt sind höchstens {APP_KOPIEN_MAX}.")
 
 
 def _deploy_pruefen(wo: str, deploy: dict, fehler: list[str]) -> None:
@@ -522,7 +612,7 @@ def _build_pruefen(wo: str, build: Any, quelle: Quelle, fehler: list[str]) -> An
         fehler.append(f"{wo}: „build.network: {build.get('network')}“ ist gesperrt.")
     if build.get("privileged"):
         fehler.append(f"{wo}: „build.privileged“ ist gesperrt.")
-    return {k: v for k, v in build.items() if k in _BUILD_FREI or k in _BUILD_GEPRUEFT}
+    return {k: v for k, v in build.items() if (k in _BUILD_FREI or k in _BUILD_GEPRUEFT) and k != "tags"}
 
 
 def _ports_umschreiben(ports: list) -> list:
@@ -565,13 +655,16 @@ def _mounts_pruefen(wo: str, mounts: list, quelle: Quelle, volumes: set, fehler:
         elif art == "bind":
             src = str(m.get("source") or "")
             teil = quelle.im_volume(src)
+            if teil is not None and not quelle.ordner_erlaubt:
+                fehler.append(f"{wo}: Ordner aus dem Projekt („{src}“) sind hier nicht möglich, nur benannte Volumes.")
+                continue
             if teil is None:
                 fehler.append(
                     f"{wo}: Der Ordner „{src}“ vom Server ist gesperrt. Erlaubt sind Ordner im Projekt "
                     "(z. B. „./data:/data“) und benannte Volumes."
                 )
                 continue
-            eintrag: dict[str, Any] = {"type": "volume", "source": "aie_workspace", "target": ziel}
+            eintrag: dict[str, Any] = {"type": "volume", "source": WORKSPACE_VOLUME, "target": ziel}
             if teil:
                 eintrag["volume"] = {"subpath": teil}
             if m.get("read_only"):

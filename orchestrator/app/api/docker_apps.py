@@ -234,26 +234,84 @@ def _get_project_containers(docker: DockerService, project_name: str) -> list[di
 AGENT_NETWORK = "ai-employee-network"
 
 
-def _connect_containers_to_network(docker: DockerService, project_name: str) -> None:
-    """Connect all containers of a compose project to the ai-employee-network."""
-    try:
-        network = docker.client.networks.get(AGENT_NETWORK)
-    except Exception:
-        logger.warning(f"Network {AGENT_NETWORK} not found, skipping")
-        return
+def _projekt_filter(project_name: str) -> dict:
+    return {"label": f"com.docker.compose.project={project_name}"}
 
-    containers = docker.client.containers.list(
-        filters={"label": f"com.docker.compose.project={project_name}"},
-    )
-    for c in containers:
-        # Check if already connected
-        connected_nets = c.attrs.get("NetworkSettings", {}).get("Networks", {})
-        if AGENT_NETWORK not in connected_nets:
+
+def _app_netz_anbinden(docker: DockerService, project_name: str, *gaeste: str | None) -> None:
+    """Die App bleibt in ihrem eigenen Netz; die Plattform tritt ihm bei.
+
+    Frueher hing jeder App-Container im Plattformnetz — neben Postgres, Redis, dem
+    Orchestrator und den Agenten aller Nutzer. Eine App aus Agenten-Code erreichte
+    damit alles. Jetzt treten nur der Orchestrator (fuer den App-Proxy) und der
+    Agent der App (zum Testen) dem Netz der App bei.
+    """
+    from app.config import settings
+
+    try:
+        plattform = docker.client.networks.get(AGENT_NETWORK)
+        for c in docker.client.containers.list(all=True, filters=_projekt_filter(project_name)):
+            if AGENT_NETWORK in ((c.attrs.get("NetworkSettings") or {}).get("Networks") or {}):
+                plattform.disconnect(c, force=True)
+                logger.info(f"{c.name} aus {AGENT_NETWORK} genommen")
+    except Exception as e:  # noqa: BLE001 — Altbestand; der Start selbst ist schon durch
+        logger.warning(f"Plattformnetz fuer {scrub_log(project_name)} nicht bereinigt: {e}")
+
+    for netz in docker.client.networks.list(filters=_projekt_filter(project_name)):
+        try:
+            netz.reload()
+            drin = set((netz.attrs.get("Containers") or {}).keys())
+        except Exception:  # noqa: BLE001
+            drin = set()
+        for gast in (settings.orchestrator_container_name, *gaeste):
+            if not gast:
+                continue
             try:
-                network.connect(c)
-                logger.info(f"Connected {c.name} to {AGENT_NETWORK}")
-            except Exception as e:
-                logger.warning(f"Failed to connect {c.name} to {AGENT_NETWORK}: {e}")
+                g = docker.client.containers.get(gast)
+                if g.id not in drin:
+                    netz.connect(g)
+            except APIError as e:
+                if "already exists" not in str(e):
+                    logger.warning(f"{scrub_log(gast)} nicht an {netz.name} angebunden: {e}")
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"{scrub_log(gast)} nicht an {netz.name} angebunden: {e}")
+    _EIGENE_NETZE.clear()
+
+
+def _app_netz_loesen(docker: DockerService, project_name: str) -> None:
+    """Vor ``down``: Orchestrator und Agent verlassen die Netze der App wieder —
+    sonst kann Compose sie nicht entfernen ("network has active endpoints")."""
+    for netz in docker.client.networks.list(filters=_projekt_filter(project_name)):
+        try:
+            netz.reload()
+            for cid in (netz.attrs.get("Containers") or {}):
+                c = docker.client.containers.get(cid)
+                if c.labels.get("com.docker.compose.project") != project_name:
+                    netz.disconnect(c, force=True)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Netz {netz.name} nicht geloest: {e}")
+    _EIGENE_NETZE.clear()
+
+
+#: Netze des Orchestrators, kurz zwischengespeichert: Der Proxy fragt bei jeder
+#: Anfrage danach, das soll nicht jedes Mal ein Docker-Aufruf sein.
+_EIGENE_NETZE: dict[str, Any] = {}
+
+
+def _eigene_netze(docker: DockerService) -> set[str]:
+    import time
+
+    from app.config import settings
+
+    if _EIGENE_NETZE.get("bis", 0) > time.monotonic():
+        return _EIGENE_NETZE["netze"]
+    try:
+        c = docker.client.containers.get(settings.orchestrator_container_name)
+        netze = set(((c.attrs.get("NetworkSettings") or {}).get("Networks") or {}).keys())
+    except Exception:  # noqa: BLE001 — ohne Antwort: kein gemeinsames Netz annehmen
+        netze = set()
+    _EIGENE_NETZE.update(netze=netze, bis=time.monotonic() + 30)
+    return netze
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -532,7 +590,7 @@ async def _start_core(docker: DockerService, agent: Agent, agent_id: str, path: 
         logger.error(f"Failed to start {scrub_log(project_name)}: {scrub_log(output)}")
         raise HTTPException(status_code=500, detail=f"Failed to start app: {output}")
 
-    _connect_containers_to_network(docker, project_name)
+    _app_netz_anbinden(docker, project_name, agent.container_id)
     containers = _get_project_containers(docker, project_name)
     logger.info(f"Docker app started: {scrub_log(project_name)} ({len(containers)} containers)")
     return {"project": project_name, "status": "running", "containers": containers,
@@ -549,6 +607,7 @@ async def _stop_core(docker: DockerService, agent: Agent, agent_id: str, path: s
     # Ohne Datei: Compose findet die Container ueber die Projektbezeichnung, die der
     # Server selbst setzt. So laeuft beim Stoppen nichts aus dem Workspace.
     async with _project_lock(project_name):
+        await asyncio.to_thread(_app_netz_loesen, docker, project_name)
         exit_code, output = await asyncio.to_thread(
             compose_pruefung.ausfuehren, docker, _quelle(agent, agent_id), project_name, None, ["down"],
         )
@@ -583,7 +642,7 @@ async def _rebuild_core(docker: DockerService, agent: Agent, agent_id: str, path
         logger.error(f"Failed to rebuild {scrub_log(project_name)}: {scrub_log(output)}")
         raise HTTPException(status_code=500, detail=f"Failed to rebuild app: {output}")
 
-    _connect_containers_to_network(docker, project_name)
+    _app_netz_anbinden(docker, project_name, agent.container_id)
     containers = _get_project_containers(docker, project_name)
     return {"project": project_name, "status": "running", "containers": containers,
             "url": _app_public_url(agent_id, containers), "output": output, "hinweise": hinweise}
@@ -898,25 +957,25 @@ async def proxy_app(
         _set_share_cookie(redirect, request, container, port, share_token)
         return redirect
 
-    # Route to the container's IP on the shared platform network, NOT its name:
+    # Route to the container's IP, NOT its name:
     # compose-generated container names routinely exceed the 63-char DNS label limit
     # (e.g. "agent-<id>-<longpath>-<service>-1") and are then UNRESOLVABLE by Docker's
     # embedded DNS → the proxy 502s. The IP always works (both are on this network).
     # Fall back to the name for short-named containers that predate this.
+    # Die IP aus einem Netz, in dem auch der Orchestrator haengt (das Netz der App).
+    # Fehlt das — etwa nach einem Neustart des Orchestrators —, tritt er ihm jetzt bei.
     host = container
     try:
         nets = ((c.attrs or {}).get("NetworkSettings") or {}).get("Networks") or {}
-        shared = nets.get("ai-employee-network") or {}
-        ip = shared.get("IPAddress") or ""
-        if not ip:
-            for _n in nets.values():
-                if _n.get("IPAddress"):
-                    ip = _n["IPAddress"]
-                    break
+        gemeinsam = [n for n in nets if n in _eigene_netze(docker)]
+        if not gemeinsam:
+            await asyncio.to_thread(_app_netz_anbinden, docker, project)
+            gemeinsam = [n for n in nets if n in _eigene_netze(docker)]
+        ip = next((nets[n].get("IPAddress") for n in gemeinsam if nets[n].get("IPAddress")), "")
         if ip:
             host = ip
     except Exception:  # noqa: BLE001 — fall back to the name
-        pass
+        logger.debug("App-Ziel ueber den Namen statt die IP", exc_info=True)
 
     target = f"http://{host}:{int(port)}/{rest}"
     body = await request.body()

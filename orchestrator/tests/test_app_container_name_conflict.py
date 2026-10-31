@@ -180,7 +180,7 @@ class DerRebuildRaeumtAufUndVersuchtNochmalTests(unittest.IsolatedAsyncioTestCas
              patch.object(docker_apps, "_reconcile_stale_backups", aufraeumen), \
              patch.object(docker_apps, "_resolve_compose_file", MagicMock(return_value="/workspace/p/docker-compose.yml")), \
              patch.object(docker_apps.compose_pruefung, "vorbereiten", AsyncMock(return_value=({"services": {}}, []))), \
-             patch.object(docker_apps, "_connect_containers_to_network", MagicMock()), \
+             patch.object(docker_apps, "_app_netz_anbinden", MagicMock()), \
              patch.object(docker_apps, "_get_project_containers", MagicMock(return_value=[])):
             ergebnis = await docker_apps._rebuild_core(docker, agent, "a1", "projects/kraft-tracker")
 
@@ -236,7 +236,7 @@ class DerRebuildRaeumtAufUndVersuchtNochmalTests(unittest.IsolatedAsyncioTestCas
              patch.object(docker_apps, "_reconcile_stale_backups", MagicMock(return_value=[])), \
              patch.object(docker_apps, "_resolve_compose_file", MagicMock(return_value="/workspace/p/docker-compose.yml")), \
              patch.object(docker_apps.compose_pruefung, "vorbereiten", AsyncMock(return_value=({"services": {}}, []))), \
-             patch.object(docker_apps, "_connect_containers_to_network", MagicMock()), \
+             patch.object(docker_apps, "_app_netz_anbinden", MagicMock()), \
              patch.object(docker_apps, "_get_project_containers", MagicMock(return_value=[])):
             await asyncio.gather(*[
                 docker_apps._rebuild_core(docker, agent, "a1", "projects/kraft-tracker")
@@ -275,7 +275,7 @@ class DerRebuildRaeumtAufUndVersuchtNochmalTests(unittest.IsolatedAsyncioTestCas
              patch.object(docker_apps, "_reconcile_stale_backups", MagicMock(return_value=[])), \
              patch.object(docker_apps, "_resolve_compose_file", MagicMock(return_value="/workspace/p/docker-compose.yml")), \
              patch.object(docker_apps.compose_pruefung, "vorbereiten", AsyncMock(return_value=({"services": {}}, []))), \
-             patch.object(docker_apps, "_connect_containers_to_network", MagicMock()), \
+             patch.object(docker_apps, "_app_netz_anbinden", MagicMock()), \
              patch.object(docker_apps, "_get_project_containers", MagicMock(return_value=[])):
             await asyncio.gather(
                 docker_apps._rebuild_core(docker, agent, "a1", "projects/app-eins"),
@@ -307,7 +307,7 @@ class DerStartWegHatDieselbeLueckeTests(unittest.IsolatedAsyncioTestCase):
              patch.object(docker_apps, "_resolve_compose_file", MagicMock(return_value="/workspace/p/docker-compose.yml")), \
              patch.object(docker_apps, "_ensure_env_files", MagicMock()), \
              patch.object(docker_apps.compose_pruefung, "vorbereiten", AsyncMock(return_value=({"services": {}}, []))), \
-             patch.object(docker_apps, "_connect_containers_to_network", MagicMock()), \
+             patch.object(docker_apps, "_app_netz_anbinden", MagicMock()), \
              patch.object(docker_apps, "_get_project_containers", MagicMock(return_value=[])):
             ergebnis = await docker_apps._start_core(docker, agent, "a1", "projects/kraft-tracker")
 

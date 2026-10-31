@@ -212,22 +212,22 @@ def _taskforce_agent_pfad(room) -> str:
 
 
 def _runner_quelle(room):
-    """Der Compose-Runner sieht nur den Ordner des Raum-Besitzers als /shared —
-    nicht das ganze Volume mit den Ordnern aller Nutzer (ausser im alten Modus)."""
+    """Wie der Compose-Runner den Taskforce-Ordner sieht.
+
+    Eingebunden wird der Ordner des Besitzers (bzw. im alten Modus das ganze
+    Volume, das dort auch jeder Agent sieht) — diese Ebene kann kein Agent
+    austauschen. Erlaubt sind aber nur Pfade im Ordner DIESES Raums, und Ordner
+    werden nicht in die App eingebunden: Docker verhindert beim Unterordner nur
+    den Ausbruch aus dem Volume, nicht den in den Ordner eines anderen Nutzers,
+    und auf dem Weg dorthin liegen Ordner, die Agenten umbenennen koennen.
+    """
     from app.core import compose_pruefung, shared_volume
-    teil = shared_volume.nutzer_teilpfad(room.created_by) if shared_volume.JE_NUTZER_AKTIV else ""
     return compose_pruefung.Quelle(
         volume=shared_volume.SHARED_VOLUME, sicht="/shared",
-        praefix=f"agent-{room.agent_ids[0][:8]}-", teilpfad=teil,
+        praefix=f"agent-{room.agent_ids[0][:8]}-",
+        teilpfad=shared_volume.nutzer_teilpfad(room.created_by) if shared_volume.JE_NUTZER_AKTIV else "",
+        bereich=_taskforce_agent_pfad(room), ordner_erlaubt=False,
     )
-
-
-def _runner_sicht(room) -> str:
-    """Der Taskforce-Ordner, wie der Compose-Runner ihn sieht."""
-    from app.core import shared_volume
-    if shared_volume.JE_NUTZER_AKTIV:
-        return _taskforce_agent_pfad(room)
-    return str(_taskforce_dir(room))
 
 
 _AGENT_UID = 1000  # all agent containers run as uid/gid 1000 ("agent")
@@ -377,7 +377,7 @@ async def launch_deliverable(
     import os
     from app.services.docker_service import DockerService
     from app.api.docker_apps import (
-        _project_name, _get_project_containers, _connect_containers_to_network,
+        _project_name, _get_project_containers, _app_netz_anbinden,
     )
     from app.core import compose_pruefung
 
@@ -413,7 +413,7 @@ async def launch_deliverable(
     if os.path.islink(os.path.join(base, compose_name)):
         raise HTTPException(status_code=400, detail="Ungültige Compose-Datei")
     modell, _hinweise = await compose_pruefung.vorbereiten(
-        docker, quelle, project, os.path.join(_runner_sicht(room), compose_name), agent_id=host_agent)
+        docker, quelle, project, f"{quelle.bereich}/{compose_name}", agent_id=host_agent)
     web_port = next(
         (str(p["target"]) for d in modell["services"].values() for p in d.get("ports") or []),
         None,
@@ -426,7 +426,7 @@ async def launch_deliverable(
         logger.warning("[Taskforce %s] launch failed: %s", scrub_log(room_id), scrub_log(redact_logs(ausgabe)))
         raise HTTPException(status_code=500, detail="Start fehlgeschlagen — Build/Start-Fehler (Details im Server-Log).")
 
-    _connect_containers_to_network(docker, project)
+    _app_netz_anbinden(docker, project)
     containers = _get_project_containers(docker, project)
 
     # Build the proxy URL: first container + the web port (from compose, else exposed).

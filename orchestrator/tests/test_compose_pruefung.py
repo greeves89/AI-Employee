@@ -308,6 +308,59 @@ class UmschreibungTests(unittest.TestCase):
         self.assertEqual(neu["services"]["web"]["networks"]["default"], {"aliases": ["w"]})
 
 
+class AbbildUndGrenzenTests(unittest.TestCase):
+    """Funde der Sicherheitsprüfung: Abbilder der Plattform überschreiben, Server lahmlegen."""
+
+    def test_build_darf_kein_abbild_der_plattform_ueberschreiben(self):
+        for ziel in ("docker:cli", "ai-employee-agent:latest", "ghcr.io/greeves89/ai-employee-orchestrator:1.407.2"):
+            neu, hinweise, _ = _pruefen(_modell(image=ziel, build={"context": "/workspace/p"}))
+            name = neu["services"]["web"]["image"]
+            self.assertTrue(name.startswith("agent-abcdef12-"), name)
+            self.assertNotIn("/", name, "kein Registry-Pfad im neuen Namen")
+            self.assertTrue(hinweise)
+
+    def test_andere_dienste_nutzen_das_umbenannte_abbild(self):
+        m = _modell(image="meine-app:1.0", build={"context": "/workspace/p"})
+        m["services"]["worker"] = {"image": "meine-app:1.0", "networks": {"default": None}}
+        neu, _, _ = _pruefen(m)
+        self.assertEqual(neu["services"]["worker"]["image"], "agent-abcdef12-meine-app:1.0")
+        self.assertEqual(neu["services"]["web"]["image"], "agent-abcdef12-meine-app:1.0")
+
+    def test_fertige_abbilder_ohne_build_bleiben(self):
+        neu, _, _ = _pruefen(_modell(image="postgres:16"))
+        self.assertEqual(neu["services"]["web"]["image"], "postgres:16")
+
+    def test_zusatznamen_beim_bauen_fallen_weg(self):
+        neu, _, _ = _pruefen(_modell(build={"context": "/workspace/p", "tags": ["docker:cli"]}))
+        self.assertNotIn("tags", neu["services"]["web"]["build"])
+
+    def test_reservierter_volume_name(self):
+        m = _modell(volumes=[{"type": "volume", "source": "aie_workspace", "target": "/d",
+                              "volume": {"subpath": "x"}}])
+        m["volumes"] = {"aie_workspace": {"name": "agent-abcdef12-x"}}
+        with self.assertRaises(cp.ComposeAbgelehnt) as ctx:
+            _pruefen(m)
+        self.assertIn("reserviert", " ".join(ctx.exception.verstoesse))
+
+    def test_standardgrenzen(self):
+        neu, _, _ = _pruefen(_modell())
+        web = neu["services"]["web"]
+        self.assertEqual((web["pids_limit"], web["mem_limit"]), (cp.APP_PROZESSE, cp.APP_SPEICHER))
+
+    def test_eigene_grenzen_bleiben_in_der_spanne(self):
+        neu, _, _ = _pruefen(_modell(mem_limit="512m", pids_limit=200))
+        self.assertEqual((neu["services"]["web"]["mem_limit"], neu["services"]["web"]["pids_limit"]), ("512m", 200))
+        neu, hinweise, _ = _pruefen(_modell(pids_limit=-1))
+        self.assertEqual(neu["services"]["web"]["pids_limit"], cp.APP_PROZESSE)
+        neu, _, _ = _pruefen(_modell(deploy={"resources": {"limits": {"memory": "1G"}}}))
+        self.assertNotIn("mem_limit", neu["services"]["web"])
+
+    def test_zu_viele_kopien(self):
+        for m in (_modell(scale=50), _modell(deploy={"replicas": 50})):
+            with self.assertRaises(cp.ComposeAbgelehnt):
+                _pruefen(m)
+
+
 class TaskforceQuelleTests(unittest.TestCase):
     """Im geteilten Volume liegt der Ordner unter dem Unterordner des Besitzers."""
 
@@ -317,6 +370,20 @@ class TaskforceQuelleTests(unittest.TestCase):
         self.assertEqual(q.im_volume("/shared"), "u1")
         self.assertIsNone(q.im_volume("/shared/../etc"))
         self.assertIsNone(q.im_volume("/sharedx"))
+
+    def test_nur_der_raumordner_und_keine_ordner_mounts(self):
+        q = cp.Quelle(volume="ai-employee-shared", sicht="/shared", praefix="agent-abcdef12-", teilpfad="u1",
+                      bereich="/shared/taskforce/r1", ordner_erlaubt=False)
+        self.assertIsNone(q.im_volume("/shared/taskforce/r2/data"), "Ordner eines anderen Raums")
+        self.assertIsNone(q.im_volume("/shared/privat"))
+        self.assertEqual(q.im_volume("/shared/taskforce/r1/app"), "u1/taskforce/r1/app")
+        m = _modell(volumes=[{"type": "bind", "source": "/shared/taskforce/r1/data", "target": "/d"}],
+                    build={"context": "/shared/taskforce/r1"})
+        with self.assertRaises(cp.ComposeAbgelehnt) as ctx:
+            cp.pruefen(m, q, PROJEKT)
+        self.assertIn("nur benannte Volumes", " ".join(ctx.exception.verstoesse))
+        with self.assertRaises(cp.ComposeAbgelehnt):
+            cp.pruefen(_modell(build={"context": "/shared/taskforce/r2"}), q, PROJEKT)
 
     def test_mount_nur_mit_unterordner(self):
         q = cp.Quelle(volume="ai-employee-shared", sicht="/shared", praefix="agent-abcdef12-", teilpfad="u1")
@@ -328,9 +395,14 @@ class TaskforceQuelleTests(unittest.TestCase):
 class RunnerTests(unittest.TestCase):
     """Wie die drei Runner laufen — Rechte, Netz und was eingebunden ist."""
 
-    def _docker(self, ausgabe=b"{}"):
-        docker = SimpleNamespace(client=SimpleNamespace(containers=MagicMock()))
-        docker.client.containers.run.return_value = ausgabe
+    def _docker(self, ausgabe=b"{}", code=0, digests=("docker@sha256:abc",)):
+        docker = SimpleNamespace(client=SimpleNamespace(containers=MagicMock(), images=MagicMock()))
+        container = MagicMock()
+        container.wait.return_value = {"StatusCode": code}
+        container.logs.return_value = ausgabe
+        docker.client.containers.run.return_value = container
+        docker.client.images.get.return_value = SimpleNamespace(id="sha256:runner", attrs={"RepoDigests": list(digests)})
+        docker.client.images.pull.return_value = SimpleNamespace(id="sha256:frisch")
         return docker
 
     def test_normalisieren_ohne_socket_ohne_netz_nur_lesend(self):
@@ -341,17 +413,47 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(kw["network_mode"], "none")
         self.assertEqual(kw["user"], "1000:1000")
         self.assertTrue(kw["mounts"][0]["ReadOnly"])
-        self.assertFalse(kw["stderr"], "Warnungen dürfen das JSON nicht verderben")
+        self.assertFalse(docker.client.containers.run.return_value.logs.call_args.kwargs["stderr"],
+                         "Warnungen dürfen das JSON nicht verderben")
         self.assertIn("--project-directory", kw["command"])
         self.assertIn("/workspace/projects/todo", kw["command"])
 
     def test_ungueltige_datei_gibt_422(self):
-        from docker.errors import ContainerError
-        docker = self._docker()
-        docker.client.containers.run.side_effect = ContainerError("c", 1, "cmd", "img", b"yaml: line 3: bad")
+        docker = self._docker(b"yaml: line 3: bad", code=1)
         with self.assertRaises(HTTPException) as ctx:
             cp.normalisieren(docker, QUELLE, PROJEKT, "/workspace/p/docker-compose.yml")
         self.assertEqual(ctx.exception.status_code, 422)
+        self.assertIn("line 3", ctx.exception.detail, "im Fehlerfall kommt stderr mit")
+
+    def test_runner_mit_grenzen_und_ohne_rest(self):
+        docker = self._docker()
+        cp.ausfuehren(docker, QUELLE, PROJEKT, {"services": {}}, ["up", "-d"])
+        kw = docker.client.containers.run.call_args.kwargs
+        self.assertEqual((kw["mem_limit"], kw["pids_limit"]), (cp.RUNNER_SPEICHER, cp.RUNNER_PROZESSE))
+        self.assertTrue(kw["detach"])
+        docker.client.containers.run.return_value.remove.assert_called_once()
+
+    def test_runner_haengt_nicht(self):
+        docker = self._docker()
+        c = docker.client.containers.run.return_value
+        c.wait.side_effect = TimeoutError("read timeout")
+        code, ausgabe = cp.ausfuehren(docker, QUELLE, PROJEKT, None, ["down"])
+        self.assertEqual(code, 124)
+        self.assertIn("Zeitüberschreitung", ausgabe)
+        c.kill.assert_called_once()
+        c.remove.assert_called_once()
+
+    def test_runner_nur_aus_der_registry_und_ueber_die_kennung(self):
+        docker = self._docker()
+        cp.ausfuehren(docker, QUELLE, PROJEKT, None, ["down"])
+        self.assertEqual(docker.client.containers.run.call_args.kwargs["image"], "sha256:runner")
+
+    def test_lokal_gebautes_runner_abbild_wird_ersetzt(self):
+        """Hiesse ein Build docker:cli, liefe sonst Agenten-Code mit dem Docker-Socket."""
+        docker = self._docker(digests=())
+        cp.ausfuehren(docker, QUELLE, PROJEKT, None, ["down"])
+        docker.client.images.pull.assert_called_once_with("docker", tag="cli")
+        self.assertEqual(docker.client.containers.run.call_args.kwargs["image"], "sha256:frisch")
 
     def test_ausfuehren_ueber_stdin_ohne_datei_im_workspace(self):
         docker = self._docker(b"Started")
@@ -437,6 +539,66 @@ class StartwegeTests(unittest.IsolatedAsyncioTestCase):
             if "docker:cli" in text or '"compose", "-p"' in text or "'compose', '-p'" in text:
                 treffer.append(str(datei.relative_to(app)))
         self.assertEqual(treffer, [], "Compose läuft nur über core/compose_pruefung.py")
+
+
+class AppNetzTests(unittest.TestCase):
+    """Die App bleibt in ihrem Netz; Orchestrator und Agent treten bei (Fund der
+    Sicherheitsprüfung: früher hing jede App im Plattformnetz neben Postgres/Redis)."""
+
+    def _docker(self, app_im_plattformnetz=True):
+        app = SimpleNamespace(id="app1", name="agent-abcdef12-p-web-1",
+                              labels={"com.docker.compose.project": PROJEKT},
+                              attrs={"NetworkSettings": {"Networks": (
+                                  {"ai-employee-network": {}, f"{PROJEKT}_default": {}} if app_im_plattformnetz
+                                  else {f"{PROJEKT}_default": {}})}})
+        orch = SimpleNamespace(id="orch1", name="ai-employee-orchestrator", labels={})
+        agent = SimpleNamespace(id="agent1", name="ai-agent-x", labels={})
+        plattform = MagicMock()
+        app_netz = MagicMock()
+        app_netz.name = f"{PROJEKT}_default"
+        app_netz.attrs = {"Containers": {"app1": {}}}
+        alle = {"app1": app, "orch1": orch, "ai-employee-orchestrator": orch, "agent1": agent}
+        client = SimpleNamespace(
+            networks=SimpleNamespace(get=MagicMock(return_value=plattform), list=MagicMock(return_value=[app_netz])),
+            containers=SimpleNamespace(list=MagicMock(return_value=[app]), get=MagicMock(side_effect=alle.__getitem__)),
+        )
+        return SimpleNamespace(client=client), plattform, app_netz, app, orch, agent
+
+    def test_app_verlaesst_das_plattformnetz_und_die_plattform_tritt_bei(self):
+        from app.api import docker_apps
+        docker, plattform, app_netz, app, orch, agent = self._docker()
+        docker_apps._app_netz_anbinden(docker, PROJEKT, "agent1")
+        plattform.disconnect.assert_called_once_with(app, force=True)
+        verbunden = [c.args[0] for c in app_netz.connect.call_args_list]
+        self.assertEqual(verbunden, [orch, agent])
+
+    def test_wer_schon_drin_ist_wird_nicht_erneut_verbunden(self):
+        from app.api import docker_apps
+        docker, plattform, app_netz, *_ = self._docker(app_im_plattformnetz=False)
+        app_netz.attrs = {"Containers": {"app1": {}, "orch1": {}, "agent1": {}}}
+        docker_apps._app_netz_anbinden(docker, PROJEKT, "agent1")
+        plattform.disconnect.assert_not_called()
+        app_netz.connect.assert_not_called()
+
+    def test_vor_dem_stoppen_verlassen_nur_fremde_das_netz(self):
+        from app.api import docker_apps
+        docker, _, app_netz, app, orch, agent = self._docker()
+        app_netz.attrs = {"Containers": {"app1": {}, "orch1": {}, "agent1": {}}}
+        docker_apps._app_netz_loesen(docker, PROJEKT)
+        getrennt = [c.args[0] for c in app_netz.disconnect.call_args_list]
+        self.assertEqual(getrennt, [orch, agent], "die App selbst bleibt, Compose räumt sie ab")
+
+
+class StoppenTests(unittest.IsolatedAsyncioTestCase):
+
+    async def test_netz_wird_vor_down_geloest(self):
+        from app.api import docker_apps
+        reihenfolge = []
+        agent = SimpleNamespace(container_id="c1", volume_name="workspace-x")
+        with patch.object(docker_apps, "_app_netz_loesen", side_effect=lambda *a: reihenfolge.append("loesen")), \
+             patch.object(cp, "ausfuehren", side_effect=lambda *a: reihenfolge.append("down") or (0, "")):
+            await docker_apps._stop_core(MagicMock(), agent, "abcdef12", "p")
+        self.assertEqual(reihenfolge, ["loesen", "down"])
 
 
 if __name__ == "__main__":
