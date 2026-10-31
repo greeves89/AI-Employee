@@ -246,6 +246,51 @@ def _audit_melden(aktion: str, url: str, *, erlaubt: bool, akteur: str) -> None:
 #: der Bildstrom fuer die Oberflaeche laeuft ueber CDP und braucht kein Fenster.
 _KOPFLOS = os.environ.get("BROWSER_HEADLESS", "true").lower() != "false"
 
+#: Ziele, an denen der Browser am Egress-Proxy vorbeigeht: Namen ohne Punkt (die
+#: eigenen Apps des Agenten), Plattform und private Netze — wie ``NO_PROXY``.
+PROXY_UMGEHEN = ("<local>,localhost,127.0.0.1,::1,*.internal,*.local,"
+                 "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16")
+
+
+def proxy_einstellung() -> dict | None:
+    """Playwright-Proxy aus ``HTTPS_PROXY`` (Egress-Proxy, orchestrator/app/core/egress.py).
+
+    Chromium beachtet die Umgebungsvariable nicht. Ohne diese Einstellung ginge der
+    Browser am Proxy vorbei — und koennte Keys nie einsetzen lassen. Die Anmeldung
+    (Agent-ID, Token) gehoert in ``username``/``password``; in ``server`` nimmt
+    Chromium sie nicht an. ``None`` ohne Proxy.
+    """
+    from urllib.parse import unquote, urlsplit
+    url = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy") or ""
+    teile = urlsplit(url)
+    if not teile.hostname or not teile.port:
+        return None
+    einstellung = {"server": f"{teile.scheme or 'http'}://{teile.hostname}:{teile.port}", "bypass": PROXY_UMGEHEN}
+    if teile.username:
+        einstellung.update(username=unquote(teile.username), password=unquote(teile.password or ""))
+    return einstellung
+
+
+def mcp_browser_argumente() -> list[str]:
+    """Argumente fuer ``@playwright/mcp`` — dieselben Entscheidungen wie ``_ensure_context``.
+
+    Profil, Chromium des Abbilds, kopflos, ohne Sandbox und ueber den Egress-Proxy.
+    Ohne Pfad sucht der MCP Google Chrome (gibt es im Abbild nicht), ohne
+    ``--headless`` braucht er einen Bildschirm (gibt es nicht) — beides liess ihn
+    still scheitern. Die Proxy-Anmeldung nimmt der MCP in der Adresse an.
+    """
+    argumente = ["--user-data-dir", PROFIL_DIR, "--no-sandbox"]
+    pfad = _chromium_pfad()
+    if pfad:
+        argumente += ["--executable-path", pfad]
+    if _KOPFLOS:
+        argumente.append("--headless")
+    proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+    if proxy and proxy_einstellung():
+        argumente += ["--proxy-server", proxy, "--proxy-bypass", PROXY_UMGEHEN]
+    return argumente
+
+
 def _chromium_pfad() -> str | None:
     """Pfad zum Chromium des Abbilds -- oder None fuer Playwrights eigenes.
 
@@ -345,6 +390,9 @@ async def _ensure_context():
     ]
     pfad = _chromium_pfad()
     zusatz = {"executable_path": pfad} if pfad else {}
+    proxy = proxy_einstellung()
+    if proxy:
+        zusatz["proxy"] = proxy
     try:
         _context = await pw.chromium.launch_persistent_context(
             PROFIL_DIR, headless=_KOPFLOS,

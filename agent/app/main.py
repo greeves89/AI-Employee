@@ -321,8 +321,11 @@ def register_mcp_servers() -> None:
         # das hier saehe der Playwright-MCP ein leeres Profil.
         browser.sicherstellen_profil_entschluesselt()
 
-        mcp_args = ["playwright", "npx", "@playwright/mcp@latest",
-                    "--user-data-dir", _browser_profil]
+        # ``--`` VOR dem Namen wie bei den anderen stdio-Servern: sonst liest
+        # ``claude mcp add`` die Optionen des MCP (``--user-data-dir``) als eigene
+        # und bricht ab — Claude-Code-Agenten hatten deshalb keinen MCP-Browser.
+        mcp_args = ["--", "playwright", "npx", "@playwright/mcp@latest",
+                    *browser.mcp_browser_argumente()]
 
         # Freigabeliste auch dem MCP mitgeben (#828, Schritt 5) — als WEICHE
         # Schranke. Die harte Durchsetzung samt Pruefprotokoll sitzt im
