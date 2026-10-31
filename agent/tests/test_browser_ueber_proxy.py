@@ -61,15 +61,20 @@ class NssTests(unittest.TestCase):
         bin_dir = os.path.join(tmp, "bin")
         os.makedirs(bin_dir)
         protokoll = os.path.join(tmp, "aufrufe")
+        # Eigener Name statt "certutil": Auf manchen Rechnern (CI) gibt es das echte.
+        attrappe = os.path.join(bin_dir, "aie-certutil-attrappe")
         if mit_certutil:
-            with open(os.path.join(bin_dir, "certutil"), "w") as f:
-                f.write(f'#!/bin/sh\necho "$@" >> {protokoll}\n')
-            os.chmod(os.path.join(bin_dir, "certutil"), 0o700)
+            with open(attrappe, "w") as f:
+                f.write(f'#!/bin/sh\necho "$(id -un) $@" >> {protokoll}\n')
+            os.chmod(attrappe, 0o700)
         ca_dir = os.path.join(tmp, "ca")
         os.makedirs(ca_dir)
         open(os.path.join(ca_dir, "aie-egress.crt"), "w").write("-----BEGIN CERTIFICATE-----\nx\n")
         env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "ENTRYPOINT_NUR_DEFINIEREN": "1",
-               "ENTRYPOINT_CA_DIR": ca_dir, "ENTRYPOINT_NSS_DIR": os.path.join(tmp, "pki", "nssdb")}
+               "ENTRYPOINT_CA_DIR": ca_dir, "ENTRYPOINT_NSS_DIR": os.path.join(tmp, "pki", "nssdb"),
+               "ENTRYPOINT_CERTUTIL": attrappe,
+               # Im Betrieb "gosu agent"; der Test laeuft schon als gewoehnlicher Nutzer.
+               "ENTRYPOINT_ALS_AGENT": ""}
         r = subprocess.run(["bash", "-c", f". {_ENTRYPOINT}; egress_ca_fuer_browser"],
                            env=env, capture_output=True, text=True, timeout=30)
         aufrufe = open(protokoll).read() if os.path.exists(protokoll) else ""
@@ -80,6 +85,13 @@ class NssTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("-N --empty-password", aufrufe)               # Datenbank angelegt
         self.assertIn("-A -t C,, -n aie-egress -i", aufrufe)        # Zertifikat eingetragen
+
+    def test_laeuft_nie_als_root_im_betrieb(self):
+        """Ohne Testschalter steht vor jedem Schritt "gosu agent" (Symlink-Falle in ~/.pki)."""
+        r = subprocess.run(["bash", "-c", f'. {_ENTRYPOINT}; echo "$ALS_AGENT|$NSS_DIR|$CERTUTIL"'],
+                           env={"PATH": "/usr/bin:/bin", "ENTRYPOINT_NUR_DEFINIEREN": "1"},
+                           capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.stdout.strip(), "gosu agent|/home/agent/.pki/nssdb|certutil")
 
     def test_ohne_certutil_kein_abbruch(self):
         r, aufrufe = self._lauf(mit_certutil=False)

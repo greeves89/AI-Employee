@@ -196,18 +196,27 @@ egress_ca_einspielen() {
 # Chromium liest unter Linux nicht den Systemspeicher, sondern die NSS-Datenbank im
 # Heimatverzeichnis. Ohne Eintrag dort scheitert der Agenten-Browser an jedem Ziel,
 # fuer das der Proxy einen Key einsetzt (ERR_CERT_AUTHORITY_INVALID).
+#
+# ALS AGENT, nie als root: ~/.pki gehoert dem Agenten, er koennte dort einen
+# Symlink anlegen — root legte dann Dateien in einem Verzeichnis seiner Wahl an.
 NSS_DIR=/home/agent/.pki/nssdb
-[ "${ENTRYPOINT_NUR_DEFINIEREN:-}" = "1" ] && NSS_DIR="${ENTRYPOINT_NSS_DIR:-$NSS_DIR}"
+ALS_AGENT="gosu agent"
+CERTUTIL=certutil
+if [ "${ENTRYPOINT_NUR_DEFINIEREN:-}" = "1" ]; then
+  NSS_DIR="${ENTRYPOINT_NSS_DIR:-$NSS_DIR}"
+  ALS_AGENT="${ENTRYPOINT_ALS_AGENT-$ALS_AGENT}"
+  CERTUTIL="${ENTRYPOINT_CERTUTIL:-$CERTUTIL}"
+fi
 egress_ca_fuer_browser() {
-  command -v certutil >/dev/null 2>&1 || { echo "[entrypoint] WARNUNG: certutil fehlt -- Browser traut dem Egress-Proxy nicht"; return 0; }
-  mkdir -p "$NSS_DIR" || return 0
-  [ -f "$NSS_DIR/cert9.db" ] || certutil -d "sql:$NSS_DIR" -N --empty-password >/dev/null 2>&1
-  certutil -d "sql:$NSS_DIR" -D -n aie-egress >/dev/null 2>&1 || true
-  if ! certutil -d "sql:$NSS_DIR" -A -t "C,," -n aie-egress -i "$CA_DIR/aie-egress.crt" >/dev/null 2>&1; then
+  command -v "$CERTUTIL" >/dev/null 2>&1 || { echo "[entrypoint] WARNUNG: certutil fehlt -- Browser traut dem Egress-Proxy nicht"; return 0; }
+  $ALS_AGENT mkdir -p "$NSS_DIR" || return 0
+  [ -f "$NSS_DIR/cert9.db" ] || $ALS_AGENT "$CERTUTIL" -d "sql:$NSS_DIR" -N --empty-password >/dev/null 2>&1
+  $ALS_AGENT "$CERTUTIL" -d "sql:$NSS_DIR" -D -n aie-egress >/dev/null 2>&1 || true
+  if ! $ALS_AGENT "$CERTUTIL" -d "sql:$NSS_DIR" -A -t "C,," -n aie-egress -i "$CA_DIR/aie-egress.crt" >/dev/null 2>&1; then
     echo "[entrypoint] WARNUNG: CA des Egress-Proxys nicht im Browser-Speicher"
   fi
-  chown -R agent:agent "${NSS_DIR%/nssdb}" 2>/dev/null || true
 }
+
 
 # Nur die Funktionen bereitstellen -- die Tests binden diese Datei ein und
 # rufen update_cli danach gezielt auf.
