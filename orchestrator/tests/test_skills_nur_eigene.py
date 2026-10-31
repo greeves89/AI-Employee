@@ -99,6 +99,15 @@ class AendernTests(_Basis):
         async with self.Session() as db:
             self.assertEqual(len((await db.execute(select(Notification))).scalars().all()), 1)
 
+    async def test_offener_vorschlag_wird_nicht_ausgetauscht(self):
+        """Sonst gäbe der Admin frei, was er nie gelesen hat."""
+        sid = await self._skill(is_public=True, created_by="user:ub", zuweisen=("b1", "a1"))
+        await self._aendern(sid, "a1", "HARMLOS")
+        with self.assertRaises(HTTPException) as ctx:
+            await self._aendern(sid, "a1", "BOESE")
+        self.assertEqual(ctx.exception.status_code, 409)
+        self.assertEqual((await self._inhalt(sid)).improvement_proposal["suggested_content"], "HARMLOS")
+
     async def test_eigener_skill_den_ein_fremder_agent_nutzt(self):
         sid = await self._skill(is_public=False, zuweisen=("a1", "b1"))
         await self._aendern(sid, "a1")

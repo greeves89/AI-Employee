@@ -1663,6 +1663,12 @@ async def agent_update_skill(
         and not await _nutzen_fremde(db, skill_id, besitzer)
     )
     if not nur_eigene and (body.content is not None or body.description is not None):
+        if skill.improvement_status == "pending_review":
+            # Nie einen offenen Vorschlag ersetzen: Sonst gaebe der Admin frei, was er
+            # gar nicht gelesen hat — der Agent tauscht den Text waehrend der Pruefung.
+            raise HTTPException(status_code=409, detail=(
+                "Für diesen Skill wartet schon ein Vorschlag auf Freigabe. "
+                "Erst wenn er angenommen oder abgelehnt ist, geht ein neuer."))
         skill.improvement_status = "pending_review"
         skill.improvement_review_reason = "agent_update"
         skill.improvement_proposed_at = datetime.now(timezone.utc)
