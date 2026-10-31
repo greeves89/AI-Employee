@@ -86,16 +86,24 @@ async def mcp_msgraph_endpoint(agent_id: str, request: Request):
 
         async with async_session_factory() as db:
             im_sekretariat = await ist_sekretariats_agent(db, agent_id)
-    if im_sekretariat and may_write:
-        # Fail-closed: Im Sekretariat geht keine Mail ohne Freigabe raus — auch wenn die
-        # Einstellung des Agenten später auf „Lesen + Schreiben“ gestellt wurde.
+    # Die Rechte-Matrix („E-Mail / M365 senden“) gilt hier wie ueberall am Server.
+    # Frueher waren das zwei Schalter: „Lesen + Schreiben“ sendete sofort, auch wenn
+    # die Matrix „Freigabe“ oder „Verboten“ sagte.
+    from app.core.faehigkeiten import zustand
+    async with async_session_factory() as db:
+        matrix_mail = await zustand(db, agent_id, "email_m365")
+    if (im_sekretariat or matrix_mail != "allow") and may_write:
+        # Fail-closed: Im Sekretariat oder ohne „Erlaubt“ in der Matrix geht keine Mail
+        # ohne Freigabe raus — auch wenn die Einstellung auf „Lesen + Schreiben“ steht.
         may_write = False
     entwurf = None
-    # Die Mitgliedschaft im Sekretariat stuft nur HERAB (Schreiben → Entwurf), sie gibt nie
-    # mehr Rechte als die eigene Einstellung des Agenten: „Lesen“ bleibt „Lesen“.
-    if not may_write and (ms_access.entwurf_enabled(agent.config if agent else None)
-                          or (im_sekretariat and not ms_access.read_only_enabled()
-                              and (agent.config or {}).get("msgraph_access") in ms_access._WRITE_VALUES)):
+    # Sekretariat und Matrix stufen nur HERAB (Schreiben → Entwurf), sie geben nie mehr
+    # Rechte als die eigene Einstellung des Agenten: „Lesen“ bleibt „Lesen“.
+    # „Verboten“ in der Matrix heisst: nur lesen, auch keine Entwuerfe.
+    if matrix_mail != "deny" and not may_write and (
+            ms_access.entwurf_enabled(agent.config if agent else None)
+            or ((im_sekretariat or matrix_mail == "ask") and not ms_access.read_only_enabled()
+                and (agent.config or {}).get("msgraph_access") in ms_access._WRITE_VALUES)):
         from app.core.mail_freigabe import anfragen
 
         async def entwurf(message_id: str, betreff: str) -> str:

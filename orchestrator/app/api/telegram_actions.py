@@ -92,6 +92,40 @@ async def _bot_token_for_chat(agent_id: str, chat_id: str, db: AsyncSession) -> 
     )
 
 
+async def _darf_senden(agent_id: str, db: AsyncSession, *, nur_erlaubt: bool = False) -> None:
+    """Rechte-Matrix „Chat / Telegram senden“ — am Server, nicht nur im Prompt.
+
+    Antworten an die eigenen Nutzer sind ab „Freigabe“ frei (Handbuch, Freigaben:
+    Nachrichten an dich und in eure Kanaele brauchen keine Freigabe). Das Profil
+    des Bots (Befehle, Beschreibung) aendern darf ein Agent nur bei „Erlaubt“: Es
+    ist das Gesicht des Bots fuer alle seine Nutzer.
+    """
+    from app.core.faehigkeiten import verlangen
+
+    await verlangen(db, agent_id, "messaging", nur_erlaubt=nur_erlaubt)
+
+
+async def _token_fuer_chat(agent_id: str, chat_id: str, db: AsyncSession) -> str:
+    """Token fuer eine Handlung in DIESEM Chat — nur in Chats der eigenen Nutzer.
+
+    Frueher nahm jeder Sende-Endpunkt jede beliebige ``chat_id``: Ein Agent konnte
+    ueber seinen Bot fremde Leute anschreiben, die den Bot je gestartet hatten.
+    Erlaubt sind jetzt nur Chats, die sich bei DIESEM Agenten angemeldet haben
+    (``agent:{id}:tg_auth``), oder einer, der gerade ausdruecklich auf ihn geschaltet ist.
+    """
+    await _darf_senden(agent_id, db)
+    redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+    try:
+        eigener = await redis.sismember(f"agent:{agent_id}:tg_auth", str(chat_id))
+        weiche = await redis.get(f"telegram:chat:{chat_id}:active_agent") == agent_id
+    finally:
+        await redis.aclose()
+    if not (eigener or weiche):
+        raise HTTPException(status_code=403, detail=(
+            "Dieser Chat gehört nicht zu den angemeldeten Nutzern dieses Agenten."))
+    return await _bot_token_for_chat(agent_id, str(chat_id), db)
+
+
 async def _tg_request(token: str, method: str, data: dict | None = None, files: dict | None = None, timeout: int = 30) -> dict:
     """Make a request to the Telegram Bot API."""
     url = f"{TG_API.format(token=token)}/{method}"
@@ -334,6 +368,7 @@ async def broadcast(
     if not text:
         raise HTTPException(status_code=422, detail="text or message field required")
 
+    await _darf_senden(agent_id, db)
     token = await _get_bot_token(agent_id, db)
     r = aioredis.from_url(settings.redis_url, decode_responses=True)
     try:
@@ -363,7 +398,7 @@ async def send_message(
     db: AsyncSession = Depends(get_db),
 ):
     """Send a text message to a Telegram chat."""
-    token = await _get_bot_token(agent_auth["agent_id"], db)
+    token = await _token_fuer_chat(agent_auth["agent_id"], str(body.chat_id), db)
     data = {"chat_id": body.chat_id, "text": body.text}
     if body.parse_mode:
         data["parse_mode"] = body.parse_mode
@@ -387,7 +422,7 @@ async def send_rich_message(
     Forwards blocks as InputRichMessage to Telegram unchanged.
     Telegram validates block types server-side.
     """
-    token = await _get_bot_token(agent_auth["agent_id"], db)
+    token = await _token_fuer_chat(agent_auth["agent_id"], str(body.chat_id), db)
     data: dict = {
         "chat_id": body.chat_id,
         "rich_message": {"blocks": body.blocks},
@@ -408,7 +443,7 @@ async def send_rich_message_draft(
     db: AsyncSession = Depends(get_db),
 ):
     """Stream a partial rich message (sendRichMessageDraft) — for progressive rendering."""
-    token = await _get_bot_token(agent_auth["agent_id"], db)
+    token = await _token_fuer_chat(agent_auth["agent_id"], str(body.chat_id), db)
     data: dict = {
         "chat_id": body.chat_id,
         "rich_message": {"blocks": body.blocks},
@@ -427,7 +462,7 @@ async def send_voice(
     db: AsyncSession = Depends(get_db),
 ):
     """Send a voice message (OGG/OPUS) to a Telegram chat."""
-    token = await _get_bot_token(agent_auth["agent_id"], db)
+    token = await _token_fuer_chat(agent_auth["agent_id"], str(body.chat_id), db)
     audio_bytes = base64.b64decode(body.voice_base64)
     data = {"chat_id": str(body.chat_id)}
     if body.caption:
@@ -449,7 +484,7 @@ async def send_photo(
     db: AsyncSession = Depends(get_db),
 ):
     """Send a photo to a Telegram chat (base64 or URL)."""
-    token = await _get_bot_token(agent_auth["agent_id"], db)
+    token = await _token_fuer_chat(agent_auth["agent_id"], str(body.chat_id), db)
     if body.photo_url:
         data = {"chat_id": body.chat_id, "photo": body.photo_url}
         if body.caption:
@@ -483,7 +518,7 @@ async def send_document(
     db: AsyncSession = Depends(get_db),
 ):
     """Send a document/file to a Telegram chat."""
-    token = await _get_bot_token(agent_auth["agent_id"], db)
+    token = await _token_fuer_chat(agent_auth["agent_id"], str(body.chat_id), db)
     doc_bytes = base64.b64decode(body.document_base64)
     data = {"chat_id": str(body.chat_id)}
     if body.caption:
@@ -507,7 +542,7 @@ async def send_document_upload(
     db: AsyncSession = Depends(get_db),
 ):
     """Send a document via multipart upload (no base64, supports up to 50 MB)."""
-    token = await _get_bot_token(agent_auth["agent_id"], db)
+    token = await _token_fuer_chat(agent_auth["agent_id"], str(chat_id), db)
     content = await file.read()
     fname = filename or file.filename or "file"
     data = {"chat_id": str(chat_id)}
@@ -533,7 +568,7 @@ async def send_audio_upload(
     db: AsyncSession = Depends(get_db),
 ):
     """Send an audio file via multipart upload — shows Telegram's audio player (up to 50 MB)."""
-    token = await _get_bot_token(agent_auth["agent_id"], db)
+    token = await _token_fuer_chat(agent_auth["agent_id"], str(chat_id), db)
     content = await file.read()
     fname = filename or file.filename or "audio.mp3"
     data = {"chat_id": str(chat_id)}
@@ -561,7 +596,7 @@ async def send_voice_upload(
     db: AsyncSession = Depends(get_db),
 ):
     """Send a voice message via multipart upload — file must be OGG/OPUS (up to 50 MB)."""
-    token = await _get_bot_token(agent_auth["agent_id"], db)
+    token = await _token_fuer_chat(agent_auth["agent_id"], str(chat_id), db)
     content = await file.read()
     data = {"chat_id": str(chat_id)}
     if caption:
@@ -582,7 +617,7 @@ async def send_photo_upload(
     db: AsyncSession = Depends(get_db),
 ):
     """Send a photo via multipart upload (up to 10 MB visible, 50 MB file)."""
-    token = await _get_bot_token(agent_auth["agent_id"], db)
+    token = await _token_fuer_chat(agent_auth["agent_id"], str(chat_id), db)
     content = await file.read()
     data = {"chat_id": str(chat_id)}
     if caption:
@@ -605,7 +640,7 @@ async def send_video_upload(
     db: AsyncSession = Depends(get_db),
 ):
     """Send a video via multipart upload (up to 50 MB)."""
-    token = await _get_bot_token(agent_auth["agent_id"], db)
+    token = await _token_fuer_chat(agent_auth["agent_id"], str(chat_id), db)
     content = await file.read()
     fname = filename or file.filename or "video.mp4"
     data = {"chat_id": str(chat_id)}
@@ -626,7 +661,7 @@ async def send_video(
     db: AsyncSession = Depends(get_db),
 ):
     """Send a video to a Telegram chat."""
-    token = await _get_bot_token(agent_auth["agent_id"], db)
+    token = await _token_fuer_chat(agent_auth["agent_id"], str(body.chat_id), db)
     if body.video_url:
         data = {"chat_id": body.chat_id, "video": body.video_url}
         if body.caption:
@@ -660,7 +695,7 @@ async def send_sticker(
     db: AsyncSession = Depends(get_db),
 ):
     """Send a sticker to a Telegram chat."""
-    token = await _get_bot_token(agent_auth["agent_id"], db)
+    token = await _token_fuer_chat(agent_auth["agent_id"], str(body.chat_id), db)
     data = {"chat_id": body.chat_id, "sticker": body.sticker}
     return await _tg_request(token, "sendSticker", data)
 
@@ -672,7 +707,7 @@ async def send_location(
     db: AsyncSession = Depends(get_db),
 ):
     """Send a location to a Telegram chat."""
-    token = await _get_bot_token(agent_auth["agent_id"], db)
+    token = await _token_fuer_chat(agent_auth["agent_id"], str(body.chat_id), db)
     data = {
         "chat_id": body.chat_id,
         "latitude": body.latitude,
@@ -690,7 +725,7 @@ async def send_animation(
     db: AsyncSession = Depends(get_db),
 ):
     """Send a GIF/animation to a Telegram chat."""
-    token = await _get_bot_token(agent_auth["agent_id"], db)
+    token = await _token_fuer_chat(agent_auth["agent_id"], str(body.chat_id), db)
     if body.animation_url:
         data = {"chat_id": body.chat_id, "animation": body.animation_url}
         if body.caption:
@@ -724,7 +759,7 @@ async def send_chat_action(
     db: AsyncSession = Depends(get_db),
 ):
     """Send a chat action (typing indicator, etc.)."""
-    token = await _get_bot_token(agent_auth["agent_id"], db)
+    token = await _token_fuer_chat(agent_auth["agent_id"], str(body.chat_id), db)
     data = {"chat_id": body.chat_id, "action": body.action}
     return await _tg_request(token, "sendChatAction", data)
 
@@ -736,7 +771,7 @@ async def edit_message(
     db: AsyncSession = Depends(get_db),
 ):
     """Edit an existing message."""
-    token = await _get_bot_token(agent_auth["agent_id"], db)
+    token = await _token_fuer_chat(agent_auth["agent_id"], str(body.chat_id), db)
     data = {
         "chat_id": body.chat_id,
         "message_id": body.message_id,
@@ -756,6 +791,7 @@ async def set_commands(
     db: AsyncSession = Depends(get_db),
 ):
     """Set the bot's command menu."""
+    await _darf_senden(agent_auth["agent_id"], db, nur_erlaubt=True)
     token = await _get_bot_token(agent_auth["agent_id"], db)
     data = {"commands": body.commands}
     if body.scope:
@@ -771,6 +807,7 @@ async def delete_commands(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete the bot's command menu."""
+    await _darf_senden(agent_auth["agent_id"], db, nur_erlaubt=True)
     token = await _get_bot_token(agent_auth["agent_id"], db)
     return await _tg_request(token, "deleteMyCommands")
 
@@ -782,6 +819,7 @@ async def set_description(
     db: AsyncSession = Depends(get_db),
 ):
     """Set the bot's description and/or short description (about text)."""
+    await _darf_senden(agent_auth["agent_id"], db, nur_erlaubt=True)
     token = await _get_bot_token(agent_auth["agent_id"], db)
     results = {}
     if body.description is not None:
@@ -802,7 +840,7 @@ async def pin_message(
     db: AsyncSession = Depends(get_db),
 ):
     """Pin a message in a chat."""
-    token = await _get_bot_token(agent_auth["agent_id"], db)
+    token = await _token_fuer_chat(agent_auth["agent_id"], str(body.chat_id), db)
     data = {
         "chat_id": body.chat_id,
         "message_id": body.message_id,
@@ -818,7 +856,7 @@ async def unpin_message(
     db: AsyncSession = Depends(get_db),
 ):
     """Unpin a message in a chat."""
-    token = await _get_bot_token(agent_auth["agent_id"], db)
+    token = await _token_fuer_chat(agent_auth["agent_id"], str(body.chat_id), db)
     data = {"chat_id": body.chat_id, "message_id": body.message_id}
     return await _tg_request(token, "unpinChatMessage", data)
 
@@ -830,6 +868,7 @@ async def answer_callback(
     db: AsyncSession = Depends(get_db),
 ):
     """Answer a callback query from an inline keyboard button."""
+    await _darf_senden(agent_auth["agent_id"], db)
     token = await _get_bot_token(agent_auth["agent_id"], db)
     data = {
         "callback_query_id": body.callback_query_id,
@@ -892,7 +931,7 @@ async def react_to_message(
     Der Agent entscheidet selbst, ob eine Reaktion passt. Bewusst KEINE Automatik:
     Ein Zeichen bei jeder Nachricht wirkt mechanisch; der Normalfall ist keine.
     """
-    token = await _bot_token_for_chat(agent_auth["agent_id"], str(body.chat_id), db)
+    token = await _token_fuer_chat(agent_auth["agent_id"], str(body.chat_id), db)
     emoji = (body.emoji or "").strip()
     if emoji and emoji not in _ALLOWED_REACTIONS:
         raise HTTPException(

@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.409.1] - 2026-10-31
+
+### Sicherheit
+- **Die Rechte-Matrix gilt jetzt auch am Server.** Steht „E-Mail / M365 senden“, „Chat / Telegram senden“ oder „Externe API / Webhooks“ auf **Verboten**, sperrt die Plattform die Handlung selbst.
+- Bei Microsoft 365 gilt die strengere der beiden Einstellungen: die Zeile der Matrix oder der Microsoft-Zugriff des Agenten.
+- Über Telegram schreibt ein Agent nur noch in Chats, die sich bei ihm angemeldet haben.
+
 ## [1.409.0] - 2026-10-31
 
 ### Sicherheit

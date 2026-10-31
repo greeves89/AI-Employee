@@ -27,6 +27,27 @@ async def anbindung_zugewiesen(db, agent_id: str, anbindung: str) -> bool:
     return anbindung in ((config or {}).get("integrations") or [])
 
 
+#: Wie die Faehigkeiten in der Oberflaeche heissen — fuer verstaendliche Absagen.
+_NAME = {c["key"]: c["label"] for c in am.CAPABILITIES}
+_STAND = {am.DENY: "Verboten", am.ASK: "Freigabe", am.ALLOW: "Erlaubt"}
+
+
+async def verlangen(db, agent_id: str, faehigkeit: str, *, nur_erlaubt: bool = False) -> str:
+    """Abbrechen (403), wenn der Agent das nicht darf. Gibt den Zustand zurueck.
+
+    ``nur_erlaubt``: auch „Freigabe“ reicht nicht (Handlungen, fuer die es keinen
+    Freigabe-Weg gibt). Sonst sperrt nur „Verboten“.
+    """
+    from fastapi import HTTPException
+
+    stand = await zustand(db, agent_id, faehigkeit)
+    if stand == am.DENY or (nur_erlaubt and stand != am.ALLOW):
+        raise HTTPException(status_code=403, detail=(
+            f"Laut Rechte-Matrix darf dieser Agent das nicht: „{_NAME.get(faehigkeit, faehigkeit)}“ "
+            f"steht auf {_STAND.get(stand, stand)}."))
+    return stand
+
+
 async def zustand(db, agent_id: str, faehigkeit: str) -> str:
     """``allow`` | ``ask`` | ``deny`` fuer diese Faehigkeit. Unbekannter Agent: ``deny``."""
     from app.models.agent import Agent
