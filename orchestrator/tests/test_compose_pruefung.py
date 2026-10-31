@@ -578,7 +578,7 @@ class AppNetzTests(unittest.TestCase):
     def test_app_verlaesst_das_plattformnetz_und_kommt_ins_apps_netz(self):
         from app.api import docker_apps
         docker, plattform, apps, app, orch, agent = self._docker()
-        docker_apps._app_netz_anbinden(docker, PROJEKT, "abcdef12-0000", "agent1")
+        docker_apps._app_netz_anbinden(docker, PROJEKT, "abcdef12", "agent1")
         plattform.disconnect.assert_called_once_with(app, force=True)
         docker.client.networks.create.assert_called_once_with(
             "ai-employee-apps-abcdef12", driver="bridge", internal=True,
@@ -593,7 +593,7 @@ class AppNetzTests(unittest.TestCase):
         fremd = MagicMock()
         fremd.attrs = {"Labels": {}}
         docker, *_ = self._docker(apps_netz=fremd)
-        docker_apps._app_netz_anbinden(docker, PROJEKT, "abcdef12-0000", "agent1")
+        docker_apps._app_netz_anbinden(docker, PROJEKT, "abcdef12", "agent1")
         fremd.connect.assert_not_called()
 
     def test_wer_schon_drin_ist_wird_nicht_erneut_verbunden(self):
@@ -603,9 +603,40 @@ class AppNetzTests(unittest.TestCase):
         vorhanden.attrs = {"Labels": {docker_apps.APPS_NETZ_LABEL: "abcdef12"},
                            "Containers": {"app1": {}, "orch1": {}, "agent1": {}}}
         docker, plattform, *_ = self._docker(app_im_plattformnetz=False, apps_netz=vorhanden)
-        docker_apps._app_netz_anbinden(docker, PROJEKT, "abcdef12-0000", "agent1")
+        docker_apps._app_netz_anbinden(docker, PROJEKT, "abcdef12", "agent1")
         plattform.disconnect.assert_not_called()
         vorhanden.connect.assert_not_called()
+
+    def test_nach_neustart_nur_plattform_netze_wieder_beitreten(self):
+        from app.api import docker_apps
+        eigenes = MagicMock(attrs={"Labels": {docker_apps.APPS_NETZ_LABEL: "abcdef12"}})
+        getarnt = MagicMock(attrs={"Labels": {}})
+        netze = {"ai-employee-apps-abcdef12": eigenes, "ai-employee-apps-falsch": getarnt}
+        orch = SimpleNamespace(id="orch1")
+        docker = SimpleNamespace(client=SimpleNamespace(
+            networks=SimpleNamespace(get=MagicMock(side_effect=netze.__getitem__)),
+            containers=SimpleNamespace(get=MagicMock(return_value=orch))))
+        docker_apps._orchestrator_anbinden(docker, [f"{PROJEKT}_default", "ai-employee-apps-abcdef12", "ai-employee-apps-falsch"])
+        eigenes.connect.assert_called_once_with(orch)
+        getarnt.connect.assert_not_called()
+        docker.client.networks.get.assert_any_call("ai-employee-apps-abcdef12")
+        self.assertNotIn(((f"{PROJEKT}_default",),), docker.client.networks.get.call_args_list,
+                         "ein Netz der App wird nie betreten")
+
+    def test_laufende_apps_ziehen_beim_start_um(self):
+        from app.api import docker_apps
+        plattform = MagicMock(attrs={"Containers": {"a": {}, "t": {}, "p": {}}})
+        cs = {"a": SimpleNamespace(labels={"com.docker.compose.project": "agent-abcdef12-projects-todo"}),
+              "t": SimpleNamespace(labels={"com.docker.compose.project": "agent-abcdef12-tf-room123456789xyz"}),
+              "p": SimpleNamespace(labels={})}
+        docker = SimpleNamespace(client=SimpleNamespace(
+            networks=SimpleNamespace(get=MagicMock(return_value=plattform)),
+            containers=SimpleNamespace(get=MagicMock(side_effect=cs.__getitem__))))
+        with patch.object(docker_apps, "_app_netz_anbinden") as anbinden:
+            self.assertEqual(docker_apps.apps_aus_dem_plattformnetz(docker), 2)
+        aufrufe = sorted(c.args[1:] for c in anbinden.call_args_list)
+        self.assertEqual(aufrufe, [("agent-abcdef12-projects-todo", "abcdef12"),
+                                   ("agent-abcdef12-tf-room123456789xyz", "tf-room12345678")])
 
     def test_orchestrator_tritt_keinem_netz_der_app_bei(self):
         """Im Netz der App heißen Dienste, wie die App will — auch „ai-employee-redis“."""
@@ -624,6 +655,20 @@ class SpeicherTests(unittest.TestCase):
         self.assertNotIn("memswap_limit", neu["services"]["web"])
         neu, _, _ = _pruefen(_modell(deploy={"resources": {"limits": {"memory": "100G"}}}))
         self.assertEqual(neu["services"]["web"]["deploy"]["resources"]["limits"]["memory"], cp.APP_SPEICHER_MAX)
+
+    def test_null_oder_negativ_heisst_nicht_unbegrenzt(self):
+        neu, _, _ = _pruefen(_modell(mem_limit=0))
+        self.assertEqual(neu["services"]["web"]["mem_limit"], cp.APP_SPEICHER, "0 bekommt die Standardgrenze")
+        for wert in (-1, "0", "-1"):
+            neu, _, _ = _pruefen(_modell(mem_limit=wert))
+            self.assertEqual(neu["services"]["web"]["mem_limit"], cp.APP_SPEICHER_MAX, wert)
+
+    def test_hostname_nur_mit_praefix(self):
+        neu, hinweise, _ = _pruefen(_modell(hostname="ai-employee-postgres", domainname="example.invalid"))
+        self.assertNotIn("hostname", neu["services"]["web"])
+        self.assertNotIn("domainname", neu["services"]["web"])
+        neu, _, _ = _pruefen(_modell(hostname="agent-abcdef12-web"))
+        self.assertEqual(neu["services"]["web"]["hostname"], "agent-abcdef12-web")
 
     def test_unlesbarer_speicher_zaehlt_als_zu_viel(self):
         neu, _, _ = _pruefen(_modell(mem_limit="unendlich"))

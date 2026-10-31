@@ -241,8 +241,12 @@ def _projekt_filter(project_name: str) -> dict:
 APPS_NETZ_LABEL = "ai-employee.apps-netz"
 
 
-def _apps_netz(docker: DockerService, agent_id: str):
-    """Das App-Netz eines Agenten: ``ai-employee-apps-<id8>``, intern, von der Plattform angelegt.
+APPS_NETZ_PRAEFIX = "ai-employee-apps-"
+
+
+def _apps_netz(docker: DockerService, schluessel: str):
+    """Ein App-Netz: ``ai-employee-apps-<id8>`` je Agent bzw. ``…-tf-<raum>`` je
+    Taskforce-Raum. Intern und von der Plattform angelegt.
 
     Hier treffen sich die Apps des Agenten, der Agent selbst und der Orchestrator
     (fuer den App-Proxy). Den Namen kann keine App beanspruchen — Compose-Namen
@@ -252,18 +256,18 @@ def _apps_netz(docker: DockerService, agent_id: str):
     So kann eine App keinen Namen der Plattform (Redis, Postgres, Docker-Proxy)
     fuer den Orchestrator oder den Agenten umbiegen.
     """
-    name = f"ai-employee-apps-{agent_id[:8]}"
+    name = APPS_NETZ_PRAEFIX + schluessel
     try:
         netz = docker.client.networks.get(name)
-        if (netz.attrs.get("Labels") or {}).get(APPS_NETZ_LABEL) == agent_id[:8]:
+        if (netz.attrs.get("Labels") or {}).get(APPS_NETZ_LABEL) == schluessel:
             return netz
         raise RuntimeError(f"Netz {name} stammt nicht von der Plattform")
     except NotFound:
         return docker.client.networks.create(
-            name, driver="bridge", internal=True, labels={APPS_NETZ_LABEL: agent_id[:8]})
+            name, driver="bridge", internal=True, labels={APPS_NETZ_LABEL: schluessel})
 
 
-def _app_netz_anbinden(docker: DockerService, project_name: str, agent_id: str,
+def _app_netz_anbinden(docker: DockerService, project_name: str, schluessel: str,
                        agent_container: str | None = None) -> None:
     """Die App kommt ins App-Netz ihres Agenten, nicht ins Plattformnetz.
 
@@ -285,10 +289,10 @@ def _app_netz_anbinden(docker: DockerService, project_name: str, agent_id: str,
         logger.warning(f"Plattformnetz fuer {scrub_log(project_name)} nicht bereinigt: {e}")
 
     try:
-        netz = _apps_netz(docker, agent_id)
+        netz = _apps_netz(docker, schluessel)
         netz.reload()
     except Exception as e:  # noqa: BLE001
-        logger.warning(f"App-Netz fuer {scrub_log(agent_id)} nicht verfuegbar: {e}")
+        logger.warning(f"App-Netz {scrub_log(schluessel)} nicht verfuegbar: {e}")
         return
     drin = set((netz.attrs.get("Containers") or {}).keys())
     gaeste = [settings.orchestrator_container_name, agent_container]
@@ -302,6 +306,56 @@ def _app_netz_anbinden(docker: DockerService, project_name: str, agent_id: str,
         except Exception as e:  # noqa: BLE001
             logger.warning(f"{scrub_log(str(getattr(ziel, 'name', ziel)))} nicht an {netz.name} angebunden: {e}")
     _EIGENE_NETZE.clear()
+
+
+def _orchestrator_anbinden(docker: DockerService, netznamen: list[str]) -> None:
+    """Nach einem Neustart des Orchestrators: wieder den App-Netzen beitreten, in
+    denen eine App schon haengt. Nur Netze der Plattform — nie ein Netz der App."""
+    from app.config import settings
+
+    for name in netznamen:
+        if not name.startswith(APPS_NETZ_PRAEFIX):
+            continue
+        try:
+            netz = docker.client.networks.get(name)
+            if not (netz.attrs.get("Labels") or {}).get(APPS_NETZ_LABEL):
+                continue
+            netz.connect(docker.client.containers.get(settings.orchestrator_container_name))
+        except APIError as e:
+            if "already exists" not in str(e):
+                logger.warning(f"Orchestrator nicht an {name} angebunden: {e}")
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Orchestrator nicht an {name} angebunden: {e}")
+    _EIGENE_NETZE.clear()
+
+
+def apps_aus_dem_plattformnetz(docker: DockerService) -> int:
+    """Beim Start einmal: laufende Agenten-Apps aus dem Plattformnetz ins App-Netz
+    ihres Agenten umziehen. Bis zu dieser Version hing jede App neben Postgres und
+    Redis; ohne den Umzug blieben sie dort bis zum naechsten Neustart der App."""
+    umgezogen = 0
+    try:
+        plattform = docker.client.networks.get(AGENT_NETWORK)
+        plattform.reload()
+    except Exception:  # noqa: BLE001
+        return 0
+    projekte = set()
+    for cid in (plattform.attrs.get("Containers") or {}):
+        try:
+            c = docker.client.containers.get(cid)
+        except Exception:  # noqa: BLE001
+            continue
+        projekt = str(c.labels.get("com.docker.compose.project", ""))
+        if re.fullmatch(r"agent-[0-9a-f]{8}-.+", projekt):
+            projekte.add(projekt)
+    for projekt in sorted(projekte):
+        # Taskforce-Apps („…-tf-<raum>“) bekommen das Netz ihres Raums, sonst das des Agenten.
+        tf = re.fullmatch(r"agent-[0-9a-f]{8}-tf-(.+)", projekt)
+        _app_netz_anbinden(docker, projekt, f"tf-{tf.group(1)[:12]}" if tf else projekt[6:14])
+        umgezogen += 1
+    if umgezogen:
+        logger.info(f"{umgezogen} App(s) aus {AGENT_NETWORK} in ihr App-Netz umgezogen")
+    return umgezogen
 
 
 #: Netze des Orchestrators, kurz zwischengespeichert: Der Proxy fragt bei jeder
@@ -601,7 +655,7 @@ async def _start_core(docker: DockerService, agent: Agent, agent_id: str, path: 
         logger.error(f"Failed to start {scrub_log(project_name)}: {scrub_log(output)}")
         raise HTTPException(status_code=500, detail=f"Failed to start app: {output}")
 
-    _app_netz_anbinden(docker, project_name, agent_id, agent.container_id)
+    _app_netz_anbinden(docker, project_name, agent_id[:8], agent.container_id)
     containers = _get_project_containers(docker, project_name)
     logger.info(f"Docker app started: {scrub_log(project_name)} ({len(containers)} containers)")
     return {"project": project_name, "status": "running", "containers": containers,
@@ -652,7 +706,7 @@ async def _rebuild_core(docker: DockerService, agent: Agent, agent_id: str, path
         logger.error(f"Failed to rebuild {scrub_log(project_name)}: {scrub_log(output)}")
         raise HTTPException(status_code=500, detail=f"Failed to rebuild app: {output}")
 
-    _app_netz_anbinden(docker, project_name, agent_id, agent.container_id)
+    _app_netz_anbinden(docker, project_name, agent_id[:8], agent.container_id)
     containers = _get_project_containers(docker, project_name)
     return {"project": project_name, "status": "running", "containers": containers,
             "url": _app_public_url(agent_id, containers), "output": output, "hinweise": hinweise}
@@ -980,7 +1034,7 @@ async def proxy_app(
         nets = ((c.attrs or {}).get("NetworkSettings") or {}).get("Networks") or {}
         gemeinsam = [n for n in nets if n in _eigene_netze(docker)]
         if not gemeinsam:
-            await asyncio.to_thread(_app_netz_anbinden, docker, project, agent_id)
+            await asyncio.to_thread(_orchestrator_anbinden, docker, list(nets))
             await asyncio.to_thread(c.reload)
             nets = ((c.attrs or {}).get("NetworkSettings") or {}).get("Networks") or {}
             gemeinsam = [n for n in nets if n in _eigene_netze(docker)]

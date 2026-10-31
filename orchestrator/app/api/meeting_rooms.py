@@ -426,7 +426,8 @@ async def launch_deliverable(
         logger.warning("[Taskforce %s] launch failed: %s", scrub_log(room_id), scrub_log(redact_logs(ausgabe)))
         raise HTTPException(status_code=500, detail="Start fehlgeschlagen — Build/Start-Fehler (Details im Server-Log).")
 
-    _app_netz_anbinden(docker, project, host_agent)
+    # Eigenes Netz je Raum: Der erste Agent des Raums kann einem anderen Nutzer gehoeren.
+    _app_netz_anbinden(docker, project, f"tf-{room_id[:12]}")
     containers = _get_project_containers(docker, project)
 
     # Build the proxy URL: first container + the web port (from compose, else exposed).

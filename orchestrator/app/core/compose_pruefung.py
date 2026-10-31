@@ -69,8 +69,8 @@ _STANDARD_CAPS = frozenset({
 _DIENST_FREI = frozenset({
     "annotations", "attach", "blkio_config", "cap_drop", "command", "cpu_count",
     "cpu_percent", "cpu_period", "cpu_quota", "cpu_shares", "cpus", "cpuset",
-    "depends_on", "develop", "dns", "dns_opt", "dns_search", "domainname", "entrypoint",
-    "environment", "expose", "extra_hosts", "group_add", "healthcheck", "hostname",
+    "depends_on", "develop", "dns", "dns_opt", "dns_search", "entrypoint",
+    "environment", "expose", "extra_hosts", "group_add", "healthcheck",
     "image", "init", "links", "mac_address", "mem_limit", "mem_reservation",
     "mem_swappiness", "pids_limit", "platform", "profiles",
     "pull_policy", "pull_refresh_after", "read_only", "restart", "scale", "shm_size",
@@ -81,7 +81,7 @@ _DIENST_FREI = frozenset({
 #: Dienst-Schlüssel, die hier geprüft oder umgeschrieben werden.
 #: ``memswap_limit`` fällt still weg (Docker nimmt dann das Doppelte von mem_limit).
 _DIENST_GEPRUEFT = frozenset({
-    "memswap_limit", "build", "cap_add", "container_name", "deploy", "env_file", "ipc", "labels",
+    "memswap_limit", "hostname", "domainname", "build", "cap_add", "container_name", "deploy", "env_file", "ipc", "labels",
     "logging", "network_mode", "networks", "oom_score_adj", "pid", "ports",
     "post_start", "pre_stop", "privileged", "security_opt", "volumes",
 })
@@ -536,6 +536,12 @@ def _dienst_pruefen(name: str, dienst: dict, quelle: Quelle, dienste: set, volum
     if "networks" in dienst and "network_mode" not in d:
         d["networks"] = _dienst_netze(wo, dienst["networks"] or {}, netze, fehler, hinweise)
 
+    for k in ("hostname", "domainname"):
+        if dienst.get(k) and not str(dienst[k]).startswith(quelle.praefix):
+            hinweise.append(f"{wo}: „{k}: {dienst[k]}“ entfernt (Namen der Plattform sind tabu).")
+        elif dienst.get(k):
+            d[k] = dienst[k]
+
     if dienst.get("container_name"):
         alt = str(dienst["container_name"])
         neu_name = _praefixiert(quelle, alt)
@@ -587,7 +593,7 @@ def _grenzen(wo: str, d: dict, fehler: list[str], hinweise: list[str]) -> None:
     if not d.get("mem_limit") and not limits.get("memory"):
         d["mem_limit"] = APP_SPEICHER
     for wo_wert, halter, schluessel in ((d.get("mem_limit"), d, "mem_limit"), (limits.get("memory"), limits, "memory")):
-        if wo_wert not in (None, "") and _bytes(wo_wert) > APP_SPEICHER_MAX:
+        if wo_wert not in (None, "") and not 0 < _bytes(wo_wert) <= APP_SPEICHER_MAX:
             halter[schluessel] = APP_SPEICHER_MAX
             hinweise.append(f"{wo}: Speicher auf {APP_SPEICHER_MAX // 1024**3} GB begrenzt.")
 
