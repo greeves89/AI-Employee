@@ -16,7 +16,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-PLATZHALTER_RE = re.compile(r"aie-geheim-[gmh]?\d{1,10}-[0-9a-f]{12}")
+PLATZHALTER_RE = re.compile(r"aie-geheim-[gmhk]?\d{1,10}-[0-9a-f]{12}")
 MARKE = "aie-geheim-"
 CA_HOST = "aie-egress.internal"
 
@@ -128,17 +128,10 @@ ANMELDE_PARAMETER = re.compile(
 FORMULAR = "application/x-www-form-urlencoded"
 
 
-def _parameter_platzhalter(abfrage: str, wo: str) -> set[str]:
-    gefunden: set[str] = set()
-    for name, wert in urllib.parse.parse_qsl(abfrage, keep_blank_values=True):
-        if not platzhalter_in(name, wert):
-            continue
-        if ANMELDE_PARAMETER.match(name) and PLATZHALTER_RE.fullmatch(wert):
-            gefunden.add(wert)
-        else:
-            raise Abgelehnt(403, f"Platzhalter im {wo} nur als ganzer Wert eines Anmelde-Parameters "
-                                 f"(key, token, client_secret …), nicht in „{name[:40]}“")
-    return gefunden
+def _parameter_platzhalter(abfrage: str) -> set[str]:
+    """Platzhalter, die als GANZER Wert eines Anmelde-Parameters stehen."""
+    return {wert for name, wert in urllib.parse.parse_qsl(abfrage, keep_blank_values=True)
+            if ANMELDE_PARAMETER.match(name) and PLATZHALTER_RE.fullmatch(wert)}
 
 
 def ist_formular(inhaltsarten: list[str], koerper: str) -> bool:
@@ -165,24 +158,22 @@ def pfad_ersetzen(pfad: str, werte: dict[str, str]) -> str:
 
 
 def platzhalter_ausserhalb_der_koepfe(pfad: str, inhaltsart, koerper: str | None) -> set[str]:
-    """Platzhalter in Adresse und Koerper — nur an Anmeldestellen, sonst ``Abgelehnt``.
+    """Platzhalter in Adresse und Koerper, die ersetzt werden duerfen: nur als ganzer Wert
+    eines Anmelde-Parameters (Adresse oder eindeutiges Formular).
 
-    In Kopfzeilen darf ein Platzhalter ueberall stehen (dort stehen Keys, und kaum ein
-    Dienst speichert fremde Kopfzeilen). Im Pfad, in einem JSON-Koerper oder in einem
-    beliebigen Parameter dagegen koennte ein Agent den echten Wert beim Ziel
-    ablegen lassen — als Dateiname, Gist-Inhalt, Kommentar — und ihn spaeter lesen.
+    Alle anderen Stellen bleiben, wie sie sind — der Platzhalter geht unveraendert
+    hinaus. Im Pfad, in JSON oder einem beliebigen Parameter koennte ein Agent den
+    echten Wert sonst beim Ziel ablegen lassen (Dateiname, Kommentar) und spaeter lesen.
+    Bis 1.417 wurde dort mit 403 abgelehnt; das legte aber auch Anfragen still, die
+    einen Platzhalter nur zitieren — etwa jeden Aufruf an ein Sprachmodell, sobald er
+    einmal im Gespraechsverlauf stand.
     """
-    ort, _, abfrage = pfad.partition("?")
-    if platzhalter_in(urllib.parse.unquote(ort)):
-        raise Abgelehnt(403, "Platzhalter im Pfad der Adresse werden nicht ersetzt")
-    gefunden = _parameter_platzhalter(abfrage, "Adressteil")
+    _, _, abfrage = pfad.partition("?")
+    gefunden = _parameter_platzhalter(abfrage)
     if koerper and platzhalter_in(koerper):
         arten = [inhaltsart] if isinstance(inhaltsart, str) else list(inhaltsart or [])
         if ist_formular(arten, koerper):
-            gefunden |= _parameter_platzhalter(koerper, "Formular")
-        else:
-            raise Abgelehnt(403, "Platzhalter im Inhalt einer Anfrage werden nicht ersetzt — "
-                                 "nur in Kopfzeilen und Anmelde-Parametern")
+            gefunden |= _parameter_platzhalter(koerper)
     return gefunden
 
 

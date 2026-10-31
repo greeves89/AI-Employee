@@ -114,12 +114,8 @@ class AieEgress:
         roh = flow.request.raw_content
         if roh and len(roh) <= logik.MAX_KOERPER and kodierung in ("", "identity"):
             text = flow.request.get_text(strict=False)
-        try:
-            gefunden |= logik.platzhalter_ausserhalb_der_koepfe(
-                flow.request.path, flow.request.headers.get_all("content-type"), text)
-        except logik.Abgelehnt as e:
-            flow.response = _antwort(e.status, e.text)
-            return
+        gefunden |= logik.platzhalter_ausserhalb_der_koepfe(
+            flow.request.path, flow.request.headers.get_all("content-type"), text)
         if not gefunden:
             return
         ziel, port = self.ziele.get(cid, ("", 0))
@@ -150,7 +146,9 @@ class AieEgress:
             for k, v in flow.request.headers.fields
         )
         flow.request.path = logik.pfad_ersetzen(flow.request.path, werte)
-        if text is not None and logik.platzhalter_in(text):
+        # Nur ein eindeutiges Formular wird neu kodiert — JSON & Co. bleiben byte-gleich.
+        if (text is not None and logik.platzhalter_in(text)
+                and logik.ist_formular(flow.request.headers.get_all("content-type"), text)):
             flow.request.set_text(logik.parameter_ersetzen(text, werte))
         flow.metadata["aie_werte"] = werte
         self.maske.merken(agent[0], werte)
@@ -194,10 +192,15 @@ class AieEgress:
         # gestreamt liefe sie ungeprueft durch. Ausnahme: git-Pakete (gross und
         # gepackt; in ein Repo gelangt ein Wert ueber den Proxy nicht, Koerper mit
         # Platzhalter werden abgelehnt). Zu grosse Antworten: Abbruch statt Durchlass.
-        if flow.response is None or not self._maske(flow):
+        if flow.response is None:
             return
         art = (flow.response.headers.get("content-type") or "").lower()
-        if art.startswith("application/x-git-"):
+        # Ereignisstroeme (Sprachmodelle antworten so) sofort durchreichen. Ein Wert
+        # gelangt nie hinein: eingesetzt wird nur in Kopfzeilen und Anmelde-Parametern.
+        if art.startswith("text/event-stream"):
+            flow.response.stream = True
+            return
+        if not self._maske(flow) or art.startswith("application/x-git-"):
             return
         try:
             laenge = int(flow.response.headers.get("content-length") or 0)
