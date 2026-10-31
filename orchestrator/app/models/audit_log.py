@@ -56,6 +56,7 @@ class AuditEventType(str, Enum):
     # App-Freigaben (#467) — wer eine Agenten-App für wen geöffnet hat
     APP_SHARED = "app_shared"                     # Freigabe erteilt (Person/alle/öffentlich)
     APP_SHARE_REVOKED = "app_share_revoked"       # Freigabe zurückgezogen
+    APP_BLOCKED = "app_blocked"                   # Compose-Datei abgelehnt (privileged, Server-Ordner …)
     # Eigene Menuepunkte — welche fremde Seite ein Administrator eingebunden hat
     CUSTOM_PAGE_CREATED = "custom_page_created"
     CUSTOM_PAGE_UPDATED = "custom_page_updated"

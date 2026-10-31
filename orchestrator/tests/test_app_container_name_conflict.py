@@ -29,7 +29,7 @@ in ``docker_apps.py`` laeuft nicht ueber den AgentManager, sondern ueber
 import asyncio
 import unittest
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.api.docker_apps import (
     _is_name_conflict,
@@ -176,11 +176,11 @@ class DerRebuildRaeumtAufUndVersuchtNochmalTests(unittest.IsolatedAsyncioTestCas
         agent, docker, compose = self._umgebung([(1, KONFLIKT_SICHERUNG), (0, "Container Started")])
         aufraeumen = MagicMock(return_value=["36e1287bd0ab_kraft-tracker"])
 
-        with patch.object(docker_apps, "_run_compose", compose), \
+        with patch.object(docker_apps.compose_pruefung, "ausfuehren", compose), \
              patch.object(docker_apps, "_reconcile_stale_backups", aufraeumen), \
              patch.object(docker_apps, "_resolve_compose_file", MagicMock(return_value="/workspace/p/docker-compose.yml")), \
-             patch.object(docker_apps, "_prepare_free_port_compose", MagicMock(return_value="/workspace/p/docker-compose.yml")), \
-             patch.object(docker_apps, "_connect_containers_to_network", MagicMock()), \
+             patch.object(docker_apps.compose_pruefung, "vorbereiten", AsyncMock(return_value=({"services": {}}, []))), \
+             patch.object(docker_apps, "_app_netz_anbinden", MagicMock()), \
              patch.object(docker_apps, "_get_project_containers", MagicMock(return_value=[])):
             ergebnis = await docker_apps._rebuild_core(docker, agent, "a1", "projects/kraft-tracker")
 
@@ -196,10 +196,10 @@ class DerRebuildRaeumtAufUndVersuchtNochmalTests(unittest.IsolatedAsyncioTestCas
 
         agent, docker, compose = self._umgebung([(1, "npm ci did not complete successfully")] * 2)
 
-        with patch.object(docker_apps, "_run_compose", compose), \
+        with patch.object(docker_apps.compose_pruefung, "ausfuehren", compose), \
              patch.object(docker_apps, "_reconcile_stale_backups", MagicMock(return_value=[])), \
              patch.object(docker_apps, "_resolve_compose_file", MagicMock(return_value="/workspace/p/docker-compose.yml")), \
-             patch.object(docker_apps, "_prepare_free_port_compose", MagicMock(return_value="/workspace/p/docker-compose.yml")):
+             patch.object(docker_apps.compose_pruefung, "vorbereiten", AsyncMock(return_value=({"services": {}}, []))):
             with self.assertRaises(HTTPException):
                 await docker_apps._rebuild_core(docker, agent, "a1", "projects/kraft-tracker")
 
@@ -232,11 +232,11 @@ class DerRebuildRaeumtAufUndVersuchtNochmalTests(unittest.IsolatedAsyncioTestCas
         )
         docker.client.containers.list.return_value = []
 
-        with patch.object(docker_apps, "_run_compose", MagicMock(side_effect=langsamer_compose)), \
+        with patch.object(docker_apps.compose_pruefung, "ausfuehren", MagicMock(side_effect=langsamer_compose)), \
              patch.object(docker_apps, "_reconcile_stale_backups", MagicMock(return_value=[])), \
              patch.object(docker_apps, "_resolve_compose_file", MagicMock(return_value="/workspace/p/docker-compose.yml")), \
-             patch.object(docker_apps, "_prepare_free_port_compose", MagicMock(return_value="/workspace/p/docker-compose.yml")), \
-             patch.object(docker_apps, "_connect_containers_to_network", MagicMock()), \
+             patch.object(docker_apps.compose_pruefung, "vorbereiten", AsyncMock(return_value=({"services": {}}, []))), \
+             patch.object(docker_apps, "_app_netz_anbinden", MagicMock()), \
              patch.object(docker_apps, "_get_project_containers", MagicMock(return_value=[])):
             await asyncio.gather(*[
                 docker_apps._rebuild_core(docker, agent, "a1", "projects/kraft-tracker")
@@ -271,11 +271,11 @@ class DerRebuildRaeumtAufUndVersuchtNochmalTests(unittest.IsolatedAsyncioTestCas
         )
         docker.client.containers.list.return_value = []
 
-        with patch.object(docker_apps, "_run_compose", MagicMock(side_effect=langsamer_compose)), \
+        with patch.object(docker_apps.compose_pruefung, "ausfuehren", MagicMock(side_effect=langsamer_compose)), \
              patch.object(docker_apps, "_reconcile_stale_backups", MagicMock(return_value=[])), \
              patch.object(docker_apps, "_resolve_compose_file", MagicMock(return_value="/workspace/p/docker-compose.yml")), \
-             patch.object(docker_apps, "_prepare_free_port_compose", MagicMock(return_value="/workspace/p/docker-compose.yml")), \
-             patch.object(docker_apps, "_connect_containers_to_network", MagicMock()), \
+             patch.object(docker_apps.compose_pruefung, "vorbereiten", AsyncMock(return_value=({"services": {}}, []))), \
+             patch.object(docker_apps, "_app_netz_anbinden", MagicMock()), \
              patch.object(docker_apps, "_get_project_containers", MagicMock(return_value=[])):
             await asyncio.gather(
                 docker_apps._rebuild_core(docker, agent, "a1", "projects/app-eins"),
@@ -302,12 +302,12 @@ class DerStartWegHatDieselbeLueckeTests(unittest.IsolatedAsyncioTestCase):
         compose = MagicMock(side_effect=[(1, KONFLIKT_ECHTNAME), (0, "Container Started")])
         aufraeumen = MagicMock(return_value=["36e1287bd0ab_kraft-tracker"])
 
-        with patch.object(docker_apps, "_run_compose", compose), \
+        with patch.object(docker_apps.compose_pruefung, "ausfuehren", compose), \
              patch.object(docker_apps, "_reconcile_stale_backups", aufraeumen), \
              patch.object(docker_apps, "_resolve_compose_file", MagicMock(return_value="/workspace/p/docker-compose.yml")), \
              patch.object(docker_apps, "_ensure_env_files", MagicMock()), \
-             patch.object(docker_apps, "_prepare_free_port_compose", MagicMock(return_value="/workspace/p/docker-compose.yml")), \
-             patch.object(docker_apps, "_connect_containers_to_network", MagicMock()), \
+             patch.object(docker_apps.compose_pruefung, "vorbereiten", AsyncMock(return_value=({"services": {}}, []))), \
+             patch.object(docker_apps, "_app_netz_anbinden", MagicMock()), \
              patch.object(docker_apps, "_get_project_containers", MagicMock(return_value=[])):
             ergebnis = await docker_apps._start_core(docker, agent, "a1", "projects/kraft-tracker")
 
