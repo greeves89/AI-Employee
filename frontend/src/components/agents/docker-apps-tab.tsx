@@ -32,6 +32,7 @@ import {
 import { getBase } from "@/lib/config";
 import type { DockerApp, DockerAppLog } from "@/lib/types";
 import { setVisibleInterval } from "@/lib/visible-interval";
+import { apiFehlertext } from "@/lib/api-fehler";
 
 interface DockerAppsTabProps {
   agentId: string;
@@ -83,7 +84,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionType, setActionType] = useState<"start" | "rebuild" | "stop" | null>(null);
   const [actionPhase, setActionPhase] = useState(0);
-  const [actionError, setActionError] = useState<{ path: string; message: string } | null>(null);
+  const [actionError, setActionError] = useState<{ path: string; message: string; titel: string } | null>(null);
   const [expandedApp, setExpandedApp] = useState<string | null>(null);
   const [logs, setLogs] = useState<DockerAppLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
@@ -157,8 +158,8 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
       // Final log fetch after success
       await pollLogs(app.path);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setActionError({ path: app.path, message: msg });
+      const msg = apiFehlertext(e);
+      setActionError({ path: app.path, message: msg, titel: "App konnte nicht gestartet werden" });
     }
 
     // Cleanup timers
@@ -179,8 +180,8 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
       setLogsApp(null);
       setLogs([]);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setActionError({ path: app.path, message: msg });
+      const msg = apiFehlertext(e);
+      setActionError({ path: app.path, message: msg, titel: "App konnte nicht gestoppt werden" });
     }
     setActionLoading(null);
     setActionType(null);
@@ -210,8 +211,8 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
       await fetchApps();
       await pollLogs(app.path);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setActionError({ path: app.path, message: msg });
+      const msg = apiFehlertext(e);
+      setActionError({ path: app.path, message: msg, titel: "App konnte nicht neu gebaut werden" });
     }
 
     if (phaseTimerRef.current) { clearInterval(phaseTimerRef.current); phaseTimerRef.current = null; }
@@ -227,8 +228,8 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
       await restartDockerService(agentId, app.path, serviceName);
       await fetchApps();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setActionError({ path: app.path, message: msg });
+      const msg = apiFehlertext(e);
+      setActionError({ path: app.path, message: msg, titel: "Dienst konnte nicht neu gestartet werden" });
     }
     setRestartingService(null);
   };
@@ -784,7 +785,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-red-400 mb-1">
-                        Failed to {app.status === "stopped" ? "start" : "stop"} app
+                        {actionError.titel}
                       </p>
                       <pre className="text-[11px] text-red-300/80 whitespace-pre-wrap break-all font-mono leading-relaxed max-h-40 overflow-y-auto">
                         {actionError.message}
