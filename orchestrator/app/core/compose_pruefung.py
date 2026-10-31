@@ -45,6 +45,11 @@ from fastapi import HTTPException
 logger = logging.getLogger(__name__)
 
 RUNNER_IMAGE = "docker:cli"
+#: App-Netz eines Agenten (bzw. Taskforce-Raums): ``ai-employee-apps-<schluessel>``,
+#: angelegt von der Plattform, erkennbar am Label. Den Namen kann keine App
+#: vergeben (Compose-Namen beginnen nach der Prüfung mit ``agent-``).
+APPS_NETZ_PRAEFIX = "ai-employee-apps-"
+APPS_NETZ_LABEL = "ai-employee.apps-netz"
 #: Unter diesem Schlüssel hängt das Volume des Agenten im geprüften Modell.
 WORKSPACE_VOLUME = "aie_workspace"
 AGENT_UID = "1000:1000"

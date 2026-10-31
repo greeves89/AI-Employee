@@ -238,10 +238,10 @@ def _projekt_filter(project_name: str) -> dict:
     return {"label": f"com.docker.compose.project={project_name}"}
 
 
-APPS_NETZ_LABEL = "ai-employee.apps-netz"
+APPS_NETZ_LABEL = compose_pruefung.APPS_NETZ_LABEL
 
 
-APPS_NETZ_PRAEFIX = "ai-employee-apps-"
+APPS_NETZ_PRAEFIX = compose_pruefung.APPS_NETZ_PRAEFIX
 
 
 def _apps_netz(docker: DockerService, schluessel: str):
@@ -334,11 +334,18 @@ def apps_aus_dem_plattformnetz(docker: DockerService) -> int:
     ihres Agenten umziehen. Bis zu dieser Version hing jede App neben Postgres und
     Redis; ohne den Umzug blieben sie dort bis zum naechsten Neustart der App."""
     umgezogen = 0
+    # Auch die Agenten: Wer seit dem letzten Neuerstellen in keinem App-Netz haengt,
+    # erreicht seine eigenen Apps nicht (etwa einen eigenen MCP-Server als App).
+    for c in docker.client.containers.list(filters={"label": "ai-employee.type=agent"}):
+        aid = next((e.split("=", 1)[1] for e in (c.attrs.get("Config", {}).get("Env") or [])
+                    if e.startswith("AGENT_ID=")), "")
+        if aid:
+            docker.ans_apps_netz(c, aid)
     try:
         plattform = docker.client.networks.get(AGENT_NETWORK)
         plattform.reload()
     except Exception:  # noqa: BLE001
-        return 0
+        return umgezogen
     projekte = set()
     for cid in (plattform.attrs.get("Containers") or {}):
         try:

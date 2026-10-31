@@ -629,11 +629,15 @@ class AppNetzTests(unittest.TestCase):
         cs = {"a": SimpleNamespace(labels={"com.docker.compose.project": "agent-abcdef12-projects-todo"}),
               "t": SimpleNamespace(labels={"com.docker.compose.project": "agent-abcdef12-tf-room123456789xyz"}),
               "p": SimpleNamespace(labels={})}
+        agent = SimpleNamespace(attrs={"Config": {"Env": ["X=1", "AGENT_ID=abcdef12-0000"]}})
         docker = SimpleNamespace(client=SimpleNamespace(
             networks=SimpleNamespace(get=MagicMock(return_value=plattform)),
-            containers=SimpleNamespace(get=MagicMock(side_effect=cs.__getitem__))))
+            containers=SimpleNamespace(get=MagicMock(side_effect=cs.__getitem__),
+                                       list=MagicMock(return_value=[agent]))),
+            ans_apps_netz=MagicMock())
         with patch.object(docker_apps, "_app_netz_anbinden") as anbinden:
             self.assertEqual(docker_apps.apps_aus_dem_plattformnetz(docker), 2)
+        docker.ans_apps_netz.assert_called_once_with(agent, "abcdef12-0000")
         aufrufe = sorted(c.args[1:] for c in anbinden.call_args_list)
         self.assertEqual(aufrufe, [("agent-abcdef12-projects-todo", "abcdef12"),
                                    ("agent-abcdef12-tf-room123456789xyz", "tf-room12345678")])
@@ -645,6 +649,42 @@ class AppNetzTests(unittest.TestCase):
         from app.api import docker_apps
         quelltext = inspect.getsource(docker_apps)
         self.assertNotIn("networks.list(filters=_projekt_filter", quelltext)
+
+
+class AgentImAppsNetzTests(unittest.TestCase):
+    """Ein neu erstellter Agent erreicht seine Apps (etwa einen eigenen MCP-Server
+    als App) — live aufgefallen nach dem Neuerstellen am 31.10."""
+
+    def _dienst(self, netz):
+        from app.services.docker_service import DockerService
+        dienst = DockerService.__new__(DockerService)
+        dienst.client = SimpleNamespace(networks=SimpleNamespace(get=MagicMock(side_effect=netz)))
+        return dienst
+
+    def test_tritt_dem_eigenen_apps_netz_bei(self):
+        netz = MagicMock(attrs={"Labels": {cp.APPS_NETZ_LABEL: "abcdef12"}})
+        dienst = self._dienst(lambda name: netz)
+        dienst.ans_apps_netz("container", "abcdef12-0000")
+        netz.connect.assert_called_once_with("container")
+        dienst.client.networks.get.assert_called_once_with("ai-employee-apps-abcdef12")
+
+    def test_fremdes_netz_gleichen_namens_nie(self):
+        netz = MagicMock(attrs={"Labels": {}})
+        self._dienst(lambda name: netz).ans_apps_netz("container", "abcdef12-0000")
+        netz.connect.assert_not_called()
+
+    def test_ohne_apps_netz_passiert_nichts(self):
+        from docker.errors import NotFound
+
+        def fehlt(_name):
+            raise NotFound("weg")
+        self._dienst(fehlt).ans_apps_netz("container", "abcdef12-0000")
+
+    def test_beim_anlegen_wird_beigetreten(self):
+        import inspect
+
+        from app.services.docker_service import DockerService
+        self.assertIn("self.ans_apps_netz(container", inspect.getsource(DockerService.create_container))
 
 
 class SpeicherTests(unittest.TestCase):
