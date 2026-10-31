@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.413.2] - 2026-10-31
+
+### Dokumentation
+- Handbuch Kapitel 16: Bild zu den erlaubten Zielen eines Keys.
+
 ## [1.413.1] - 2026-10-31
 
 ### Neu
