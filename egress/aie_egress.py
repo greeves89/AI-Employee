@@ -20,7 +20,13 @@ from pathlib import Path
 from mitmproxy import ctx, http, tls
 from mitmproxy.proxy import server_hooks
 
+import importlib
+
 import egress_logik as logik
+
+# mitmproxy laedt dieses Skript bei Aenderung neu, das importierte Modul aber nicht —
+# ohne das liefe nach einem Update neue Addon-Logik mit alter Pruefung.
+logik = importlib.reload(logik)
 
 log = logging.getLogger("aie_egress")
 

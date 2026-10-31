@@ -170,6 +170,14 @@ async def _schluessel(db) -> list[dict]:
         .join(Agent, Agent.id == AgentSecretAssignment.agent_id)
         .where(AgentSecret.is_active.is_(True))
     )).all()
+    # Die Git-Anbindung der Plattform zaehlt wie ein Key mit festen Zielen.
+    from app.models.oauth_integration import OAuthIntegration, OAuthProvider
+    anbindung = (await db.execute(select(OAuthIntegration.id).where(
+        OAuthIntegration.provider == OAuthProvider.GITHUB, OAuthIntegration.user_id.is_(None)))).first()
+    if anbindung:
+        for (cfg,) in (await db.execute(select(Agent.config))).all():
+            if "github" in ((cfg or {}).get("integrations") or []):
+                vergeben.append(("Git-Anbindung", ["git"], cfg))
     titel = "Keys in Agenten"
     if settings.egress_proxy_enabled and not egress.aktiv():
         return [_punkt("egress", titel, KRITISCH,

@@ -47,6 +47,10 @@ class GitHostProvider(ABC):
         """Env vars an agent container needs to clone/push/open PRs against this host."""
 
     @abstractmethod
+    def egress_ziele(self) -> list[str]:
+        """Hostnamen, an die das Token gehen darf (Egress-Proxy, core/egress.py)."""
+
+    @abstractmethod
     async def search_open_issue(
         self, client: httpx.AsyncClient, token: str, repo: str, title: str
     ) -> int | None:

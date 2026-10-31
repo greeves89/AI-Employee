@@ -53,6 +53,11 @@ class GitHubHostProvider(GitHostProvider):
         # Enterprise Server instance instead of github.com.
         self.host = host
 
+    def egress_ziele(self) -> list[str]:
+        if self.host:   # GitHub Enterprise: API, git und Uploads unter derselben Adresse
+            return [self.host.split(":", 1)[0].lower()]
+        return ["api.github.com", "github.com", "uploads.github.com"]
+
     def get_agent_env(self, token: str) -> dict[str, str]:
         env = {"GITHUB_TOKEN": token, "GH_TOKEN": token}
         if self.host:
