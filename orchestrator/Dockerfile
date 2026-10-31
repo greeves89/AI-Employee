@@ -1,4 +1,4 @@
-FROM python:3.12-slim AS base
+FROM python:3.15-slim AS base
 
 # libxmlsec1 wird fuer SAML gebraucht: die Signaturpruefung von XML-Assertions laeuft
 # ueber xmlsec, nicht ueber Eigenbau — dort sitzen sonst Signature-Wrapping-Angriffe.
