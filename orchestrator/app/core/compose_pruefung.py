@@ -140,6 +140,10 @@ APP_SPEICHER = "4g"
 APP_SPEICHER_MAX = 8 * 1024**3
 APP_KOPIEN_MAX = 5
 
+#: Labels, an denen Docker oder die Plattform Container erkennen — eine App darf
+#: sich damit nicht als Agent oder als Projekt eines anderen ausgeben.
+_LABELS_GESPERRT = ("com.docker.", "ai-employee.")
+
 _NO_NEW_PRIVILEGES = re.compile(r"^no-new-privileges([:=]true)?$")
 _NAME_UNSICHER = re.compile(r"[^a-zA-Z0-9_.-]")
 
@@ -396,6 +400,8 @@ def _netze_pruefen(netze: dict, quelle: Quelle, fehler: list[str], hinweise: lis
         for k in list(n):
             if k not in _NETZ_FREI:
                 fehler.append(f"Netz „{key}“: „{k}“ ist gesperrt.")
+        if any(str(k).startswith(_LABELS_GESPERRT) for k in (n.get("labels") or {})):
+            fehler.append(f"Netz „{key}“: Labels mit „com.docker.“ oder „ai-employee.“ sind gesperrt.")
         if n.get("driver") not in (None, "bridge"):
             fehler.append(f"Netz „{key}“: Treiber „{n.get('driver')}“ ist gesperrt, erlaubt ist nur „bridge“.")
         name = str(n.get("name") or key)
@@ -421,6 +427,8 @@ def _volumes_pruefen(volumes: dict, quelle: Quelle, fehler: list[str]) -> dict:
             fehler.append(f"Volume „{key}“: Der Name ist für die Plattform reserviert.")
             continue
         v = dict(v or {})
+        if any(str(k).startswith(_LABELS_GESPERRT) for k in (v.get("labels") or {})):
+            fehler.append(f"Volume „{key}“: Labels mit „com.docker.“ oder „ai-employee.“ sind gesperrt.")
         for k in v:
             if k not in _VOLUME_FREI:
                 fehler.append(f"Volume „{key}“: „{k}“ ist gesperrt (kann Ordner des Servers einbinden).")
@@ -504,9 +512,10 @@ def _dienst_pruefen(name: str, dienst: dict, quelle: Quelle, dienste: set, volum
 
     labels = dienst.get("labels") or {}
     if isinstance(labels, dict):
-        fremde = [k for k in labels if str(k).startswith("com.docker.")]
+        fremde = [k for k in labels if str(k).startswith(_LABELS_GESPERRT)]
         if fremde:
-            fehler.append(f"{wo}: Labels mit „com.docker.“ setzt nur Docker selbst ({', '.join(fremde)}).")
+            fehler.append(f"{wo}: Labels mit „com.docker.“ oder „ai-employee.“ setzt nur die Plattform "
+                          f"({', '.join(fremde)}).")
         if labels:
             d["labels"] = labels
 
@@ -626,6 +635,9 @@ def _build_pruefen(wo: str, build: Any, quelle: Quelle, fehler: list[str]) -> An
             continue
         if v not in (None, False, [], {}, ""):
             fehler.append(f"{wo}: „build.{k}“ ist gesperrt (Zugriff auf Server, Schlüssel oder Netz des Hosts).")
+    fremde = [k for k in (build.get("labels") or {}) if str(k).startswith(_LABELS_GESPERRT)]
+    if fremde:
+        fehler.append(f"{wo}: Build-Labels mit „com.docker.“ oder „ai-employee.“ sind gesperrt ({', '.join(fremde)}).")
     ctx = str(build.get("context") or "")
     if quelle.im_volume(ctx) is None:
         fehler.append(f"{wo}: Der Build-Kontext „{ctx}“ liegt nicht im Projekt.")

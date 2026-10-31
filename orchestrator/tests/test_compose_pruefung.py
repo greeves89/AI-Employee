@@ -156,6 +156,15 @@ class GesperrtTests(unittest.TestCase):
         self.assertAbgelehnt(
             _modell(build={"context": "/workspace/p", "additional_contexts": {"x": "/var/run"}}), "„x“")
 
+    def test_plattform_labels_faelschen(self):
+        """Mit „ai-employee.type=agent“ gäbe sich eine App als Agent aus."""
+        self.assertAbgelehnt(_modell(labels={"ai-employee.type": "agent"}), "ai-employee.")
+        self.assertAbgelehnt(_modell(build={"context": "/workspace/p", "labels": {"ai-employee.type": "agent"}}),
+                             "Build-Labels")
+        m = _modell()
+        m["networks"]["default"]["labels"] = {"ai-employee.apps-netz": "fremd123"}
+        self.assertAbgelehnt(m, "Netz")
+
     def test_docker_labels_faelschen(self):
         self.assertAbgelehnt(_modell(labels={"com.docker.compose.project": "agent-fremd-x"}), "com.docker.")
 
@@ -629,14 +638,17 @@ class AppNetzTests(unittest.TestCase):
         cs = {"a": SimpleNamespace(labels={"com.docker.compose.project": "agent-abcdef12-projects-todo"}),
               "t": SimpleNamespace(labels={"com.docker.compose.project": "agent-abcdef12-tf-room123456789xyz"}),
               "p": SimpleNamespace(labels={})}
-        agent = SimpleNamespace(attrs={"Config": {"Env": ["X=1", "AGENT_ID=abcdef12-0000"]}})
+        agent = SimpleNamespace(name="ai-agent-x")
+        cs["agentcid"] = agent
         docker = SimpleNamespace(client=SimpleNamespace(
             networks=SimpleNamespace(get=MagicMock(return_value=plattform)),
             containers=SimpleNamespace(get=MagicMock(side_effect=cs.__getitem__),
-                                       list=MagicMock(return_value=[agent]))),
+                                       list=MagicMock(side_effect=AssertionError("nie nach Labels suchen")))),
             ans_apps_netz=MagicMock())
         with patch.object(docker_apps, "_app_netz_anbinden") as anbinden:
-            self.assertEqual(docker_apps.apps_aus_dem_plattformnetz(docker), 2)
+            self.assertEqual(docker_apps.apps_aus_dem_plattformnetz(docker, [("abcdef12-0000", "agentcid")]), 2)
+        # Agent-ID und Container kommen aus der Datenbank — nie aus Label oder Umgebung,
+        # die eine App selbst setzen kann.
         docker.ans_apps_netz.assert_called_once_with(agent, "abcdef12-0000")
         aufrufe = sorted(c.args[1:] for c in anbinden.call_args_list)
         self.assertEqual(aufrufe, [("agent-abcdef12-projects-todo", "abcdef12"),

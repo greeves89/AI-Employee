@@ -329,18 +329,21 @@ def _orchestrator_anbinden(docker: DockerService, netznamen: list[str]) -> None:
     _EIGENE_NETZE.clear()
 
 
-def apps_aus_dem_plattformnetz(docker: DockerService) -> int:
+def apps_aus_dem_plattformnetz(docker: DockerService, agenten: list[tuple[str, str]] | None = None) -> int:
     """Beim Start einmal: laufende Agenten-Apps aus dem Plattformnetz ins App-Netz
     ihres Agenten umziehen. Bis zu dieser Version hing jede App neben Postgres und
     Redis; ohne den Umzug blieben sie dort bis zum naechsten Neustart der App."""
     umgezogen = 0
     # Auch die Agenten: Wer seit dem letzten Neuerstellen in keinem App-Netz haengt,
     # erreicht seine eigenen Apps nicht (etwa einen eigenen MCP-Server als App).
-    for c in docker.client.containers.list(filters={"label": "ai-employee.type=agent"}):
-        aid = next((e.split("=", 1)[1] for e in (c.attrs.get("Config", {}).get("Env") or [])
-                    if e.startswith("AGENT_ID=")), "")
-        if aid:
-            docker.ans_apps_netz(c, aid)
+    # ``agenten`` sind (Agent-ID, Container-ID) AUS DER DATENBANK — nie Label oder
+    # Umgebung eines Containers: beides kann eine App selbst setzen und sich so als
+    # Agent eines anderen Nutzers in dessen App-Netz schleichen.
+    for aid, cid in agenten or []:
+        try:
+            docker.ans_apps_netz(docker.client.containers.get(cid), aid)
+        except Exception:  # noqa: BLE001 — gestoppter oder geloeschter Container
+            logger.debug("Agent %s nicht ans App-Netz gehaengt", aid, exc_info=True)
     try:
         plattform = docker.client.networks.get(AGENT_NETWORK)
         plattform.reload()
