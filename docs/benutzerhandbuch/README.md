@@ -4449,6 +4449,7 @@ eingeschaltet, gehen Agenten für HTTPS über ihn hinaus:
 | | |
 |---|---|
 | Keys mit erlaubten Zielen (Kap. 16) | Agent sieht nur einen Platzhalter, der Proxy setzt den Wert am erlaubten Ziel ein |
+| Token der Git-Anbindung (GitHub/Forgejo, Admin → Integrationen) | ebenso: Platzhalter, eingesetzt nur am Git-Host der Anbindung *(seit 1.414.0)* |
 | Alle anderen HTTPS-Ziele | laufen unverändert als Tunnel durch, der Proxy sieht keine Inhalte |
 | Klartext-HTTP (z. B. eigene Apps des Agenten) | geht wie bisher direkt |
 | Adressen im Firmen- oder Docker-Netz | über den Proxy gesperrt |

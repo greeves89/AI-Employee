@@ -13,10 +13,12 @@ from __future__ import annotations
 
 import hmac
 import logging
+from typing import NamedTuple
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import egress
@@ -48,37 +50,66 @@ class Aufloesen(Verbindung):
     platzhalter: list[str] = Field(min_length=1, max_length=20)
 
 
-async def _secrets(db: AsyncSession, body: Verbindung):
+class _Freigabe(NamedTuple):
+    """Was ein Agent ueber den Proxy hinausschicken darf: ein Key oder das Token einer Anbindung."""
+    art: str
+    id: int
+    name: str
+    hosts: list[str]
+    wert_verschluesselt: str
+
+
+async def _anbindungen(db: AsyncSession, agent: Agent) -> list[_Freigabe]:
+    """Git-Anbindung der Plattform — nur fuer Agenten, denen sie zugewiesen ist
+    (wie agent_manager._get_integration_env)."""
+    if "github" not in ((agent.config or {}).get("integrations") or []):
+        return []
+    from app.core.githost.registry import get_git_host_provider
+    from app.models.oauth_integration import OAuthIntegration, OAuthProvider
+    integration = (await db.execute(select(OAuthIntegration).where(
+        OAuthIntegration.provider == OAuthProvider.GITHUB, OAuthIntegration.user_id.is_(None),
+    ))).scalar_one_or_none()
+    if integration is None:
+        return []
+    provider = get_git_host_provider(integration.host_type or "github", integration.base_url)
+    return [_Freigabe(egress.ANBINDUNG, integration.id, "Git-Anbindung", provider.egress_ziele(),
+                      integration.access_token_encrypted)]
+
+
+async def _freigaben(db: AsyncSession, body: Verbindung) -> list[_Freigabe]:
     if not hmac.compare_digest(body.agent_token.encode(), make_agent_token(body.agent_id).encode()):
         raise HTTPException(status_code=401, detail="Agent unbekannt")
-    if await db.get(Agent, body.agent_id) is None:
+    agent = await db.get(Agent, body.agent_id)
+    if agent is None:
         raise HTTPException(status_code=401, detail="Agent unbekannt")
-    return await secrets_des_agenten(db, body.agent_id, await nutzbare_secrets_des_besitzers(db, body.agent_id))
+    secrets = await secrets_des_agenten(db, body.agent_id, await nutzbare_secrets_des_besitzers(db, body.agent_id))
+    return ([_Freigabe("", s.id, s.key_name, list(s.erlaubte_hosts or []), s.value_encrypted)
+             for s in secrets if s.erlaubte_hosts]
+            + await _anbindungen(db, agent))
 
 
 @router.post("/verbindung", dependencies=[Depends(_nur_proxy)])
 async def verbindung(body: Verbindung, db: AsyncSession = Depends(get_db)):
-    secrets = await _secrets(db, body)
-    return {"hosts": sorted({h for s in secrets for h in (s.erlaubte_hosts or [])})}
+    return {"hosts": sorted({h for f in await _freigaben(db, body) for h in f.hosts})}
 
 
 @router.post("/aufloesen", dependencies=[Depends(_nur_proxy)])
 async def aufloesen(body: Aufloesen, db: AsyncSession = Depends(get_db)):
-    nach_id = {s.id: s for s in await _secrets(db, body)}
+    nach_id = {(f.art, f.id): f for f in await _freigaben(db, body)}
     werte: dict[str, str] = {}
     abgelehnt: list[dict] = []
     for p in dict.fromkeys(body.platzhalter):
-        sid = egress.secret_id_aus(p)
-        secret = nach_id.get(sid) if sid is not None else None
-        if secret is None or not secret.erlaubte_hosts:
+        teile = egress.platzhalter_aus(p)
+        freigabe = nach_id.get(teile) if teile else None
+        if freigabe is None:
             abgelehnt.append({"platzhalter": p, "grund": "Key steht dem Agenten nicht zu"})
-        elif not egress.host_passt(body.host, secret.erlaubte_hosts):
-            abgelehnt.append({"platzhalter": p, "key": secret.key_name, "grund": "Ziel nicht erlaubt"})
+        elif not egress.host_passt(body.host, freigabe.hosts):
+            abgelehnt.append({"platzhalter": p, "key": freigabe.name, "grund": "Ziel nicht erlaubt"})
         else:
             try:
-                werte[p] = decrypt_token(secret.value_encrypted)
+                werte[p] = decrypt_token(freigabe.wert_verschluesselt)
             except Exception:  # noqa: BLE001
-                abgelehnt.append({"platzhalter": p, "key": secret.key_name, "grund": "Key nicht lesbar"})
+                abgelehnt.append({"platzhalter": p, "key": freigabe.name, "grund": "Key nicht lesbar"})
     if abgelehnt:
         # Ein Agent wollte einen Key an ein fremdes Ziel schicken: ins Protokoll,
         # damit Admins es sehen — der Wert verlaesst die Plattform nicht.

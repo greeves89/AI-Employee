@@ -104,6 +104,11 @@ fi
 info "Restarting the stack..."
 docker compose up -d
 ok "Stack restarted"
+# Der Egress-Proxy liest seinen Code aus ./egress (eingehaengt). Compose startet
+# ihn bei geaendertem Code nicht neu — also hier, damit nie alte Pruefungen laufen.
+if [ "$VORHER_COMMIT" != "unbekannt" ] && ! git diff --quiet "$VORHER_COMMIT" HEAD -- egress/ 2>/dev/null; then
+    docker compose restart egress-proxy >/dev/null 2>&1 && ok "Egress-Proxy mit neuem Code neu gestartet"
+fi
 
 # ── 6. Wait for orchestrator ──────────────────────────────────────────────────
 info "Waiting for orchestrator to be ready..."
