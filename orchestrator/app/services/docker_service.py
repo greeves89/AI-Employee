@@ -733,7 +733,34 @@ class DockerService:
         )
         if mounts:
             self._unterordner_pruefen(container)
+        if environment.get("AGENT_ID"):
+            self.ans_apps_netz(container, environment["AGENT_ID"])
         return container
+
+    def ans_apps_netz(self, container, agent_id: str) -> None:
+        """Der Agent tritt dem App-Netz seiner Apps bei, falls es das schon gibt.
+
+        Apps haengen nicht im Plattformnetz, sondern im internen Netz ihres Agenten
+        (api/docker_apps._app_netz_anbinden). Ein neu erstellter Agent-Container
+        haengt zunaechst nur im Plattformnetz — ohne diesen Schritt erreichte er
+        seine eigenen Apps nicht mehr, bis eine davon neu startet.
+        """
+        from app.core.compose_pruefung import APPS_NETZ_LABEL, APPS_NETZ_PRAEFIX
+
+        try:
+            netz = self.client.networks.get(APPS_NETZ_PRAEFIX + agent_id[:8])
+        except NotFound:
+            return
+        except Exception:  # noqa: BLE001
+            logger.warning("App-Netz von %s nicht abfragbar", agent_id[:8], exc_info=True)
+            return
+        if (netz.attrs.get("Labels") or {}).get(APPS_NETZ_LABEL) != agent_id[:8]:
+            return
+        try:
+            netz.connect(container)
+        except APIError as e:
+            if "already exists" not in str(e):
+                logger.warning("Agent %s nicht im App-Netz: %s", agent_id[:8], e)
 
     def get_container(self, container_id: str):
         return self.client.containers.get(container_id)

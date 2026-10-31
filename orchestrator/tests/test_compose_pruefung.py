@@ -156,6 +156,15 @@ class GesperrtTests(unittest.TestCase):
         self.assertAbgelehnt(
             _modell(build={"context": "/workspace/p", "additional_contexts": {"x": "/var/run"}}), "„x“")
 
+    def test_plattform_labels_faelschen(self):
+        """Mit „ai-employee.type=agent“ gäbe sich eine App als Agent aus."""
+        self.assertAbgelehnt(_modell(labels={"ai-employee.type": "agent"}), "ai-employee.")
+        self.assertAbgelehnt(_modell(build={"context": "/workspace/p", "labels": {"ai-employee.type": "agent"}}),
+                             "Build-Labels")
+        m = _modell()
+        m["networks"]["default"]["labels"] = {"ai-employee.apps-netz": "fremd123"}
+        self.assertAbgelehnt(m, "Netz")
+
     def test_docker_labels_faelschen(self):
         self.assertAbgelehnt(_modell(labels={"com.docker.compose.project": "agent-fremd-x"}), "com.docker.")
 
@@ -629,11 +638,18 @@ class AppNetzTests(unittest.TestCase):
         cs = {"a": SimpleNamespace(labels={"com.docker.compose.project": "agent-abcdef12-projects-todo"}),
               "t": SimpleNamespace(labels={"com.docker.compose.project": "agent-abcdef12-tf-room123456789xyz"}),
               "p": SimpleNamespace(labels={})}
+        agent = SimpleNamespace(name="ai-agent-x")
+        cs["agentcid"] = agent
         docker = SimpleNamespace(client=SimpleNamespace(
             networks=SimpleNamespace(get=MagicMock(return_value=plattform)),
-            containers=SimpleNamespace(get=MagicMock(side_effect=cs.__getitem__))))
+            containers=SimpleNamespace(get=MagicMock(side_effect=cs.__getitem__),
+                                       list=MagicMock(side_effect=AssertionError("nie nach Labels suchen")))),
+            ans_apps_netz=MagicMock())
         with patch.object(docker_apps, "_app_netz_anbinden") as anbinden:
-            self.assertEqual(docker_apps.apps_aus_dem_plattformnetz(docker), 2)
+            self.assertEqual(docker_apps.apps_aus_dem_plattformnetz(docker, [("abcdef12-0000", "agentcid")]), 2)
+        # Agent-ID und Container kommen aus der Datenbank — nie aus Label oder Umgebung,
+        # die eine App selbst setzen kann.
+        docker.ans_apps_netz.assert_called_once_with(agent, "abcdef12-0000")
         aufrufe = sorted(c.args[1:] for c in anbinden.call_args_list)
         self.assertEqual(aufrufe, [("agent-abcdef12-projects-todo", "abcdef12"),
                                    ("agent-abcdef12-tf-room123456789xyz", "tf-room12345678")])
@@ -645,6 +661,42 @@ class AppNetzTests(unittest.TestCase):
         from app.api import docker_apps
         quelltext = inspect.getsource(docker_apps)
         self.assertNotIn("networks.list(filters=_projekt_filter", quelltext)
+
+
+class AgentImAppsNetzTests(unittest.TestCase):
+    """Ein neu erstellter Agent erreicht seine Apps (etwa einen eigenen MCP-Server
+    als App) — live aufgefallen nach dem Neuerstellen am 31.10."""
+
+    def _dienst(self, netz):
+        from app.services.docker_service import DockerService
+        dienst = DockerService.__new__(DockerService)
+        dienst.client = SimpleNamespace(networks=SimpleNamespace(get=MagicMock(side_effect=netz)))
+        return dienst
+
+    def test_tritt_dem_eigenen_apps_netz_bei(self):
+        netz = MagicMock(attrs={"Labels": {cp.APPS_NETZ_LABEL: "abcdef12"}})
+        dienst = self._dienst(lambda name: netz)
+        dienst.ans_apps_netz("container", "abcdef12-0000")
+        netz.connect.assert_called_once_with("container")
+        dienst.client.networks.get.assert_called_once_with("ai-employee-apps-abcdef12")
+
+    def test_fremdes_netz_gleichen_namens_nie(self):
+        netz = MagicMock(attrs={"Labels": {}})
+        self._dienst(lambda name: netz).ans_apps_netz("container", "abcdef12-0000")
+        netz.connect.assert_not_called()
+
+    def test_ohne_apps_netz_passiert_nichts(self):
+        from docker.errors import NotFound
+
+        def fehlt(_name):
+            raise NotFound("weg")
+        self._dienst(fehlt).ans_apps_netz("container", "abcdef12-0000")
+
+    def test_beim_anlegen_wird_beigetreten(self):
+        import inspect
+
+        from app.services.docker_service import DockerService
+        self.assertIn("self.ans_apps_netz(container", inspect.getsource(DockerService.create_container))
 
 
 class SpeicherTests(unittest.TestCase):
