@@ -542,10 +542,13 @@ class StartwegeTests(unittest.IsolatedAsyncioTestCase):
 
 
 class AppNetzTests(unittest.TestCase):
-    """Die App bleibt in ihrem Netz; Orchestrator und Agent treten bei (Fund der
-    Sicherheitsprüfung: früher hing jede App im Plattformnetz neben Postgres/Redis)."""
+    """Die App kommt ins interne App-Netz ihres Agenten, nicht ins Plattformnetz
+    (früher erreichte jede App Postgres und Redis). Der Orchestrator tritt den
+    eigenen Netzen der App NICHT bei — dort könnte die App Namen der Plattform
+    für sich beanspruchen."""
 
-    def _docker(self, app_im_plattformnetz=True):
+    def _docker(self, app_im_plattformnetz=True, apps_netz=None):
+        from docker.errors import NotFound
         app = SimpleNamespace(id="app1", name="agent-abcdef12-p-web-1",
                               labels={"com.docker.compose.project": PROJEKT},
                               attrs={"NetworkSettings": {"Networks": (
@@ -554,51 +557,77 @@ class AppNetzTests(unittest.TestCase):
         orch = SimpleNamespace(id="orch1", name="ai-employee-orchestrator", labels={})
         agent = SimpleNamespace(id="agent1", name="ai-agent-x", labels={})
         plattform = MagicMock()
-        app_netz = MagicMock()
-        app_netz.name = f"{PROJEKT}_default"
-        app_netz.attrs = {"Containers": {"app1": {}}}
-        alle = {"app1": app, "orch1": orch, "ai-employee-orchestrator": orch, "agent1": agent}
+        neu = MagicMock()
+        neu.name = "ai-employee-apps-abcdef12"
+        neu.attrs = {"Containers": {}}
+        alle = {"orch1": orch, "ai-employee-orchestrator": orch, "agent1": agent}
+
+        def netz_holen(name):
+            if name == "ai-employee-network":
+                return plattform
+            if apps_netz is None:
+                raise NotFound("weg")
+            return apps_netz
+
         client = SimpleNamespace(
-            networks=SimpleNamespace(get=MagicMock(return_value=plattform), list=MagicMock(return_value=[app_netz])),
+            networks=SimpleNamespace(get=MagicMock(side_effect=netz_holen), create=MagicMock(return_value=neu)),
             containers=SimpleNamespace(list=MagicMock(return_value=[app]), get=MagicMock(side_effect=alle.__getitem__)),
         )
-        return SimpleNamespace(client=client), plattform, app_netz, app, orch, agent
+        return SimpleNamespace(client=client), plattform, neu, app, orch, agent
 
-    def test_app_verlaesst_das_plattformnetz_und_die_plattform_tritt_bei(self):
+    def test_app_verlaesst_das_plattformnetz_und_kommt_ins_apps_netz(self):
         from app.api import docker_apps
-        docker, plattform, app_netz, app, orch, agent = self._docker()
-        docker_apps._app_netz_anbinden(docker, PROJEKT, "agent1")
+        docker, plattform, apps, app, orch, agent = self._docker()
+        docker_apps._app_netz_anbinden(docker, PROJEKT, "abcdef12-0000", "agent1")
         plattform.disconnect.assert_called_once_with(app, force=True)
-        verbunden = [c.args[0] for c in app_netz.connect.call_args_list]
-        self.assertEqual(verbunden, [orch, agent])
+        docker.client.networks.create.assert_called_once_with(
+            "ai-employee-apps-abcdef12", driver="bridge", internal=True,
+            labels={docker_apps.APPS_NETZ_LABEL: "abcdef12"})
+        verbunden = [c.args[0] for c in apps.connect.call_args_list]
+        self.assertEqual(verbunden, [app, orch, agent])
+        for c in apps.connect.call_args_list:
+            self.assertNotIn("aliases", c.kwargs, "ohne Zusatznamen — sonst wieder DNS-Umleitung möglich")
+
+    def test_fremdes_netz_mit_dem_namen_wird_nicht_genutzt(self):
+        from app.api import docker_apps
+        fremd = MagicMock()
+        fremd.attrs = {"Labels": {}}
+        docker, *_ = self._docker(apps_netz=fremd)
+        docker_apps._app_netz_anbinden(docker, PROJEKT, "abcdef12-0000", "agent1")
+        fremd.connect.assert_not_called()
 
     def test_wer_schon_drin_ist_wird_nicht_erneut_verbunden(self):
         from app.api import docker_apps
-        docker, plattform, app_netz, *_ = self._docker(app_im_plattformnetz=False)
-        app_netz.attrs = {"Containers": {"app1": {}, "orch1": {}, "agent1": {}}}
-        docker_apps._app_netz_anbinden(docker, PROJEKT, "agent1")
+        vorhanden = MagicMock()
+        vorhanden.name = "ai-employee-apps-abcdef12"
+        vorhanden.attrs = {"Labels": {docker_apps.APPS_NETZ_LABEL: "abcdef12"},
+                           "Containers": {"app1": {}, "orch1": {}, "agent1": {}}}
+        docker, plattform, *_ = self._docker(app_im_plattformnetz=False, apps_netz=vorhanden)
+        docker_apps._app_netz_anbinden(docker, PROJEKT, "abcdef12-0000", "agent1")
         plattform.disconnect.assert_not_called()
-        app_netz.connect.assert_not_called()
+        vorhanden.connect.assert_not_called()
 
-    def test_vor_dem_stoppen_verlassen_nur_fremde_das_netz(self):
+    def test_orchestrator_tritt_keinem_netz_der_app_bei(self):
+        """Im Netz der App heißen Dienste, wie die App will — auch „ai-employee-redis“."""
+        import inspect
+
         from app.api import docker_apps
-        docker, _, app_netz, app, orch, agent = self._docker()
-        app_netz.attrs = {"Containers": {"app1": {}, "orch1": {}, "agent1": {}}}
-        docker_apps._app_netz_loesen(docker, PROJEKT)
-        getrennt = [c.args[0] for c in app_netz.disconnect.call_args_list]
-        self.assertEqual(getrennt, [orch, agent], "die App selbst bleibt, Compose räumt sie ab")
+        quelltext = inspect.getsource(docker_apps)
+        self.assertNotIn("networks.list(filters=_projekt_filter", quelltext)
 
 
-class StoppenTests(unittest.IsolatedAsyncioTestCase):
+class SpeicherTests(unittest.TestCase):
 
-    async def test_netz_wird_vor_down_geloest(self):
-        from app.api import docker_apps
-        reihenfolge = []
-        agent = SimpleNamespace(container_id="c1", volume_name="workspace-x")
-        with patch.object(docker_apps, "_app_netz_loesen", side_effect=lambda *a: reihenfolge.append("loesen")), \
-             patch.object(cp, "ausfuehren", side_effect=lambda *a: reihenfolge.append("down") or (0, "")):
-            await docker_apps._stop_core(MagicMock(), agent, "abcdef12", "p")
-        self.assertEqual(reihenfolge, ["loesen", "down"])
+    def test_eigener_speicher_wird_gekappt(self):
+        neu, hinweise, _ = _pruefen(_modell(mem_limit="64g", memswap_limit=-1))
+        self.assertEqual(neu["services"]["web"]["mem_limit"], cp.APP_SPEICHER_MAX)
+        self.assertNotIn("memswap_limit", neu["services"]["web"])
+        neu, _, _ = _pruefen(_modell(deploy={"resources": {"limits": {"memory": "100G"}}}))
+        self.assertEqual(neu["services"]["web"]["deploy"]["resources"]["limits"]["memory"], cp.APP_SPEICHER_MAX)
+
+    def test_unlesbarer_speicher_zaehlt_als_zu_viel(self):
+        neu, _, _ = _pruefen(_modell(mem_limit="unendlich"))
+        self.assertEqual(neu["services"]["web"]["mem_limit"], cp.APP_SPEICHER_MAX)
 
 
 if __name__ == "__main__":

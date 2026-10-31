@@ -72,15 +72,16 @@ _DIENST_FREI = frozenset({
     "depends_on", "develop", "dns", "dns_opt", "dns_search", "domainname", "entrypoint",
     "environment", "expose", "extra_hosts", "group_add", "healthcheck", "hostname",
     "image", "init", "links", "mac_address", "mem_limit", "mem_reservation",
-    "mem_swappiness", "memswap_limit", "pids_limit", "platform", "profiles",
+    "mem_swappiness", "pids_limit", "platform", "profiles",
     "pull_policy", "pull_refresh_after", "read_only", "restart", "scale", "shm_size",
     "stdin_open", "stop_grace_period", "stop_signal", "sysctls", "tmpfs", "tty",
     "ulimits", "user", "working_dir",
 })
 
 #: Dienst-Schlüssel, die hier geprüft oder umgeschrieben werden.
+#: ``memswap_limit`` fällt still weg (Docker nimmt dann das Doppelte von mem_limit).
 _DIENST_GEPRUEFT = frozenset({
-    "build", "cap_add", "container_name", "deploy", "env_file", "ipc", "labels",
+    "memswap_limit", "build", "cap_add", "container_name", "deploy", "env_file", "ipc", "labels",
     "logging", "network_mode", "networks", "oom_score_adj", "pid", "ports",
     "post_start", "pre_stop", "privileged", "security_opt", "volumes",
 })
@@ -131,6 +132,7 @@ _RESSOURCEN_FREI = frozenset({"cpus", "memory", "pids"})
 APP_PROZESSE = 4096
 APP_PROZESSE_MAX = 8192
 APP_SPEICHER = "4g"
+APP_SPEICHER_MAX = 8 * 1024**3
 APP_KOPIEN_MAX = 5
 
 _NO_NEW_PRIVILEGES = re.compile(r"^no-new-privileges([:=]true)?$")
@@ -555,6 +557,16 @@ def _dienst_pruefen(name: str, dienst: dict, quelle: Quelle, dienste: set, volum
     return d, workspace_genutzt
 
 
+def _bytes(wert: Any) -> int:
+    """„512m“, „1G“, 536870912 → Bytes. Unlesbar zählt als unbegrenzt (wird gekappt)."""
+    if isinstance(wert, (int, float)):
+        return int(wert)
+    m = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*([bkmgt]?)i?b?\s*", str(wert).lower())
+    if not m:
+        return APP_SPEICHER_MAX + 1
+    return int(float(m.group(1)) * 1024 ** "bkmgt".index(m.group(2) or "b"))
+
+
 def _abbildname(quelle: Quelle, name: str) -> str:
     """„meine/app:1.0“ → „agent-<id8>-meine-app:1.0“ (ein Name ohne Registry)."""
     name = name.lower()
@@ -574,6 +586,11 @@ def _grenzen(wo: str, d: dict, fehler: list[str], hinweise: list[str]) -> None:
     limits = (((d.get("deploy") or {}).get("resources") or {}).get("limits") or {})
     if not d.get("mem_limit") and not limits.get("memory"):
         d["mem_limit"] = APP_SPEICHER
+    for wo_wert, halter, schluessel in ((d.get("mem_limit"), d, "mem_limit"), (limits.get("memory"), limits, "memory")):
+        if wo_wert not in (None, "") and _bytes(wo_wert) > APP_SPEICHER_MAX:
+            halter[schluessel] = APP_SPEICHER_MAX
+            hinweise.append(f"{wo}: Speicher auf {APP_SPEICHER_MAX // 1024**3} GB begrenzt.")
+
     for wert, schluessel in ((d.get("scale"), "scale"), ((d.get("deploy") or {}).get("replicas"), "deploy.replicas")):
         if wert not in (None, "") and int(wert) > APP_KOPIEN_MAX:
             fehler.append(f"{wo}: „{schluessel}: {wert}“ ist zu viel, erlaubt sind höchstens {APP_KOPIEN_MAX}.")
