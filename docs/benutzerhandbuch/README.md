@@ -2383,9 +2383,10 @@ Die IT hat den Egress-Proxy eingeschaltet (Kap. 37.10).
 Ändert sich später der Wert oder eine Adresse, gilt das sofort, ohne Neustart der Agenten.
 Leerst du das Feld, bekommt der Agent wieder den Klartext.
 
-> Das klappt für Keys, die per HTTPS in Kopfzeilen, Adressen oder kleinen Anfragen
-> mitgeschickt werden, also bei den meisten Web-APIs und bei git über HTTPS. Für Passwörter
-> anderer Verbindungen (etwa eine Datenbank) lässt du das Feld leer.
+> Das klappt für Keys, die per HTTPS in einer Kopfzeile oder als Anmelde-Parameter
+> (`key`, `token`, `client_secret` …) mitgeschickt werden, also bei den meisten Web-APIs und
+> bei git über HTTPS. Für Passwörter anderer Verbindungen (etwa eine Datenbank) lässt du das
+> Feld leer.
 
 > Sicherheitshinweis: Gib Geheimnisse **nie** direkt in den Chat — lege sie als Secret an.
 
@@ -4452,13 +4453,19 @@ privaten Schlüssel.
 
 1. `./scripts/update.sh` legt den Dienst-Schlüssel `EGRESS_PROXY_TOKEN` in der `.env` an.
 2. In der `.env` `EGRESS_PROXY_ENABLED=true` setzen und `docker compose up -d` ausführen.
-3. Die Agenten einmal neu erstellen (Admin → Agenten → **Aktualisieren**). Erst danach gehen
-   sie über den Proxy.
+3. Auf der Seite **Agenten** erscheint **Alle aktualisieren (n)**: Jeder Agent, der noch
+   ohne Proxy entstanden ist, zählt dazu. Klicken. Erst danach gehen die Agenten über den Proxy.
 4. Unter **Admin → Betrieb → Sicherheitsstatus** zeigt der Punkt **Keys in Agenten**, welche
    Keys noch im Klartext in Agenten liegen.
 
-**Ausschalten:** `EGRESS_PROXY_ENABLED=false`, `docker compose up -d`, Agenten neu erstellen.
-Sie bekommen die Keys dann wieder im Klartext.
+**Ausschalten:** `EGRESS_PROXY_ENABLED=false`, `docker compose up -d`, dann wieder
+**Alle aktualisieren**. Die Agenten bekommen die Keys danach im Klartext.
+
+Ersetzt wird nur, wo Keys hingehören: in Kopfzeilen (etwa `Authorization`, auch bei git)
+und als ganzer Wert eines Anmelde-Parameters in der Adresse oder einem Formular (`key`,
+`token`, `client_secret` …). Steht ein Platzhalter im Pfad, in einem JSON-Inhalt oder in
+einem anderen Parameter, lehnt der Proxy die Anfrage ab. Sonst könnte ein Agent den echten
+Wert beim Ziel ablegen lassen, etwa als Dateiname, und ihn danach lesen.
 
 > Startet der Orchestrator neu (etwa beim Update), arbeiten Agenten mit bereits geprüften
 > Keys bis zu 10 Minuten weiter. Einen Agenten, der in dieser Zeit neu dazukommt, lässt der
