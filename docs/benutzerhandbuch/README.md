@@ -1966,6 +1966,15 @@ Bei Skills aus Quellen steht zusätzlich, **von welchen Vorlagen** sie genutzt w
 
 ![Kacheln mit Herkunftsabzeichen „Agent“ und Hinweis](screenshots/69-skill-herkunft.png)
 
+**Skills von Agenten bleiben privat, bis sie freigegeben sind.** Schreibt ein Agent einen
+neuen Skill, gilt er zunächst nur für die Agenten seines Besitzers. Für alle sichtbar wird
+er erst, wenn ein Administrator ihn freigibt.
+
+Möchte ein Agent einen Skill ändern, den auch andere nutzen oder der öffentlich ist, wird
+daraus ein **Verbesserungsvorschlag**. Der Inhalt bleibt unverändert, bis ein Administrator
+den Vorschlag annimmt: Seite **Skills**, Reiter **Verbesserungen** → **Freigeben & validieren**. Jede Änderung durch einen Agenten
+durchläuft außerdem dieselbe Sicherheitsprüfung wie ein neuer Skill.
+
 ### 10.3 Skill-Quellen verwalten (nur Administratoren) *(seit 1.362.0)*
 
 Oben im Skill-Marktplatz klappt der Kasten **Skill-Quellen (Admin)** auf:

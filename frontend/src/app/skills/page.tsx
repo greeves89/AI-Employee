@@ -17,6 +17,12 @@ import { useAuthStore } from "@/lib/auth";
 import type { CatalogSkill, AgentSkill, MarketplaceSkill, SkillFileAttachment, SkillSource } from "@/lib/api";
 import type { Agent } from "@/lib/types";
 
+/** Warum ein Skill-Vorschlag auf Freigabe wartet. */
+const VORSCHLAGSGRUND: Record<string, string> = {
+  low_helpfulness: "schlecht bewertet",
+  agent_update: "Änderung durch einen Agenten an einem gemeinsam genutzten Skill",
+};
+
 const CATEGORY_CONFIG: Record<string, { label: string; icon: typeof Code2; color: string }> = {
   // DB enum values (uppercase)
   TOOL:     { label: "Werkzeuge",     icon: Wrench,    color: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20" },
@@ -1220,7 +1226,7 @@ export default function SkillsPage() {
             <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
               <p className="text-sm">Keine Verbesserungsvorschläge</p>
               <p className="text-xs mt-1 text-muted-foreground/60">
-                Die Improvement-Engine schlägt automatisch Verbesserungen für schlecht bewertete Skills vor — hier zur Freigabe.
+                Hier landen Verbesserungen für schlecht bewertete Skills und Änderungen, die Agenten an gemeinsam genutzten Skills vorschlagen — zur Freigabe.
               </p>
             </div>
           ) : (
@@ -1236,7 +1242,8 @@ export default function SkillsPage() {
                       <div className="min-w-0">
                         <p className="text-sm font-semibold truncate">{skill.name}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          Grund: {skill.improvement_review_reason || "—"}
+                          Grund: {VORSCHLAGSGRUND[skill.improvement_review_reason ?? ""] ?? skill.improvement_review_reason ?? "—"}
+                          {prop?.proposed_by && ` · von ${prop.proposed_by.replace(/^agent:/, "Agent ")}`}
                           {prop?.avg_helpfulness_before != null &&
                             ` · Hilfreichkeit vorher ${prop.avg_helpfulness_before.toFixed(1)}/5 (${prop.rated_count_before ?? 0} Bewertungen)`}
                         </p>

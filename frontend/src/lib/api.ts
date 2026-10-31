@@ -2983,6 +2983,7 @@ export interface MarketplaceSkill {
     avg_helpfulness_before?: number;
     rated_count_before?: number;
     generated_at?: string;
+    proposed_by?: string;
   } | null;
   improvement_proposed_at?: string | null;
   improvement_review_reason?: string | null;

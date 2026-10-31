@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.408.2] - 2026-10-31
+
+### Sicherheit
+- **Agenten können Skills anderer nicht mehr verändern.** Möchte ein Agent einen Skill ändern, den auch andere nutzen oder der öffentlich ist, wird daraus ein Verbesserungsvorschlag. Ein Administrator gibt ihn unter **Skills → Verbesserungen** frei. Jede Änderung durchläuft die Sicherheitsprüfung für Skills.
+- Neue Skills von Agenten gelten zunächst nur für die Agenten ihres Besitzers, bis ein Administrator sie freigibt.
+
 ## [1.408.1] - 2026-10-31
 
 ### Sicherheit
