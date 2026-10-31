@@ -163,7 +163,7 @@ def _start_combined_mcp(port: int) -> bool:
 #: Die eingebauten Server, die der gemeinsame Prozess (#638) unter
 #: http://127.0.0.1:<MCP_HTTP_PORT>/mcp/<name> bereitstellt.
 _COMBINED_MCP_NAMES = ("bash-approval", "memory", "notifications", "orchestrator",
-                       "skills", "desktop", "hyperframes", "email", "brain", "secondbrain",
+                       "skills", "desktop", "hyperframes", "brain", "secondbrain",
                        "read-logs")
 
 
@@ -179,19 +179,9 @@ def register_mcp_servers() -> None:
     _http_port = int(os.environ.get("MCP_HTTP_PORT") or 0)
     if _http_port and _start_combined_mcp(_http_port):
         _namen = list(_COMBINED_MCP_NAMES)
-        # msgraph NUR dann lokal anmelden, wenn die Anlage ihn nicht ohnehin
-        # ueber eine eigene Adresse bereitstellt. Auf einer Anlage mit
-        # Microsoft-Anbindung steht er in CUSTOM_MCP_SERVERS und zeigt auf den
-        # Orchestrator — die dort hinterlegte Adresse ist die massgebliche, und
-        # sie hier zu ueberschreiben hiesse, die Einrichtung des Betreibers
-        # stillschweigend zu uebergehen.
-        try:
-            _custom_namen = set(json.loads(os.environ.get("CUSTOM_MCP_SERVERS") or "{}"))
-        except (ValueError, TypeError):
-            _custom_namen = set()
-        if (os.environ.get("MSGRAPH_ENABLED", "").lower() == "true"
-                and "msgraph" not in _custom_namen):
-            _namen.append("msgraph")
+        # Microsoft 365 und Gmail laufen NICHT hier: der Orchestrator bindet sie als
+        # eigene Adressen ein (CUSTOM_MCP_SERVERS, /mcp/msgraph und /mcp/email).
+        # Die Zugangsdaten bleiben so am Server.
         _ok = 0
         for _n in _namen:
             if _run_mcp_add(["--transport", "http", _sanitize_mcp_name(_n),
@@ -262,15 +252,6 @@ def register_mcp_servers() -> None:
             "env": {
                 "COMPUTER_USE_USER_ID": os.environ.get("COMPUTER_USE_USER_ID", ""),
                 "WORKSPACE_DIR": settings.workspace_dir,
-            },
-        },
-        "email": {
-            "command": "node",
-            "args": ["/opt/mcp/email-server.mjs"],
-            "env": {
-                "ORCHESTRATOR_URL": settings.orchestrator_url,
-                "AGENT_ID": settings.agent_id,
-                "AGENT_TOKEN": settings.agent_token,
             },
         },
         "brain": {
@@ -364,21 +345,6 @@ def register_mcp_servers() -> None:
                   f"profile {_browser_profil})")
         else:
             print("[Agent] WARN: Failed to register Playwright MCP server")
-
-    # MS Graph MCP — Microsoft 365 (Outlook, Calendar, Teams, Planner, To-Do, OneDrive)
-    # Registered when MSGRAPH_ENABLED=true (set by orchestrator when microsoft integration exists)
-    # Im gemeinsamen Prozess ist er bereits ueber seine HTTP-Adresse angemeldet.
-    if _einzeln and os.environ.get("MSGRAPH_ENABLED", "").lower() == "true":
-        env_args = [
-            "-e", "MCP_HTTP_PORT=",
-            "-e", f"ORCHESTRATOR_URL={settings.orchestrator_url}",
-            "-e", f"AGENT_ID={settings.agent_id}",
-            "-e", f"AGENT_TOKEN={settings.agent_token}",
-        ]
-        if _run_mcp_add(env_args + ["--", "msgraph", "node", "/opt/mcp/msgraph-server.mjs"]):
-            print("[Agent] Registered MS Graph MCP server")
-        else:
-            print("[Agent] WARN: Failed to register MS Graph MCP server")
 
     # Computer-Use Desktop Bridge MCP — local desktop control via bridge app
     bridge_url = os.environ.get("COMPUTER_USE_BRIDGE_MCP_URL", "")

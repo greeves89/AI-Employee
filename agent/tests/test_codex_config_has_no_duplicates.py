@@ -91,10 +91,19 @@ class NoSectionAppearsTwiceTests(unittest.TestCase):
     def test_the_builtin_version_is_the_one_that_survives(self):
         """Der eingebaute gewinnt: er ist in jedem Agenten vorhanden und in
         beiden Laufzeiten derselbe."""
-        text = _config({"msgraph": "http://example.com/msgraph"})
-        block = text.split("[mcp_servers.msgraph]", 1)[1].split("[mcp_servers.", 1)[0]
+        text = _config({"brain": "http://example.com/brain"})
+        block = text.split("[mcp_servers.brain]", 1)[1].split("[mcp_servers.", 1)[0]
         self.assertIn("command =", block)
         self.assertNotIn("url =", block)
+
+    def test_microsoft_kommt_als_adresse_des_orchestrators(self):
+        """Einen lokalen msgraph gibt es nicht mehr (er holte sich das rohe
+        Token) — Codex bekommt dieselbe Server-Adresse wie Claude Code."""
+        text = _config({"msgraph": "http://example.com/msgraph"}, {"msgraph": "tok"})
+        block = text.split("[mcp_servers.msgraph]", 1)[1].split("[mcp_servers.", 1)[0]
+        self.assertIn('url = "http://example.com/msgraph"', block)
+        self.assertIn("bearer_token_env_var", block)
+        self.assertNotIn("command =", block)
 
 
 class TheWholeFileStaysLoadableTests(unittest.TestCase):

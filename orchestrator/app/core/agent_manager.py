@@ -1521,6 +1521,12 @@ class AgentManager:
             mcp_map["msgraph"] = f"http://ai-employee-orchestrator:8000/api/v1/mcp/msgraph/{agent_id}"
             auth_map["msgraph"] = make_agent_token(agent_id)
 
+        # Gmail laeuft ueber den Server (core/gmail_mcp.py): das Google-Token des
+        # Besitzers verlaesst den Orchestrator nicht.
+        if agent_id and agent_integrations and "google" in agent_integrations:
+            mcp_map["email"] = f"http://ai-employee-orchestrator:8000/api/v1/mcp/email/{agent_id}"
+            auth_map["email"] = make_agent_token(agent_id)
+
         # Auto-inject the on-prem Exchange MCP when the agent has the exchange
         # integration. Per-user: the endpoint resolves the agent owner's mailbox.
         if agent_id and agent_integrations and "exchange_onprem" in agent_integrations:
@@ -1553,18 +1559,6 @@ class AgentManager:
                     integration.host_type or "github", integration.base_url
                 )
                 env.update(provider.get_agent_env(token))
-        if "microsoft" in agent_integrations and user_id:
-            from sqlalchemy import and_ as _sqland
-            result = await self.db.execute(
-                select(OAuthIntegration).where(
-                    _sqland(
-                        OAuthIntegration.provider == OAuthProvider.MICROSOFT,
-                        OAuthIntegration.user_id == user_id,
-                    )
-                )
-            )
-            if result.scalar_one_or_none():
-                env["MSGRAPH_ENABLED"] = "true"
         return env
 
     async def _nutzbare_secrets_des_besitzers(self, agent_id: str) -> set[int] | None:

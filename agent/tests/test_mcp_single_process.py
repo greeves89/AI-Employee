@@ -100,7 +100,9 @@ class JedeDateiLiefertEineFabrikTests(unittest.TestCase):
         self.assertEqual(funde, [], f"Eigener stdio-Transport: {funde}")
 
     def test_es_sind_alle_erwarteten_server(self):
-        self.assertGreaterEqual(len(_serverdateien()), 11)
+        # 10: Microsoft 365 und Gmail laufen seit 1.408 am Server (/mcp/msgraph,
+        # /mcp/email), die lokalen Dateien mit dem rohen Token gibt es nicht mehr.
+        self.assertGreaterEqual(len(_serverdateien()), 10)
 
 
 class DerSammelstartTests(unittest.TestCase):
@@ -128,8 +130,12 @@ class DerSammelstartTests(unittest.TestCase):
     def test_ohne_einen_einzigen_server_bricht_er_ab(self):
         self.assertIn("kein einziger Server geladen", _ALL)
 
-    def test_microsoft_nur_wenn_eingerichtet(self):
-        self.assertIn('MSGRAPH_ENABLED || ""', _ALL)
+    def test_microsoft_und_gmail_nie_lokal(self):
+        """Ein lokaler Server holte sich das rohe Token des Besitzers — mit Bash
+        und curl sendete der Agent dann an jeder Regel vorbei."""
+        for name in ("msgraph-server", "email-server", "MSGRAPH_ENABLED"):
+            self.assertNotIn(name, _ALL)
+            self.assertNotIn(name, _MAIN)
 
 
 class DieUmstellungIstAbschaltbarTests(unittest.TestCase):
@@ -157,11 +163,11 @@ class DieUmstellungIstAbschaltbarTests(unittest.TestCase):
             main.register_mcp_servers()
             config = json.loads((Path(workspace) / ".mcp.json").read_text())
             self.assertTrue(os.environ["MCP_HTTP_PORT"])
-        # Nicht hart 11: die Zahl ist die LAENGE der Serverliste plus msgraph
-        # (hier per MSGRAPH_ENABLED eingeschaltet). Eine festgetippte Zahl
-        # faerbt sonst jeden neuen Server rot, ohne einen Fehler zu zeigen —
-        # und ``test_eine_mcp_liste`` haelt beide Listen ohnehin gleich.
-        self.assertEqual(len(calls), len(main._COMBINED_MCP_NAMES) + 1)
+        # Nicht hart getippt: die Zahl ist die LAENGE der Serverliste. Eine
+        # festgetippte Zahl faerbt sonst jeden neuen Server rot, ohne einen
+        # Fehler zu zeigen — und ``test_eine_mcp_liste`` haelt beide Listen
+        # ohnehin gleich. Microsoft kommt nie lokal dazu (laeuft am Server).
+        self.assertEqual(len(calls), len(main._COMBINED_MCP_NAMES))
         for args in calls:
             self.assertIn("MCP_HTTP_PORT=", args)
         self.assertEqual(len(config["mcpServers"]), 6)
@@ -176,7 +182,6 @@ class DieUmstellungIstAbschaltbarTests(unittest.TestCase):
         """Dieselben Server zweimal anzumelden — einmal als Adresse, einmal als
         eigener Prozess — brachte den Gewinn wieder zunichte."""
         self.assertIn("builtin_servers.items() if _einzeln else []", _MAIN)
-        self.assertIn('if _einzeln and os.environ.get("MSGRAPH_ENABLED", "").lower()', _MAIN)
 
     def test_er_wartet_bis_der_dienst_antwortet(self):
         """Sonst meldet Claude Code Adressen an, die es noch nicht gibt, und der
@@ -291,21 +296,16 @@ class DerSchalterKommtVomOrchestratorTests(unittest.TestCase):
         self.assertIn("if settings.mcp_http_port else {}", self.MGR)
 
 
-class EigeneAdressenDesBetreibersGewinnenTests(unittest.TestCase):
-    """Beim ersten Scharfschalten aufgefallen: Auf einer Anlage mit
-    Microsoft-Anbindung steht `msgraph` in CUSTOM_MCP_SERVERS und zeigt auf den
-    Orchestrator. Der gemeinsame Block meldete ihn trotzdem lokal an — und
-    ueberschrieb damit die vom Betreiber eingerichtete Adresse. Sichtbar wurde
-    es nur an einer Warnung („already exists"), die leicht als Kosmetik
-    durchgegangen waere.
+class MicrosoftNurUeberDenServerTests(unittest.TestCase):
+    """Microsoft 365 kommt ausschliesslich als Adresse des Orchestrators
+    (CUSTOM_MCP_SERVERS → /mcp/msgraph). Ein lokaler msgraph-Server holte sich
+    frueher das rohe Token und umging Nur-Lesen, Entwurf und Mail-Freigabe.
 
-    Statt eines Zeichenfensters auf `_namen = [` (297/336 Zeichen Luft, #726)
-    ruft dieser Block `register_mcp_servers()` wirklich auf und liest aus den
-    tatsaechlichen `_run_mcp_add`-Aufrufen ab, ob msgraph LOKAL (ueber die
-    gemeinsame 127.0.0.1-Adresse) registriert wurde.
+    Ruft ``register_mcp_servers()`` wirklich auf und liest aus den tatsaechlichen
+    ``_run_mcp_add``-Aufrufen ab, was registriert wurde.
     """
 
-    def _lauf(self, *, msgraph_enabled: bool, custom_mcp_servers: str):
+    def _lauf(self, *, custom_mcp_servers: str):
         calls = []
         port = _free_port()
         with mock.patch.object(main, "_start_combined_mcp", return_value=True), \
@@ -313,43 +313,32 @@ class EigeneAdressenDesBetreibersGewinnenTests(unittest.TestCase):
                 mock.patch.object(main, "_write_mcp_json_fallback", lambda *_: None), \
                 mock.patch.dict(os.environ, {
                     "MCP_HTTP_PORT": str(port),
-                    "MSGRAPH_ENABLED": "true" if msgraph_enabled else "",
                     "CUSTOM_MCP_SERVERS": custom_mcp_servers,
                     "COMPUTER_USE_BROWSER": "", "COMPUTER_USE_BRIDGE_MCP_URL": "",
                 }, clear=False):
             main.register_mcp_servers()
-        lokale_adresse = f"127.0.0.1:{port}/mcp/msgraph"
-        lokal_registriert = any(lokale_adresse in " ".join(a) for a in calls)
-        return calls, lokal_registriert
+        lokal = any(f"127.0.0.1:{port}/mcp/msgraph" in " ".join(a) for a in calls)
+        return calls, lokal
 
-    def test_msgraph_wird_uebersprungen_wenn_er_woanders_herkommt(self):
+    def test_msgraph_kommt_ueber_die_adresse_des_orchestrators(self):
         calls, lokal = self._lauf(
-            msgraph_enabled=True,
-            custom_mcp_servers='{"msgraph": "https://betreiber.example.invalid/mcp"}',
+            custom_mcp_servers='{"msgraph": "http://orchestrator.example.invalid/api/v1/mcp/msgraph/a1"}',
         )
-        self.assertFalse(lokal, "msgraph wurde trotz eigener Betreiber-Adresse lokal angemeldet")
-        # Die eigene Adresse des Betreibers wird stattdessen ueber den
-        # separaten Custom-Server-Weg registriert.
-        self.assertTrue(any("betreiber.example.invalid" in " ".join(a) for a in calls))
+        self.assertFalse(lokal)
+        self.assertTrue(any("orchestrator.example.invalid" in " ".join(a) for a in calls))
 
-    def test_ohne_eigene_adresse_laeuft_er_weiterhin_lokal(self):
-        _, lokal = self._lauf(msgraph_enabled=True, custom_mcp_servers="")
-        self.assertTrue(lokal, "msgraph haette ohne Betreiber-Adresse lokal laufen muessen")
-
-    def test_ohne_msgraph_enabled_wird_er_gar_nicht_registriert(self):
-        _, lokal = self._lauf(msgraph_enabled=False, custom_mcp_servers="")
+    def test_ohne_adresse_gibt_es_keinen_lokalen_msgraph(self):
+        _, lokal = self._lauf(custom_mcp_servers="")
         self.assertFalse(lokal)
 
     def test_eine_kaputte_liste_legt_den_start_nicht_lahm(self):
         """CUSTOM_MCP_SERVERS kommt als Text aus der Umgebung — ein Tippfehler
-        darf nicht den ganzen Agenten kosten. Die kaputte Liste faellt auf eine
-        leere Menge zurueck, msgraph gilt dann als nicht fremdvergeben und
-        laeuft weiterhin lokal — der Fehler wird geschluckt, nicht der Start."""
+        darf nicht den ganzen Agenten kosten."""
         try:
-            _, lokal = self._lauf(msgraph_enabled=True, custom_mcp_servers="{kaputt")
+            _, lokal = self._lauf(custom_mcp_servers="{kaputt")
         except Exception as exc:  # pragma: no cover - Beweis, dass es NICHT passiert
             self.fail(f"register_mcp_servers ist an der kaputten Liste gescheitert: {exc}")
-        self.assertTrue(lokal)
+        self.assertFalse(lokal)
 
 
 class McpJsonFallbackFolgtDemModus(unittest.TestCase):
