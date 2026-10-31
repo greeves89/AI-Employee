@@ -4524,6 +4524,8 @@ async def send_telegram_message(
     """
     if agent_auth["agent_id"] != agent_id:
         raise HTTPException(status_code=403, detail="Das Agenten-Token passt nicht zum Zielagenten.")
+    from app.core.faehigkeiten import verlangen
+    await verlangen(manager.db, agent_id, "messaging")
     sent_to = 0
     try:
         import app.main as main_mod
