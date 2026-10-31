@@ -135,10 +135,6 @@ class GesperrtTests(unittest.TestCase):
     def test_nicht_angelegtes_volume(self):
         self.assertAbgelehnt(_modell(volumes=[{"type": "volume", "source": "nirgends", "target": "/d"}]), "nirgends")
 
-    def test_fremdes_netz(self):
-        m = _modell(networks={"plattform": None})
-        m["networks"]["plattform"] = {"name": "ai-employee-network", "external": True}
-        self.assertAbgelehnt(m, "external")
 
     def test_netz_treiber_host_oder_macvlan(self):
         m = _modell()
@@ -292,6 +288,20 @@ class UmschreibungTests(unittest.TestCase):
         self.assertEqual(neu["networks"]["app"]["name"], "agent-abcdef12-aios-quick-eva-net")
         self.assertEqual(neu["networks"]["app"]["ipam"], {}, "eigener Adressbereich kann das Firmennetz überdecken")
         self.assertTrue(hinweise)
+
+    def test_fremdes_netz_wird_zum_eigenen(self):
+        """Ein externes Netz der Plattform heisst nach der Umschreibung anders und ist
+        damit nicht erreichbar; zwei Projekte desselben Agenten teilen sich ihres weiter."""
+        m = _modell(networks={"plattform": None})
+        m["networks"]["plattform"] = {"name": "ai-employee-network", "external": True}
+        neu, hinweise, _ = _pruefen(m)
+        self.assertEqual(neu["networks"]["plattform"], {"name": "agent-abcdef12-ai-employee-network", "external": True})
+        self.assertTrue(any("nicht erreichbar" in h for h in hinweise))
+
+    def test_bridge_wird_zum_eigenen_netz(self):
+        neu, hinweise, _ = _pruefen(_modell(network_mode="bridge"))
+        self.assertNotIn("network_mode", neu["services"]["web"])
+        self.assertTrue(any("bridge" in h for h in hinweise))
 
     def test_feste_adresse_im_netz_entfaellt(self):
         neu, _, _ = _pruefen(_modell(networks={"default": {"ipv4_address": "10.0.0.5", "aliases": ["w"]}}))

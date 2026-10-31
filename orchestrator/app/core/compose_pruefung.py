@@ -335,10 +335,12 @@ def _netze_pruefen(netze: dict, quelle: Quelle, fehler: list[str], hinweise: lis
         if n.get("driver") not in (None, "bridge"):
             fehler.append(f"Netz „{key}“: Treiber „{n.get('driver')}“ ist gesperrt, erlaubt ist nur „bridge“.")
         name = str(n.get("name") or key)
-        if n.get("external") and not name.startswith(quelle.praefix):
-            fehler.append(f"Netz „{key}“: Fremde Netze („external“) sind gesperrt.")
-        elif not name.startswith(quelle.praefix):
+        if not name.startswith(quelle.praefix):
+            # Auch bei „external“: Zwei Projekte desselben Agenten teilen sich ein
+            # Netz weiter, ein fremdes Netz (Plattform, andere Nutzer) ist so nie gemeint.
             n["name"] = _praefixiert(quelle, name)
+            if n.get("external"):
+                hinweise.append(f"Netz „{key}“: „{name}“ heißt am Server „{n['name']}“; fremde Netze sind nicht erreichbar.")
         ipam = n.get("ipam") or {}
         if ipam.get("config") or ipam.get("driver") not in (None, "default"):
             # Eigene Adressbereiche können sich mit dem Firmennetz überschneiden.
@@ -423,7 +425,11 @@ def _dienst_pruefen(name: str, dienst: dict, quelle: Quelle, dienste: set, volum
             fehler.append(f"{wo}: „{ns}: {wert}“ ist gesperrt (Namensraum des Servers oder fremder Container).")
 
     nm = dienst.get("network_mode")
-    if nm not in (None, ""):
+    if nm == "bridge":
+        # Das Standardnetz von Docker teilen sich alle Container ohne eigenes Netz.
+        # Ohne Angabe haengt Compose den Dienst beim Start an das Netz des Projekts.
+        hinweise.append(f"{wo}: „network_mode: bridge“ entfernt, die App bekommt ihr eigenes Netz.")
+    elif nm not in (None, ""):
         if nm == "none" or (str(nm).startswith("service:") and str(nm)[8:] in dienste):
             d["network_mode"] = nm
         else:
