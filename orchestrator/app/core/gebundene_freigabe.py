@@ -48,11 +48,17 @@ def fingerabdruck(art: str, daten: dict) -> str:
 async def anfragen(db, agent_id: str, art: str, daten: dict, *, titel: str,
                    felder: list[tuple[str, str]], werkzeug: str, task_id: str | None = None) -> dict:
     """Die Handlung zur Freigabe stellen. Liefert die Antwort für den Agenten (202)."""
-    from app.api.approvals import ApprovalRequest, anfrage_anlegen
+    from app.api.approvals import ANSICHT_MAX_ZEICHEN, ApprovalRequest, anfrage_anlegen
 
     if art not in AUSFUEHRER:
         raise RuntimeError(f"Keine Ausführung für {art!r} angemeldet")
-    ansicht = {"titel": titel, "felder": [{"name": n, "wert": str(w)[:3000]} for n, w in felder]}
+    # Nie kürzen: Freigegeben würde sonst etwas, das der Mensch nicht ganz gesehen hat.
+    # Was nicht vollständig in die Ansicht passt, wird gar nicht erst zur Freigabe gestellt.
+    ansicht = {"titel": titel, "felder": [{"name": n, "wert": str(w)} for n, w in felder]}
+    if len(json.dumps(ansicht, ensure_ascii=False, default=str)) > ANSICHT_MAX_ZEICHEN - 200:
+        raise HTTPException(status_code=413, detail=(
+            f"Zu lang für eine Freigabe: Der Mensch muss alles sehen, was ausgeführt wird. "
+            f"Bitte auf höchstens etwa {ANSICHT_MAX_ZEICHEN - 500} Zeichen kürzen."))
     erg = await anfrage_anlegen(db, agent_id, ApprovalRequest(
         tool=werkzeug, kind=art, risk_level="medium", reasoning=titel, task_id=task_id,
         input={"daten": daten, "fingerabdruck": fingerabdruck(art, daten)},

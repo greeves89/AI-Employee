@@ -117,6 +117,31 @@ class AnfrageTests(_Basis):
                                            agent_auth={"agent_id": "frage"}, db=db)
         self.assertEqual(ctx.exception.status_code, 403)
 
+    async def test_zu_lang_wird_nicht_gekuerzt_sondern_abgelehnt(self):
+        """Freigegeben würde sonst ein Text, den der Mensch nur zum Teil gesehen hat."""
+        anlegen = AsyncMock(return_value={"approval_id": "1"})
+        async with self.Session() as db:
+            with patch.object(api, "anfrage_anlegen", anlegen):
+                with self.assertRaises(HTTPException) as ctx:
+                    await tickets.create_ticket(tickets.CreateTicket(title="x", description="A" * 9000),
+                                                db=db, _auth={"agent_id": "frage"})
+        self.assertEqual(ctx.exception.status_code, 413)
+        anlegen.assert_not_called()
+
+    async def test_ansicht_zeigt_den_vollen_text(self):
+        erfasst = {}
+
+        async def anlegen(db, agent_id, body):
+            erfasst["body"] = body
+            return {"approval_id": "1"}
+
+        text = "B" * 5000
+        async with self.Session() as db:
+            with patch.object(api, "anfrage_anlegen", side_effect=anlegen):
+                await tickets.create_ticket(tickets.CreateTicket(title="x", description=text), db=db,
+                                            _auth={"agent_id": "frage"})
+        self.assertIn(text, str(erfasst["body"].view["data"]))
+
     def test_ansicht_handlung_ist_erlaubt(self):
         self.assertIn("handlung", api.ERLAUBTE_ANSICHTEN)
 
