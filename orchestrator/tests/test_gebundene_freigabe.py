@@ -128,6 +128,14 @@ class AnfrageTests(_Basis):
         self.assertEqual(ctx.exception.status_code, 413)
         anlegen.assert_not_called()
 
+    async def test_umlaute_zaehlen_wie_in_der_freigabe(self):
+        """Die Freigabe misst mit \\u-Escapes — 3000 „ü“ sind dort 18000 Zeichen."""
+        async with self.Session() as db:
+            with patch.object(api, "anfrage_anlegen", AsyncMock(return_value={"approval_id": "1"})):
+                with self.assertRaises(HTTPException):
+                    await tickets.create_ticket(tickets.CreateTicket(title="x", description="ü" * 3000),
+                                                db=db, _auth={"agent_id": "frage"})
+
     async def test_ansicht_zeigt_den_vollen_text(self):
         erfasst = {}
 

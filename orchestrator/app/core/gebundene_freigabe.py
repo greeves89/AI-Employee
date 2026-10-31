@@ -55,7 +55,8 @@ async def anfragen(db, agent_id: str, art: str, daten: dict, *, titel: str,
     # Nie kürzen: Freigegeben würde sonst etwas, das der Mensch nicht ganz gesehen hat.
     # Was nicht vollständig in die Ansicht passt, wird gar nicht erst zur Freigabe gestellt.
     ansicht = {"titel": titel, "felder": [{"name": n, "wert": str(w)} for n, w in felder]}
-    if len(json.dumps(ansicht, ensure_ascii=False, default=str)) > ANSICHT_MAX_ZEICHEN - 200:
+    # Genau so gemessen wie api/approvals._saubere_ansicht — sonst fiele die Ansicht dort still weg.
+    if len(json.dumps(ansicht, default=str)) > ANSICHT_MAX_ZEICHEN - 200:
         raise HTTPException(status_code=413, detail=(
             f"Zu lang für eine Freigabe: Der Mensch muss alles sehen, was ausgeführt wird. "
             f"Bitte auf höchstens etwa {ANSICHT_MAX_ZEICHEN - 500} Zeichen kürzen."))
