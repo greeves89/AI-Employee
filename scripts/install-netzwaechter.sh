@@ -24,7 +24,8 @@ case "${1:-}" in
         exec python3 "${INSTALL_DIR}/scripts/netzwaechter.py" --zeigen ;;
     --entfernen)
         systemctl disable --now ai-employee-netzwaechter 2>/dev/null || true
-        rm -f "$UNIT"; systemctl daemon-reload
+        rm -f "$UNIT" /etc/modules-load.d/ai-employee-netzwaechter.conf /etc/sysctl.d/90-ai-employee-netzwaechter.conf
+        systemctl daemon-reload
         python3 "${INSTALL_DIR}/scripts/netzwaechter.py" --entfernen
         exit 0 ;;
     "") ;;
@@ -39,6 +40,12 @@ mkdir -p /etc/ai-employee
 #   192.168.1.50        # SAP-Server
 #   10.0.5.0/24         # Testumgebung
 TXT
+
+# Verkehr innerhalb einer Docker-Bridge läuft nur mit br_netfilter durch iptables.
+echo br_netfilter > /etc/modules-load.d/ai-employee-netzwaechter.conf
+echo "net.bridge.bridge-nf-call-iptables = 1" > /etc/sysctl.d/90-ai-employee-netzwaechter.conf
+modprobe br_netfilter
+echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables
 
 sed "s#@INSTALL_DIR@#${INSTALL_DIR}#g" "${INSTALL_DIR}/deploy/ai-employee-netzwaechter.service" > "$UNIT"
 systemctl daemon-reload

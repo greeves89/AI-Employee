@@ -124,7 +124,9 @@ _BUILD_FREI = frozenset({
 #: „tags“ fällt weg: Ein Zusatzname könnte ein Abbild der Plattform überschreiben.
 _BUILD_GEPRUEFT = frozenset({"context", "dockerfile", "additional_contexts", "network", "privileged", "tags"})
 
-_NETZ_FREI = frozenset({"name", "driver", "external", "internal", "attachable", "labels", "ipam", "enable_ipv6", "enable_ipv4"})
+#: Ohne ``enable_ipv6``: Der Netzwächter (scripts/netzwaechter.py) sperrt nur IPv4 —
+#: ein App-Netz mit IPv6 liefe an seinen Regeln vorbei.
+_NETZ_FREI = frozenset({"name", "driver", "external", "internal", "attachable", "labels", "ipam", "enable_ipv4"})
 _VOLUME_FREI = frozenset({"name", "external", "driver", "labels"})
 _DIENST_NETZ_FREI = frozenset({"aliases", "priority", "gw_priority", "mac_address", "interface_name"})
 _LOG_TREIBER = frozenset({None, "json-file", "local", "none"})

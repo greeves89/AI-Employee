@@ -93,6 +93,31 @@ class RegelTests(unittest.TestCase):
         self.assertEqual(len(host), 1)
 
 
+class StandardBridgeTests(unittest.TestCase):
+    """Builds laufen im Standard-Bridge — ein Dockerfile erreichte sonst den Router
+    (auf dem Pi gemessen: RUN wget 192.168.178.1 ging durch)."""
+
+    def setUp(self):
+        self.vor, self.host = nw.regeln([], SUBNETZE, [], standard="172.17.0.0/16", nameserver=["192.168.178.1"])
+
+    def test_privates_netz_und_host_gesperrt(self):
+        self.assertIn("-A AIE-NETZ -s 172.17.0.0/16 -d 192.168.0.0/16 -j DROP", self.vor)
+        self.assertIn("-A AIE-NETZ-HOST -s 172.17.0.0/16 -j DROP", self.host)
+
+    def test_dns_zum_router_bleibt_frei(self):
+        """Builds fragen den Nameserver aus resolv.conf direkt — ohne DNS kein apt, kein npm."""
+        dns = "-A AIE-NETZ -s 172.17.0.0/16 -d 192.168.178.1/32 -p udp --dport 53 -j RETURN"
+        self.assertIn(dns, self.vor)
+        self.assertLess(self.vor.index(dns), self.vor.index("-A AIE-NETZ -s 172.17.0.0/16 -d 192.168.0.0/16 -j DROP"))
+        self.assertNotIn("-d 192.168.178.1/32 -j RETURN", "\n".join(self.vor), "nur Port 53, nicht der ganze Router")
+
+    def test_nameserver_ohne_loopback(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", delete=False) as f:
+            f.write("# kommentar\nnameserver 192.168.178.1\nnameserver 127.0.0.53\nnameserver fd00::1\nsearch fritz.box\n")
+        self.assertEqual(nw.nameserver_lesen(Path(f.name)), ["192.168.178.1"])
+
+
 class AusnahmenTests(unittest.TestCase):
     def test_nur_gueltige_netze(self):
         import tempfile

@@ -26,6 +26,11 @@ Für einen eingeschränkten Container gilt (Kette ``AIE-NETZ`` aus ``DOCKER-USER
    Das Internet bleibt erreichbar.
 6. Den Host selbst (SSH, Dienste auf dem Pi) erreicht er gar nicht.
 
+Dazu das Standard-Bridge von Docker (``bridge``): Dort laufen die ``RUN``-Schritte
+von Builds — ein Dockerfile erreichte sonst den Router. Die Plattform selbst nutzt
+dieses Netz nicht. Erlaubt bleibt nur DNS zu den Nameservern aus
+``/etc/resolv.conf`` (Builds fragen sie direkt, nicht über Dockers DNS).
+
 Die Ketten werden bei jeder Änderung vollständig neu geschrieben (``iptables-restore
 --noflush``), ausgelöst durch Docker-Ereignisse und spätestens alle fünf Minuten.
 ``--zeigen`` gibt die Regeln nur aus, ``--entfernen`` nimmt alles zurück.
@@ -59,11 +64,13 @@ def besitzer(labels: dict, umgebung: list[str]) -> str | None:
     return None
 
 
-def regeln(container: list[dict], subnetze: dict[str, str], ausnahmen: list[str]) -> tuple[list[str], list[str]]:
+def regeln(container: list[dict], subnetze: dict[str, str], ausnahmen: list[str],
+           standard: str | None = None, nameserver: list[str] | None = None) -> tuple[list[str], list[str]]:
     """(Regeln für AIE-NETZ, Regeln für AIE-NETZ-HOST) — ohne Seiteneffekte.
 
     ``container``: je Container ``{"name", "besitzer", "ips": {netz: ip}}``.
-    ``subnetze``: Docker-Netz → Subnetz.
+    ``subnetze``: Docker-Netz → Subnetz. ``standard``: Subnetz des Standard-Bridge
+    (Builds). ``nameserver``: DNS-Server, die Builds erreichen müssen.
     """
     vorwaerts = ["-A AIE-NETZ -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN"]
     host = ["-A AIE-NETZ-HOST -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN"]
@@ -89,7 +96,33 @@ def regeln(container: list[dict], subnetze: dict[str, str], ausnahmen: list[str]
                 vorwaerts.append(f"-A AIE-NETZ -s {ip}/32 -d {privat} -j DROP")
             # 6. Host
             host.append(f"-A AIE-NETZ-HOST -s {ip}/32 -j DROP")
+    if standard:
+        for ns in nameserver or []:
+            for proto in ("udp", "tcp"):
+                vorwaerts.append(f"-A AIE-NETZ -s {standard} -d {ns}/32 -p {proto} --dport 53 -j RETURN")
+                host.append(f"-A AIE-NETZ-HOST -s {standard} -d {ns}/32 -p {proto} --dport 53 -j RETURN")
+        for ziel in ausnahmen:
+            vorwaerts.append(f"-A AIE-NETZ -s {standard} -d {ziel} -j RETURN")
+        vorwaerts.append(f"-A AIE-NETZ -s {standard} -d {standard} -j RETURN")
+        for privat in PRIVAT:
+            vorwaerts.append(f"-A AIE-NETZ -s {standard} -d {privat} -j DROP")
+        host.append(f"-A AIE-NETZ-HOST -s {standard} -j DROP")
     return vorwaerts, host
+
+
+def nameserver_lesen(pfad: Path = Path("/etc/resolv.conf")) -> list[str]:
+    """IPv4-Nameserver des Hosts (die Builds direkt fragen)."""
+    gefunden = []
+    for zeile in pfad.read_text().splitlines() if pfad.exists() else []:
+        teile = zeile.split()
+        if len(teile) >= 2 and teile[0] == "nameserver":
+            try:
+                adresse = ipaddress.ip_address(teile[1])
+            except ValueError:
+                continue
+            if adresse.version == 4 and not adresse.is_loopback:
+                gefunden.append(str(adresse))
+    return gefunden
 
 
 def ausnahmen_lesen(pfad: Path = AUSNAHMEN) -> list[str]:
@@ -115,8 +148,16 @@ def _docker_json(*argumente: str) -> list:
 def zustand() -> tuple[list[dict], dict[str, str]]:
     ids = subprocess.run(["docker", "ps", "-q"], check=True, capture_output=True, text=True).stdout.split()
     container = []
-    netznamen: set[str] = set()
-    for c in _docker_json("inspect", *ids) if ids else []:
+    netznamen: set[str] = {"bridge"}
+    gesehen = []
+    for cid in ids:
+        # Einzeln: Ein Container, der zwischen ``ps`` und ``inspect`` endet, darf
+        # nicht den ganzen Durchlauf kosten — sonst blieben neue Container ohne Regeln.
+        try:
+            gesehen += _docker_json("inspect", cid)
+        except subprocess.CalledProcessError:
+            continue
+    for c in gesehen:
         netze = (c.get("NetworkSettings") or {}).get("Networks") or {}
         ips = {n: v["IPAddress"] for n, v in netze.items() if v.get("IPAddress")}
         netznamen |= set(ips)
@@ -126,7 +167,13 @@ def zustand() -> tuple[list[dict], dict[str, str]]:
             "ips": ips,
         })
     subnetze = {}
-    for n in _docker_json("network", "inspect", *sorted(netznamen)) if netznamen else []:
+    netze = []
+    for name in sorted(netznamen):
+        try:
+            netze += _docker_json("network", "inspect", name)
+        except subprocess.CalledProcessError:
+            continue
+    for n in netze:
         konfig = ((n.get("IPAM") or {}).get("Config") or [])
         v4 = next((k["Subnet"] for k in konfig if k.get("Subnet") and ":" not in k["Subnet"]), None)
         if v4:
@@ -158,12 +205,24 @@ def entfernen() -> None:
         _iptables("-X", ziel, pruefen=True)
 
 
+def bridge_netfilter() -> None:
+    """Verkehr INNERHALB einer Docker-Bridge läuft nur mit br_netfilter durch
+    iptables — ohne ihn erreichten sich Agenten verschiedener Besitzer im
+    Plattformnetz trotz Regel (auf dem Pi gemessen)."""
+    subprocess.run(["modprobe", "br_netfilter"], capture_output=True)
+    schalter = Path("/proc/sys/net/bridge/bridge-nf-call-iptables")
+    if schalter.exists() and schalter.read_text().strip() != "1":
+        schalter.write_text("1")
+
+
 def einmal(zeigen: bool = False) -> int:
     container, subnetze = zustand()
-    vorwaerts, host = regeln(container, subnetze, ausnahmen_lesen())
+    vorwaerts, host = regeln(container, subnetze, ausnahmen_lesen(),
+                             standard=subnetze.get("bridge"), nameserver=nameserver_lesen())
     if zeigen:
         print("\n".join(vorwaerts + host))
     else:
+        bridge_netfilter()
         anwenden(vorwaerts, host)
     return sum(1 for c in container if c["besitzer"])
 
@@ -174,8 +233,11 @@ def dauerlauf() -> None:
     def lauschen():
         while True:
             proc = subprocess.Popen(
+                # connect/disconnect: Die Plattform haengt Apps und Agenten selbst in
+                # App-Netze — jede neue IP braucht ihre Regeln sofort.
                 ["docker", "events", "--filter", "type=container", "--filter", "event=start",
-                 "--filter", "event=die", "--filter", "type=network", "--format", "{{.Type}}"],
+                 "--filter", "event=die", "--filter", "type=network", "--filter", "event=connect",
+                 "--filter", "event=disconnect", "--format", "{{.Type}}"],
                 stdout=subprocess.PIPE, text=True)
             for _ in proc.stdout:
                 ereignis.set()
@@ -183,12 +245,14 @@ def dauerlauf() -> None:
 
     threading.Thread(target=lauschen, daemon=True).start()
     while True:
+        warten = INTERVALL
         try:
             n = einmal()
             print(f"[Netzwächter] Regeln für {n} Container gesetzt", flush=True)
-        except Exception as e:  # noqa: BLE001 — nächster Versuch beim nächsten Ereignis
+        except Exception as e:  # noqa: BLE001 — gleich wieder versuchen, nicht erst in 5 Minuten
             print(f"[Netzwächter] Fehler: {e}", flush=True)
-        ereignis.wait(INTERVALL)
+            warten = 10
+        ereignis.wait(warten)
         ereignis.clear()
         time.sleep(2)        # mehrere Ereignisse eines Starts zusammenfassen
 
