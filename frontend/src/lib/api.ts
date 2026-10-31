@@ -1907,6 +1907,23 @@ export interface DatenschutzStand {
   lebenszeichen_aktiv: boolean;
 }
 
+export interface SicherheitsPunkt {
+  schluessel: string;
+  titel: string;
+  stand: "ok" | "warnung" | "kritisch" | "info";
+  text: string;
+  beheben: string;
+}
+
+export interface SicherheitsStand {
+  punkte: SicherheitsPunkt[];
+  zaehlung: Record<"ok" | "warnung" | "kritisch" | "info", number>;
+}
+
+export async function getSicherheit(): Promise<SicherheitsStand> {
+  return fetchJSON(`${getBase()}/settings/sicherheit`);
+}
+
 export async function getDatenschutz(): Promise<DatenschutzStand> {
   return fetchJSON(`${getBase()}/settings/datenschutz`);
 }
