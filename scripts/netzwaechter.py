@@ -1,0 +1,205 @@
+#!/usr/bin/env python3
+"""Netzwächter: Agenten und Agenten-Apps erreichen weder Heimnetz noch Router noch Host.
+
+Läuft auf dem HOST (systemd, root), nicht in einem Container: Er braucht iptables
+und darf dafür kein privilegiertes Abbild mitbringen. Installation:
+``sudo ./scripts/install-netzwaechter.sh``.
+
+Eingeschränkt sind Container mit dem Label ``ai-employee.type=agent`` (setzt die
+Plattform beim Anlegen) und alle Container eines Compose-Projekts ``agent-…``
+(Agenten-Apps; den Projektnamen vergibt die Plattform über ``-p``). Ein gefälschtes
+Label kann einen Container damit nur EINSCHRÄNKEN, nie freischalten. Der
+Orchestrator und die übrigen Dienste der Plattform bleiben unberührt — der
+Orchestrator muss etwa ein Exchange oder einen SSO-Dienst im Firmennetz erreichen.
+
+Für einen eingeschränkten Container gilt (Kette ``AIE-NETZ`` aus ``DOCKER-USER``,
+``AIE-NETZ-HOST`` aus ``INPUT``):
+
+1. Antworten auf bestehende Verbindungen gehen immer.
+2. Kein Verkehr zu eingeschränkten Containern eines ANDEREN Besitzers — im
+   Plattformnetz erreichten Agenten sonst die Agenten anderer Nutzer (etwa deren
+   Prüf-Hook auf Port 8080).
+3. Ausnahmen aus ``/etc/ai-employee/netz-ausnahmen`` (ein Netz je Zeile, CIDR).
+4. Verkehr in Docker-Netze, in denen der Container selbst hängt: Plattform,
+   eigene Apps.
+5. Alles andere in private Netze (RFC 1918, Link-Local, CGNAT) wird verworfen.
+   Das Internet bleibt erreichbar.
+6. Den Host selbst (SSH, Dienste auf dem Pi) erreicht er gar nicht.
+
+Die Ketten werden bei jeder Änderung vollständig neu geschrieben (``iptables-restore
+--noflush``), ausgelöst durch Docker-Ereignisse und spätestens alle fünf Minuten.
+``--zeigen`` gibt die Regeln nur aus, ``--entfernen`` nimmt alles zurück.
+"""
+
+from __future__ import annotations
+
+import ipaddress
+import json
+import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
+
+KETTE = "AIE-NETZ"
+KETTE_HOST = "AIE-NETZ-HOST"
+AUSNAHMEN = Path("/etc/ai-employee/netz-ausnahmen")
+PRIVAT = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10"]
+INTERVALL = 300
+
+
+def besitzer(labels: dict, umgebung: list[str]) -> str | None:
+    """Schlüssel des Besitzers (``agent-<id8>``) oder None = nicht eingeschränkt."""
+    projekt = str(labels.get("com.docker.compose.project", ""))
+    if projekt.startswith("agent-") and len(projekt) >= 14:
+        return projekt[:14]
+    if labels.get("ai-employee.type") == "agent":
+        aid = next((e.split("=", 1)[1] for e in umgebung if e.startswith("AGENT_ID=")), "")
+        return f"agent-{aid[:8]}" if aid else "agent-unbekannt"
+    return None
+
+
+def regeln(container: list[dict], subnetze: dict[str, str], ausnahmen: list[str]) -> tuple[list[str], list[str]]:
+    """(Regeln für AIE-NETZ, Regeln für AIE-NETZ-HOST) — ohne Seiteneffekte.
+
+    ``container``: je Container ``{"name", "besitzer", "ips": {netz: ip}}``.
+    ``subnetze``: Docker-Netz → Subnetz.
+    """
+    vorwaerts = ["-A AIE-NETZ -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN"]
+    host = ["-A AIE-NETZ-HOST -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN"]
+    eingeschraenkt = [c for c in container if c["besitzer"]]
+    for c in eingeschraenkt:
+        for ip in sorted(set(c["ips"].values())):
+            # 2. Andere Besitzer im selben Netz
+            for anderer in eingeschraenkt:
+                if anderer["besitzer"] == c["besitzer"]:
+                    continue
+                gemeinsam = set(c["ips"]) & set(anderer["ips"])
+                for netz in sorted(gemeinsam):
+                    vorwaerts.append(f"-A AIE-NETZ -s {ip}/32 -d {anderer['ips'][netz]}/32 -j DROP")
+            # 3. Ausnahmen
+            for ziel in ausnahmen:
+                vorwaerts.append(f"-A AIE-NETZ -s {ip}/32 -d {ziel} -j RETURN")
+            # 4. Eigene Docker-Netze
+            for netz in sorted(c["ips"]):
+                if subnetze.get(netz):
+                    vorwaerts.append(f"-A AIE-NETZ -s {ip}/32 -d {subnetze[netz]} -j RETURN")
+            # 5. Private Netze
+            for privat in PRIVAT:
+                vorwaerts.append(f"-A AIE-NETZ -s {ip}/32 -d {privat} -j DROP")
+            # 6. Host
+            host.append(f"-A AIE-NETZ-HOST -s {ip}/32 -j DROP")
+    return vorwaerts, host
+
+
+def ausnahmen_lesen(pfad: Path = AUSNAHMEN) -> list[str]:
+    if not pfad.exists():
+        return []
+    gueltig = []
+    for zeile in pfad.read_text().splitlines():
+        zeile = zeile.split("#", 1)[0].strip()
+        if not zeile:
+            continue
+        try:
+            gueltig.append(str(ipaddress.ip_network(zeile, strict=False)))
+        except ValueError:
+            print(f"[Netzwächter] Ausnahme ignoriert (kein Netz): {zeile}", flush=True)
+    return gueltig
+
+
+def _docker_json(*argumente: str) -> list:
+    out = subprocess.run(["docker", *argumente], check=True, capture_output=True, text=True).stdout
+    return json.loads(out) if out.strip() else []
+
+
+def zustand() -> tuple[list[dict], dict[str, str]]:
+    ids = subprocess.run(["docker", "ps", "-q"], check=True, capture_output=True, text=True).stdout.split()
+    container = []
+    netznamen: set[str] = set()
+    for c in _docker_json("inspect", *ids) if ids else []:
+        netze = (c.get("NetworkSettings") or {}).get("Networks") or {}
+        ips = {n: v["IPAddress"] for n, v in netze.items() if v.get("IPAddress")}
+        netznamen |= set(ips)
+        container.append({
+            "name": c.get("Name", "").lstrip("/"),
+            "besitzer": besitzer((c.get("Config") or {}).get("Labels") or {}, (c.get("Config") or {}).get("Env") or []),
+            "ips": ips,
+        })
+    subnetze = {}
+    for n in _docker_json("network", "inspect", *sorted(netznamen)) if netznamen else []:
+        konfig = ((n.get("IPAM") or {}).get("Config") or [])
+        v4 = next((k["Subnet"] for k in konfig if k.get("Subnet") and ":" not in k["Subnet"]), None)
+        if v4:
+            subnetze[n["Name"]] = v4
+    return container, subnetze
+
+
+def _iptables(*argumente: str, pruefen: bool = False) -> bool:
+    r = subprocess.run(["iptables", "-w", *argumente], capture_output=True, text=True)
+    if r.returncode and not pruefen:
+        raise RuntimeError(r.stderr.strip())
+    return r.returncode == 0
+
+
+def anwenden(vorwaerts: list[str], host: list[str]) -> None:
+    """Beide Ketten in EINEM Schritt ersetzen, Sprünge einmalig setzen."""
+    text = "\n".join(["*filter", f":{KETTE} - [0:0]", f":{KETTE_HOST} - [0:0]", *vorwaerts, *host, "COMMIT", ""])
+    subprocess.run(["iptables-restore", "-w", "--noflush"], input=text, text=True, check=True)
+    for kette, ziel in (("DOCKER-USER", KETTE), ("INPUT", KETTE_HOST)):
+        if not _iptables("-C", kette, "-j", ziel, pruefen=True):
+            _iptables("-I", kette, "1", "-j", ziel)
+
+
+def entfernen() -> None:
+    for kette, ziel in (("DOCKER-USER", KETTE), ("INPUT", KETTE_HOST)):
+        while _iptables("-C", kette, "-j", ziel, pruefen=True):
+            _iptables("-D", kette, "-j", ziel)
+        _iptables("-F", ziel, pruefen=True)
+        _iptables("-X", ziel, pruefen=True)
+
+
+def einmal(zeigen: bool = False) -> int:
+    container, subnetze = zustand()
+    vorwaerts, host = regeln(container, subnetze, ausnahmen_lesen())
+    if zeigen:
+        print("\n".join(vorwaerts + host))
+    else:
+        anwenden(vorwaerts, host)
+    return sum(1 for c in container if c["besitzer"])
+
+
+def dauerlauf() -> None:
+    ereignis = threading.Event()
+
+    def lauschen():
+        while True:
+            proc = subprocess.Popen(
+                ["docker", "events", "--filter", "type=container", "--filter", "event=start",
+                 "--filter", "event=die", "--filter", "type=network", "--format", "{{.Type}}"],
+                stdout=subprocess.PIPE, text=True)
+            for _ in proc.stdout:
+                ereignis.set()
+            time.sleep(5)    # Docker neu gestartet: wieder anmelden
+
+    threading.Thread(target=lauschen, daemon=True).start()
+    while True:
+        try:
+            n = einmal()
+            print(f"[Netzwächter] Regeln für {n} Container gesetzt", flush=True)
+        except Exception as e:  # noqa: BLE001 — nächster Versuch beim nächsten Ereignis
+            print(f"[Netzwächter] Fehler: {e}", flush=True)
+        ereignis.wait(INTERVALL)
+        ereignis.clear()
+        time.sleep(2)        # mehrere Ereignisse eines Starts zusammenfassen
+
+
+if __name__ == "__main__":
+    if "--entfernen" in sys.argv:
+        entfernen()
+        print("[Netzwächter] Regeln entfernt")
+    elif "--zeigen" in sys.argv:
+        einmal(zeigen=True)
+    elif "--einmal" in sys.argv:
+        print(f"[Netzwächter] Regeln für {einmal()} Container gesetzt")
+    else:
+        dauerlauf()
