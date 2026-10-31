@@ -2438,6 +2438,39 @@ Bei Bedarf den **Self-Test erneut ausführen**, um den aktuellen Stand zu prüfe
 
 ![Karten Datensicherung und Datenschutz & Aufbewahrung](screenshots/52-admin-sicherung-datenschutz.png)
 
+**Ganz oben** steht die Karte **Sicherheitsstatus**. Sie ist eine Ampel über die Einstellungen,
+die über die Sicherheit der Anlage entscheiden:
+
+| Zeichen | Bedeutung |
+|---|---|
+| rotes Schild mit Kreuz | **kritisch**: eine Lücke, bitte zuerst beheben |
+| gelbes Schild mit Ausrufezeichen | **Warnung**: sollte behoben werden |
+| grünes Schild mit Haken | **in Ordnung** |
+| Info-Symbol | **zur Kenntnis**: eine bewusste Entscheidung, etwa Microsoft 365 nur lesend |
+
+Geprüft werden unter anderem:
+- die Zugriffsregeln für Redis
+- die Schlüssel in der `.env`
+- ob der Sentinel läuft
+- welche fremden Webseiten die Schnittstelle ansprechen dürfen
+- welche Agenten `sudo` haben
+- ob alle Agenten auf dem aktuellen Stand sind
+- die Docker-Version
+- ob Agenten-Apps vom Netz der Plattform getrennt laufen
+
+Kritische Punkte stehen oben. Unter jedem Punkt steht, **was er bedeutet** und **wie man ihn
+behebt**.
+
+**So prüfst du die Anlage:**
+1. Seitenleiste → **Admin** → Reiter **Betrieb**.
+2. Ganz oben die Karte **Sicherheitsstatus** lesen. Kritische und gelbe Punkte nach dem Hinweis
+   **Beheben** angehen. Meist ist das ein Eintrag in der `.env` (Kap. 37) oder **Aktualisieren**
+   bei einem Agenten.
+3. Danach **Neu prüfen** klicken.
+
+Die Karte liest nur, sie ändert nichts. Dieselbe Liste eignet sich als Nachweis gegenüber der
+eigenen IT, wie die Anlage abgesichert ist.
+
 ---
 
 ## 20. Mein Konto
