@@ -5,6 +5,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.409.1] - 2026-10-31
+
+### Sicherheit
+- **Die Rechte-Matrix gilt jetzt auch am Server.** Steht „E-Mail / M365 senden“, „Chat / Telegram senden“ oder „Externe API / Webhooks“ auf **Verboten**, sperrt die Plattform die Handlung selbst.
+- Bei Microsoft 365 gilt die strengere der beiden Einstellungen: die Zeile der Matrix oder der Microsoft-Zugriff des Agenten.
+- Über Telegram schreibt ein Agent nur noch in Chats, die sich bei ihm angemeldet haben.
+
+## [1.409.0] - 2026-10-31
+
+### Sicherheit
+- Nur Agenten, denen du die Microsoft- oder Google-Anbindung gegeben hast, kommen an dein Postfach.
+- **Agenten sehen keine Zugangsdaten für Microsoft und Google mehr.** E-Mail und Microsoft 365 laufen nur noch über den Server, der vor jedem Senden prüft, was der Agent darf.
+- Gmail: Steht „E-Mail / M365 senden“ auf **Freigabe**, legt der Agent nur einen Entwurf an. Bei **Verboten** liest er nur.
+
+## [1.408.2] - 2026-10-31
+
+### Sicherheit
+- **Agenten können Skills anderer nicht mehr verändern.** Möchte ein Agent einen Skill ändern, den auch andere nutzen oder der öffentlich ist, wird daraus ein Verbesserungsvorschlag. Ein Administrator gibt ihn unter **Skills → Verbesserungen** frei. Jede Änderung durchläuft die Sicherheitsprüfung für Skills.
+- Neue Skills von Agenten gelten zunächst nur für die Agenten ihres Besitzers, bis ein Administrator sie freigibt.
+
+## [1.408.1] - 2026-10-31
+
+### Sicherheit
+- Agenten-Apps laufen im Browser wieder in ihrer Sandbox. Sie können die Anmeldung des Betrachters nicht nutzen, um die Plattform aufzurufen.
+- Apps können keine Cookies der Plattform mehr setzen und fremden Seiten keinen Zugriff per CORS erlauben.
+
 ## [1.408.0] - 2026-10-31
 
 ### Sicherheit
