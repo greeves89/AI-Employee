@@ -1174,9 +1174,16 @@ async def lifespan(app: FastAPI):
 
     # Laufende Agenten-Apps aus dem Plattformnetz in ihr App-Netz (einmalig je Start).
     try:
+        from sqlalchemy import select as _select
+
         from app.api.docker_apps import apps_aus_dem_plattformnetz
+        from app.db.session import async_session_factory
+        from app.models.agent import Agent as _Agent
         from app.services.docker_service import DockerService
-        await asyncio.to_thread(apps_aus_dem_plattformnetz, DockerService())
+        async with async_session_factory() as _db:
+            _agenten = [(a, c) for a, c in (await _db.execute(
+                _select(_Agent.id, _Agent.container_id).where(_Agent.container_id.is_not(None)))).all()]
+        await asyncio.to_thread(apps_aus_dem_plattformnetz, DockerService(), _agenten)
     except Exception:  # noqa: BLE001 — darf den Start nie verhindern
         logger.warning("Agenten-Apps nicht aus dem Plattformnetz umgezogen", exc_info=True)
 

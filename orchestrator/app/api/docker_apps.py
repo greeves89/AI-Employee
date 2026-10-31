@@ -238,10 +238,10 @@ def _projekt_filter(project_name: str) -> dict:
     return {"label": f"com.docker.compose.project={project_name}"}
 
 
-APPS_NETZ_LABEL = "ai-employee.apps-netz"
+APPS_NETZ_LABEL = compose_pruefung.APPS_NETZ_LABEL
 
 
-APPS_NETZ_PRAEFIX = "ai-employee-apps-"
+APPS_NETZ_PRAEFIX = compose_pruefung.APPS_NETZ_PRAEFIX
 
 
 def _apps_netz(docker: DockerService, schluessel: str):
@@ -329,16 +329,26 @@ def _orchestrator_anbinden(docker: DockerService, netznamen: list[str]) -> None:
     _EIGENE_NETZE.clear()
 
 
-def apps_aus_dem_plattformnetz(docker: DockerService) -> int:
+def apps_aus_dem_plattformnetz(docker: DockerService, agenten: list[tuple[str, str]] | None = None) -> int:
     """Beim Start einmal: laufende Agenten-Apps aus dem Plattformnetz ins App-Netz
     ihres Agenten umziehen. Bis zu dieser Version hing jede App neben Postgres und
     Redis; ohne den Umzug blieben sie dort bis zum naechsten Neustart der App."""
     umgezogen = 0
+    # Auch die Agenten: Wer seit dem letzten Neuerstellen in keinem App-Netz haengt,
+    # erreicht seine eigenen Apps nicht (etwa einen eigenen MCP-Server als App).
+    # ``agenten`` sind (Agent-ID, Container-ID) AUS DER DATENBANK — nie Label oder
+    # Umgebung eines Containers: beides kann eine App selbst setzen und sich so als
+    # Agent eines anderen Nutzers in dessen App-Netz schleichen.
+    for aid, cid in agenten or []:
+        try:
+            docker.ans_apps_netz(docker.client.containers.get(cid), aid)
+        except Exception:  # noqa: BLE001 — gestoppter oder geloeschter Container
+            logger.debug("Agent %s nicht ans App-Netz gehaengt", aid, exc_info=True)
     try:
         plattform = docker.client.networks.get(AGENT_NETWORK)
         plattform.reload()
     except Exception:  # noqa: BLE001
-        return 0
+        return umgezogen
     projekte = set()
     for cid in (plattform.attrs.get("Containers") or {}):
         try:
