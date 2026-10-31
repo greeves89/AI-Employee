@@ -190,6 +190,23 @@ egress_ca_einspielen() {
   if ! update-ca-certificates >/dev/null 2>&1; then
     echo "[entrypoint] WARNUNG: CA des Egress-Proxys nicht im Systemspeicher"
   fi
+  egress_ca_fuer_browser
+}
+
+# Chromium liest unter Linux nicht den Systemspeicher, sondern die NSS-Datenbank im
+# Heimatverzeichnis. Ohne Eintrag dort scheitert der Agenten-Browser an jedem Ziel,
+# fuer das der Proxy einen Key einsetzt (ERR_CERT_AUTHORITY_INVALID).
+NSS_DIR=/home/agent/.pki/nssdb
+[ "${ENTRYPOINT_NUR_DEFINIEREN:-}" = "1" ] && NSS_DIR="${ENTRYPOINT_NSS_DIR:-$NSS_DIR}"
+egress_ca_fuer_browser() {
+  command -v certutil >/dev/null 2>&1 || { echo "[entrypoint] WARNUNG: certutil fehlt -- Browser traut dem Egress-Proxy nicht"; return 0; }
+  mkdir -p "$NSS_DIR" || return 0
+  [ -f "$NSS_DIR/cert9.db" ] || certutil -d "sql:$NSS_DIR" -N --empty-password >/dev/null 2>&1
+  certutil -d "sql:$NSS_DIR" -D -n aie-egress >/dev/null 2>&1 || true
+  if ! certutil -d "sql:$NSS_DIR" -A -t "C,," -n aie-egress -i "$CA_DIR/aie-egress.crt" >/dev/null 2>&1; then
+    echo "[entrypoint] WARNUNG: CA des Egress-Proxys nicht im Browser-Speicher"
+  fi
+  chown -R agent:agent "${NSS_DIR%/nssdb}" 2>/dev/null || true
 }
 
 # Nur die Funktionen bereitstellen -- die Tests binden diese Datei ein und
