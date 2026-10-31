@@ -2148,13 +2148,17 @@ versucht:
 |---|---|---|---|
 | **E-Mail / M365 senden** | nur lesen | Mail wird Entwurf, geht erst nach deiner Freigabe raus | Agent sendet selbst |
 | **Chat / Telegram senden** | keine Nachrichten | Antworten an deine angemeldeten Chats | dazu Befehle und Beschreibung des Bots ändern |
-| **Externe API / Webhooks** | keine Tickets anlegen oder kommentieren | Agent fragt vorher | Agent handelt selbst |
+| **Externe API / Webhooks** | keine Tickets anlegen oder kommentieren | Ticket bzw. Kommentar wird erst nach deiner Freigabe angelegt, und zwar von der Plattform, genau so, wie du es in der Freigabe siehst | Agent handelt selbst |
 
 Für **E-Mail / M365 senden** gilt dabei die strengere von zwei Einstellungen: diese Zeile
 oder der Microsoft-Zugriff des Agenten (*Lesen*, *Entwurf*, *Lesen + Schreiben*).
 
 Über Telegram schreibt ein Agent nur in Chats, die sich bei ihm angemeldet haben, nie
 an beliebige andere Telegram-Nutzer.
+
+**Freigeben heißt ausführen.** Bei Mails und Tickets zeigt die Freigabe genau, was passiert:
+Empfänger und Text bzw. Titel und Beschreibung. Mit **Freigeben** führt die Plattform genau diese
+Handlung einmal aus. Der Agent kann eine Freigabe nicht für etwas anderes verwenden.
 
 ### 13.1 Der Reiter „Verlauf“ *(seit 1.362.0)*
 

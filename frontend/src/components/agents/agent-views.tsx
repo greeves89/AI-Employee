@@ -22,7 +22,7 @@
 
 import Image from "next/image";
 import { useState } from "react";
-import { Check, ImageOff, Loader2, Mail } from "lucide-react";
+import { Check, ImageOff, Loader2, Mail, ShieldCheck } from "lucide-react";
 import * as api from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -161,11 +161,41 @@ function MailEntwurf({ data }: AgentViewProps) {
   );
 }
 
+/** Gebundene Handlung zur Freigabe (orchestrator: core/gebundene_freigabe). Titel und
+ *  Felder füllt der Server mit genau dem, was nach dem Freigeben ausgeführt wird. */
+function Handlung({ data }: AgentViewProps) {
+  const felder = Array.isArray(data.felder)
+    ? (data.felder as { name?: unknown; wert?: unknown }[]).filter((f) => f && typeof f === "object")
+    : [];
+  return (
+    <div className="overflow-hidden rounded-xl border border-foreground/[0.08] bg-background/60 text-sm">
+      <p className="flex items-center gap-1.5 border-b border-foreground/[0.06] px-3 py-2 text-xs font-medium">
+        <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" />
+        {String(data.titel ?? "Handlung")}
+      </p>
+      <dl className="space-y-1.5 px-3 py-2">
+        {felder.map((f, i) => (
+          <div key={i}>
+            <dt className="text-[11px] text-muted-foreground">{String(f.name ?? "")}</dt>
+            <dd className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words text-[13px] text-foreground/90">
+              {String(f.wert ?? "")}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <p className="border-t border-foreground/[0.06] px-3 py-1.5 text-[11px] text-muted-foreground">
+        Freigeben führt genau diese Handlung einmal aus.
+      </p>
+    </div>
+  );
+}
+
 /** Die Liste. Ein Name, den es hier nicht gibt, wird nicht gezeichnet — der
  *  Aufrufer fällt dann auf die Wortoptionen zurück. */
 export const AGENT_VIEWS: Record<string, (p: AgentViewProps) => React.ReactElement> = {
   image_choice: ImageChoice,
   mail: MailEntwurf,
+  handlung: Handlung,
 };
 
 export function AgentView(
