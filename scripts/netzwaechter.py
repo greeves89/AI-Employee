@@ -140,9 +140,19 @@ def ausnahmen_lesen(pfad: Path = AUSNAHMEN) -> list[str]:
     return gueltig
 
 
+class Verschwunden(Exception):
+    """Container oder Netz gibt es nicht mehr — überspringen ist richtig."""
+
+
 def _docker_json(*argumente: str) -> list:
-    out = subprocess.run(["docker", *argumente], check=True, capture_output=True, text=True).stdout
-    return json.loads(out) if out.strip() else []
+    r = subprocess.run(["docker", *argumente], capture_output=True, text=True)
+    if r.returncode:
+        if "No such" in r.stderr:
+            raise Verschwunden(r.stderr.strip())
+        # Jeder andere Fehler (Daemon hängt, keine Rechte): den Lauf abbrechen. Die
+        # alten Regeln bleiben dann stehen — besser als neue, in denen Container fehlen.
+        raise RuntimeError(f"docker {' '.join(argumente[:2])}: {r.stderr.strip()}")
+    return json.loads(r.stdout) if r.stdout.strip() else []
 
 
 def zustand() -> tuple[list[dict], dict[str, str]]:
@@ -155,7 +165,7 @@ def zustand() -> tuple[list[dict], dict[str, str]]:
         # nicht den ganzen Durchlauf kosten — sonst blieben neue Container ohne Regeln.
         try:
             gesehen += _docker_json("inspect", cid)
-        except subprocess.CalledProcessError:
+        except Verschwunden:
             continue
     for c in gesehen:
         netze = (c.get("NetworkSettings") or {}).get("Networks") or {}
@@ -171,7 +181,9 @@ def zustand() -> tuple[list[dict], dict[str, str]]:
     for name in sorted(netznamen):
         try:
             netze += _docker_json("network", "inspect", name)
-        except subprocess.CalledProcessError:
+        except Verschwunden:
+            if name == "bridge":
+                raise RuntimeError("Standard-Bridge nicht lesbar — Regeln für Builds fehlten") from None
             continue
     for n in netze:
         konfig = ((n.get("IPAM") or {}).get("Config") or [])

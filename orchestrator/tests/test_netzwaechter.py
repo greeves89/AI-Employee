@@ -118,6 +118,40 @@ class StandardBridgeTests(unittest.TestCase):
         self.assertEqual(nw.nameserver_lesen(Path(f.name)), ["192.168.178.1"])
 
 
+class FehlerTests(unittest.TestCase):
+    """Nur ein verschwundener Container wird übersprungen — jeder andere Fehler bricht
+    den Lauf ab, damit die alten Regeln stehen bleiben."""
+
+    def _lauf(self, returncode, stderr):
+        from unittest.mock import patch
+        ergebnis = type("R", (), {"returncode": returncode, "stderr": stderr, "stdout": ""})()
+        with patch.object(nw.subprocess, "run", return_value=ergebnis):
+            return nw._docker_json("inspect", "abc")
+
+    def test_verschwunden_wird_uebersprungen(self):
+        with self.assertRaises(nw.Verschwunden):
+            self._lauf(1, "Error: No such object: abc")
+
+    def test_anderer_fehler_bricht_ab(self):
+        with self.assertRaises(RuntimeError):
+            self._lauf(1, "Cannot connect to the Docker daemon")
+
+    def test_ohne_standard_bridge_kein_neuer_regelsatz(self):
+        from unittest.mock import patch
+
+        def docker_json(*a):
+            if a[0] == "network":
+                raise nw.Verschwunden("No such network: bridge")
+            return []
+        ps = type("R", (), {"stdout": "", "returncode": 0})()
+        with patch.object(nw, "_docker_json", side_effect=docker_json), \
+             patch.object(nw.subprocess, "run", return_value=ps), \
+             patch.object(nw, "anwenden") as anwenden:
+            with self.assertRaises(RuntimeError):
+                nw.einmal()
+        anwenden.assert_not_called()
+
+
 class AusnahmenTests(unittest.TestCase):
     def test_nur_gueltige_netze(self):
         import tempfile
