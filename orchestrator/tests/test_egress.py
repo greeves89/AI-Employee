@@ -676,6 +676,21 @@ class ProxyLogikTests(unittest.TestCase):
         m = logik.StromMaske({})
         self.assertEqual(m(b"abc") + m(b""), b"abc")
 
+    def test_git_ausnahme_nur_bei_echtem_git(self):
+        f = logik.ist_git_antwort
+        self.assertTrue(f("/o/r.git/info/refs?service=git-upload-pack", "application/x-git-upload-pack-advertisement"))
+        self.assertTrue(f("/o/r.git/git-upload-pack", "application/x-git-upload-pack-result"))
+        self.assertTrue(f("/o/r.git/git-receive-pack", "application/x-git-receive-pack-result; charset=x"))
+        for pfad, art in (
+            ("/repos/o/r/issues/1/comments", "application/x-git-upload-pack-result"),   # Server waehlt den Typ
+            ("/o/r.git/info/refs?service=evil", "application/x-git-upload-pack-advertisement"),
+            ("/o/r.git/info/refs?service=git-upload-pack", "application/x-git-receive-pack-advertisement"),
+            ("/o/r.git/git-upload-pack", "application/json"),
+            ("/o/r.git/git-upload-pack/x", "application/x-git-upload-pack-result"),
+        ):
+            with self.subTest(pfad=pfad, art=art):
+                self.assertFalse(f(pfad, art))
+
     def test_maske_je_agent(self):
         uhr = [0.0]
         m = logik.Maske(jetzt=lambda: uhr[0])

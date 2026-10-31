@@ -261,6 +261,24 @@ def entpacken_begrenzt(daten: bytes, kodierung: str, grenze: int = MAX_ANTWORT) 
     raise Abgelehnt(502, f"Kodierung {k} wird nicht geprüft")
 
 
+_GIT_DIENSTE = ("git-upload-pack", "git-receive-pack")
+
+
+def ist_git_antwort(pfad: str, inhaltsart: str) -> bool:
+    """Echter git-Smart-HTTP-Austausch: die ANFRAGE (vom Agenten) und der Inhaltstyp
+    (vom Server) passen zusammen. Der Inhaltstyp allein genuegt nicht — den waehlt der Server.
+    """
+    ort, _, abfrage = pfad.partition("?")
+    art = (inhaltsart or "").split(";", 1)[0].strip().lower()
+    if ort.endswith("/info/refs"):
+        dienst = dict(urllib.parse.parse_qsl(abfrage)).get("service", "")
+        return dienst in _GIT_DIENSTE and art == f"application/x-{dienst}-advertisement"
+    for dienst in _GIT_DIENSTE:
+        if ort.endswith("/" + dienst):
+            return art == f"application/x-{dienst}-result"
+    return False
+
+
 class StromMaske:
     """Verdeckt Werte in einer gestreamten Antwort, Stueck fuer Stueck.
 

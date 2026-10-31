@@ -212,7 +212,7 @@ class AieEgress:
         # git-Pakete: binaer, mit Pruefsumme am Ende — ein zurueckgehaltener Wert-Anfang
         # dort verstuemmelte das Paket. Ein Wert gelangt ueber den Proxy nie in ein
         # Repository (Platzhalter in Inhalten werden nie ersetzt); gestreamt wie bisher.
-        if art.startswith("application/x-git-"):
+        if logik.ist_git_antwort(flow.request.path, art):
             return
         kodierung = (flow.response.headers.get("content-encoding") or "identity").strip().lower()
         laenge = flow.response.headers.get("content-length")
