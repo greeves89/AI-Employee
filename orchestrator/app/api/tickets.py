@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.faehigkeiten import verlangen
 from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import verify_agent_token
@@ -82,6 +83,8 @@ async def create_ticket(
 ):
     if not body.title.strip():
         raise HTTPException(status_code=400, detail="title ist erforderlich")
+    # Wirkung nach aussen (Ticketsystem): „Verboten“ in der Matrix sperrt am Server.
+    await verlangen(db, _auth["agent_id"], "external_api")
     conn = await _connector(db)
     try:
         created = await conn.create_ticket(
@@ -102,6 +105,8 @@ async def comment_ticket(
 ):
     if not body.text.strip():
         raise HTTPException(status_code=400, detail="text ist erforderlich")
+    # Wirkung nach aussen (Ticketsystem): „Verboten“ in der Matrix sperrt am Server.
+    await verlangen(db, _auth["agent_id"], "external_api")
     conn = await _connector(db)
     try:
         await conn.add_comment(ticket_id, body.text.strip())

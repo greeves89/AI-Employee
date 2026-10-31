@@ -38,7 +38,7 @@ async def test_rich_message_is_forwarded_as_dict_not_string():
         return {"message_id": 1}
 
     with patch(
-        "app.api.telegram_actions._get_bot_token",
+        "app.api.telegram_actions._token_fuer_chat",
         new=AsyncMock(return_value="bot:token"),
     ), patch(
         "app.api.telegram_actions._tg_request",
@@ -74,7 +74,7 @@ async def test_draft_endpoint_also_forwards_as_dict():
         return {}
 
     with patch(
-        "app.api.telegram_actions._get_bot_token",
+        "app.api.telegram_actions._token_fuer_chat",
         new=AsyncMock(return_value="bot:token"),
     ), patch(
         "app.api.telegram_actions._tg_request",

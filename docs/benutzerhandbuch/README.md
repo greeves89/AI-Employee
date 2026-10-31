@@ -2131,6 +2131,22 @@ Administratoren sehen zusätzlich Meldungen der Anlage selbst (ohne Agent).
 Freigaben werden zusätzlich per **Telegram** und **iOS-Push** zugestellt, damit du sie auch
 unterwegs beantworten kannst.
 
+**Was die Plattform selbst durchsetzt.** Steht eine Zeile der Rechte-Matrix auf
+**Verboten**, sperrt die Plattform die Handlung, auch wenn ein Agent es dennoch
+versucht:
+
+| Zeile der Matrix | Verboten | Freigabe | Erlaubt |
+|---|---|---|---|
+| **E-Mail / M365 senden** | nur lesen | Mail wird Entwurf, geht erst nach deiner Freigabe raus | Agent sendet selbst |
+| **Chat / Telegram senden** | keine Nachrichten | Antworten an deine angemeldeten Chats | dazu Befehle und Beschreibung des Bots ändern |
+| **Externe API / Webhooks** | keine Tickets anlegen oder kommentieren | Agent fragt vorher | Agent handelt selbst |
+
+Für **E-Mail / M365 senden** gilt dabei die strengere von zwei Einstellungen: diese Zeile
+oder der Microsoft-Zugriff des Agenten (*Lesen*, *Entwurf*, *Lesen + Schreiben*).
+
+Über Telegram schreibt ein Agent nur in Chats, die sich bei ihm angemeldet haben, nie
+an beliebige andere Telegram-Nutzer.
+
 ### 13.1 Der Reiter „Verlauf“ *(seit 1.362.0)*
 
 Oben auf der Seite stehen die Reiter **Ausstehend**, **Eskalationen**, **Nachtschicht**,
