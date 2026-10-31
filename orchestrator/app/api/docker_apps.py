@@ -5,7 +5,8 @@ docker-compose.yml, users can start/stop/monitor the app from the Web UI.
 
 How it works:
 1. Discovery: exec into agent container to find docker-compose.yml files
-2. Start/Stop: run a docker:cli container with workspace volume + docker socket
+2. Start/Stop: only through ``core/compose_pruefung`` — the compose file is
+   normalised, checked against an allowlist and then run from stdin
 3. Status: query Docker API for containers with the project label
 4. Logs: stream container logs via Docker API
 """
@@ -19,11 +20,12 @@ from urllib.parse import urlencode
 
 import httpx
 import yaml
-from docker.errors import APIError, ContainerError, ImageNotFound, NotFound
+from docker.errors import APIError, NotFound
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import compose_pruefung
 from app.core.app_sharing import (
     ACCESS_OWNER,
     ACCESS_PUBLIC,
@@ -41,7 +43,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/agents/{agent_id}/apps", tags=["docker-apps"])
 
-COMPOSE_RUNNER_IMAGE = "docker:cli"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -70,123 +71,14 @@ async def _get_agent(agent_id: str, user, db: AsyncSession) -> Agent:
     return await _load_agent(agent_id, db)
 
 
+def _quelle(agent: Agent, agent_id: str) -> compose_pruefung.Quelle:
+    return compose_pruefung.fuer_agent(agent_id, agent.volume_name or f"workspace-{agent_id}")
+
+
 def _project_name(agent_id: str, app_path: str) -> str:
     """Generate a unique docker compose project name."""
     safe = re.sub(r"[^a-z0-9-]", "-", app_path.lower().strip("/"))
     return f"agent-{agent_id[:8]}-{safe}"
-
-
-def _parse_port_target(entry: Any) -> str | None:
-    """Extract the container-side (target) port from a compose ``ports`` entry.
-
-    Handles "3000", "3001:3000", "127.0.0.1:3001:3000", "3000/tcp" and the long
-    form {target: 3000, published: 3001}. Returns None if it can't be determined.
-    """
-    if isinstance(entry, dict):
-        t = entry.get("target")
-        return str(t) if t not in (None, "") else None
-    s = str(entry).split("/", 1)[0]  # drop /tcp|/udp
-    parts = [p for p in s.split(":")]
-    last = parts[-1].strip() if parts else ""
-    return last or None
-
-
-def _prepare_free_port_compose(
-    docker: DockerService, agent: Agent, path: str, compose_file: str
-) -> str:
-    """Rewrite fixed host-port bindings to Docker-auto-assigned free ports.
-
-    True one-click deploy: a compose file with a hard-coded ``3001:3000`` fails the
-    second time (``port is already allocated``). We generate a sidecar compose file
-    (original untouched) where each service publishes ONLY the container port, so
-    Docker picks a guaranteed-free host port. The actual assigned port is read back
-    afterwards via ``_get_project_containers``. Falls back to the original file on
-    any parse issue.
-    """
-    try:
-        ec, content = docker.exec_in_container(agent.container_id, ["cat", compose_file])
-        if ec != 0 or not content:
-            return compose_file
-        data = yaml.safe_load(content)
-        if not isinstance(data, dict) or not isinstance(data.get("services"), dict):
-            return compose_file
-        changed = False
-        for svc in data["services"].values():
-            if not isinstance(svc, dict) or not svc.get("ports"):
-                continue
-            new_ports = []
-            for entry in svc["ports"]:
-                target = _parse_port_target(entry)
-                if target and target.isdigit():
-                    new_ports.append(target)  # container port only → Docker auto-assigns host port
-                    changed = True
-                else:
-                    new_ports.append(entry)
-            svc["ports"] = new_ports
-        if not changed:
-            return compose_file
-        # Write next to the original so relative build/env_file paths still resolve.
-        gen_path = f"/workspace/{path}/docker-compose.aiemployee.yml"
-        docker.write_file_in_container(
-            agent.container_id, gen_path, yaml.safe_dump(data, sort_keys=False)
-        )
-        logger.info(f"Auto free-port compose generated for {path}: {gen_path}")
-        return gen_path
-    except Exception as e:  # noqa: BLE001 — never block deploy on this; use original
-        logger.warning(f"free-port compose prep failed for {path}: {e}")
-        return compose_file
-
-
-def _run_compose(
-    docker: DockerService,
-    workspace_volume: str,
-    project_name: str,
-    compose_file: str,
-    command: list[str],
-    network: str = "ai-employee-network",
-) -> tuple[int, str]:
-    """Run a docker compose command in a runner container.
-
-    Uses docker:cli image with the workspace volume and Docker socket mounted
-    so compose has access to both the project files and the Docker daemon.
-    """
-    full_command = [
-        "docker", "compose",
-        "-p", project_name,
-        "-f", compose_file,
-    ] + command
-
-    try:
-        # Use stderr=True to merge stderr into output (warnings + errors visible)
-        output = docker.client.containers.run(
-            image=COMPOSE_RUNNER_IMAGE,
-            command=full_command,
-            volumes={
-                "/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"},
-                workspace_volume: {"bind": "/workspace", "mode": "rw"},
-            },
-            network=network,
-            remove=True,
-            detach=False,
-            stderr=True,
-        )
-        text = output.decode("utf-8") if isinstance(output, bytes) else str(output)
-        return 0, text
-    except ContainerError as e:
-        # Collect both stdout and stderr for diagnostics
-        parts = []
-        if e.stderr:
-            parts.append(e.stderr.decode("utf-8") if isinstance(e.stderr, bytes) else str(e.stderr))
-        if hasattr(e, "output") and e.output:
-            parts.append(e.output.decode("utf-8") if isinstance(e.output, bytes) else str(e.output))
-        combined = "\n".join(parts).strip()
-        return e.exit_status or 1, combined
-    except ImageNotFound:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Docker image '{COMPOSE_RUNNER_IMAGE}' not found. "
-            "Pull it with: docker pull docker:cli",
-        )
 
 
 # Compose benennt den laufenden Container vor dem Ersetzen in ``<hex>_<name>`` um
@@ -273,14 +165,14 @@ def _reconcile_stale_backups(docker: DockerService, project_name: str) -> list[s
 
 async def _compose_with_conflict_recovery(
     docker: DockerService,
-    workspace_volume: str,
+    quelle: compose_pruefung.Quelle,
     project_name: str,
-    compose_file: str,
+    modell: dict,
     command: list[str],
 ) -> tuple[int, str]:
     """Ein Compose-Lauf, der einen Namenskonflikt einmal selbst aufloest."""
     exit_code, output = await asyncio.to_thread(
-        _run_compose, docker, workspace_volume, project_name, compose_file, command,
+        compose_pruefung.ausfuehren, docker, quelle, project_name, modell, command,
     )
     if exit_code == 0 or not _is_name_conflict(output):
         return exit_code, output
@@ -290,7 +182,7 @@ async def _compose_with_conflict_recovery(
     )
     await asyncio.to_thread(_reconcile_stale_backups, docker, project_name)
     return await asyncio.to_thread(
-        _run_compose, docker, workspace_volume, project_name, compose_file, command,
+        compose_pruefung.ausfuehren, docker, quelle, project_name, modell, command,
     )
 
 
@@ -614,21 +506,20 @@ async def _start_core(docker: DockerService, agent: Agent, agent_id: str, path: 
 
     compose_file = _resolve_compose_file(docker, agent, path, require=True)
     project_name = _project_name(agent_id, path)
-    workspace_volume = agent.volume_name or f"workspace-{agent_id}"
+    quelle = _quelle(agent, agent_id)
 
     _ensure_env_files(docker, agent, path, compose_file)
 
     logger.info(f"Starting Docker app: {scrub_log(project_name)} (path={scrub_log(path)}, agent={scrub_log(agent_id)})")
 
-    # One-click: rewrite fixed host ports to auto-assigned free ones so a re-deploy
-    # never fails on "port is already allocated".
-    compose_file = await asyncio.to_thread(
-        _prepare_free_port_compose, docker, agent, path, compose_file
-    )
+    # Geprueft wird, was Docker wirklich ausfuehrt; dabei werden auch feste
+    # Host-Ports zu freien auf 127.0.0.1 (kein "port is already allocated").
+    modell, hinweise = await compose_pruefung.vorbereiten(
+        docker, quelle, project_name, compose_file, agent_id=agent_id)
 
     async with _project_lock(project_name):
         exit_code, output = await _compose_with_conflict_recovery(
-            docker, workspace_volume, project_name, compose_file,
+            docker, quelle, project_name, modell,
             ["up", "-d", "--build"],
         )
 
@@ -645,7 +536,7 @@ async def _start_core(docker: DockerService, agent: Agent, agent_id: str, path: 
     containers = _get_project_containers(docker, project_name)
     logger.info(f"Docker app started: {scrub_log(project_name)} ({len(containers)} containers)")
     return {"project": project_name, "status": "running", "containers": containers,
-            "url": _app_public_url(agent_id, containers), "output": output}
+            "url": _app_public_url(agent_id, containers), "output": output, "hinweise": hinweise}
 
 
 async def _stop_core(docker: DockerService, agent: Agent, agent_id: str, path: str) -> dict:
@@ -653,13 +544,13 @@ async def _stop_core(docker: DockerService, agent: Agent, agent_id: str, path: s
         raise HTTPException(status_code=400, detail="Invalid path")
 
     project_name = _project_name(agent_id, path)
-    workspace_volume = agent.volume_name or f"workspace-{agent_id}"
-    compose_file = _resolve_compose_file(docker, agent, path, require=False)
 
     logger.info(f"Stopping Docker app: {scrub_log(project_name)}")
+    # Ohne Datei: Compose findet die Container ueber die Projektbezeichnung, die der
+    # Server selbst setzt. So laeuft beim Stoppen nichts aus dem Workspace.
     async with _project_lock(project_name):
         exit_code, output = await asyncio.to_thread(
-            _run_compose, docker, workspace_volume, project_name, compose_file, ["down"],
+            compose_pruefung.ausfuehren, docker, _quelle(agent, agent_id), project_name, None, ["down"],
         )
     output = redact_logs(output)          # siehe _start_core
     if exit_code != 0:
@@ -673,19 +564,18 @@ async def _rebuild_core(docker: DockerService, agent: Agent, agent_id: str, path
 
     compose_file = _resolve_compose_file(docker, agent, path, require=False)
     project_name = _project_name(agent_id, path)
-    workspace_volume = agent.volume_name or f"workspace-{agent_id}"
+    quelle = _quelle(agent, agent_id)
 
     docker.exec_in_container(agent.container_id, f"touch {shlex.quote(f'/workspace/{path}/.env')}")
     logger.info(f"Rebuilding Docker app: {scrub_log(project_name)}")
 
-    compose_file = await asyncio.to_thread(
-        _prepare_free_port_compose, docker, agent, path, compose_file
-    )
+    modell, hinweise = await compose_pruefung.vorbereiten(
+        docker, quelle, project_name, compose_file, agent_id=agent_id)
     async with _project_lock(project_name):
         # Ein abgebrochener Recreate blockiert von allein jeden weiteren Versuch.
         await asyncio.to_thread(_reconcile_stale_backups, docker, project_name)
         exit_code, output = await _compose_with_conflict_recovery(
-            docker, workspace_volume, project_name, compose_file,
+            docker, quelle, project_name, modell,
             ["up", "-d", "--build", "--force-recreate"],
         )
     output = redact_logs(output)          # siehe _start_core
@@ -696,7 +586,7 @@ async def _rebuild_core(docker: DockerService, agent: Agent, agent_id: str, path
     _connect_containers_to_network(docker, project_name)
     containers = _get_project_containers(docker, project_name)
     return {"project": project_name, "status": "running", "containers": containers,
-            "url": _app_public_url(agent_id, containers), "output": output}
+            "url": _app_public_url(agent_id, containers), "output": output, "hinweise": hinweise}
 
 
 def _logs_core(docker: DockerService, agent_id: str, path: str, service: str | None, lines: int) -> dict:

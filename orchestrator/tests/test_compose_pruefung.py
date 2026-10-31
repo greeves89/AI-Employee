@@ -1,0 +1,433 @@
+"""Prüfung der Compose-Dateien von Agenten-Apps (P0-1).
+
+Geprüft wird das Modell aus ``docker compose config --format json`` — die Form,
+die diese Tests nachbauen. Jede Sperre hat einen eigenen Fall (abgelehnt) und
+jede Freigabe einen Gegenfall (durchgelassen), damit eine zu weite UND eine zu
+enge Positivliste auffällt.
+"""
+
+import copy
+import json
+import unittest
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
+from fastapi import HTTPException
+
+from app.core import compose_pruefung as cp
+
+PROJEKT = "agent-abcdef12-projects-todo"
+QUELLE = cp.fuer_agent("abcdef12-0000", "workspace-abcdef12-0000")
+
+
+def _modell(**dienst) -> dict:
+    """Ein normalisiertes Modell mit einem Dienst ``web``, wie ``config`` es liefert."""
+    web = {"image": "nginx:1.27", "networks": {"default": None}}
+    web.update(dienst)
+    return {
+        "name": PROJEKT,
+        "services": {"web": web},
+        "networks": {"default": {"name": f"{PROJEKT}_default", "ipam": {}}},
+    }
+
+
+def _pruefen(modell: dict):
+    return cp.pruefen(copy.deepcopy(modell), QUELLE, PROJEKT)
+
+
+class GesperrtTests(unittest.TestCase):
+    """Alles, was Zugriff auf den Server gibt, wird abgelehnt."""
+
+    def assertAbgelehnt(self, modell: dict, *stichworte: str):
+        with self.assertRaises(cp.ComposeAbgelehnt) as ctx:
+            _pruefen(modell)
+        text = " ".join(ctx.exception.verstoesse)
+        for wort in stichworte:
+            self.assertIn(wort, text)
+
+    def test_privileged(self):
+        self.assertAbgelehnt(_modell(privileged=True), "privileged")
+
+    def test_bind_mount_der_server_wurzel(self):
+        self.assertAbgelehnt(_modell(volumes=[{"type": "bind", "source": "/", "target": "/host"}]), "„/“")
+
+    def test_docker_socket(self):
+        self.assertAbgelehnt(
+            _modell(volumes=[{"type": "bind", "source": "/var/run/docker.sock", "target": "/var/run/docker.sock"}]),
+            "docker.sock",
+        )
+
+    def test_ausbruch_aus_dem_workspace_per_punktpunkt(self):
+        # config schreibt ./../../etc als /etc — der Pfad liegt dann ausserhalb.
+        self.assertAbgelehnt(_modell(volumes=[{"type": "bind", "source": "/etc", "target": "/x"}]), "/etc")
+
+    def test_aehnlicher_praefix_ist_nicht_der_workspace(self):
+        self.assertAbgelehnt(_modell(volumes=[{"type": "bind", "source": "/workspacefremd/x", "target": "/x"}]))
+
+    def test_netz_des_hosts(self):
+        self.assertAbgelehnt(_modell(network_mode="host"), "network_mode")
+
+    def test_netz_eines_fremden_containers(self):
+        self.assertAbgelehnt(_modell(network_mode="container:ai-employee-orchestrator"), "network_mode")
+
+    def test_pid_des_hosts(self):
+        self.assertAbgelehnt(_modell(pid="host"), "pid")
+
+    def test_ipc_des_hosts(self):
+        self.assertAbgelehnt(_modell(ipc="host"), "ipc")
+
+    def test_uts_des_hosts(self):
+        self.assertAbgelehnt(_modell(uts="host"), "uts")
+
+    def test_userns_des_hosts(self):
+        self.assertAbgelehnt(_modell(userns_mode="host"), "userns_mode")
+
+    def test_zusaetzliche_faehigkeiten(self):
+        self.assertAbgelehnt(_modell(cap_add=["SYS_ADMIN"]), "SYS_ADMIN")
+        self.assertAbgelehnt(_modell(cap_add=["ALL"]), "ALL")
+        self.assertAbgelehnt(_modell(cap_add=["CAP_SYS_PTRACE"]), "SYS_PTRACE")
+
+    def test_geraete(self):
+        self.assertAbgelehnt(_modell(devices=[{"source": "/dev/sda", "target": "/dev/sda"}]), "devices")
+
+    def test_seccomp_und_apparmor_aus(self):
+        self.assertAbgelehnt(_modell(security_opt=["seccomp=unconfined"]), "seccomp")
+        self.assertAbgelehnt(_modell(security_opt=["apparmor=unconfined"]), "apparmor")
+        self.assertAbgelehnt(_modell(security_opt=["label=disable"]), "label")
+
+    def test_ordner_fremder_container(self):
+        self.assertAbgelehnt(_modell(volumes_from=["ai-employee-orchestrator"]), "volumes_from")
+
+    def test_secrets_und_configs_lesen_dateien_vom_server(self):
+        self.assertAbgelehnt(_modell(secrets=[{"source": "s"}]), "secrets")
+        m = _modell()
+        m["secrets"] = {"s": {"file": "/etc/shadow"}}
+        self.assertAbgelehnt(m, "secrets")
+        m = _modell()
+        m["configs"] = {"c": {"file": "/etc/shadow"}}
+        self.assertAbgelehnt(m, "configs")
+
+    def test_docker_api_im_container(self):
+        self.assertAbgelehnt(_modell(use_api_socket=True), "use_api_socket")
+
+    def test_provider_dienste(self):
+        self.assertAbgelehnt(_modell(provider={"type": "x"}), "provider")
+
+    def test_unbekannte_schluessel_sind_gesperrt(self):
+        self.assertAbgelehnt(_modell(neuer_schalter_aus_compose_v9=True), "neuer_schalter_aus_compose_v9")
+
+    def test_fremdes_volume_per_name(self):
+        m = _modell(volumes=[{"type": "volume", "source": "db", "target": "/data"}])
+        m["volumes"] = {"db": {"name": "ai-employee_postgres_data"}}
+        self.assertAbgelehnt(m, "ai-employee_postgres_data")
+
+    def test_fremdes_volume_per_external(self):
+        m = _modell(volumes=[{"type": "volume", "source": "ws", "target": "/data"}])
+        m["volumes"] = {"ws": {"name": "workspace-fremder-agent", "external": True}}
+        self.assertAbgelehnt(m, "workspace-fremder-agent")
+
+    def test_volume_treiberoptionen_binden_server_ordner(self):
+        m = _modell(volumes=[{"type": "volume", "source": "x", "target": "/data"}])
+        m["volumes"] = {"x": {"name": f"{PROJEKT}_x", "driver": "local",
+                              "driver_opts": {"type": "none", "o": "bind", "device": "/"}}}
+        self.assertAbgelehnt(m, "driver_opts")
+
+    def test_nicht_angelegtes_volume(self):
+        self.assertAbgelehnt(_modell(volumes=[{"type": "volume", "source": "nirgends", "target": "/d"}]), "nirgends")
+
+    def test_fremdes_netz(self):
+        m = _modell(networks={"plattform": None})
+        m["networks"]["plattform"] = {"name": "ai-employee-network", "external": True}
+        self.assertAbgelehnt(m, "external")
+
+    def test_netz_treiber_host_oder_macvlan(self):
+        m = _modell()
+        m["networks"]["default"]["driver"] = "macvlan"
+        self.assertAbgelehnt(m, "macvlan")
+
+    def test_build_mit_netz_des_hosts(self):
+        self.assertAbgelehnt(_modell(build={"context": "/workspace/p", "network": "host"}), "build.network")
+
+    def test_build_mit_rechten_und_schluesseln(self):
+        self.assertAbgelehnt(_modell(build={"context": "/workspace/p", "entitlements": ["security.insecure"]}), "build.entitlements")
+        self.assertAbgelehnt(_modell(build={"context": "/workspace/p", "ssh": ["default"]}), "build.ssh")
+        self.assertAbgelehnt(_modell(build={"context": "/workspace/p", "secrets": ["x"]}), "build.secrets")
+        self.assertAbgelehnt(_modell(build={"context": "/workspace/p", "privileged": True}), "build.privileged")
+
+    def test_build_kontext_ausserhalb(self):
+        self.assertAbgelehnt(_modell(build={"context": "/etc"}), "Build-Kontext")
+        self.assertAbgelehnt(_modell(build={"context": "https://example.invalid/repo.git"}), "Build-Kontext")
+        self.assertAbgelehnt(
+            _modell(build={"context": "/workspace/p", "additional_contexts": {"x": "/var/run"}}), "„x“")
+
+    def test_docker_labels_faelschen(self):
+        self.assertAbgelehnt(_modell(labels={"com.docker.compose.project": "agent-fremd-x"}), "com.docker.")
+
+    def test_log_treiber_mit_netz(self):
+        self.assertAbgelehnt(_modell(logging={"driver": "syslog", "options": {"syslog-address": "udp://x"}}), "syslog")
+
+    def test_geraete_ueber_deploy(self):
+        self.assertAbgelehnt(
+            _modell(deploy={"resources": {"reservations": {"devices": [{"capabilities": ["gpu"]}]}}}), "devices")
+
+    def test_hook_mit_rechten(self):
+        self.assertAbgelehnt(_modell(post_start=[{"command": "id", "privileged": True}]), "post_start")
+
+    def test_negativer_oom_wert(self):
+        self.assertAbgelehnt(_modell(oom_score_adj=-1000), "oom_score_adj")
+
+    def test_env_file_ausserhalb(self):
+        self.assertAbgelehnt(_modell(env_file=[{"path": "/proc/1/environ", "required": True}]), "env_file")
+
+    def test_alle_verstoesse_auf_einmal(self):
+        with self.assertRaises(cp.ComposeAbgelehnt) as ctx:
+            _pruefen(_modell(privileged=True, pid="host", cap_add=["SYS_ADMIN"]))
+        self.assertEqual(len(ctx.exception.verstoesse), 3)
+
+
+class ErlaubtTests(unittest.TestCase):
+    """Übliche Apps laufen weiter — genau das, was die Agenten-Apps auf dem Pi nutzen."""
+
+    def test_uebliche_app(self):
+        modell = _modell(
+            build={"context": "/workspace/projects/todo", "dockerfile": "Dockerfile", "target": "prod", "args": {"A": "1"}},
+            environment={"PW": "a$$b"}, restart="unless-stopped", depends_on={"db": {"condition": "service_healthy"}},
+            healthcheck={"test": ["CMD", "true"]}, command=["node", "server.js"], expose=["3000"],
+            read_only=True, tmpfs=["/tmp"], cap_drop=["ALL"], cap_add=["NET_BIND_SERVICE", "CAP_CHOWN"],
+            security_opt=["no-new-privileges:true"], pids_limit=200, mem_limit="512m", cpus=1.0,
+            logging={"driver": "json-file", "options": {"max-size": "10m"}},
+            deploy={"resources": {"limits": {"memory": "512M", "cpus": "1"}}, "restart_policy": {"condition": "on-failure"}},
+            profiles=["web"], user="1000:1000", extra_hosts=["host.docker.internal=host-gateway"],
+        )
+        modell["services"]["db"] = {"image": "postgres:16", "networks": {"default": None},
+                                    "volumes": [{"type": "volume", "source": "pg", "target": "/var/lib/postgresql/data"}]}
+        modell["volumes"] = {"pg": {"name": f"{PROJEKT}_pg"}}
+        neu, _hinweise, _ordner = _pruefen(modell)
+        self.assertEqual(neu["services"]["web"]["environment"], {"PW": "a$$b"}, "$$ muss erhalten bleiben")
+        self.assertEqual(neu["services"]["web"]["cap_add"], ["NET_BIND_SERVICE", "CHOWN"])
+        self.assertEqual(neu["volumes"]["pg"]["name"], f"{PROJEKT}_pg")
+
+    def test_eigenes_volume_mit_praefix_bleibt(self):
+        """Wie die laufende App auf dem Pi: name: agent-<id8>-…-db, auch external."""
+        m = _modell(volumes=[{"type": "volume", "source": "db", "target": "/d"},
+                             {"type": "volume", "source": "alt", "target": "/e"}])
+        m["volumes"] = {"db": {"name": "agent-abcdef12-clearlight-db"},
+                        "alt": {"name": "agent-abcdef12-alt", "external": True}}
+        neu, _, _ = _pruefen(m)
+        self.assertEqual(neu["volumes"]["db"]["name"], "agent-abcdef12-clearlight-db")
+
+    def test_netz_zwischen_diensten(self):
+        m = _modell(network_mode="service:db")
+        m["services"]["db"] = {"image": "postgres:16", "networks": {"default": None}}
+        neu, _, _ = _pruefen(m)
+        self.assertEqual(neu["services"]["web"]["network_mode"], "service:db")
+        self.assertNotIn("networks", neu["services"]["web"])
+
+    def test_ohne_netz(self):
+        neu, _, _ = _pruefen(_modell(network_mode="none"))
+        self.assertEqual(neu["services"]["web"]["network_mode"], "none")
+
+    def test_privileged_false_ist_kein_verstoss(self):
+        _pruefen(_modell(privileged=False, devices=[], secrets=[]))
+
+    def test_projektname_kommt_vom_server(self):
+        m = _modell()
+        m["name"] = "ai-employee"
+        neu, _, _ = _pruefen(m)
+        self.assertEqual(neu["name"], PROJEKT)
+
+    def test_erweiterungen_fallen_weg(self):
+        m = _modell(**{"x-notiz": 1})
+        m["x-logging"] = {"driver": "syslog"}
+        neu, _, _ = _pruefen(m)
+        self.assertNotIn("x-logging", neu)
+
+
+class UmschreibungTests(unittest.TestCase):
+
+    def test_ports_nur_lokal_und_frei(self):
+        neu, _, _ = _pruefen(_modell(ports=[
+            {"mode": "ingress", "target": 3000, "published": "3001", "protocol": "tcp"},
+            {"mode": "ingress", "target": 53, "published": "53", "protocol": "udp", "host_ip": "0.0.0.0"},
+        ]))
+        self.assertEqual(neu["services"]["web"]["ports"], [
+            {"target": 3000, "host_ip": "127.0.0.1", "protocol": "tcp"},
+            {"target": 53, "host_ip": "127.0.0.1", "protocol": "udp"},
+        ])
+
+    def test_relativer_ordner_wird_unterordner_im_eigenen_volume(self):
+        neu, hinweise, ordner = _pruefen(_modell(volumes=[
+            {"type": "bind", "source": "/workspace/projects/todo/data", "target": "/data", "bind": {"create_host_path": True}},
+            {"type": "bind", "source": "/workspace/projects/todo/nginx.conf", "target": "/etc/nginx.conf", "read_only": True},
+        ]))
+        self.assertEqual(neu["services"]["web"]["volumes"], [
+            {"type": "volume", "source": "aie_workspace", "target": "/data", "volume": {"subpath": "projects/todo/data"}},
+            {"type": "volume", "source": "aie_workspace", "target": "/etc/nginx.conf", "read_only": True,
+             "volume": {"subpath": "projects/todo/nginx.conf"}},
+        ])
+        self.assertEqual(neu["volumes"]["aie_workspace"], {"external": True, "name": "workspace-abcdef12-0000"})
+        self.assertEqual(ordner, ["/workspace/projects/todo/data", "/workspace/projects/todo/nginx.conf"])
+        self.assertTrue(hinweise)
+
+    def test_ohne_ordner_kein_workspace_volume(self):
+        neu, _, _ = _pruefen(_modell())
+        self.assertNotIn("volumes", neu)
+
+    def test_containername_bekommt_praefix_und_behaelt_alias(self):
+        neu, hinweise, _ = _pruefen(_modell(container_name="voicy-api"))
+        web = neu["services"]["web"]
+        self.assertEqual(web["container_name"], "agent-abcdef12-voicy-api")
+        self.assertEqual(web["networks"]["default"]["aliases"], ["voicy-api"])
+        self.assertTrue(any("voicy-api" in h for h in hinweise))
+
+    def test_containername_der_plattform_wird_umbenannt(self):
+        neu, _, _ = _pruefen(_modell(container_name="ai-employee-redis"))
+        self.assertEqual(neu["services"]["web"]["container_name"], "agent-abcdef12-ai-employee-redis")
+
+    def test_netzname_bekommt_praefix(self):
+        m = _modell(networks={"app": None})
+        m["networks"]["app"] = {"name": "aios-quick-eva-net", "driver": "bridge",
+                                "ipam": {"config": [{"subnet": "192.168.178.0/24"}]}}
+        neu, hinweise, _ = _pruefen(m)
+        self.assertEqual(neu["networks"]["app"]["name"], "agent-abcdef12-aios-quick-eva-net")
+        self.assertEqual(neu["networks"]["app"]["ipam"], {}, "eigener Adressbereich kann das Firmennetz überdecken")
+        self.assertTrue(hinweise)
+
+    def test_feste_adresse_im_netz_entfaellt(self):
+        neu, _, _ = _pruefen(_modell(networks={"default": {"ipv4_address": "10.0.0.5", "aliases": ["w"]}}))
+        self.assertEqual(neu["services"]["web"]["networks"]["default"], {"aliases": ["w"]})
+
+
+class TaskforceQuelleTests(unittest.TestCase):
+    """Im geteilten Volume liegt der Ordner unter dem Unterordner des Besitzers."""
+
+    def test_unterordner_des_besitzers(self):
+        q = cp.Quelle(volume="ai-employee-shared", sicht="/shared", praefix="agent-abcdef12-", teilpfad="u1")
+        self.assertEqual(q.im_volume("/shared/taskforce/r1/data"), "u1/taskforce/r1/data")
+        self.assertEqual(q.im_volume("/shared"), "u1")
+        self.assertIsNone(q.im_volume("/shared/../etc"))
+        self.assertIsNone(q.im_volume("/sharedx"))
+
+    def test_mount_nur_mit_unterordner(self):
+        q = cp.Quelle(volume="ai-employee-shared", sicht="/shared", praefix="agent-abcdef12-", teilpfad="u1")
+        m = q.mount(nur_lesen=True)
+        self.assertEqual(m["VolumeOptions"], {"Subpath": "u1"})
+        self.assertTrue(m["ReadOnly"])
+
+
+class RunnerTests(unittest.TestCase):
+    """Wie die drei Runner laufen — Rechte, Netz und was eingebunden ist."""
+
+    def _docker(self, ausgabe=b"{}"):
+        docker = SimpleNamespace(client=SimpleNamespace(containers=MagicMock()))
+        docker.client.containers.run.return_value = ausgabe
+        return docker
+
+    def test_normalisieren_ohne_socket_ohne_netz_nur_lesend(self):
+        docker = self._docker(json.dumps(_modell()).encode())
+        cp.normalisieren(docker, QUELLE, PROJEKT, "/workspace/projects/todo/docker-compose.yml")
+        kw = docker.client.containers.run.call_args.kwargs
+        self.assertEqual(kw["volumes"], {}, "kein Docker-Socket beim Auswerten")
+        self.assertEqual(kw["network_mode"], "none")
+        self.assertEqual(kw["user"], "1000:1000")
+        self.assertTrue(kw["mounts"][0]["ReadOnly"])
+        self.assertFalse(kw["stderr"], "Warnungen dürfen das JSON nicht verderben")
+        self.assertIn("--project-directory", kw["command"])
+        self.assertIn("/workspace/projects/todo", kw["command"])
+
+    def test_ungueltige_datei_gibt_422(self):
+        from docker.errors import ContainerError
+        docker = self._docker()
+        docker.client.containers.run.side_effect = ContainerError("c", 1, "cmd", "img", b"yaml: line 3: bad")
+        with self.assertRaises(HTTPException) as ctx:
+            cp.normalisieren(docker, QUELLE, PROJEKT, "/workspace/p/docker-compose.yml")
+        self.assertEqual(ctx.exception.status_code, 422)
+
+    def test_ausfuehren_ueber_stdin_ohne_datei_im_workspace(self):
+        docker = self._docker(b"Started")
+        modell = {"name": PROJEKT, "services": {"web": {"image": "nginx"}}}
+        cp.ausfuehren(docker, QUELLE, PROJEKT, modell, ["up", "-d", "--build"])
+        kw = docker.client.containers.run.call_args.kwargs
+        self.assertEqual(json.loads(kw["environment"]["AIE_COMPOSE"]), modell)
+        self.assertEqual(kw["environment"]["AIE_PROJEKT"], PROJEKT)
+        self.assertIn("-f -", kw["command"][2])
+        self.assertEqual(kw["command"][-3:], ["up", "-d", "--build"])
+        self.assertTrue(kw["mounts"][0]["ReadOnly"], "der Workspace hängt beim Start nur lesend")
+        self.assertIn("/var/run/docker.sock", kw["volumes"])
+
+    def test_stoppen_ohne_datei_und_ohne_workspace(self):
+        docker = self._docker(b"")
+        cp.ausfuehren(docker, QUELLE, PROJEKT, None, ["down"])
+        kw = docker.client.containers.run.call_args.kwargs
+        self.assertEqual(kw["command"], ["docker", "compose", "-p", PROJEKT, "down"])
+        self.assertEqual(kw["mounts"], [])
+
+    def test_zu_grosses_modell(self):
+        modell = {"services": {"web": {"environment": {"X": "y" * 130_000}}}}
+        with self.assertRaises(HTTPException):
+            cp.ausfuehren(self._docker(), QUELLE, PROJEKT, modell, ["up"])
+
+    def test_ordner_anlegen_als_agent_ohne_socket(self):
+        docker = self._docker(b"")
+        cp.ordner_anlegen(docker, QUELLE, ["/workspace/p/data"])
+        kw = docker.client.containers.run.call_args.kwargs
+        self.assertEqual(kw["user"], "1000:1000")
+        self.assertEqual(kw["volumes"], {})
+        self.assertEqual(kw["network_mode"], "none")
+        self.assertEqual(kw["command"][-1], "/workspace/p/data", "Pfade als Argumente, nie im Skripttext")
+
+
+class VorbereitenTests(unittest.IsolatedAsyncioTestCase):
+
+    async def test_ablehnung_gibt_422_und_steht_im_pruefprotokoll(self):
+        protokoll = MagicMock()
+
+        async def _prot(*a, **k):
+            protokoll(*a, **k)
+
+        with patch.object(cp, "normalisieren", return_value=_modell(privileged=True)), \
+             patch.object(cp, "_ablehnung_protokollieren", side_effect=_prot), \
+             patch.object(cp, "ordner_anlegen") as anlegen:
+            with self.assertRaises(HTTPException) as ctx:
+                await cp.vorbereiten(MagicMock(), QUELLE, PROJEKT, "/workspace/p/c.yml", agent_id="abcdef12")
+        self.assertEqual(ctx.exception.status_code, 422)
+        self.assertIn("privileged", ctx.exception.detail)
+        protokoll.assert_called_once()
+        anlegen.assert_not_called()
+
+
+class StartwegeTests(unittest.IsolatedAsyncioTestCase):
+    """Jeder Weg, der eine Compose-Datei startet, läuft über die Prüfung."""
+
+    async def test_start_und_rebuild_pruefen_vor_dem_start(self):
+        from app.api import docker_apps
+
+        agent = SimpleNamespace(container_id="c1", volume_name="workspace-x")
+        docker = SimpleNamespace(client=SimpleNamespace(containers=MagicMock()),
+                                 exec_in_container=MagicMock(return_value=(0, "")))
+        abgelehnt = HTTPException(status_code=422, detail="gesperrt")
+        for kern in (docker_apps._start_core, docker_apps._rebuild_core):
+            with patch.object(docker_apps, "_resolve_compose_file", return_value="/workspace/p/docker-compose.yml"), \
+                 patch.object(docker_apps, "_ensure_env_files"), \
+                 patch.object(cp, "vorbereiten", side_effect=abgelehnt), \
+                 patch.object(cp, "ausfuehren") as ausfuehren:
+                with self.assertRaises(HTTPException):
+                    await kern(docker, agent, "abcdef12", "p")
+            ausfuehren.assert_not_called()
+
+    def test_kein_runner_ausserhalb_des_pruefbausteins(self):
+        """Ein neuer Weg an der Prüfung vorbei wäre wieder root auf dem Host."""
+        import pathlib
+        app = pathlib.Path(cp.__file__).resolve().parents[1]
+        treffer = []
+        for datei in app.rglob("*.py"):
+            if datei.name == "compose_pruefung.py":
+                continue
+            text = datei.read_text(encoding="utf-8")
+            if "docker:cli" in text or '"compose", "-p"' in text or "'compose', '-p'" in text:
+                treffer.append(str(datei.relative_to(app)))
+        self.assertEqual(treffer, [], "Compose läuft nur über core/compose_pruefung.py")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.dependencies import require_auth
-from app.core.log_redaction import scrub_log
+from app.core.log_redaction import redact_logs, scrub_log
 from app.models.meeting_room import MeetingRoom
 from app.models.agent import Agent, AgentState
 
@@ -211,16 +211,15 @@ def _taskforce_agent_pfad(room) -> str:
     return f"/shared/taskforce/{room.id}"
 
 
-def _runner_mounts(room) -> list | None:
+def _runner_quelle(room):
     """Der Compose-Runner sieht nur den Ordner des Raum-Besitzers als /shared —
-    nicht das ganze Volume mit den Ordnern aller Nutzer. None = altes Verhalten."""
-    from app.core import shared_volume
-    if not shared_volume.JE_NUTZER_AKTIV:
-        return None
-    from docker.types import Mount
-    m = Mount(target="/shared", source=shared_volume.SHARED_VOLUME, type="volume")
-    m["VolumeOptions"] = {"Subpath": shared_volume.nutzer_teilpfad(room.created_by)}
-    return [m]
+    nicht das ganze Volume mit den Ordnern aller Nutzer (ausser im alten Modus)."""
+    from app.core import compose_pruefung, shared_volume
+    teil = shared_volume.nutzer_teilpfad(room.created_by) if shared_volume.JE_NUTZER_AKTIV else ""
+    return compose_pruefung.Quelle(
+        volume=shared_volume.SHARED_VOLUME, sicht="/shared",
+        praefix=f"agent-{room.agent_ids[0][:8]}-", teilpfad=teil,
+    )
 
 
 def _runner_sicht(room) -> str:
@@ -379,9 +378,8 @@ async def launch_deliverable(
     from app.services.docker_service import DockerService
     from app.api.docker_apps import (
         _project_name, _get_project_containers, _connect_containers_to_network,
-        COMPOSE_RUNNER_IMAGE,
     )
-    from docker.errors import ContainerError
+    from app.core import compose_pruefung
 
     room = await db.scalar(select(MeetingRoom).where(MeetingRoom.id == room_id))
     if not room:
@@ -407,67 +405,26 @@ async def launch_deliverable(
     host_agent = room.agent_ids[0]
     project = _project_name(host_agent, f"tf-{room_id}")
     docker = DockerService()
+    quelle = _runner_quelle(room)
 
-    # Rewrite the compose: strip host-port publishing (would clash with the
-    # orchestrator's own 8000 etc.) — the app is reached via the in-network proxy on
-    # the container-side port, so no host publish is needed. Also record the first
-    # container port per service for the proxy URL.
-    import yaml as _yaml
+    # Die Datei hat ein Agent geschrieben: dieselbe Pruefung wie bei Agenten-Apps.
+    # Feste Host-Ports werden dabei zu freien auf 127.0.0.1; erreichbar ist die App
+    # ueber den Proxy im Netz.
+    if os.path.islink(os.path.join(base, compose_name)):
+        raise HTTPException(status_code=400, detail="Ungültige Compose-Datei")
+    modell, _hinweise = await compose_pruefung.vorbereiten(
+        docker, quelle, project, os.path.join(_runner_sicht(room), compose_name), agent_id=host_agent)
+    web_port = next(
+        (str(p["target"]) for d in modell["services"].values() for p in d.get("ports") or []),
+        None,
+    )
 
-    def _target_port(entry) -> str | None:
-        if isinstance(entry, dict):
-            t = entry.get("target")
-            return str(t) if t is not None else None
-        s = str(entry).split("/")[0]  # drop /tcp
-        parts = s.split(":")
-        return parts[-1] if parts and parts[-1].isdigit() else None
-
-    web_port = None
-    # Die Dateien legt ein Agent an: keinem Symlink folgen (lesen UND schreiben als root).
-    for name in (compose_name, ".launch-compose.yml"):
-        if os.path.islink(os.path.join(base, name)):
-            raise HTTPException(status_code=400, detail="Ungültige Compose-Datei")
-    try:
-        with open(os.path.join(base, compose_name), "r", encoding="utf-8") as fh:
-            spec = _yaml.safe_load(fh) or {}
-        for _svc, cfg in (spec.get("services") or {}).items():
-            if isinstance(cfg, dict) and cfg.get("ports"):
-                for p in cfg["ports"]:
-                    tp = _target_port(p)
-                    if tp and web_port is None:
-                        web_port = tp
-                cfg.pop("ports", None)  # no host publish → no clash
-        launch_name = ".launch-compose.yml"
-        with open(os.path.join(base, launch_name), "w", encoding="utf-8") as fh:
-            _yaml.safe_dump(spec, fh)
-        compose_path = os.path.join(_runner_sicht(room), launch_name)
-    except Exception as e:  # noqa: BLE001 — fall back to the original file
-        logger.warning("[Taskforce %s] compose rewrite failed: %s", scrub_log(room_id), scrub_log(e))
-        compose_path = os.path.join(_runner_sicht(room), compose_name)
-
-    def _run():
-        return docker.client.containers.run(
-            image=COMPOSE_RUNNER_IMAGE,
-            command=["docker", "compose", "-p", project, "-f", compose_path, "up", "-d", "--build"],
-            volumes={
-                "/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"},
-                **({} if _runner_mounts(room) else {"ai-employee-shared": {"bind": "/shared", "mode": "rw"}}),
-            },
-            **({"mounts": _runner_mounts(room)} if _runner_mounts(room) else {}),
-            network="ai-employee-network", remove=True, detach=False, stderr=True,
-        )
-
-    try:
-        await asyncio.to_thread(_run)
-    except ContainerError as e:
-        # Log the raw compose/docker stderr server-side ONLY — never echo it to the
-        # client (may contain paths, image/registry details, env hints).
-        err = e.stderr.decode("utf-8", "replace") if isinstance(e.stderr, (bytes, bytearray)) else str(e)
-        logger.warning("[Taskforce %s] launch failed: %s", scrub_log(room_id), scrub_log(err))
+    code, ausgabe = await asyncio.to_thread(
+        compose_pruefung.ausfuehren, docker, quelle, project, modell, ["up", "-d", "--build"])
+    if code != 0:
+        # Nur ins Server-Log, nie an den Aufrufer (Pfade, Registry-Details, Umgebung).
+        logger.warning("[Taskforce %s] launch failed: %s", scrub_log(room_id), scrub_log(redact_logs(ausgabe)))
         raise HTTPException(status_code=500, detail="Start fehlgeschlagen — Build/Start-Fehler (Details im Server-Log).")
-    except Exception as e:  # noqa: BLE001
-        logger.warning("[Taskforce %s] launch error: %s", scrub_log(room_id), scrub_log(e))
-        raise HTTPException(status_code=500, detail="Start fehlgeschlagen.")
 
     _connect_containers_to_network(docker, project)
     containers = _get_project_containers(docker, project)
