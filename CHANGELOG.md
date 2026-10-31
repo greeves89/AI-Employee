@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.410.0] - 2026-10-31
+
+### Neu
+- **Sicherheitsstatus** unter **Admin → Betrieb**: eine Ampel über die wichtigsten Sicherheitseinstellungen der Anlage, mit Erklärung und Hinweis zum Beheben je Punkt.
+
 ## [1.409.2] - 2026-10-31
 
 ### Behoben
