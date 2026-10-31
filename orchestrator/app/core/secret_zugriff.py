@@ -86,3 +86,52 @@ _RESERVIERT_ANFANG = ("ANTHROPIC_", "CLAUDE_", "OPENAI_", "CODEX_", "LLM_", "AGE
 def variable_reserviert(name: str) -> bool:
     n = (name or "").strip().upper()
     return n in _RESERVIERT or n.startswith(_RESERVIERT_ANFANG)
+
+
+async def nutzbare_secrets_des_besitzers(db: AsyncSession, agent_id: str) -> set[int] | None:
+    """Keys, die der Besitzer dieses Agenten nutzen darf. None = keine Einschraenkung
+    (Admin-Besitzer oder Agent ohne Besitzer, etwa Plattform-Agenten)."""
+    from app.models.agent import Agent
+    from app.models.user import User
+    besitzer_id = (await db.execute(select(Agent.user_id).where(Agent.id == agent_id))).scalar_one_or_none()
+    if not besitzer_id:
+        return None
+    besitzer = await db.get(User, besitzer_id)
+    if besitzer is None:
+        return set()   # Besitzer verschwunden: keine Nutzer-Keys (fail-closed)
+    return await nutzbare_secret_ids(db, besitzer)
+
+
+async def secrets_des_agenten(db: AsyncSession, agent_id: str, erlaubt: set[int] | None) -> list[AgentSecret]:
+    """Die Keys, die ``agent_id`` bekommt: zugewiesen, aktiv, vom Besitzer nutzbar.
+
+    Dieselbe Auswahl gilt beim Einspielen in den Agenten (agent_manager) und am
+    Ausgang (api/egress.py) — ein entzogener Key faellt an beiden Stellen weg.
+    ``erlaubt`` kommt von ``nutzbare_secrets_des_besitzers``.
+    """
+    import logging
+
+    from app.models.agent import Agent
+    from app.models.agent_secret import AgentSecretAssignment
+    log = logging.getLogger(__name__)
+    ids = (await db.execute(
+        select(AgentSecretAssignment.secret_id).where(AgentSecretAssignment.agent_id == agent_id)
+    )).scalars().all()
+    if not ids:
+        return []
+    besitzer_id = (await db.execute(select(Agent.user_id).where(Agent.id == agent_id))).scalar_one_or_none()
+    zeilen = (await db.execute(
+        select(AgentSecret).where(AgentSecret.id.in_(ids), AgentSecret.is_active.is_(True))
+    )).scalars().all()
+    ergebnis = []
+    for secret in zeilen:
+        if erlaubt is not None and secret.id not in erlaubt:
+            log.info("Key %s nicht eingespielt: Besitzer von %s hat keine Freigabe mehr", secret.key_name, agent_id)
+            continue
+        # Ein FREMDER Nutzer-Key (per Person freigegeben) setzt nie Laufzeit-,
+        # Netzwerk- oder Plattformvariablen.
+        if secret.owner_id and secret.owner_id != besitzer_id and variable_reserviert(secret.key_name):
+            log.warning("Fremder Key %s nicht eingespielt: Variable ist reserviert", secret.key_name)
+            continue
+        ergebnis.append(secret)
+    return ergebnis

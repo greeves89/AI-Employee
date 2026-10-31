@@ -1,0 +1,226 @@
+"""Logik des Egress-Proxys ohne mitmproxy — lokal testbar (orchestrator/tests/test_egress.py).
+
+Das Addon (aie_egress.py) ruft nur diese Funktionen. Gegenstueck im Orchestrator:
+orchestrator/app/core/egress.py und orchestrator/app/api/egress.py.
+"""
+
+from __future__ import annotations
+
+import base64
+import ipaddress
+import json
+import re
+import socket
+import time
+import urllib.error
+import urllib.request
+
+PLATZHALTER_RE = re.compile(r"aie-geheim-\d{1,10}-[0-9a-f]{12}")
+MARKE = "aie-geheim-"
+CA_HOST = "aie-egress.internal"
+
+#: Wie lange eine bestaetigte Anmeldung frisch ist — und wie lange sie noch gilt,
+#: wenn der Orchestrator gerade nicht antwortet (Neustart beim Update). Ohne das
+#: stuende waehrend jedes Neustarts aller HTTPS-Verkehr der Agenten.
+ANMELDUNG_FRISCH = 60
+ANMELDUNG_NOTFALL = 6 * 3600
+WERTE_FRISCH = 30
+#: Bestaetigte Werte gelten weiter, solange der Orchestrator nicht antwortet (Neustart
+#: auf dem Pi > 30 s) — eine ausdrueckliche Ablehnung gilt dagegen sofort.
+WERTE_NOTFALL = 600
+MAX_KOERPER = 1024 * 1024
+
+
+class OrchestratorFehler(Exception):
+    """Orchestrator nicht erreichbar oder unerwartete Antwort."""
+
+
+class Abgelehnt(Exception):
+    def __init__(self, status: int, text: str):
+        super().__init__(text)
+        self.status = status
+        self.text = text
+
+
+def anmeldung(kopf: str | None) -> tuple[str, str] | None:
+    """``Proxy-Authorization: Basic base64(agent_id:token)`` → (agent_id, token)."""
+    if not kopf or not kopf.startswith("Basic "):
+        return None
+    try:
+        roh = base64.b64decode(kopf[6:].strip(), validate=True).decode()
+    except Exception:  # noqa: BLE001
+        return None
+    agent_id, sep, token = roh.partition(":")
+    if not sep or not agent_id or not token or len(agent_id) > 32 or len(token) > 128:
+        return None
+    return agent_id, token
+
+
+def host_passt(host: str, muster: list[str]) -> bool:
+    """Wie orchestrator/app/core/egress.host_passt — hier nur, um TLS aufzubrechen.
+    Ob ein Key an das Ziel darf, entscheidet allein der Orchestrator."""
+    h = (host or "").strip().lower().rstrip(".")
+    if not h:
+        return False
+    for m in muster or []:
+        if m.startswith("*."):
+            if h.endswith(m[1:]) and len(h) > len(m) - 1:
+                return True
+        elif h == m:
+            return True
+    return False
+
+
+def ziel_adresse(host: str, port: int, aufloesen=socket.getaddrinfo) -> str:
+    """Oeffentliche IP fuer ``host`` — oder ``Abgelehnt``.
+
+    Der Proxy ist kein Umweg ins Firmennetz: Alle Adressen des Namens muessen
+    oeffentlich sein, und verbunden wird mit genau der geprueften (kein zweites
+    Aufloesen, das anders ausfallen koennte).
+    """
+    try:
+        infos = aufloesen(host, port, type=socket.SOCK_STREAM)
+    except OSError as e:
+        raise Abgelehnt(502, f"Ziel nicht auflösbar: {host}") from e
+    adressen = []
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if not ip.is_global:
+            raise Abgelehnt(403, f"Interne Adresse über den Egress-Proxy gesperrt: {host}")
+        adressen.append(str(ip))
+    if not adressen:
+        raise Abgelehnt(502, f"Ziel nicht auflösbar: {host}")
+    # IPv4 zuerst: Im Container fehlt oft die IPv6-Route.
+    adressen.sort(key=lambda a: ":" in a)
+    return adressen[0]
+
+
+def platzhalter_in(*texte: str) -> set[str]:
+    gefunden: set[str] = set()
+    for t in texte:
+        if t and MARKE in t:
+            gefunden.update(PLATZHALTER_RE.findall(t))
+    return gefunden
+
+
+def _basic_entpacken(wert: str) -> str | None:
+    if not wert.startswith("Basic "):
+        return None
+    try:
+        return base64.b64decode(wert[6:].strip(), validate=True).decode()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def kopf_platzhalter(name: str, wert: str) -> set[str]:
+    """Platzhalter in einem Kopf — auch in ``Authorization: Basic`` (git schickt so)."""
+    gefunden = platzhalter_in(wert)
+    if name.lower() == "authorization":
+        gefunden |= platzhalter_in(_basic_entpacken(wert) or "")
+    return gefunden
+
+
+def ersetzen(text: str, werte: dict[str, str]) -> str:
+    for p, w in werte.items():
+        text = text.replace(p, w)
+    return text
+
+
+def kopf_ersetzen(name: str, wert: str, werte: dict[str, str]) -> str:
+    if name.lower() == "authorization":
+        innen = _basic_entpacken(wert)
+        if innen is not None and platzhalter_in(innen):
+            return "Basic " + base64.b64encode(ersetzen(innen, werte).encode()).decode()
+    return ersetzen(wert, werte)
+
+
+def zurueck_maskieren(text: str, werte: dict[str, str]) -> str:
+    """Spiegelt das Ziel einen echten Wert zurueck, sieht der Agent wieder nur den Platzhalter."""
+    for p, w in werte.items():
+        if w and len(w) >= 8:
+            text = text.replace(w, p)
+    return text
+
+
+class Orchestrator:
+    """Fragt den Orchestrator — mit Dienst-Schluessel, kurz zwischengespeichert."""
+
+    def __init__(self, url: str, token: str, jetzt=time.monotonic, senden=None):
+        self.url = url.rstrip("/")
+        self.token = token
+        self.jetzt = jetzt
+        self._senden = senden or self._http
+        self._anmeldungen: dict[tuple[str, str], tuple[float, list[str]]] = {}
+        self._werte: dict[tuple, tuple[float, dict[str, str]]] = {}
+
+    def _http(self, pfad: str, daten: dict) -> tuple[int, dict]:
+        anfrage = urllib.request.Request(
+            self.url + pfad, data=json.dumps(daten).encode(), method="POST",
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {self.token}"},
+        )
+        # Direkt, nie ueber einen Proxy aus der Umgebung.
+        oeffner = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        try:
+            with oeffner.open(anfrage, timeout=5) as r:
+                return r.status, json.loads(r.read() or b"{}")
+        except urllib.error.HTTPError as e:
+            try:
+                return e.code, json.loads(e.read() or b"{}")
+            except Exception:  # noqa: BLE001
+                return e.code, {}
+        except Exception as e:  # noqa: BLE001
+            raise OrchestratorFehler(str(e)) from e
+
+    def hosts(self, agent: tuple[str, str]) -> list[str] | None:
+        """Ziele, fuer die TLS aufgebrochen wird. None = Anmeldung falsch."""
+        jetzt = self.jetzt()
+        gemerkt = self._anmeldungen.get(agent)
+        if gemerkt and jetzt - gemerkt[0] < ANMELDUNG_FRISCH:
+            return gemerkt[1]
+        try:
+            status, antwort = self._senden("/api/v1/egress/verbindung",
+                                           {"agent_id": agent[0], "agent_token": agent[1]})
+        except OrchestratorFehler:
+            if gemerkt and jetzt - gemerkt[0] < ANMELDUNG_NOTFALL:
+                return gemerkt[1]
+            raise
+        if status == 200:
+            hosts = [str(h) for h in antwort.get("hosts") or []]
+            self._anmeldungen[agent] = (jetzt, hosts)
+            return hosts
+        if status in (401, 422):
+            self._anmeldungen.pop(agent, None)
+            return None
+        if gemerkt and jetzt - gemerkt[0] < ANMELDUNG_NOTFALL:
+            return gemerkt[1]
+        raise OrchestratorFehler(f"Antwort {status}")
+
+    def werte(self, agent: tuple[str, str], host: str, platzhalter: set[str]) -> dict[str, str]:
+        """Echte Werte — alle oder ``Abgelehnt``."""
+        schluessel = (agent, host.lower(), tuple(sorted(platzhalter)))
+        jetzt = self.jetzt()
+        gemerkt = self._werte.get(schluessel)
+        if gemerkt and jetzt - gemerkt[0] < WERTE_FRISCH:
+            return gemerkt[1]
+        try:
+            status, antwort = self._senden("/api/v1/egress/aufloesen", {
+                "agent_id": agent[0], "agent_token": agent[1], "host": host,
+                "platzhalter": sorted(platzhalter),
+            })
+        except OrchestratorFehler:
+            if gemerkt and jetzt - gemerkt[0] < WERTE_NOTFALL:
+                return gemerkt[1]
+            raise
+        if status == 200:
+            werte = {str(k): str(v) for k, v in (antwort.get("werte") or {}).items()}
+            if set(werte) != platzhalter:
+                raise Abgelehnt(502, "Unvollständige Antwort des Orchestrators")
+            # Abgelaufene Eintraege nicht ewig im Speicher halten
+            for k in [k for k, (t, _) in self._werte.items() if jetzt - t >= WERTE_NOTFALL]:
+                self._werte.pop(k, None)
+            self._werte[schluessel] = (jetzt, werte)
+            return werte
+        self._werte.pop(schluessel, None)
+        if status == 403:
+            raise Abgelehnt(403, "Key für dieses Ziel nicht freigegeben")
+        raise Abgelehnt(502, f"Orchestrator antwortet {status}")

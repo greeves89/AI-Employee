@@ -32,6 +32,7 @@ class NeueFassungLaeuft(unittest.TestCase):
         (quelle / "scripts" / "lib").mkdir(parents=True)
         shutil.copy(REPO / "scripts" / "update.sh", quelle / "scripts" / "update.sh")
         shutil.copy(REPO / "scripts" / "lib" / "abbilder.sh", quelle / "scripts" / "lib" / "abbilder.sh")
+        shutil.copy(REPO / "scripts" / "lib" / "sicherung.sh", quelle / "scripts" / "lib" / "sicherung.sh")
         (quelle / "scripts" / "backup.sh").write_text("#!/bin/sh\necho SICHERUNG >> \"$ATTRAPPE_LOG\"\n")
         (quelle / "scripts" / "backup.sh").chmod(0o755)
         (quelle / "VERSION").write_text("1.0.0\n")

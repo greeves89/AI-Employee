@@ -93,6 +93,13 @@ else
     ok "Agent image updated ($NEW_AGENT_IMAGE_ID, Quelle: ${ABBILD_QUELLE})"
 fi
 
+# ── 4b. Dienst-Schlüssel des Egress-Proxys (ab v1.413) ─────────────────────────
+# shellcheck source=lib/sicherung.sh
+. ./scripts/lib/sicherung.sh
+if egress_token_sicherstellen .env; then
+    ok "EGRESS_PROXY_TOKEN angelegt (Egress-Proxy bleibt aus, bis EGRESS_PROXY_ENABLED=true)"
+fi
+
 # ── 5. Restart the compose services (orchestrator, frontend, ...) ─────────────
 info "Restarting the stack..."
 docker compose up -d

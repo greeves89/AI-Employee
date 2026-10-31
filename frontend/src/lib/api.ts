@@ -4594,6 +4594,10 @@ export interface AgentSecretEntry {
   owner_name?: string | null;
   /** Nur für Besitzer/Admin: an wie viele Personen freigegeben. */
   shared_with_count?: number | null;
+  /** Ziele, an die der Key darf (Egress-Proxy). Leer = Klartext im Agenten. */
+  erlaubte_hosts?: string[];
+  /** Agenten sehen nur einen Platzhalter (Proxy an und Ziele gesetzt). */
+  ueber_proxy?: boolean;
 }
 
 export interface SecretShare { user_id: string; name: string | null; email: string | null }
@@ -4622,6 +4626,7 @@ export async function createSecret(payload: {
   value: string;
   secret_type?: "api_key" | "sso_profile" | "oauth_token";
   description?: string;
+  erlaubte_hosts?: string[];
 }): Promise<AgentSecretEntry> {
   return fetchJSON(`${getBase()}/secrets`, {
     method: "POST",
@@ -4634,6 +4639,7 @@ export async function updateSecret(id: number, payload: {
   description?: string;
   value?: string;
   is_active?: boolean;
+  erlaubte_hosts?: string[];
 }): Promise<AgentSecretEntry> {
   return fetchJSON(`${getBase()}/secrets/${id}`, {
     method: "PATCH",

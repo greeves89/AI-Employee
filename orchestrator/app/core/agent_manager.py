@@ -1562,50 +1562,25 @@ class AgentManager:
         return env
 
     async def _nutzbare_secrets_des_besitzers(self, agent_id: str) -> set[int] | None:
-        """Keys, die der Besitzer dieses Agenten nutzen darf. None = keine Einschraenkung
-        (Admin-Besitzer oder Agent ohne Besitzer, etwa Plattform-Agenten)."""
-        from app.core.secret_zugriff import nutzbare_secret_ids
-        from app.models.user import User
-        besitzer_id = (await self.db.execute(select(Agent.user_id).where(Agent.id == agent_id))).scalar_one_or_none()
-        if not besitzer_id:
-            return None
-        besitzer = await self.db.get(User, besitzer_id)
-        if besitzer is None:
-            return set()   # Besitzer verschwunden: keine Nutzer-Keys (fail-closed)
-        return await nutzbare_secret_ids(self.db, besitzer)
+        from app.core.secret_zugriff import nutzbare_secrets_des_besitzers
+        return await nutzbare_secrets_des_besitzers(self.db, agent_id)
 
     async def _get_secrets_env(self, agent_id: str) -> dict[str, str]:
-        """Decrypt and inject KMS secrets assigned to this agent as env vars."""
-        result = await self.db.execute(
-            select(AgentSecretAssignment).where(AgentSecretAssignment.agent_id == agent_id)
-        )
-        assignments = result.scalars().all()
-        if not assignments:
-            return {}
+        """Decrypt and inject KMS secrets assigned to this agent as env vars.
 
-        secret_ids = [a.secret_id for a in assignments]
-        s_result = await self.db.execute(
-            select(AgentSecret).where(
-                AgentSecret.id.in_(secret_ids),
-                AgentSecret.is_active.is_(True),
-            )
-        )
-        # Nur, was der BESITZER des Agenten (noch) nutzen darf — eigen, Rolle, Person
-        # (core/secret_zugriff.py). Frueher blieb ein entzogener Key in bereits
-        # versorgten Agenten stecken; jetzt faellt er beim naechsten Start weg.
-        erlaubt = await self._nutzbare_secrets_des_besitzers(agent_id)
+        Nur, was der BESITZER des Agenten (noch) nutzen darf (core/secret_zugriff.py).
+        Laeuft der Egress-Proxy und hat ein Key erlaubte Ziele, bekommt der Agent
+        statt des Werts einen Platzhalter; den ersetzt erst der Proxy am Ausgang,
+        und nur auf dem Weg zu diesen Zielen (core/egress.py).
+        """
+        from app.core import egress
+        from app.core.secret_zugriff import secrets_des_agenten
+        secrets = await secrets_des_agenten(self.db, agent_id, await self._nutzbare_secrets_des_besitzers(agent_id))
+        ueber_proxy = egress.aktiv()
         env: dict[str, str] = {}
-        besitzer_id = (await self.db.execute(select(Agent.user_id).where(Agent.id == agent_id))).scalar_one_or_none()
-        for secret in s_result.scalars().all():
-            if erlaubt is not None and secret.id not in erlaubt:
-                logger.info("Key %s nicht eingespielt: Besitzer von %s hat keine Freigabe mehr",
-                            secret.key_name, agent_id)
-                continue
-            # Ein FREMDER Nutzer-Key (per Person freigegeben) setzt nie Laufzeit-,
-            # Netzwerk- oder Plattformvariablen (core/secret_zugriff.variable_reserviert).
-            from app.core.secret_zugriff import variable_reserviert
-            if secret.owner_id and secret.owner_id != besitzer_id and variable_reserviert(secret.key_name):
-                logger.warning("Fremder Key %s nicht eingespielt: Variable ist reserviert", secret.key_name)
+        for secret in secrets:
+            if ueber_proxy and secret.erlaubte_hosts:
+                env[secret.key_name] = egress.platzhalter(secret.id)
                 continue
             try:
                 env[secret.key_name] = decrypt_token(secret.value_encrypted)
@@ -1780,6 +1755,8 @@ class AgentManager:
             else autonomy_matrix.effective_permissions({}, autonomy_level)
         )
         needs_sudo = len(agent_permissions) > 0
+        from app.core.egress import agent_umgebung
+        env_vars.update(await agent_umgebung(agent_id))
         geteilt = await self._geteilt(user_id, mode, env_vars)
         await self._abbild_warmlaufen()
         container = self.docker.create_container(
@@ -2125,6 +2102,9 @@ class AgentManager:
         # sonst koennte ein zugewiesener Key ``BROWSER_ZUGANG`` den Browser fuer
         # einen fremden Agenten im selben Netz oeffnen (#828, Schritt 5).
         env_vars.update(_browser_geheimnisse(agent.id))
+        # Weg nach draussen ganz zuletzt — kein Key darf ihn umbiegen (core/egress.py).
+        from app.core.egress import agent_umgebung
+        env_vars.update(await agent_umgebung(agent_id))
 
         # 3. Create new container with same volumes + any assigned bind mounts
         agent_permissions = autonomy_matrix.effective_permissions(
@@ -2517,6 +2497,9 @@ class AgentManager:
         # sonst koennte ein zugewiesener Key ``BROWSER_ZUGANG`` den Browser fuer
         # einen fremden Agenten im selben Netz oeffnen (#828, Schritt 5).
         env_vars.update(_browser_geheimnisse(agent.id))
+        # Weg nach draussen ganz zuletzt — kein Key darf ihn umbiegen (core/egress.py).
+        from app.core.egress import agent_umgebung
+        env_vars.update(await agent_umgebung(agent_id))
 
         # 3. Create new container with same volumes + any assigned bind mounts
         agent_permissions = autonomy_matrix.effective_permissions(

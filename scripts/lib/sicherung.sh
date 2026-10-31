@@ -90,6 +90,26 @@ backup_token_sicherstellen() {
     return 0
 }
 
+# Dienst-Schlüssel des Egress-Proxys (orchestrator/app/core/egress.py) anlegen,
+# falls er fehlt oder zu kurz ist. Orchestrator und Proxy lesen ihn aus der .env;
+# Agenten bekommen ihn nie. Eingeschaltet wird der Proxy davon nicht.
+# Rückgabe 0 = neu angelegt, 1 = war schon da (oder keine .env).
+egress_token_sicherstellen() {
+    local datei="$1" token vorhanden
+    [ -f "$datei" ] || return 1
+    vorhanden=$(env_wert "$datei" EGRESS_PROXY_TOKEN)
+    [ "${#vorhanden}" -ge 32 ] && return 1
+    token=$(python3 -c 'import secrets; print(secrets.token_hex(32))' 2>/dev/null \
+        || openssl rand -hex 32)
+    [ -n "$token" ] || return 1
+    if grep -q "^EGRESS_PROXY_TOKEN=" "$datei"; then
+        sed -i.bak "s|^EGRESS_PROXY_TOKEN=.*|EGRESS_PROXY_TOKEN=${token}|" "$datei" && rm -f "${datei}.bak"
+    else
+        printf '\nEGRESS_PROXY_TOKEN=%s\n' "$token" >> "$datei"
+    fi
+    return 0
+}
+
 # Name des Compose-Projekts der laufenden Anlage. Volumes heißen
 # "<projekt>_<name>"; das Projekt ist ohne `name:` in der Compose-Datei der
 # Verzeichnisname — deshalb wird es am laufenden Postgres-Container abgelesen.
