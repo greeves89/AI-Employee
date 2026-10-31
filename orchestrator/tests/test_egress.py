@@ -646,6 +646,24 @@ class ProxyLogikTests(unittest.TestCase):
                 self.assertEqual(aus.count(p.encode()), 3)
                 for teil in (b"data: anfang ", b" mitte ", b" ende "):
                     self.assertIn(teil, aus, "uebriger Text bleibt vollstaendig")
+        # Leeres Stueck MITTEN im Strom (Server schickt leeren Rahmen) genau dort, wo ein
+        # Wert beginnt: die Haelften duerfen zusammen nie den Wert ergeben.
+        for schnitt in range(1, len(w)):
+            with self.subTest(schnitt=schnitt):
+                m = logik.StromMaske({p: w})
+                strom = [b"vorher ", f"{w[:schnitt]}".encode(), b"", f"{w[schnitt:]} danach".encode(), b""]
+                aus = b"".join(m(teil) for teil in strom)
+                self.assertNotIn(w.encode(), aus)
+        # Gewoehnlicher Strom ohne Wert, leere Stuecke mittendrin: byte-gleich, nichts doppelt
+        normal = b"data: {\"text\": \"Hallo, das ist eine laengere Antwort ohne Geheimnis.\"}\n\n" * 5
+        for groesse in (1, 5, 17, 64):
+            with self.subTest(normal=groesse):
+                m = logik.StromMaske({p: w})
+                teile = []
+                for i in range(0, len(normal), groesse):
+                    teile += [normal[i:i + groesse], b""] if i % (groesse * 3) == 0 else [normal[i:i + groesse]]
+                aus = b"".join(m(t) for t in teile) + m(b"")
+                self.assertEqual(aus, normal)
         # Ohne Werte: unveraendert durch
         m = logik.StromMaske({})
         self.assertEqual(m(b"abc") + m(b""), b"abc")

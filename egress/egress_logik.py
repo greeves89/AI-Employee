@@ -266,20 +266,49 @@ class StromMaske:
 
     Haelt jeweils ein Endstueck zurueck, so lang wie die laengste Variante minus eins:
     Ein Wert, der ueber die Grenze zweier Stuecke reicht, wird so im naechsten erkannt.
-    mitmproxy ruft am Ende mit ``b""`` auf — dann geht der Rest hinaus.
+
+    mitmproxy ruft am Ende mit ``b""`` auf — aber auch mitten im Strom, wenn ein Server
+    einen leeren HTTP/2-Datenrahmen schickt (mitmproxy 12.2.3, ``_http2.py``). Ein leeres
+    Stueck ist also nur „vielleicht Ende“. Darum, beim Ausgeben des Endstuecks:
+
+    * ein Wert-Anfang ab ``KAPPEN_AB`` Zeichen am Ende wird gekappt;
+    * die letzten ``KAPPEN_AB - 1`` ausgegebenen Zeichen bleiben in Erinnerung. Geht der
+      Strom doch weiter, wird gegen „Erinnerung + Neues“ verdeckt — ein Wert, dessen
+      erste 1–3 Zeichen schon draussen sind, wird im Rest erkannt.
     """
+
+    KAPPEN_AB = 4
 
     def __init__(self, werte: dict[str, str]):
         self.werte = werte
-        laengen = [len(v.encode()) for w in werte.values() for v in _varianten(w or "")]
-        self.halten = max(laengen, default=1) - 1
+        self.varianten = sorted({v.encode() for w in werte.values() for v in _varianten(w or "")},
+                                key=len, reverse=True)
+        self.halten = max((len(v) for v in self.varianten), default=1) - 1
         self.rest = b""
+        self.vorher = b""
+
+    def _anfang_kappen(self, daten: bytes) -> bytes:
+        for v in self.varianten:
+            for k in range(len(v) - 1, self.KAPPEN_AB - 1, -1):
+                if daten.endswith(v[:k]):
+                    return daten[:-k] + b"[...]"
+        return daten
 
     def __call__(self, stueck: bytes) -> bytes:
-        daten = zurueck_maskieren_bytes(self.rest + stueck, self.werte)
-        if not stueck or self.halten <= 0:
+        if self.halten <= 0:
+            return stueck
+        if not stueck:                                   # vielleicht Ende
+            daten = self._anfang_kappen(zurueck_maskieren_bytes(self.rest, self.werte))
+            self.vorher = daten[-(self.KAPPEN_AB - 1):]
             self.rest = b""
             return daten
+        daten = zurueck_maskieren_bytes(self.vorher + self.rest + stueck, self.werte)
+        if self.vorher:
+            # Unveraendert → die Erinnerung ist schon draussen, nicht doppelt senden.
+            # Veraendert → dort begann ein Wert; der Platzhalter ersetzt ihn ab hier.
+            if daten.startswith(self.vorher):
+                daten = daten[len(self.vorher):]
+            self.vorher = b""
         self.rest = daten[-self.halten:]
         return daten[:-self.halten]
 
