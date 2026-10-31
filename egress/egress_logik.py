@@ -225,6 +225,51 @@ def zurueck_maskieren_bytes(daten: bytes, werte: dict[str, str]) -> bytes:
     return daten
 
 
+#: Groesste Antwort, die der Proxy zum Verdecken puffert/entpackt. Darueber bricht er ab,
+#: statt eine ungepruefte Antwort durchzulassen.
+MAX_ANTWORT = 32 * 1024 * 1024
+
+
+def host_werte_passen(werte: list[str], ziel: str) -> bool:
+    """Alle Angaben, nach denen ein Ziel routet (jeder Host-Kopf, :authority), muessen das
+    Tunnelziel nennen — und mindestens eine muss da sein. Sonst Domain-Fronting."""
+    gesehen = False
+    for w in werte:
+        w = (w or "").strip().lower()
+        if not w:
+            continue
+        gesehen = True
+        if w.startswith("["):
+            host = w[1:w.find("]")] if "]" in w else w
+        else:
+            host = w.rsplit(":", 1)[0] if w.count(":") == 1 else w
+        if host.rstrip(".") != ziel:
+            return False
+    return gesehen
+
+
+def entpacken_begrenzt(daten: bytes, kodierung: str, grenze: int = MAX_ANTWORT) -> bytes:
+    """Antwort entpacken, aber nie ueber ``grenze`` hinaus (Kompressionsbombe) — oder ``Abgelehnt``."""
+    import zlib
+    k = (kodierung or "identity").strip().lower()
+    if k in ("", "identity"):
+        return daten
+    if k in ("gzip", "x-gzip", "deflate"):
+        wbits = 16 + zlib.MAX_WBITS if k != "deflate" else zlib.MAX_WBITS
+        d = zlib.decompressobj(wbits)
+        try:
+            ergebnis = d.decompress(daten, grenze + 1)
+        except zlib.error:
+            if k != "deflate":
+                raise Abgelehnt(502, "Antwort nicht lesbar")
+            d = zlib.decompressobj(-zlib.MAX_WBITS)           # rohes deflate
+            ergebnis = d.decompress(daten, grenze + 1)
+        if len(ergebnis) > grenze or d.unconsumed_tail:
+            raise Abgelehnt(502, "Antwort zu gross zum Prüfen")
+        return ergebnis
+    raise Abgelehnt(502, f"Kodierung {k} wird nicht geprüft")
+
+
 class Maske:
     """Alle Werte, die der Proxy je fuer einen Agenten eingesetzt hat — verdeckt in JEDER
     Antwort an ihn. Sonst liesse ein Agent den Wert beim Ziel ablegen und holte ihn mit

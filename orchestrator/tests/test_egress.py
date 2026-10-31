@@ -441,6 +441,29 @@ class ProxyLogikTests(unittest.TestCase):
         self.assertEqual(logik.zurueck_maskieren_bytes(b"\x00" + w.encode() + b"\xff", {p: w}),
                          b"\x00" + p.encode() + b"\xff")
 
+    def test_host_werte(self):
+        z = "api.github.com"
+        self.assertTrue(logik.host_werte_passen(["api.github.com"], z))
+        self.assertTrue(logik.host_werte_passen(["API.GitHub.com:443", "api.github.com."], z))
+        for falsch in ([], [""], ["evil.example.com"], ["api.github.com", "evil.example.com"],
+                       ["api.github.com:443:1"], ["[::1]:443"]):
+            with self.subTest(falsch):
+                self.assertFalse(logik.host_werte_passen(falsch, z))
+
+    def test_entpacken_begrenzt(self):
+        import gzip
+        import zlib
+        text = b"hallo " * 100
+        self.assertEqual(logik.entpacken_begrenzt(gzip.compress(text), "gzip"), text)
+        self.assertEqual(logik.entpacken_begrenzt(zlib.compress(text), "deflate"), text)
+        self.assertEqual(logik.entpacken_begrenzt(text, "identity"), text)
+        bombe = gzip.compress(b"\0" * (5 * 1024 * 1024))         # 5 MB aus ~5 KB
+        with self.assertRaises(logik.Abgelehnt):
+            logik.entpacken_begrenzt(bombe, "gzip", grenze=1024 * 1024)
+        for k in ("br", "zstd", "compress"):
+            with self.subTest(k), self.assertRaises(logik.Abgelehnt):
+                logik.entpacken_begrenzt(b"x", k)
+
     def test_maske_je_agent(self):
         uhr = [0.0]
         m = logik.Maske(jetzt=lambda: uhr[0])

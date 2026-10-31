@@ -19,7 +19,7 @@ class EgressCaTests(unittest.TestCase):
         protokoll = os.path.join(tmp, "aufrufe")
         with open(os.path.join(bin_dir, "update-ca-certificates"), "w") as f:
             f.write(f"#!/bin/sh\necho lauf >> {protokoll}\nexit {0 if update_ok else 1}\n")
-        os.chmod(os.path.join(bin_dir, "update-ca-certificates"), 0o755)
+        os.chmod(os.path.join(bin_dir, "update-ca-certificates"), 0o700)
         env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "ENTRYPOINT_NUR_DEFINIEREN": "1",
                "ENTRYPOINT_CA_DIR": os.path.join(tmp, "ca")}
         if ca is not None:

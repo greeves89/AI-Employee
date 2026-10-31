@@ -122,6 +122,7 @@ async def secrets_des_agenten(db: AsyncSession, agent_id: str, erlaubt: set[int]
     """
     import logging
 
+    from app.core.log_redaction import scrub_log
     from app.models.agent import Agent
     from app.models.agent_secret import AgentSecretAssignment
     log = logging.getLogger(__name__)
@@ -137,15 +138,16 @@ async def secrets_des_agenten(db: AsyncSession, agent_id: str, erlaubt: set[int]
     ergebnis = []
     for secret in zeilen:
         if variable_der_plattform(secret.key_name):
-            log.warning("Key %s nicht eingespielt: Variable gehoert der Plattform", secret.key_name)
+            log.warning("Key %s nicht eingespielt: Variable gehoert der Plattform", scrub_log(secret.key_name))
             continue
         if erlaubt is not None and secret.id not in erlaubt:
-            log.info("Key %s nicht eingespielt: Besitzer von %s hat keine Freigabe mehr", secret.key_name, agent_id)
+            log.info("Key %s nicht eingespielt: Besitzer von %s hat keine Freigabe mehr",
+                     scrub_log(secret.key_name), scrub_log(agent_id))
             continue
         # Ein FREMDER Nutzer-Key (per Person freigegeben) setzt nie Laufzeit-,
         # Netzwerk- oder Plattformvariablen.
         if secret.owner_id and secret.owner_id != besitzer_id and variable_reserviert(secret.key_name):
-            log.warning("Fremder Key %s nicht eingespielt: Variable ist reserviert", secret.key_name)
+            log.warning("Fremder Key %s nicht eingespielt: Variable ist reserviert", scrub_log(secret.key_name))
             continue
         ergebnis.append(secret)
     return ergebnis

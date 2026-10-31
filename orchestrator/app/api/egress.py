@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import egress
 from app.core.audit import protokolliere
 from app.core.encryption import decrypt_token
+from app.core.log_redaction import scrub_log
 from app.core.secret_zugriff import nutzbare_secrets_des_besitzers, secrets_des_agenten
 from app.db.session import get_db
 from app.dependencies import make_agent_token
@@ -87,7 +88,8 @@ async def aufloesen(body: Aufloesen, db: AsyncSession = Depends(get_db)):
             meta={"ziel": body.host[:253], "abgelehnt": abgelehnt},
         )
         await db.commit()
-        logger.warning("Egress: Key-Nutzung verweigert (Agent %s, Ziel %s)", body.agent_id, body.host[:253])
+        logger.warning("Egress: Key-Nutzung verweigert (Agent %s, Ziel %s)",
+                       scrub_log(body.agent_id), scrub_log(body.host[:253]))
         return JSONResponse(status_code=403, content={"detail": "Key für dieses Ziel nicht freigegeben",
                                                       "abgelehnt": abgelehnt})
     return {"werte": werte}

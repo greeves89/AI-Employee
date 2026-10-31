@@ -8,7 +8,6 @@ Revision ID: f3a4b5c6d7e8
 Revises: e2f3a4b5c6d7
 Create Date: 2026-10-31
 """
-import sqlalchemy as sa
 from alembic import op
 
 revision = "f3a4b5c6d7e8"
@@ -18,8 +17,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("agent_secrets", sa.Column("erlaubte_hosts", sa.JSON(), nullable=True))
+    # Idempotent: Der Start legt Tabellen aus den Modellen an, die Spalte kann schon da sein.
+    op.execute("ALTER TABLE IF EXISTS agent_secrets ADD COLUMN IF NOT EXISTS erlaubte_hosts JSON")
 
 
 def downgrade() -> None:
-    op.drop_column("agent_secrets", "erlaubte_hosts")
+    op.execute("ALTER TABLE IF EXISTS agent_secrets DROP COLUMN IF EXISTS erlaubte_hosts")

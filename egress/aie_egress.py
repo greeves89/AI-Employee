@@ -127,8 +127,8 @@ class AieEgress:
             return
         # Domain-Fronting: Der Key gilt fuer das Ziel der Verbindung — eine andere
         # Adresse im Host-Kopf (bzw. :authority) wuerde ihn am selben CDN woanders abliefern.
-        kopf_host = (flow.request.host_header or "").lower().rsplit(":", 1)[0].rstrip(".")
-        if kopf_host and kopf_host != ziel:
+        if not logik.host_werte_passen(
+                flow.request.headers.get_all("host") + [flow.request.authority or ""], ziel):
             flow.response = _antwort(421, "Host-Kopf passt nicht zum Ziel der Verbindung")
             return
         try:
@@ -148,6 +148,12 @@ class AieEgress:
             flow.request.set_text(logik.parameter_ersetzen(text, werte))
         flow.metadata["aie_werte"] = werte
         self.maske.merken(agent[0], werte)
+
+    def requestheaders(self, flow: http.HTTPFlow):
+        # Aufgebrochene Verbindung eines Agenten: Antworten unkomprimiert anfordern —
+        # verdecken laesst sich nur, was lesbar ist, und Entpacken kostet Speicher.
+        if flow.client_conn.id in self.agenten:
+            flow.request.headers["accept-encoding"] = "identity"
 
     async def _ohne_tunnel(self, flow: http.HTTPFlow):
         """Klartext-HTTP direkt an den Proxy: CA-Zertifikat holen oder weiterleiten."""
@@ -178,13 +184,23 @@ class AieEgress:
         return werte
 
     def responseheaders(self, flow: http.HTTPFlow):
-        # Wurde in DIESER Anfrage ein Wert eingesetzt, die Antwort ganz puffern, damit
-        # sie verdeckt werden kann. Ausnahme: git-Pakete (gross, gepackt — darin steht
-        # kein lesbarer Wert, und gepuffert sprengten sie den Speicher).
-        if flow.metadata.get("aie_werte") and flow.response is not None:
-            art = (flow.response.headers.get("content-type") or "").lower()
-            if not art.startswith("application/x-git-"):
-                flow.response.stream = False
+        # Gibt es fuer diesen Agenten etwas zu verdecken, die Antwort ganz puffern —
+        # gestreamt liefe sie ungeprueft durch. Ausnahme: git-Pakete (gross und
+        # gepackt; in ein Repo gelangt ein Wert ueber den Proxy nicht, Koerper mit
+        # Platzhalter werden abgelehnt). Zu grosse Antworten: Abbruch statt Durchlass.
+        if flow.response is None or not self._maske(flow):
+            return
+        art = (flow.response.headers.get("content-type") or "").lower()
+        if art.startswith("application/x-git-"):
+            return
+        try:
+            laenge = int(flow.response.headers.get("content-length") or 0)
+        except ValueError:
+            laenge = 0
+        if laenge > logik.MAX_ANTWORT:
+            flow.kill()
+            return
+        flow.response.stream = False
 
     def response(self, flow: http.HTTPFlow):
         if flow.response is None:
@@ -197,12 +213,15 @@ class AieEgress:
                 (k, logik.zurueck_maskieren(v.decode("latin-1"), werte).encode("latin-1"))
                 for k, v in flow.response.headers.fields
             )
-            if flow.response.raw_content:
-                inhalt = flow.response.get_content(strict=False)
-                if inhalt:
-                    neu = logik.zurueck_maskieren_bytes(inhalt, werte)
-                    if neu != inhalt:
-                        flow.response.set_content(neu)
+            roh = flow.response.raw_content
+            if roh:
+                if len(roh) > logik.MAX_ANTWORT:
+                    raise logik.Abgelehnt(502, "Antwort zu gross zum Prüfen")
+                inhalt = logik.entpacken_begrenzt(roh, flow.response.headers.get("content-encoding", ""))
+                neu = logik.zurueck_maskieren_bytes(inhalt, werte)
+                if neu != inhalt or inhalt is not roh:
+                    flow.response.headers.pop("content-encoding", None)
+                    flow.response.set_content(neu)
         except Exception:  # noqa: BLE001 — lieber keine Antwort als eine mit dem Wert
             log.exception("Antwort liess sich nicht verdecken")
             flow.response = _antwort(502, "Egress-Proxy: Antwort konnte nicht geprüft werden")
