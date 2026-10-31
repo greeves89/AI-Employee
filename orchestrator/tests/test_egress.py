@@ -67,6 +67,29 @@ class PlatzhalterTests(unittest.TestCase):
 
     def test_proxy_erkennt_das_format(self):
         self.assertEqual(logik.platzhalter_in(f"Bearer {egress.platzhalter(7)}"), {egress.platzhalter(7)})
+        g = egress.platzhalter(3, egress.ANBINDUNG)
+        self.assertEqual(logik.platzhalter_in(f"token {g}"), {g})
+
+    def test_arten_getrennt(self):
+        g = egress.platzhalter(3, egress.ANBINDUNG)
+        self.assertRegex(g, r"^aie-geheim-g3-[0-9a-f]{12}$")
+        self.assertEqual(egress.platzhalter_aus(g), ("g", 3))
+        self.assertIsNone(egress.secret_id_aus(g), "Anbindung ist kein Key der Schluesselverwaltung")
+        # Signatur einer Art gilt nicht fuer die andere
+        self.assertIsNone(egress.platzhalter_aus("aie-geheim-g3-" + egress.platzhalter(3).rsplit("-", 1)[1]))
+        # Bestehende Key-Platzhalter bleiben gleich (laufende Agenten tragen sie schon)
+        import hashlib, hmac as _h
+        alt = _h.new(settings.api_secret_key.encode(), b"egress-platzhalter:v1:3", hashlib.sha256).hexdigest()[:12]
+        self.assertEqual(egress.platzhalter(3), f"aie-geheim-3-{alt}")
+
+    def test_ziele_der_git_anbieter(self):
+        from app.core.githost.registry import get_git_host_provider
+        self.assertEqual(get_git_host_provider("github").egress_ziele(),
+                         ["api.github.com", "github.com", "uploads.github.com"])
+        self.assertEqual(get_git_host_provider("github", "https://GHE.example.com:8443").egress_ziele(),
+                         ["ghe.example.com"])
+        self.assertEqual(get_git_host_provider("forgejo", "https://git.example.com/").egress_ziele(),
+                         ["git.example.com"])
 
 
 class HostsTests(unittest.TestCase):
@@ -164,8 +187,9 @@ class EgressDatenTests(SecretsTestBasis):
 
     async def asyncSetUp(self):
         await super().asyncSetUp()
+        from app.models.oauth_integration import OAuthIntegration
         async with self.engine.begin() as conn:
-            await conn.run_sync(Agent.metadata.create_all, tables=[Agent.__table__])
+            await conn.run_sync(Agent.metadata.create_all, tables=[Agent.__table__, OAuthIntegration.__table__])
         self.db.add(User(id="m1", email="m1@example.invalid", name="M1", role=UserRole.MEMBER))
         self.db.add(User(id="m2", email="m2@example.invalid", name="M2", role=UserRole.MEMBER))
         self.db.add(Agent(id="a1", name="A1", user_id="m1"))
@@ -306,6 +330,45 @@ class EgressDatenTests(SecretsTestBasis):
     async def test_gefaelschter_platzhalter(self):
         r = await self._aufloesen("api.github.com", f"aie-geheim-{self.gh['id']}-000000000000")
         self.assertEqual(r.status_code, 403)
+
+    # --- Git-Anbindung der Plattform ---------------------------------------------------
+    async def _anbindung(self):
+        from app.models.oauth_integration import OAuthIntegration, OAuthProvider
+        i = OAuthIntegration(provider=OAuthProvider.GITHUB, user_id=None, access_token_encrypted="enc:ghp_plattform_123")
+        self.db.add(i)
+        (await self.db.get(Agent, "a1")).config = {"integrations": ["github"]}
+        await self.db.commit()
+        return i
+
+    async def test_anbindung_ueber_den_proxy(self):
+        i = await self._anbindung()
+        g = egress.platzhalter(i.id, egress.ANBINDUNG)
+        r = await api_egress.verbindung(api_egress.Verbindung(**self._anm()), db=self.db)
+        self.assertIn("uploads.github.com", r["hosts"])
+        self.assertEqual(await self._aufloesen("api.github.com", g), {"werte": {g: "ghp_plattform_123"}})
+        self.assertEqual((await self._aufloesen("evil.example.com", g)).status_code, 403)
+        # a2 hat die Anbindung nicht zugewiesen
+        self.assertEqual((await self._aufloesen("api.github.com", g, agent="a2")).status_code, 403)
+        # Die Signatur stimmt, aber als Key-ID gelesen gehoert sie zu nichts
+        self.assertEqual((await self._aufloesen("api.github.com", egress.platzhalter(i.id)) ).status_code, 403)
+
+    async def test_anbindung_einspielen(self):
+        from app.core.agent_manager import AgentManager
+        i = await self._anbindung()
+        mgr = AgentManager.__new__(AgentManager)
+        mgr.db = self.db
+        with patch("app.core.agent_manager.decrypt_token", lambda w: w[4:]):
+            env = await mgr._get_integration_env(["github"])
+            self.assertEqual(env["GITHUB_TOKEN"], egress.platzhalter(i.id, egress.ANBINDUNG))
+            with patch.object(settings, "egress_proxy_enabled", False):
+                self.assertEqual((await mgr._get_integration_env(["github"]))["GITHUB_TOKEN"], "ghp_plattform_123")
+
+    async def test_anbindung_im_sicherheitsstatus(self):
+        from app.core.sicherheitsstatus import _schluessel
+        await self._anbindung()
+        with patch.object(settings, "egress_proxy_enabled", False):
+            (p,) = await _schluessel(self.db)
+        self.assertIn("Git-Anbindung", p["text"])
 
     # --- Schluesselverwaltung --------------------------------------------------------
     async def test_ungueltige_ziele_422(self):

@@ -57,6 +57,9 @@ class ForgejoHostProvider(GitHostProvider):
         #: Fuer Fehlermeldungen: welcher Server hat geantwortet (oder nicht).
         self.anzeigename = self.host
 
+    def egress_ziele(self) -> list[str]:
+        return [self.host.split("/", 1)[0].split(":", 1)[0].lower()]
+
     def get_agent_env(self, token: str) -> dict[str, str]:
         # `tea` und die Forgejo-Werkzeuge der Agenten lesen diese Variablen.
         return {"GITEA_TOKEN": token, "FORGEJO_TOKEN": token,

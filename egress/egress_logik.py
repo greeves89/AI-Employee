@@ -16,7 +16,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-PLATZHALTER_RE = re.compile(r"aie-geheim-\d{1,10}-[0-9a-f]{12}")
+PLATZHALTER_RE = re.compile(r"aie-geheim-g?\d{1,10}-[0-9a-f]{12}")
 MARKE = "aie-geheim-"
 CA_HOST = "aie-egress.internal"
 
