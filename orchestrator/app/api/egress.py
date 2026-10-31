@@ -103,6 +103,14 @@ async def _mcp_zugaenge(db: AsyncSession, agent: Agent) -> list[_Freigabe]:
     return freigaben
 
 
+def _ki_zugang(agent: Agent) -> list[_Freigabe]:
+    """Claude-Zugang, den ``ki_umstellen`` beim Anlegen hinter den Proxy gelegt hat."""
+    return [_Freigabe(egress.KI, egress.KI_VARIABLEN[var], var, egress.KI_ZIELE,
+                      lambda enc=enc: decrypt_token(enc))
+            for var, enc in ((agent.config or {}).get("egress_ki") or {}).items()
+            if var in egress.KI_VARIABLEN]
+
+
 async def _freigaben(db: AsyncSession, body: Verbindung) -> list[_Freigabe]:
     if not hmac.compare_digest(body.agent_token.encode(), make_agent_token(body.agent_id).encode()):
         raise HTTPException(status_code=401, detail="Agent unbekannt")
@@ -114,7 +122,8 @@ async def _freigaben(db: AsyncSession, body: Verbindung) -> list[_Freigabe]:
                        lambda enc=s.value_encrypted: decrypt_token(enc))
              for s in secrets if s.erlaubte_hosts]
             + await _anbindungen(db, agent)
-            + await _mcp_zugaenge(db, agent))
+            + await _mcp_zugaenge(db, agent)
+            + _ki_zugang(agent))
 
 
 @router.post("/verbindung", dependencies=[Depends(_nur_proxy)])

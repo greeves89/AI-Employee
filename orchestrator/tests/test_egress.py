@@ -195,6 +195,30 @@ class UmgebungTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("test-mcp-server", env["NO_PROXY"].split(","))
         self.assertNotIn("mcp.example.com", env["NO_PROXY"], "Externe MCPs bleiben am Proxy")
 
+    def test_ki_stufenschalter(self):
+        with patch.object(settings, "egress_proxy_enabled", True), patch.object(settings, "egress_proxy_token", TOKEN):
+            for wert, a1, a2 in (("", False, False), ("alle", True, True), ("a1", True, False),
+                                 (" A1 , zz ", True, False)):
+                with self.subTest(wert), patch.object(settings, "egress_ki_zugang", wert):
+                    self.assertEqual((egress.ki_ueber_proxy("a1"), egress.ki_ueber_proxy("a2")), (a1, a2))
+        with patch.object(settings, "egress_proxy_enabled", False), patch.object(settings, "egress_ki_zugang", "alle"):
+            self.assertFalse(egress.ki_ueber_proxy("a1"), "ohne Proxy nie")
+
+    def test_ki_umstellen(self):
+        with patch.object(settings, "egress_proxy_enabled", True), patch.object(settings, "egress_proxy_token", TOKEN), \
+                patch.object(settings, "egress_ki_zugang", "a1"), \
+                patch("app.core.encryption.encrypt_token", lambda w: "enc:" + w):
+            env = {"CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat01-echt", "AGENT_ID": "a1"}
+            self.assertEqual(egress.ki_umstellen("a1", env), {"CLAUDE_CODE_OAUTH_TOKEN": "enc:sk-ant-oat01-echt"})
+            self.assertEqual(env["CLAUDE_CODE_OAUTH_TOKEN"], egress.platzhalter(0, egress.KI))
+            # Zweiter Durchlauf (schon Platzhalter) speichert keinen Platzhalter als „Wert“
+            self.assertEqual(egress.ki_umstellen("a1", env), {})
+            # Nicht freigeschalteter Agent und andere Wege bleiben unberuehrt
+            env2 = {"ANTHROPIC_API_KEY": "sk-ant-api-x"}
+            self.assertEqual((egress.ki_umstellen("a2", env2), env2["ANTHROPIC_API_KEY"]), ({}, "sk-ant-api-x"))
+            env3 = {"CLAUDE_CODE_OAUTH_TOKEN": "t", "CLAUDE_CODE_USE_BEDROCK": "1"}
+            self.assertEqual((egress.ki_umstellen("a1", env3), env3["CLAUDE_CODE_OAUTH_TOKEN"]), ({}, "t"))
+
     async def test_ohne_ca_kein_start(self):
         with patch.object(settings, "egress_proxy_enabled", True), \
                 patch.object(settings, "egress_proxy_token", TOKEN), \
@@ -437,6 +461,18 @@ class EgressDatenTests(SecretsTestBasis):
                 env = await mgr._get_custom_mcp_env(agent_id="a1", refresh_oauth=False)
             self.assertEqual(_j.loads(env["CUSTOM_MCP_AUTH"])["Extern"], "mcp_token_123")
 
+    # --- Claude-Zugang -----------------------------------------------------------------
+    async def test_ki_zugang_aufloesen(self):
+        (await self.db.get(Agent, "a1")).config = {"egress_ki": {"CLAUDE_CODE_OAUTH_TOKEN": "enc:sk-ant-oat01-echt"}}
+        await self.db.commit()
+        k = egress.platzhalter(0, egress.KI)
+        r = await api_egress.verbindung(api_egress.Verbindung(**self._anm()), db=self.db)
+        self.assertIn("api.anthropic.com", r["hosts"])
+        self.assertEqual(await self._aufloesen("api.anthropic.com", k), {"werte": {k: "sk-ant-oat01-echt"}})
+        self.assertEqual((await self._aufloesen("evil.example.com", k)).status_code, 403)
+        # Gleicher Platzhalter, anderer Agent ohne hinterlegten Zugang: nichts
+        self.assertEqual((await self._aufloesen("api.anthropic.com", k, agent="a2")).status_code, 403)
+
     # --- Schluesselverwaltung --------------------------------------------------------
     async def test_ungueltige_ziele_422(self):
         from app.api import secrets as api
@@ -533,21 +569,22 @@ class ProxyLogikTests(unittest.TestCase):
         self.assertEqual(f("/x", "application/x-www-form-urlencoded",
                            f"grant_type=client_credentials&client_secret={p}"), {p})
         self.assertEqual(f("/x", "application/json", '{"a": 1}'), set())
+        # Alle anderen Stellen: nicht ersetzt (bleibt Platzhalter) — und keine Ablehnung,
+        # sonst stuende jede Anfrage still, die einen Platzhalter nur zitiert.
         for pfad, art, koerper in (
             (f"/repos/o/r/contents/{p}.txt", "", None),          # Dateiname beim Ziel
-            (f"/x?q={p}", "", None),                             # beliebiger Parameter (z. B. Suche, Kommentar)
+            (f"/x?q={p}", "", None),                             # beliebiger Parameter
             (f"/x?key=Bearer%20{p}", "", None),                  # nicht als ganzer Wert
             ("/gists", "application/json", f'{{"content": "{p}"}}'),
+            ("/v1/messages", "application/json", f'{{"messages": [{{"content": "env: GH={p}"}}]}}'),
             ("/x", "application/x-www-form-urlencoded", f"body={p}"),
-            # JSON, das sich als Formular ausgibt: & teilt es scheinbar in Parameter
-            ("/x", "application/x-www-form-urlencoded", f'{{"body":"a&token={p}&"}}'),
+            ("/x", "application/x-www-form-urlencoded", f'{{"body":"a&token={p}&"}}'),   # JSON als Formular getarnt
             ("/x", ["application/x-www-form-urlencoded", "application/json"], f"token={p}"),
-            ("/x", "application/x-www-form-urlencoded; x=application/json", f"password={p}"),
+            ("/x", "application/x-www-form-urlencoded", f"password={p}"),
             ("/x", "text/plain", p),
         ):
-            with self.subTest(pfad=pfad, koerper=koerper), self.assertRaises(logik.Abgelehnt) as e:
-                f(pfad, art, koerper)
-            self.assertEqual(e.exception.status, 403)
+            with self.subTest(pfad=pfad, koerper=koerper):
+                self.assertEqual(f(pfad, art, koerper), set())
 
     def test_ersetzen_nur_im_geprueften_wert(self):
         p = egress.platzhalter(5)
@@ -593,6 +630,66 @@ class ProxyLogikTests(unittest.TestCase):
         for k in ("br", "zstd", "compress"):
             with self.subTest(k), self.assertRaises(logik.Abgelehnt):
                 logik.entpacken_begrenzt(b"x", k)
+
+    def test_strom_maske(self):
+        p = egress.platzhalter(5)
+        w = "sk-echter-wert-1234567890"
+        b64 = base64.b64encode(w.encode()).decode()
+        text = f"data: anfang {w} mitte {b64} ende {w}\n\n".encode()
+
+        def lauf(teile):
+            m = logik.StromMaske({p: w})
+            return b"".join(m(t) for t in teile) + m(b"")
+
+        def dicht(aus):
+            for variante in logik._varianten(w):
+                self.assertNotIn(variante.encode(), aus)
+
+        for groesse in (1, 3, 7, 16, 1000):
+            with self.subTest(groesse=groesse):
+                aus = lauf([text[i:i + groesse] for i in range(0, len(text), groesse)])
+                dicht(aus)
+                self.assertEqual(aus.count(p.encode()), 3)
+                for teil in (b"data: anfang ", b" mitte ", b" ende ", b"\n\n"):
+                    self.assertIn(teil, aus, "uebriger Text bleibt vollstaendig")
+        # Leere Stuecke mitten im Strom — auch mehrere hintereinander — an jeder Schnittstelle
+        for schnitt in range(1, len(w)):
+            for leer in (1, 2, 5):
+                with self.subTest(schnitt=schnitt, leer=leer):
+                    dicht(lauf([b"vorher ", w[:schnitt].encode()] + [b""] * leer + [f"{w[schnitt:]} danach\n".encode()]))
+        # Zerlegt in Stuecke von 1 bis 3 Zeichen, jeweils mit leeren Rahmen dazwischen
+        for groesse in (1, 2, 3):
+            with self.subTest(zerlegt=groesse):
+                teile = []
+                for i in range(0, len(text), groesse):
+                    teile += [text[i:i + groesse], b"", b""]
+                dicht(lauf(teile))
+        # Gewoehnlicher Strom ohne Wert, mit leeren Stuecken: byte-gleich, nichts doppelt
+        normal = b"data: {\"text\": \"Hallo, das ist eine laengere Antwort ohne Geheimnis.\"}\n\n" * 5
+        for groesse in (1, 5, 17, 64):
+            with self.subTest(normal=groesse):
+                teile = []
+                for i in range(0, len(normal), groesse):
+                    teile += [normal[i:i + groesse], b""]
+                self.assertEqual(lauf(teile), normal)
+        # Ohne Werte: unveraendert durch
+        m = logik.StromMaske({})
+        self.assertEqual(m(b"abc") + m(b""), b"abc")
+
+    def test_git_ausnahme_nur_bei_echtem_git(self):
+        f = logik.ist_git_antwort
+        self.assertTrue(f("/o/r.git/info/refs?service=git-upload-pack", "application/x-git-upload-pack-advertisement"))
+        self.assertTrue(f("/o/r.git/git-upload-pack", "application/x-git-upload-pack-result"))
+        self.assertTrue(f("/o/r.git/git-receive-pack", "application/x-git-receive-pack-result; charset=x"))
+        for pfad, art in (
+            ("/repos/o/r/issues/1/comments", "application/x-git-upload-pack-result"),   # Server waehlt den Typ
+            ("/o/r.git/info/refs?service=evil", "application/x-git-upload-pack-advertisement"),
+            ("/o/r.git/info/refs?service=git-upload-pack", "application/x-git-receive-pack-advertisement"),
+            ("/o/r.git/git-upload-pack", "application/json"),
+            ("/o/r.git/git-upload-pack/x", "application/x-git-upload-pack-result"),
+        ):
+            with self.subTest(pfad=pfad, art=art):
+                self.assertFalse(f(pfad, art))
 
     def test_maske_je_agent(self):
         uhr = [0.0]

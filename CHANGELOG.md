@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.418.0] - 2026-10-31
+
+### Sicherheit
+- **Claude-Zugang hinter dem Egress-Proxy (stufenweise):** Mit `EGRESS_KI_ZUGANG` sehen ausgewählte oder alle Agenten ihr Claude-Token nur noch als Platzhalter.
+- **Gestreamte Antworten** (z. B. von Sprachmodellen) verdeckt der Proxy jetzt im Durchlauf.
+
+### Geändert
+- Ein Platzhalter, der nicht an einer Anmeldestelle steht, wird nicht mehr abgelehnt, sondern unverändert weitergegeben.
+
 ## [1.417.0] - 2026-10-31
 
 ### Sicherheit

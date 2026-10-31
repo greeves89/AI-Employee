@@ -16,7 +16,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-PLATZHALTER_RE = re.compile(r"aie-geheim-[gmh]?\d{1,10}-[0-9a-f]{12}")
+PLATZHALTER_RE = re.compile(r"aie-geheim-[gmhk]?\d{1,10}-[0-9a-f]{12}")
 MARKE = "aie-geheim-"
 CA_HOST = "aie-egress.internal"
 
@@ -128,17 +128,10 @@ ANMELDE_PARAMETER = re.compile(
 FORMULAR = "application/x-www-form-urlencoded"
 
 
-def _parameter_platzhalter(abfrage: str, wo: str) -> set[str]:
-    gefunden: set[str] = set()
-    for name, wert in urllib.parse.parse_qsl(abfrage, keep_blank_values=True):
-        if not platzhalter_in(name, wert):
-            continue
-        if ANMELDE_PARAMETER.match(name) and PLATZHALTER_RE.fullmatch(wert):
-            gefunden.add(wert)
-        else:
-            raise Abgelehnt(403, f"Platzhalter im {wo} nur als ganzer Wert eines Anmelde-Parameters "
-                                 f"(key, token, client_secret …), nicht in „{name[:40]}“")
-    return gefunden
+def _parameter_platzhalter(abfrage: str) -> set[str]:
+    """Platzhalter, die als GANZER Wert eines Anmelde-Parameters stehen."""
+    return {wert for name, wert in urllib.parse.parse_qsl(abfrage, keep_blank_values=True)
+            if ANMELDE_PARAMETER.match(name) and PLATZHALTER_RE.fullmatch(wert)}
 
 
 def ist_formular(inhaltsarten: list[str], koerper: str) -> bool:
@@ -165,24 +158,22 @@ def pfad_ersetzen(pfad: str, werte: dict[str, str]) -> str:
 
 
 def platzhalter_ausserhalb_der_koepfe(pfad: str, inhaltsart, koerper: str | None) -> set[str]:
-    """Platzhalter in Adresse und Koerper — nur an Anmeldestellen, sonst ``Abgelehnt``.
+    """Platzhalter in Adresse und Koerper, die ersetzt werden duerfen: nur als ganzer Wert
+    eines Anmelde-Parameters (Adresse oder eindeutiges Formular).
 
-    In Kopfzeilen darf ein Platzhalter ueberall stehen (dort stehen Keys, und kaum ein
-    Dienst speichert fremde Kopfzeilen). Im Pfad, in einem JSON-Koerper oder in einem
-    beliebigen Parameter dagegen koennte ein Agent den echten Wert beim Ziel
-    ablegen lassen — als Dateiname, Gist-Inhalt, Kommentar — und ihn spaeter lesen.
+    Alle anderen Stellen bleiben, wie sie sind — der Platzhalter geht unveraendert
+    hinaus. Im Pfad, in JSON oder einem beliebigen Parameter koennte ein Agent den
+    echten Wert sonst beim Ziel ablegen lassen (Dateiname, Kommentar) und spaeter lesen.
+    Bis 1.417 wurde dort mit 403 abgelehnt; das legte aber auch Anfragen still, die
+    einen Platzhalter nur zitieren — etwa jeden Aufruf an ein Sprachmodell, sobald er
+    einmal im Gespraechsverlauf stand.
     """
-    ort, _, abfrage = pfad.partition("?")
-    if platzhalter_in(urllib.parse.unquote(ort)):
-        raise Abgelehnt(403, "Platzhalter im Pfad der Adresse werden nicht ersetzt")
-    gefunden = _parameter_platzhalter(abfrage, "Adressteil")
+    _, _, abfrage = pfad.partition("?")
+    gefunden = _parameter_platzhalter(abfrage)
     if koerper and platzhalter_in(koerper):
         arten = [inhaltsart] if isinstance(inhaltsart, str) else list(inhaltsart or [])
         if ist_formular(arten, koerper):
-            gefunden |= _parameter_platzhalter(koerper, "Formular")
-        else:
-            raise Abgelehnt(403, "Platzhalter im Inhalt einer Anfrage werden nicht ersetzt — "
-                                 "nur in Kopfzeilen und Anmelde-Parametern")
+            gefunden |= _parameter_platzhalter(koerper)
     return gefunden
 
 
@@ -268,6 +259,67 @@ def entpacken_begrenzt(daten: bytes, kodierung: str, grenze: int = MAX_ANTWORT) 
             raise Abgelehnt(502, "Antwort zu gross zum Prüfen")
         return ergebnis
     raise Abgelehnt(502, f"Kodierung {k} wird nicht geprüft")
+
+
+_GIT_DIENSTE = ("git-upload-pack", "git-receive-pack")
+
+
+def ist_git_antwort(pfad: str, inhaltsart: str) -> bool:
+    """Echter git-Smart-HTTP-Austausch: die ANFRAGE (vom Agenten) und der Inhaltstyp
+    (vom Server) passen zusammen. Der Inhaltstyp allein genuegt nicht — den waehlt der Server.
+    """
+    ort, _, abfrage = pfad.partition("?")
+    art = (inhaltsart or "").split(";", 1)[0].strip().lower()
+    if ort.endswith("/info/refs"):
+        dienst = dict(urllib.parse.parse_qsl(abfrage)).get("service", "")
+        return dienst in _GIT_DIENSTE and art == f"application/x-{dienst}-advertisement"
+    for dienst in _GIT_DIENSTE:
+        if ort.endswith("/" + dienst):
+            return art == f"application/x-{dienst}-result"
+    return False
+
+
+class StromMaske:
+    """Verdeckt Werte in einer gestreamten Antwort, Stueck fuer Stueck.
+
+    Zurueckgehalten wird genau das, was der ANFANG eines Werts sein koennte: das
+    laengste Endstueck, das mit dem Anfang einer Variante uebereinstimmt. Alles davor
+    geht verdeckt hinaus. Fuer jedes Stueck gilt dieselbe Regel — auch fuer leere.
+
+    Warum keine Sonderbehandlung des leeren Stuecks: mitmproxy ruft am Ende mit ``b""``
+    auf, aber genauso mitten im Strom, wenn ein Server einen leeren HTTP/2-Datenrahmen
+    schickt (mitmproxy 12.2.3, ``_http2.py``). Ein „Ende“ ist von innen nicht sicher
+    erkennbar. So bleibt ein Wert-Anfang zurueck, egal in wie viele Stuecke und Luecken
+    ein Wert zerlegt ist — bis er vollstaendig ist (dann verdeckt) oder abweicht (dann
+    harmlos und ausgegeben).
+
+    Preis: Endet eine Antwort genau mit dem Anfang eines Werts, fehlen diese Zeichen.
+    Ereignisstroeme enden mit einer Leerzeile, JSON mit ``}`` — dort nie.
+    """
+
+    def __init__(self, werte: dict[str, str]):
+        self.werte = werte
+        self.varianten = sorted({v.encode() for w in werte.values() for v in _varianten(w or "")},
+                                key=len, reverse=True)
+        self.rest = b""
+
+    def _moeglicher_anfang(self, daten: bytes) -> int:
+        """Laenge des laengsten Endstuecks von ``daten``, das ein Wert-Anfang sein kann."""
+        laengste = 0
+        for v in self.varianten:
+            for k in range(min(len(v) - 1, len(daten)), laengste, -1):
+                if daten.endswith(v[:k]):
+                    laengste = k
+                    break
+        return laengste
+
+    def __call__(self, stueck: bytes) -> bytes:
+        if not self.varianten:
+            return stueck
+        daten = zurueck_maskieren_bytes(self.rest + stueck, self.werte)
+        k = self._moeglicher_anfang(daten)
+        self.rest = daten[len(daten) - k:] if k else b""
+        return daten[:len(daten) - k]
 
 
 class Maske:

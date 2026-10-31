@@ -14,7 +14,7 @@ from app.config import get_agent_version, settings
 from app.core import autonomy_matrix
 from app.core.agent_duty import vom_nutzer_angehalten
 from app.core.egress import ANBINDUNG, aktiv as egress_aktiv, platzhalter as egress_platzhalter
-from app.core.egress import veraltet as egress_veraltet
+from app.core.egress import ki_umstellen as egress_ki_umstellen, veraltet as egress_veraltet
 from app.core.encryption import decrypt_token
 from app.core.githost.registry import get_git_host_provider
 from app.core.log_redaction import scrub_log
@@ -1775,6 +1775,7 @@ class AgentManager:
         needs_sudo = len(agent_permissions) > 0
         from app.core.egress import agent_umgebung
         env_vars.update(await agent_umgebung(agent_id, env_vars.get("CUSTOM_MCP_SERVERS")))
+        egress_ki = egress_ki_umstellen(agent_id, env_vars)
         geteilt = await self._geteilt(user_id, mode, env_vars)
         await self._abbild_warmlaufen()
         container = self.docker.create_container(
@@ -1881,6 +1882,8 @@ class AgentManager:
                 "agent_version": get_agent_version(),
                 # Mit welchem Ausgang der Behaelter entstand (core/egress.py)
                 "egress": egress_aktiv(),
+                # Claude-Zugang hinter dem Proxy (verschluesselt), core/egress.ki_umstellen
+                "egress_ki": egress_ki,
                 "metrics": {"total": 0, "success": 0, "fail": 0, "success_rate": 0.0},
                 **({"buero": buero_platz} if buero_platz else {}),
             },
@@ -2125,6 +2128,7 @@ class AgentManager:
         # Weg nach draussen ganz zuletzt — kein Key darf ihn umbiegen (core/egress.py).
         from app.core.egress import agent_umgebung
         env_vars.update(await agent_umgebung(agent_id, env_vars.get("CUSTOM_MCP_SERVERS")))
+        egress_ki = egress_ki_umstellen(agent_id, env_vars)
 
         # 3. Create new container with same volumes + any assigned bind mounts
         agent_permissions = autonomy_matrix.effective_permissions(
@@ -2217,6 +2221,7 @@ class AgentManager:
         # "Aktualisieren", das Abzeichen ginge nie wieder weg.
         config["agent_version"] = get_agent_version()
         config["egress"] = egress_aktiv()
+        config["egress_ki"] = egress_ki
         agent.config = config
         flag_modified(agent, "config")
         await self.db.commit()
@@ -2521,6 +2526,7 @@ class AgentManager:
         # Weg nach draussen ganz zuletzt — kein Key darf ihn umbiegen (core/egress.py).
         from app.core.egress import agent_umgebung
         env_vars.update(await agent_umgebung(agent_id, env_vars.get("CUSTOM_MCP_SERVERS")))
+        egress_ki = egress_ki_umstellen(agent_id, env_vars)
 
         # 3. Create new container with same volumes + any assigned bind mounts
         agent_permissions = autonomy_matrix.effective_permissions(
@@ -2608,6 +2614,7 @@ class AgentManager:
         agent.state = AgentState.RUNNING
         config["agent_version"] = get_agent_version()
         config["egress"] = egress_aktiv()
+        config["egress_ki"] = egress_ki
         agent.config = self._clear_stale_stop_reason(config)
         flag_modified(agent, "config")
         await self.db.commit()

@@ -4452,6 +4452,7 @@ eingeschaltet, gehen Agenten für HTTPS über ihn hinaus:
 | Token der Git-Anbindung (GitHub/Forgejo, Admin → Integrationen) | ebenso: Platzhalter, eingesetzt nur am Git-Host der Anbindung *(seit 1.414.0)* |
 | Browser des Agenten (auch der Browser von Claude Code) | geht ebenfalls über den Proxy und traut seinem Zertifikat *(seit 1.415.0)* |
 | Zugang zu externen MCP-Servern (Token und eigene Kopfzeilen, Kap. 14) | ebenso: Platzhalter, eingesetzt nur am Host des Servers; ein erneuertes OAuth-Token gilt sofort *(seit 1.417.0)* |
+| Claude-Zugang (Abo-Token oder API-Schlüssel, Anthropic direkt) | Platzhalter, eingesetzt nur an `api.anthropic.com` — stufenweise über `EGRESS_KI_ZUGANG` *(seit 1.418.0)* |
 | Alle anderen HTTPS-Ziele | laufen unverändert als Tunnel durch, der Proxy sieht keine Inhalte |
 | Klartext-HTTP (z. B. eigene Apps des Agenten) | geht wie bisher direkt |
 | Adressen im Firmen- oder Docker-Netz | über den Proxy gesperrt |
@@ -4473,14 +4474,22 @@ privaten Schlüssel.
 4. Unter **Admin → Betrieb → Sicherheitsstatus** zeigt der Punkt **Keys in Agenten**, welche
    Keys noch im Klartext in Agenten liegen.
 
+**Claude-Zugang hinter den Proxy legen** (stufenweise): In der `.env`
+`EGRESS_KI_ZUGANG` setzen, zuerst auf die Kennung eines Agenten (z. B. `a1b2c3d4`),
+später auf mehrere mit Komma oder auf `alle`. `docker compose up -d`, dann den bzw. die
+Agenten aktualisieren. Danach geht der ganze Claude-Verkehr dieser Agenten entschlüsselt
+durch den Proxy; Antworten als Ereignisstrom reicht er sofort durch. Für Bedrock, Vertex,
+Foundry und Codex gilt das nicht.
+
 **Ausschalten:** `EGRESS_PROXY_ENABLED=false`, `docker compose up -d`, dann wieder
 **Alle aktualisieren**. Die Agenten bekommen die Keys danach im Klartext.
 
 Ersetzt wird nur, wo Keys hingehören: in Kopfzeilen (etwa `Authorization`, auch bei git)
 und als ganzer Wert eines Anmelde-Parameters in der Adresse oder einem Formular (`key`,
 `token`, `client_secret` …). Steht ein Platzhalter im Pfad, in einem JSON-Inhalt oder in
-einem anderen Parameter, lehnt der Proxy die Anfrage ab. Sonst könnte ein Agent den echten
-Wert beim Ziel ablegen lassen, etwa als Dateiname, und ihn danach lesen.
+einem anderen Parameter, bleibt er dort Platzhalter: Sonst könnte ein Agent den echten Wert
+beim Ziel ablegen lassen, etwa als Dateiname, und ihn danach lesen *(bis 1.417 wurde solch
+eine Anfrage abgelehnt)*.
 
 > Startet der Orchestrator neu (etwa beim Update), arbeiten Agenten mit bereits geprüften
 > Keys bis zu 10 Minuten weiter. Einen Agenten, der in dieser Zeit neu dazukommt, lässt der

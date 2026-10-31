@@ -36,9 +36,11 @@ logger = logging.getLogger(__name__)
 
 #: Arten: ``aie-geheim-<id>-…`` = Key aus der Schluesselverwaltung, ``g`` = Token
 #: einer Git-Anbindung der Plattform, ``m`` = Bearer-Token eines MCP-Servers,
-#: ``h`` = eigene Kopfzeile eines MCP-Servers (id = Server-ID * KOPF_FAKTOR + Nummer).
-PLATZHALTER_RE = re.compile(r"aie-geheim-([gmh]?)(\d{1,10})-([0-9a-f]{12})")
+#: ``h`` = eigene Kopfzeile eines MCP-Servers (id = Server-ID * KOPF_FAKTOR + Nummer),
+#: ``k`` = Claude-Zugang des Agenten (id = Nummer der Variable in ``KI_VARIABLEN``).
+PLATZHALTER_RE = re.compile(r"aie-geheim-([gmhk]?)(\d{1,10})-([0-9a-f]{12})")
 ANBINDUNG = "g"
+KI = "k"
 MCP = "m"
 MCP_KOPF = "h"
 KOPF_FAKTOR = 1000
@@ -185,6 +187,41 @@ def mcp_ziel(url: str) -> str | None:
     except ValueError:
         return None
     return host
+
+
+#: Claude-Zugang: welche Variable welche Nummer traegt, und wohin er darf.
+KI_VARIABLEN = {"CLAUDE_CODE_OAUTH_TOKEN": 0, "ANTHROPIC_API_KEY": 1}
+KI_ZIELE = ["api.anthropic.com"]
+_KI_ANDERER_WEG = ("CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY",
+                   "ANTHROPIC_BASE_URL")
+
+
+def ki_ueber_proxy(agent_id: str) -> bool:
+    """Geht der Claude-Zugang dieses Agenten ueber den Proxy? (``EGRESS_KI_ZUGANG``)"""
+    wert = (settings.egress_ki_zugang or "").strip().lower()
+    if not aktiv() or not wert:
+        return False
+    return wert == "alle" or (agent_id or "").lower() in {x.strip() for x in wert.split(",") if x.strip()}
+
+
+def ki_umstellen(agent_id: str, env: dict[str, str]) -> dict[str, str]:
+    """Claude-Zugang in ``env`` durch Platzhalter ersetzen.
+
+    Liefert den Zugang verschluesselt fuer ``agent.config["egress_ki"]`` — dort liest
+    ihn die Aufloesung (api/egress.py) wieder, genau den Wert, den der Agent sonst
+    bekommen haette, egal aus welcher Quelle (Anlage, KI-Konto, eigener Zugang).
+    Nur Anthropic direkt: Bedrock, Vertex, Foundry und eigene Adressen bleiben, wie sie sind.
+    """
+    if not ki_ueber_proxy(agent_id) or any(env.get(k) for k in _KI_ANDERER_WEG):
+        return {}
+    from app.core.encryption import encrypt_token
+    gespeichert: dict[str, str] = {}
+    for variable, nummer in KI_VARIABLEN.items():
+        wert = env.get(variable)
+        if wert and not PLATZHALTER_RE.fullmatch(wert):
+            gespeichert[variable] = encrypt_token(wert)
+            env[variable] = platzhalter(nummer, KI)
+    return gespeichert
 
 
 def interne_hosts(mcp_server_json: str | None) -> list[str]:

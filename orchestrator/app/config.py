@@ -293,6 +293,10 @@ class Settings(BaseSettings):
     egress_proxy_enabled: bool = False
     egress_proxy_token: str = ""
     egress_proxy_url: str = "http://ai-employee-egress-proxy:8080"
+    # Claude-Zugang (CLAUDE_CODE_OAUTH_TOKEN/ANTHROPIC_API_KEY) nur als Platzhalter:
+    # leer = aus, "alle", oder Agenten-IDs mit Komma. Stufenweise einschalten — danach
+    # geht der ganze Claude-Verkehr dieser Agenten entschluesselt durch den Proxy.
+    egress_ki_zugang: str = ""
     # When True, each agent container connects to Redis with its OWN least-privilege
     # ACL user (derived deterministically from api_secret_key, see redis_service.py
     # ensure_agent_acl_user) instead of the single shared admin credential every

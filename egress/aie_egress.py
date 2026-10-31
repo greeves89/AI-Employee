@@ -114,12 +114,8 @@ class AieEgress:
         roh = flow.request.raw_content
         if roh and len(roh) <= logik.MAX_KOERPER and kodierung in ("", "identity"):
             text = flow.request.get_text(strict=False)
-        try:
-            gefunden |= logik.platzhalter_ausserhalb_der_koepfe(
-                flow.request.path, flow.request.headers.get_all("content-type"), text)
-        except logik.Abgelehnt as e:
-            flow.response = _antwort(e.status, e.text)
-            return
+        gefunden |= logik.platzhalter_ausserhalb_der_koepfe(
+            flow.request.path, flow.request.headers.get_all("content-type"), text)
         if not gefunden:
             return
         ziel, port = self.ziele.get(cid, ("", 0))
@@ -150,7 +146,9 @@ class AieEgress:
             for k, v in flow.request.headers.fields
         )
         flow.request.path = logik.pfad_ersetzen(flow.request.path, werte)
-        if text is not None and logik.platzhalter_in(text):
+        # Nur ein eindeutiges Formular wird neu kodiert — JSON & Co. bleiben byte-gleich.
+        if (text is not None and logik.platzhalter_in(text)
+                and logik.ist_formular(flow.request.headers.get_all("content-type"), text)):
             flow.request.set_text(logik.parameter_ersetzen(text, werte))
         flow.metadata["aie_werte"] = werte
         self.maske.merken(agent[0], werte)
@@ -190,23 +188,45 @@ class AieEgress:
         return werte
 
     def responseheaders(self, flow: http.HTTPFlow):
-        # Gibt es fuer diesen Agenten etwas zu verdecken, die Antwort ganz puffern —
-        # gestreamt liefe sie ungeprueft durch. Ausnahme: git-Pakete (gross und
-        # gepackt; in ein Repo gelangt ein Wert ueber den Proxy nicht, Koerper mit
-        # Platzhalter werden abgelehnt). Zu grosse Antworten: Abbruch statt Durchlass.
-        if flow.response is None or not self._maske(flow):
+        """Gibt es fuer diesen Agenten etwas zu verdecken, kommt keine Antwort ungeprueft durch.
+
+        * Kopfzeilen: sofort hier — gestreamt waeren sie sonst schon unterwegs.
+        * Ohne feste Laenge (Ereignisstroeme der Sprachmodelle, chunked):
+          verdecken im Durchlauf (``StromMaske``), ohne zu puffern. git-Pakete nicht.
+        * Mit fester Laenge oder komprimiert: ganz puffern und in ``response``
+          verdecken (eine geaenderte Laenge passte nicht mehr zur Content-Length);
+          zu gross → Abbruch statt Durchlass.
+        """
+        if flow.response is None:
             return
         art = (flow.response.headers.get("content-type") or "").lower()
-        if art.startswith("application/x-git-"):
+        werte = self._maske(flow)
+        if not werte:
+            if art.startswith("text/event-stream"):
+                flow.response.stream = True     # sofort durchreichen, nicht sammeln
             return
-        try:
-            laenge = int(flow.response.headers.get("content-length") or 0)
-        except ValueError:
-            laenge = 0
-        if laenge > logik.MAX_ANTWORT:
-            flow.kill()
+        flow.response.headers.fields = tuple(
+            (k, logik.zurueck_maskieren(v.decode("latin-1"), werte).encode("latin-1"))
+            for k, v in flow.response.headers.fields
+        )
+        # git-Pakete: binaer, mit Pruefsumme am Ende — ein zurueckgehaltener Wert-Anfang
+        # dort verstuemmelte das Paket. Ein Wert gelangt ueber den Proxy nie in ein
+        # Repository (Platzhalter in Inhalten werden nie ersetzt); gestreamt wie bisher.
+        if logik.ist_git_antwort(flow.request.path, art):
             return
-        flow.response.stream = False
+        kodierung = (flow.response.headers.get("content-encoding") or "identity").strip().lower()
+        laenge = flow.response.headers.get("content-length")
+        if kodierung not in ("", "identity") or laenge is not None:
+            try:
+                zu_gross = int(laenge or 0) > logik.MAX_ANTWORT
+            except ValueError:
+                zu_gross = True
+            if zu_gross:
+                flow.kill()
+                return
+            flow.response.stream = False
+            return
+        flow.response.stream = logik.StromMaske(werte)
 
     def response(self, flow: http.HTTPFlow):
         if flow.response is None:

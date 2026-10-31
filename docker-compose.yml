@@ -142,6 +142,8 @@ services:
       # setup.sh/update.sh an; eingeschaltet wird mit EGRESS_PROXY_ENABLED=true.
       EGRESS_PROXY_ENABLED: ${EGRESS_PROXY_ENABLED:-false}
       EGRESS_PROXY_TOKEN: ${EGRESS_PROXY_TOKEN:-}
+      # Claude-Zugang nur als Platzhalter: leer = aus, "alle" oder Agenten-IDs mit Komma.
+      EGRESS_KI_ZUGANG: ${EGRESS_KI_ZUGANG:-}
       # Eigener, minimal berechtigter Redis-Zugang je Agent statt des geteilten
       # Admin-Zugangs (#589). Standard aus — aendert, wie JEDER Agent sich
       # verbindet.
