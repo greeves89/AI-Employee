@@ -3833,6 +3833,10 @@ aufgelöste Fassung, also auch Werte, die erst aus einer `.env`-Datei kommen.
 | Ports — sie werden nur intern gebunden, geöffnet wird die App über **Öffnen** | `privileged`, zusätzliche Rechte (`cap_add`), Geräte (`devices`) |
 | Umgebungsvariablen, Build, Healthcheck, Neustart-Regeln | Netz, Prozesse oder Namensräume des Servers (`network_mode: host`, `pid: host`) |
 
+Jede App läuft in einem eigenen, abgeschotteten Netz ihres Agenten. Sie erreicht weder die
+Datenbank der Plattform noch die Agenten anderer Nutzer. Erreichbar ist sie für ihren Agenten
+und für dich über **Öffnen**.
+
 Ein paar Angaben passt die Plattform still an, damit die App trotzdem läuft: Feste
 Host-Ports werden zu freien Ports, Container- und Netznamen bekommen das Kürzel des
 Agenten vorangestellt. Unter dem alten Namen bleiben die Container innerhalb der App
