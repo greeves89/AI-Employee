@@ -4477,7 +4477,7 @@ privaten Schlüssel.
 **Claude-Zugang hinter den Proxy legen** (stufenweise): In der `.env`
 `EGRESS_KI_ZUGANG` setzen, zuerst auf die Kennung eines Agenten (z. B. `a1b2c3d4`),
 später auf mehrere mit Komma oder auf `alle`. `docker compose up -d`, dann den bzw. die
-Agenten aktualisieren. Danach geht der ganze Claude-Verkehr dieser Agenten entschlüsselt
+Agenten aktualisieren — betroffene Agenten zeigen dafür „Aktualisieren“ an *(seit 1.420.0)*. Danach geht der ganze Claude-Verkehr dieser Agenten entschlüsselt
 durch den Proxy; Antworten als Ereignisstrom reicht er sofort durch. Für Bedrock, Vertex,
 Foundry und Codex gilt das nicht.
 

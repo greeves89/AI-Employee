@@ -14,7 +14,7 @@ from app.config import get_agent_version, settings
 from app.core import autonomy_matrix
 from app.core.agent_duty import vom_nutzer_angehalten
 from app.core.egress import ANBINDUNG, aktiv as egress_aktiv, platzhalter as egress_platzhalter
-from app.core.egress import ki_umstellen as egress_ki_umstellen, veraltet as egress_veraltet
+from app.core.egress import ki_ueber_proxy as egress_ki_stufe, ki_umstellen as egress_ki_umstellen, veraltet as egress_veraltet
 from app.core.encryption import decrypt_token
 from app.core.githost.registry import get_git_host_provider
 from app.core.log_redaction import scrub_log
@@ -1884,6 +1884,7 @@ class AgentManager:
                 "egress": egress_aktiv(),
                 # Claude-Zugang hinter dem Proxy (verschluesselt), core/egress.ki_umstellen
                 "egress_ki": egress_ki,
+                "egress_ki_stufe": egress_ki_stufe(agent_id),
                 "metrics": {"total": 0, "success": 0, "fail": 0, "success_rate": 0.0},
                 **({"buero": buero_platz} if buero_platz else {}),
             },
@@ -2222,6 +2223,7 @@ class AgentManager:
         config["agent_version"] = get_agent_version()
         config["egress"] = egress_aktiv()
         config["egress_ki"] = egress_ki
+        config["egress_ki_stufe"] = egress_ki_stufe(agent_id)
         agent.config = config
         flag_modified(agent, "config")
         await self.db.commit()
@@ -2615,6 +2617,7 @@ class AgentManager:
         config["agent_version"] = get_agent_version()
         config["egress"] = egress_aktiv()
         config["egress_ki"] = egress_ki
+        config["egress_ki_stufe"] = egress_ki_stufe(agent_id)
         agent.config = self._clear_stale_stop_reason(config)
         flag_modified(agent, "config")
         await self.db.commit()
@@ -2822,7 +2825,7 @@ class AgentManager:
         # Check if agent version is outdated
         update_available = False
         stored_version = config.get("agent_version")
-        if stored_version != get_agent_version() or egress_veraltet(config):
+        if stored_version != get_agent_version() or egress_veraltet(config, agent_id):
             update_available = True
 
         # Check if the running container is on a stale agent image (issue #433):
