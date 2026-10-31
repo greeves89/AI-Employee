@@ -882,6 +882,13 @@ _HOP_BY_HOP = {
 # Carries a public-link token across the app's sub-requests. Path-scoped to the one
 # app it was issued for, HttpOnly, and never forwarded upstream (see `_strip` below)
 # — the agent-authored app must not be able to read or replay it.
+#: Header aus der Antwort einer App, die der Proxy weiterreicht.
+_APP_ANTWORT_HEADER = frozenset({
+    "content-type", "content-language", "content-disposition", "content-range",
+    "accept-ranges", "cache-control", "expires", "last-modified", "etag", "vary",
+    "location", "retry-after", "date",
+})
+
 _SHARE_COOKIE = "ai_app_share"
 _SHARE_COOKIE_MAX_AGE = 12 * 3600
 
@@ -1051,9 +1058,13 @@ async def proxy_app(
     except httpx.RequestError as e:
         raise HTTPException(status_code=502, detail=f"App nicht erreichbar: {type(e).__name__}")
 
+    # Nur harmlose Header der App kommen durch (Positivliste). Sonst setzte Agenten-
+    # Code auf der Origin der Plattform Cookies (bis zum Sitzungscookie), lockerte
+    # Rahmen- und Geraeterechte oder erlaubte per CORS fremden Seiten, die App mit
+    # der Anmeldung des Betrachters mitzulesen.
     resp_headers = {
         k: v for k, v in upstream.headers.items()
-        if k.lower() not in _HOP_BY_HOP and k.lower() != "content-security-policy"
+        if k.lower() in _APP_ANTWORT_HEADER
     }
     # The app is agent-authored code served from the PLATFORM origin. Without this it
     # would run same-origin and could call the platform API with the owner's ambient
