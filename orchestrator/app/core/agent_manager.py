@@ -1761,7 +1761,7 @@ class AgentManager:
         )
         needs_sudo = len(agent_permissions) > 0
         from app.core.egress import agent_umgebung
-        env_vars.update(await agent_umgebung(agent_id))
+        env_vars.update(await agent_umgebung(agent_id, env_vars.get("CUSTOM_MCP_SERVERS")))
         geteilt = await self._geteilt(user_id, mode, env_vars)
         await self._abbild_warmlaufen()
         container = self.docker.create_container(
@@ -2111,7 +2111,7 @@ class AgentManager:
         env_vars.update(_browser_geheimnisse(agent.id))
         # Weg nach draussen ganz zuletzt — kein Key darf ihn umbiegen (core/egress.py).
         from app.core.egress import agent_umgebung
-        env_vars.update(await agent_umgebung(agent_id))
+        env_vars.update(await agent_umgebung(agent_id, env_vars.get("CUSTOM_MCP_SERVERS")))
 
         # 3. Create new container with same volumes + any assigned bind mounts
         agent_permissions = autonomy_matrix.effective_permissions(
@@ -2507,7 +2507,7 @@ class AgentManager:
         env_vars.update(_browser_geheimnisse(agent.id))
         # Weg nach draussen ganz zuletzt — kein Key darf ihn umbiegen (core/egress.py).
         from app.core.egress import agent_umgebung
-        env_vars.update(await agent_umgebung(agent_id))
+        env_vars.update(await agent_umgebung(agent_id, env_vars.get("CUSTOM_MCP_SERVERS")))
 
         # 3. Create new container with same volumes + any assigned bind mounts
         agent_permissions = autonomy_matrix.effective_permissions(
