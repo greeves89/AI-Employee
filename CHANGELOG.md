@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.420.0] - 2026-10-31
+
+### Behoben
+- Agenten zeigen „Aktualisieren“, wenn sich die Einstellung `EGRESS_KI_ZUGANG` für sie ändert; vorher blieb der Claude-Zugang bis zu einem Neuaufbau von Hand im Klartext.
+- Das Update nimmt aktive Compose-Profile mit: Tunnel (cloudflared) und autoheal liefen bisher nach jedem Update mit dem alten Abbild weiter.
+
+### Geändert
+- Dependabot schlägt neue Versionen erst nach 14 Tagen vor, bündelt die Fremd-Abbilder und schlägt für das Python-Basisabbild nur noch Patches vor.
+
+## Tests
+- `test_egress.py::AktualisierenHinweisTests::test_ki_stufe_geaendert`
+- `test_update_startet_neue_fassung.py::ProfileWerdenMitgenommen` (Profil aktiv, Profil aus der `.env` bleibt erhalten, ohne Container kein Profil)
+- Profilerkennung gegen die echte Compose-Datei einer Anlage: erkennt `tunnel`.
+- Live: `EGRESS_KI_ZUGANG=alle` — drei Claude-Agenten sehen nur `aie-geheim-k0-…` und antworten; keine Proxy-Fehler, keine Verweigerungen.
+
 ## [1.419.0] - 2026-10-31
 
 ### Sicherheit
