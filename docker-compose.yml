@@ -1,6 +1,11 @@
 services:
+  # Fremd-Abbilder sind per Digest festgelegt (Mehrplattform-Liste, amd64 + arm64):
+  # Ein Tag wie :latest kann der Herausgeber — oder wer sein Konto uebernimmt —
+  # jederzeit umhaengen. docker-socket-proxy und autoheal haben Zugriff auf den
+  # Docker-Socket, also auf den ganzen Host. Neue Digests schlaegt Dependabot vor
+  # (.github/dependabot.yml, docker-compose).
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg16@sha256:ad2e18408bf447f62092a8a5259e7df10505c5a0360bd1a1853ac8b8b0763da2
     container_name: ai-employee-postgres
     environment:
       POSTGRES_DB: ai_employee
@@ -30,7 +35,7 @@ services:
       - internal
 
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
     container_name: ai-employee-redis
     # No host port binding - only accessible via internal network
     volumes:
@@ -53,7 +58,7 @@ services:
   # Docker Socket Proxy — restricts Docker API surface for orchestrator.
   # Only allows container management operations; blocks privileged escalation.
   docker-socket-proxy:
-    image: tecnativa/docker-socket-proxy:latest
+    image: tecnativa/docker-socket-proxy:latest@sha256:1f3a6f303320723d199d2316a3e82b2e2685d86c275d5e3deeaf182573b47476
     container_name: ai-employee-docker-proxy
     environment:
       # Allow container management (required for agent lifecycle)
@@ -396,7 +401,7 @@ services:
 
   # Reverse proxy - routes /api and /ws to orchestrator, everything else to frontend
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
     container_name: ai-employee-caddy
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
@@ -418,7 +423,7 @@ services:
   # Cloudflare Tunnel - exposes the app via HTTPS without opening ports
   # Set CLOUDFLARE_TUNNEL_TOKEN in .env to enable
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared:latest@sha256:6b599ca3e974349ead3286d178da61d291961182ec3fe9c505e1dd02c8ac31b0
     container_name: ai-employee-cloudflared
     command: tunnel --protocol http2 --edge-ip-version auto --retries 10 --grace-period 60s run
     environment:
@@ -450,7 +455,7 @@ services:
 
   # Auto-restart unhealthy containers (only those with autoheal label)
   autoheal:
-    image: willfarrell/autoheal:latest
+    image: willfarrell/autoheal:latest@sha256:65dc93e768bd312be60c36ab58c59cf92dec0c2e556ea2f3fc6faee06e84815f
     container_name: ai-employee-autoheal
     environment:
       AUTOHEAL_CONTAINER_LABEL: autoheal

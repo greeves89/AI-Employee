@@ -50,7 +50,8 @@ class NeueFassungLaeuft(unittest.TestCase):
             (bin_ / name).write_text(_ATTRAPPE)
             (bin_ / name).chmod(0o755)
         self.log = self.tmp / "log"
-        self.env = {**os.environ, "PATH": f"{bin_}:{os.environ['PATH']}", "ATTRAPPE_LOG": str(self.log)}
+        self.env = {**os.environ, "PATH": f"{bin_}:{os.environ['PATH']}", "ATTRAPPE_LOG": str(self.log),
+                    "AI_EMPLOYEE_STATUS_DIR": str(self.tmp / "status")}
         for k in ("UPDATE_NEU_GESTARTET", "UPDATE_VORHER_COMMIT", "UPDATE_OHNE_SICHERUNG"):
             self.env.pop(k, None)
 

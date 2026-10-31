@@ -57,7 +57,10 @@ class AbbilderBereitstellen(unittest.TestCase):
         (bin_ / "cosign").chmod(0o755)
         self.bin = bin_
         self.log = self.tmp / "docker.log"
-        self.env = {**os.environ, "PATH": f"{bin_}:{os.environ['PATH']}", "ATTRAPPE_LOG": str(self.log)}
+        # Ergebnis der Signaturpruefung nie in das echte ~/.ai-employee schreiben.
+        self.status = self.tmp / "status"
+        self.env = {**os.environ, "PATH": f"{bin_}:{os.environ['PATH']}", "ATTRAPPE_LOG": str(self.log),
+                    "AI_EMPLOYEE_STATUS_DIR": str(self.status)}
         for name in ("AI_EMPLOYEE_REGISTRY", "AI_EMPLOYEE_SIGNATUR_PRUEFEN", "AI_EMPLOYEE_SIGNATUR_IDENTITAET"):
             self.env.pop(name, None)
 
@@ -168,6 +171,22 @@ class AbbildSignaturen(AbbilderBereitstellen):
             with self.subTest(dienst=dienst):
                 self.assertIn(f"-a dienst={dienst} ", aufruf + " ")
                 self.assertIn(f"/ai-employee-{dienst}@", aufruf)
+
+    def _vermerk(self):
+        datei = self.status / "signaturpruefung"
+        return datei.read_text().split()[:2] if datei.exists() else None
+
+    def test_ergebnis_fuer_den_sicherheitsstatus(self):
+        """scripts/lib/abbilder.sh → ~/.ai-employee/signaturpruefung → Admin → Betrieb."""
+        self.assertEqual(self._lauf().returncode, 0)
+        self.assertEqual(self._vermerk(), ["geprueft", "1.400.2"])
+        self._lauf(COSIGN_GEHT="0")
+        self.assertEqual(self._vermerk(), ["ungueltig", "1.400.2"])
+        self._lauf(AI_EMPLOYEE_SIGNATUR_PRUEFEN="0")
+        self.assertEqual(self._vermerk(), ["aus", "1.400.2"])
+        (self.bin / "cosign").unlink()
+        self._lauf()
+        self.assertEqual(self._vermerk(), ["cosign_fehlt", "1.400.2"])
 
     def test_ungueltige_signatur_wird_dauerhaft_vermerkt(self):
         """Der Orchestrator holt das Agenten-Abbild selbst nach, wenn es lokal
