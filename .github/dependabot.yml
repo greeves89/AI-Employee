@@ -30,6 +30,13 @@ updates:
     labels: ["dependencies", "docker"]
 
   # Python dependencies
+  # Fremd-Abbilder in docker-compose.yml sind per Digest festgelegt — ohne diese
+  # Zeile kaemen ihre Sicherheitsupdates nie an.
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
   - package-ecosystem: "pip"
     directory: "/orchestrator"
     schedule:

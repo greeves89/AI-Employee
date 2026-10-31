@@ -4311,6 +4311,24 @@ entfernt es Build-Cache, der älter als drei Tage ist. Daten (Volumes) fasst es 
 blieben alle Versionen liegen; bei häufigen Updates waren das schnell über 100 GB. Abschalten
 lässt es sich mit `AI_EMPLOYEE_ABBILDER_AUFRAEUMEN=0` in der `.env`.
 
+**Signaturen der Abbilder prüfen (cosign)** *(empfohlen)*. Jedes Abbild der Registry ist beim
+Bau signiert. `update.sh` prüft die Signatur, bevor es ein Abbild benutzt; ist sie ungültig,
+baut es lokal. Dafür muss `cosign` auf dem Server installiert sein, sonst bleibt es beim Hinweis
+im Protokoll. Installation auf einem Linux-Server (arm64; für x86 `cosign-linux-amd64`):
+
+```bash
+V=v3.1.3
+curl -fsSLO "https://github.com/sigstore/cosign/releases/download/$V/cosign-linux-arm64"
+curl -fsSLO "https://github.com/sigstore/cosign/releases/download/$V/cosign_checksums.txt"
+grep " cosign-linux-arm64$" cosign_checksums.txt | sha256sum -c -   # muss „OK“ melden
+sudo install -m 0755 cosign-linux-arm64 /usr/local/bin/cosign
+```
+
+Das Ergebnis der letzten Prüfung zeigt **Admin → Betrieb → Sicherheitsstatus** unter
+**Signaturen der Abbilder** *(seit 1.419.0)*. Fremde Abbilder (Postgres, Redis, Caddy,
+Cloudflared, Docker-Proxy, Autoheal, Egress-Proxy) sind in der `docker-compose.yml` per
+Digest festgelegt; neue Fassungen kommen als Vorschlag über Dependabot.
+
 **Rücksprung** auf den Stand vor dem Update: `git checkout <commit von vorher>`, dann
 `bash -c '. scripts/lib/abbilder.sh && abbilder_bereitstellen 0' && docker compose up -d`
 (holt die Abbilder dieser älteren Version), dann die Sicherung von vorhin mit
