@@ -3819,6 +3819,43 @@ kennt, kommt an die App, auch von außerhalb eures Netzes. Deshalb:
 4. Der Kollege sieht die App ab sofort in seiner eigenen **Apps**-Übersicht und klickt
    dort auf **Öffnen** — ganz ohne Link-Verschicken.
 
+### 32.8 Was eine App darf — die Prüfung vor dem Start
+
+Den Bauplan einer App (die Datei `docker-compose.yml`) schreibt der Agent selbst. Damit
+ein fehlgeleiteter Agent darüber nicht den ganzen Server übernehmen kann, prüft die
+Plattform den Bauplan **vor jedem Start und Neubau**. Geprüft wird die fertig
+aufgelöste Fassung, also auch Werte, die erst aus einer `.env`-Datei kommen.
+
+| Erlaubt | Gesperrt |
+|---|---|
+| Ordner im Projekt, z. B. `./data:/data` — sie liegen im Arbeitsbereich des Agenten | Ordner des Servers, z. B. `/`, `/etc`, `/var/run/docker.sock` |
+| Benannte Volumes der App | Volumes anderer Apps, Agenten oder der Plattform |
+| Ports — sie werden nur intern gebunden, geöffnet wird die App über **Öffnen** | `privileged`, zusätzliche Rechte (`cap_add`), Geräte (`devices`) |
+| Umgebungsvariablen, Build, Healthcheck, Neustart-Regeln | Netz, Prozesse oder Namensräume des Servers (`network_mode: host`, `pid: host`) |
+
+Jede App läuft in einem eigenen, abgeschotteten Netz ihres Agenten. Sie erreicht weder die
+Datenbank der Plattform noch die Agenten anderer Nutzer. Erreichbar ist sie für ihren Agenten
+und für dich über **Öffnen**.
+
+Ein paar Angaben passt die Plattform still an, damit die App trotzdem läuft: Feste
+Host-Ports werden zu freien Ports, Container- und Netznamen bekommen das Kürzel des
+Agenten vorangestellt. Unter dem alten Namen bleiben die Container innerhalb der App
+erreichbar.
+
+**Wenn eine App deshalb nicht startet:**
+
+1. Unter **Apps** auf **Starten** oder **Neu bauen** klicken. Statt zu starten,
+   erscheint unter der Karte ein roter Kasten **„App konnte nicht gestartet werden“**.
+   Darin steht jede gesperrte Stelle einzeln, etwa *Dienst „web“: „privileged“ ist
+   gesperrt*.
+2. Den Agenten im Chat bitten, genau diese Stellen aus der `docker-compose.yml` zu
+   entfernen. Er bekommt dieselbe Liste und kennt die Regeln.
+3. Danach erneut **Neu bauen** klicken.
+
+Jede Ablehnung steht außerdem im **Audit-Log** (Kap. 18) als **„App-Start blockiert“**,
+mit dem Agenten und der Liste der gesperrten Stellen. Administratoren sehen dort, ob ein
+Agent versucht hat, sich mehr Rechte zu verschaffen.
+
 ---
 
 ## 33. Activity — Tageskalender aller Agenten
