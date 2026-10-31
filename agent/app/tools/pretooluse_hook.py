@@ -131,23 +131,27 @@ _MCP_BARE_PREFIX_CATEGORY: dict[str, str] = {
 _LESEN = "file_read"
 _M365 = "custom"
 _MCP_BARE_CATEGORY: dict[str, str] = {
-    # email-server
+    # Gmail (Server-Weg /mcp/email)
     "email_list": _LESEN, "email_read": _LESEN, "email_search": _LESEN,
     "email_send": _M365, "email_reply": _M365, "email_mark_read": _M365,
-    # msgraph-server
-    "list_calendar_events": _LESEN, "list_channels": _LESEN, "list_emails": _LESEN,
-    "list_onedrive_files": _LESEN, "list_planner_plans": _LESEN,
-    "list_planner_tasks": _LESEN, "list_teams": _LESEN, "list_teams_chats": _LESEN,
-    "list_todo_lists": _LESEN, "list_todo_tasks": _LESEN, "read_email": _LESEN,
-    "read_onedrive_file": _LESEN, "search_onedrive": _LESEN,
-    "send_email": _M365, "reply_email": _M365, "send_teams_message": _M365,
-    "send_teams_chat_message": _M365, "create_calendar_event": _M365,
-    "update_calendar_event": _M365, "delete_calendar_event": _M365,
-    "create_planner_task": _M365, "update_planner_task": _M365,
-    "create_todo_task": _M365, "complete_todo_task": _M365,
     # hyperframes-server (Videos im eigenen Arbeitsordner)
     "get_docs": _LESEN, "list_videos": _LESEN, "render_video": "file_write",
 }
+
+
+# Microsoft 365 und Exchange (Server-Wege /mcp/msgraph und /mcp/exchange-onprem,
+# ``ms_*`` und ``ex_*``): Lesen = Dateien lesen, alles andere = "E-Mail / M365
+# senden". Der Server setzt Nur-Lesen, Entwurf und Mail-Freigabe ohnehin selbst
+# durch — das hier ist die Leitplanke davor.
+_MS_LESEN = ("list_", "read_", "get_", "search", "find_", "recent_", "insights",
+             "presence", "excel_read", "graph_get")
+
+
+def _ms_kategorie(bare: str) -> str | None:
+    vorsilbe = bare[:3]
+    if vorsilbe not in ("ms_", "ex_"):
+        return None
+    return _LESEN if bare[3:].startswith(_MS_LESEN) else _M365
 
 
 def _decide_for(category: str, *, label: str) -> dict:
@@ -203,6 +207,8 @@ def _decide_kategorie(tool_name: str, tool_input: dict | None = None) -> dict:
             return _decide_for(TOOL_CATEGORY_MAP[bare], label=tool_name)
         if bare in _MCP_BARE_CATEGORY:
             return _decide_for(_MCP_BARE_CATEGORY[bare], label=tool_name)
+        if _ms_kategorie(bare):
+            return _decide_for(_ms_kategorie(bare), label=tool_name)
         for prefix, category in _MCP_BARE_PREFIX_CATEGORY.items():
             if bare.startswith(prefix):
                 return _decide_for(category, label=tool_name)

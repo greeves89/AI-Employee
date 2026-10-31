@@ -42,16 +42,11 @@ const kandidaten = [
   ["skills", "./skill-server.mjs"],
   ["desktop", "./computer-use-server.mjs"],
   ["hyperframes", "./hyperframes-server.mjs"],
-  ["email", "./email-server.mjs"],
   ["brain", "./brain-server.mjs"],
   ["secondbrain", "./secondbrain-server.mjs"],
   ["read-logs", "./read-logs-server.mjs"],
 ];
 
-// Nur wenn der Orchestrator die Microsoft-Anbindung eingerichtet hat.
-if ((process.env.MSGRAPH_ENABLED || "").toLowerCase() === "true") {
-  kandidaten.push(["msgraph", "./msgraph-server.mjs"]);
-}
 
 const factories = {};
 const fehlend = [];

@@ -78,24 +78,11 @@ MCP_SERVER_TOOLS: dict[str, list[str]] = {
         "computer_shell",
         "computer_type", "computer_use_session", "computer_wait_for_element"
     ],
-    "email": [
-        "email_list", "email_mark_read", "email_read", "email_reply",
-        "email_search", "email_send"
-    ],
     "hyperframes": [
         "get_docs", "list_videos", "render_video"
     ],
     "memory": [
         "memory_delete", "memory_list", "memory_save", "memory_search"
-    ],
-    "msgraph": [
-        "complete_todo_task", "create_calendar_event", "create_planner_task",
-        "create_todo_task", "delete_calendar_event", "list_calendar_events",
-        "list_channels", "list_emails", "list_onedrive_files", "list_planner_plans",
-        "list_planner_tasks", "list_teams", "list_teams_chats", "list_todo_lists",
-        "list_todo_tasks", "read_email", "read_onedrive_file", "reply_email",
-        "search_onedrive", "send_email", "send_teams_chat_message",
-        "send_teams_message", "update_calendar_event", "update_planner_task"
     ],
     "notification": [
         "escalate_if_unsure", "notify_user", "present_file", "present_view",

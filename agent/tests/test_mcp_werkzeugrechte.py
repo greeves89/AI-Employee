@@ -48,7 +48,7 @@ class JedesWerkzeugHatEineKategorie(unittest.TestCase):
         """Sonst bestünde der nächste Test, weil er nichts prüft."""
         alle = set().union(*(_werkzeuge(p) for p in _server_dateien()))
         self.assertGreater(len(alle), 100)
-        for erwartet in ("email_send", "browser_navigate", "brain_contribute", "send_teams_message"):
+        for erwartet in ("browser_navigate", "brain_contribute", "memory_save", "render_video"):
             self.assertIn(erwartet, alle)
 
     def test_kein_werkzeug_ist_unbekannt(self):
@@ -66,10 +66,11 @@ class JedesWerkzeugHatEineKategorie(unittest.TestCase):
 class KategorienGreifen(unittest.TestCase):
     def test_lesen_ohne_senden(self):
         nur_lesen = {"file_read", "web_search"}
-        for w in ("email_read", "email_search", "list_calendar_events", "read_onedrive_file", "list_videos"):
+        for w in ("email_read", "email_search", "ms_list_calendar_events", "ms_read_file_content",
+                  "ms_graph_get", "ex_list_emails", "list_videos"):
             self.assertEqual(_entscheidung(w, nur_lesen), "allow", w)
-        for w in ("email_send", "email_reply", "send_teams_message", "delete_calendar_event",
-                  "browser_navigate", "ego_click", "render_video"):
+        for w in ("email_send", "email_reply", "ms_send_teams_message", "ms_cancel_event",
+                  "ms_excel_write", "ex_send_email", "browser_navigate", "ego_click", "render_video"):
             self.assertEqual(_entscheidung(w, nur_lesen), "deny", w)
 
     def test_senden_braucht_die_m365_faehigkeit(self):

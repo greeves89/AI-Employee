@@ -2226,6 +2226,16 @@ Im Bereich **OAUTH INTEGRATIONS**:
 Verbundene Dienste stehen Agenten anschließend als **Werkzeuge** zur Verfügung; pro Agent
 steuerst du im **Settings → Integrationen**-Tab, welche er nutzen darf.
 
+> **Deine Zugangsdaten bleiben auf dem Server.** Agenten bekommen dein Google- oder
+> Microsoft-Konto nie selbst in die Hand. Jede Mail läuft über die Plattform, und die
+> prüft vorher, was der Agent darf.
+>
+> - **Microsoft 365:** Es gilt die Einstellung des Agenten: *Lesen*, *Entwurf* (Mails gehen
+>   erst nach deiner Freigabe raus) oder *Lesen + Schreiben*.
+> - **Gmail:** Es gilt die Zeile **„E-Mail / M365 senden“** in der Rechte-Matrix des Agenten
+>   (Zugriff & Rechte → Feineinstellung, Kap. 4.2): *Erlaubt* sendet, bei *Freigabe* legt der Agent nur einen Entwurf in deinem
+>   Gmail-Postfach an und du sendest ihn selbst, bei *Verboten* kann er Mails nur lesen.
+
 ### 14.3 Szenario: Wiki anbinden
 1. **Integrations → + MCP Server hinzufügen.**
 2. **Name** „Wiki", **URL** des MediaWiki-MCP, ggf. **Bearer Token** → **Verbinden & Tools

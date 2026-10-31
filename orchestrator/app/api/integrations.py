@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies import get_redis_service, require_admin, require_auth, verify_agent_token
+from app.dependencies import get_redis_service, require_admin, require_auth
 from app.schemas.integration import (
     AgentIntegrationsResponse,
     AgentIntegrationsUpdate,
@@ -157,33 +157,9 @@ async def get_token(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/{provider}/for-agent")
-async def get_token_for_agent(
-    provider: str,
-    agent_info=Depends(verify_agent_token),
-    service: OAuthService = Depends(_get_oauth_service),
-    db: AsyncSession = Depends(get_db),
-):
-    """Get a fresh OAuth token for an authenticated agent (HMAC auth).
-
-    For per-user providers (microsoft, google), looks up the agent's owner user_id
-    and returns that user's token. For global providers (github), returns the global token.
-    """
-    from app.models.agent import Agent
-    from app.models.oauth_integration import PER_USER_PROVIDERS
-    from sqlalchemy import select
-
-    user_id: str | None = None
-    if provider in PER_USER_PROVIDERS:
-        agent = await db.scalar(select(Agent).where(Agent.id == agent_info["agent_id"]))
-        if agent:
-            user_id = agent.user_id
-
-    try:
-        token = await service.get_valid_token(provider, user_id=user_id)
-        return {"token": token, "provider": provider}
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=f"No {provider} integration connected: {e}")
+# ``GET /{provider}/for-agent`` gab es bis 1.408: es reichte das rohe Microsoft-,
+# Google- oder GitHub-Token an jeden Agenten heraus. Microsoft laeuft seitdem nur
+# ueber /mcp/msgraph, Gmail ueber /mcp/email — die Tokens verlassen den Server nicht.
 
 
 # --- Manual code exchange (Anthropic OAuth — user copies code from platform page) ---

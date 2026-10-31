@@ -63,6 +63,13 @@ async def mcp_msgraph_endpoint(agent_id: str, request: Request):
     except Exception:
         return JSONResponse(mcp_error(None, -32700, "Parse error"), status_code=400)
 
+    # Der Token beweist nur, WELCHER Agent fragt — nicht, dass er an das Postfach darf.
+    from app.core.faehigkeiten import anbindung_zugewiesen
+    async with async_session_factory() as db:
+        if not await anbindung_zugewiesen(db, agent_id, "microsoft"):
+            return JSONResponse(mcp_error(body.get("id"), -32600,
+                                          "Die Microsoft-Anbindung ist diesem Agenten nicht zugewiesen."), status_code=403)
+
     async def resolve_token() -> str | None:
         async with async_session_factory() as db:
             return await _get_access_token(agent_id, db)
