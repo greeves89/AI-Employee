@@ -150,6 +150,17 @@ class AnfrageTests(_Basis):
                                             _auth={"agent_id": "frage"})
         self.assertIn(text, str(erfasst["body"].view["data"]))
 
+    async def test_agent_kann_server_ansicht_nicht_vortaeuschen(self):
+        """Eine Rückfrage mit der Ansicht „handlung“ oder „mail“ sähe aus wie eine
+        gebundene Handlung — ausgeführt würde aber nichts vom Server."""
+        for name in ("handlung", "mail"):
+            async with self.Session() as db:
+                with self.assertRaises(HTTPException) as ctx:
+                    await api.request_approval(api.ApprovalRequest(
+                        question="Darf ich?", view={"name": name, "data": {"titel": "Ticket anlegen"}}),
+                        agent_auth={"agent_id": "frage"}, db=db)
+            self.assertEqual(ctx.exception.status_code, 403, name)
+
     def test_ansicht_handlung_ist_erlaubt(self):
         self.assertIn("handlung", api.ERLAUBTE_ANSICHTEN)
 

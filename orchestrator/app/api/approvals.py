@@ -270,6 +270,10 @@ async def _push_ios_for_agent(
 #: Entwurf aus dem Postfach des Besitzers (core/mail_freigabe.py).
 SERVER_ARTEN = {"mail_senden"}
 
+#: Ansichten, die zusagen, dass der SERVER nach dem Freigeben genau das Gezeigte
+#: ausführt. Nur Server-Bausteine dürfen sie verwenden (mail_freigabe, gebundene_freigabe).
+SERVER_ANSICHTEN = {"mail", "handlung"}
+
 
 def ist_server_art(art: str | None) -> bool:
     """Arten, die nur der Server anlegt: Mail-Freigabe und jede gebundene Handlung
@@ -287,6 +291,11 @@ async def request_approval(
 ):
     if ist_server_art(body.kind):
         raise HTTPException(status_code=403, detail="Diese Art von Freigabe legt nur der Server an.")
+    if ((body.view or {}).get("name")) in SERVER_ANSICHTEN:
+        # Sonst sähe eine gewöhnliche Rückfrage aus wie eine vom Server gebundene
+        # Handlung („Freigeben führt genau diese Handlung aus“) — der Agent handelte
+        # danach aber selbst, und zwar wie er will.
+        raise HTTPException(status_code=403, detail="Diese Ansicht legt nur der Server an.")
     return await anfrage_anlegen(db, agent_auth["agent_id"], body)
 
 
