@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.412.1] - 2026-10-31
+
+### Verbessert
+- Handbuch: Die Karte **Sicherheitsstatus** ist mit Bildschirmfoto beschrieben.
+
 ## [1.412.0] - 2026-10-31
 
 ### Sicherheit
