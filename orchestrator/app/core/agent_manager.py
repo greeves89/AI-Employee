@@ -13,7 +13,8 @@ from sqlalchemy.orm.attributes import flag_modified
 from app.config import get_agent_version, settings
 from app.core import autonomy_matrix
 from app.core.agent_duty import vom_nutzer_angehalten
-from app.core.egress import aktiv as egress_aktiv, veraltet as egress_veraltet
+from app.core.egress import ANBINDUNG, aktiv as egress_aktiv, platzhalter as egress_platzhalter
+from app.core.egress import veraltet as egress_veraltet
 from app.core.encryption import decrypt_token
 from app.core.githost.registry import get_git_host_provider
 from app.core.log_redaction import scrub_log
@@ -1555,10 +1556,13 @@ class AgentManager:
             )
             integration = result.scalar_one_or_none()
             if integration:
-                token = decrypt_token(integration.access_token_encrypted)
                 provider = get_git_host_provider(
                     integration.host_type or "github", integration.base_url
                 )
+                # Mit Egress-Proxy nur der Platzhalter: der Proxy setzt das Token erst
+                # auf dem Weg zum Git-Host ein (core/egress.py, api/egress.py).
+                token = (egress_platzhalter(integration.id, ANBINDUNG) if egress_aktiv()
+                         else decrypt_token(integration.access_token_encrypted))
                 env.update(provider.get_agent_env(token))
         return env
 

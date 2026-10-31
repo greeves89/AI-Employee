@@ -34,7 +34,10 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-PLATZHALTER_RE = re.compile(r"aie-geheim-(\d{1,10})-([0-9a-f]{12})")
+#: ``aie-geheim-<id>-…`` = Key aus der Schluesselverwaltung, ``aie-geheim-g<id>-…`` =
+#: Token einer Git-Anbindung der Plattform (oauth_integrations).
+PLATZHALTER_RE = re.compile(r"aie-geheim-(g?)(\d{1,10})-([0-9a-f]{12})")
+ANBINDUNG = "g"
 _PLATZHALTER_DOMAIN = b"egress-platzhalter:v1:"
 
 #: Unter dieser Adresse gibt der Proxy sein oeffentliches CA-Zertifikat heraus —
@@ -77,19 +80,25 @@ def veraltet(agent_config: dict | None) -> bool:
     return bool((agent_config or {}).get("egress")) != aktiv()
 
 
-def platzhalter(secret_id: int) -> str:
-    sig = hmac.new(settings.api_secret_key.encode(), _PLATZHALTER_DOMAIN + str(secret_id).encode(),
+def platzhalter(secret_id: int, art: str = "") -> str:
+    sig = hmac.new(settings.api_secret_key.encode(), _PLATZHALTER_DOMAIN + f"{art}{secret_id}".encode(),
                    hashlib.sha256).hexdigest()[:12]
-    return f"aie-geheim-{secret_id}-{sig}"
+    return f"aie-geheim-{art}{secret_id}-{sig}"
 
 
-def secret_id_aus(wert: str) -> int | None:
-    """Die Key-ID hinter einem Platzhalter — nur, wenn die Signatur stimmt."""
+def platzhalter_aus(wert: str) -> tuple[str, int] | None:
+    """(Art, ID) hinter einem Platzhalter — nur, wenn die Signatur stimmt."""
     m = PLATZHALTER_RE.fullmatch(wert or "")
     if not m:
         return None
-    sid = int(m.group(1))
-    return sid if hmac.compare_digest(platzhalter(sid), wert) else None
+    art, sid = m.group(1), int(m.group(2))
+    return (art, sid) if hmac.compare_digest(platzhalter(sid, art).encode(), wert.encode()) else None
+
+
+def secret_id_aus(wert: str) -> int | None:
+    """Die Key-ID hinter einem Platzhalter der Schluesselverwaltung."""
+    teile = platzhalter_aus(wert)
+    return teile[1] if teile and teile[0] == "" else None
 
 
 def hosts_pruefen(werte) -> list[str] | None:
