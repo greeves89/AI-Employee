@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.409.0] - 2026-10-31
+
+### Sicherheit
+- Nur Agenten, denen du die Microsoft- oder Google-Anbindung gegeben hast, kommen an dein Postfach.
+- **Agenten sehen keine Zugangsdaten für Microsoft und Google mehr.** E-Mail und Microsoft 365 laufen nur noch über den Server, der vor jedem Senden prüft, was der Agent darf.
+- Gmail: Steht „E-Mail / M365 senden“ auf **Freigabe**, legt der Agent nur einen Entwurf an. Bei **Verboten** liest er nur.
+
 ## [1.408.2] - 2026-10-31
 
 ### Sicherheit
