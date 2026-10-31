@@ -1516,6 +1516,19 @@ class AgentManager:
                 except Exception:  # noqa: BLE001 — skip a corrupt entry, don't break the agent
                     logger.warning("Could not decode custom headers for MCP server %s", s.name)
 
+        # Externe MCP-Server ueber den Egress-Proxy: der Agent sieht nur Platzhalter,
+        # der Proxy setzt Token und Kopfzeilen erst am Host des Servers ein — immer den
+        # aktuellen Wert, auch nach einer OAuth-Erneuerung (api/egress.py).
+        if egress_aktiv():
+            from app.core import egress
+            for s in servers:
+                if not egress.mcp_ziel(s.url):
+                    continue
+                if s.name in auth_map:
+                    auth_map[s.name] = egress.platzhalter(s.id, egress.MCP)
+                for i, kopf in enumerate(sorted(headers_map.get(s.name) or {})):
+                    headers_map[s.name][kopf] = egress.platzhalter(s.id * egress.KOPF_FAKTOR + i, egress.MCP_KOPF)
+
         # Auto-inject MS Graph MCP server when agent has microsoft integration.
         # The agent's MCP client authenticates with the agent's HMAC bearer token
         # (via CUSTOM_MCP_AUTH); without it the msgraph endpoint returns 401.

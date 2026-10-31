@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import hmac
 import logging
-from typing import NamedTuple
+from typing import Callable, NamedTuple
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -51,12 +51,13 @@ class Aufloesen(Verbindung):
 
 
 class _Freigabe(NamedTuple):
-    """Was ein Agent ueber den Proxy hinausschicken darf: ein Key oder das Token einer Anbindung."""
+    """Was ein Agent ueber den Proxy hinausschicken darf: ein Key, das Token einer
+    Anbindung oder der Zugang eines MCP-Servers. ``lesen`` liefert den Klartext."""
     art: str
     id: int
     name: str
     hosts: list[str]
-    wert_verschluesselt: str
+    lesen: Callable[[], str]
 
 
 async def _anbindungen(db: AsyncSession, agent: Agent) -> list[_Freigabe]:
@@ -72,8 +73,34 @@ async def _anbindungen(db: AsyncSession, agent: Agent) -> list[_Freigabe]:
     if integration is None:
         return []
     provider = get_git_host_provider(integration.host_type or "github", integration.base_url)
+    enc = integration.access_token_encrypted
     return [_Freigabe(egress.ANBINDUNG, integration.id, "Git-Anbindung", provider.egress_ziele(),
-                      integration.access_token_encrypted)]
+                      lambda: decrypt_token(enc))]
+
+
+async def _mcp_zugaenge(db: AsyncSession, agent: Agent) -> list[_Freigabe]:
+    """Token und Kopfzeilen externer MCP-Server — dieselbe Auswahl wie beim Einspielen
+    (agent_manager._get_custom_mcp_env), nur am Host des jeweiligen Servers."""
+    import json
+
+    from app.core.agent_mcp_servers import servers_for_agent
+    freigaben: list[_Freigabe] = []
+    for s in await servers_for_agent(db, agent.id, agent.config):
+        host = egress.mcp_ziel(s.url)
+        if not host:
+            continue
+        if s.auth_token_encrypted:
+            enc = s.auth_token_encrypted
+            freigaben.append(_Freigabe(egress.MCP, s.id, f"MCP {s.name}", [host], lambda enc=enc: decrypt_token(enc)))
+        if getattr(s, "headers_encrypted", None):
+            try:
+                koepfe = json.loads(decrypt_token(s.headers_encrypted))
+            except Exception:  # noqa: BLE001 — wie beim Einspielen: kaputter Eintrag wird uebersprungen
+                continue
+            for i, kopf in enumerate(sorted(koepfe)):
+                freigaben.append(_Freigabe(egress.MCP_KOPF, s.id * egress.KOPF_FAKTOR + i, f"MCP {s.name} {kopf}",
+                                           [host], lambda w=str(koepfe[kopf]): w))
+    return freigaben
 
 
 async def _freigaben(db: AsyncSession, body: Verbindung) -> list[_Freigabe]:
@@ -83,9 +110,11 @@ async def _freigaben(db: AsyncSession, body: Verbindung) -> list[_Freigabe]:
     if agent is None:
         raise HTTPException(status_code=401, detail="Agent unbekannt")
     secrets = await secrets_des_agenten(db, body.agent_id, await nutzbare_secrets_des_besitzers(db, body.agent_id))
-    return ([_Freigabe("", s.id, s.key_name, list(s.erlaubte_hosts or []), s.value_encrypted)
+    return ([_Freigabe("", s.id, s.key_name, list(s.erlaubte_hosts or []),
+                       lambda enc=s.value_encrypted: decrypt_token(enc))
              for s in secrets if s.erlaubte_hosts]
-            + await _anbindungen(db, agent))
+            + await _anbindungen(db, agent)
+            + await _mcp_zugaenge(db, agent))
 
 
 @router.post("/verbindung", dependencies=[Depends(_nur_proxy)])
@@ -107,7 +136,7 @@ async def aufloesen(body: Aufloesen, db: AsyncSession = Depends(get_db)):
             abgelehnt.append({"platzhalter": p, "key": freigabe.name, "grund": "Ziel nicht erlaubt"})
         else:
             try:
-                werte[p] = decrypt_token(freigabe.wert_verschluesselt)
+                werte[p] = freigabe.lesen()
             except Exception:  # noqa: BLE001
                 abgelehnt.append({"platzhalter": p, "key": freigabe.name, "grund": "Key nicht lesbar"})
     if abgelehnt:
