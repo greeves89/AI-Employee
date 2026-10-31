@@ -134,6 +134,39 @@ class TestSecurityHeaders:
         assert "camera=()" in r.headers["Permissions-Policy"]
         assert "default-src 'self'" in r.headers["Content-Security-Policy"]
         assert "frame-ancestors 'none'" in r.headers["Content-Security-Policy"]
+        assert len(r.headers.get_list("Content-Security-Policy")) == 1
+
+    def test_eigene_csp_bleibt_und_die_der_plattform_kommt_dazu(self):
+        """Der App-Proxy setzt eine Sandbox-CSP: Agenten-Code läuft sonst auf der
+        Origin der Plattform und ruft deren API mit dem Sitzungscookie auf. Früher
+        überschrieb die Middleware sie. Zwei CSP-Header setzt der Browser BEIDE
+        durch — die Sandbox bleibt, die Regeln der Plattform gelten zusätzlich."""
+        def _app_antwort(request):
+            return PlainTextResponse("app", headers={
+                "content-security-policy": "sandbox allow-scripts allow-forms;",
+                "referrer-policy": "no-referrer",
+            })
+
+        client = TestClient(Starlette(routes=[Route("/app", _app_antwort)],
+                                      middleware=[Middleware(SecurityHeadersMiddleware)]))
+        r = client.get("/app")
+        csp = r.headers.get_list("Content-Security-Policy")
+        assert len(csp) == 2
+        assert any(c.startswith("sandbox") for c in csp)
+        assert any("default-src 'self'" in c for c in csp)
+        assert r.headers.get_list("Referrer-Policy") == ["no-referrer"], "die strengere Vorgabe bleibt"
+
+    def test_vorhandene_header_werden_nicht_ueberschrieben(self):
+        def _eigene(request):
+            return PlainTextResponse("x", headers={"x-frame-options": "SAMEORIGIN",
+                                                   "permissions-policy": "camera=()"})
+
+        client = TestClient(Starlette(routes=[Route("/e", _eigene)],
+                                      middleware=[Middleware(SecurityHeadersMiddleware)]))
+        r = client.get("/e")
+        assert r.headers.get_list("X-Frame-Options") == ["SAMEORIGIN"]
+        assert r.headers.get_list("Permissions-Policy") == ["camera=()"]
+        assert r.headers["X-Content-Type-Options"] == "nosniff"
 
 
 class TestRateLimit:
