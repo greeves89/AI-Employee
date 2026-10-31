@@ -154,6 +154,8 @@ ERLAUBTE_ANSICHTEN = {
     # Mail-Entwurf zur Freigabe (core/mail_freigabe): An, Betreff, Text — vom Server
     # aus dem Postfach gelesen, nicht vom Agenten geliefert.
     "mail",
+    # Gebundene Handlung (core/gebundene_freigabe): Titel + Felder, vom Server gefüllt.
+    "handlung",
 }
 
 #: Obergrenze fuer die Nutzlast einer Ansicht. Sie liegt in ``meta`` derselben
@@ -268,6 +270,18 @@ async def _push_ios_for_agent(
 #: Entwurf aus dem Postfach des Besitzers (core/mail_freigabe.py).
 SERVER_ARTEN = {"mail_senden"}
 
+#: Ansichten, die zusagen, dass der SERVER nach dem Freigeben genau das Gezeigte
+#: ausführt. Nur Server-Bausteine dürfen sie verwenden (mail_freigabe, gebundene_freigabe).
+SERVER_ANSICHTEN = {"mail", "handlung"}
+
+
+def ist_server_art(art: str | None) -> bool:
+    """Arten, die nur der Server anlegt: Mail-Freigabe und jede gebundene Handlung
+    (core/gebundene_freigabe). Ein Agent, der so eine Art selbst anlegt, könnte sonst
+    eine Handlung nach seinen Wünschen zur Ausführung durch den Server stellen."""
+    from app.core.gebundene_freigabe import AUSFUEHRER
+    return art in SERVER_ARTEN or art in AUSFUEHRER
+
 
 @router.post("/request")
 async def request_approval(
@@ -275,8 +289,13 @@ async def request_approval(
     agent_auth: dict = Depends(verify_agent_token),
     db: AsyncSession = Depends(get_db),
 ):
-    if body.kind in SERVER_ARTEN:
+    if ist_server_art(body.kind):
         raise HTTPException(status_code=403, detail="Diese Art von Freigabe legt nur der Server an.")
+    if ((body.view or {}).get("name")) in SERVER_ANSICHTEN:
+        # Sonst sähe eine gewöhnliche Rückfrage aus wie eine vom Server gebundene
+        # Handlung („Freigeben führt genau diese Handlung aus“) — der Agent handelte
+        # danach aber selbst, und zwar wie er will.
+        raise HTTPException(status_code=403, detail="Diese Ansicht legt nur der Server an.")
     return await anfrage_anlegen(db, agent_auth["agent_id"], body)
 
 
@@ -304,7 +323,7 @@ async def anfrage_anlegen(db: AsyncSession, agent_id: str, body: ApprovalRequest
     # in ``meta`` und ist in SQL über die Datenbanken hinweg schlecht vergleichbar —
     # deshalb die Vorauswahl im Query, der Rest hier. Die Vorauswahl ist klein: im
     # Normalfall hat ein Agent keine, im Flutfall genau eine offene Frage.
-    candidates = [] if body.kind in SERVER_ARTEN else (await db.execute(
+    candidates = [] if ist_server_art(body.kind) else (await db.execute(
         select(CommandApproval).where(
             CommandApproval.agent_id == agent_id,
             CommandApproval.status == ApprovalStatus.PENDING,
@@ -919,6 +938,11 @@ async def approve_request(
         # Besitzers. Scheitert es, bleibt die Freigabe offen (wie bei der Reflexion).
         from app.core.mail_freigabe import senden
         applied = await senden(db, approval, user)
+    if applied is None:
+        # Gebundene Handlung (Ticket anlegen …): genau DIESE, genau einmal — die
+        # Zeilensperre oben verhindert eine zweite Ausführung bei Doppelklick.
+        from app.core.gebundene_freigabe import ausfuehren as _gebunden
+        applied = await _gebunden(db, approval)
     if (approval.meta or {}).get("kind") == "reflection":
         from app.services.reflection_service import apply_reflection_approval
         try:
