@@ -94,6 +94,12 @@ def regeln(container: list[dict], subnetze: dict[str, str], ausnahmen: list[str]
             # 5. Private Netze
             for privat in PRIVAT:
                 vorwaerts.append(f"-A AIE-NETZ -s {ip}/32 -d {privat} -j DROP")
+            # 5b. HTTPS nur ueber den Egress-Proxy (liegt im eigenen Docker-Netz, Regel 4).
+            # Abweisen statt Verwerfen: Werkzeuge ohne Proxy scheitern sofort statt
+            # nach einer Minute. UDP 443 (QUIC) gaebe es am Proxy vorbei ebenso.
+            if c.get("nur_proxy"):
+                vorwaerts.append(f"-A AIE-NETZ -s {ip}/32 -p tcp --dport 443 -j REJECT --reject-with tcp-reset")
+                vorwaerts.append(f"-A AIE-NETZ -s {ip}/32 -p udp --dport 443 -j DROP")
             # 6. Host
             host.append(f"-A AIE-NETZ-HOST -s {ip}/32 -j DROP")
     if standard:
@@ -155,6 +161,17 @@ def _docker_json(*argumente: str) -> list:
     return json.loads(r.stdout) if r.stdout.strip() else []
 
 
+def nur_ueber_proxy(labels: dict, umgebung: list[str]) -> bool:
+    """Agent, der mit dem Egress-Proxy entstand (``HTTPS_PROXY`` in seiner Umgebung).
+
+    Fuer ihn geht HTTPS nur ueber den Proxy hinaus. Die Umgebung des Behaelters ist
+    die Quelle — so passt die Regel immer zu dem, was der Agent selbst kennt, und
+    Apps (ohne Proxy) bleiben unberuehrt.
+    """
+    return (labels.get("ai-employee.type") == "agent"
+            and any(e.startswith("HTTPS_PROXY=") and len(e) > len("HTTPS_PROXY=") for e in umgebung))
+
+
 def zustand() -> tuple[list[dict], dict[str, str]]:
     ids = subprocess.run(["docker", "ps", "-q"], check=True, capture_output=True, text=True).stdout.split()
     container = []
@@ -171,10 +188,13 @@ def zustand() -> tuple[list[dict], dict[str, str]]:
         netze = (c.get("NetworkSettings") or {}).get("Networks") or {}
         ips = {n: v["IPAddress"] for n, v in netze.items() if v.get("IPAddress")}
         netznamen |= set(ips)
+        labels = (c.get("Config") or {}).get("Labels") or {}
+        umgebung = (c.get("Config") or {}).get("Env") or []
         container.append({
             "name": c.get("Name", "").lstrip("/"),
-            "besitzer": besitzer((c.get("Config") or {}).get("Labels") or {}, (c.get("Config") or {}).get("Env") or []),
+            "besitzer": besitzer(labels, umgebung),
             "ips": ips,
+            "nur_proxy": nur_ueber_proxy(labels, umgebung),
         })
     subnetze = {}
     netze = []

@@ -93,6 +93,35 @@ class RegelTests(unittest.TestCase):
         self.assertEqual(len(host), 1)
 
 
+class NurUeberProxyTests(unittest.TestCase):
+    """HTTPS nur ueber den Egress-Proxy — fuer Agenten, die mit ihm entstanden sind."""
+
+    def test_erkennung(self):
+        agent = {"ai-employee.type": "agent"}
+        self.assertTrue(nw.nur_ueber_proxy(agent, ["AGENT_ID=a1", "HTTPS_PROXY=http://a1:t@ai-employee-egress-proxy:8080"]))
+        self.assertFalse(nw.nur_ueber_proxy(agent, ["AGENT_ID=a1"]), "Agent von vor dem Proxy")
+        self.assertFalse(nw.nur_ueber_proxy(agent, ["HTTPS_PROXY="]))
+        self.assertFalse(nw.nur_ueber_proxy({"com.docker.compose.project": "agent-a1b2c3d4-x"},
+                                            ["HTTPS_PROXY=http://x:8080"]), "Apps nicht")
+
+    def test_regeln(self):
+        mit = dict(AGENT_A, nur_proxy=True)
+        vor, _ = nw.regeln([mit, APP_A], SUBNETZE, [])
+        ip = next(iter(AGENT_A["ips"].values()))
+        tcp = f"-A AIE-NETZ -s {ip}/32 -p tcp --dport 443 -j REJECT --reject-with tcp-reset"
+        udp = f"-A AIE-NETZ -s {ip}/32 -p udp --dport 443 -j DROP"
+        self.assertIn(tcp, vor)
+        self.assertIn(udp, vor)
+        # Eigene Docker-Netze (dort liegt der Proxy) bleiben davor frei
+        eigene = [i for i, r in enumerate(vor) if r.startswith(f"-A AIE-NETZ -s {ip}/32 -d ") and r.endswith("-j RETURN")]
+        self.assertTrue(eigene and max(eigene) < vor.index(tcp))
+        # Apps und Agenten ohne Proxy: keine solche Regel
+        for c in (APP_A, AGENT_A):
+            for i in c["ips"].values():
+                self.assertNotIn(f"-A AIE-NETZ -s {i}/32 -p tcp --dport 443 -j REJECT --reject-with tcp-reset",
+                                 nw.regeln([c], SUBNETZE, [])[0])
+
+
 class StandardBridgeTests(unittest.TestCase):
     """Builds laufen im Standard-Bridge — ein Dockerfile erreichte sonst den Router
     (auf dem Pi gemessen: RUN wget 192.168.178.1 ging durch)."""

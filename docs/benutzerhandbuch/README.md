@@ -4454,6 +4454,10 @@ eingeschaltet, gehen Agenten für HTTPS über ihn hinaus:
 | Klartext-HTTP (z. B. eigene Apps des Agenten) | geht wie bisher direkt |
 | Adressen im Firmen- oder Docker-Netz | über den Proxy gesperrt |
 
+Ist der Netzwächter eingerichtet (Kap. 37.9), kommt ein Agent, der mit dem Proxy
+entstanden ist, über HTTPS (Port 443) **nur noch über den Proxy** hinaus. Ein Werkzeug,
+das den Proxy nicht beachtet, scheitert sofort, statt an ihm vorbeizugehen *(seit 1.416.0)*.
+
 Der Proxy prüft jede Anmeldung und jeden Key beim Orchestrator mit einem eigenen
 Dienst-Schlüssel. Agenten bekommen nur das öffentliche Zertifikat des Proxys, nie dessen
 privaten Schlüssel.
