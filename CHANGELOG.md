@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.414.0] - 2026-10-31
+
+### Sicherheit
+- **Auch das Token der Git-Anbindung sehen Agenten nur noch als Platzhalter.** Ist der Egress-Proxy eingeschaltet, setzt er es erst auf dem Weg zum Git-Host ein (GitHub, GitHub Enterprise, Forgejo).
+
 ## [1.413.2] - 2026-10-31
 
 ### Dokumentation
