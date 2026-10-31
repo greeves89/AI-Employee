@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.416.0] - 2026-10-31
+
+### Sicherheit
+- **HTTPS nur noch über den Egress-Proxy:** Ist der Netzwächter eingerichtet, kommen Agenten mit Proxy über HTTPS nicht mehr an ihm vorbei.
+
+### Behoben
+- **MCP-Server, die als eigene App des Agenten laufen** (Adresse ohne Punkt), waren bei eingeschaltetem Egress-Proxy nicht erreichbar.
+
 ## [1.415.0] - 2026-10-31
 
 ### Sicherheit
