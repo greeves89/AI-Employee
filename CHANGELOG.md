@@ -10,6 +10,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 ### Sicherheit
 - **Auch Zugänge zu externen MCP-Servern sehen Agenten nur noch als Platzhalter.** Der Egress-Proxy setzt Token und Kopfzeilen erst am Host des Servers ein. Ein erneuertes OAuth-Token gilt sofort.
 
+## [1.417.0] - 2026-10-31
+
+### Sicherheit
+- **Auch Zugänge zu externen MCP-Servern sehen Agenten nur noch als Platzhalter.** Der Egress-Proxy setzt Token und Kopfzeilen erst am Host des Servers ein. Ein erneuertes OAuth-Token gilt sofort.
+
 ## [1.416.0] - 2026-10-31
 
 ### Sicherheit
