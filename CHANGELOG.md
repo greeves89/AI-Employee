@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.419.0] - 2026-10-31
+
+### Sicherheit
+- **Fremd-Abbilder per Digest festgelegt:** Datenbank, Redis, Docker-Proxy, Caddy, Cloudflared und Autoheal lassen sich nicht mehr über einen umgehängten Tag austauschen. Neue Fassungen kommen als Vorschlag über Dependabot.
+- **Sicherheitsstatus „Signaturen der Abbilder“:** zeigt, ob das letzte Update die Abbilder per cosign geprüft hat. Die Installation von cosign beschreibt das Handbuch (Kap. 37.4).
+
 ## [1.418.0] - 2026-10-31
 
 ### Sicherheit
