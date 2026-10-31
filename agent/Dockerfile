@@ -1,4 +1,4 @@
-FROM python:3.12-slim AS base
+FROM python:3.15-slim AS base
 
 # Install system dependencies + Node.js (required for Claude Code CLI)
 # Pre-install common tools the agent might need
