@@ -745,6 +745,34 @@ async def unassign_skill(
     return {"status": "unassigned"}
 
 
+async def _besitzer_des_agenten(db: AsyncSession, agent_id: str) -> str | None:
+    from app.models.agent import Agent
+    return (await db.execute(select(Agent.user_id).where(Agent.id == agent_id))).scalar_one_or_none()
+
+
+async def _besitzer_des_erstellers(db: AsyncSession, created_by: str | None) -> str | None:
+    """Wem gehört ein Skill? ``user:<id>`` → id, ``agent:<id>`` → Besitzer des Agenten."""
+    art, _, kennung = (created_by or "").partition(":")
+    if art == "user" and kennung:
+        return kennung
+    if art == "agent" and kennung:
+        return await _besitzer_des_agenten(db, kennung)
+    return None
+
+
+async def _nutzen_fremde(db: AsyncSession, skill_id: int, besitzer: str | None) -> bool:
+    """Ist der Skill einem Agenten eines ANDEREN Besitzers zugewiesen?"""
+    from app.models.agent import Agent
+    fremd = (await db.execute(
+        select(AgentSkillAssignment.id)
+        .join(Agent, Agent.id == AgentSkillAssignment.agent_id)
+        .where(AgentSkillAssignment.skill_id == skill_id,
+               (Agent.user_id != besitzer) | Agent.user_id.is_(None))
+        .limit(1)
+    )).scalar_one_or_none()
+    return fremd is not None
+
+
 @router.post("/agent/install/{skill_id}", status_code=201)
 async def agent_install_skill(
     skill_id: int,
@@ -758,6 +786,12 @@ async def agent_install_skill(
     skill = (await db.execute(
         select(Skill).where(Skill.id == skill_id, Skill.status == SkillStatus.ACTIVE)
     )).scalar_one_or_none()
+    # Nicht-oeffentliche Skills nur fuer Agenten desselben Besitzers — wie in der
+    # Marktplatz-Liste. Sonst holte sich ein Agent den privaten Skill eines anderen.
+    if skill and not skill.is_public:
+        besitzer = await _besitzer_des_agenten(db, agent_id)
+        if not besitzer or besitzer != await _besitzer_des_erstellers(db, skill.created_by):
+            skill = None
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found or not active")
 
@@ -1538,6 +1572,9 @@ async def agent_propose_skill(
         content=body.content,
         category=_normalize_category(body.category),
         status=SkillStatus.ACTIVE,
+        # Nur fuer die Agenten des Besitzers, bis ein Admin ihn veroeffentlicht
+        # („Freigeben“). Sonst stand Agenten-Text sofort im Marktplatz aller.
+        is_public=False,
         created_by=f"agent:{agent_id}",
         source_task_id=body.task_id,
     )
@@ -1562,7 +1599,8 @@ async def agent_propose_skill(
             notif = Notification(
                 type="skill_proposed",
                 title=f"Neuer Skill erstellt: {body.name}",
-                message=f"Agent {agent_id} hat den Skill '{body.name}' zum Katalog hinzugefügt: {body.description}",
+                message=(f"Agent {agent_id} hat den Skill '{body.name}' angelegt: {body.description}. "
+                         "Er gilt nur für Agenten seines Besitzers, bis ein Admin ihn freigibt."),
                 priority="medium",
                 agent_id=agent_id,
             )
@@ -1607,6 +1645,51 @@ async def agent_update_skill(
     )).scalar_one_or_none() is not None
     if not is_creator and not has_assignment:
         raise HTTPException(status_code=403, detail="You can only update skills you created or have installed")
+
+    if body.content is not None:
+        await _gate_skill_or_reject(
+            db, skill_name=skill.name, agent_id=agent_id, user_id=None, content=body.content,
+        )
+
+    # Direkt gilt eine Aenderung nur fuer einen privaten Skill des eigenen Besitzers,
+    # den kein fremder Agent nutzt. Alles andere wird ein Vorschlag fuer die
+    # Admin-Freigabe — sonst schriebe ein Agent Anweisungen in die Skills der
+    # Agenten anderer Nutzer.
+    besitzer = await _besitzer_des_agenten(db, agent_id)
+    nur_eigene = (
+        not skill.is_public
+        and besitzer is not None
+        and besitzer == await _besitzer_des_erstellers(db, skill.created_by)
+        and not await _nutzen_fremde(db, skill_id, besitzer)
+    )
+    if not nur_eigene and (body.content is not None or body.description is not None):
+        skill.improvement_status = "pending_review"
+        skill.improvement_review_reason = "agent_update"
+        skill.improvement_proposed_at = datetime.now(timezone.utc)
+        skill.improvement_proposal = {
+            "old_content": skill.content or "",
+            "old_description": skill.description or "",
+            "suggested_content": body.content if body.content is not None else skill.content,
+            "suggested_description": body.description if body.description is not None else skill.description,
+            "reason": "agent_update",
+            "proposed_by": f"agent:{agent_id}",
+            "feedback": body.feedback,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        db.add(Notification(
+            type="skill_proposed",
+            title=f"Änderung an Skill „{skill.name}“ wartet auf Freigabe",
+            message=(f"Agent {agent_id} möchte den Skill ändern. Er wird auch von anderen genutzt "
+                     "oder ist öffentlich; die Änderung gilt erst nach Freigabe."),
+            priority="medium",
+            agent_id=agent_id,
+        ))
+        await db.commit()
+        await db.refresh(skill)
+        antwort = _to_response(skill)
+        antwort["hinweis"] = ("Die Änderung wartet auf die Freigabe eines Admins, weil der Skill "
+                              "öffentlich ist oder auch von anderen genutzt wird.")
+        return antwort
 
     if body.content is not None and body.content != skill.content:
         reason = body.feedback or f"Agent update by {agent_id}"
