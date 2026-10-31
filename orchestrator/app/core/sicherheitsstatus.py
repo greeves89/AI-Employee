@@ -156,6 +156,40 @@ def _docker(container_ids: list[str]) -> list[dict]:
     return punkte
 
 
+SIGNATUR_DATEI = "/host-auth/signaturpruefung"
+
+
+def _abbild_signaturen(datei: str = SIGNATUR_DATEI) -> list[dict]:
+    """Ergebnis der Signaturpruefung beim letzten Update (scripts/lib/abbilder.sh)."""
+    from app.config import get_agent_version
+    titel = "Signaturen der Abbilder"
+    try:
+        ergebnis, version, _ = open(datei).read().split()[:3]
+    except (OSError, ValueError):
+        return [_punkt("signaturen", titel, INFO,
+                       "Noch kein Update mit Signaturprüfung gelaufen (ab 1.419.0).",
+                       "Beim nächsten ./scripts/update.sh wird das Ergebnis hier angezeigt.")]
+    aktuell = get_agent_version()
+    if ergebnis == "geprueft" and version == aktuell:
+        return [_punkt("signaturen", titel, OK,
+                       f"Die Abbilder von {version} sind beim Update per cosign geprüft worden.")]
+    if ergebnis == "geprueft":
+        return [_punkt("signaturen", titel, WARNUNG,
+                       f"Zuletzt geprüft wurde {version}, installiert ist {aktuell}.",
+                       "Update über ./scripts/update.sh ausführen, nicht von Hand.")]
+    texte = {
+        "cosign_fehlt": ("cosign ist auf dem Server nicht installiert — Abbilder werden ungeprüft benutzt.",
+                         "cosign installieren (Handbuch Kap. 37.4), danach ./scripts/update.sh."),
+        "aus": ("Die Signaturprüfung ist abgeschaltet (AI_EMPLOYEE_SIGNATUR_PRUEFEN).",
+                "Schalter aus der .env entfernen."),
+        "ungueltig": ("Beim letzten Update war eine Signatur ungültig; die Abbilder wurden lokal gebaut.",
+                      "Ursache prüfen, bevor erneut aus der Registry geholt wird."),
+    }
+    text, beheben = texte.get(ergebnis, (f"Beim letzten Update nicht geprüft ({ergebnis}).",
+                                         "Protokoll von ./scripts/update.sh ansehen."))
+    return [_punkt("signaturen", titel, WARNUNG, text, beheben)]
+
+
 async def _schluessel(db) -> list[dict]:
     """Wie viele vergebene Keys ein Agent im Klartext sieht (core/egress.py)."""
     from app.core import egress
@@ -220,7 +254,7 @@ async def stand(db) -> dict:
 
     ids = [c for (c,) in (await db.execute(
         select(Agent.container_id).where(Agent.container_id.is_not(None)))).all()]
-    punkte = (_einstellungen() + await _agenten(db) + await _schluessel(db)
+    punkte = (_einstellungen() + await _agenten(db) + await _schluessel(db) + _abbild_signaturen()
               + await asyncio.to_thread(_docker, ids))
     rang = {KRITISCH: 0, WARNUNG: 1, INFO: 2, OK: 3}
     punkte.sort(key=lambda p: rang[p["stand"]])

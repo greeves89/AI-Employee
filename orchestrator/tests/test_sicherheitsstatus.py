@@ -128,5 +128,32 @@ class ZugriffTests(unittest.TestCase):
         self.assertEqual([p["stand"] for p in punkte], ["kritisch", "warnung", "info", "ok"])
 
 
+
+class AbbildSignaturenTests(unittest.TestCase):
+    """Ergebnis der Signaturpruefung beim Update (scripts/lib/abbilder.sh)."""
+
+    def _punkt(self, inhalt):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from app.core import sicherheitsstatus as st
+        with tempfile.TemporaryDirectory() as ordner:
+            datei = Path(ordner) / "signaturpruefung"
+            if inhalt is not None:
+                datei.write_text(inhalt)
+            with patch("app.config.get_agent_version", return_value="1.419.0"):
+                (p,) = st._abbild_signaturen(str(datei))
+        return p
+
+    def test_zustaende(self):
+        self.assertEqual(self._punkt("geprueft 1.419.0 1793460000\n")["stand"], "ok")
+        self.assertEqual(self._punkt("geprueft 1.418.0 1793460000\n")["stand"], "warnung")
+        for ergebnis in ("cosign_fehlt", "aus", "ungueltig", "ohne_identitaet"):
+            with self.subTest(ergebnis):
+                self.assertEqual(self._punkt(f"{ergebnis} 1.419.0 1\n")["stand"], "warnung")
+        self.assertIn("nicht installiert", self._punkt("cosign_fehlt 1.419.0 1\n")["text"])
+        self.assertEqual(self._punkt(None)["stand"], "info")
+        self.assertEqual(self._punkt("kaputt")["stand"], "info")
+
 if __name__ == "__main__":
     unittest.main()

@@ -84,20 +84,30 @@ abbilder_identitaet() {
         "$besitzer" "$SIGNATUR_REPO" "${version//./\\.}"
 }
 
+# Ergebnis der letzten Pruefung fuer den Sicherheitsstatus (Admin → Betrieb). Der
+# Orchestrator liest ~/.ai-employee als /host-auth mit. Eine Zeile: Ergebnis Version
+# Zeitpunkt. Ergebnis: geprueft | cosign_fehlt | aus | ohne_version |
+# ohne_identitaet | ungueltig.
+abbilder_pruefung_merken() {
+    local ordner="${AI_EMPLOYEE_STATUS_DIR:-${HOME:-/root}/.ai-employee}"
+    mkdir -p "$ordner" 2>/dev/null || return 0
+    printf '%s %s %s\n' "$1" "$2" "$(date +%s)" > "$ordner/signaturpruefung" 2>/dev/null || true
+}
+
 # abbilder_signatur_pruefen <registry> <version> <dienst...>
 # 0 = alle geprueft oder bewusst uebersprungen, 1 = mindestens eine ungueltig
-abbilder_signatur_pruefen() {
+_abbilder_signatur_pruefen() {
     local registry="$1" version="$2" identitaet aussteller dienst ref digest
     shift 2
     # Nur ausdrueckliches Aus schaltet aus. "true"/"ja" hiess hier sonst
     # stillschweigend "keine Pruefung" — ein Sicherheitsschalter, dessen
     # Ein-Schreibweisen Aus bedeuten.
     case "$(abbilder_env AI_EMPLOYEE_SIGNATUR_PRUEFEN)" in
-        0|false|False|nein|no|off|aus) return 0 ;;
+        0|false|False|nein|no|off|aus) ABBILD_SIGNATUR=aus; return 0 ;;
     esac
     if [ "$version" = "latest" ]; then
         echo "Hinweis: ohne VERSION-Datei keine versionsgebundene Signaturpruefung (#938)."
-        return 0
+        ABBILD_SIGNATUR=ohne_version; return 0
     fi
     identitaet="$(abbilder_env AI_EMPLOYEE_SIGNATUR_IDENTITAET)"
     if [ -z "$identitaet" ]; then
@@ -108,20 +118,20 @@ abbilder_signatur_pruefen() {
                # AI_EMPLOYEE_REGISTRY schreibt.
                if ! abbilder_besitzer_zulaessig "$registry"; then
                    echo "Hinweis: ${registry} ergibt keinen gueltigen Konto-Namen — Signaturen werden NICHT geprueft (#938)."
-                   return 0
+                   ABBILD_SIGNATUR=ohne_identitaet; return 0
                fi
                identitaet="$(abbilder_identitaet "$registry" "$version")" ;;
             # Eigener Spiegel ohne hinterlegte Identitaet: die ghcr-Signatur
             # liegt dort nicht. Ein Abbruch wuerde jede Spiegel-Anlage zum
             # Dauer-Lokalbau verurteilen — also Hinweis statt Fehlschlag.
             *) echo "Hinweis: Signaturen von ${registry} werden NICHT geprueft — AI_EMPLOYEE_SIGNATUR_IDENTITAET ist nicht gesetzt (#938)."
-               return 0 ;;
+               ABBILD_SIGNATUR=ohne_identitaet; return 0 ;;
         esac
     fi
     if ! command -v cosign >/dev/null 2>&1; then
         echo "Hinweis: cosign ist nicht installiert — Abbild-Signaturen werden NICHT geprueft (#938)."
         echo "         Nachinstallieren: https://docs.sigstore.dev/cosign/system_config/installation/"
-        return 0
+        ABBILD_SIGNATUR=cosign_fehlt; return 0
     fi
     aussteller="$(abbilder_env AI_EMPLOYEE_SIGNATUR_AUSSTELLER)"
     aussteller="${aussteller:-$SIGNATUR_AUSSTELLER}"
@@ -133,7 +143,7 @@ abbilder_signatur_pruefen() {
             | grep -F "${ref%:*}@" | head -n1)"
         if [ -z "$digest" ]; then
             echo "Kein Digest fuer ${ref} — Signatur nicht pruefbar, baue lokal (#938)."
-            return 1
+            ABBILD_SIGNATUR=ungueltig; return 1
         fi
         # -a dienst=...: ohne die Zusage ist nur der Digest signiert, nicht
         # WOFUER. Sonst liesse sich ein signiertes Manifest samt Signatur auf
@@ -146,11 +156,21 @@ abbilder_signatur_pruefen() {
                 "$digest" >/dev/null; then
             echo "Signatur von ${digest} ist NICHT gueltig oder nicht abrufbar — Abbild wird nicht benutzt, baue lokal (#938)."
             echo "         Erwartet: ${identitaet} (Aussteller ${aussteller}, dienst=${dienst})"
-            return 1
+            ABBILD_SIGNATUR=ungueltig; return 1
         fi
     done
     echo "Signaturen aller Abbilder ${version} geprueft (cosign)."
-    return 0
+    ABBILD_SIGNATUR=geprueft; return 0
+}
+
+# abbilder_signatur_pruefen <registry> <version> <dienst...> — wie oben, merkt das Ergebnis.
+abbilder_signatur_pruefen() {
+    local rc
+    ABBILD_SIGNATUR=""
+    _abbilder_signatur_pruefen "$@"
+    rc=$?
+    abbilder_pruefung_merken "${ABBILD_SIGNATUR:-unbekannt}" "$2"
+    return $rc
 }
 
 # abbilder_verwerfen <registry> <version> <dienst...>
