@@ -2503,6 +2503,8 @@ behebt**.
    bei einem Agenten.
 3. Danach **Neu prüfen** klicken.
 
+![Karte Sicherheitsstatus mit zwei Warnungen (Kiosk, Agenten mit sudo) und den übrigen Punkten in Ordnung](screenshots/89-sicherheitsstatus.png)
+
 Die Karte liest nur, sie ändert nichts. Dieselbe Liste eignet sich als Nachweis gegenüber der
 eigenen IT, wie die Anlage abgesichert ist.
 
@@ -4583,6 +4585,7 @@ Damit klar wird, **wofür** du Agenten nutzt — ein paar Beispiele, die du einf
 | Admin: Zugang und Sicherheit (Registrierung, SSO, Zwei-Faktor-Pflicht) | `/admin?tab=system` | `51-admin-system-sicherheit.png` |
 | Admin: Lizenz | `/admin?tab=lizenz` | `f24-lizenz.png` |
 | Admin: Datensicherung, Datenschutz & Aufbewahrung | `/admin?tab=health` | `52-admin-sicherung-datenschutz.png` |
+| Admin: Sicherheitsstatus (Namen und Adresse durch Platzhalter ersetzt) | `/admin?tab=health` | `89-sicherheitsstatus.png` |
 | Admin: Budget (Kosten diesen Monat, Budget gilt auch im Chat) | `/admin?tab=budget` | `53-admin-budget.png` |
 | Admin: Rollen, Höchste Autonomiestufe | `/admin?tab=roles` | `54-admin-rollen-autonomie.png` |
 | Admin: Agenten über der Rollengrenze | `/admin?tab=roles` | `55-admin-rollen-grenze.png` |
