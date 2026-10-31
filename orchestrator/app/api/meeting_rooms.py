@@ -1527,7 +1527,8 @@ async def _generate_todo_summary(room: MeetingRoom, redis, mod_agent_id: str | N
         try:
             from app.core import projekt_termine
 
-            await projekt_termine.abschluss(room.id, room.team_id, room.name, todo_content, list(room.agent_ids or []))
+            await projekt_termine.abschluss(room.id, room.team_id, room.name, todo_content, list(room.agent_ids or []),
+                                             redis=redis)
         except Exception as e:  # noqa: BLE001
             logger.warning("Projekt-Abschluss der Besprechung %s gescheitert: %s", room.id, e)
         return

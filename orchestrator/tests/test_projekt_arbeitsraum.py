@@ -291,6 +291,271 @@ class BesprechungKenntDenStand(_Arbeitsraum):
             self.assertEqual(await projekt_termine.stand_jetzt(db, "gibt-es-nicht"), "")
 
 
+class StatusAnDerQuelle(_Arbeitsraum):
+    """#1106: Ein Punkt zu einem geschlossenen Issue, zu dem KEINE Karte (mehr) liegt,
+    wurde bei jedem Protokoll neu angelegt — die Wache las die Board-Spalte „erledigt“
+    statt den Status beim Hoster. Gemessen am 28.10.2026 kannte sie dadurch 4 Nummern,
+    während im Repo hunderte Issues geschlossen waren."""
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        async with self.Session() as db:
+            (await db.get(Team, "p1")).repo = "o/r"
+            await db.commit()
+
+    ITEM = "Für #961 die Inventur wiederholen"
+
+    async def _abschluss(self, zustaende, *, redis="redis-attrappe", kaputt=False, prs=(), punkte=None,
+                         langsam=0.0, karten=(), zugang_langsam=0.0):
+        """``zustaende``: Issue-Nummer → Status beim Hoster (fehlende Nummer = nicht
+        lesbar, also ``None`` — so melden die Anbieter 404/401/403 und eine erschöpfte
+        Abfragegrenze). ``prs``: Nummern, die beim Hoster ein Pull Request sind.
+        ``kaputt``: Quelle wirft. ``karten``: Titel, die vorher schon auf dem Board liegen.
+
+        Die Attrappe spiegelt ``get_issue`` — EINE Abfrage je Nummer, und das Feld
+        ``pull_request`` steht in derselben Antwort (so antworten GitHub und Forgejo)."""
+        gefragt = []
+        if karten:
+            from app.core import projekte
+
+            async with self.Session() as db:
+                for titel in karten:
+                    db.add(projekte.neue_karte("p1", titel, spalte="bereit"))
+                await db.commit()
+
+        class _Anbieter:
+            async def get_issue(self, client, token, repo, nummer):
+                gefragt.append((repo, nummer))
+                if kaputt:
+                    raise RuntimeError("Hoster antwortet nicht")
+                # ``langsam`` entweder als Zahl (gilt fuer alle) oder je Nummer —
+                # nur so laesst sich eine Abfrage messen, die VOR der haengenden liegt.
+                warte = langsam.get(nummer, 0.0) if isinstance(langsam, dict) else langsam
+                if warte:
+                    await asyncio.sleep(warte)
+                if nummer not in zustaende:
+                    return None                     # nicht lesbar (404/401/403/Grenze)
+                antwort = {"number": nummer, "state": zustaende[nummer]}
+                if nummer in prs:
+                    antwort["pull_request"] = {"url": "https://example.invalid/pulls/1"}
+                return antwort
+
+        @contextlib.asynccontextmanager
+        async def _sitzung():
+            async with self.Session() as db:
+                yield db
+
+        async def _zugang(db, r, team):
+            if zugang_langsam:
+                await asyncio.sleep(zugang_langsam)
+            return "tok", _Anbieter()
+
+        with patch("app.db.session.async_session_factory", _sitzung), \
+                patch("app.core.projekt_git.zugang", _zugang):
+            text = "## Action Items\n" + "".join(f"- [ ] {p}\n" for p in (punkte or [self.ITEM]))
+            await projekt_termine.abschluss("raum1", "p1", "Daily: Projekt", text, ["a1"], redis=redis)
+        async with self.Session() as db:
+            from sqlalchemy import select
+
+            neu = (await db.execute(select(ProjektKarte).where(
+                ProjektKarte.team_id == "p1", ProjektKarte.notiz == "Aus Besprechung"))).scalars().all()
+        return [k.titel for k in neu], gefragt
+
+    async def test_geschlossenes_issue_ohne_karte_wird_keine_karte(self):
+        titel, gefragt = await self._abschluss({961: "closed"})
+        self.assertEqual(titel, [])
+        self.assertEqual(gefragt, [("o/r", 961)])   # am Repo gemessen, nicht am Board
+
+    async def test_offenes_issue_wird_sehr_wohl_eine_karte(self):
+        """Gegenprobe mit derselben Attrappe: antwortet die Quelle „offen“, entsteht die
+        Karte — sonst würde der Test oben auch bei einer Wache bestehen, die nichts fragt."""
+        titel, gefragt = await self._abschluss({961: "open"})
+        self.assertEqual((titel, gefragt), ([self.ITEM], [("o/r", 961)]))
+
+    async def test_quelle_nicht_erreichbar_legt_die_karte_an(self):
+        """Bewusst so festgelegt: ein doppelter Punkt ist billiger als ein verlorener."""
+        titel, _ = await self._abschluss({961: "closed"}, kaputt=True)
+        self.assertEqual(titel, [self.ITEM])
+
+    async def test_ohne_redis_wird_nicht_gefragt(self):
+        """Aufrufer ohne ``redis`` (Bestand, Tests): Verhalten wie bisher, kein Absturz."""
+        titel, gefragt = await self._abschluss({961: "closed"}, redis=None)
+        self.assertEqual((titel, gefragt), ([self.ITEM], []))
+
+    async def test_keine_antwort_der_quelle_legt_die_karte_an(self):
+        """Die Anbieter werfen bei 404/401/403 und erschöpfter Abfragegrenze NICHT, sie
+        liefern ``None``. Das ist der häufigste Ausfallweg (anonyme Projekte: 60 Abfragen
+        je Stunde) und muss wie „nicht geschlossen" wirken, nicht wie „geschlossen"."""
+        titel, gefragt = await self._abschluss({})
+        self.assertEqual((titel, gefragt), ([self.ITEM], [("o/r", 961)]))
+
+    async def test_pull_request_ist_kein_erledigtes_issue(self):
+        """`/issues/{n}` antwortet bei GitHub auch für PRs, und „#N" meint im Protokoll
+        oft etwas anderes als ein Issue. Sonst verschwände „PR #1126 nachziehen" lautlos."""
+        titel, _ = await self._abschluss({1126: "closed"}, prs=(1126,), punkte=["PR #1126 nachziehen"])
+        self.assertEqual(titel, ["PR #1126 nachziehen"])
+
+    async def test_hoechstens_zwanzig_abfragen_je_besprechung(self):
+        """Die im CHANGELOG zugesagte Obergrenze — ein Protokoll voller Nummern darf das
+        Ende der Besprechung nicht aufhalten."""
+        nummern = list(range(500, 530))                      # 30 Nummern in EINEM Punkt
+        punkt = "Sammelpunkt " + " ".join(f"#{n}" for n in nummern)
+        _, gefragt = await self._abschluss({}, punkte=[punkt])
+        self.assertEqual(len(gefragt), projekt_termine.MAX_STATUSABFRAGEN)
+
+    async def test_rollback_beim_zugang_kostet_die_karten_nicht(self):
+        """`zugang` kann auf der ÜBERGEBENEN Sitzung ein `rollback` auslösen —
+        `oauth_service` tut das, wenn sein `commit` scheitert, und `projekt_git`
+        schluckt die Ausnahme danach und liefert normal zurück. Lief die Abfrage auf
+        der Sitzung der Besprechung, entwertete das alle geladenen Objekte: das
+        Kartenanlegen lud `team` nachträglich nach (MissingGreenlet), und Karten,
+        Protokollnachricht und Übersprungen-Spur gingen still verloren."""
+
+        gefragt = []
+
+        class _Anbieter:
+            async def get_issue(self, client, token, repo, nummer):
+                gefragt.append(nummer)
+                return {"number": nummer, "state": "open"}
+
+        async def _zugang(db, r, team):
+            await db.rollback()
+            return "tok", _Anbieter()
+
+        @contextlib.asynccontextmanager
+        async def _sitzung():
+            async with self.Session() as db:
+                yield db
+
+        with patch("app.db.session.async_session_factory", _sitzung), \
+                patch("app.core.projekt_git.zugang", _zugang):
+            await projekt_termine.abschluss("raum1", "p1", "Daily: Projekt",
+                                            f"## Action Items\n- [ ] {self.ITEM}\n", ["a1"],
+                                            redis="redis-attrappe")
+        async with self.Session() as db:
+            from sqlalchemy import select
+
+            karten = (await db.execute(select(ProjektKarte).where(
+                ProjektKarte.team_id == "p1", ProjektKarte.notiz == "Aus Besprechung"))).scalars().all()
+            nachrichten = [n for n in await projekt_gespraech.liste(db, "p1") if n.art == "protokoll"]
+        self.assertEqual([k.titel for k in karten], [self.ITEM])
+        self.assertEqual(len(nachrichten), 1)
+        # Und die Abfrage hat wirklich stattgefunden: liefe der Test nur durch den
+        # Sammel-Fehlerzweig (etwa weil die Attrappe die Schnittstelle verfehlt),
+        # waere der Fall "zugang rollt zurueck UND danach wird gemessen" ungedeckt.
+        self.assertEqual(gefragt, [961])
+
+    async def test_eine_abfrage_je_nummer(self):
+        """Die Zusage „ein Lesevorgang je Nummer". Der frühere Weg (``issue_state`` und
+        danach ``pull_state``) brauchte zwei und hatte dadurch den Befund unten."""
+        _, gefragt = await self._abschluss({961: "closed"})
+        self.assertEqual(gefragt, [("o/r", 961)])
+
+    async def test_pull_request_bleibt_ein_punkt_und_kostet_genau_eine_abfrage(self):
+        """Zustand UND „ist ein PR" kommen aus EINER Antwort — es gibt keine halb gelesene
+        Lage mehr. Das war der Befund hinter der Umstellung auf ``get_issue``: der frühere
+        Weg fragte ``pull_state`` getrennt, und das lieferte auch bei 403/429/5xx ``None``.
+        ``None`` hieß „kein Pull Request", also machte eine NICHT LESBARE Quelle aus einer
+        PR-Nummer ein erledigtes Issue, und „PR #1126 nachziehen" verschwand lautlos.
+
+        Gemessen wird hier deshalb beides zugleich: der Punkt bleibt stehen, UND es ist bei
+        genau einem Lesevorgang geblieben. (Der Name sagte früher „nicht lesbar" — der
+        Hoster antwortet hier aber sauber; die nicht lesbare Quelle misst
+        ``test_eine_nicht_lesbare_nummer_stoppt_die_uebrigen_nicht``.)"""
+        titel, gefragt = await self._abschluss({1126: "closed"}, prs=(1126,),
+                                               punkte=["PR #1126 nachziehen"])
+        self.assertEqual((titel, gefragt), (["PR #1126 nachziehen"], [("o/r", 1126)]))
+
+    async def test_schon_abgedeckter_punkt_fragt_den_hoster_nicht(self):
+        """Ein Punkt, den die Wortüberlappung mit einer offenen Karte ohnehin abdeckt,
+        wird übersprungen — egal was der Hoster sagt. Dann darf die Wache dafür auch nicht
+        fragen: Abfragen sind begrenzt (20) und halten das Ende der Besprechung auf."""
+        titel, gefragt = await self._abschluss({961: "open"}, karten=[self.ITEM])
+        self.assertEqual((titel, gefragt), ([], []))
+
+    async def test_ein_punkt_deckt_den_naechsten_desselben_protokolls_ab(self):
+        """Gegenprobe zur Vorab-Messung: die Dubletten-Erkennung INNERHALB eines
+        Protokolls hängt daran, dass die Vergleichsliste in der Schleife mitwächst.
+        Zwei Mal fast derselbe Punkt ergibt genau EINE Karte."""
+        titel, _ = await self._abschluss(
+            {}, punkte=["Für #961 die Inventur wiederholen", "Die Inventur für #961 wiederholen"])
+        self.assertEqual(len(titel), 1)
+
+    async def test_eine_nicht_lesbare_nummer_stoppt_die_uebrigen_nicht(self):
+        """Eine Nummer, die der Hoster nicht ausliefert, ist ein Einzelfall — sie darf die
+        Messung der ANDEREN nicht abbrechen. Ohne die Prüfung „ist das überhaupt eine
+        Antwort" liefe die Wache auf ``None.get(...)`` in den Sammel-Fehlerzweig und
+        verlöre jede Nummer dahinter, obwohl sie gemessen werden konnte."""
+        titel, gefragt = await self._abschluss(
+            {970: "closed"}, punkte=["Zu #961 nachfassen", "Für #970 die Inventur abschliessen"])
+        self.assertEqual(titel, ["Zu #961 nachfassen"])       # 961 nicht lesbar -> Karte
+        self.assertEqual(gefragt, [("o/r", 961), ("o/r", 970)])
+
+    async def test_zugang_liegt_nicht_in_der_frist(self):
+        """Das Beschaffen des Zugangs darf die Frist NICHT verbrauchen und erst recht nicht
+        von ihr abgebrochen werden: ``zugang`` erneuert bei Bedarf den OAuth-Token (bis zu
+        30 s Sperre plus Tausch beim Anbieter). Ein Abbruch mitten im Tausch verbrennt den
+        Refresh-Token, der Anbieter hat ihn dann schon gedreht — Fehlerklasse #1013.
+        Läge ``zugang`` in der Frist, käme hier keine Abfrage mehr zustande."""
+        with patch.object(projekt_termine, "STATUS_FRIST_SEKUNDEN", 0.2):
+            titel, gefragt = await self._abschluss({961: "closed"}, zugang_langsam=0.5)
+        self.assertEqual((titel, gefragt), ([], [("o/r", 961)]))
+
+    async def test_abbruch_durch_die_frist_behaelt_das_schon_gemessene(self):
+        """Die Zusage „bricht die Abfrage nach der Haelfte ab, zaehlt die Haelfte" —
+        gefunden vom Gegenleser als EINZIGE Luecke der Batterie: wird im Fehlerzweig
+        `set()` statt des schon Gemessenen zurueckgegeben, bleiben alle Tests gruen.
+
+        Lage: #961 antwortet sofort „closed", #970 haengt laenger als die Frist. Danach
+        muss #961 gemessen BLEIBEN (kein Karten-Doppel), #970 aber eine Karte werden.
+        Raeumt jemand den Fehlerzweig „auf", verliert die Wache bei einem langsamen
+        Hoster still die halbe Wirkung von #1106 — ohne dass etwas rot wird."""
+        with patch.object(projekt_termine, "STATUS_FRIST_SEKUNDEN", 0.3):
+            titel, gefragt = await self._abschluss(
+                {961: "closed", 970: "open"}, langsam={970: 5.0},
+                punkte=["Zu #961 nachfassen", "Fuer #970 die Inventur abschliessen"])
+        self.assertEqual(gefragt, [("o/r", 961), ("o/r", 970)])
+        self.assertEqual(titel, ["Fuer #970 die Inventur abschliessen"])
+
+    async def test_frist_bricht_die_abfrage_ab_und_legt_die_karte_an(self):
+        """Die zugesagte Gesamtfrist. Eine hängende Quelle darf die Besprechung nicht
+        festhalten — und der Punkt muss danach eine Karte werden, nicht verschwinden."""
+        with patch.object(projekt_termine, "STATUS_FRIST_SEKUNDEN", 0.05):
+            titel, _ = await self._abschluss({961: "closed"}, langsam=0.5)
+        self.assertEqual(titel, [self.ITEM])
+
+
+class BesprechungReichtRedisDurch(unittest.IsolatedAsyncioTestCase):
+    """Die Statusabfrage beim Hoster braucht ``redis`` (für den OAuth-Zugang). Ohne
+    ``redis`` fragt ``abschluss`` nichts und die Wache fällt stillschweigend auf den
+    alten Board-Stand zurück — der Fix von #1106 wäre dann wirkungslos, ohne dass ein
+    Test rot wird. Genau die eine Stelle, die ``redis`` weitergibt, wird hier gemessen."""
+
+    async def test_abschluss_bekommt_das_redis_der_besprechung(self):
+        from app.api import meeting_rooms
+
+        gesehen = {}
+
+        async def _abschluss(room_id, team_id, raum_name, zusammenfassung, agent_ids, redis=None):
+            gesehen["redis"] = redis
+
+        async def _moderator(room_id, agent_id, prompt, redis, timeout_rounds=24):
+            return "## Action Items\n- [ ] Etwas tun\n"
+
+        class _Client:
+            async def publish(self, *a, **k):
+                return 0
+
+        redis = SimpleNamespace(client=_Client())
+        room = SimpleNamespace(id="raum1", team_id="p1", name="Daily: Projekt", topic="Stand",
+                               agent_ids=["a1"], rounds_completed=1,
+                               messages=[{"role": "agent", "agent_id": "a1", "content": "Hallo"}])
+        with patch.object(meeting_rooms, "_moderator_request", _moderator), \
+                patch.object(projekt_termine, "abschluss", _abschluss):
+            await meeting_rooms._generate_todo_summary(room, redis, "mod1")
+        self.assertIs(gesehen.get("redis"), redis)
+
+
 class TerminText(unittest.TestCase):
     def test_lesbar_statt_kuerzel(self):
         self.assertEqual(projekt_termine.beschreibung({"art": "daily", "uhrzeit": "09:00"}), "Daily (Mo–Fr) um 09:00")
