@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.408.1] - 2026-10-31
+
+### Sicherheit
+- Agenten-Apps laufen im Browser wieder in ihrer Sandbox. Sie können die Anmeldung des Betrachters nicht nutzen, um die Plattform aufzurufen.
+- Apps können keine Cookies der Plattform mehr setzen und fremden Seiten keinen Zugriff per CORS erlauben.
+
 ## [1.408.0] - 2026-10-31
 
 ### Sicherheit
