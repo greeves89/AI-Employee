@@ -174,6 +174,19 @@ class UmgebungTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(env["AIE_EGRESS_CA"].startswith("-----BEGIN CERTIFICATE-----"))
         self.assertNotIn(TOKEN, "".join(env.values()), "Der Dienst-Schluessel geht nie in den Agenten")
 
+    async def test_interne_mcp_server_gehen_direkt(self):
+        mcp = '{"Test": "http://test-mcp-server:8000/mcp", "Extern": "https://mcp.example.com/mcp", ' \
+              '"Lan": "http://192.168.1.20:9000", "Intern": "http://brain.internal/x"}'
+        self.assertEqual(egress.interne_hosts(mcp), ["test-mcp-server", "192.168.1.20", "brain.internal"])
+        self.assertEqual(egress.interne_hosts("kaputt"), [])
+        self.assertEqual(egress.interne_hosts(None), [])
+        with patch.object(settings, "egress_proxy_enabled", True), \
+                patch.object(settings, "egress_proxy_token", TOKEN), \
+                patch.object(egress, "ca_zertifikat", AsyncMock(return_value="-----BEGIN CERTIFICATE-----\nX\n")):
+            env = await egress.agent_umgebung("a1", mcp)
+        self.assertIn("test-mcp-server", env["NO_PROXY"].split(","))
+        self.assertNotIn("mcp.example.com", env["NO_PROXY"], "Externe MCPs bleiben am Proxy")
+
     async def test_ohne_ca_kein_start(self):
         with patch.object(settings, "egress_proxy_enabled", True), \
                 patch.object(settings, "egress_proxy_token", TOKEN), \

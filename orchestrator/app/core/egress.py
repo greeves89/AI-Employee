@@ -157,12 +157,41 @@ async def ca_zertifikat() -> str:
                        "Ohne ihn kann der Agent nicht starten, solange der Proxy eingeschaltet ist.")
 
 
-async def agent_umgebung(agent_id: str) -> dict[str, str]:
+def interne_hosts(mcp_server_json: str | None) -> list[str]:
+    """Hosts der MCP-Server eines Agenten, die nicht ins Internet gehoeren.
+
+    Namen ohne Punkt (eigene Apps im App-Netz, etwa ``test-mcp-server``), private
+    Adressen, ``.internal``/``.local``. Claude Code schickt auch ``http://``-Adressen
+    an ``HTTPS_PROXY``; der Proxy kennt die App-Netze nicht und antwortete mit 502.
+    ``NO_PROXY`` kennt kein Muster fuer „Name ohne Punkt“ — also stehen sie einzeln da.
+    """
+    import ipaddress
+    import json
+    try:
+        server = json.loads(mcp_server_json or "{}")
+    except ValueError:
+        return []
+    gefunden: list[str] = []
+    for url in (server.values() if isinstance(server, dict) else []):
+        host = (urlsplit(str(url)).hostname or "").lower()
+        if not host:
+            continue
+        try:
+            intern = not ipaddress.ip_address(host).is_global
+        except ValueError:
+            intern = "." not in host or host.endswith((".internal", ".local"))
+        if intern and host not in gefunden:
+            gefunden.append(host)
+    return gefunden
+
+
+async def agent_umgebung(agent_id: str, mcp_server_json: str | None = None) -> dict[str, str]:
     """Umgebung, mit der ein Agent ueber den Proxy geht. Leer, wenn der Proxy aus ist.
 
     Wird ZULETZT auf die Umgebung gelegt: Kein zugewiesener Key darf den Weg nach
     draussen umbiegen. Nur HTTPS geht ueber den Proxy — Keys gehen ueber HTTPS, und
     die eigenen Apps des Agenten (http, Namen ohne Punkt) bleiben direkt erreichbar.
+    ``mcp_server_json``: ``CUSTOM_MCP_SERVERS`` des Agenten (interne bleiben direkt).
     """
     if not aktiv():
         return {}
@@ -170,7 +199,7 @@ async def agent_umgebung(agent_id: str) -> dict[str, str]:
     ca = await ca_zertifikat()
     teile = urlsplit(settings.egress_proxy_url)
     proxy = f"{teile.scheme}://{agent_id}:{make_agent_token(agent_id)}@{teile.netloc}"
-    no_proxy = ",".join(NO_PROXY)
+    no_proxy = ",".join(NO_PROXY + tuple(interne_hosts(mcp_server_json)))
     return {
         "HTTPS_PROXY": proxy, "https_proxy": proxy,
         "NO_PROXY": no_proxy, "no_proxy": no_proxy,
