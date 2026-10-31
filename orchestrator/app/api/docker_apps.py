@@ -5,7 +5,8 @@ docker-compose.yml, users can start/stop/monitor the app from the Web UI.
 
 How it works:
 1. Discovery: exec into agent container to find docker-compose.yml files
-2. Start/Stop: run a docker:cli container with workspace volume + docker socket
+2. Start/Stop: only through ``core/compose_pruefung`` — the compose file is
+   normalised, checked against an allowlist and then run from stdin
 3. Status: query Docker API for containers with the project label
 4. Logs: stream container logs via Docker API
 """
@@ -19,11 +20,12 @@ from urllib.parse import urlencode
 
 import httpx
 import yaml
-from docker.errors import APIError, ContainerError, ImageNotFound, NotFound
+from docker.errors import APIError, NotFound
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import compose_pruefung
 from app.core.app_sharing import (
     ACCESS_OWNER,
     ACCESS_PUBLIC,
@@ -41,7 +43,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/agents/{agent_id}/apps", tags=["docker-apps"])
 
-COMPOSE_RUNNER_IMAGE = "docker:cli"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -70,123 +71,14 @@ async def _get_agent(agent_id: str, user, db: AsyncSession) -> Agent:
     return await _load_agent(agent_id, db)
 
 
+def _quelle(agent: Agent, agent_id: str) -> compose_pruefung.Quelle:
+    return compose_pruefung.fuer_agent(agent_id, agent.volume_name or f"workspace-{agent_id}")
+
+
 def _project_name(agent_id: str, app_path: str) -> str:
     """Generate a unique docker compose project name."""
     safe = re.sub(r"[^a-z0-9-]", "-", app_path.lower().strip("/"))
     return f"agent-{agent_id[:8]}-{safe}"
-
-
-def _parse_port_target(entry: Any) -> str | None:
-    """Extract the container-side (target) port from a compose ``ports`` entry.
-
-    Handles "3000", "3001:3000", "127.0.0.1:3001:3000", "3000/tcp" and the long
-    form {target: 3000, published: 3001}. Returns None if it can't be determined.
-    """
-    if isinstance(entry, dict):
-        t = entry.get("target")
-        return str(t) if t not in (None, "") else None
-    s = str(entry).split("/", 1)[0]  # drop /tcp|/udp
-    parts = [p for p in s.split(":")]
-    last = parts[-1].strip() if parts else ""
-    return last or None
-
-
-def _prepare_free_port_compose(
-    docker: DockerService, agent: Agent, path: str, compose_file: str
-) -> str:
-    """Rewrite fixed host-port bindings to Docker-auto-assigned free ports.
-
-    True one-click deploy: a compose file with a hard-coded ``3001:3000`` fails the
-    second time (``port is already allocated``). We generate a sidecar compose file
-    (original untouched) where each service publishes ONLY the container port, so
-    Docker picks a guaranteed-free host port. The actual assigned port is read back
-    afterwards via ``_get_project_containers``. Falls back to the original file on
-    any parse issue.
-    """
-    try:
-        ec, content = docker.exec_in_container(agent.container_id, ["cat", compose_file])
-        if ec != 0 or not content:
-            return compose_file
-        data = yaml.safe_load(content)
-        if not isinstance(data, dict) or not isinstance(data.get("services"), dict):
-            return compose_file
-        changed = False
-        for svc in data["services"].values():
-            if not isinstance(svc, dict) or not svc.get("ports"):
-                continue
-            new_ports = []
-            for entry in svc["ports"]:
-                target = _parse_port_target(entry)
-                if target and target.isdigit():
-                    new_ports.append(target)  # container port only → Docker auto-assigns host port
-                    changed = True
-                else:
-                    new_ports.append(entry)
-            svc["ports"] = new_ports
-        if not changed:
-            return compose_file
-        # Write next to the original so relative build/env_file paths still resolve.
-        gen_path = f"/workspace/{path}/docker-compose.aiemployee.yml"
-        docker.write_file_in_container(
-            agent.container_id, gen_path, yaml.safe_dump(data, sort_keys=False)
-        )
-        logger.info(f"Auto free-port compose generated for {path}: {gen_path}")
-        return gen_path
-    except Exception as e:  # noqa: BLE001 — never block deploy on this; use original
-        logger.warning(f"free-port compose prep failed for {path}: {e}")
-        return compose_file
-
-
-def _run_compose(
-    docker: DockerService,
-    workspace_volume: str,
-    project_name: str,
-    compose_file: str,
-    command: list[str],
-    network: str = "ai-employee-network",
-) -> tuple[int, str]:
-    """Run a docker compose command in a runner container.
-
-    Uses docker:cli image with the workspace volume and Docker socket mounted
-    so compose has access to both the project files and the Docker daemon.
-    """
-    full_command = [
-        "docker", "compose",
-        "-p", project_name,
-        "-f", compose_file,
-    ] + command
-
-    try:
-        # Use stderr=True to merge stderr into output (warnings + errors visible)
-        output = docker.client.containers.run(
-            image=COMPOSE_RUNNER_IMAGE,
-            command=full_command,
-            volumes={
-                "/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"},
-                workspace_volume: {"bind": "/workspace", "mode": "rw"},
-            },
-            network=network,
-            remove=True,
-            detach=False,
-            stderr=True,
-        )
-        text = output.decode("utf-8") if isinstance(output, bytes) else str(output)
-        return 0, text
-    except ContainerError as e:
-        # Collect both stdout and stderr for diagnostics
-        parts = []
-        if e.stderr:
-            parts.append(e.stderr.decode("utf-8") if isinstance(e.stderr, bytes) else str(e.stderr))
-        if hasattr(e, "output") and e.output:
-            parts.append(e.output.decode("utf-8") if isinstance(e.output, bytes) else str(e.output))
-        combined = "\n".join(parts).strip()
-        return e.exit_status or 1, combined
-    except ImageNotFound:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Docker image '{COMPOSE_RUNNER_IMAGE}' not found. "
-            "Pull it with: docker pull docker:cli",
-        )
 
 
 # Compose benennt den laufenden Container vor dem Ersetzen in ``<hex>_<name>`` um
@@ -273,14 +165,14 @@ def _reconcile_stale_backups(docker: DockerService, project_name: str) -> list[s
 
 async def _compose_with_conflict_recovery(
     docker: DockerService,
-    workspace_volume: str,
+    quelle: compose_pruefung.Quelle,
     project_name: str,
-    compose_file: str,
+    modell: dict,
     command: list[str],
 ) -> tuple[int, str]:
     """Ein Compose-Lauf, der einen Namenskonflikt einmal selbst aufloest."""
     exit_code, output = await asyncio.to_thread(
-        _run_compose, docker, workspace_volume, project_name, compose_file, command,
+        compose_pruefung.ausfuehren, docker, quelle, project_name, modell, command,
     )
     if exit_code == 0 or not _is_name_conflict(output):
         return exit_code, output
@@ -290,7 +182,7 @@ async def _compose_with_conflict_recovery(
     )
     await asyncio.to_thread(_reconcile_stale_backups, docker, project_name)
     return await asyncio.to_thread(
-        _run_compose, docker, workspace_volume, project_name, compose_file, command,
+        compose_pruefung.ausfuehren, docker, quelle, project_name, modell, command,
     )
 
 
@@ -342,26 +234,149 @@ def _get_project_containers(docker: DockerService, project_name: str) -> list[di
 AGENT_NETWORK = "ai-employee-network"
 
 
-def _connect_containers_to_network(docker: DockerService, project_name: str) -> None:
-    """Connect all containers of a compose project to the ai-employee-network."""
-    try:
-        network = docker.client.networks.get(AGENT_NETWORK)
-    except Exception:
-        logger.warning(f"Network {AGENT_NETWORK} not found, skipping")
-        return
+def _projekt_filter(project_name: str) -> dict:
+    return {"label": f"com.docker.compose.project={project_name}"}
 
-    containers = docker.client.containers.list(
-        filters={"label": f"com.docker.compose.project={project_name}"},
-    )
-    for c in containers:
-        # Check if already connected
-        connected_nets = c.attrs.get("NetworkSettings", {}).get("Networks", {})
-        if AGENT_NETWORK not in connected_nets:
-            try:
-                network.connect(c)
-                logger.info(f"Connected {c.name} to {AGENT_NETWORK}")
-            except Exception as e:
-                logger.warning(f"Failed to connect {c.name} to {AGENT_NETWORK}: {e}")
+
+APPS_NETZ_LABEL = "ai-employee.apps-netz"
+
+
+APPS_NETZ_PRAEFIX = "ai-employee-apps-"
+
+
+def _apps_netz(docker: DockerService, schluessel: str):
+    """Ein App-Netz: ``ai-employee-apps-<id8>`` je Agent bzw. ``…-tf-<raum>`` je
+    Taskforce-Raum. Intern und von der Plattform angelegt.
+
+    Hier treffen sich die Apps des Agenten, der Agent selbst und der Orchestrator
+    (fuer den App-Proxy). Den Namen kann keine App beanspruchen — Compose-Namen
+    beginnen nach der Pruefung immer mit ``agent-<id8>-``. Und die App-Container
+    haengt die Plattform selbst ein, OHNE Zusatznamen: In diesem Netz ist eine App
+    nur unter ihrem Containernamen erreichbar, der ebenfalls mit ``agent-`` beginnt.
+    So kann eine App keinen Namen der Plattform (Redis, Postgres, Docker-Proxy)
+    fuer den Orchestrator oder den Agenten umbiegen.
+    """
+    name = APPS_NETZ_PRAEFIX + schluessel
+    try:
+        netz = docker.client.networks.get(name)
+        if (netz.attrs.get("Labels") or {}).get(APPS_NETZ_LABEL) == schluessel:
+            return netz
+        raise RuntimeError(f"Netz {name} stammt nicht von der Plattform")
+    except NotFound:
+        return docker.client.networks.create(
+            name, driver="bridge", internal=True, labels={APPS_NETZ_LABEL: schluessel})
+
+
+def _app_netz_anbinden(docker: DockerService, project_name: str, schluessel: str,
+                       agent_container: str | None = None) -> None:
+    """Die App kommt ins App-Netz ihres Agenten, nicht ins Plattformnetz.
+
+    Frueher hing jeder App-Container im Plattformnetz — neben Postgres, Redis, dem
+    Orchestrator und den Agenten aller Nutzer. Eine App aus Agenten-Code erreichte
+    damit alles. Jetzt teilt sie ein internes Netz nur mit dem Orchestrator und
+    ihrem Agenten.
+    """
+    from app.config import settings
+
+    app_container = docker.client.containers.list(filters=_projekt_filter(project_name))
+    try:
+        plattform = docker.client.networks.get(AGENT_NETWORK)
+        for c in app_container:
+            if AGENT_NETWORK in ((c.attrs.get("NetworkSettings") or {}).get("Networks") or {}):
+                plattform.disconnect(c, force=True)
+                logger.info(f"{c.name} aus {AGENT_NETWORK} genommen")
+    except Exception as e:  # noqa: BLE001 — Altbestand; der Start selbst ist schon durch
+        logger.warning(f"Plattformnetz fuer {scrub_log(project_name)} nicht bereinigt: {e}")
+
+    try:
+        netz = _apps_netz(docker, schluessel)
+        netz.reload()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"App-Netz {scrub_log(schluessel)} nicht verfuegbar: {e}")
+        return
+    drin = set((netz.attrs.get("Containers") or {}).keys())
+    gaeste = [settings.orchestrator_container_name, agent_container]
+    for ziel in [*app_container, *gaeste]:
+        if not ziel:
+            continue
+        try:
+            c = docker.client.containers.get(ziel) if isinstance(ziel, str) else ziel
+            if c.id not in drin:
+                netz.connect(c)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"{scrub_log(str(getattr(ziel, 'name', ziel)))} nicht an {netz.name} angebunden: {e}")
+    _EIGENE_NETZE.clear()
+
+
+def _orchestrator_anbinden(docker: DockerService, netznamen: list[str]) -> None:
+    """Nach einem Neustart des Orchestrators: wieder den App-Netzen beitreten, in
+    denen eine App schon haengt. Nur Netze der Plattform — nie ein Netz der App."""
+    from app.config import settings
+
+    for name in netznamen:
+        if not name.startswith(APPS_NETZ_PRAEFIX):
+            continue
+        try:
+            netz = docker.client.networks.get(name)
+            if not (netz.attrs.get("Labels") or {}).get(APPS_NETZ_LABEL):
+                continue
+            netz.connect(docker.client.containers.get(settings.orchestrator_container_name))
+        except APIError as e:
+            if "already exists" not in str(e):
+                logger.warning(f"Orchestrator nicht an {name} angebunden: {e}")
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Orchestrator nicht an {name} angebunden: {e}")
+    _EIGENE_NETZE.clear()
+
+
+def apps_aus_dem_plattformnetz(docker: DockerService) -> int:
+    """Beim Start einmal: laufende Agenten-Apps aus dem Plattformnetz ins App-Netz
+    ihres Agenten umziehen. Bis zu dieser Version hing jede App neben Postgres und
+    Redis; ohne den Umzug blieben sie dort bis zum naechsten Neustart der App."""
+    umgezogen = 0
+    try:
+        plattform = docker.client.networks.get(AGENT_NETWORK)
+        plattform.reload()
+    except Exception:  # noqa: BLE001
+        return 0
+    projekte = set()
+    for cid in (plattform.attrs.get("Containers") or {}):
+        try:
+            c = docker.client.containers.get(cid)
+        except Exception:  # noqa: BLE001
+            continue
+        projekt = str(c.labels.get("com.docker.compose.project", ""))
+        if re.fullmatch(r"agent-[0-9a-f]{8}-.+", projekt):
+            projekte.add(projekt)
+    for projekt in sorted(projekte):
+        # Taskforce-Apps („…-tf-<raum>“) bekommen das Netz ihres Raums, sonst das des Agenten.
+        tf = re.fullmatch(r"agent-[0-9a-f]{8}-tf-(.+)", projekt)
+        _app_netz_anbinden(docker, projekt, f"tf-{tf.group(1)[:12]}" if tf else projekt[6:14])
+        umgezogen += 1
+    if umgezogen:
+        logger.info(f"{umgezogen} App(s) aus {AGENT_NETWORK} in ihr App-Netz umgezogen")
+    return umgezogen
+
+
+#: Netze des Orchestrators, kurz zwischengespeichert: Der Proxy fragt bei jeder
+#: Anfrage danach, das soll nicht jedes Mal ein Docker-Aufruf sein.
+_EIGENE_NETZE: dict[str, Any] = {}
+
+
+def _eigene_netze(docker: DockerService) -> set[str]:
+    import time
+
+    from app.config import settings
+
+    if _EIGENE_NETZE.get("bis", 0) > time.monotonic():
+        return _EIGENE_NETZE["netze"]
+    try:
+        c = docker.client.containers.get(settings.orchestrator_container_name)
+        netze = set(((c.attrs.get("NetworkSettings") or {}).get("Networks") or {}).keys())
+    except Exception:  # noqa: BLE001 — ohne Antwort: kein gemeinsames Netz annehmen
+        netze = set()
+    _EIGENE_NETZE.update(netze=netze, bis=time.monotonic() + 30)
+    return netze
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -614,21 +629,20 @@ async def _start_core(docker: DockerService, agent: Agent, agent_id: str, path: 
 
     compose_file = _resolve_compose_file(docker, agent, path, require=True)
     project_name = _project_name(agent_id, path)
-    workspace_volume = agent.volume_name or f"workspace-{agent_id}"
+    quelle = _quelle(agent, agent_id)
 
     _ensure_env_files(docker, agent, path, compose_file)
 
     logger.info(f"Starting Docker app: {scrub_log(project_name)} (path={scrub_log(path)}, agent={scrub_log(agent_id)})")
 
-    # One-click: rewrite fixed host ports to auto-assigned free ones so a re-deploy
-    # never fails on "port is already allocated".
-    compose_file = await asyncio.to_thread(
-        _prepare_free_port_compose, docker, agent, path, compose_file
-    )
+    # Geprueft wird, was Docker wirklich ausfuehrt; dabei werden auch feste
+    # Host-Ports zu freien auf 127.0.0.1 (kein "port is already allocated").
+    modell, hinweise = await compose_pruefung.vorbereiten(
+        docker, quelle, project_name, compose_file, agent_id=agent_id)
 
     async with _project_lock(project_name):
         exit_code, output = await _compose_with_conflict_recovery(
-            docker, workspace_volume, project_name, compose_file,
+            docker, quelle, project_name, modell,
             ["up", "-d", "--build"],
         )
 
@@ -641,11 +655,11 @@ async def _start_core(docker: DockerService, agent: Agent, agent_id: str, path: 
         logger.error(f"Failed to start {scrub_log(project_name)}: {scrub_log(output)}")
         raise HTTPException(status_code=500, detail=f"Failed to start app: {output}")
 
-    _connect_containers_to_network(docker, project_name)
+    _app_netz_anbinden(docker, project_name, agent_id[:8], agent.container_id)
     containers = _get_project_containers(docker, project_name)
     logger.info(f"Docker app started: {scrub_log(project_name)} ({len(containers)} containers)")
     return {"project": project_name, "status": "running", "containers": containers,
-            "url": _app_public_url(agent_id, containers), "output": output}
+            "url": _app_public_url(agent_id, containers), "output": output, "hinweise": hinweise}
 
 
 async def _stop_core(docker: DockerService, agent: Agent, agent_id: str, path: str) -> dict:
@@ -653,13 +667,13 @@ async def _stop_core(docker: DockerService, agent: Agent, agent_id: str, path: s
         raise HTTPException(status_code=400, detail="Invalid path")
 
     project_name = _project_name(agent_id, path)
-    workspace_volume = agent.volume_name or f"workspace-{agent_id}"
-    compose_file = _resolve_compose_file(docker, agent, path, require=False)
 
     logger.info(f"Stopping Docker app: {scrub_log(project_name)}")
+    # Ohne Datei: Compose findet die Container ueber die Projektbezeichnung, die der
+    # Server selbst setzt. So laeuft beim Stoppen nichts aus dem Workspace.
     async with _project_lock(project_name):
         exit_code, output = await asyncio.to_thread(
-            _run_compose, docker, workspace_volume, project_name, compose_file, ["down"],
+            compose_pruefung.ausfuehren, docker, _quelle(agent, agent_id), project_name, None, ["down"],
         )
     output = redact_logs(output)          # siehe _start_core
     if exit_code != 0:
@@ -673,19 +687,18 @@ async def _rebuild_core(docker: DockerService, agent: Agent, agent_id: str, path
 
     compose_file = _resolve_compose_file(docker, agent, path, require=False)
     project_name = _project_name(agent_id, path)
-    workspace_volume = agent.volume_name or f"workspace-{agent_id}"
+    quelle = _quelle(agent, agent_id)
 
     docker.exec_in_container(agent.container_id, f"touch {shlex.quote(f'/workspace/{path}/.env')}")
     logger.info(f"Rebuilding Docker app: {scrub_log(project_name)}")
 
-    compose_file = await asyncio.to_thread(
-        _prepare_free_port_compose, docker, agent, path, compose_file
-    )
+    modell, hinweise = await compose_pruefung.vorbereiten(
+        docker, quelle, project_name, compose_file, agent_id=agent_id)
     async with _project_lock(project_name):
         # Ein abgebrochener Recreate blockiert von allein jeden weiteren Versuch.
         await asyncio.to_thread(_reconcile_stale_backups, docker, project_name)
         exit_code, output = await _compose_with_conflict_recovery(
-            docker, workspace_volume, project_name, compose_file,
+            docker, quelle, project_name, modell,
             ["up", "-d", "--build", "--force-recreate"],
         )
     output = redact_logs(output)          # siehe _start_core
@@ -693,10 +706,10 @@ async def _rebuild_core(docker: DockerService, agent: Agent, agent_id: str, path
         logger.error(f"Failed to rebuild {scrub_log(project_name)}: {scrub_log(output)}")
         raise HTTPException(status_code=500, detail=f"Failed to rebuild app: {output}")
 
-    _connect_containers_to_network(docker, project_name)
+    _app_netz_anbinden(docker, project_name, agent_id[:8], agent.container_id)
     containers = _get_project_containers(docker, project_name)
     return {"project": project_name, "status": "running", "containers": containers,
-            "url": _app_public_url(agent_id, containers), "output": output}
+            "url": _app_public_url(agent_id, containers), "output": output, "hinweise": hinweise}
 
 
 def _logs_core(docker: DockerService, agent_id: str, path: str, service: str | None, lines: int) -> dict:
@@ -882,6 +895,13 @@ _HOP_BY_HOP = {
 # Carries a public-link token across the app's sub-requests. Path-scoped to the one
 # app it was issued for, HttpOnly, and never forwarded upstream (see `_strip` below)
 # — the agent-authored app must not be able to read or replay it.
+#: Header aus der Antwort einer App, die der Proxy weiterreicht.
+_APP_ANTWORT_HEADER = frozenset({
+    "content-type", "content-language", "content-disposition", "content-range",
+    "accept-ranges", "cache-control", "expires", "last-modified", "etag", "vary",
+    "location", "retry-after", "date",
+})
+
 _SHARE_COOKIE = "ai_app_share"
 _SHARE_COOKIE_MAX_AGE = 12 * 3600
 
@@ -1008,25 +1028,28 @@ async def proxy_app(
         _set_share_cookie(redirect, request, container, port, share_token)
         return redirect
 
-    # Route to the container's IP on the shared platform network, NOT its name:
+    # Route to the container's IP, NOT its name:
     # compose-generated container names routinely exceed the 63-char DNS label limit
     # (e.g. "agent-<id>-<longpath>-<service>-1") and are then UNRESOLVABLE by Docker's
     # embedded DNS → the proxy 502s. The IP always works (both are on this network).
     # Fall back to the name for short-named containers that predate this.
+    # Die IP aus einem Netz, in dem auch der Orchestrator haengt (das App-Netz des
+    # Agenten). Fehlt das — etwa nach einem Neustart des Orchestrators —, tritt er
+    # ihm jetzt bei.
     host = container
     try:
         nets = ((c.attrs or {}).get("NetworkSettings") or {}).get("Networks") or {}
-        shared = nets.get("ai-employee-network") or {}
-        ip = shared.get("IPAddress") or ""
-        if not ip:
-            for _n in nets.values():
-                if _n.get("IPAddress"):
-                    ip = _n["IPAddress"]
-                    break
+        gemeinsam = [n for n in nets if n in _eigene_netze(docker)]
+        if not gemeinsam:
+            await asyncio.to_thread(_orchestrator_anbinden, docker, list(nets))
+            await asyncio.to_thread(c.reload)
+            nets = ((c.attrs or {}).get("NetworkSettings") or {}).get("Networks") or {}
+            gemeinsam = [n for n in nets if n in _eigene_netze(docker)]
+        ip = next((nets[n].get("IPAddress") for n in gemeinsam if nets[n].get("IPAddress")), "")
         if ip:
             host = ip
     except Exception:  # noqa: BLE001 — fall back to the name
-        pass
+        logger.debug("App-Ziel ueber den Namen statt die IP", exc_info=True)
 
     target = f"http://{host}:{int(port)}/{rest}"
     body = await request.body()
@@ -1051,9 +1074,13 @@ async def proxy_app(
     except httpx.RequestError as e:
         raise HTTPException(status_code=502, detail=f"App nicht erreichbar: {type(e).__name__}")
 
+    # Nur harmlose Header der App kommen durch (Positivliste). Sonst setzte Agenten-
+    # Code auf der Origin der Plattform Cookies (bis zum Sitzungscookie), lockerte
+    # Rahmen- und Geraeterechte oder erlaubte per CORS fremden Seiten, die App mit
+    # der Anmeldung des Betrachters mitzulesen.
     resp_headers = {
         k: v for k, v in upstream.headers.items()
-        if k.lower() not in _HOP_BY_HOP and k.lower() != "content-security-policy"
+        if k.lower() in _APP_ANTWORT_HEADER
     }
     # The app is agent-authored code served from the PLATFORM origin. Without this it
     # would run same-origin and could call the platform API with the owner's ambient

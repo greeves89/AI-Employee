@@ -396,6 +396,15 @@ services:
     ports: ["8080:8080"]
 ```
 Danach `rebuild_app` mit dem Pfad aus `list_apps`.
+**Was der Orchestrator vor jedem Start prueft:** Gesperrt ist alles, was Zugriff
+auf den Server gaebe — `privileged`, Ordner des Servers (`/`, `/var/run/docker.sock`,
+alles ausserhalb deines Workspace), `network_mode: host`, `pid`/`ipc: host`,
+zusaetzliche `cap_add`, `devices`, `secrets`/`configs` mit Dateien, fremde Volumes.
+Erlaubt sind Ordner im Projekt (`./data:/data`, sie liegen in deinem Workspace),
+benannte Volumes, Ports und Umgebungsvariablen. Ports bindet der Orchestrator nur
+lokal; die App erreichst du ueber die Adresse, die `start_app`/`rebuild_app`
+zurueckgeben. Bei einer Ablehnung nennt die Antwort jede gesperrte Stelle —
+Datei anpassen, nicht unveraendert erneut versuchen.
 
 ## Bildschirm des Nutzers bedienen
 Alles, was auf dem Bildschirm des Nutzers passiert, laeuft AUSSCHLIESSLICH ueber die

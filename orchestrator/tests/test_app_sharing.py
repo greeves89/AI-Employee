@@ -405,7 +405,8 @@ class ProxyGateTests(AppSharingTestBase):
         self.assertIn("HttpOnly", cookie)
         self.assertIn("/proxy/app-web-1/8080/", cookie)   # exakt auf diese App begrenzt
 
-    async def _proxy_to_upstream(self, *, user, query=None, headers=None, method="GET"):
+    async def _proxy_to_upstream(self, *, user, query=None, headers=None, method="GET",
+                                 antwort_header=None):
         """Lässt den Proxy bis zum httpx-Aufruf durchlaufen und gibt zurück, was
         tatsächlich nach oben an die App geschickt wurde."""
         docker = _FakeDocker(labels={"com.docker.compose.project": PROJECT})
@@ -413,7 +414,7 @@ class ProxyGateTests(AppSharingTestBase):
 
         class _Upstream:
             status_code, content = 200, b"ok"
-            headers = {"content-type": "text/html"}
+            headers = antwort_header or {"content-type": "text/html"}
 
         class _Client:
             def __init__(self, **_kw):
@@ -439,6 +440,30 @@ class ProxyGateTests(AppSharingTestBase):
                 request=req, user=user, db=self.db, docker=docker,
             )
         return resp, sent
+
+    async def test_app_setzt_keine_cookies_und_lockert_keine_regeln(self):
+        """Die App ist Agenten-Code auf der Origin der Plattform. Reichte der Proxy
+        ihre Header durch, setzte sie Cookies der Plattform (bis zum Sitzungscookie),
+        erlaubte fremden Seiten per CORS das Mitlesen oder lockerte Rahmen- und
+        Geräterechte — die Middleware lässt vorhandene Header inzwischen stehen."""
+        with _allowed():
+            resp, _ = await self._proxy_to_upstream(user=OWNER, antwort_header={
+                "content-type": "text/html",
+                "cache-control": "no-store",
+                "set-cookie": "access_token=vom-angreifer; Path=/",
+                "access-control-allow-origin": "https://example.invalid",
+                "access-control-allow-credentials": "true",
+                "x-frame-options": "ALLOWALL",
+                "permissions-policy": "camera=*",
+                "content-security-policy": "default-src *",
+                "strict-transport-security": "max-age=0",
+            })
+        h = {k.lower(): v for k, v in resp.headers.items()}
+        self.assertEqual(h["cache-control"], "no-store", "harmlose Header kommen durch")
+        for weg in ("set-cookie", "access-control-allow-origin", "access-control-allow-credentials",
+                    "x-frame-options", "permissions-policy", "strict-transport-security"):
+            self.assertNotIn(weg, h, weg)
+        self.assertTrue(h["content-security-policy"].startswith("sandbox"))
 
     async def test_credentials_never_reach_the_upstream_app(self):
         """Käme ein Referer mit Token an (Lesezeichen, alter Tab), darf er nicht nach

@@ -58,11 +58,21 @@ class SecurityHeadersMiddleware:
             if message["type"] == "http.response.start":
                 headers = MutableHeaders(scope=message)
                 headers["X-Content-Type-Options"] = "nosniff"
-                headers["X-Frame-Options"] = "DENY"
-                headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
                 headers["X-XSS-Protection"] = "1; mode=block"
-                headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-                headers["Content-Security-Policy"] = self._CSP
+                # Was ein Endpunkt selbst setzt, bleibt stehen: Der App-Proxy setzt
+                # etwa das strengere „no-referrer“. Ueberschreiben machte es schwaecher.
+                for name, wert in (("X-Frame-Options", "DENY"),
+                                   ("Referrer-Policy", "strict-origin-when-cross-origin"),
+                                   ("Permissions-Policy", "camera=(), microphone=(), geolocation=()")):
+                    if name not in headers:
+                        headers[name] = wert
+                # Eine vorhandene CSP wird ergaenzt, nicht ersetzt: Der Browser setzt
+                # beide durch. Sonst verlor die Sandbox des App-Proxys ihre Wirkung —
+                # Agenten-Code lief auf der Origin der Plattform, mit Sitzungscookie.
+                if "Content-Security-Policy" in headers:
+                    headers.append("Content-Security-Policy", self._CSP)
+                else:
+                    headers["Content-Security-Policy"] = self._CSP
             await send(message)
 
         await self.app(scope, receive, send_with_headers)
@@ -1161,6 +1171,14 @@ async def lifespan(app: FastAPI):
     # (Docker creates the volume root:root 0755 -> agents can only read).
     from app.core.shared_volume import ensure_shared_volume_perms
     ensure_shared_volume_perms()
+
+    # Laufende Agenten-Apps aus dem Plattformnetz in ihr App-Netz (einmalig je Start).
+    try:
+        from app.api.docker_apps import apps_aus_dem_plattformnetz
+        from app.services.docker_service import DockerService
+        await asyncio.to_thread(apps_aus_dem_plattformnetz, DockerService())
+    except Exception:  # noqa: BLE001 — darf den Start nie verhindern
+        logger.warning("Agenten-Apps nicht aus dem Plattformnetz umgezogen", exc_info=True)
 
     # Mirror WARNING+ logs (redacted) to /shared/.plattform/platform-errors.log so admins' agents can
     # read platform errors from the shared volume and help fix the platform.

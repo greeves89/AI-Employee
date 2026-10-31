@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.408.1] - 2026-10-31
+
+### Sicherheit
+- Agenten-Apps laufen im Browser wieder in ihrer Sandbox. Sie können die Anmeldung des Betrachters nicht nutzen, um die Plattform aufzurufen.
+- Apps können keine Cookies der Plattform mehr setzen und fremden Seiten keinen Zugriff per CORS erlauben.
+
+## [1.408.0] - 2026-10-31
+
+### Sicherheit
+- **Agenten-Apps werden vor dem Start geprüft.** Eine App kann sich keine Rechte am Server mehr verschaffen: keine vollen Rechte, keine Ordner oder Netze des Servers, keine fremden Volumes, keine Abbilder der Plattform. Ports sind nur noch intern gebunden, erreichbar ist die App wie bisher über **Öffnen**.
+- Apps sind vom Netz der Plattform getrennt. Sie erreichen weder Datenbank noch Redis noch die Agenten anderer Nutzer. Erreichbar sind sie für ihren Agenten und über **Öffnen**.
+- Ordner wie `./data` liegen jetzt im Arbeitsbereich des Agenten statt auf dem Server.
+- Abgelehnte Apps stehen im Audit-Log als „App-Start blockiert“.
+
+### Verbessert
+- Die Apps-Ansicht zeigt Fehler als lesbaren Text mit deutschen Überschriften.
+
 ## [1.407.2] - 2026-10-30
 
 ### Dokumentation
