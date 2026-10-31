@@ -2210,14 +2210,22 @@ export function buildServer() {
               priority: args.priority || "",
             }),
           });
+          // Bei „Freigabe“ in der Rechte-Matrix legt die Plattform das Ticket erst nach
+          // der Freigabe selbst an (core/gebundene_freigabe) — nicht als erledigt melden.
+          if (created.status === "wartet_auf_freigabe") {
+            return { content: [{ type: "text", text: created.hinweis || "Wartet auf Freigabe — nicht erneut versuchen." }] };
+          }
           return { content: [{ type: "text", text: `Ticket created: ${created.id || "?"}` }] };
         }
         if (action === "comment") {
           if (!args.ticket_id || !args.text) throw new Error("ticket_id and text are required.");
-          await apiCall(`/tickets/${encodeURIComponent(args.ticket_id)}/comment`, {
+          const kommentar = await apiCall(`/tickets/${encodeURIComponent(args.ticket_id)}/comment`, {
             method: "POST",
             body: JSON.stringify({ text: args.text }),
           });
+          if (kommentar && kommentar.status === "wartet_auf_freigabe") {
+            return { content: [{ type: "text", text: kommentar.hinweis || "Wartet auf Freigabe — nicht erneut versuchen." }] };
+          }
           return { content: [{ type: "text", text: `Comment added to ${args.ticket_id}.` }] };
         }
         throw new Error("Unknown action. Use list | get | create | comment.");

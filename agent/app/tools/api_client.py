@@ -271,6 +271,10 @@ class OrchestratorAPIClient:
                 "description": params.get("description") or "",
                 "priority": params.get("priority") or "",
             })
+            # Bei „Freigabe“ in der Rechte-Matrix legt die Plattform das Ticket erst
+            # nach der Freigabe selbst an (core/gebundene_freigabe) — nicht als erledigt melden.
+            if (result or {}).get("status") == "wartet_auf_freigabe":
+                return result.get("hinweis") or "Wartet auf Freigabe — nicht erneut versuchen."
             return f"Ticket created: {(result or {}).get('id', '?')}"
 
         if action == "comment":
@@ -278,7 +282,9 @@ class OrchestratorAPIClient:
             text = str(params.get("text") or "").strip()
             if not (ticket_id and text):
                 return "Error: ticket_id and text are required for comment."
-            await self._request("POST", f"/tickets/{ticket_id}/comment", json={"text": text})
+            result = await self._request("POST", f"/tickets/{ticket_id}/comment", json={"text": text})
+            if (result or {}).get("status") == "wartet_auf_freigabe":
+                return result.get("hinweis") or "Wartet auf Freigabe — nicht erneut versuchen."
             return f"Comment added to {ticket_id}."
 
         return "Error: unknown action. Use list | get | create | comment."

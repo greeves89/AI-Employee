@@ -177,9 +177,15 @@ class TicketTests(_Db):
                     await tickets.create_ticket(tickets.CreateTicket(title="x"), db=db, _auth={"agent_id": "nein"})
                 with self.assertRaises(HTTPException):
                     await tickets.comment_ticket("T1", tickets.AddComment(text="x"), db=db, _auth={"agent_id": "nein"})
-                await tickets.create_ticket(tickets.CreateTicket(title="x"), db=db, _auth={"agent_id": "frage"})
+                # „Freigabe“: nicht anlegen, sondern genau dieses Ticket zur Freigabe stellen
+                # (core/gebundene_freigabe) — angelegt wird es dann vom Server.
+                with patch("app.api.approvals.anfrage_anlegen", AsyncMock(return_value={"approval_id": "1"})):
+                    antwort = await tickets.create_ticket(tickets.CreateTicket(title="x"), db=db,
+                                                          _auth={"agent_id": "frage"})
+                await tickets.create_ticket(tickets.CreateTicket(title="x"), db=db, _auth={"agent_id": "frei"})
+        self.assertEqual(antwort.status_code, 202)
         verbindung.add_comment.assert_not_called()
-        verbindung.create_ticket.assert_called_once()
+        verbindung.create_ticket.assert_called_once()   # nur der Agent mit „Erlaubt“
 
 
 if __name__ == "__main__":
