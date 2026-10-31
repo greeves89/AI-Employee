@@ -181,8 +181,13 @@ class EndpunktTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any(p.endswith("/for-agent") for p in pfade), pfade)
 
     def test_router_ist_eingebunden(self):
-        from app.api.router import api_router
-        self.assertIn("/mcp/email/{agent_id}", {r.path for r in api_router.routes})
+        """Über die Quelle statt über ``api_router.routes``: deren Form hängt von der
+        FastAPI-Version ab (neuere halten eingebundene Router als eigene Objekte)."""
+        import inspect
+
+        from app.api import mcp_email, router
+        self.assertIn("api_router.include_router(mcp_email.router)", inspect.getsource(router))
+        self.assertIn("/mcp/email/{agent_id}", {r.path for r in mcp_email.router.routes})
 
 
 class ZuordnungTests(unittest.IsolatedAsyncioTestCase):
