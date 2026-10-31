@@ -136,6 +136,12 @@ class GesperrtTests(unittest.TestCase):
         self.assertAbgelehnt(_modell(volumes=[{"type": "volume", "source": "nirgends", "target": "/d"}]), "nirgends")
 
 
+    def test_ipv6_im_app_netz(self):
+        """Der Netzwächter sperrt nur IPv4 — ein IPv6-Netz liefe an ihm vorbei."""
+        m = _modell()
+        m["networks"]["default"]["enable_ipv6"] = True
+        self.assertAbgelehnt(m, "enable_ipv6")
+
     def test_netz_treiber_host_oder_macvlan(self):
         m = _modell()
         m["networks"]["default"]["driver"] = "macvlan"
