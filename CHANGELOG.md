@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.415.0] - 2026-10-31
+
+### Sicherheit
+- **Der Browser der Agenten geht über den Egress-Proxy** und vertraut ihm auch an Zielen, an denen der Proxy einen Key einsetzt.
+
+### Behoben
+- **Claude-Code-Agenten hatten keinen Browser über MCP:** Das Eintragen des Playwright-MCP scheiterte bei jedem Start. Jetzt startet er mit dem Chromium des Abbilds, kopflos, im gemeinsamen Profil.
+
 ## [1.414.0] - 2026-10-31
 
 ### Sicherheit

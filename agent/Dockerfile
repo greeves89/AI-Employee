@@ -64,6 +64,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     libglib2.0-0 \
     libnss3 \
+    libnss3-tools \
     libnspr4 \
     libatk1.0-0 \
     libatk-bridge2.0-0 \
@@ -181,4 +182,4 @@ CMD ["python", "-s", "-m", "app.main"]
 # Versions-Label GANZ AM ENDE (#889): stand es oben, machte jede neue Versionsnummer
 # alle folgenden Schichten ungueltig — jedes Release baute das ganze Abbild neu.
 # Hier aendert es nur noch die letzte, leere Schicht. Muss VERSION entsprechen.
-LABEL ai-employee.version="1.414.0"
+LABEL ai-employee.version="1.415.0"
