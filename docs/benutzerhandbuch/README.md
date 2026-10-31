@@ -4369,6 +4369,41 @@ Was danach passiert:
   fallen **nicht** unter diese Frist. Sicherungen enthalten Gelöschtes weiter, bis sie
   herausfallen (siehe oben).
 
+### 37.9 Netzwächter: Agenten vom Firmennetz trennen
+
+Agenten und ihre Apps führen Code aus, den ein Sprachmodell geschrieben hat. Wird ein
+Agent über eine eingeschleuste Anweisung fehlgeleitet, darf er das Firmennetz nicht
+erkunden können. Der **Netzwächter** ist ein kleiner Dienst auf dem Server. Er sorgt dafür:
+
+| Agenten, ihre Apps und Builds erreichen … | |
+|---|---|
+| das Internet, die Plattform, die eigenen Apps | **ja** |
+| Firmen- bzw. Heimnetz, Router, den Server selbst (SSH) | **nein** |
+| Agenten und Apps anderer Nutzer | **nein** |
+
+Die Plattform selbst (Orchestrator, Anmeldung, Exchange-Anbindung) ist davon nicht betroffen.
+
+**Einrichten** (einmal, auf dem Server):
+
+1. Vorschau, was gesperrt würde: `sudo ./scripts/install-netzwaechter.sh --zeigen`
+2. Einrichten und starten: `sudo ./scripts/install-netzwaechter.sh`
+3. Prüfen: `systemctl status ai-employee-netzwaechter` muss *active (running)* zeigen.
+
+Danach startet `./scripts/update.sh` den Netzwächter bei jedem Update selbst neu. Solange er
+nicht eingerichtet ist, warnt `update.sh` bei jedem Lauf.
+
+**Ein Ziel im Firmennetz freigeben**, etwa einen SAP-Server, den Agenten brauchen:
+
+1. In `/etc/ai-employee/netz-ausnahmen` eine Zeile eintragen, zum Beispiel
+   `192.168.1.50` oder `10.0.5.0/24`.
+2. `sudo systemctl restart ai-employee-netzwaechter`
+
+**Zurücknehmen:** `sudo ./scripts/install-netzwaechter.sh --entfernen` nimmt alle Regeln
+zurück.
+
+> Der Netzwächter braucht `iptables` und das Kernelmodul `br_netfilter`. Der Installer lädt
+> das Modul und richtet es so ein, dass es auch nach einem Neustart aktiv ist.
+
 ---
 
 ## A. Was kann ein Agent? (typische Einsätze)

@@ -114,6 +114,20 @@ VORHER_VERSION="$(git show "${VORHER_COMMIT}:VERSION" 2>/dev/null | tr -d '[:spa
 info "Räume alte Abbilder auf..."
 abbilder_aufraeumen "${AI_EMPLOYEE_VERSION:-}" "${VORHER_VERSION}" || warn "Aufräumen nicht vollständig — Update ist trotzdem fertig."
 
+# ── 6b. Netzwächter: neuen Code übernehmen bzw. auf ihn hinweisen ─────────────
+# Er läuft auf dem Host (systemd) und liest scripts/netzwaechter.py direkt aus dem
+# Repo — nach dem Pull also neu starten, sonst läuft der alte Stand weiter.
+if systemctl is-enabled ai-employee-netzwaechter >/dev/null 2>&1; then
+    if sudo -n systemctl restart ai-employee-netzwaechter 2>/dev/null; then
+        ok "Netzwächter neu gestartet"
+    else
+        warn "Netzwächter nicht neu gestartet (kein sudo ohne Passwort): sudo systemctl restart ai-employee-netzwaechter"
+    fi
+else
+    warn "Netzwächter ist nicht eingerichtet — Agenten erreichen Firmennetz, Router und Host."
+    warn "  Einrichten: sudo ./scripts/install-netzwaechter.sh   (Vorschau: --zeigen)"
+fi
+
 # ── 7. Report agents still running the OLD image ──────────────────────────────
 # Agent containers are launched dynamically and labelled ai-employee.type=agent.
 # A rebuild retags ai-employee-agent:latest to a new id but leaves running

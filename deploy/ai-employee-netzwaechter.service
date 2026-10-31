@@ -1,0 +1,15 @@
+[Unit]
+Description=AI-Employee Netzwächter (Agenten und Apps gegen Firmennetz, Router und Host sperren)
+Documentation=https://github.com/greeves89/AI-Employee
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 @INSTALL_DIR@/scripts/netzwaechter.py
+Restart=always
+RestartSec=5
+Nice=5
+
+[Install]
+WantedBy=multi-user.target
