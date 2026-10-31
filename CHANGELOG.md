@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.412.0] - 2026-10-31
+
+### Sicherheit
+- **Freigeben heißt ausführen.** Steht „Externe API / Webhooks“ auf **Freigabe**, legt die Plattform ein Ticket oder einen Kommentar erst nach deiner Freigabe an, genau so, wie du es in der Freigabe gesehen hast, und nur einmal. Der Agent kann eine Freigabe nicht für etwas anderes verwenden.
+
 ## [1.411.0] - 2026-10-31
 
 ### Sicherheit
