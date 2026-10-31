@@ -160,11 +160,15 @@ async def _schluessel(db) -> list[dict]:
     """Wie viele vergebene Keys ein Agent im Klartext sieht (core/egress.py)."""
     from app.core import egress
     from app.models.agent_secret import AgentSecret, AgentSecretAssignment
+    from app.models.agent import Agent
 
+    # Je Zuweisung: Key, Ziele und ob der Behaelter des Agenten schon mit dem
+    # Proxy entstand. Ein Agent von vor dem Einschalten hat den Klartext noch in sich.
     vergeben = (await db.execute(
-        select(AgentSecret.key_name, AgentSecret.erlaubte_hosts)
-        .where(AgentSecret.is_active.is_(True),
-               AgentSecret.id.in_(select(AgentSecretAssignment.secret_id)))
+        select(AgentSecret.key_name, AgentSecret.erlaubte_hosts, Agent.config)
+        .join(AgentSecretAssignment, AgentSecretAssignment.secret_id == AgentSecret.id)
+        .join(Agent, Agent.id == AgentSecretAssignment.agent_id)
+        .where(AgentSecret.is_active.is_(True))
     )).all()
     titel = "Keys in Agenten"
     if settings.egress_proxy_enabled and not egress.aktiv():
@@ -174,11 +178,18 @@ async def _schluessel(db) -> list[dict]:
                        "neu starten.")]
     if not vergeben:
         return [_punkt("egress", titel, OK, "Kein Agent hat einen Key aus der Schlüsselverwaltung.")]
-    klartext = sorted({k for k, hosts in vergeben if not (egress.aktiv() and hosts)})
-    if not klartext:
+    klartext = sorted({k for k, hosts, _ in vergeben if not (egress.aktiv() and hosts)})
+    alte_behaelter = {k for k, hosts, cfg in vergeben
+                      if egress.aktiv() and hosts and egress.veraltet(cfg)}
+    if not klartext and not alte_behaelter:
         return [_punkt("egress", titel, OK,
-                       f"Alle {len(vergeben)} vergebenen Keys sehen Agenten nur als Platzhalter; "
-                       "der Egress-Proxy setzt sie erst am erlaubten Ziel ein.")]
+                       f"Alle {len({k for k, _, _ in vergeben})} vergebenen Keys sehen Agenten nur als "
+                       "Platzhalter; der Egress-Proxy setzt sie erst am erlaubten Ziel ein.")]
+    if not klartext:
+        return [_punkt("egress", titel, WARNUNG,
+                       f"{len(alte_behaelter)} Key(s) stecken noch im Klartext in Agenten, die vor dem "
+                       f"Einschalten des Egress-Proxys entstanden sind: {', '.join(sorted(alte_behaelter)[:5])}.",
+                       "Die betroffenen Agenten aktualisieren (sie zeigen „Aktualisieren“).")]
     liste = ", ".join(klartext[:5]) + (" …" if len(klartext) > 5 else "")
     if not egress.aktiv():
         return [_punkt("egress", titel, WARNUNG,
@@ -186,8 +197,10 @@ async def _schluessel(db) -> list[dict]:
                        "Ein Agent kann sie ausgeben oder an beliebige Ziele schicken.",
                        "Egress-Proxy einschalten (EGRESS_PROXY_ENABLED=true in der .env) und je Key "
                        "unter Schlüssel die erlaubten Ziele eintragen.")]
+    dazu = (f" Dazu {len(alte_behaelter)} Key(s) in Agenten von vor dem Einschalten (Aktualisieren)."
+            if alte_behaelter else "")
     return [_punkt("egress", titel, WARNUNG,
-                   f"{len(klartext)} Key(s) ohne erlaubte Ziele liegen weiter im Klartext in Agenten: {liste}.",
+                   f"{len(klartext)} Key(s) ohne erlaubte Ziele liegen weiter im Klartext in Agenten: {liste}.{dazu}",
                    "Unter Schlüssel je Key die erlaubten Ziele eintragen, z. B. api.github.com.")]
 
 

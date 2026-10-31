@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_agent_version, settings
 from app.core import autonomy_matrix
+from app.core.egress import veraltet as egress_veraltet
 from app.core.agent_duty import vom_nutzer_angehalten
 from app.core.agent_appearance import apply_appearance
 from app.core.agent_manager import DEFAULT_PERMISSIONS, AgentManager
@@ -645,7 +646,8 @@ async def list_agents(
                 has_responsibilities=bool((config.get("proactive") or {}).get("responsibilities")),
                 integrations=config.get("integrations", []),
                 permissions=eff_permissions,
-                update_available=config.get("agent_version") != current_agent_version,
+                update_available=(config.get("agent_version") != current_agent_version
+                                  or egress_veraltet(config)),
                 budget_usd=agent.budget_usd,
                 budget_exceeded_action=agent.budget_exceeded_action,
                 monthly_cost_usd=round(monatskosten.get(agent.id, 0.0), 4),

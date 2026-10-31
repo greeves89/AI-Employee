@@ -171,7 +171,10 @@ starte_cli_aktualisierung() {
 # AIE_EGRESS_CA mit (nur das oeffentliche Zertifikat) und geht in den
 # Systemspeicher: git, curl, Python (REQUESTS_CA_BUNDLE/SSL_CERT_FILE) und Node
 # (NODE_EXTRA_CA_CERTS) lesen ihn von dort.
-CA_DIR="${ENTRYPOINT_CA_DIR:-/usr/local/share/ca-certificates}"
+# Ein anderes Verzeichnis nur im Testmodus -- im Betrieb liest dieses Skript als
+# root, und kein Wert aus der Umgebung darf bestimmen, wohin es schreibt.
+CA_DIR=/usr/local/share/ca-certificates
+[ "${ENTRYPOINT_NUR_DEFINIEREN:-}" = "1" ] && CA_DIR="${ENTRYPOINT_CA_DIR:-$CA_DIR}"
 egress_ca_einspielen() {
   [ -n "${AIE_EGRESS_CA:-}" ] || return 0
   case "$AIE_EGRESS_CA" in

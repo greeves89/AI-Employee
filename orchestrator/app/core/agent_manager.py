@@ -13,6 +13,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from app.config import get_agent_version, settings
 from app.core import autonomy_matrix
 from app.core.agent_duty import vom_nutzer_angehalten
+from app.core.egress import aktiv as egress_aktiv, veraltet as egress_veraltet
 from app.core.encryption import decrypt_token
 from app.core.githost.registry import get_git_host_provider
 from app.core.log_redaction import scrub_log
@@ -1861,6 +1862,8 @@ class AgentManager:
                 "model_provider": self._model_provider_for_mode(mode, effective_llm),
                 "integrations": integrations or [],
                 "agent_version": get_agent_version(),
+                # Mit welchem Ausgang der Behaelter entstand (core/egress.py)
+                "egress": egress_aktiv(),
                 "metrics": {"total": 0, "success": 0, "fail": 0, "success_rate": 0.0},
                 **({"buero": buero_platz} if buero_platz else {}),
             },
@@ -2196,6 +2199,7 @@ class AgentManager:
         # Neuaufbau aus ``user_lifecycle.wake_agent``: dort klickt niemand
         # "Aktualisieren", das Abzeichen ginge nie wieder weg.
         config["agent_version"] = get_agent_version()
+        config["egress"] = egress_aktiv()
         agent.config = config
         flag_modified(agent, "config")
         await self.db.commit()
@@ -2586,6 +2590,7 @@ class AgentManager:
         agent.container_id = container.id
         agent.state = AgentState.RUNNING
         config["agent_version"] = get_agent_version()
+        config["egress"] = egress_aktiv()
         agent.config = self._clear_stale_stop_reason(config)
         flag_modified(agent, "config")
         await self.db.commit()
@@ -2793,7 +2798,7 @@ class AgentManager:
         # Check if agent version is outdated
         update_available = False
         stored_version = config.get("agent_version")
-        if stored_version != get_agent_version():
+        if stored_version != get_agent_version() or egress_veraltet(config):
             update_available = True
 
         # Check if the running container is on a stale agent image (issue #433):

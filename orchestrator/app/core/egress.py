@@ -67,6 +67,16 @@ def ist_proxy_anfrage(authorization: str) -> bool:
     return aktiv() and bool(token) and hmac.compare_digest(token, settings.egress_proxy_token)
 
 
+def veraltet(agent_config: dict | None) -> bool:
+    """Entstand der Behaelter mit einem anderen Ausgang, als jetzt gilt?
+
+    Dann zeigt der Agent "Aktualisieren" — sonst bliebe ein Agent nach dem
+    Einschalten des Proxys mit Klartext-Keys stehen, ohne dass es jemand merkt.
+    Agenten aus der Zeit vor dem Proxy haben keinen Eintrag = ohne Proxy.
+    """
+    return bool((agent_config or {}).get("egress")) != aktiv()
+
+
 def platzhalter(secret_id: int) -> str:
     sig = hmac.new(settings.api_secret_key.encode(), _PLATZHALTER_DOMAIN + str(secret_id).encode(),
                    hashlib.sha256).hexdigest()[:12]

@@ -117,6 +117,20 @@ class SchalterTests(unittest.TestCase):
             self.assertFalse(egress.ist_proxy_anfrage(""))
 
 
+class AktualisierenHinweisTests(unittest.TestCase):
+    """Nach dem Ein- oder Ausschalten zeigen Agenten "Aktualisieren", bis sie neu entstanden sind."""
+
+    def test_veraltet(self):
+        with patch.object(settings, "egress_proxy_enabled", True), patch.object(settings, "egress_proxy_token", TOKEN):
+            self.assertTrue(egress.veraltet({}))                   # Agent von vor dem Proxy
+            self.assertTrue(egress.veraltet({"egress": False}))
+            self.assertFalse(egress.veraltet({"egress": True}))
+        with patch.object(settings, "egress_proxy_enabled", False):
+            self.assertFalse(egress.veraltet({}))
+            self.assertFalse(egress.veraltet(None))
+            self.assertTrue(egress.veraltet({"egress": True}))     # Proxy wieder aus
+
+
 class UmgebungTests(unittest.IsolatedAsyncioTestCase):
     async def test_aus_ist_leer(self):
         with patch.object(settings, "egress_proxy_enabled", False):
@@ -197,6 +211,26 @@ class EgressDatenTests(SecretsTestBasis):
         self.assertEqual(env["GH_TOKEN"], env["GITHUB_TOKEN"])
         self.assertEqual(env["ALT_KEY"], "alt_wert_123456", "ohne Ziele wie bisher")
         self.assertNotIn("ghp_echt_1234567890", "".join(env.values()))
+
+    async def test_plattform_variablen_nie(self):
+        from app.api import secrets as api
+        from app.core.agent_manager import AgentManager
+        for name in ("AIE_EGRESS_CA", "ENTRYPOINT_MODULE_DIR", "entrypoint_ca_dir"):
+            with self.subTest(name), self.assertRaises(HTTPException) as e:
+                await api.create_secret(api.SecretCreate(name=name, key_name=name, value="x"),
+                                        user=MITGLIED, db=self.db)
+            self.assertEqual(e.exception.status_code, 422)
+        # Auch ein Altbestand (vor der Sperre angelegt) kommt nicht in den Agenten
+        from app.models.agent_secret import AgentSecret
+        alt = AgentSecret(name="x", key_name="ENTRYPOINT_CA_DIR", value_encrypted="enc:/etc", owner_id="m1")
+        self.db.add(alt)
+        await self.db.commit()
+        self.db.add(AgentSecretAssignment(agent_id="a1", secret_id=alt.id))
+        await self.db.commit()
+        mgr = AgentManager.__new__(AgentManager)
+        mgr.db = self.db
+        with patch("app.core.agent_manager.decrypt_token", lambda w: w[4:]):
+            self.assertNotIn("ENTRYPOINT_CA_DIR", await mgr._get_secrets_env("a1"))
 
     async def test_einspielen_ohne_proxy_wie_bisher(self):
         from app.core.agent_manager import AgentManager
@@ -322,6 +356,12 @@ class EgressDatenTests(SecretsTestBasis):
         from app.models.agent_secret import AgentSecret
         (await self.db.get(AgentSecret, self.alt["id"])).erlaubte_hosts = ["api.example.com"]
         await self.db.commit()
+        # Alle Keys haben Ziele, aber a1 entstand vor dem Einschalten: kein "ok"
+        (p,) = await _schluessel(self.db)
+        self.assertEqual(p["stand"], "warnung")
+        self.assertIn("vor dem Einschalten", p["text"])
+        (await self.db.get(Agent, "a1")).config = {"egress": True}
+        await self.db.commit()
         (p,) = await _schluessel(self.db)
         self.assertEqual(p["stand"], "ok")
 
@@ -354,6 +394,25 @@ class ProxyLogikTests(unittest.TestCase):
         neu = logik.kopf_ersetzen("Authorization", kopf, {p: "ghp_echt"})
         self.assertEqual(base64.b64decode(neu[6:]).decode(), "x-access-token:ghp_echt")
         self.assertEqual(logik.kopf_ersetzen("Authorization", f"token {p}", {p: "ghp_echt"}), "token ghp_echt")
+
+    def test_nur_an_anmeldestellen(self):
+        p = egress.platzhalter(5)
+        f = logik.platzhalter_ausserhalb_der_koepfe
+        self.assertEqual(f(f"/maps/api?key={p}&q=Berlin", "", None), {p})
+        self.assertEqual(f("/x", "application/x-www-form-urlencoded",
+                           f"grant_type=client_credentials&client_secret={p}"), {p})
+        self.assertEqual(f("/x", "application/json", '{"a": 1}'), set())
+        for pfad, art, koerper in (
+            (f"/repos/o/r/contents/{p}.txt", "", None),          # Dateiname beim Ziel
+            (f"/x?q={p}", "", None),                             # beliebiger Parameter (z. B. Suche, Kommentar)
+            (f"/x?key=Bearer%20{p}", "", None),                  # nicht als ganzer Wert
+            ("/gists", "application/json", f'{{"content": "{p}"}}'),
+            ("/x", "application/x-www-form-urlencoded", f"body={p}"),
+            ("/x", "text/plain", p),
+        ):
+            with self.subTest(pfad=pfad, koerper=koerper), self.assertRaises(logik.Abgelehnt) as e:
+                f(pfad, art, koerper)
+            self.assertEqual(e.exception.status, 403)
 
     def test_rueckmaskieren(self):
         p = egress.platzhalter(5)

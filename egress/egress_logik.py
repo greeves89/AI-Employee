@@ -13,6 +13,7 @@ import re
 import socket
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 PLATZHALTER_RE = re.compile(r"aie-geheim-\d{1,10}-[0-9a-f]{12}")
@@ -117,6 +118,46 @@ def kopf_platzhalter(name: str, wert: str) -> set[str]:
     gefunden = platzhalter_in(wert)
     if name.lower() == "authorization":
         gefunden |= platzhalter_in(_basic_entpacken(wert) or "")
+    return gefunden
+
+
+#: Namen von Adress- und Formular-Parametern, in denen ein Key stehen darf.
+ANMELDE_PARAMETER = re.compile(
+    r"^(key|api[_-]?key|apikey|token|access[_-]?token|auth|auth[_-]?token|private[_-]?token|"
+    r"client[_-]?secret|secret|password)$", re.IGNORECASE)
+
+
+def _parameter_platzhalter(abfrage: str, wo: str) -> set[str]:
+    gefunden: set[str] = set()
+    for name, wert in urllib.parse.parse_qsl(abfrage, keep_blank_values=True):
+        if not platzhalter_in(name, wert):
+            continue
+        if ANMELDE_PARAMETER.match(name) and PLATZHALTER_RE.fullmatch(wert):
+            gefunden.add(wert)
+        else:
+            raise Abgelehnt(403, f"Platzhalter im {wo} nur als ganzer Wert eines Anmelde-Parameters "
+                                 f"(key, token, client_secret …), nicht in „{name[:40]}“")
+    return gefunden
+
+
+def platzhalter_ausserhalb_der_koepfe(pfad: str, inhaltsart: str, koerper: str | None) -> set[str]:
+    """Platzhalter in Adresse und Koerper — nur an Anmeldestellen, sonst ``Abgelehnt``.
+
+    In Kopfzeilen darf ein Platzhalter ueberall stehen (dort stehen Keys, und kaum ein
+    Dienst speichert fremde Kopfzeilen). Im Pfad, in einem JSON-Koerper oder in einem
+    beliebigen Parameter dagegen koennte ein Agent den echten Wert beim Ziel
+    ablegen lassen — als Dateiname, Gist-Inhalt, Kommentar — und ihn spaeter lesen.
+    """
+    ort, _, abfrage = pfad.partition("?")
+    if platzhalter_in(urllib.parse.unquote(ort)):
+        raise Abgelehnt(403, "Platzhalter im Pfad der Adresse werden nicht ersetzt")
+    gefunden = _parameter_platzhalter(abfrage, "Adressteil")
+    if koerper and platzhalter_in(koerper):
+        if (inhaltsart or "").lower().startswith("application/x-www-form-urlencoded"):
+            gefunden |= _parameter_platzhalter(koerper, "Formular")
+        else:
+            raise Abgelehnt(403, "Platzhalter im Inhalt einer Anfrage werden nicht ersetzt — "
+                                 "nur in Kopfzeilen und Anmelde-Parametern")
     return gefunden
 
 

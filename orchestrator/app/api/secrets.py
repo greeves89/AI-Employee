@@ -183,9 +183,13 @@ async def create_secret(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
+    key_name = body.key_name.upper().replace(" ", "_")
+    if secret_zugriff.variable_der_plattform(key_name):
+        raise HTTPException(status_code=422, detail=f"{key_name}: Variablen mit AIE_ oder ENTRYPOINT_ "
+                                                    "gehören der Plattform")
     secret = AgentSecret(
         name=body.name,
-        key_name=body.key_name.upper().replace(" ", "_"),
+        key_name=key_name,
         value_encrypted=encrypt_token(body.value),
         secret_type=body.secret_type,
         description=body.description,

@@ -104,11 +104,15 @@ class AieEgress:
         gefunden: set[str] = set()
         for name, wert in flow.request.headers.items(multi=True):
             gefunden |= logik.kopf_platzhalter(name, wert)
-        gefunden |= logik.platzhalter_in(flow.request.path)
         text = None
         if flow.request.raw_content and len(flow.request.raw_content) <= logik.MAX_KOERPER:
             text = flow.request.get_text(strict=False)
-            gefunden |= logik.platzhalter_in(text or "")
+        try:
+            gefunden |= logik.platzhalter_ausserhalb_der_koepfe(
+                flow.request.path, flow.request.headers.get("content-type", ""), text)
+        except logik.Abgelehnt as e:
+            flow.response = _antwort(e.status, e.text)
+            return
         if not gefunden:
             return
         ziel = self.ziele.get(cid, "")

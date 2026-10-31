@@ -73,7 +73,7 @@ _RESERVIERT = {
     "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
     "NODE_OPTIONS", "NODE_EXTRA_CA_CERTS", "NODE_PATH", "PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP",
     "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "GIT_SSH_COMMAND",
-    "ENV", "PROMPT_COMMAND", "PS4", "IFS",
+    "ENV", "PROMPT_COMMAND", "PS4", "IFS", "NODE_USE_ENV_PROXY",
 }
 _RESERVIERT_ANFANG = ("ANTHROPIC_", "CLAUDE_", "OPENAI_", "CODEX_", "LLM_", "AGENT_", "ORCHESTRATOR_",
                       "REDIS_", "LD_", "DYLD_", "DOCKER_", "MCP_", "AWS_", "AZURE_OPENAI_", "BEDROCK_", "VERTEX_",
@@ -83,9 +83,20 @@ _RESERVIERT_ANFANG = ("ANTHROPIC_", "CLAUDE_", "OPENAI_", "CODEX_", "LLM_", "AGE
                       "BROWSER_", "COMPUTER_USE_")
 
 
+#: Variablen, die KEIN Key setzen darf, auch kein eigener: Das Startskript des Agenten
+#: liest sie als root (agent/entrypoint.sh, CA des Egress-Proxys, Zielverzeichnisse).
+#: Ein Key namens ENTRYPOINT_MODULE_DIR oder AIE_EGRESS_CA waere ein Weg zu root im
+#: Behaelter — genau das, was der Entzug von sudo abgestellt hat.
+_PLATTFORM_ANFANG = ("AIE_", "ENTRYPOINT_")
+
+
+def variable_der_plattform(name: str) -> bool:
+    return (name or "").strip().upper().startswith(_PLATTFORM_ANFANG)
+
+
 def variable_reserviert(name: str) -> bool:
     n = (name or "").strip().upper()
-    return n in _RESERVIERT or n.startswith(_RESERVIERT_ANFANG)
+    return n in _RESERVIERT or n.startswith(_RESERVIERT_ANFANG) or variable_der_plattform(n)
 
 
 async def nutzbare_secrets_des_besitzers(db: AsyncSession, agent_id: str) -> set[int] | None:
@@ -125,6 +136,9 @@ async def secrets_des_agenten(db: AsyncSession, agent_id: str, erlaubt: set[int]
     )).scalars().all()
     ergebnis = []
     for secret in zeilen:
+        if variable_der_plattform(secret.key_name):
+            log.warning("Key %s nicht eingespielt: Variable gehoert der Plattform", secret.key_name)
+            continue
         if erlaubt is not None and secret.id not in erlaubt:
             log.info("Key %s nicht eingespielt: Besitzer von %s hat keine Freigabe mehr", secret.key_name, agent_id)
             continue
