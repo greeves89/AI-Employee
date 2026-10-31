@@ -2365,21 +2365,25 @@ Ohne weitere Angabe steht der Wert eines Keys im Klartext im Agenten. Ein fehlge
 Agent könnte ihn ausgeben oder an eine beliebige Adresse schicken. Mit **erlaubten Zielen**
 bekommt der Agent stattdessen nur einen Platzhalter (`aie-geheim-…`). Den echten Wert setzt
 der **Egress-Proxy** erst auf dem Weg zu genau diesen Adressen ein. An jedes andere Ziel geht
-der Key nicht, und ein Versuch steht im Audit-Log (*egress_key_verweigert*). Voraussetzung:
+nur der wertlose Platzhalter. Verweigert die Plattform den Wert, steht das im Audit-Log
+(*egress_key_verweigert*). Voraussetzung:
 Die IT hat den Egress-Proxy eingeschaltet (Kap. 37.10).
 
-1. Öffne **Secrets** und klick beim Key auf den **Stift**.
+1. Öffne deinen Agenten und klick unten auf **Konnektoren**. Unter **Schlüssel** klickst du
+   beim Key auf das **Globus-Symbol**. Legst du einen Key neu an (**Schlüssel hinzufügen**),
+   steht das Feld gleich im Formular. Admins finden dasselbe unter **Admin → Compliance →
+   Schlüssel & Zugangsdaten** beim **Stift**.
 2. Trag unter **Erlaubte Ziele** die Adressen ein, an die der Key gehen darf, durch Komma
    getrennt, zum Beispiel `api.github.com, github.com`. Nur genaue Hostnamen, keine Muster
    wie `*.example.com`: Unter solchen Endungen kann sich oft jeder eine Adresse anlegen. Für
-   bekannte Variablen wie
-   `GITHUB_TOKEN` steht darunter ein **Vorschlag**, den du mit einem Klick übernimmst.
-3. Klick **Speichern**. Der Key trägt jetzt das grüne Abzeichen **„Nur an …“**. Die
+   bekannte Variablen wie `GITHUB_TOKEN` steht darunter ein **Vorschlag**, den du mit einem
+   Klick übernimmst.
+3. Klick **Ziele speichern**. Der Key trägt jetzt das grüne Abzeichen **„Nur an …“**. Die
    zugewiesenen Agenten setzt die Plattform einmal neu auf, danach sehen sie nur noch den
    Platzhalter.
 
    ![Key mit erlaubten Zielen](screenshots/90-key-erlaubte-ziele.png)
-   *Abbildung 90: Erlaubte Ziele beim Bearbeiten eines Keys und das Abzeichen in der Liste*
+   *Abbildung 90: Erlaubte Ziele eines Keys im Agenten unter Konnektoren, mit dem Abzeichen „Nur an …“*
 
 Ändert sich später der Wert oder eine Adresse, gilt das sofort, ohne Neustart der Agenten.
 Leerst du das Feld, bekommt der Agent wieder den Klartext.

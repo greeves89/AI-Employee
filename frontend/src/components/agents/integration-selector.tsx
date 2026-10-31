@@ -6,7 +6,7 @@ import {
   Plug, CheckCircle2, Loader2, RefreshCw, AlertCircle,
   Network, ChevronRight, Wrench, Brain, Bell, Cpu,
   Shield, Plus, Trash2, ChevronDown, KeyRound, ExternalLink,
-  Eye, PenLine, Lock, ShieldCheck, Users,
+  Eye, PenLine, Lock, ShieldCheck, Users, Globe,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
@@ -15,6 +15,7 @@ import type { McpServerInfo, UrlAllowlistEntry, UrlAllowlistTemplate, AgentSecre
 import { useAuthStore } from "@/lib/auth";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import { KeyFreigabeDialog } from "@/components/secrets/key-freigabe-dialog";
+import { ZieleAbzeichen, ZieleFeld, fehlerText, zieleListe } from "@/components/secrets/erlaubte-ziele";
 
 // Built-in MCP servers that every agent has
 const BUILTIN_MCP_SERVERS = [
@@ -101,6 +102,10 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
   const [neuWert, setNeuWert] = useState("");
   const [neuSpeichert, setNeuSpeichert] = useState(false);
   const [neuFehler, setNeuFehler] = useState<string | null>(null);
+  const [neuZiele, setNeuZiele] = useState("");
+  // Erlaubte Ziele eines eigenen Keys bearbeiten (id → Eingabe)
+  const [zieleOffen, setZieleOffen] = useState<{ id: number; wert: string } | null>(null);
+  const [zieleSpeichert, setZieleSpeichert] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -231,15 +236,32 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
     setNeuSpeichert(true);
     setNeuFehler(null);
     try {
-      const angelegt = await api.createSecret({ name: neuName.trim(), key_name: variable, value: neuWert });
+      const angelegt = await api.createSecret({
+        name: neuName.trim(), key_name: variable, value: neuWert, erlaubte_hosts: zieleListe(neuZiele),
+      });
       // Wer hier anlegt, will ihn für DIESEN Agenten — gleich zuweisen.
       await api.assignSecret(agentId, angelegt.id);
-      setNeuName(""); setNeuVariable(""); setNeuWert(""); setNeuOffen(false);
+      setNeuName(""); setNeuVariable(""); setNeuWert(""); setNeuZiele(""); setNeuOffen(false);
       await load();
     } catch (e) {
-      setNeuFehler(e instanceof Error ? e.message : "Anlegen fehlgeschlagen");
+      setNeuFehler(fehlerText(e, "Anlegen fehlgeschlagen"));
     } finally {
       setNeuSpeichert(false);
+    }
+  };
+
+  const handleZieleSpeichern = async () => {
+    if (!zieleOffen) return;
+    setZieleSpeichert(true);
+    try {
+      await api.updateSecret(zieleOffen.id, { erlaubte_hosts: zieleListe(zieleOffen.wert) });
+      setZieleOffen(null);
+      toast.success("Erlaubte Ziele gespeichert", "Zugewiesene Agenten übernehmen sie sofort.");
+      await load();
+    } catch (e) {
+      toast.error("Ziele nicht gespeichert", fehlerText(e, "Bitte Eingabe prüfen."));
+    } finally {
+      setZieleSpeichert(false);
     }
   };
 
@@ -834,6 +856,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                 className="mt-1 w-full rounded-lg border border-foreground/[0.1] bg-background px-3 py-1.5 text-sm outline-none focus:border-primary/50"
               />
             </label>
+            <ZieleFeld kompakt wert={neuZiele} keyName={neuVariable || variableAus(neuName)} onChange={setNeuZiele} />
             {neuFehler && <p className="text-[11px] text-red-400">{neuFehler}</p>}
             <div className="flex justify-end gap-2">
               <button onClick={() => setNeuOffen(false)} className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">
@@ -886,9 +909,26 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                       {secret.owned && !!secret.shared_with_count && (
                         <span className="text-[10px] text-muted-foreground/60">an {secret.shared_with_count} freigegeben</span>
                       )}
+                      <ZieleAbzeichen secret={secret} klein />
                     </div>
                     {secret.description && (
                       <p className="text-[10px] text-muted-foreground/40 mt-0.5 truncate">{secret.description}</p>
+                    )}
+                    {zieleOffen?.id === secret.id && (
+                      <div className="mt-2 space-y-2">
+                        <ZieleFeld kompakt wert={zieleOffen.wert} keyName={secret.key_name}
+                                   onChange={(v) => setZieleOffen({ id: secret.id, wert: v })} />
+                        <div className="flex justify-end gap-2">
+                          <button onClick={() => setZieleOffen(null)} className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">
+                            Abbrechen
+                          </button>
+                          <button onClick={handleZieleSpeichern} disabled={zieleSpeichert}
+                                  className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40">
+                            {zieleSpeichert && <Loader2 className="h-3 w-3 animate-spin" />}
+                            Ziele speichern
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </div>
                   <button
@@ -907,6 +947,17 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                     }
                     {assigned ? "Zugewiesen" : "Zuweisen"}
                   </button>
+                  {secret.manageable && (
+                    <button
+                      onClick={() => setZieleOffen(zieleOffen?.id === secret.id ? null
+                        : { id: secret.id, wert: (secret.erlaubte_hosts ?? []).join(", ") })}
+                      title="Erlaubte Ziele"
+                      aria-label="Erlaubte Ziele"
+                      className="rounded-lg p-1.5 text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+                    >
+                      <Globe className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                   {secret.manageable && secret.owned && (
                     <button
                       onClick={() => setTeilen(secret)}
