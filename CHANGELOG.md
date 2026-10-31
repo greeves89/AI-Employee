@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.411.0] - 2026-10-31
+
+### Sicherheit
+- **Netzwächter:** Agenten, ihre Apps und Builds erreichen Firmennetz, Router, den Server selbst und andere Nutzer nicht mehr. Internet und Plattform bleiben erreichbar. Einmal einrichten mit `sudo ./scripts/install-netzwaechter.sh` (Handbuch 37.9). Ausnahmen trägst du in `/etc/ai-employee/netz-ausnahmen` ein.
+- App-Netze können kein IPv6 mehr einschalten.
+
 ## [1.410.1] - 2026-10-31
 
 ### Behoben
