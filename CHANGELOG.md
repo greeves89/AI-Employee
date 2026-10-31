@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.413.1] - 2026-10-31
+
+### Neu
+- **Erlaubte Ziele direkt im Agenten:** Unter Konnektoren → Schlüssel kannst du beim Anlegen oder über das Globus-Symbol eintragen, an welche Adressen ein Key gehen darf. Der Agent sieht ihn dann nur als Platzhalter.
+
 ## [1.413.0] - 2026-10-31
 
 ### Sicherheit
