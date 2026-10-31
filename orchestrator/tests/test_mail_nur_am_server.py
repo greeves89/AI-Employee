@@ -101,6 +101,21 @@ class GmailTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(resp["result"]["isError"])
         self.assertEqual(self.aufrufe, [])
 
+    async def test_umlaute_im_betreff_und_negativer_wert(self):
+        import base64
+        import email
+        resp, _ = await self._rufe(_aufruf("email_send", to="a@example.invalid", subject="Grüße", body="Hä"), "allow")
+        roh = base64.urlsafe_b64decode(self.aufrufe[-1][2]["json"]["raw"])
+        nachricht = email.message_from_bytes(roh, policy=email.policy.default)
+        self.assertEqual(nachricht["Subject"], "Grüße")
+        self.assertIn("Hä", nachricht.get_content())
+        resp, _ = await self._rufe(_aufruf("email_list", max_results=-5), "allow")
+        self.assertEqual(self.aufrufe[-1][2]["params"]["maxResults"], 1)
+
+    async def test_unbekannter_zustand_sendet_nicht(self):
+        await self._rufe(_aufruf("email_send", to="a@example.invalid", subject="s", body="b"), "irgendwas")
+        self.assertNotIn("/messages/send", [p for _, p, _ in self.aufrufe])
+
     async def test_ohne_verbindung(self):
         async def _kein_token():
             return None
@@ -146,6 +161,19 @@ class EndpunktTests(unittest.IsolatedAsyncioTestCase):
         anfrage.headers = {"Authorization": "Bearer falsch"}
         resp = await mcp_email_endpoint("a1", anfrage)
         self.assertEqual(resp.status_code, 401)
+
+    async def test_ohne_zugewiesene_anbindung_kein_postfach(self):
+        """Der Agenten-Token beweist nur, wer fragt — nicht, dass er ans Postfach darf."""
+        from app.api import mcp_email, mcp_msgraph
+        from app.dependencies import make_agent_token
+        for modul, ende in ((mcp_email, mcp_email.mcp_email_endpoint), (mcp_msgraph, mcp_msgraph.mcp_msgraph_endpoint)):
+            anfrage = MagicMock()
+            anfrage.headers = {"Authorization": f"Bearer {make_agent_token('a1')}"}
+            anfrage.json = AsyncMock(return_value={"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+            with patch("app.core.faehigkeiten.anbindung_zugewiesen", AsyncMock(return_value=False)), \
+                 patch.object(modul, "async_session_factory", MagicMock()):
+                resp = await ende("a1", anfrage)
+            self.assertEqual(resp.status_code, 403, modul.__name__)
 
     def test_die_token_herausgabe_gibt_es_nicht_mehr(self):
         from app.api.integrations import router

@@ -14,6 +14,19 @@ from sqlalchemy import select
 from app.core import autonomy_matrix as am
 
 
+async def anbindung_zugewiesen(db, agent_id: str, anbindung: str) -> bool:
+    """Hat dieser Agent die Anbindung (``microsoft``, ``google`` …) zugewiesen?
+
+    Der Agenten-Token allein reicht nicht: Er beweist nur, WER fragt. Ohne diese
+    Pruefung laese jeder Agent eines Besitzers dessen Postfach — auch einer, dem
+    der Nutzer die Anbindung nie gegeben hat.
+    """
+    from app.models.agent import Agent
+
+    config = (await db.execute(select(Agent.config).where(Agent.id == agent_id))).scalar_one_or_none()
+    return anbindung in ((config or {}).get("integrations") or [])
+
+
 async def zustand(db, agent_id: str, faehigkeit: str) -> str:
     """``allow`` | ``ask`` | ``deny`` fuer diese Faehigkeit. Unbekannter Agent: ``deny``."""
     from app.models.agent import Agent

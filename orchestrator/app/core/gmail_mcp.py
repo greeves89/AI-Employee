@@ -24,6 +24,7 @@ import base64
 import logging
 import re
 from collections.abc import Awaitable, Callable
+from email.message import EmailMessage
 
 import httpx
 
@@ -126,10 +127,14 @@ def _roh(an: str, betreff: str, text: str, antwort_auf: str | None = None) -> st
     for wert in (an, betreff, antwort_auf or ""):
         if "\r" in wert or "\n" in wert:
             raise ValueError("Empfänger und Betreff dürfen keine Zeilenumbrüche enthalten.")
-    kopf = [f"To: {an}", f"Subject: {betreff}", "MIME-Version: 1.0", "Content-Type: text/plain; charset=utf-8"]
+    nachricht = EmailMessage()
+    nachricht["To"] = an
+    nachricht["Subject"] = betreff          # Umlaute: als RFC-2047-Wort kodiert
     if antwort_auf:
-        kopf += [f"In-Reply-To: {antwort_auf}", f"References: {antwort_auf}"]
-    return base64.urlsafe_b64encode(("\r\n".join(kopf) + "\r\n\r\n" + text).encode()).decode()
+        nachricht["In-Reply-To"] = antwort_auf
+        nachricht["References"] = antwort_auf
+    nachricht.set_content(text)
+    return base64.urlsafe_b64encode(nachricht.as_bytes()).decode()
 
 
 def _id(args: dict) -> str:
@@ -140,7 +145,7 @@ def _id(args: dict) -> str:
 
 
 async def _werkzeug(name: str, args: dict, token: str, senden: str) -> str:
-    grenze = min(int(args.get("max_results") or 10), 50)
+    grenze = max(1, min(int(args.get("max_results") or 10), 50))
 
     if name in ("email_list", "email_search"):
         q = args.get("query") or args.get("filter") or ""
@@ -184,7 +189,9 @@ async def _werkzeug(name: str, args: dict, token: str, senden: str) -> str:
         roh = _roh(an, betreff, str(args["body"]))
     nachricht = {"raw": roh, **({"threadId": thread} if thread else {})}
 
-    if senden == "ask":
+    if senden != "allow":
+        # Alles ausser einem ausdruecklichen „allow“ sendet nicht (``deny`` ist oben
+        # schon abgewiesen) — fail-closed, falls je ein anderer Wert ankommt.
         d = await _gmail("POST", "/drafts", token, json={"message": nachricht})
         return (f"NICHT gesendet: Entwurf an {an} („{betreff}“) liegt im Gmail-Postfach "
                 f"(Entwurfs-ID: {d.get('id', '?')}). Senden braucht die Freigabe des Besitzers — "

@@ -35,6 +35,9 @@ async def mcp_email_endpoint(agent_id: str, request: Request):
         return JSONResponse(mcp_error(None, -32700, "Parse error"), status_code=400)
 
     async with async_session_factory() as db:
+        if not await faehigkeiten.anbindung_zugewiesen(db, agent_id, "google"):
+            return JSONResponse(mcp_error(body.get("id"), -32600,
+                                          "Die Google-Anbindung ist diesem Agenten nicht zugewiesen."), status_code=403)
         besitzer = (await db.execute(select(Agent.user_id).where(Agent.id == agent_id))).scalar_one_or_none()
         senden = await faehigkeiten.zustand(db, agent_id, "email_m365")
 
