@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.410.1] - 2026-10-31
+
+### Behoben
+- Nach einem Update erreicht die Plattform eigene MCP-Server, die als App laufen, sofort wieder. Sie wartet nicht mehr auf den ersten Aufruf über den App-Proxy.
+
 ## [1.410.0] - 2026-10-31
 
 ### Neu
