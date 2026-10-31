@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.409.2] - 2026-10-31
+
+### Behoben
+- Ein neu erstellter Agent erreicht seine eigenen Apps wieder, zum Beispiel einen eigenen MCP-Server, den er als App betreibt.
+
 ## [1.409.1] - 2026-10-31
 
 ### Sicherheit
