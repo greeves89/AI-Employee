@@ -530,7 +530,7 @@ class Protokoll(_Sek):
         async with self.Session() as db:
             await self._einrichten(db)
             a1 = await db.get(Agent, "a1")
-            a1.config = {"msgraph_access": "entwurf"}
+            a1.config = {"msgraph_access": "entwurf", "integrations": ["microsoft"]}
             await db.commit()
         rufe = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                 "params": {"name": "ms_move_email", "arguments": {"email_id": "M1", "folder": "archive"}}}
