@@ -24,17 +24,8 @@ import egress_logik as logik
 
 log = logging.getLogger("aie_egress")
 
-_TEXT = ("text/", "application/json", "application/x-www-form-urlencoded", "application/xml",
-         "application/graphql", "application/javascript")
-
-
 def _antwort(status: int, text: str, **kopf) -> http.Response:
     return http.Response.make(status, text.encode(), {"Content-Type": "text/plain; charset=utf-8", **kopf})
-
-
-def _ist_text(kopf) -> bool:
-    art = (kopf.get("content-type") or "").lower()
-    return art.startswith(_TEXT)
 
 
 class AieEgress:
@@ -44,7 +35,8 @@ class AieEgress:
             os.environ.get("EGRESS_PROXY_TOKEN", ""),
         )
         self.agenten: dict[str, tuple[str, str]] = {}   # client_conn.id → Agent
-        self.ziele: dict[str, str] = {}                 # client_conn.id → CONNECT-Ziel
+        self.ziele: dict[str, tuple[str, int]] = {}     # client_conn.id → CONNECT-Ziel (Host, Port)
+        self.maske = logik.Maske()
 
     async def _hosts(self, agent):
         return await asyncio.to_thread(self.orch.hosts, agent)
@@ -61,8 +53,13 @@ class AieEgress:
             flow.response = _antwort(407, "Anmeldung am Egress-Proxy fehlt",
                                      **{"Proxy-Authenticate": 'Basic realm="ai-employee"'})
             return
+        # Eine Client-Verbindung = ein Tunnel. Ein zweites CONNECT (etwa im Tunnel)
+        # koennte sonst das gemerkte Ziel ueberschreiben.
+        if flow.client_conn.id in self.ziele:
+            flow.response = _antwort(403, "Nur ein Tunnel je Verbindung")
+            return
         self.agenten[flow.client_conn.id] = agent
-        self.ziele[flow.client_conn.id] = flow.request.host.lower().rstrip(".")
+        self.ziele[flow.client_conn.id] = (flow.request.host.lower().rstrip("."), flow.request.port)
 
     def client_disconnected(self, client):
         self.agenten.pop(client.id, None)
@@ -83,10 +80,10 @@ class AieEgress:
     # ── TLS nur aufbrechen, wo ein Key hin darf ─────────────────────────
     async def tls_clienthello(self, data: tls.ClientHelloData):
         cid = data.context.client.id
-        agent, ziel = self.agenten.get(cid), self.ziele.get(cid)
+        agent, (ziel, port) = self.agenten.get(cid), self.ziele.get(cid, ("", 0))
         sni = (data.client_hello.sni or "").lower().rstrip(".")
         aufbrechen = False
-        if agent and ziel and sni == ziel:
+        if agent and ziel and sni == ziel and port == logik.KEY_PORT:
             try:
                 aufbrechen = logik.host_passt(ziel, await self._hosts(agent) or [])
             except logik.OrchestratorFehler:
@@ -105,19 +102,34 @@ class AieEgress:
         for name, wert in flow.request.headers.items(multi=True):
             gefunden |= logik.kopf_platzhalter(name, wert)
         text = None
-        if flow.request.raw_content and len(flow.request.raw_content) <= logik.MAX_KOERPER:
+        # Komprimierte Koerper nicht entpacken (1 MB gzip kann 1 GB werden). Darin
+        # bleibt ein Platzhalter eben Platzhalter.
+        kodierung = flow.request.headers.get("content-encoding", "identity").strip().lower()
+        roh = flow.request.raw_content
+        if roh and len(roh) <= logik.MAX_KOERPER and kodierung in ("", "identity"):
             text = flow.request.get_text(strict=False)
         try:
             gefunden |= logik.platzhalter_ausserhalb_der_koepfe(
-                flow.request.path, flow.request.headers.get("content-type", ""), text)
+                flow.request.path, flow.request.headers.get_all("content-type"), text)
         except logik.Abgelehnt as e:
             flow.response = _antwort(e.status, e.text)
             return
         if not gefunden:
             return
-        ziel = self.ziele.get(cid, "")
-        if flow.request.scheme != "https" or not ziel:
-            flow.response = _antwort(403, "Keys gehen nur über HTTPS hinaus")
+        ziel, port = self.ziele.get(cid, ("", 0))
+        # Das Ziel auch aus DIESER Anfrage ableiten: TLS-Name der Serververbindung und
+        # Port muessen zum Tunnel passen (aufgebrochen wird nur bei SNI == Tunnelziel).
+        sni = (flow.server_conn.sni or "").lower().rstrip(".")
+        if sni != ziel or (flow.server_conn.address or ("", 0))[1] != port:
+            ziel = ""
+        if flow.request.scheme != "https" or not ziel or port != logik.KEY_PORT:
+            flow.response = _antwort(403, "Keys gehen nur über HTTPS (Port 443) hinaus")
+            return
+        # Domain-Fronting: Der Key gilt fuer das Ziel der Verbindung — eine andere
+        # Adresse im Host-Kopf (bzw. :authority) wuerde ihn am selben CDN woanders abliefern.
+        kopf_host = (flow.request.host_header or "").lower().rsplit(":", 1)[0].rstrip(".")
+        if kopf_host and kopf_host != ziel:
+            flow.response = _antwort(421, "Host-Kopf passt nicht zum Ziel der Verbindung")
             return
         try:
             werte = await asyncio.to_thread(self.orch.werte, agent, ziel, gefunden)
@@ -131,10 +143,11 @@ class AieEgress:
             (k, logik.kopf_ersetzen(k.decode("latin-1"), v.decode("latin-1"), werte).encode("latin-1"))
             for k, v in flow.request.headers.fields
         )
-        flow.request.path = logik.ersetzen(flow.request.path, werte)
+        flow.request.path = logik.pfad_ersetzen(flow.request.path, werte)
         if text is not None and logik.platzhalter_in(text):
-            flow.request.set_text(logik.ersetzen(text, werte))
+            flow.request.set_text(logik.parameter_ersetzen(text, werte))
         flow.metadata["aie_werte"] = werte
+        self.maske.merken(agent[0], werte)
 
     async def _ohne_tunnel(self, flow: http.HTTPFlow):
         """Klartext-HTTP direkt an den Proxy: CA-Zertifikat holen oder weiterleiten."""
@@ -158,19 +171,49 @@ class AieEgress:
             flow.response = _antwort(403, "Keys gehen nur über HTTPS hinaus")
 
     # ── Zurueckgespiegelte Werte wieder verdecken ───────────────────────
+    def _maske(self, flow: http.HTTPFlow) -> dict[str, str]:
+        agent = self.agenten.get(flow.client_conn.id)
+        werte = dict(self.maske.werte(agent[0])) if agent else {}
+        werte.update(flow.metadata.get("aie_werte") or {})
+        return werte
+
+    def responseheaders(self, flow: http.HTTPFlow):
+        # Wurde in DIESER Anfrage ein Wert eingesetzt, die Antwort ganz puffern, damit
+        # sie verdeckt werden kann. Ausnahme: git-Pakete (gross, gepackt — darin steht
+        # kein lesbarer Wert, und gepuffert sprengten sie den Speicher).
+        if flow.metadata.get("aie_werte") and flow.response is not None:
+            art = (flow.response.headers.get("content-type") or "").lower()
+            if not art.startswith("application/x-git-"):
+                flow.response.stream = False
+
     def response(self, flow: http.HTTPFlow):
-        werte = flow.metadata.get("aie_werte")
-        if not werte or flow.response is None:
+        if flow.response is None:
             return
-        flow.response.headers.fields = tuple(
-            (k, logik.zurueck_maskieren(v.decode("latin-1"), werte).encode("latin-1"))
-            for k, v in flow.response.headers.fields
-        )
-        roh = flow.response.raw_content
-        if roh and len(roh) <= logik.MAX_KOERPER and _ist_text(flow.response.headers):
-            text = flow.response.get_text(strict=False)
-            if text:
-                flow.response.set_text(logik.zurueck_maskieren(text, werte))
+        werte = self._maske(flow)
+        if not werte:
+            return
+        try:
+            flow.response.headers.fields = tuple(
+                (k, logik.zurueck_maskieren(v.decode("latin-1"), werte).encode("latin-1"))
+                for k, v in flow.response.headers.fields
+            )
+            if flow.response.raw_content:
+                inhalt = flow.response.get_content(strict=False)
+                if inhalt:
+                    neu = logik.zurueck_maskieren_bytes(inhalt, werte)
+                    if neu != inhalt:
+                        flow.response.set_content(neu)
+        except Exception:  # noqa: BLE001 — lieber keine Antwort als eine mit dem Wert
+            log.exception("Antwort liess sich nicht verdecken")
+            flow.response = _antwort(502, "Egress-Proxy: Antwort konnte nicht geprüft werden")
+
+    def websocket_message(self, flow: http.HTTPFlow):
+        werte = self._maske(flow)
+        if not werte or not flow.websocket or not flow.websocket.messages:
+            return
+        nachricht = flow.websocket.messages[-1]
+        if not nachricht.from_client:
+            nachricht.content = logik.zurueck_maskieren_bytes(nachricht.content, werte)
 
 
 addons = [AieEgress()]

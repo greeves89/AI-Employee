@@ -95,7 +95,7 @@ function ZieleFeld({ wert, keyName, onChange }: { wert: string; keyName: string;
     <div className="col-span-2 flex flex-col gap-1">
       <label className="text-[11px] font-medium text-muted-foreground/70">Erlaubte Ziele (optional)</label>
       <input
-        placeholder="z. B. api.github.com, *.example.com"
+        placeholder="z. B. api.github.com, github.com"
         value={wert}
         onChange={e => onChange(e.target.value)}
         className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-mono"

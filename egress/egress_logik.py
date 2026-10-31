@@ -28,7 +28,15 @@ ANMELDUNG_NOTFALL = 6 * 3600
 WERTE_FRISCH = 30
 #: Bestaetigte Werte gelten weiter, solange der Orchestrator nicht antwortet (Neustart
 #: auf dem Pi > 30 s) — eine ausdrueckliche Ablehnung gilt dagegen sofort.
-WERTE_NOTFALL = 600
+WERTE_NOTFALL = 180
+#: So lange verdeckt der Proxy einen einmal eingesetzten Wert in allen Antworten an
+#: denselben Agenten — auch in spaeteren Abrufen, falls ein Ziel ihn gespeichert hat.
+MASKE_DAUER = 24 * 3600
+#: Nur ueber diesen Port werden Keys eingesetzt (kein Ausweichen auf Admin-Ports).
+KEY_PORT = 443
+#: Ausserhalb des globalen Adressraums, aber von ``is_global`` nicht als intern erkannt.
+_UEBERSETZT = (ipaddress.ip_network("64:ff9b::/96"), ipaddress.ip_network("64:ff9b:1::/48"),
+               ipaddress.ip_network("2002::/16"))
 MAX_KOERPER = 1024 * 1024
 
 
@@ -61,15 +69,7 @@ def host_passt(host: str, muster: list[str]) -> bool:
     """Wie orchestrator/app/core/egress.host_passt — hier nur, um TLS aufzubrechen.
     Ob ein Key an das Ziel darf, entscheidet allein der Orchestrator."""
     h = (host or "").strip().lower().rstrip(".")
-    if not h:
-        return False
-    for m in muster or []:
-        if m.startswith("*."):
-            if h.endswith(m[1:]) and len(h) > len(m) - 1:
-                return True
-        elif h == m:
-            return True
-    return False
+    return bool(h) and h in (muster or [])
 
 
 def ziel_adresse(host: str, port: int, aufloesen=socket.getaddrinfo) -> str:
@@ -86,7 +86,7 @@ def ziel_adresse(host: str, port: int, aufloesen=socket.getaddrinfo) -> str:
     adressen = []
     for info in infos:
         ip = ipaddress.ip_address(info[4][0])
-        if not ip.is_global:
+        if not ip.is_global or any(ip in netz for netz in _UEBERSETZT):
             raise Abgelehnt(403, f"Interne Adresse über den Egress-Proxy gesperrt: {host}")
         adressen.append(str(ip))
     if not adressen:
@@ -124,7 +124,8 @@ def kopf_platzhalter(name: str, wert: str) -> set[str]:
 #: Namen von Adress- und Formular-Parametern, in denen ein Key stehen darf.
 ANMELDE_PARAMETER = re.compile(
     r"^(key|api[_-]?key|apikey|token|access[_-]?token|auth|auth[_-]?token|private[_-]?token|"
-    r"client[_-]?secret|secret|password)$", re.IGNORECASE)
+    r"client[_-]?secret)$", re.IGNORECASE)
+FORMULAR = "application/x-www-form-urlencoded"
 
 
 def _parameter_platzhalter(abfrage: str, wo: str) -> set[str]:
@@ -140,7 +141,30 @@ def _parameter_platzhalter(abfrage: str, wo: str) -> set[str]:
     return gefunden
 
 
-def platzhalter_ausserhalb_der_koepfe(pfad: str, inhaltsart: str, koerper: str | None) -> set[str]:
+def ist_formular(inhaltsarten: list[str], koerper: str) -> bool:
+    """Genau EIN Content-Type, genau Formular, und nichts, was ein Ziel auch als JSON lesen koennte."""
+    if len(inhaltsarten) != 1:
+        return False
+    art = inhaltsarten[0].split(";", 1)[0].strip().lower()
+    return art == FORMULAR and koerper.lstrip()[:1] not in ("{", "[")
+
+
+def parameter_ersetzen(abfrage: str, werte: dict[str, str]) -> str:
+    """Nur den Wert eines geprueften Anmelde-Parameters tauschen und neu kodieren —
+    keine Textersetzung ueber das Ganze (anders gelesene Teile bleiben unberuehrt)."""
+    paare = urllib.parse.parse_qsl(abfrage, keep_blank_values=True)
+    neu = [(k, werte.get(v, v) if ANMELDE_PARAMETER.match(k) else v) for k, v in paare]
+    return urllib.parse.urlencode(neu, quote_via=urllib.parse.quote)
+
+
+def pfad_ersetzen(pfad: str, werte: dict[str, str]) -> str:
+    ort, sep, abfrage = pfad.partition("?")
+    if not sep or not platzhalter_in(abfrage):
+        return pfad
+    return f"{ort}?{parameter_ersetzen(abfrage, werte)}"
+
+
+def platzhalter_ausserhalb_der_koepfe(pfad: str, inhaltsart, koerper: str | None) -> set[str]:
     """Platzhalter in Adresse und Koerper — nur an Anmeldestellen, sonst ``Abgelehnt``.
 
     In Kopfzeilen darf ein Platzhalter ueberall stehen (dort stehen Keys, und kaum ein
@@ -153,7 +177,8 @@ def platzhalter_ausserhalb_der_koepfe(pfad: str, inhaltsart: str, koerper: str |
         raise Abgelehnt(403, "Platzhalter im Pfad der Adresse werden nicht ersetzt")
     gefunden = _parameter_platzhalter(abfrage, "Adressteil")
     if koerper and platzhalter_in(koerper):
-        if (inhaltsart or "").lower().startswith("application/x-www-form-urlencoded"):
+        arten = [inhaltsart] if isinstance(inhaltsart, str) else list(inhaltsart or [])
+        if ist_formular(arten, koerper):
             gefunden |= _parameter_platzhalter(koerper, "Formular")
         else:
             raise Abgelehnt(403, "Platzhalter im Inhalt einer Anfrage werden nicht ersetzt — "
@@ -175,12 +200,52 @@ def kopf_ersetzen(name: str, wert: str, werte: dict[str, str]) -> str:
     return ersetzen(wert, werte)
 
 
+def _varianten(wert: str) -> set[str]:
+    """Der Wert so, wie ein Ziel ihn zurueckgeben koennte: roh, JSON-, URL-, HTML-kodiert, base64."""
+    import html
+    v = {wert, wert.replace("/", "\\/"), urllib.parse.quote(wert, safe=""), urllib.parse.quote_plus(wert),
+         html.escape(wert), base64.b64encode(wert.encode()).decode(),
+         base64.urlsafe_b64encode(wert.encode()).decode().rstrip("=")}
+    return {x for x in v if len(x) >= 8}
+
+
 def zurueck_maskieren(text: str, werte: dict[str, str]) -> str:
     """Spiegelt das Ziel einen echten Wert zurueck, sieht der Agent wieder nur den Platzhalter."""
     for p, w in werte.items():
-        if w and len(w) >= 8:
-            text = text.replace(w, p)
+        for v in sorted(_varianten(w or ""), key=len, reverse=True):
+            text = text.replace(v, p)
     return text
+
+
+def zurueck_maskieren_bytes(daten: bytes, werte: dict[str, str]) -> bytes:
+    """Wie ``zurueck_maskieren``, fuer beliebige Inhalte (auch binaer)."""
+    for p, w in werte.items():
+        for v in sorted(_varianten(w or ""), key=len, reverse=True):
+            daten = daten.replace(v.encode(), p.encode())
+    return daten
+
+
+class Maske:
+    """Alle Werte, die der Proxy je fuer einen Agenten eingesetzt hat — verdeckt in JEDER
+    Antwort an ihn. Sonst liesse ein Agent den Wert beim Ziel ablegen und holte ihn mit
+    einem zweiten Abruf ohne Platzhalter wieder ab."""
+
+    def __init__(self, jetzt=time.monotonic):
+        self.jetzt = jetzt
+        self._werte: dict[str, dict[str, tuple[str, float]]] = {}
+
+    def merken(self, agent_id: str, werte: dict[str, str]) -> None:
+        t = self.jetzt()
+        eintraege = self._werte.setdefault(agent_id, {})
+        for p, w in werte.items():
+            eintraege[p] = (w, t)
+
+    def werte(self, agent_id: str) -> dict[str, str]:
+        t = self.jetzt()
+        eintraege = self._werte.get(agent_id, {})
+        for p in [p for p, (_, zeit) in eintraege.items() if t - zeit >= MASKE_DAUER]:
+            eintraege.pop(p, None)
+        return {p: w for p, (w, _) in eintraege.items()}
 
 
 class Orchestrator:
@@ -232,7 +297,9 @@ class Orchestrator:
         if status in (401, 422):
             self._anmeldungen.pop(agent, None)
             return None
-        if gemerkt and jetzt - gemerkt[0] < ANMELDUNG_NOTFALL:
+        # Nur ein Ausfall (5xx) ueberbrueckt — eine Ablehnung (etwa falscher
+        # Dienst-Schluessel) nie.
+        if status >= 500 and gemerkt and jetzt - gemerkt[0] < ANMELDUNG_NOTFALL:
             return gemerkt[1]
         raise OrchestratorFehler(f"Antwort {status}")
 

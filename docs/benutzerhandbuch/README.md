@@ -2370,8 +2370,9 @@ Die IT hat den Egress-Proxy eingeschaltet (Kap. 37.10).
 
 1. Öffne **Secrets** und klick beim Key auf den **Stift**.
 2. Trag unter **Erlaubte Ziele** die Adressen ein, an die der Key gehen darf, durch Komma
-   getrennt, zum Beispiel `api.github.com, github.com`. `*.example.com` gilt für alle
-   Unterdomänen, aber nicht für `example.com` selbst. Für bekannte Variablen wie
+   getrennt, zum Beispiel `api.github.com, github.com`. Nur genaue Hostnamen, keine Muster
+   wie `*.example.com`: Unter solchen Endungen kann sich oft jeder eine Adresse anlegen. Für
+   bekannte Variablen wie
    `GITHUB_TOKEN` steht darunter ein **Vorschlag**, den du mit einem Klick übernimmst.
 3. Klick **Speichern**. Der Key trägt jetzt das grüne Abzeichen **„Nur an …“**. Die
    zugewiesenen Agenten setzt die Plattform einmal neu auf, danach sehen sie nur noch den
@@ -2383,10 +2384,11 @@ Die IT hat den Egress-Proxy eingeschaltet (Kap. 37.10).
 Ändert sich später der Wert oder eine Adresse, gilt das sofort, ohne Neustart der Agenten.
 Leerst du das Feld, bekommt der Agent wieder den Klartext.
 
-> Das klappt für Keys, die per HTTPS in einer Kopfzeile oder als Anmelde-Parameter
-> (`key`, `token`, `client_secret` …) mitgeschickt werden, also bei den meisten Web-APIs und
-> bei git über HTTPS. Für Passwörter anderer Verbindungen (etwa eine Datenbank) lässt du das
-> Feld leer.
+> Das klappt für Keys, die per HTTPS (Port 443) in einer Kopfzeile oder als
+> Anmelde-Parameter (`key`, `token`, `client_secret` …) mitgeschickt werden, also bei den
+> meisten Web-APIs und bei git über HTTPS. Steht der Key im Pfad der Adresse (etwa bei
+> Telegram-Bots, `/bot<KEY>/…`) oder ist er das Passwort einer anderen Verbindung (etwa einer
+> Datenbank), lässt du das Feld leer.
 
 > Sicherheitshinweis: Gib Geheimnisse **nie** direkt in den Chat — lege sie als Secret an.
 

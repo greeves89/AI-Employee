@@ -71,15 +71,17 @@ class PlatzhalterTests(unittest.TestCase):
 
 class HostsTests(unittest.TestCase):
     def test_bereinigen(self):
-        self.assertEqual(egress.hosts_pruefen(["API.GitHub.com.", "api.github.com", " *.Example.com "]),
-                         ["api.github.com", "*.example.com"])
+        self.assertEqual(egress.hosts_pruefen(["API.GitHub.com.", "api.github.com", " Uploads.GitHub.com "]),
+                         ["api.github.com", "uploads.github.com"])
         self.assertEqual(egress.hosts_pruefen("a.example.com, b.example.com"), ["a.example.com", "b.example.com"])
         self.assertIsNone(egress.hosts_pruefen([]))
         self.assertIsNone(egress.hosts_pruefen(None))
 
     def test_ungueltig(self):
         for falsch in ("https://api.github.com", "api.github.com/repos", "api.github.com:443", "localhost",
-                       "*.com", "*", "a..b.com", "-a.example.com", "exa mple.com"):
+                       "*.com", "*", "a..b.com", "-a.example.com", "exa mple.com",
+                       # Muster gar nicht: Unter *.github.io legt jeder eine Adresse an
+                       "*.example.com", "*.github.io"):
             with self.subTest(falsch), self.assertRaises(ValueError):
                 egress.hosts_pruefen([falsch])
 
@@ -88,16 +90,15 @@ class HostsTests(unittest.TestCase):
             egress.hosts_pruefen([f"h{i}.example.com" for i in range(21)])
 
     def test_abgleich(self):
-        m = ["api.github.com", "*.example.com"]
+        m = ["api.github.com", "github.com"]
         self.assertTrue(egress.host_passt("api.github.com", m))
         self.assertTrue(egress.host_passt("API.GITHUB.COM.", m))
-        self.assertTrue(egress.host_passt("a.b.example.com", m))
-        for nein in ("github.com", "example.com", "evilexample.com", "api.github.com.evil.com",
+        for nein in ("uploads.github.com", "evilgithub.com", "api.github.com.evil.com",
                      "xapi.github.com", ""):
             with self.subTest(nein):
                 self.assertFalse(egress.host_passt(nein, m))
         # Proxy und Orchestrator gleichen gleich ab
-        for h in ("api.github.com", "a.example.com", "example.com", "evilexample.com"):
+        for h in ("api.github.com", "github.com", "uploads.github.com", "evilgithub.com"):
             self.assertEqual(logik.host_passt(h, m), egress.host_passt(h, m))
 
 
@@ -408,17 +409,53 @@ class ProxyLogikTests(unittest.TestCase):
             (f"/x?key=Bearer%20{p}", "", None),                  # nicht als ganzer Wert
             ("/gists", "application/json", f'{{"content": "{p}"}}'),
             ("/x", "application/x-www-form-urlencoded", f"body={p}"),
+            # JSON, das sich als Formular ausgibt: & teilt es scheinbar in Parameter
+            ("/x", "application/x-www-form-urlencoded", f'{{"body":"a&token={p}&"}}'),
+            ("/x", ["application/x-www-form-urlencoded", "application/json"], f"token={p}"),
+            ("/x", "application/x-www-form-urlencoded; x=application/json", f"password={p}"),
             ("/x", "text/plain", p),
         ):
             with self.subTest(pfad=pfad, koerper=koerper), self.assertRaises(logik.Abgelehnt) as e:
                 f(pfad, art, koerper)
             self.assertEqual(e.exception.status, 403)
 
+    def test_ersetzen_nur_im_geprueften_wert(self):
+        p = egress.platzhalter(5)
+        w = {p: "echt/+="}
+        self.assertEqual(logik.pfad_ersetzen(f"/a?q=1&key={p}", w), "/a?q=1&key=echt%2F%2B%3D")
+        self.assertEqual(logik.pfad_ersetzen("/a?q=1", w), "/a?q=1")
+        self.assertEqual(logik.parameter_ersetzen(f"grant_type=x&client_secret={p}", w),
+                         "grant_type=x&client_secret=echt%2F%2B%3D")
+
     def test_rueckmaskieren(self):
         p = egress.platzhalter(5)
         self.assertEqual(logik.zurueck_maskieren('{"auth":"Bearer ghp_echt_123"}', {p: "ghp_echt_123"}),
                          f'{{"auth":"Bearer {p}"}}')
         self.assertEqual(logik.zurueck_maskieren("abc", {p: "abc"}), "abc", "kurze Werte nicht blind ersetzen")
+        # Kodierte Spiegelungen (Fehlermeldungen, PHP-JSON, Weiterleitungen)
+        w = "ab/cd+ef=gh_1234567"
+        for kodiert in ("ab\\/cd+ef=gh_1234567", "ab%2Fcd%2Bef%3Dgh_1234567",
+                        base64.b64encode(w.encode()).decode()):
+            with self.subTest(kodiert):
+                self.assertEqual(logik.zurueck_maskieren(f"x {kodiert} y", {p: w}), f"x {p} y")
+        self.assertEqual(logik.zurueck_maskieren_bytes(b"\x00" + w.encode() + b"\xff", {p: w}),
+                         b"\x00" + p.encode() + b"\xff")
+
+    def test_maske_je_agent(self):
+        uhr = [0.0]
+        m = logik.Maske(jetzt=lambda: uhr[0])
+        m.merken("a1", {"p1": "wert-1234567"})
+        self.assertEqual(m.werte("a1"), {"p1": "wert-1234567"})
+        self.assertEqual(m.werte("a2"), {}, "fremde Agenten nicht")
+        uhr[0] += logik.MASKE_DAUER
+        self.assertEqual(m.werte("a1"), {})
+
+    def test_uebersetzte_adressen_gesperrt(self):
+        def aufl(ip):
+            return lambda host, port, type=None: [(socket.AF_INET6, type, 6, "", (ip, port, 0, 0))]
+        for ip in ("64:ff9b::a00:1", "2002:c0a8:101::1"):
+            with self.subTest(ip), self.assertRaises(logik.Abgelehnt):
+                logik.ziel_adresse("x.example.com", 443, aufloesen=aufl(ip))
 
 
 class OrchestratorKlientTests(unittest.TestCase):
@@ -488,6 +525,13 @@ class OrchestratorKlientTests(unittest.TestCase):
         self.antworten = [logik.OrchestratorFehler("weg")]
         with self.assertRaises(logik.OrchestratorFehler):
             self.o.werte(("a1", "t"), "api.github.com", {p})
+        # Ablehnung des Dienst-Schluessels (403) ueberbrueckt die Anmeldung nicht
+        self.antworten = [(200, {"hosts": []})]
+        self.o.hosts(("a7", "t"))
+        self.uhr[0] += logik.ANMELDUNG_FRISCH
+        self.antworten = [(403, {})]
+        with self.assertRaises(logik.OrchestratorFehler):
+            self.o.hosts(("a7", "t"))
         # unvollstaendige Antwort wird nicht halb eingesetzt
         q = egress.platzhalter(6)
         self.antworten = [(200, {"werte": {p: "echt"}})]

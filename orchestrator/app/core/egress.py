@@ -53,7 +53,7 @@ DIENST_TOKEN_MINDESTLAENGE = 32
 MAX_HOSTS = 20
 
 _LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
-_HOST_RE = re.compile(rf"^(\*\.)?{_LABEL}(?:\.{_LABEL})+$")
+_HOST_RE = re.compile(rf"^{_LABEL}(?:\.{_LABEL})+$")
 
 def aktiv() -> bool:
     """Eingeschaltet UND mit einem Dienst-Schluessel, den der Proxy vorzeigen muss."""
@@ -64,7 +64,7 @@ def aktiv() -> bool:
 def ist_proxy_anfrage(authorization: str) -> bool:
     """Traegt die Anfrage den Dienst-Schluessel des Proxys? (Vergleich in konstanter Zeit)"""
     token = (authorization or "").removeprefix("Bearer ").strip()
-    return aktiv() and bool(token) and hmac.compare_digest(token, settings.egress_proxy_token)
+    return aktiv() and bool(token) and hmac.compare_digest(token.encode(), settings.egress_proxy_token.encode())
 
 
 def veraltet(agent_config: dict | None) -> bool:
@@ -95,9 +95,9 @@ def secret_id_aus(wert: str) -> int | None:
 def hosts_pruefen(werte) -> list[str] | None:
     """Erlaubte Ziele eines Keys bereinigen. Leer → None. Ungueltig → ValueError.
 
-    Erlaubt sind Hostnamen (``api.example.com``) und Unterdomaenen-Muster
-    (``*.example.com``, trifft NICHT ``example.com`` selbst). Keine Adressen mit
-    Schema, Pfad oder Port, keine Muster auf eine ganze Endung (``*.com``).
+    Erlaubt sind nur genaue Hostnamen (``api.example.com``). Keine Muster: ``*.github.io``
+    oder ``*.amazonaws.com`` haetten den Key an jede dort angemeldete Fremdadresse
+    gegeben. Keine Adressen mit Schema, Pfad oder Port.
     """
     if werte is None:
         return None
@@ -108,10 +108,10 @@ def hosts_pruefen(werte) -> list[str] | None:
         h = str(roh or "").strip().lower().rstrip(".")
         if not h:
             continue
+        if h.startswith("*"):
+            raise ValueError(f"Keine Muster, nur genaue Hostnamen: {h[:80]}")
         if not _HOST_RE.match(h) or len(h) > 253:
             raise ValueError(f"Kein gültiger Hostname: {str(roh)[:80]}")
-        if h.startswith("*.") and h.count(".") < 2:
-            raise ValueError(f"Muster zu weit: {h} (mindestens *.name.endung)")
         if h not in ergebnis:
             ergebnis.append(h)
     if len(ergebnis) > MAX_HOSTS:
@@ -121,15 +121,7 @@ def hosts_pruefen(werte) -> list[str] | None:
 
 def host_passt(host: str, muster: list[str] | None) -> bool:
     h = (host or "").strip().lower().rstrip(".")
-    if not h:
-        return False
-    for m in muster or []:
-        if m.startswith("*."):
-            if h.endswith(m[1:]) and len(h) > len(m) - 1:
-                return True
-        elif h == m:
-            return True
-    return False
+    return bool(h) and h in (muster or [])
 
 
 async def ca_zertifikat() -> str:

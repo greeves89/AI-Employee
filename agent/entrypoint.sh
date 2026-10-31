@@ -181,8 +181,12 @@ egress_ca_einspielen() {
     "-----BEGIN CERTIFICATE-----"*) ;;
     *) echo "[entrypoint] WARNUNG: AIE_EGRESS_CA ist kein Zertifikat -- nicht eingespielt"; return 0 ;;
   esac
-  mkdir -p "$CA_DIR"
-  printf '%s\n' "$AIE_EGRESS_CA" > "$CA_DIR/aie-egress.crt"
+  # Scheitern haelt den Start nicht auf (set -e): Ohne CA scheitern nur Aufrufe an
+  # Ziele mit Key, alles andere laeuft.
+  if ! { mkdir -p "$CA_DIR" && printf '%s\n' "$AIE_EGRESS_CA" > "$CA_DIR/aie-egress.crt"; }; then
+    echo "[entrypoint] WARNUNG: CA des Egress-Proxys nicht geschrieben"
+    return 0
+  fi
   if ! update-ca-certificates >/dev/null 2>&1; then
     echo "[entrypoint] WARNUNG: CA des Egress-Proxys nicht im Systemspeicher"
   fi

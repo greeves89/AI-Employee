@@ -48,7 +48,7 @@ class Aufloesen(Verbindung):
 
 
 async def _secrets(db: AsyncSession, body: Verbindung):
-    if not hmac.compare_digest(body.agent_token, make_agent_token(body.agent_id)):
+    if not hmac.compare_digest(body.agent_token.encode(), make_agent_token(body.agent_id).encode()):
         raise HTTPException(status_code=401, detail="Agent unbekannt")
     if await db.get(Agent, body.agent_id) is None:
         raise HTTPException(status_code=401, detail="Agent unbekannt")
