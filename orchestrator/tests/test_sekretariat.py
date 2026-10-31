@@ -153,7 +153,7 @@ class MsGraphEndpunkt(_Sek):
         async with self.Session() as db:
             await self._einrichten(db)
             a2 = await db.get(Agent, "a2")
-            a2.config = {"msgraph_access": "write"}
+            a2.config = {"msgraph_access": "write", "integrations": ["microsoft"]}
             await db.commit()
         anfrage = SimpleNamespace(headers={"Authorization": f"Bearer {make_agent_token('a2')}"},
                                   json=AsyncMock(return_value={"jsonrpc": "2.0", "id": 1, "method": "tools/list"}))
@@ -175,7 +175,7 @@ class MsGraphEndpunkt(_Sek):
         async with self.Session() as db:
             await self._einrichten(db)
             a2 = await db.get(Agent, "a2")
-            a2.config = {"msgraph_access": "read"}
+            a2.config = {"msgraph_access": "read", "integrations": ["microsoft"]}
             await db.commit()
         anfrage = SimpleNamespace(headers={"Authorization": f"Bearer {make_agent_token('a2')}"},
                                   json=AsyncMock(return_value={"jsonrpc": "2.0", "id": 1, "method": "tools/list"}))
