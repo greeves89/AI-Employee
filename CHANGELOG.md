@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.421.2] - 2026-11-01
+
+### Behoben
+- Fehler, die der Telegram-Bot an den Nutzer meldet, stehen jetzt auch im Protokoll der Anlage (bereinigt um Zugangsdaten).
+
+## Tests
+- `test_telegram_fehler_im_protokoll.py`: echter Antwort-Lauscher mit einem Fehler-Ereignis → Nachricht an Telegram + Protokollzeile. Gegenprobe ohne die Änderung: rot.
+- Telegram-Tests gesamt: 43 grün.
+
 ## [1.421.1] - 2026-11-01
 
 ### Geändert
