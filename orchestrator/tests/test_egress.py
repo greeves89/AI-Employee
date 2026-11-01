@@ -487,6 +487,42 @@ class EgressDatenTests(SecretsTestBasis):
         # Gleicher Platzhalter, anderer Agent ohne hinterlegten Zugang: nichts
         self.assertEqual((await self._aufloesen("api.anthropic.com", k, agent="a2")).status_code, 403)
 
+    async def test_ki_zugang_ist_der_aktuelle(self):
+        """OAuth-Token werden erneuert: eingesetzt wird der heutige, nicht die Abschrift."""
+        from app.core import agent_credentials as creds
+        (await self.db.get(Agent, "a1")).config = {"egress_ki": {"CLAUDE_CODE_OAUTH_TOKEN": "enc:sk-ant-oat01-alt"}}
+        await self.db.commit()
+        k = egress.platzhalter(0, egress.KI)
+        with patch.object(creds, "resolve", AsyncMock(return_value=(creds.SOURCE_TEAM, "claude_code",
+                                                                      "sk-ant-oat01-erneuert"))):
+            self.assertEqual(await self._aufloesen("api.anthropic.com", k), {"werte": {k: "sk-ant-oat01-erneuert"}})
+        # Kein Zugang ermittelbar (Teamlizenz gesperrt, Fehler): die Abschrift gilt
+        for ergebnis in ((creds.SOURCE_NONE, "claude_code", None), RuntimeError("db weg")):
+            with self.subTest(ergebnis), patch.object(creds, "resolve", AsyncMock(side_effect=[ergebnis])
+                                                      if isinstance(ergebnis, Exception)
+                                                      else AsyncMock(return_value=ergebnis)):
+                self.assertEqual(await self._aufloesen("api.anthropic.com", k), {"werte": {k: "sk-ant-oat01-alt"}})
+        # Heute ein API-Schluessel statt OAuth: der OAuth-Platzhalter bekommt ihn nicht
+        with patch.object(creds, "resolve", AsyncMock(return_value=(creds.SOURCE_TEAM, "claude_code",
+                                                                      "sk-ant-api03-schluessel"))):
+            self.assertEqual(await self._aufloesen("api.anthropic.com", k), {"werte": {k: "sk-ant-oat01-alt"}})
+
+    async def test_eigenes_abo_bekommt_den_platzhalter(self):
+        """GET /agents/{id}/claude-token gibt hinter dem Proxy den Platzhalter heraus."""
+        from app.api import agents as api_agents
+        from app.core import agent_credentials as creds
+        agent = await self.db.get(Agent, "a1")
+        echt = (creds.SOURCE_PERSONAL, "claude_code", "sk-ant-oat01-eigenes")
+        with patch.object(creds, "resolve", AsyncMock(return_value=echt)):
+            agent.config = {}
+            await self.db.commit()
+            r = await api_agents.get_agent_claude_token("a1", db=self.db, agent_auth={"agent_id": "a1"})
+            self.assertEqual(r["access_token"], "sk-ant-oat01-eigenes", "ohne Proxy wie bisher")
+            agent.config = {"egress_ki": {"CLAUDE_CODE_OAUTH_TOKEN": "enc:sk-ant-oat01-eigenes"}}
+            await self.db.commit()
+            r = await api_agents.get_agent_claude_token("a1", db=self.db, agent_auth={"agent_id": "a1"})
+        self.assertEqual(r["access_token"], egress.platzhalter(0, egress.KI))
+
     # --- Schluesselverwaltung --------------------------------------------------------
     async def test_ungueltige_ziele_422(self):
         from app.api import secrets as api

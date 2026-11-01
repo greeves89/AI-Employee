@@ -103,12 +103,39 @@ async def _mcp_zugaenge(db: AsyncSession, agent: Agent) -> list[_Freigabe]:
     return freigaben
 
 
-def _ki_zugang(agent: Agent) -> list[_Freigabe]:
-    """Claude-Zugang, den ``ki_umstellen`` beim Anlegen hinter den Proxy gelegt hat."""
+async def _ki_aktuell(db: AsyncSession, agent: Agent) -> dict[str, str]:
+    """Der Claude-Zugang, den dieser Agent JETZT bekaeme (eigenes Abo → Teamlizenz).
+
+    Dieselbe Aufloesung wie beim Anlegen (``agent_credentials.resolve``). OAuth-Token
+    werden erneuert; die Abschrift aus der Erstellung war nach der ersten Erneuerung
+    widerrufen, und jeder Aufruf mit dem Platzhalter scheiterte.
+    """
+    from app.core import agent_credentials as creds
+
+    try:
+        _quelle, harness, geheimnis = await creds.resolve(
+            db, owner_id=agent.user_id, mode=agent.mode or "claude_code",
+            model_provider=(agent.config or {}).get("model_provider") or "anthropic")
+    except Exception:  # noqa: BLE001 — dann gilt die Abschrift
+        logger.warning("Egress: Claude-Zugang von Agent %s nicht aufloesbar", scrub_log(agent.id))
+        return {}
+    return creds.env_for(harness, geheimnis) if harness == "claude_code" and geheimnis else {}
+
+
+async def _ki_zugang(db: AsyncSession, agent: Agent) -> list[_Freigabe]:
+    """Claude-Zugang, den ``ki_umstellen`` beim Anlegen hinter den Proxy gelegt hat.
+
+    Eingesetzt wird der aktuelle Wert; die Abschrift aus der Erstellung nur, wenn
+    sich keiner ermitteln laesst.
+    """
+    gespeichert = {var: enc for var, enc in ((agent.config or {}).get("egress_ki") or {}).items()
+                   if var in egress.KI_VARIABLEN}
+    if not gespeichert:
+        return []
+    aktuell = await _ki_aktuell(db, agent)
     return [_Freigabe(egress.KI, egress.KI_VARIABLEN[var], var, egress.KI_ZIELE,
-                      lambda enc=enc: decrypt_token(enc))
-            for var, enc in ((agent.config or {}).get("egress_ki") or {}).items()
-            if var in egress.KI_VARIABLEN]
+                      (lambda w=aktuell[var]: w) if aktuell.get(var) else (lambda enc=enc: decrypt_token(enc)))
+            for var, enc in gespeichert.items()]
 
 
 async def _freigaben(db: AsyncSession, body: Verbindung) -> list[_Freigabe]:
@@ -123,7 +150,7 @@ async def _freigaben(db: AsyncSession, body: Verbindung) -> list[_Freigabe]:
              for s in secrets if s.erlaubte_hosts]
             + await _anbindungen(db, agent)
             + await _mcp_zugaenge(db, agent)
-            + _ki_zugang(agent))
+            + await _ki_zugang(db, agent))
 
 
 @router.post("/verbindung", dependencies=[Depends(_nur_proxy)])

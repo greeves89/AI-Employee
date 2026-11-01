@@ -192,6 +192,10 @@ def stdio_mcp_server(datei: str) -> dict:
             "ORCHESTRATOR_URL": settings.orchestrator_url,
             "AGENT_ID": settings.agent_id,
             "AGENT_TOKEN": settings.agent_token,
+            # Geerbt wuerde der Server im HTTP-Modus starten — auf dem Port, den der
+            # gemeinsame Prozess schon belegt (EADDRINUSE). So lief der Uebergabe-Zug
+            # ohne Gedaechtnis, und die Uebergabe scheiterte bei jedem langen Chat.
+            "MCP_HTTP_PORT": "",
         },
     }
 
