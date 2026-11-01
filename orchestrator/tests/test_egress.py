@@ -477,8 +477,13 @@ class EgressDatenTests(SecretsTestBasis):
 
     # --- Claude-Zugang -----------------------------------------------------------------
     async def test_ki_zugang_aufloesen(self):
+        from app.core import agent_credentials as creds
         (await self.db.get(Agent, "a1")).config = {"egress_ki": {"CLAUDE_CODE_OAUTH_TOKEN": "enc:sk-ant-oat01-echt"}}
         await self.db.commit()
+        team = patch.object(creds, "resolve", AsyncMock(return_value=(creds.SOURCE_TEAM, "claude_code",
+                                                                       "sk-ant-oat01-echt")))
+        team.start()
+        self.addCleanup(team.stop)
         k = egress.platzhalter(0, egress.KI)
         r = await api_egress.verbindung(api_egress.Verbindung(**self._anm()), db=self.db)
         self.assertIn("api.anthropic.com", r["hosts"])
@@ -496,16 +501,15 @@ class EgressDatenTests(SecretsTestBasis):
         with patch.object(creds, "resolve", AsyncMock(return_value=(creds.SOURCE_TEAM, "claude_code",
                                                                       "sk-ant-oat01-erneuert"))):
             self.assertEqual(await self._aufloesen("api.anthropic.com", k), {"werte": {k: "sk-ant-oat01-erneuert"}})
-        # Kein Zugang ermittelbar (Teamlizenz gesperrt, Fehler): die Abschrift gilt
-        for ergebnis in ((creds.SOURCE_NONE, "claude_code", None), RuntimeError("db weg")):
-            with self.subTest(ergebnis), patch.object(creds, "resolve", AsyncMock(side_effect=[ergebnis])
-                                                      if isinstance(ergebnis, Exception)
-                                                      else AsyncMock(return_value=ergebnis)):
-                self.assertEqual(await self._aufloesen("api.anthropic.com", k), {"werte": {k: "sk-ant-oat01-alt"}})
-        # Heute ein API-Schluessel statt OAuth: der OAuth-Platzhalter bekommt ihn nicht
-        with patch.object(creds, "resolve", AsyncMock(return_value=(creds.SOURCE_TEAM, "claude_code",
-                                                                      "sk-ant-api03-schluessel"))):
+        # Nicht ermittelbar (Fehler): die Abschrift gilt
+        with patch.object(creds, "resolve", AsyncMock(side_effect=RuntimeError("db weg"))):
             self.assertEqual(await self._aufloesen("api.anthropic.com", k), {"werte": {k: "sk-ant-oat01-alt"}})
+        # Heute kein Zugang (vom Admin gesperrt) oder einer anderer Art: auch hinter dem
+        # Proxy keiner — die Abschrift wuerde das Sperren unterlaufen
+        for heute in ((creds.SOURCE_NONE, "claude_code", None),
+                      (creds.SOURCE_TEAM, "claude_code", "sk-ant-api03-schluessel")):
+            with self.subTest(heute), patch.object(creds, "resolve", AsyncMock(return_value=heute)):
+                self.assertEqual((await self._aufloesen("api.anthropic.com", k)).status_code, 403)
 
     async def test_eigenes_abo_bekommt_den_platzhalter(self):
         """GET /agents/{id}/claude-token gibt hinter dem Proxy den Platzhalter heraus."""
@@ -521,7 +525,16 @@ class EgressDatenTests(SecretsTestBasis):
             agent.config = {"egress_ki": {"CLAUDE_CODE_OAUTH_TOKEN": "enc:sk-ant-oat01-eigenes"}}
             await self.db.commit()
             r = await api_agents.get_agent_claude_token("a1", db=self.db, agent_auth={"agent_id": "a1"})
-        self.assertEqual(r["access_token"], egress.platzhalter(0, egress.KI))
+            self.assertEqual(r["access_token"], egress.platzhalter(0, egress.KI))
+            # Hinter dem Proxy, aber ohne OAuth-Platzhalter (Abschrift nur API-Schluessel
+            # oder nur die Stufe gesetzt): kein Klartext, sondern nichts
+            for config in ({"egress_ki": {"ANTHROPIC_API_KEY": "enc:sk-ant-api03-x"}},
+                           {"egress_ki": {}, "egress_ki_stufe": True}):
+                with self.subTest(config):
+                    agent.config = config
+                    await self.db.commit()
+                    r = await api_agents.get_agent_claude_token("a1", db=self.db, agent_auth={"agent_id": "a1"})
+                    self.assertIsNone(r["access_token"])
 
     # --- Schluesselverwaltung --------------------------------------------------------
     async def test_ungueltige_ziele_422(self):

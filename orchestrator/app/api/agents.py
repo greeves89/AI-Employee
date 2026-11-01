@@ -3907,8 +3907,12 @@ async def get_agent_claude_token(
     if not creds.personal_oauth_env(harness, source, secret):
         return {"source": source, "access_token": None}
     from app.core import egress
-    if "CLAUDE_CODE_OAUTH_TOKEN" in ((agent.config or {}).get("egress_ki") or {}):
-        # Zugang hinter dem Egress-Proxy: der setzt das erneuerte Token selbst ein.
+    config = agent.config or {}
+    if config.get("egress_ki") or config.get("egress_ki_stufe"):
+        # Zugang hinter dem Egress-Proxy: niemals Klartext. Der Proxy setzt das
+        # erneuerte Token selbst ein — aber nur fuer den Platzhalter, den der Agent hat.
+        if "CLAUDE_CODE_OAUTH_TOKEN" not in (config.get("egress_ki") or {}):
+            return {"source": source, "access_token": None}
         return {"source": source,
                 "access_token": egress.platzhalter(egress.KI_VARIABLEN["CLAUDE_CODE_OAUTH_TOKEN"], egress.KI)}
     return {"source": source, "access_token": secret}
