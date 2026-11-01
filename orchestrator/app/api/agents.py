@@ -3914,7 +3914,7 @@ async def get_agent_claude_token(
         if "CLAUDE_CODE_OAUTH_TOKEN" not in (config.get("egress_ki") or {}):
             return {"source": source, "access_token": None}
         return {"source": source,
-                "access_token": egress.platzhalter(egress.KI_VARIABLEN["CLAUDE_CODE_OAUTH_TOKEN"], egress.KI)}
+                "access_token": egress.platzhalter(egress.KI_ABO, egress.KI)}
     return {"source": source, "access_token": secret}
 
 
