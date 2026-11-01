@@ -382,3 +382,28 @@ async def test_uebergabe_zug_bekommt_nur_das_gedaechtnis(monkeypatch):
     # Die Datei mit dem Agenten-Token ist danach weg.
     import os
     assert not os.path.exists(cmd[cmd.index("--mcp-config") + 1])
+
+
+def test_gedaechtnis_im_uebergabe_zug_startet_per_stdio(monkeypatch):
+    """Der Container setzt MCP_HTTP_PORT fuer den gemeinsamen MCP-Prozess. Erbte der
+    Gedaechtnis-Server des Uebergabe-Zugs ihn, wollte er denselben Port oeffnen und
+    stuerzte ab (EADDRINUSE) — jede Uebergabe lief ohne Gedaechtnis und scheiterte."""
+    import os
+    import shutil
+    import subprocess
+
+    import pytest
+
+    from app.config import stdio_mcp_server
+
+    monkeypatch.setenv("MCP_HTTP_PORT", "8790")
+    eintrag = stdio_mcp_server("memory-server.mjs")
+    # Die CLI startet den Server mit ihrer Umgebung, ueberlagert von "env".
+    umgebung = {**os.environ, **eintrag["env"]}
+    if not shutil.which("node"):
+        pytest.skip("node fehlt")
+    # Dieselbe Regel wie agent/mcp/_transport.mjs: ohne Port stdio, sonst HTTP.
+    lauf = subprocess.run(["node", "-e", "process.exit(Number(process.env.MCP_HTTP_PORT || 0) ? 1 : 0)"],
+                          env=umgebung, timeout=30)
+    assert lauf.returncode == 0, "der Server wuerde im HTTP-Modus auf dem belegten Port starten"
+

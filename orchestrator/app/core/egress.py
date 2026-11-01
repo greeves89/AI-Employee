@@ -76,14 +76,18 @@ def ist_proxy_anfrage(authorization: str) -> bool:
     return aktiv() and bool(token) and hmac.compare_digest(token.encode(), settings.egress_proxy_token.encode())
 
 
-def veraltet(agent_config: dict | None) -> bool:
+def veraltet(agent_config: dict | None, agent_id: str | None = None) -> bool:
     """Entstand der Behaelter mit einem anderen Ausgang, als jetzt gilt?
 
     Dann zeigt der Agent "Aktualisieren" — sonst bliebe ein Agent nach dem
     Einschalten des Proxys mit Klartext-Keys stehen, ohne dass es jemand merkt.
     Agenten aus der Zeit vor dem Proxy haben keinen Eintrag = ohne Proxy.
+    Mit ``agent_id`` zaehlt auch die Stufe von ``EGRESS_KI_ZUGANG``.
     """
-    return bool((agent_config or {}).get("egress")) != aktiv()
+    cfg = agent_config or {}
+    if bool(cfg.get("egress")) != aktiv():
+        return True
+    return agent_id is not None and bool(cfg.get("egress_ki_stufe")) != ki_ueber_proxy(agent_id)
 
 
 def platzhalter(secret_id: int, art: str = "") -> str:
@@ -190,7 +194,9 @@ def mcp_ziel(url: str) -> str | None:
 
 
 #: Claude-Zugang: welche Variable welche Nummer traegt, und wohin er darf.
-KI_VARIABLEN = {"CLAUDE_CODE_OAUTH_TOKEN": 0, "ANTHROPIC_API_KEY": 1}
+# Nummern der Claude-Platzhalter: Abo (OAuth) und API-Schluessel
+KI_ABO, KI_SCHLUESSEL = 0, 1
+KI_VARIABLEN = {"CLAUDE_CODE_OAUTH_TOKEN": KI_ABO, "ANTHROPIC_API_KEY": KI_SCHLUESSEL}
 KI_ZIELE = ["api.anthropic.com"]
 _KI_ANDERER_WEG = ("CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY",
                    "ANTHROPIC_BASE_URL")

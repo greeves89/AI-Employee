@@ -162,6 +162,20 @@ class AktualisierenHinweisTests(unittest.TestCase):
             self.assertFalse(egress.veraltet(None))
             self.assertTrue(egress.veraltet({"egress": True}))     # Proxy wieder aus
 
+    def test_ki_stufe_geaendert(self):
+        """EGRESS_KI_ZUGANG umgestellt: betroffene Agenten zeigen "Aktualisieren"."""
+        with patch.object(settings, "egress_proxy_enabled", True), patch.object(settings, "egress_proxy_token", TOKEN):
+            with patch.object(settings, "egress_ki_zugang", "alle"):
+                self.assertTrue(egress.veraltet({"egress": True}, "a1"))         # vor der Umstellung entstanden
+                self.assertFalse(egress.veraltet({"egress": True, "egress_ki_stufe": True}, "a1"))
+                self.assertFalse(egress.veraltet({"egress": True}), "ohne Kennung zaehlt nur der Proxy")
+            with patch.object(settings, "egress_ki_zugang", "b2"):
+                self.assertFalse(egress.veraltet({"egress": True}, "a1"))        # nicht in der Stufe
+                self.assertTrue(egress.veraltet({"egress": True, "egress_ki_stufe": True}, "a1"))  # zurueckgenommen
+                self.assertTrue(egress.veraltet({"egress": True}, "b2"))
+        with patch.object(settings, "egress_proxy_enabled", False), patch.object(settings, "egress_ki_zugang", "alle"):
+            self.assertFalse(egress.veraltet({}, "a1"), "ohne Proxy keine KI-Stufe")
+
 
 class UmgebungTests(unittest.IsolatedAsyncioTestCase):
     async def test_aus_ist_leer(self):
@@ -463,8 +477,13 @@ class EgressDatenTests(SecretsTestBasis):
 
     # --- Claude-Zugang -----------------------------------------------------------------
     async def test_ki_zugang_aufloesen(self):
+        from app.core import agent_credentials as creds
         (await self.db.get(Agent, "a1")).config = {"egress_ki": {"CLAUDE_CODE_OAUTH_TOKEN": "enc:sk-ant-oat01-echt"}}
         await self.db.commit()
+        team = patch.object(creds, "resolve", AsyncMock(return_value=(creds.SOURCE_TEAM, "claude_code",
+                                                                       "sk-ant-oat01-echt")))
+        team.start()
+        self.addCleanup(team.stop)
         k = egress.platzhalter(0, egress.KI)
         r = await api_egress.verbindung(api_egress.Verbindung(**self._anm()), db=self.db)
         self.assertIn("api.anthropic.com", r["hosts"])
@@ -472,6 +491,50 @@ class EgressDatenTests(SecretsTestBasis):
         self.assertEqual((await self._aufloesen("evil.example.com", k)).status_code, 403)
         # Gleicher Platzhalter, anderer Agent ohne hinterlegten Zugang: nichts
         self.assertEqual((await self._aufloesen("api.anthropic.com", k, agent="a2")).status_code, 403)
+
+    async def test_ki_zugang_ist_der_aktuelle(self):
+        """OAuth-Token werden erneuert: eingesetzt wird der heutige, nicht die Abschrift."""
+        from app.core import agent_credentials as creds
+        (await self.db.get(Agent, "a1")).config = {"egress_ki": {"CLAUDE_CODE_OAUTH_TOKEN": "enc:sk-ant-oat01-alt"}}
+        await self.db.commit()
+        k = egress.platzhalter(0, egress.KI)
+        with patch.object(creds, "resolve", AsyncMock(return_value=(creds.SOURCE_TEAM, "claude_code",
+                                                                      "sk-ant-oat01-erneuert"))):
+            self.assertEqual(await self._aufloesen("api.anthropic.com", k), {"werte": {k: "sk-ant-oat01-erneuert"}})
+        # Nicht ermittelbar (Fehler): die Abschrift gilt
+        with patch.object(creds, "resolve", AsyncMock(side_effect=RuntimeError("db weg"))):
+            self.assertEqual(await self._aufloesen("api.anthropic.com", k), {"werte": {k: "sk-ant-oat01-alt"}})
+        # Heute kein Zugang (vom Admin gesperrt) oder einer anderer Art: auch hinter dem
+        # Proxy keiner — die Abschrift wuerde das Sperren unterlaufen
+        for heute in ((creds.SOURCE_NONE, "claude_code", None),
+                      (creds.SOURCE_TEAM, "claude_code", "sk-ant-api03-schluessel")):
+            with self.subTest(heute), patch.object(creds, "resolve", AsyncMock(return_value=heute)):
+                self.assertEqual((await self._aufloesen("api.anthropic.com", k)).status_code, 403)
+
+    async def test_eigenes_abo_bekommt_den_platzhalter(self):
+        """GET /agents/{id}/claude-token gibt hinter dem Proxy den Platzhalter heraus."""
+        from app.api import agents as api_agents
+        from app.core import agent_credentials as creds
+        agent = await self.db.get(Agent, "a1")
+        echt = (creds.SOURCE_PERSONAL, "claude_code", "sk-ant-oat01-eigenes")
+        with patch.object(creds, "resolve", AsyncMock(return_value=echt)):
+            agent.config = {}
+            await self.db.commit()
+            r = await api_agents.get_agent_claude_token("a1", db=self.db, agent_auth={"agent_id": "a1"})
+            self.assertEqual(r["access_token"], "sk-ant-oat01-eigenes", "ohne Proxy wie bisher")
+            agent.config = {"egress_ki": {"CLAUDE_CODE_OAUTH_TOKEN": "enc:sk-ant-oat01-eigenes"}}
+            await self.db.commit()
+            r = await api_agents.get_agent_claude_token("a1", db=self.db, agent_auth={"agent_id": "a1"})
+            self.assertEqual(r["access_token"], egress.platzhalter(0, egress.KI))
+            # Hinter dem Proxy, aber ohne OAuth-Platzhalter (Abschrift nur API-Schluessel
+            # oder nur die Stufe gesetzt): kein Klartext, sondern nichts
+            for config in ({"egress_ki": {"ANTHROPIC_API_KEY": "enc:sk-ant-api03-x"}},
+                           {"egress_ki": {}, "egress_ki_stufe": True}):
+                with self.subTest(config):
+                    agent.config = config
+                    await self.db.commit()
+                    r = await api_agents.get_agent_claude_token("a1", db=self.db, agent_auth={"agent_id": "a1"})
+                    self.assertIsNone(r["access_token"])
 
     # --- Schluesselverwaltung --------------------------------------------------------
     async def test_ungueltige_ziele_422(self):

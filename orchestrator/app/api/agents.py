@@ -647,7 +647,7 @@ async def list_agents(
                 integrations=config.get("integrations", []),
                 permissions=eff_permissions,
                 update_available=(config.get("agent_version") != current_agent_version
-                                  or egress_veraltet(config)),
+                                  or egress_veraltet(config, agent.id)),
                 budget_usd=agent.budget_usd,
                 budget_exceeded_action=agent.budget_exceeded_action,
                 monthly_cost_usd=round(monatskosten.get(agent.id, 0.0), 4),
@@ -3906,6 +3906,15 @@ async def get_agent_claude_token(
     )
     if not creds.personal_oauth_env(harness, source, secret):
         return {"source": source, "access_token": None}
+    from app.core import egress
+    config = agent.config or {}
+    if config.get("egress_ki") or config.get("egress_ki_stufe"):
+        # Zugang hinter dem Egress-Proxy: niemals Klartext. Der Proxy setzt das
+        # erneuerte Token selbst ein — aber nur fuer den Platzhalter, den der Agent hat.
+        if "CLAUDE_CODE_OAUTH_TOKEN" not in (config.get("egress_ki") or {}):
+            return {"source": source, "access_token": None}
+        return {"source": source,
+                "access_token": egress.platzhalter(egress.KI_ABO, egress.KI)}
     return {"source": source, "access_token": secret}
 
 

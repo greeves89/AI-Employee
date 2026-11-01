@@ -101,6 +101,28 @@ if egress_token_sicherstellen .env; then
 fi
 
 # ── 5. Restart the compose services (orchestrator, frontend, ...) ─────────────
+# Dienste hinter einem Compose-Profil (tunnel: cloudflared, autoheal) nimmt
+# "docker compose up -d" nur mit, wenn das Profil aktiv ist — sonst liefen sie
+# nach jedem Update mit dem alten Abbild weiter. Aktiv = ein Behaelter existiert.
+aktive_profile() {
+    local profil dienst ohne
+    ohne=" $(docker compose config --services 2>/dev/null | tr '\n' ' ') "
+    for profil in $(docker compose config --profiles 2>/dev/null); do
+        for dienst in $(docker compose --profile "$profil" config --services 2>/dev/null); do
+            case "$ohne" in *" $dienst "*) continue ;; esac
+            if [ -n "$(docker compose --profile "$profil" ps -a -q "$dienst" 2>/dev/null)" ]; then
+                echo "$profil"; break
+            fi
+        done
+    done
+}
+PROFILE=$(aktive_profile | paste -sd, -)
+if [ -n "$PROFILE" ]; then
+    # Ein COMPOSE_PROFILES aus der .env bliebe sonst durch die Umgebung verdeckt
+    BISHER="${COMPOSE_PROFILES:-$(sed -n 's/^COMPOSE_PROFILES=//p' .env 2>/dev/null | tail -1 || true)}"
+    export COMPOSE_PROFILES="${BISHER:+$BISHER,}$PROFILE"
+    info "Aktive Compose-Profile: $COMPOSE_PROFILES"
+fi
 info "Restarting the stack..."
 docker compose up -d
 ok "Stack restarted"
@@ -180,6 +202,6 @@ echo "║               Update Complete!                   ║"
 echo "╚══════════════════════════════════════════════════╝"
 echo ""
 info "Rücksprung, falls nötig: git checkout ${VORHER_COMMIT}, dann"
-info "  bash -c '. scripts/lib/abbilder.sh && abbilder_bereitstellen 0' && docker compose up -d"
+info "  bash -c '. scripts/lib/abbilder.sh && abbilder_bereitstellen 0' && ${COMPOSE_PROFILES:+COMPOSE_PROFILES=$COMPOSE_PROFILES }docker compose up -d"
 info "  und die Sicherung von vorhin mit ./scripts/restore.sh --backup <ordner> zurückspielen"
 info "  (das Datenbankschema kann sich geändert haben). Handbuch: Betrieb & Datenschutz."

@@ -4470,7 +4470,7 @@ eingeschaltet, gehen Agenten für HTTPS über ihn hinaus:
 | Token der Git-Anbindung (GitHub/Forgejo, Admin → Integrationen) | ebenso: Platzhalter, eingesetzt nur am Git-Host der Anbindung *(seit 1.414.0)* |
 | Browser des Agenten (auch der Browser von Claude Code) | geht ebenfalls über den Proxy und traut seinem Zertifikat *(seit 1.415.0)* |
 | Zugang zu externen MCP-Servern (Token und eigene Kopfzeilen, Kap. 14) | ebenso: Platzhalter, eingesetzt nur am Host des Servers; ein erneuertes OAuth-Token gilt sofort *(seit 1.417.0)* |
-| Claude-Zugang (Abo-Token oder API-Schlüssel, Anthropic direkt) | Platzhalter, eingesetzt nur an `api.anthropic.com` — stufenweise über `EGRESS_KI_ZUGANG` *(seit 1.418.0)* |
+| Claude-Zugang (Abo-Token oder API-Schlüssel, Anthropic direkt) | Platzhalter, eingesetzt nur an `api.anthropic.com` — stufenweise über `EGRESS_KI_ZUGANG` *(seit 1.418.0)*; eingesetzt wird immer das aktuelle, erneuerte Token, und die Token-Datei der Teamlizenz bekommt ein solcher Agent nicht mehr *(seit 1.421.0)* |
 | Alle anderen HTTPS-Ziele | laufen unverändert als Tunnel durch, der Proxy sieht keine Inhalte |
 | Klartext-HTTP (z. B. eigene Apps des Agenten) | geht wie bisher direkt |
 | Adressen im Firmen- oder Docker-Netz | über den Proxy gesperrt |
@@ -4495,7 +4495,7 @@ privaten Schlüssel.
 **Claude-Zugang hinter den Proxy legen** (stufenweise): In der `.env`
 `EGRESS_KI_ZUGANG` setzen, zuerst auf die Kennung eines Agenten (z. B. `a1b2c3d4`),
 später auf mehrere mit Komma oder auf `alle`. `docker compose up -d`, dann den bzw. die
-Agenten aktualisieren. Danach geht der ganze Claude-Verkehr dieser Agenten entschlüsselt
+Agenten aktualisieren — betroffene Agenten zeigen dafür „Aktualisieren“ an *(seit 1.420.0)*. Danach geht der ganze Claude-Verkehr dieser Agenten entschlüsselt
 durch den Proxy; Antworten als Ereignisstrom reicht er sofort durch. Für Bedrock, Vertex,
 Foundry und Codex gilt das nicht.
 
