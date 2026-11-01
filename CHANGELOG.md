@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.424.0] - 2026-11-02
+
+### Sicherheit
+- Die Signaturprüfung der Abbilder ist Pflicht: Fehlt cosign, holt das Update die festgelegte Fassung (mit Prüfsumme) selbst; gelingt das nicht, wird lokal gebaut statt ungeprüfte Abbilder zu benutzen.
+
+## Tests
+- `test_abbilder_aus_registry.py`:
+  - ohne cosign und ohne Download → lokal gebaut, nichts ungeprüft benutzt
+  - Download mit passender Prüfsumme → geholt und für alle Dienste geprüft, zweiter Lauf lädt nicht neu
+  - falsche Prüfsumme → verworfen, nichts liegen gelassen
+  - `curl`/`uname`-Doubles im Testaufbau, damit die CI nie echt lädt
+- 72 Tests (Abbilder, Sicherheitsstatus, Update) grün.
+- Echter Download auf einer arm64-Anlage (Testordner, vorhandenes cosign ausgeblendet): v3.1.3 geholt, Prüfsumme stimmt, zweiter Aufruf ohne Download.
+
 ## [1.423.0] - 2026-11-02
 
 ### Sicherheit

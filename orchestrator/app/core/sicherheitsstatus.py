@@ -178,8 +178,9 @@ def _abbild_signaturen(datei: str = SIGNATUR_DATEI) -> list[dict]:
                        f"Zuletzt geprüft wurde {version}, installiert ist {aktuell}.",
                        "Update über ./scripts/update.sh ausführen, nicht von Hand.")]
     texte = {
-        "cosign_fehlt": ("cosign ist auf dem Server nicht installiert — Abbilder werden ungeprüft benutzt.",
-                         "cosign installieren (Handbuch Kap. 37.4), danach ./scripts/update.sh."),
+        "cosign_fehlt": ("cosign fehlte und ließ sich beim Update nicht holen — die Abbilder wurden lokal gebaut.",
+                         "Internetzugang zu github.com prüfen oder cosign installieren (Handbuch Kap. 37.4), "
+                         "danach ./scripts/update.sh."),
         "aus": ("Die Signaturprüfung ist abgeschaltet (AI_EMPLOYEE_SIGNATUR_PRUEFEN).",
                 "Schalter aus der .env entfernen."),
         "ungueltig": ("Beim letzten Update war eine Signatur ungültig; die Abbilder wurden lokal gebaut.",
