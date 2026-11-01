@@ -84,33 +84,33 @@ test("request body sends the exact mcp__<server>__<tool> shape", async () => {
   }
 });
 
-test("non-2xx HTTP response fails open", async () => {
+test("non-2xx HTTP response fails closed", async () => {
   const server = await startStub((_body, _req, res) => {
     res.writeHead(500, { "content-type": "application/json" });
     res.end(JSON.stringify({ error: "boom" }));
   });
   try {
     const result = await checkToolPermission("memory", "memory_save", {});
-    assert.deepEqual(result, { allowed: true });
+    assert.deepEqual(result, { allowed: false, reason: "Werkzeugpruefung nicht erreichbar — aus Sicherheitsgruenden abgelehnt." });
   } finally {
     await stop(server);
   }
 });
 
-test("a refused connection (hook unreachable) fails open", async () => {
+test("a refused connection (hook unreachable) fails closed", async () => {
   // No stub started on this port — connection refused.
   const result = await checkToolPermission("memory", "memory_save", {});
-  assert.deepEqual(result, { allowed: true });
+  assert.deepEqual(result, { allowed: false, reason: "Werkzeugpruefung nicht erreichbar — aus Sicherheitsgruenden abgelehnt." });
 });
 
-test("missing hookSpecificOutput in a malformed-but-200 response fails open", async () => {
+test("missing hookSpecificOutput in a malformed-but-200 response fails closed", async () => {
   const server = await startStub((_body, _req, res) => {
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({ unexpected: "shape" }));
   });
   try {
     const result = await checkToolPermission("memory", "memory_save", {});
-    assert.deepEqual(result, { allowed: true });
+    assert.deepEqual(result, { allowed: false, reason: "Werkzeugpruefung nicht erreichbar — aus Sicherheitsgruenden abgelehnt." });
   } finally {
     await stop(server);
   }

@@ -34,18 +34,17 @@ design ("A timed-out hook doesn't block the tool call") — a second
 sequential network call here makes hitting that timeout more likely on a
 cold cache, which is why the hook's configured timeout was raised alongside
 this change (now ``agent/richtlinie/managed-settings.json``; the hook script
-itself denies after 12 s, before the CLI would cancel it and let the call through).
-Separately, ``executor.py::_get_command_policies`` is ALSO fail-open on any
-fetch error, not just slowness ("transient orchestrator outages should not
-brick agents") — this is a pre-existing, deliberate tradeoff for the
-custom_llm runtime, now inherited here by reuse. Accepted knowingly: making
-Bash fail-closed during an orchestrator outage would brick every agent's
-shell entirely, a worse outcome than the rare window this trades for.
+itself denies after 9 s, before the CLI would cancel it and let the call through).
+Orchestrator not reachable (P1-8): ``_get_allowed_categories`` and
+``_get_command_policies`` keep the last list they fetched (up to 15 minutes), so a
+restart does not brick the shell. Without any known list they lock instead of
+letting everything through, as they did until 1.421.
 """
 from __future__ import annotations
 
 from app.tools.executor import (
     ALWAYS_ALLOWED_TOOLS,
+    KEIN_STAND,
     TOOL_CATEGORY_MAP,
     _evaluate_command_policy,
     _get_allowed_categories,
@@ -156,6 +155,11 @@ def _ms_kategorie(bare: str) -> str | None:
 
 def _decide_for(category: str, *, label: str) -> dict:
     allowed = _get_allowed_categories()
+    if allowed is KEIN_STAND:
+        return _deny(
+            f"Werkzeug '{label}': Freigabeliste nicht abrufbar (Orchestrator nicht erreichbar) — "
+            "aus Sicherheitsgründen abgelehnt. Später erneut versuchen."
+        )
     if allowed is not None and category not in allowed:
         return _deny(
             f"Werkzeug '{label}' braucht Kategorie '{category}', die nicht in der "

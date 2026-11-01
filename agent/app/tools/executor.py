@@ -131,11 +131,46 @@ ALWAYS_ALLOWED_TOOLS = frozenset({
 })
 
 
+class _KeinStand(frozenset):
+    """Leere Freigabeliste mit eigenem Namen: nichts Kategorisiertes ist frei."""
+
+
+#: Freigabeliste nicht abrufbar und kein bekannter Stand: nichts Kategorisiertes
+#: ist frei, unbekannte Werkzeuge ebenso. Eigenes Objekt, damit der Hook den
+#: Grund nennen kann.
+KEIN_STAND = _KeinStand()
+#: So lange gilt der letzte erfolgreich abgerufene Stand, wenn der Orchestrator
+#: nicht antwortet (Neustart, kurze Stoerung). Danach wird gesperrt (P1-8).
+LETZTER_STAND_HOECHSTENS = 900
+#: So lange wird ein Fehlschlag gemerkt — sonst wartete im Ausfall jeder Aufruf
+#: erneut auf die Zeitgrenze.
+FEHLSCHLAG_MERKEN = 5
+_UNBEKANNT = object()
+
+
+def _absage(exc: Exception) -> bool:
+    """Der Orchestrator antwortet, lehnt aber ab (Token widerrufen, Agent geloescht):
+    dann gilt kein alter Stand."""
+    code = getattr(exc, "code", None) or getattr(getattr(exc, "response", None), "status_code", None)
+    return code in (401, 403, 404)
+
+
+def _letzter_stand(funktion, jetzt: float, exc: Exception):
+    """Der zuletzt erfolgreich abgerufene Wert, solange er nicht zu alt ist."""
+    wert, zeit = funktion._bekannt
+    if wert is _UNBEKANNT or jetzt - zeit > LETZTER_STAND_HOECHSTENS or _absage(exc):
+        return _UNBEKANNT
+    return wert
+
+
 def _get_allowed_categories() -> set[str] | None:
     """Fetch allowed tool categories from the orchestrator whitelist.
 
     Returns None if no approval rules are configured (= allow everything).
-    Cached with 60s TTL so level changes propagate without restart.
+    Cached with a 10 s TTL so level changes propagate without restart.
+    Not reachable: the last known list (up to 15 minutes old), otherwise
+    ``KEIN_STAND`` — nothing categorised passes. Before this it returned None,
+    i.e. *everything* passed whenever the orchestrator did not answer.
     """
     now = time.time()
     cached = _get_allowed_categories._cache
@@ -161,12 +196,21 @@ def _get_allowed_categories() -> set[str] | None:
             else:
                 categories = {r["category"] for r in rules}
         _get_allowed_categories._cache = (categories, now + _AUTONOMY_CACHE_TTL)
+        _get_allowed_categories._bekannt = (categories, now)
         return categories
-    except Exception:
-        return None  # Fail open — don't block on orchestrator unavailability
+    except Exception as exc:  # noqa: BLE001
+        bekannt = _letzter_stand(_get_allowed_categories, now, exc)
+        if bekannt is not _UNBEKANNT:
+            logger.warning("Freigabeliste nicht abrufbar, letzter Stand gilt: %s", exc)
+        else:
+            logger.warning("Freigabeliste nicht abrufbar und kein gültiger Stand — gesperrt: %s", exc)
+            bekannt = KEIN_STAND
+        _get_allowed_categories._cache = (bekannt, now + FEHLSCHLAG_MERKEN)
+        return bekannt
 
 
 _get_allowed_categories._cache = (None, 0.0)
+_get_allowed_categories._bekannt = (_UNBEKANNT, 0.0)
 
 # Tools safe to execute concurrently (read-only, no side effects)
 CONCURRENT_SAFE_TOOLS = frozenset({
@@ -198,12 +242,21 @@ _AUTONOMY_CACHE_TTL = 10  # 10s — fast enough for level changes to propagate
 _COMMAND_POLICY_CACHE_TTL = 10
 
 
+#: Befehlsregeln nicht abrufbar und kein bekannter Stand: jeder Befehl gesperrt.
+KEINE_BEFEHLSREGELN = [{
+    "pattern": ".", "effect": "blocked",
+    "description": "Befehlsregeln nicht abrufbar (Orchestrator nicht erreichbar) — aus Sicherheitsgründen gesperrt",
+}]
+
+
 async def _get_command_policies() -> list[dict]:
     """Fetch active command policies for this agent.
 
-    Fail-open by design: transient orchestrator outages should not brick agents.
-    The command policy API is cached briefly, so UI changes propagate quickly
-    without adding network latency to every bash call.
+    Cached briefly, so UI changes propagate quickly without adding network
+    latency to every bash call. Not reachable: the last known rules (up to
+    15 minutes old) — a restart of the orchestrator does not brick agents —, otherwise
+    every command is blocked. Before this a failed fetch was cached as "no
+    rules" and every command passed for 10 s (P1-8).
     """
     now = time.time()
     cached = _get_command_policies._cache
@@ -227,14 +280,21 @@ async def _get_command_policies() -> list[dict]:
         if not isinstance(policies, list):
             policies = []
         _get_command_policies._cache = (policies, now + _COMMAND_POLICY_CACHE_TTL)
+        _get_command_policies._bekannt = (policies, now)
         return policies
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Command policy fetch failed; allowing bash command: %s", exc)
-        _get_command_policies._cache = ([], now + _COMMAND_POLICY_CACHE_TTL)
-        return []
+        bekannt = _letzter_stand(_get_command_policies, now, exc)
+        if bekannt is not _UNBEKANNT:
+            logger.warning("Befehlsregeln nicht abrufbar, letzter Stand gilt: %s", exc)
+        else:
+            logger.warning("Befehlsregeln nicht abrufbar und kein gültiger Stand — gesperrt: %s", exc)
+            bekannt = KEINE_BEFEHLSREGELN
+        _get_command_policies._cache = (bekannt, now + FEHLSCHLAG_MERKEN)
+        return bekannt
 
 
 _get_command_policies._cache = ([], 0.0)
+_get_command_policies._bekannt = (_UNBEKANNT, 0.0)
 
 
 def _eindeutiger_host(url: str) -> str | None:

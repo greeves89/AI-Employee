@@ -4513,6 +4513,23 @@ eine Anfrage abgelehnt)*.
 > Keys bis zu 10 Minuten weiter. Einen Agenten, der in dieser Zeit neu dazukommt, lässt der
 > Proxy erst danach hinaus.
 
+### 37.11 Werkzeugprüfung bei Ausfällen *(seit 1.422.0)*
+
+Jeder Werkzeugaufruf eines Agenten geht durch eine Prüfung im Agenten: Freigabeliste der
+Autonomie-Stufe, Befehlsregeln für die Shell, Sperren je Lauf. Die Regeln kommen vom
+Orchestrator. Ist er nicht erreichbar, gilt:
+
+| Lage | Verhalten |
+|---|---|
+| Orchestrator startet neu, Regeln waren schon abgerufen | der letzte Stand gilt weiter, höchstens 15 Minuten |
+| Kein Stand bekannt (Agent startet, Orchestrator fehlt), Stand älter als 15 Minuten oder der Orchestrator lehnt den Agenten ab (Zugang widerrufen, Agent gelöscht) | Lesen geht weiter; Shell, Schreiben und alles mit Außenwirkung wird abgelehnt mit „nicht abrufbar … aus Sicherheitsgründen abgelehnt“ |
+| Die Prüfung selbst antwortet nicht | der Aufruf wird abgelehnt (gilt auch für die Werkzeuge der eingebauten MCP-Server) |
+| Die Prüfregel fehlt im Agenten-Abbild oder ist beschreibbar | der Agent startet keinen Lauf („Prüf-Hook nicht aktiv … abgelehnt“) |
+
+*Bis 1.421 ließen Freigabeliste, Befehlsregeln und MCP-Prüfung in diesen Fällen alles durch.*
+Die Push-Sperre (kein Push in fremde Übernahme-Branches) bleibt bewusst nachsichtig: Sie
+verhindert Zusammenstöße unter Kollegen und ist keine Sicherheitsgrenze.
+
 ---
 
 ## A. Was kann ein Agent? (typische Einsätze)
