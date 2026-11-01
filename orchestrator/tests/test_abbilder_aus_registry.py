@@ -40,6 +40,18 @@ exit 0
 DIGEST = "sha256:0000000000000000000000000000000000000000000000000000000000000001"
 
 
+_CURL_ATTRAPPE = r"""#!/usr/bin/env bash
+echo "curl $*" >> "$ATTRAPPE_LOG"
+[ -n "${CURL_LIEFERT:-}" ] || exit 22
+while [ $# -gt 0 ]; do [ "$1" = "-o" ] && { cp "$CURL_LIEFERT" "$2"; exit 0; }; shift; done
+exit 22
+"""
+
+_UNAME_ATTRAPPE = r"""#!/usr/bin/env bash
+case "$1" in -s) echo Linux ;; -m) echo x86_64 ;; *) echo Linux ;; esac
+"""
+
+
 class AbbilderBereitstellen(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
@@ -55,6 +67,12 @@ class AbbilderBereitstellen(unittest.TestCase):
         # abhaengt, ob die Maschine cosign installiert hat (#938).
         (bin_ / "cosign").write_text(_COSIGN_ATTRAPPE)
         (bin_ / "cosign").chmod(0o755)
+        # curl scheitert, ausser ein Test laesst es liefern — sonst holte ein Lauf
+        # ohne cosign auf einer Linux-Maschine das echte cosign von GitHub.
+        (bin_ / "curl").write_text(_CURL_ATTRAPPE)
+        (bin_ / "curl").chmod(0o755)
+        (bin_ / "uname").write_text(_UNAME_ATTRAPPE)
+        (bin_ / "uname").chmod(0o755)
         self.bin = bin_
         self.log = self.tmp / "docker.log"
         # Ergebnis der Signaturpruefung nie in das echte ~/.ai-employee schreiben.
@@ -67,9 +85,9 @@ class AbbilderBereitstellen(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
-    def _lauf(self, lokal="0", **env):
+    def _lauf(self, lokal="0", vorher="", **env):
         return subprocess.run(
-            ["bash", "-c", f'set -euo pipefail; source "{HILFSDATEI}"; abbilder_bereitstellen "$1"; echo "QUELLE=$ABBILD_QUELLE"',
+            ["bash", "-c", f'set -euo pipefail; source "{HILFSDATEI}"; {vorher} abbilder_bereitstellen "$1"; echo "QUELLE=$ABBILD_QUELLE"',
              "_", lokal],
             cwd=self.anlage, env={**self.env, **env}, capture_output=True, text=True, timeout=30,
         )
@@ -270,16 +288,54 @@ class AbbildSignaturen(AbbilderBereitstellen):
         self._lauf(AI_EMPLOYEE_REGISTRY="ghcr.io/greeves89/spiegel")
         self.assertIn("github\\.com/(?i:greeves89/", self._identitaet())
 
-    def test_ohne_cosign_bleibt_es_beim_bisherigen_verhalten(self):
-        """cosign ist eine neue Abhaengigkeit — eine bestehende Anlage ohne
-        cosign darf nicht ploetzlich alles selbst bauen."""
+    def _ohne_cosign(self):
         (self.bin / "cosign").unlink()
         if shutil.which("cosign", path=self.env["PATH"]):
             self.skipTest("cosign ist auf dieser Maschine systemweit installiert")
+
+    def test_ohne_cosign_und_ohne_download_wird_nichts_ungeprueft_benutzt(self):
+        """Bis 1.423 liefen die Abbilder dann ungeprueft — jetzt wird lokal gebaut."""
+        self._ohne_cosign()
         lauf = self._lauf()
+        self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
+        self.assertIn("QUELLE=lokal", lauf.stdout)
+        self.assertIn("NICHT ungeprueft benutzt", lauf.stdout)
+        self.assertNotIn("tag ghcr.io/greeves89/ai-employee-agent:1.400.2 ai-employee-agent:latest", self._aufrufe())
+        self.assertIn("build -t ai-employee-agent:latest ./agent", self._aufrufe())
+        self.assertEqual(self._vermerk(), ["cosign_fehlt", "1.400.2"])
+
+    def _download(self, summe=None):
+        import hashlib
+
+        geliefert = self.tmp / "cosign-linux-amd64"
+        geliefert.write_text(_COSIGN_ATTRAPPE)
+        summe = summe or hashlib.sha256(geliefert.read_bytes()).hexdigest()
+        return geliefert, f'COSIGN_SHA256_AMD64="{summe}";'
+
+    def test_fehlendes_cosign_wird_mit_pruefsumme_geholt_und_benutzt(self):
+        self._ohne_cosign()
+        geliefert, vorher = self._download()
+        lauf = self._lauf(vorher=vorher, CURL_LIEFERT=str(geliefert))
+        self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
         self.assertIn("QUELLE=registry", lauf.stdout)
-        self.assertIn("cosign ist nicht installiert", lauf.stdout)
-        self.assertIn("tag ghcr.io/greeves89/ai-employee-agent:1.400.2 ai-employee-agent:latest", self._aufrufe())
+        self.assertTrue((self.status / "bin" / "cosign").exists())
+        aufrufe = self._aufrufe()
+        self.assertTrue(any("releases/download/v3.1.3/cosign-linux-amd64" in a for a in aufrufe))
+        self.assertEqual(len([a for a in aufrufe if a.startswith("cosign verify")]), len(self.DIENSTE))
+        self.assertEqual(self._vermerk(), ["geprueft", "1.400.2"])
+        # Zweiter Lauf: schon da, nicht erneut geladen
+        self.log.unlink()
+        self._lauf(vorher=vorher)
+        self.assertFalse(any(a.startswith("curl ") for a in self._aufrufe()))
+
+    def test_download_mit_falscher_pruefsumme_wird_verworfen(self):
+        self._ohne_cosign()
+        geliefert, vorher = self._download(summe="0" * 64)
+        lauf = self._lauf(vorher=vorher, CURL_LIEFERT=str(geliefert))
+        self.assertIn("nicht die erwartete Pruefsumme", lauf.stdout)
+        self.assertIn("QUELLE=lokal", lauf.stdout)
+        self.assertFalse((self.status / "bin" / "cosign").exists())
+        self.assertFalse((self.status / "bin" / "cosign.neu").exists())
 
     def test_pruefung_abschaltbar(self):
         lauf = self._lauf(AI_EMPLOYEE_SIGNATUR_PRUEFEN="0")

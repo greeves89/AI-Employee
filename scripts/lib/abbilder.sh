@@ -26,9 +26,11 @@ ABBILD_DIENSTE="orchestrator frontend embedding-service stt-service"
 # wird. Schlaegt die Pruefung fehl, wird das geholte Abbild entfernt und lokal
 # gebaut.
 #
-# cosign ist eine neue Abhaengigkeit und deshalb OPTIONAL: fehlt es, steht ein
-# Hinweis im Protokoll und es bleibt beim bisherigen Verhalten.
-#   AI_EMPLOYEE_SIGNATUR_PRUEFEN=0        Pruefung abschalten
+# cosign ist PFLICHT (seit 1.424): fehlt es, holt cosign_bereitstellen die
+# festgelegte Fassung (Pruefsumme) nach ~/.ai-employee/bin. Gelingt das nicht,
+# werden die Abbilder NICHT ungeprueft benutzt, sondern lokal gebaut — bis 1.423
+# liefen sie dann ungeprueft, und nur ein Hinweis stand im Protokoll.
+#   AI_EMPLOYEE_SIGNATUR_PRUEFEN=0        Pruefung bewusst abschalten
 #   AI_EMPLOYEE_SIGNATUR_IDENTITAET=...   eigene Identitaet (eigener Spiegel)
 #   AI_EMPLOYEE_SIGNATUR_AUSSTELLER=...   eigener OIDC-Aussteller
 # ---------------------------------------------------------------------------
@@ -36,6 +38,46 @@ SIGNATUR_AUSSTELLER="https://token.actions.githubusercontent.com"
 # Repo-Name im Zertifikat des Bau-Vorgangs. Ohne ihn wuerde JEDES andere Repo
 # desselben Kontos mit einer images.yml als Unterzeichner durchgehen.
 SIGNATUR_REPO="AI-Employee"
+
+# Festgelegte cosign-Fassung (veroeffentlicht 06.08.2026) und ihre Pruefsummen
+# aus cosign_checksums.txt des Release.
+COSIGN_VERSION="v3.1.3"
+COSIGN_SHA256_AMD64="4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71"
+COSIGN_SHA256_ARM64="c5d324e091826b0d7a78eb16fef316450b4eb9aaec045611c08ba06f5e73220a"
+COSIGN_QUELLE="https://github.com/sigstore/cosign/releases/download"
+
+_sha256() {
+    if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
+    else shasum -a 256 "$1" | cut -d' ' -f1; fi
+}
+
+# cosign_bereitstellen — cosign im PATH, sonst die festgelegte Fassung holen.
+# Ohne sudo: abgelegt unter ~/.ai-employee/bin, nur mit passender Pruefsumme.
+cosign_bereitstellen() {
+    command -v cosign >/dev/null 2>&1 && return 0
+    local ziel arch summe datei
+    ziel="${AI_EMPLOYEE_STATUS_DIR:-$HOME/.ai-employee}/bin"
+    case "$(uname -s)/$(uname -m)" in
+        Linux/x86_64|Linux/amd64) arch=amd64; summe="$COSIGN_SHA256_AMD64" ;;
+        Linux/aarch64|Linux/arm64) arch=arm64; summe="$COSIGN_SHA256_ARM64" ;;
+        *) return 1 ;;
+    esac
+    if [ -x "$ziel/cosign" ] && [ "$(_sha256 "$ziel/cosign")" = "$summe" ]; then
+        PATH="$ziel:$PATH"; export PATH; return 0
+    fi
+    mkdir -p "$ziel" && chmod 700 "$ziel" || return 1
+    datei="$ziel/cosign.neu"
+    if ! curl -fsSL --max-time 180 -o "$datei" "$COSIGN_QUELLE/$COSIGN_VERSION/cosign-linux-$arch"; then
+        rm -f "$datei"; return 1
+    fi
+    if [ "$(_sha256 "$datei")" != "$summe" ]; then
+        echo "cosign-Download hat nicht die erwartete Pruefsumme — verworfen."
+        rm -f "$datei"; return 1
+    fi
+    chmod 755 "$datei" && mv -f "$datei" "$ziel/cosign" || return 1
+    PATH="$ziel:$PATH"; export PATH
+    echo "cosign ${COSIGN_VERSION} nach ${ziel} geholt (Pruefsumme stimmt)."
+}
 
 # abbilder_env <NAME> — Wert der Variablen, ersatzweise aus .env.
 #
@@ -128,10 +170,10 @@ _abbilder_signatur_pruefen() {
                ABBILD_SIGNATUR=ohne_identitaet; return 0 ;;
         esac
     fi
-    if ! command -v cosign >/dev/null 2>&1; then
-        echo "Hinweis: cosign ist nicht installiert — Abbild-Signaturen werden NICHT geprueft (#938)."
-        echo "         Nachinstallieren: https://docs.sigstore.dev/cosign/system_config/installation/"
-        ABBILD_SIGNATUR=cosign_fehlt; return 0
+    if ! cosign_bereitstellen; then
+        echo "cosign fehlt und liess sich nicht holen — die Abbilder werden NICHT ungeprueft benutzt, sondern lokal gebaut (#938)."
+        echo "         Bewusst ohne Pruefung: AI_EMPLOYEE_SIGNATUR_PRUEFEN=0 in der .env."
+        ABBILD_SIGNATUR=cosign_fehlt; return 1
     fi
     aussteller="$(abbilder_env AI_EMPLOYEE_SIGNATUR_AUSSTELLER)"
     aussteller="${aussteller:-$SIGNATUR_AUSSTELLER}"

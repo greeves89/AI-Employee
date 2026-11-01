@@ -4311,10 +4311,15 @@ entfernt es Build-Cache, der älter als drei Tage ist. Daten (Volumes) fasst es 
 blieben alle Versionen liegen; bei häufigen Updates waren das schnell über 100 GB. Abschalten
 lässt es sich mit `AI_EMPLOYEE_ABBILDER_AUFRAEUMEN=0` in der `.env`.
 
-**Signaturen der Abbilder prüfen (cosign)** *(empfohlen)*. Jedes Abbild der Registry ist beim
-Bau signiert. `update.sh` prüft die Signatur, bevor es ein Abbild benutzt; ist sie ungültig,
-baut es lokal. Dafür muss `cosign` auf dem Server installiert sein, sonst bleibt es beim Hinweis
-im Protokoll. Installation auf einem Linux-Server (arm64; für x86 `cosign-linux-amd64`):
+**Signaturen der Abbilder prüfen (cosign)** *(Pflicht seit 1.424.0)*. Jedes Abbild der Registry
+ist beim Bau signiert. `update.sh` prüft die Signatur, bevor es ein Abbild benutzt; ist sie ungültig,
+baut es lokal. Fehlt `cosign` auf dem Server, holt `update.sh` die festgelegte Fassung (v3.1.3)
+selbst nach `~/.ai-employee/bin` — ohne sudo und nur, wenn die Prüfsumme stimmt. Gelingt das nicht
+(etwa ohne Zugang zu github.com), werden die Abbilder **nicht ungeprüft benutzt**, sondern lokal
+gebaut *(bis 1.423 liefen sie dann ungeprüft)*. Bewusst ohne Prüfung: `AI_EMPLOYEE_SIGNATUR_PRUEFEN=0`
+in der `.env`.
+
+Wer cosign lieber selbst installiert (Linux, arm64; für x86 `cosign-linux-amd64`):
 
 ```bash
 V=v3.1.3

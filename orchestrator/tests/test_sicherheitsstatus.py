@@ -151,7 +151,7 @@ class AbbildSignaturenTests(unittest.TestCase):
         for ergebnis in ("cosign_fehlt", "aus", "ungueltig", "ohne_identitaet"):
             with self.subTest(ergebnis):
                 self.assertEqual(self._punkt(f"{ergebnis} 1.419.0 1\n")["stand"], "warnung")
-        self.assertIn("nicht installiert", self._punkt("cosign_fehlt 1.419.0 1\n")["text"])
+        self.assertIn("lokal gebaut", self._punkt("cosign_fehlt 1.419.0 1\n")["text"])
         self.assertEqual(self._punkt(None)["stand"], "info")
         self.assertEqual(self._punkt("kaputt")["stand"], "info")
 
