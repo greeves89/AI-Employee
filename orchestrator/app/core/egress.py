@@ -194,7 +194,9 @@ def mcp_ziel(url: str) -> str | None:
 
 
 #: Claude-Zugang: welche Variable welche Nummer traegt, und wohin er darf.
-KI_VARIABLEN = {"CLAUDE_CODE_OAUTH_TOKEN": 0, "ANTHROPIC_API_KEY": 1}
+# Nummern der Claude-Platzhalter: Abo (OAuth) und API-Schluessel
+KI_ABO, KI_SCHLUESSEL = 0, 1
+KI_VARIABLEN = {"CLAUDE_CODE_OAUTH_TOKEN": KI_ABO, "ANTHROPIC_API_KEY": KI_SCHLUESSEL}
 KI_ZIELE = ["api.anthropic.com"]
 _KI_ANDERER_WEG = ("CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY",
                    "ANTHROPIC_BASE_URL")

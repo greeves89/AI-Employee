@@ -136,15 +136,21 @@ def geteilt_plan(user_id: str | None, *, mode: str, env: dict, ist_admin: bool) 
 
     - ``/shared``: Unterordner seines Besitzers, schreibbar.
     - ``/shared/.auth`` (Token der Teamlizenz), nur lesend: nur ohne eigenes
-      Claude-Abo des Besitzers und nicht im Codex-Modus.
+      Claude-Abo des Besitzers, nicht im Codex-Modus und nicht, wenn der
+      Claude-Zugang hinter dem Egress-Proxy liegt.
     - ``/shared/.codex`` (gemeinsamer Codex-Zugang), nur lesend: nur Codex ohne
       eigenen Zugang und ohne API-Schlüssel.
     - ``/shared/.plattform`` (Fehlerprotokoll), nur lesend: nur Agenten von Admins
       (und ohne Besitzer, die gehören den Admins) — das Protokoll nennt Agenten
       und Fehler aller Nutzer.
     """
+    from app.core.egress import KI_VARIABLEN, PLATZHALTER_RE
+
     nur_lesen: list[tuple[str, str]] = []
-    if mode != "codex_cli" and env.get("CLAUDE_CREDENTIAL_SOURCE") != "personal":
+    # Liegt der Claude-Zugang hinter dem Egress-Proxy (Platzhalter), bekommt der Agent
+    # auch die Datei der Teamlizenz nicht: sie haette Vorrang und truege den Klartext.
+    ki_hinter_proxy = any(PLATZHALTER_RE.fullmatch(env.get(v) or "") for v in KI_VARIABLEN)
+    if mode != "codex_cli" and env.get("CLAUDE_CREDENTIAL_SOURCE") != "personal" and not ki_hinter_proxy:
         nur_lesen.append((AUTH_DIR, f"{SHARED_DIR}/{AUTH_DIR}"))
     if mode == "codex_cli" and not env.get("CODEX_AUTH_JSON") and not env.get("OPENAI_API_KEY"):
         nur_lesen.append((CODEX_DIR, f"{SHARED_DIR}/{CODEX_DIR}"))

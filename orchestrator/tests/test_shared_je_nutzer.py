@@ -92,6 +92,17 @@ class Plan(unittest.TestCase):
         self.assertEqual(p["nutzer"], "nutzer/u1")
         self.assertEqual(p["nur_lesen"], [(".auth", "/shared/.auth")])
 
+    def test_claude_hinter_dem_proxy_sieht_das_teamtoken_nicht(self):
+        from app.core import egress
+        for var, nr in egress.KI_VARIABLEN.items():
+            with self.subTest(var):
+                p = geteilt_plan("u1", mode="claude_code", env={var: egress.platzhalter(nr, egress.KI)},
+                                 ist_admin=False)
+                self.assertEqual(p["nur_lesen"], [])
+        p = geteilt_plan("u1", mode="claude_code", env={"CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat01-x"},
+                         ist_admin=False)
+        self.assertEqual(p["nur_lesen"], [(".auth", "/shared/.auth")], "ohne Proxy wie bisher")
+
     def test_eigenes_abo_sieht_das_teamtoken_nicht(self):
         p = geteilt_plan("u1", mode="claude_code", env={"CLAUDE_CREDENTIAL_SOURCE": "personal"}, ist_admin=False)
         self.assertEqual(p["nur_lesen"], [])
