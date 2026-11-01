@@ -52,3 +52,32 @@ def sicherstellen() -> None:
     grund = fehlt()
     if grund:
         raise RuntimeError(f"Prüf-Hook nicht aktiv ({grund}) — Lauf aus Sicherheitsgründen abgelehnt.")
+
+
+#: prctl(2): Prozess fuer ptrace und /proc/<pid>/mem unzugaenglich machen.
+_PR_SET_DUMPABLE = 4
+
+
+def pruefserver_abschirmen() -> bool:
+    """Den Agenten-Prozess (er traegt den Pruefserver des Hooks) vor der eigenen
+    Shell abschirmen.
+
+    Shell und Pruefserver laufen unter derselben Kennung; ohne Yama durfte die
+    Shell den Prozess per ptrace anhaengen und seinen Speicher lesen und
+    schreiben — also auch die Entscheidungen des Pruefservers (live auf dem Pi
+    gemessen, 02.11.2026). Nicht "dumpbar" verweigert der Kernel beides jedem
+    Prozess ohne CAP_SYS_PTRACE. Gestartete CLIs erben es nicht: ``exec`` setzt
+    den Wert zurueck. Rueckgabe: ob es gewirkt hat (nur unter Linux moeglich).
+    """
+    import ctypes
+    import logging
+
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        if libc.prctl(_PR_SET_DUMPABLE, 0, 0, 0, 0) != 0:
+            raise OSError(ctypes.get_errno(), os.strerror(ctypes.get_errno()))
+    except (OSError, AttributeError) as e:
+        logging.getLogger(__name__).warning("Pruefserver nicht abschirmbar: %s", e)
+        return False
+    return True
+

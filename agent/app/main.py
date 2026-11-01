@@ -737,6 +737,11 @@ async def main() -> None:
     mode = settings.agent_mode
     print(f"[Agent {agent_id}] Starting up (mode: {mode})...")
 
+    # Vor allem anderen: der Pruefserver des Hooks laeuft in diesem Prozess.
+    from app.richtlinie import pruefserver_abschirmen
+    if pruefserver_abschirmen():
+        print(f"[Agent {agent_id}] Pruefserver vor ptrace und Speicherzugriff abgeschirmt")
+
     if mode == "custom_llm":
         # Custom LLM mode: skip Claude CLI setup, but set up integrations
         print(f"[Agent {agent_id}] Custom LLM: {settings.llm_provider_type}/{settings.llm_model_name}")
