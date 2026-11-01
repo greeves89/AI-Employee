@@ -491,6 +491,7 @@ class TelegramAgentBot:
             if woke_up:
                 await update.message.reply_text("Agent ist hochgefahren.")
         except Exception as e:
+            logger.warning("[Telegram] Fehler beim Senden an Chat %s: %s", chat_id, redact_logs(str(e))[:300])
             await update.message.reply_text(redact_logs(f"Fehler beim Senden: {e}"))
 
     async def _active_target_agent_id(self, chat_id: int) -> str:
@@ -734,6 +735,7 @@ class TelegramAgentBot:
             await self._ensure_agent_running(update, target_agent_id)
             await update.effective_chat.send_action("typing")
         except Exception as e:
+            logger.warning("[Telegram] Fehler beim Senden an Chat %s: %s", chat_id, redact_logs(str(e))[:300])
             await update.message.reply_text(redact_logs(f"Fehler beim Senden: {e}"))
 
     async def _handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1034,6 +1036,10 @@ class TelegramAgentBot:
                     elif event_type == "error":
                         self._last_user_msg.pop(chat_id, None)
                         error_msg = str(event_data.get("message", "Unbekannter Fehler"))
+                        # Was der Nutzer als Fehler sieht, steht auch im Protokoll —
+                        # sonst laesst es sich nur mit seiner Hilfe nachstellen.
+                        logger.warning("[Telegram] Fehler an Chat %s (Agent %s, %s): %s", chat_id,
+                                       agent_id, msg_id or "-", redact_logs(error_msg)[:300])
                         await self.app.bot.send_message(
                             chat_id=chat_id, text=f"Fehler: {error_msg}"
                         )
