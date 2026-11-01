@@ -272,7 +272,7 @@ async def pruefen(befehl: str, verzeichnis: str | None = None, lauf: str | None 
     try:
         import httpx
 
-        async with httpx.AsyncClient(timeout=8) as client:
+        async with httpx.AsyncClient(timeout=5) as client:
             antwort = await client.post(
                 f"{settings.orchestrator_url}/api/v1/teams/repo/push-pruefen",
                 headers={"X-Agent-ID": settings.agent_id, "Authorization": f"Bearer {settings.agent_token}"},

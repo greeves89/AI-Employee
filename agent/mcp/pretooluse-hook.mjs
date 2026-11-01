@@ -30,7 +30,8 @@ import { readFileSync } from "node:fs";
 // Fest verdrahtet, NICHT aus der Umgebung: die Umgebung des Hooks erbt der
 // Agent von seiner CLI — eine eigene Adresse dort haette die Pruefung umgeleitet.
 const HOOK_URL = "http://localhost:8080/hooks/pretooluse";
-const HOOK_TIMEOUT_MS = 12_000;
+// 9 s: Node-Start und Antwort muessen sicher vor den 15 s der CLI liegen.
+const HOOK_TIMEOUT_MS = 9_000;
 
 function ablehnung(grund) {
   return JSON.stringify({

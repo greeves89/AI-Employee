@@ -14,13 +14,10 @@
  * sondern ist nur ein duenner Relay zu genau demselben, seit #780 bewaehrten
  * Entscheidungspfad.
  *
- * Fail-open bei Netzwerkfehler/Timeout/Nicht-2xx (laut geloggt) — konsistent
- * mit `executor.py::_get_allowed_categories()`/`_get_command_policies()`, die
- * aus demselben Grund fail-open sind: ein kurzer Aussetzer des lokalen Hooks
- * soll nicht saemtliche gegateten Werkzeuge in jedem Codex-Container
- * gleichzeitig blockieren. Der Aufruf ist reiner Loopback (derselbe
- * Container) und damit zuverlaessiger als die Orchestrator-Aufrufe, denen
- * dieses Verhalten abgeschaut ist.
+ * FAIL-CLOSED bei Netzwerkfehler/Timeout/Nicht-2xx/unlesbarer Antwort (laut
+ * geloggt) — wie das Hook-Skript (`pretooluse-hook.mjs`) und die Regelquellen in
+ * `executor.py`, die bei einem Ausfall den letzten bekannten Stand nutzen und
+ * ohne ihn sperren (P1-8). Bis 1.421 liess das Gate in diesen Faellen durch.
  */
 
 import { CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
@@ -31,6 +28,7 @@ const HOOK_URL = process.env.AGENT_HOOK_URL || "http://localhost:8080/hooks/pret
 // Worst-Case ab (zwei sequenzielle, kalte Orchestrator-Aufrufe innerhalb von
 // decide_async()).
 const HOOK_TIMEOUT_MS = 12_000;
+const NICHT_PRUEFBAR = "Werkzeugpruefung nicht erreichbar — aus Sicherheitsgruenden abgelehnt.";
 
 /**
  * Fragt den lokalen PreToolUse-Hook, ob dieser MCP-Werkzeugaufruf unter der
@@ -44,10 +42,9 @@ const HOOK_TIMEOUT_MS = 12_000;
  * @param {string} toolName - `request.params.name`
  * @param {object} [toolInput] - `request.params.arguments`
  * @returns {Promise<{allowed: true} | {allowed: false, reason: string}>}
- *   Wirft NIE — Netzwerk-/Parsefehler und Nicht-2xx-Antworten loesen
- *   `{allowed: true}` aus (fail-open, siehe Moduldoku), mit einer lauten
- *   `console.error`-Zeile fuer Beobachtbarkeit ueber Container-Logs
- *   (`read_logs`).
+ *   Wirft NIE — Netzwerk-/Parsefehler, Nicht-2xx-Antworten und Antworten ohne
+ *   Entscheidung loesen `{allowed: false}` aus (fail-closed, siehe Moduldoku),
+ *   mit einer lauten `console.error`-Zeile fuer die Container-Logs.
  */
 export async function checkToolPermission(serverLabel, toolName, toolInput) {
   const controller = new AbortController();
@@ -64,9 +61,9 @@ export async function checkToolPermission(serverLabel, toolName, toolInput) {
     });
     if (!res.ok) {
       console.error(
-        `[tool-gate] PreToolUse-Hook antwortete HTTP ${res.status} fuer ${serverLabel}/${toolName} — laesst durch (fail-open)`
+        `[tool-gate] PreToolUse-Hook antwortete HTTP ${res.status} fuer ${serverLabel}/${toolName} — abgelehnt (fail-closed)`
       );
-      return { allowed: true };
+      return { allowed: false, reason: NICHT_PRUEFBAR };
     }
     const body = await res.json();
     const decision = body?.hookSpecificOutput?.permissionDecision;
@@ -78,12 +75,18 @@ export async function checkToolPermission(serverLabel, toolName, toolInput) {
           "Werkzeug durch Autonomie-Regeln blockiert.",
       };
     }
+    if (decision !== "allow") {
+      console.error(
+        `[tool-gate] PreToolUse-Hook ohne Entscheidung fuer ${serverLabel}/${toolName} — abgelehnt (fail-closed)`
+      );
+      return { allowed: false, reason: NICHT_PRUEFBAR };
+    }
     return { allowed: true };
   } catch (err) {
     console.error(
-      `[tool-gate] PreToolUse-Hook fuer ${serverLabel}/${toolName} nicht erreichbar: ${err.message} — laesst durch (fail-open)`
+      `[tool-gate] PreToolUse-Hook fuer ${serverLabel}/${toolName} nicht erreichbar: ${err.message} — abgelehnt (fail-closed)`
     );
-    return { allowed: true };
+    return { allowed: false, reason: NICHT_PRUEFBAR };
   } finally {
     clearTimeout(timer);
   }

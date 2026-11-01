@@ -310,6 +310,8 @@ class CodexAgentRunner:
                     logger.warning("[Codex stderr] %s", decoded)
 
         try:
+            from app.richtlinie import sicherstellen as richtlinie_sicherstellen
+            richtlinie_sicherstellen()
             self._process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdin=asyncio.subprocess.PIPE,
