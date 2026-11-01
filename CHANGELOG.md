@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.421.1] - 2026-11-01
+
+### Geändert
+- Docker-Socket-Proxy auf v0.5.0 (HAProxy 3.4.2); keine zusätzlichen Rechte.
+
 ## [1.421.0] - 2026-11-01
 
 ### Behoben
