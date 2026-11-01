@@ -120,3 +120,30 @@ def test_abbild_traegt_den_hook_ein():
     basis = Path(__file__).resolve().parents[1] / "richtlinie"
     for name in ("managed-settings.json", "requirements.toml"):
         assert richtlinie.HOOK in (basis / name).read_text(), name
+
+
+@pytest.mark.skipif(not os.path.exists("/proc/self/mem"), reason="nur unter Linux")
+def test_pruefserver_ist_fuer_die_eigene_shell_unzugaenglich():
+    """Ein Prozess derselben Kennung (wie die Shell des Agenten) kommt nach dem
+    Abschirmen nicht mehr an den Speicher — vorher schon."""
+    import subprocess
+    import sys
+    import time
+
+    if os.geteuid() == 0:
+        pytest.skip("root hat CAP_SYS_PTRACE und darf ohnehin alles")
+    kind = subprocess.Popen(
+        [sys.executable, "-c",
+         "import sys, time; sys.path.insert(0, sys.argv[1]);"
+         "from app.richtlinie import pruefserver_abschirmen;"
+         "print(pruefserver_abschirmen(), flush=True); time.sleep(30)",
+         os.path.dirname(os.path.dirname(os.path.abspath(__file__)))],
+        stdout=subprocess.PIPE, text=True)
+    try:
+        assert kind.stdout.readline().strip() == "True"
+        time.sleep(0.1)
+        with pytest.raises(PermissionError):
+            open(f"/proc/{kind.pid}/mem", "rb")
+    finally:
+        kind.kill()
+        kind.wait()

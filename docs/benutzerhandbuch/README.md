@@ -4525,6 +4525,7 @@ Orchestrator. Ist er nicht erreichbar, gilt:
 | Kein Stand bekannt (Agent startet, Orchestrator fehlt), Stand älter als 15 Minuten oder der Orchestrator lehnt den Agenten ab (Zugang widerrufen, Agent gelöscht) | Lesen geht weiter; Shell, Schreiben und alles mit Außenwirkung wird abgelehnt mit „nicht abrufbar … aus Sicherheitsgründen abgelehnt“ |
 | Die Prüfung selbst antwortet nicht | der Aufruf wird abgelehnt (gilt auch für die Werkzeuge der eingebauten MCP-Server) |
 | Die Prüfregel fehlt im Agenten-Abbild oder ist beschreibbar | der Agent startet keinen Lauf („Prüf-Hook nicht aktiv … abgelehnt“) |
+| Die Shell des Agenten greift den Prüfserver an (ptrace, Speicher) | der Kernel lehnt ab: der Agenten-Prozess ist dafür abgeschirmt *(seit 1.423.0)* |
 
 *Bis 1.421 ließen Freigabeliste, Befehlsregeln und MCP-Prüfung in diesen Fällen alles durch.*
 Die Push-Sperre (kein Push in fremde Übernahme-Branches) bleibt bewusst nachsichtig: Sie

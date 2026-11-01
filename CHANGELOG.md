@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.423.0] - 2026-11-02
+
+### Sicherheit
+- Der Agenten-Prozess mit dem Prüfserver ist für die eigene Shell unzugänglich (kein ptrace, kein Speicherzugriff).
+
+## Tests
+- `test_pruefserver_ist_fuer_die_eigene_shell_unzugaenglich` (Linux, läuft in der CI): Prozess derselben Kennung kann `/proc/<pid>/mem` nach dem Abschirmen nicht öffnen.
+- Im echten Agenten-Container (uid agent) nachgestellt:
+  - abgeschirmter Prozess: `/proc/mem` → Permission denied, ptrace → Operation not permitted
+  - von ihm gestarteter Kindprozess weiterhin normal
+  - vorher war beides möglich
+
 ## [1.422.0] - 2026-11-01
 
 ### Sicherheit
