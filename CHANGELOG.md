@@ -5,6 +5,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.422.0] - 2026-11-01
+
+### Sicherheit
+- Ist der Orchestrator nicht erreichbar, gelten Freigabeliste und Befehlsregeln mit ihrem letzten bekannten Stand (höchstens 15 Minuten, nicht nach einer Absage des Orchestrators) weiter; ohne gültigen Stand werden Shell, Schreiben und Außenwirkung abgelehnt statt durchgelassen. Die Werkzeugprüfung der eingebauten MCP-Server lehnt bei Fehlern ebenfalls ab.
+- Agenten starten keinen Lauf, wenn die verwaltete Prüfregel im Abbild fehlt oder beschreibbar ist.
+
+## Sicherheitsprüfung
+Unabhängige Durchsicht: nichts Blockierendes, `KEIN_STAND` an allen Aufrufstellen korrekt. Umgesetzt: Zeitfenster 15 min statt 1 h, Absage hebt den alten Stand auf, Fehlschlag kurz gemerkt, eigenes Sperr-Objekt, Richtlinienprüfung mit Hook-Skript, Ordnern und Symlinks. Bekannt und älter als dieser PR: Der Prüfserver läuft unter derselben Kennung wie die Shell des Agenten (Restrisiko im Bedrohungsmodell); eigene Kennung bzw. Unix-Socket als Folgeschritt.
+
+## Tests
+- `test_regeln_bei_ausfall.py` (9 Fälle, u. a. Absage hebt alten Stand auf, Fehlschlag kurz als Sperre gemerkt):
+  - ohne Stand gesperrt, Lesen erlaubt
+  - letzter Stand gilt
+  - L4 bleibt L4
+  - zu alter Stand sperrt
+  - Befehle ohne Stand gesperrt
+  - Fehlschlag nicht gemerkt
+  - letzte Befehlsregeln gelten
+
+  Gegen den alten Code nicht lauffähig.
+- `test_richtlinie.py` (11 Fälle, u. a. Hook-Skript/Ordner beschreibbar, Symlink): vollständig; Skript, Datei, Eintrag fehlt; beschreibbar; fremder Eigentümer; echter Chat-Zug startet keine CLI; die Repo-Dateien tragen den Hook ein.
+- `_tool_gate.test.mjs`: Nicht-2xx, nicht erreichbar, ohne Entscheidung → abgelehnt.
+- 60 betroffene Testmodule: 656 grün.
+
 ## [1.421.2] - 2026-11-01
 
 ### Behoben
