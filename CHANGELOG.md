@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.421.0] - 2026-11-01
+
+### Behoben
+- Claude-Zugang hinter dem Egress-Proxy: eingesetzt wird jetzt immer das aktuelle, erneuerte Token. Bisher scheiterten Aufrufe nach der ersten Token-Erneuerung mit „OAuth token revoked“.
+- Agenten mit Claude-Zugang hinter dem Proxy bekommen den Token auch nicht mehr über die Token-Datei der Teamlizenz oder die Token-Abfrage des eigenen Abos im Klartext.
+- Ein gesperrter Claude-Zugang (Teamlizenz oder eigene Zugänge abgeschaltet) bleibt auch für Agenten hinter dem Proxy gesperrt.
+- Die Übergabe langer Chats hatte kein Gedächtnis (Server startete auf einem belegten Port) und scheiterte jedes Mal.
+
+## Sicherheitsprüfung
+Unabhängige Durchsicht: Nutzertrennung (owner_id des Agenten, HMAC-Agenten-Token) und Host-Bindung (`api.anthropic.com`, exakt) halten; keine Regression für Agenten ohne Proxy. Zwei Funde behoben (Klartext aus der Token-Abfrage bei Abschrift nur mit API-Schlüssel; Rückfall auf die Abschrift unterlief Admin-Sperren). Offen als Hinweis: die Auflösung liest den Zugang bei jeder Proxy-Anfrage dieses Agenten (Proxy puffert 30–60 s).
+
+## Tests
+- `test_egress.py`: `test_ki_zugang_ist_der_aktuelle` (erneuertes Token, Rückfall bei fehlendem Zugang/Fehler/anderem Typ), `test_eigenes_abo_bekommt_den_platzhalter`
+- `test_shared_je_nutzer.py`: `test_claude_hinter_dem_proxy_sieht_das_teamtoken_nicht`
+- `test_chat_faden_bleibt.py`: `test_gedaechtnis_im_uebergabe_zug_startet_per_stdio` (Gegenprobe ohne die Korrektur: rot)
+- Nachgestellt in einem Agenten: Übergabe-Aufruf mit `--strict-mcp-config` → `memory: failed` + `OAuth token revoked`; Gedächtnis-Server von Hand → `EADDRINUSE 127.0.0.1:8790`.
+
 ## [1.420.0] - 2026-10-31
 
 ### Behoben

@@ -182,4 +182,4 @@ CMD ["python", "-s", "-m", "app.main"]
 # Versions-Label GANZ AM ENDE (#889): stand es oben, machte jede neue Versionsnummer
 # alle folgenden Schichten ungueltig — jedes Release baute das ganze Abbild neu.
 # Hier aendert es nur noch die letzte, leere Schicht. Muss VERSION entsprechen.
-LABEL ai-employee.version="1.420.0"
+LABEL ai-employee.version="1.421.0"
