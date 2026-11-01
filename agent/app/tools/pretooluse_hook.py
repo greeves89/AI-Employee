@@ -36,7 +36,7 @@ cold cache, which is why the hook's configured timeout was raised alongside
 this change (now ``agent/richtlinie/managed-settings.json``; the hook script
 itself denies after 9 s, before the CLI would cancel it and let the call through).
 Orchestrator not reachable (P1-8): ``_get_allowed_categories`` and
-``_get_command_policies`` keep the last list they fetched (up to an hour), so a
+``_get_command_policies`` keep the last list they fetched (up to 15 minutes), so a
 restart does not brick the shell. Without any known list they lock instead of
 letting everything through, as they did until 1.421.
 """

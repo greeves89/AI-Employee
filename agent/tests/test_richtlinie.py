@@ -28,6 +28,7 @@ def abbild(tmp_path, monkeypatch):
     monkeypatch.setattr(richtlinie, "HOOK", str(hook))
     monkeypatch.setattr(richtlinie, "DATEIEN", tuple(str(d) for d in dateien))
     monkeypatch.setattr(richtlinie, "EIGENTUEMER", os.getuid())
+    tmp_path.chmod(0o755)
     return hook, dateien
 
 
@@ -53,6 +54,28 @@ def test_richtlinie_beschreibbar(abbild):
 
 def test_falscher_eigentuemer(abbild, monkeypatch):
     monkeypatch.setattr(richtlinie, "EIGENTUEMER", os.getuid() + 1)
+    assert "nicht schreibgeschützt" in richtlinie.fehlt()
+
+
+def test_hook_skript_beschreibbar(abbild):
+    abbild[0].chmod(0o666)
+    assert "nicht schreibgeschützt" in richtlinie.fehlt()
+
+
+def test_ordner_beschreibbar(abbild):
+    ordner = abbild[0].parent
+    ordner.chmod(0o777)
+    try:
+        assert "nicht schreibgeschützt" in richtlinie.fehlt()
+    finally:
+        ordner.chmod(0o755)
+
+
+def test_symlink_zaehlt_nicht(abbild, tmp_path):
+    ziel = tmp_path / "anderswo.toml"
+    ziel.write_text(abbild[1][1].read_text())
+    abbild[1][1].unlink()
+    abbild[1][1].symlink_to(ziel)
     assert "nicht schreibgeschützt" in richtlinie.fehlt()
 
 

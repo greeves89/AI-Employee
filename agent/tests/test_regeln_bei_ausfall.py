@@ -125,11 +125,41 @@ def test_befehlsregeln_ohne_bekannten_stand_sperren_jeden_befehl():
     assert "nicht abrufbar" in grund
 
 
-def test_befehlsregeln_fehlschlag_wird_nicht_als_keine_regeln_gemerkt():
+def test_befehlsregeln_fehlschlag_wird_kurz_als_sperre_gemerkt():
+    """Nicht als "keine Regeln" (bis 1.421: 10 s alles frei), sondern als Sperre —
+    und nur kurz, damit im Ausfall nicht jeder Befehl erneut auf die Zeitgrenze wartet."""
     with _regeln(_Client(fehler=OSError("weg"))):
         asyncio.run(executor._get_command_policies())
     with _regeln(_Client(_Http({"policies": []}))):
-        assert asyncio.run(executor._get_command_policies()) == [], "naechster Abruf fragt wirklich nach"
+        assert asyncio.run(executor._get_command_policies()) is executor.KEINE_BEFEHLSREGELN
+        executor._get_command_policies._cache = (executor._get_command_policies._cache[0], 0.0)
+        assert asyncio.run(executor._get_command_policies()) == [], "danach fragt er wieder nach"
+
+
+def test_absage_des_orchestrators_hebt_den_alten_stand_auf():
+    """401/403/404 (Token widerrufen, Agent geloescht) ist kein Ausfall."""
+    import urllib.error
+
+    with _orchestrator([{"name": "Shell", "category": "shell_exec"}]):
+        executor._get_allowed_categories()
+    executor._get_allowed_categories._cache = (None, 0.0)
+    absage = urllib.error.HTTPError("u", 403, "Forbidden", {}, None)
+    with mock.patch("urllib.request.urlopen", side_effect=absage):
+        assert executor._get_allowed_categories() is executor.KEIN_STAND
+    import httpx
+
+    regel = {"pattern": "rm", "effect": "blocked"}
+    with _regeln(_Client(_Http({"policies": [regel]}))):
+        asyncio.run(executor._get_command_policies())
+    executor._get_command_policies._cache = ([], 0.0)
+    antwort = httpx.Response(401, request=httpx.Request("GET", "http://o"))
+    with _regeln(_Client(fehler=httpx.HTTPStatusError("401", request=antwort.request, response=antwort))):
+        assert asyncio.run(executor._get_command_policies()) is executor.KEINE_BEFEHLSREGELN
+
+
+def test_kein_stand_ist_ein_eigenes_objekt():
+    assert executor.KEIN_STAND is not frozenset()
+    assert len(executor.KEIN_STAND) == 0
 
 
 def test_befehlsregeln_letzter_stand_gilt_beim_ausfall():

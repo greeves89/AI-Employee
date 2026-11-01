@@ -4521,8 +4521,8 @@ Orchestrator. Ist er nicht erreichbar, gilt:
 
 | Lage | Verhalten |
 |---|---|
-| Orchestrator startet neu, Regeln waren schon abgerufen | der letzte Stand gilt weiter, höchstens eine Stunde |
-| Kein Stand bekannt (Agent startet, Orchestrator fehlt) oder Stand älter als eine Stunde | Lesen geht weiter; Shell, Schreiben und alles mit Außenwirkung wird abgelehnt mit „nicht abrufbar … aus Sicherheitsgründen abgelehnt“ |
+| Orchestrator startet neu, Regeln waren schon abgerufen | der letzte Stand gilt weiter, höchstens 15 Minuten |
+| Kein Stand bekannt (Agent startet, Orchestrator fehlt), Stand älter als 15 Minuten oder der Orchestrator lehnt den Agenten ab (Zugang widerrufen, Agent gelöscht) | Lesen geht weiter; Shell, Schreiben und alles mit Außenwirkung wird abgelehnt mit „nicht abrufbar … aus Sicherheitsgründen abgelehnt“ |
 | Die Prüfung selbst antwortet nicht | der Aufruf wird abgelehnt (gilt auch für die Werkzeuge der eingebauten MCP-Server) |
 | Die Prüfregel fehlt im Agenten-Abbild oder ist beschreibbar | der Agent startet keinen Lauf („Prüf-Hook nicht aktiv … abgelehnt“) |
 
