@@ -103,6 +103,24 @@ class Plan(unittest.TestCase):
                          ist_admin=False)
         self.assertEqual(p["nur_lesen"], [(".auth", "/shared/.auth")], "ohne Proxy wie bisher")
 
+    def test_in_der_stufe_nie_die_teamdatei(self):
+        """Scheitert das Auflösen beim Anlegen, steht kein Platzhalter in env — die
+        Stufe gilt trotzdem: kein Klartext-Zugang aus dem geteilten Ordner."""
+        from app.config import settings
+        stufe = dict(egress_proxy_enabled=True, egress_proxy_token="t" * 40)
+        with mock.patch.multiple(settings, egress_ki_zugang="a1", egress_codex_zugang="", create=True, **stufe):
+            self.assertEqual(geteilt_plan("u1", mode="claude_code", env={"AGENT_ID": "a1"}, ist_admin=False)["nur_lesen"], [])
+            self.assertEqual(geteilt_plan("u1", mode="claude_code", env={"AGENT_ID": "b2"}, ist_admin=False)["nur_lesen"],
+                             [(".auth", "/shared/.auth")], "andere Agenten wie bisher")
+        with mock.patch.multiple(settings, egress_ki_zugang="", egress_codex_zugang="a1", create=True, **stufe):
+            self.assertEqual(geteilt_plan("u1", mode="codex_cli", env={"AGENT_ID": "a1"}, ist_admin=False)["nur_lesen"], [])
+            self.assertEqual(geteilt_plan("u1", mode="codex_cli", env={"AGENT_ID": "b2"}, ist_admin=False)["nur_lesen"],
+                             [(".codex", "/shared/.codex")], "andere Agenten wie bisher")
+        with mock.patch.multiple(settings, egress_ki_zugang="alle", egress_codex_zugang="alle", create=True,
+                                 egress_proxy_enabled=False, egress_proxy_token="t" * 40):
+            self.assertEqual(geteilt_plan("u1", mode="codex_cli", env={"AGENT_ID": "a1"}, ist_admin=False)["nur_lesen"],
+                             [(".codex", "/shared/.codex")], "Proxy aus: Stufe wirkungslos")
+
     def test_eigenes_abo_sieht_das_teamtoken_nicht(self):
         p = geteilt_plan("u1", mode="claude_code", env={"CLAUDE_CREDENTIAL_SOURCE": "personal"}, ist_admin=False)
         self.assertEqual(p["nur_lesen"], [])
