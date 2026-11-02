@@ -36,7 +36,9 @@ _GEPRUEFT = (
     (re.compile(rf"^{_VERSION}/containers/create$"), "container"),
     (re.compile(rf"^{_VERSION}/containers/[^/]+/exec$"), "exec"),
     (re.compile(rf"^{_VERSION}/volumes/create$"), "volume"),
+    (re.compile(rf"^{_VERSION}/containers/[^/]+/start$"), "start"),
 )
+_FELDNAME = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
 COMPOSE_PFAD = "/aie/compose"
 
 
@@ -89,9 +91,25 @@ def _kopf_zerlegen(kopf: bytes) -> tuple[str, list[tuple[str, str]]]:
     for zeile in zeilen[1:]:
         if not zeile:
             continue
-        name, _, wert = zeile.partition(":")
-        felder.append((name.strip(), wert.strip()))
+        name, doppelpunkt, wert = zeile.partition(":")
+        if not doppelpunkt or not _FELDNAME.match(name) or "\n" in zeile or "\r" in zeile:
+            # Gefaltete Zeilen, nacktes LF, Leerzeichen im Namen: Wächter und Docker
+            # läsen dieselbe Anfrage verschieden.
+            raise Abgelehnt(400, "Kopfzeile nicht eindeutig lesbar")
+        felder.append((name, wert.strip()))
+    if "\n" in zeilen[0]:
+        raise Abgelehnt(400, "Anfragezeile nicht eindeutig lesbar")
     return zeilen[0], felder
+
+
+def _eindeutig(felder: list[tuple[str, str]]) -> None:
+    """Genau eine Längenangabe — sonst bestimmen Wächter und Docker das Ende verschieden."""
+    laengen = [w for n, w in felder if n.lower() == "content-length"]
+    te = [w.lower() for n, w in felder if n.lower() == "transfer-encoding"]
+    if len(laengen) > 1 or (laengen and te) or len(te) > 1 or (te and te[0] != "chunked"):
+        raise Abgelehnt(400, "Längenangabe nicht eindeutig")
+    if laengen and not laengen[0].isdigit():
+        raise Abgelehnt(400, "Längenangabe ungültig")
 
 
 def _feld(felder: list[tuple[str, str]], name: str) -> str | None:
@@ -199,6 +217,8 @@ class Waechter:
             return regeln.container_anlegen(daten, self.erlaubte_host_pfade)
         if art == "exec":
             return regeln.exec_anlegen(daten)
+        if art == "start":
+            return regeln.container_starten(daten)
         return regeln.volume_anlegen(daten)
 
     async def _koerper_lesen(self, reader, felder) -> bytes:
@@ -234,7 +254,13 @@ class Waechter:
                     return
                 if kopf is None:
                     return
-                erste, felder = _kopf_zerlegen(kopf)
+                try:
+                    erste, felder = _kopf_zerlegen(kopf)
+                    _eindeutig(felder)
+                except Abgelehnt as e:
+                    c_writer.write(_antwort(e.status, {"message": e.grund}))
+                    await c_writer.drain()
+                    return
                 teile = erste.split(" ")
                 if len(teile) != 3:
                     c_writer.write(_antwort(400, {"message": "unlesbare Anfragezeile"}))

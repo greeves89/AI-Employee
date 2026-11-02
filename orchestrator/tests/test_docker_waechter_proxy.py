@@ -144,6 +144,28 @@ class Durchreicher(unittest.IsolatedAsyncioTestCase):
         (kopf, _), = await _senden(self.port, anfrage)
         self.assertTrue(kopf.startswith(b"HTTP/1.1 403"))
 
+    async def test_mehrdeutige_anfragen_werden_abgelehnt(self):
+        koerper = b'{"HostConfig": {"Privileged": true}}'
+        faelle = [
+            b"POST /containers/create HTTP/1.1\r\nContent-Length: 2\r\nContent-Length: 40\r\n\r\n" + koerper,
+            b"POST /containers/create HTTP/1.1\r\nContent-Length: 40\r\nTransfer-Encoding: chunked\r\n\r\n" + koerper,
+            b"POST /containers/create HTTP/1.1\r\nTransfer-Encoding: gzip, chunked\r\n\r\n" + koerper,
+            b"POST /containers/create HTTP/1.1\r\nX: a\r\n Content-Length: 5\r\n\r\n" + koerper,
+            b"POST /containers/create HTTP/1.1\r\nContent-Length : 40\r\n\r\n" + koerper,
+            b"POST /containers/create HTTP/1.1\r\nContent-Length: +40\r\n\r\n" + koerper,
+            b"POST /containers/create HTTP/1.1\r\nX: a\nContent-Length: 40\r\n\r\n" + koerper,
+        ]
+        for anfrage in faelle:
+            with self.subTest(anfrage[:70]):
+                (kopf, _), = await _senden(self.port, anfrage)
+                self.assertTrue(kopf.startswith(b"HTTP/1.1 400"), kopf)
+
+    async def test_start_mit_hostconfig(self):
+        (k1, _), = await _senden(self.port, _post("/v1.24/containers/abc/start", {"HostConfig": {"Privileged": True}}))
+        self.assertTrue(k1.startswith(b"HTTP/1.1 403"))
+        (k2, _), = await _senden(self.port, b"POST /v1.45/containers/abc/start HTTP/1.1\r\nHost: d\r\nContent-Length: 0\r\n\r\n")
+        self.assertTrue(k2.startswith(b"HTTP/1.1 201"))
+
     async def test_compose_nur_mit_schluessel(self):
         (k1, _), = await _senden(self.port, _post("/aie/compose", {"projekt": "agent-12345678-x"}))
         self.assertTrue(k1.startswith(b"HTTP/1.1 401"))
@@ -158,7 +180,8 @@ class Durchreicher(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(proxy.art_der_anfrage("post", "/v1.45//containers/create?x=1"), "container")
         self.assertEqual(proxy.art_der_anfrage("POST", "/containers/abc/exec"), "exec")
         self.assertIsNone(proxy.art_der_anfrage("GET", "/containers/create"))
-        self.assertIsNone(proxy.art_der_anfrage("POST", "/containers/abc/start"))
+        self.assertEqual(proxy.art_der_anfrage("POST", "/containers/abc/start"), "start")
+        self.assertIsNone(proxy.art_der_anfrage("POST", "/containers/abc/stop"))
         self.assertEqual(proxy.art_der_anfrage("POST", "http://docker/v1.45/volumes/create"), "volume")
         self.assertEqual(proxy.art_der_anfrage("POST", "/v1.45/containers/create%3Fx#y"), None)
 

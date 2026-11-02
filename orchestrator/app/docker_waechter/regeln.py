@@ -129,6 +129,10 @@ def container_anlegen(koerper: dict, erlaubte_host_pfade: Iterable[str]) -> str 
         return f"Runtime {hc.get('Runtime')!r} ist gesperrt"
     if hc.get("VolumesFrom"):
         return "VolumesFrom ist gesperrt"
+    # Leere Listen hier heben die Abschirmung von /proc und /sys auf (systempaths=unconfined).
+    for feld in ("MaskedPaths", "ReadonlyPaths"):
+        if feld in hc and hc.get(feld) is not None:
+            return f"{feld} setzt nur Docker selbst"
     return (_security_opt_pruefen(_liste(hc.get("SecurityOpt")))
             or _binds_pruefen(_liste(hc.get("Binds")), erlaubte_host_pfade)
             or _mounts_pruefen(_liste(hc.get("Mounts")), erlaubte_host_pfade))
@@ -156,3 +160,14 @@ def volume_anlegen(koerper: dict) -> str | None:
     if koerper.get("DriverOpts"):
         return "Volume-Optionen sind gesperrt"
     return None
+
+
+def container_starten(koerper: dict) -> str | None:
+    """``POST /containers/{id}/start`` — ältere API-Versionen nahmen hier noch eine
+    HostConfig an; damit liessen sich Rechte am Anlegen vorbei nachreichen."""
+    if koerper in (None, {}, b"", ""):
+        return None
+    if not isinstance(koerper, dict):
+        return "Anfrage ist kein JSON-Objekt"
+    return "HostConfig beim Start ist gesperrt" if koerper else None
+

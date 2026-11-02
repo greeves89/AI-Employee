@@ -90,6 +90,14 @@ class WasGesperrtIst(unittest.TestCase):
                                                "VolumeOptions": {"DriverConfig": {"Name": "local",
                                                                                   "Options": {"device": "/"}}}}]))
 
+    def test_proc_abschirmung_und_start_mit_hostconfig(self):
+        for feld in ("MaskedPaths", "ReadonlyPaths"):
+            with self.subTest(feld):
+                self.assertIsNotNone(regeln.container_anlegen({"HostConfig": {feld: []}}, ERLAUBT))
+        self.assertIsNone(regeln.container_starten({}))
+        self.assertIsNone(regeln.container_starten(None))
+        self.assertIsNotNone(regeln.container_starten({"HostConfig": {"Privileged": True}}))
+
     def test_privilegiertes_exec(self):
         self.assertIsNotNone(regeln.exec_anlegen({"Cmd": ["sh"], "Privileged": True}))
 
