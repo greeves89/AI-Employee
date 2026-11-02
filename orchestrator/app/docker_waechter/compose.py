@@ -50,7 +50,10 @@ def quelle_aus(daten: Any) -> cp.Quelle | str:
     # Das Volume gehört zum Agenten des Präfixes (oder ist der geteilte Ordner der Taskforce) —
     # sonst hinge der Runner fremde Daten ein, etwa das Volume der Datenbank.
     agent8 = praefix[len("agent-"):-1]
-    if volume != "ai-employee-shared" and not volume.startswith(f"workspace-{agent8}"):
+    if volume == "ai-employee-shared":
+        if daten.get("sicht") != "/shared":
+            return "Der geteilte Ordner nur für Taskforce-Projekte"
+    elif not re.fullmatch(rf"workspace-{re.escape(agent8)}[0-9a-z]*", volume):
         return "Volume gehört nicht zu diesem Agenten"
     if sicht not in _SICHTEN:
         return "Sicht ungültig"

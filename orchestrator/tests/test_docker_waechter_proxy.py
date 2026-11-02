@@ -302,6 +302,25 @@ class Durchreicher(unittest.IsolatedAsyncioTestCase):
                 (kopf, _), = await _senden(self.port, f"{methode} {pfad} HTTP/1.1\r\nContent-Length: 0\r\n\r\n".encode())
                 self.assertTrue(kopf.startswith(b"HTTP/1.1 201"), kopf)
 
+    async def test_feinschliff(self):
+        def roh(methode, pfad, koerper=b""):
+            return (f"{methode} {pfad} HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\n"
+                    f"Content-Length: {len(koerper)}\r\n\r\n").encode() + koerper
+        faelle = [
+            (roh("POST", "/v1.45/images/create", b"fromSrc=http://x/a.tar"), 403),
+            (roh("DELETE", "/v1.45/images/ai-employee-agent:latest"), 403),
+            (roh("DELETE", "/v1.45/networks/dockerapi"), 403),
+            (roh("DELETE", "/v1.45/networks/apps"), 201),
+            (roh("DELETE", "/v1.45/volumes/moderator-workspace-r1"), 201),
+            (_post("/v1.45/networks/dockerapi/disconnect", {"Container": "abc"}), 403),
+            (_post("/v1.45/networks/apps/disconnect", {"Container": "postgres"}), 403),
+            (_post("/v1.45/networks/apps/disconnect", {"Container": "app1", "Force": True}), 201),
+        ]
+        for anfrage, erwartet in faelle:
+            with self.subTest(anfrage[:60]):
+                (kopf, _), = await _senden(self.port, anfrage)
+                self.assertTrue(kopf.startswith(f"HTTP/1.1 {erwartet}".encode()), kopf)
+
     async def test_compose_nur_mit_schluessel(self):
         (k1, _), = await _senden(self.port, _post("/aie/compose", {"projekt": "agent-12345678-x"}))
         self.assertTrue(k1.startswith(b"HTTP/1.1 401"))
