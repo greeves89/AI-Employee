@@ -58,6 +58,8 @@ class ComposeImWaechter(unittest.TestCase):
             dict(projekt="agent-ffffffff-fremd"),
             dict(projekt="ai-employee"),
             dict(befehl=["run", "--rm", "x"]),
+            dict(projekt=PROJEKT + "\n"),
+            dict(quelle={**QUELLE, "volume": "workspace-x\n"}),
             dict(befehl=["up", "-d", "--build", "--privileged"]),
             dict(modell=None),
             dict(modell="kein dict"),

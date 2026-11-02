@@ -4581,12 +4581,15 @@ verhindert Zusammenstöße unter Kollegen und ist keine Sicherheitsgrenze.
 Der Orchestrator legt Agenten, Hilfs-Container und Agenten-Apps an — dafür braucht er
 Docker. Bis 1.425 hätte jemand, der den Orchestrator übernimmt, darüber einen Container mit
 vollen Rechten oder mit dem ganzen Server-Dateisystem starten können. Seit 1.426 spricht der
-Orchestrator Docker nur noch über den **Docker-Wächter** (Dienst `docker-waechter`), und nur
-der Wächter erreicht den Docker-Zugang (eigenes, nach außen abgeschottetes Netz).
+Orchestrator Docker nur noch über den **Docker-Wächter** (Dienst `docker-waechter`). Nur der
+Orchestrator erreicht den Wächter, und nur der Wächter den Docker-Zugang (je ein eigenes,
+nach außen abgeschottetes Netz).
 
 | Anfrage | Was der Wächter erlaubt |
 |---|---|
-| Container anlegen | ohne `privileged`, ohne Geräte, ohne Host-Netz oder fremde Namespaces, nur die sechs Fähigkeiten der Agenten, `security_opt` nur `no-new-privileges` und ein eigenes Seccomp-Profil; Host-Ordner nur aus dem Mount-Katalog und unter den Second Brains, nie System-Ordner, nie der Docker-Socket |
+| Container anlegen | ohne `privileged`, ohne Geräte, ohne fremde Namespaces, nur die sechs Fähigkeiten der Agenten, nur das Seccomp-Profil der Plattform; nur ins Agenten-Netz oder ein App-Netz (nie ins Netz des Docker-Zugangs), ohne Netz-Aliase; Host-Ordner nur aus dem Mount-Katalog und unter den Second Brains, nie System-Ordner, nie der Docker-Socket |
+| In bestehende Container (exec, Dateien, attach, umbenennen, verbinden) | nur in Agenten und Apps der Agenten — nie in Dienste der Anlage oder Container mit Docker-Socket |
+| Netz anlegen | nur App-Netze der Agenten, ohne besondere Treiber oder Optionen |
 | Befehl in Container (`exec`) | nicht privilegiert |
 | Volume anlegen | nur lokal, ohne Treiber-Optionen (sonst wäre ein Volume ein versteckter Host-Ordner) |
 | Agenten-App starten/stoppen | der Wächter prüft die Compose-Datei selbst (dieselben Regeln wie Kap. 9) und startet sie; der Orchestrator bekommt keinen Container mit Docker-Socket mehr durch |

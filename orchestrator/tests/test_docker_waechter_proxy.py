@@ -20,6 +20,15 @@ async def _docker_attrappe(reader, writer):
                 if zeile.lower().startswith(b"content-length:"):
                     laenge = int(zeile.split(b":")[1])
             koerper = await reader.readexactly(laenge) if laenge else b""
+            if erste.startswith("GET /networks/"):
+                name = {"apps": "ai-employee-apps-12345678", "dockerapi": "ai-employee_docker-api"}.get(
+                    erste.split(" ")[1].split("/")[2])
+                text = json.dumps({"Name": name}).encode()
+                writer.write((b"HTTP/1.1 200 OK\r\nContent-Length: " + str(len(text)).encode() + b"\r\n\r\n" + text)
+                             if name else b"HTTP/1.1 404 Not Found\r\nContent-Length: 2\r\n\r\n{}")
+                await writer.drain()
+                writer.close()
+                return
             if erste.startswith("GET /containers/") and erste.split(" ")[1].endswith("/json"):
                 name = erste.split(" ")[1].split("/")[2]
                 inspect = {
@@ -31,6 +40,8 @@ async def _docker_attrappe(reader, writer):
                     "heal": {"HostConfig": {}, "Mounts": [{"Source": "/var/run/docker.sock"}], "Config": {}},
                     "postgres": {"HostConfig": {}, "Config": {"Labels": {"com.docker.compose.project": "ai-employee"}}},
                     "cadvisor": {"HostConfig": {"Privileged": True}, "Config": {}},
+                    "ai-employee-orchestrator": {"Id": "e" * 64, "Name": "/ai-employee-orchestrator",
+                                                 "HostConfig": {}, "Config": {"Labels": {"com.docker.compose.project": "ai-employee"}}},
                 }.get(name)
                 if inspect is None:
                     writer.write(b"HTTP/1.1 404 Not Found\r\nContent-Length: 2\r\n\r\n{}")
@@ -245,6 +256,20 @@ class Durchreicher(unittest.IsolatedAsyncioTestCase):
         (kopf, inhalt), = await _senden(self.port, anfrage)
         self.assertTrue(kopf.startswith(b"HTTP/1.1 403"), kopf)
         self.assertIn("eindeutig", json.loads(inhalt)["message"])
+
+    async def test_netz_verbinden(self):
+        faelle = [("apps", "abc", 201), ("apps", "ai-employee-orchestrator", 201), ("dockerapi", "abc", 403),
+                  ("apps", "proxy", 403), ("apps", "fremd", 403), ("unbekannt", "abc", 403)]
+        for netz, container, erwartet in faelle:
+            with self.subTest(netz=netz, container=container):
+                (kopf, inhalt), = await _senden(self.port, _post(f"/v1.45/networks/{netz}/connect", {"Container": container}))
+                self.assertTrue(kopf.startswith(f"HTTP/1.1 {erwartet}".encode()), kopf)
+                if erwartet == 201:
+                    self.assertNotIn(container, json.loads(json.loads(inhalt)["koerper"])["Container"],
+                                     "weitergereicht an die ID")
+        (kopf, _), = await _senden(self.port, _post("/v1.45/networks/apps/connect",
+                                                    {"Container": "abc", "EndpointConfig": {"Aliases": ["redis"]}}))
+        self.assertTrue(kopf.startswith(b"HTTP/1.1 403"))
 
     async def test_compose_nur_mit_schluessel(self):
         (k1, _), = await _senden(self.port, _post("/aie/compose", {"projekt": "agent-12345678-x"}))

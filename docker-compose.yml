@@ -129,8 +129,9 @@ services:
       docker-socket-proxy:
         condition: service_started
     restart: unless-stopped
+    # Erreichbar nur für den Orchestrator (waechter-api), selbst nur am Socket-Proxy.
     networks:
-      - internal
+      - waechter-api
       - docker-api
 
   orchestrator:
@@ -324,6 +325,7 @@ services:
     networks:
       - internal
       - agent-network
+      - waechter-api
 
   embedding-service:
     # Fertiges Abbild aus der Registry (#889); ohne Registry baut `build:` lokal.
@@ -527,6 +529,10 @@ networks:
     driver: bridge
   # Docker-Wächter ↔ Socket-Proxy, sonst niemand; ohne Weg nach draussen.
   docker-api:
+    driver: bridge
+    internal: true
+  # Orchestrator ↔ Docker-Wächter, sonst niemand (auch nicht Caddy, Tunnel, Frontend).
+  waechter-api:
     driver: bridge
     internal: true
   agent-network:

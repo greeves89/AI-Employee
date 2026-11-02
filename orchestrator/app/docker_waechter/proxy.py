@@ -37,7 +37,12 @@ _GEPRUEFT = (
     (re.compile(rf"^{_VERSION}/containers/[^/]+/exec$"), "exec"),
     (re.compile(rf"^{_VERSION}/volumes/create$"), "volume"),
     (re.compile(rf"^{_VERSION}/containers/[^/]+/start$"), "start"),
+    (re.compile(rf"^{_VERSION}/networks/create$"), "netz"),
 )
+_NETZ_VERBINDEN = re.compile(rf"^{_VERSION}/networks/(?P<id>[^/]+)/connect$")
+#: Zeitgrenzen: Kopf, Körper, Verbindungsaufbau. Rohe Ströme (exec/attach) haben keine.
+_ZEIT_KOPF, _ZEIT_KOERPER, _ZEIT_VERBINDEN = 60, 300, 10
+_MAX_VERBINDUNGEN = 64
 _FELDNAME = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
 #: Anfragen IN einen bestehenden Container: das Ziel wird bei Docker nachgeschlagen.
 _ZIEL = re.compile(rf"^(?P<v>{_VERSION})/containers/(?P<id>[^/]+)/"
@@ -113,7 +118,7 @@ def _eindeutig(felder: list[tuple[str, str]]) -> None:
     te = [w.lower() for n, w in felder if n.lower() == "transfer-encoding"]
     if len(laengen) > 1 or (laengen and te) or len(te) > 1 or (te and te[0] != "chunked"):
         raise Abgelehnt(400, "Längenangabe nicht eindeutig")
-    if laengen and not laengen[0].isdigit():
+    if laengen and not (laengen[0].isascii() and laengen[0].isdecimal()):
         raise Abgelehnt(400, "Längenangabe ungültig")
 
 
@@ -132,7 +137,7 @@ def _kopf_bauen(erste_zeile: str, felder: list[tuple[str, str]]) -> bytes:
 _CHUNK_ZEILE = re.compile(rb"^[0-9A-Fa-f]{1,8}(;[^\r\n]*)?\r\n$")
 #: Ungeprüfte Anfragen mit chunked-Körper werden ebenfalls eingelesen und mit fester
 #: Länge weitergegeben (Datei-Uploads): Docker sieht nie die Rahmung des Aufrufers.
-_DURCHREICH_MAX = 512 * 1024 * 1024
+_DURCHREICH_MAX = 64 * 1024 * 1024
 
 
 async def _chunked_lesen(reader: asyncio.StreamReader, grenze: int | None) -> bytes:
@@ -142,6 +147,8 @@ async def _chunked_lesen(reader: asyncio.StreamReader, grenze: int | None) -> by
         if not _CHUNK_ZEILE.match(zeile) or b"\n" in zeile[:-1]:
             raise Abgelehnt(400, "Chunk-Rahmung nicht eindeutig")
         groesse = int(zeile.split(b";")[0], 16)
+        if grenze is not None and len(daten) + groesse > grenze:
+            raise Abgelehnt(413, "Anfrage zu groß")  # vor dem Lesen, nicht danach
         if groesse == 0:
             while (await reader.readuntil(b"\r\n")) != b"\r\n":
                 pass
@@ -215,9 +222,13 @@ class Waechter:
     """Ein Wächter vor ``upstream`` (host, port) mit den erlaubten Host-Pfaden."""
 
     def __init__(self, upstream: tuple[str, int], erlaubte_host_pfade: list[str], *,
-                 dienst_schluessel: str = "", compose=None):
+                 dienst_schluessel: str = "", compose=None, seccomp_profil: str | None = None,
+                 orchestrator_name: str = "ai-employee-orchestrator"):
         self.upstream = upstream
         self.erlaubte_host_pfade = erlaubte_host_pfade
+        self.seccomp_profil = seccomp_profil
+        self.orchestrator_name = orchestrator_name
+        self._plaetze = asyncio.Semaphore(_MAX_VERBINDUNGEN)
         self.dienst_schluessel = dienst_schluessel
         #: ``compose(koerper: dict) -> (status, antwort: dict)`` — Agenten-Apps, siehe compose.py.
         self.compose = compose
@@ -232,7 +243,9 @@ class Waechter:
         except ValueError as e:
             return f"Anfrage ist kein eindeutiges JSON ({e})", b""
         if art == "container":
-            grund = regeln.container_anlegen(daten, self.erlaubte_host_pfade)
+            grund = regeln.container_anlegen(daten, self.erlaubte_host_pfade, self.seccomp_profil)
+        elif art == "netz":
+            grund = regeln.netz_anlegen(daten)
         elif art == "exec":
             grund = regeln.exec_anlegen(daten)
         elif art == "start":
@@ -241,37 +254,70 @@ class Waechter:
             grund = regeln.volume_anlegen(daten)
         return grund, json.dumps(daten).encode()
 
-    async def _ziel_pruefen(self, container: str) -> tuple[str | None, str]:
+    async def _nachschlagen(self, pfad: str) -> tuple[int, dict]:
+        """``GET`` bei Docker (lesend, am Wächter vorbei): (Status, JSON)."""
+        try:
+            reader, writer = await asyncio.wait_for(asyncio.open_connection(*self.upstream), _ZEIT_VERBINDEN)
+        except (OSError, asyncio.TimeoutError) as e:
+            raise Abgelehnt(502, f"Docker nicht erreichbar: {e}") from None
+        try:
+            writer.write(f"GET {pfad} HTTP/1.1\r\nHost: docker\r\nConnection: close\r\n\r\n".encode())
+            await writer.drain()
+            kopf = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), 10)
+            erste, felder = _kopf_zerlegen(kopf)
+            if (_feld(felder, "Transfer-Encoding") or "").lower() == "chunked":
+                inhalt = await asyncio.wait_for(_chunked_lesen(reader, _KOERPER_MAX), 10)
+            elif _feld(felder, "Content-Length") is not None:
+                inhalt = await asyncio.wait_for(reader.readexactly(int(_feld(felder, "Content-Length"))), 10)
+            else:
+                inhalt = await asyncio.wait_for(reader.read(-1), 10)
+            status = int(erste.split(" ")[1])
+            return status, (json.loads(inhalt) if status == 200 else {})
+        finally:
+            writer.close()
+
+    async def _ziel_pruefen(self, container: str, *, orchestrator_erlaubt: bool = False) -> tuple[str | None, str]:
         """Den Zielcontainer bei Docker nachschlagen und gegen ``regeln.zielcontainer`` halten.
         (Grund, volle ID) — weitergereicht wird an die ID, nicht an den Namen: sonst
         liesse sich zwischen Prüfung und Ausführung ein anderer Container so umbenennen."""
         from urllib.parse import quote
 
         try:
-            reader, writer = await asyncio.open_connection(*self.upstream)
-        except OSError as e:
-            return f"Docker nicht erreichbar: {e}", ""
-        try:
-            writer.write(f"GET /containers/{quote(container, safe='')}/json HTTP/1.1\r\nHost: docker\r\n"
-                         "Connection: close\r\n\r\n".encode())
-            await writer.drain()
-            kopf = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), 10)
-            erste, felder = _kopf_zerlegen(kopf)
-            if (_feld(felder, "Transfer-Encoding") or "").lower() == "chunked":
-                inhalt = await asyncio.wait_for(_chunked_lesen(reader, _KOERPER_MAX), 10)
-            else:
-                inhalt = await asyncio.wait_for(reader.read(_KOERPER_MAX), 10)
-            if " 200 " not in erste + " ":
-                return "Zielcontainer unbekannt", ""
-            daten = json.loads(inhalt)
-            kennung = str(daten.get("Id") or "")
-            if not re.fullmatch(r"[0-9a-f]{64}", kennung):
-                return "Zielcontainer ohne gültige ID", ""
-            return regeln.zielcontainer(daten), kennung
-        except (asyncio.TimeoutError, ValueError, ConnectionError, Abgelehnt, asyncio.IncompleteReadError) as e:
+            status, daten = await self._nachschlagen(f"/containers/{quote(container, safe='')}/json")
+        except (Abgelehnt, asyncio.TimeoutError, ValueError, ConnectionError, asyncio.IncompleteReadError,
+                IndexError) as e:
             return f"Zielcontainer nicht prüfbar ({e})", ""
-        finally:
-            writer.close()
+        if status != 200:
+            return "Zielcontainer unbekannt", ""
+        kennung = str(daten.get("Id") or "")
+        if not re.fullmatch(r"[0-9a-f]{64}", kennung):
+            return "Zielcontainer ohne gültige ID", ""
+        if orchestrator_erlaubt and str(daten.get("Name") or "").lstrip("/") == self.orchestrator_name:
+            return None, kennung
+        return regeln.zielcontainer(daten), kennung
+
+    async def _verbinden_pruefen(self, netz: str, koerper: bytes) -> tuple[str | None, bytes]:
+        """``POST /networks/{id}/connect``: Netz nachschlagen (Name, nicht ID), Container wie ein Ziel."""
+        from urllib.parse import quote
+
+        try:
+            daten = json.loads(koerper or b"{}", object_pairs_hook=regeln.ohne_dubletten)
+            status, info = await self._nachschlagen(f"/networks/{quote(netz, safe='')}")
+        except (Abgelehnt, asyncio.TimeoutError, ValueError, ConnectionError, asyncio.IncompleteReadError,
+                IndexError) as e:
+            return f"Netz nicht prüfbar ({e})", b""
+        if status != 200:
+            return "Netz unbekannt", b""
+        grund = regeln.netz_verbinden(str(info.get("Name") or ""), daten)
+        if grund:
+            return grund, b""
+        container = str(regeln.klein(daten).get("container") or "")
+        grund, kennung = await self._ziel_pruefen(container, orchestrator_erlaubt=True)
+        if grund:
+            return grund, b""
+        daten = {k: v for k, v in daten.items() if k.lower() != "container"}
+        daten["Container"] = kennung
+        return None, json.dumps(daten).encode()
 
     async def _koerper_lesen(self, reader, felder) -> bytes:
         if (_feld(felder, "Transfer-Encoding") or "").lower() == "chunked":
@@ -295,11 +341,21 @@ class Waechter:
         return _antwort(status, inhalt)
 
     async def verbindung(self, c_reader: asyncio.StreamReader, c_writer: asyncio.StreamWriter) -> None:
+        if self._plaetze.locked():
+            c_writer.write(_antwort(503, {"message": "zu viele Verbindungen"}))
+            c_writer.close()
+            return
+        async with self._plaetze:
+            await self._verbindung(c_reader, c_writer)
+
+    async def _verbindung(self, c_reader: asyncio.StreamReader, c_writer: asyncio.StreamWriter) -> None:
         u_reader = u_writer = None
         try:
             while True:
                 try:
-                    kopf = await _kopf_lesen(c_reader)
+                    kopf = await asyncio.wait_for(_kopf_lesen(c_reader), _ZEIT_KOPF)
+                except asyncio.TimeoutError:
+                    return
                 except Abgelehnt as e:
                     c_writer.write(_antwort(e.status, {"message": e.grund}))
                     await c_writer.drain()
@@ -319,8 +375,15 @@ class Waechter:
                     return
                 methode, ziel, _ = teile
 
+                felder = [(n, w) for n, w in felder if n.lower() != "expect"]  # kein 100-continue
                 if pfad_bereinigt(ziel) == COMPOSE_PFAD and methode.upper() == "POST":
-                    koerper = await self._koerper_lesen(c_reader, felder)
+                    schluessel = _feld(felder, "X-Waechter-Token") or ""
+                    if not self.dienst_schluessel or not hmac.compare_digest(
+                            schluessel.encode(), self.dienst_schluessel.encode()):
+                        c_writer.write(_antwort(401, {"message": "Dienst-Schlüssel fehlt oder falsch"}))
+                        await c_writer.drain()
+                        return  # Körper erst nach dem Schlüssel lesen
+                    koerper = await asyncio.wait_for(self._koerper_lesen(c_reader, felder), _ZEIT_KOERPER)
                     c_writer.write(await self._compose(felder, koerper))
                     await c_writer.drain()
                     return
@@ -342,13 +405,17 @@ class Waechter:
                     erste = f"{methode} {ziel} HTTP/1.1"
                     pfad = pfad_bereinigt(ziel)
                 koerper = None
-                if art:
+                verbinden = _NETZ_VERBINDEN.match(pfad) if methode.upper() == "POST" else None
+                if art or verbinden:
                     try:
-                        koerper = await self._koerper_lesen(c_reader, felder)
+                        koerper = await asyncio.wait_for(self._koerper_lesen(c_reader, felder), _ZEIT_KOERPER)
                     except Abgelehnt as e:
                         c_writer.write(_antwort(e.status, {"message": e.grund}))
                         return
-                    grund, koerper = self._pruefen(art, koerper)
+                    if verbinden:
+                        grund, koerper = await self._verbinden_pruefen(verbinden.group("id"), koerper)
+                    else:
+                        grund, koerper = self._pruefen(art, koerper)
                     if grund:
                         logger.warning("Abgelehnt: %s %s — %s", methode, pfad_bereinigt(ziel)[:120], grund)
                         c_writer.write(_antwort(403, {"message": f"Docker-Wächter: {grund}"}))
@@ -360,14 +427,17 @@ class Waechter:
 
                 if u_writer is None:
                     try:
-                        u_reader, u_writer = await asyncio.open_connection(*self.upstream)
-                    except OSError as e:
+                        u_reader, u_writer = await asyncio.wait_for(
+                            asyncio.open_connection(*self.upstream), _ZEIT_VERBINDEN)
+                    except (OSError, asyncio.TimeoutError) as e:
                         c_writer.write(_antwort(502, {"message": f"Docker nicht erreichbar: {e}"}))
                         return
                 if koerper is None and (_feld(felder, "Transfer-Encoding") or "").lower() == "chunked":
                     try:
-                        koerper = await _chunked_lesen(c_reader, _DURCHREICH_MAX)
-                    except Abgelehnt as e:
+                        koerper = await asyncio.wait_for(_chunked_lesen(c_reader, _DURCHREICH_MAX), _ZEIT_KOERPER)
+                    except (Abgelehnt, asyncio.TimeoutError) as e:
+                        if isinstance(e, asyncio.TimeoutError):
+                            return
                         c_writer.write(_antwort(e.status, {"message": e.grund}))
                         return
                     felder = [(n, w) for n, w in felder if n.lower() != "transfer-encoding"]
@@ -412,7 +482,8 @@ class Waechter:
                     return
                 if (_feld(a_felder, "Connection") or "").lower() == "close":
                     return
-        except (ConnectionError, asyncio.IncompleteReadError, asyncio.LimitOverrunError, ValueError) as e:
+        except (ConnectionError, OSError, asyncio.IncompleteReadError, asyncio.LimitOverrunError, ValueError,
+                IndexError, RecursionError, asyncio.TimeoutError, Abgelehnt) as e:
             logger.debug("Verbindung beendet: %s", e)
         finally:
             for w in (c_writer, u_writer):

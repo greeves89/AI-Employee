@@ -4,6 +4,7 @@ Umgebung:
   WAECHTER_UPSTREAM       Socket-Proxy, Standard ``docker-socket-proxy:2375``
   DOCKER_WAECHTER_TOKEN   Dienst-Schlüssel für ``/aie/compose`` (vom Orchestrator)
   AGENT_MOUNT_CATALOG, SECONDBRAIN_BASE   wie im Orchestrator: erlaubte Host-Pfade
+  (der Orchestrator sieht Second Brains unter /srv/secondbrain, Standard der Einstellung)
 """
 
 import asyncio
@@ -35,8 +36,11 @@ async def main() -> None:
         logging.getLogger("docker_waechter").warning("DOCKER_WAECHTER_TOKEN fehlt — Agenten-Apps sind gesperrt")
         schluessel = ""
     pfade = erlaubte_host_pfade()
-    waechter = Waechter(upstream, pfade, dienst_schluessel=schluessel,
-                        compose=lambda daten: compose.bearbeiten(runner, daten))
+    # Dasselbe Profil, das docker_service den Agenten mitgibt — nur genau das ist erlaubt.
+    from app.services.docker_service import _SECCOMP_PROFILE
+    waechter = Waechter(upstream, pfade, dienst_schluessel=schluessel, seccomp_profil=_SECCOMP_PROFILE,
+                        compose=lambda daten: compose.bearbeiten(runner, daten),
+                        orchestrator_name=settings.orchestrator_container_name)
     server = await waechter.starten("0.0.0.0", 2375)
     logging.getLogger("docker_waechter").info("Docker-Wächter vor %s:%s, erlaubte Host-Pfade: %s",
                                               host, upstream[1], ", ".join(pfade))

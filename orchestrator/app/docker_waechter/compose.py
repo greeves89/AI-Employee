@@ -43,9 +43,9 @@ def quelle_aus(daten: Any) -> cp.Quelle | str:
     teilpfad = _pfad(daten.get("teilpfad") or "", absolut=False)
     bereich = _pfad(daten.get("bereich") or "", absolut=False) if not daten.get("bereich") else \
         _pfad(daten.get("bereich"), absolut=True)
-    if not isinstance(volume, str) or not _VOLUME.match(volume):
+    if not isinstance(volume, str) or not _VOLUME.fullmatch(volume):
         return "Volume ungültig"
-    if not isinstance(praefix, str) or not _PRAEFIX.match(praefix):
+    if not isinstance(praefix, str) or not _PRAEFIX.fullmatch(praefix):
         return "Präfix ungültig"
     if sicht not in _SICHTEN:
         return "Sicht ungültig"
@@ -65,7 +65,7 @@ def bearbeiten(docker, daten: dict) -> tuple[int, dict]:
     if isinstance(quelle, str):
         return 400, {"message": quelle}
     projekt, befehl, modell = daten.get("projekt"), daten.get("befehl"), daten.get("modell")
-    if not isinstance(projekt, str) or not _PROJEKT.match(projekt) or not projekt.startswith(quelle.praefix):
+    if not isinstance(projekt, str) or not _PROJEKT.fullmatch(projekt) or not projekt.startswith(quelle.praefix):
         return 400, {"message": "Projektname ungültig"}
     if befehl not in cp.ERLAUBTE_BEFEHLE:
         return 400, {"message": "Befehl nicht erlaubt"}

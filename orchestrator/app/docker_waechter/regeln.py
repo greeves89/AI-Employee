@@ -19,8 +19,17 @@ from typing import Any, Iterable
 ERLAUBTE_CAPS = frozenset({"CHOWN", "SETUID", "SETGID", "DAC_OVERRIDE", "FOWNER", "KILL"})
 #: Namespace-Modi, die keine fremden Namespaces teilen.
 _EIGENER_NAMESPACE = ("", "private", "shareable", "default")
-#: Netze, die kein Host- oder Fremd-Netz sind; benannte Netze sind ebenso erlaubt.
-_GESPERRTE_NETZE = ("host",)
+#: Netze, in die ein Container darf: das Agenten-Netz und die App-Netze der Agenten.
+#: Nie das Netz des Socket-Proxys oder des Wächters — von dort aus wäre Docker ohne
+#: Prüfung erreichbar.
+AGENTEN_NETZ = "ai-employee-network"
+APP_NETZ_PRAEFIX = "ai-employee-apps-"
+
+
+def netz_erlaubt(name: str) -> bool:
+    name = str(name or "")
+    return name in ("", "default", "bridge", "none", AGENTEN_NETZ) or (
+        name.startswith(APP_NETZ_PRAEFIX) and len(name) > len(APP_NETZ_PRAEFIX))
 
 
 def klein(wert: Any) -> Any:
@@ -112,20 +121,42 @@ def _mounts_pruefen(mounts: list, erlaubte_host_pfade: Iterable[str]) -> str | N
     return None
 
 
-def _security_opt_pruefen(optionen: list) -> str | None:
+def _security_opt_pruefen(optionen: list, seccomp_profil: str | None) -> str | None:
+    """``no-new-privileges`` (an) und genau das Seccomp-Profil der Plattform — sonst nichts.
+    Ein eigenes Profil mit ``SCMP_ACT_ALLOW`` wäre so gut wie ``unconfined``."""
+    import json
+
     for opt in optionen:
         text = str(opt).strip()
-        schluessel, _, wert = text.replace(":", "=", 1).partition("=")
-        schluessel = schluessel.lower()
-        if schluessel == "no-new-privileges":
+        # Schlüssel bis zum ersten „=“ oder „:“ — dahinter darf JSON mit „:“ stehen.
+        trenner = min((i for i in (text.find("="), text.find(":")) if i >= 0), default=len(text))
+        schluessel, wert = text[:trenner].lower(), text[trenner + 1:]
+        if schluessel == "no-new-privileges" and wert.strip().lower() in ("", "true", "1"):
             continue
-        if schluessel == "seccomp" and wert.strip().lower() not in ("unconfined", ""):
-            continue
+        if schluessel == "seccomp" and seccomp_profil:
+            try:
+                if json.loads(wert) == json.loads(seccomp_profil):
+                    continue
+            except ValueError:
+                pass
         return f"security_opt {text[:40]!r} ist gesperrt"
     return None
 
 
-def container_anlegen(koerper: dict, erlaubte_host_pfade: Iterable[str]) -> str | None:
+def _netze_pruefen(koerper: dict) -> str | None:
+    endpunkte = ((koerper.get("networkingconfig") or {}).get("endpointsconfig") or {})
+    if not isinstance(endpunkte, dict):
+        return "NetworkingConfig in unbekannter Form"
+    for name, einstellung in endpunkte.items():
+        if not netz_erlaubt(name):
+            return f"Netz {name!r} ist gesperrt"
+        if _liste((einstellung or {}).get("aliases")):
+            return "Netz-Aliase sind gesperrt"
+    return None
+
+
+def container_anlegen(koerper: dict, erlaubte_host_pfade: Iterable[str],
+                      seccomp_profil: str | None = None) -> str | None:
     """``POST /containers/create`` — erlaubt nur, was die Plattform selbst anlegt."""
     if not isinstance(koerper, dict):
         return "Anfrage ist kein JSON-Objekt"
@@ -142,7 +173,7 @@ def container_anlegen(koerper: dict, erlaubte_host_pfade: Iterable[str]) -> str 
         if _liste(hc.get(feld)):
             return f"{feld} ist gesperrt"
     netz = str(hc.get("networkmode") or "")
-    if netz in _GESPERRTE_NETZE or netz.startswith("container:"):
+    if not netz_erlaubt(netz):
         return f"NetworkMode {netz!r} ist gesperrt"
     for feld in ("pidmode", "ipcmode", "utsmode", "usernsmode", "cgroupnsmode"):
         modus = str(hc.get(feld) or "").lower()
@@ -162,7 +193,8 @@ def container_anlegen(koerper: dict, erlaubte_host_pfade: Iterable[str]) -> str 
     for feld in ("maskedpaths", "readonlypaths"):
         if feld in hc and hc.get(feld) is not None:
             return f"{feld} setzt nur Docker selbst"
-    return (_security_opt_pruefen(_liste(hc.get("securityopt")))
+    return (_netze_pruefen(koerper)
+            or _security_opt_pruefen(_liste(hc.get("securityopt")), seccomp_profil)
             or _binds_pruefen(_liste(hc.get("binds")), erlaubte_host_pfade)
             or _mounts_pruefen(_liste(hc.get("mounts")), erlaubte_host_pfade))
 
@@ -231,3 +263,31 @@ def zielcontainer(inspect: dict) -> str | None:
     if any("docker.sock" in q or "containerd.sock" in q for q in quellen):
         return "Ziel hat den Docker-Socket"
     return None
+
+
+def netz_anlegen(koerper: dict) -> str | None:
+    """``POST /networks/create`` — nur App-Netze der Agenten: Bridge, ohne Optionen."""
+    if not isinstance(koerper, dict):
+        return "Anfrage ist kein JSON-Objekt"
+    koerper = klein(koerper)
+    if not str(koerper.get("name") or "").startswith(APP_NETZ_PRAEFIX):
+        return "Nur App-Netze der Agenten dürfen angelegt werden"
+    if str(koerper.get("driver") or "bridge") != "bridge":
+        return f"Netz-Treiber {koerper.get('driver')!r} ist gesperrt"
+    for feld in ("options", "configfrom", "configonly", "ingress", "scope", "ipam"):
+        wert = koerper.get(feld)
+        if wert and wert != {"driver": "default"} and wert != "local":
+            return f"Netz-Einstellung {feld!r} ist gesperrt"
+    return None
+
+
+def netz_verbinden(netz_name: str, koerper: dict) -> str | None:
+    """``POST /networks/{id}/connect`` — nur in erlaubte Netze, ohne Aliase."""
+    if not netz_erlaubt(netz_name) or netz_name in ("", "default", "none"):
+        return f"Netz {netz_name!r} ist gesperrt"
+    if not isinstance(koerper, dict):
+        return "Anfrage ist kein JSON-Objekt"
+    if _liste(((klein(koerper).get("endpointconfig") or {}).get("aliases"))):
+        return "Netz-Aliase sind gesperrt"
+    return None
+

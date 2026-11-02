@@ -22,6 +22,12 @@ class Netztrennung(unittest.TestCase):
         mitglieder = [n for n, d in self.dienste.items() if "docker-api" in (d.get("networks") or [])]
         self.assertEqual(sorted(mitglieder), ["docker-socket-proxy", "docker-waechter"])
 
+    def test_waechter_erreicht_nur_der_orchestrator(self):
+        self.assertTrue(self.netze["waechter-api"].get("internal"))
+        mitglieder = [n for n, d in self.dienste.items() if "waechter-api" in (d.get("networks") or [])]
+        self.assertEqual(sorted(mitglieder), ["docker-waechter", "orchestrator"])
+        self.assertEqual(sorted(self.dienste["docker-waechter"]["networks"]), ["docker-api", "waechter-api"])
+
     def test_orchestrator_spricht_nur_mit_dem_waechter(self):
         env = self.dienste["orchestrator"]["environment"]
         self.assertEqual(env["DOCKER_HOST"], "tcp://docker-waechter:2375")
