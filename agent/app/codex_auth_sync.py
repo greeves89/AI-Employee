@@ -35,6 +35,35 @@ def _hash() -> str:
         return ""
 
 
+def ist_platzhalter() -> bool:
+    """Liegt der Zugang hinter dem Egress-Proxy (Platzhalter statt Token)?"""
+    try:
+        with open(auth_path(), encoding="utf-8") as fh:
+            return "aie-geheim-" in fh.read()
+    except OSError:
+        return False
+
+
+def platzhalter_frisch_halten() -> None:
+    """Hinter dem Proxy darf die CLI nie selbst erneuern wollen — ihr Erneuerungs-Token
+    ist ein Platzhalter, der nie aufgelöst wird. Sie erneuert, wenn ``last_refresh`` alt
+    ist; deshalb steht dort vor jedem Lauf „jetzt“. Das echte Token hält der
+    Orchestrator frisch, der Proxy setzt immer das aktuelle ein."""
+    import json
+    from datetime import datetime, timezone
+
+    if not ist_platzhalter():
+        return
+    try:
+        with open(auth_path(), encoding="utf-8") as fh:
+            daten = json.load(fh)
+        daten["last_refresh"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        with open(auth_path(), "w", encoding="utf-8") as fh:
+            json.dump(daten, fh)
+    except (OSError, ValueError) as e:
+        logger.warning("Codex auth.json (Platzhalter) nicht aufgefrischt: %s", e)
+
+
 def record_start(source: str) -> None:
     """Merken, woher der Zugang kam und wie er beim Start aussah.
 
@@ -54,8 +83,8 @@ async def push_if_rotated() -> bool:
     Vergleichswert erst nach einer erfolgreichen Uebernahme fortgeschrieben wird.
     """
     global _last_hash
-    if _source != "own":
-        return False
+    if _source != "own" or ist_platzhalter():
+        return False  # nie einen Platzhalter als „erneuerten Zugang“ zurückschreiben
     current = _hash()
     if not current or current == _last_hash:
         return False

@@ -600,7 +600,8 @@ def setup_codex_auth() -> None:
             # Aus der Umgebung entfernen, damit der Zugang nicht in jedem
             # Prozessabbild und in `env`-Ausgaben mitläuft.
             os.environ.pop("CODEX_AUTH_JSON", None)
-            codex_auth_sync.record_start("own")
+            # Hinter dem Egress-Proxy: Platzhalter — nie als eigener Zugang zurückmelden.
+            codex_auth_sync.record_start("platzhalter" if "aie-geheim-" in own else "own")
             print(f"[Agent] Codex auth configured from own credential at {target}")
             return
         except Exception as e:

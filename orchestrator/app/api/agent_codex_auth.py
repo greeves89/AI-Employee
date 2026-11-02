@@ -103,6 +103,9 @@ async def store_rotated_codex_auth(
     except Exception:  # noqa: BLE001 — unlesbar gespeichert: dann ist jede Erneuerung besser
         stored = {}
 
+    if "aie-geheim-" in json.dumps(body.auth_json):
+        # Hinter dem Egress-Proxy hat der Agent nur Platzhalter — nie den eigenen Zugang damit ersetzen.
+        raise HTTPException(status_code=400, detail="Platzhalter statt Zugang")
     reason = rotation_rejection(stored, body.auth_json)
     if reason:
         logger.warning("[Zugang] Codex-Rotation von %s abgelehnt: %s", agent_id, reason)

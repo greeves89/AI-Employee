@@ -192,6 +192,7 @@ services:
       EGRESS_PROXY_TOKEN: ${EGRESS_PROXY_TOKEN:-}
       # Claude-Zugang nur als Platzhalter: leer = aus, "alle" oder Agenten-IDs mit Komma.
       EGRESS_KI_ZUGANG: ${EGRESS_KI_ZUGANG:-}
+      EGRESS_CODEX_ZUGANG: ${EGRESS_CODEX_ZUGANG:-}
       # Eigener, minimal berechtigter Redis-Zugang je Agent statt des geteilten
       # Admin-Zugangs (#589). Standard aus — aendert, wie JEDER Agent sich
       # verbindet.

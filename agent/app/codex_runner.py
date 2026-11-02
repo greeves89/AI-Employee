@@ -170,6 +170,8 @@ def _codex_auth_problem() -> str | None:
         return f"Codex-Anmeldedaten nicht lesbar ({path}): {e}"
 
     tok = (parsed.get("tokens") or {}).get("access_token", "")
+    if isinstance(tok, str) and tok.startswith("aie-geheim-"):
+        return None  # hinter dem Egress-Proxy: das echte Token setzt der Proxy ein
     if not isinstance(tok, str) or tok.count(".") != 2:
         return "Codex-Anmeldedaten unvollstaendig (kein gueltiger Access-Token in auth.json) — bitte neu anmelden."
     try:
@@ -237,6 +239,7 @@ class CodexAgentRunner:
             # Neuer Faden: die Summe der CLI beginnt bei null.
             self._nutzung_stand = {}
 
+        codex_auth_sync.platzhalter_frisch_halten()
         auth_problem = _codex_auth_problem()
         if auth_problem:
             await _publish(self.log_publisher, stream, target_id, "error", {"message": auth_problem})

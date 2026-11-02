@@ -4515,6 +4515,7 @@ eingeschaltet, gehen Agenten für HTTPS über ihn hinaus:
 | Browser des Agenten (auch der Browser von Claude Code) | geht ebenfalls über den Proxy und traut seinem Zertifikat *(seit 1.415.0)* |
 | Zugang zu externen MCP-Servern (Token und eigene Kopfzeilen, Kap. 14) | ebenso: Platzhalter, eingesetzt nur am Host des Servers; ein erneuertes OAuth-Token gilt sofort *(seit 1.417.0)* |
 | Claude-Zugang (Abo-Token oder API-Schlüssel, Anthropic direkt) | Platzhalter, eingesetzt nur an `api.anthropic.com` — stufenweise über `EGRESS_KI_ZUGANG` *(seit 1.418.0)*; eingesetzt wird immer das aktuelle, erneuerte Token, und die Token-Datei der Teamlizenz bekommt ein solcher Agent nicht mehr *(seit 1.421.0)* |
+| Codex-Zugang (ChatGPT-Anmeldung) | Zugangs-Token als Platzhalter, eingesetzt nur an `chatgpt.com` (immer das aktuelle, zentral erneuerte); das Erneuerungs-Token erreicht den Agenten gar nicht mehr — stufenweise über `EGRESS_CODEX_ZUGANG` *(seit 1.428.0, in Erprobung)* |
 | Alle anderen HTTPS-Ziele | laufen unverändert als Tunnel durch, der Proxy sieht keine Inhalte |
 | Klartext-HTTP (z. B. eigene Apps des Agenten) | geht wie bisher direkt |
 | Adressen im Firmen- oder Docker-Netz | über den Proxy gesperrt |
@@ -4535,6 +4536,10 @@ privaten Schlüssel.
    ohne Proxy entstanden ist, zählt dazu. Klicken. Erst danach gehen die Agenten über den Proxy.
 4. Unter **Admin → Betrieb → Sicherheitsstatus** zeigt der Punkt **Keys in Agenten**, welche
    Keys noch im Klartext in Agenten liegen.
+
+**Codex-Zugang hinter den Proxy legen** (stufenweise, in Erprobung): wie beim Claude-Zugang, mit
+`EGRESS_CODEX_ZUGANG` (Agenten-Kennungen mit Komma oder `alle`), danach die Agenten aktualisieren.
+Die CLI erneuert dann nie selbst; das tut der Orchestrator für alle zentral.
 
 **Claude-Zugang hinter den Proxy legen** (stufenweise): In der `.env`
 `EGRESS_KI_ZUGANG` setzen, zuerst auf die Kennung eines Agenten (z. B. `a1b2c3d4`),
