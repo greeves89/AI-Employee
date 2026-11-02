@@ -145,6 +145,31 @@ class Durchreicher(unittest.IsolatedAsyncioTestCase):
         self.assertIn(b"/containers/json", antworten[1][1])
         self.assertEqual(antworten[2][1], b'{"n": 0}{"n": 1}{"n": 2}', "chunked Strom durchgereicht")
 
+    async def test_docker_schliesst_ruhende_verbindung(self):
+        """Der Socket-Proxy schliesst seine Seite nach einer Antwort (Ruhezeit abgelaufen).
+        Die nächste Anfrage über dieselbe Client-Verbindung muss trotzdem eine Antwort
+        bekommen — vorher schloss der Wächter dann wortlos (RemoteDisconnected im Client)."""
+        async def einmal(reader, writer):
+            kopf = await reader.readuntil(b"\r\n\r\n")
+            text = json.dumps({"zeile": kopf.split(b"\r\n")[0].decode()}).encode()
+            writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: " + str(len(text)).encode() + b"\r\n\r\n" + text)
+            await writer.drain()
+            writer.close()
+        docker = await asyncio.start_server(einmal, "127.0.0.1", 0)
+        w = proxy.Waechter(("127.0.0.1", docker.sockets[0].getsockname()[1]), [], dienst_schluessel="s" * 40)
+        server = await w.starten("127.0.0.1", 0)
+        try:
+            antworten = await _senden(
+                server.sockets[0].getsockname()[1],
+                b"GET /v1.45/_ping HTTP/1.1\r\nHost: docker\r\n\r\n",
+                b"GET /v1.45/containers/json HTTP/1.1\r\nHost: docker\r\n\r\n",
+            )
+        finally:
+            server.close()
+            docker.close()
+        self.assertEqual(len(antworten), 2)
+        self.assertIn(b"/containers/json", antworten[1][1])
+
     async def test_gesperrtes_anlegen_kommt_nie_bei_docker_an(self):
         for pfad in ("/v1.45/containers/create", "/containers/create", "//containers/create",
                      "/v1.45/containers/%63reate", "/v1.45/x/../containers/create"):

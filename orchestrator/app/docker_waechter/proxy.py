@@ -493,13 +493,18 @@ class Waechter:
                     felder = [(n, w) for n, w in felder if n.lower() not in ("content-length", "transfer-encoding")]
                     felder.append(("Content-Length", str(len(koerper))))
 
-                if u_writer is None:
-                    try:
-                        u_reader, u_writer = await asyncio.wait_for(
-                            asyncio.open_connection(*self.upstream), _ZEIT_VERBINDEN)
-                    except (OSError, asyncio.TimeoutError) as e:
-                        c_writer.write(_antwort(502, {"message": f"Docker nicht erreichbar: {e}"}))
-                        return
+                # Je Anfrage eine frische Verbindung zu Docker: eine ruhende schliesst der
+                # Socket-Proxy, und die nächste Anfrage darüber bekäme nie eine Antwort —
+                # der Client sähe die Verbindung wortlos enden (RemoteDisconnected).
+                if u_writer is not None:
+                    u_writer.close()
+                    u_writer = None
+                try:
+                    u_reader, u_writer = await asyncio.wait_for(
+                        asyncio.open_connection(*self.upstream), _ZEIT_VERBINDEN)
+                except (OSError, asyncio.TimeoutError) as e:
+                    c_writer.write(_antwort(502, {"message": f"Docker nicht erreichbar: {e}"}))
+                    return
                 if koerper is None and (_feld(felder, "Transfer-Encoding") or "").lower() == "chunked":
                     try:
                         koerper = await asyncio.wait_for(_chunked_lesen(c_reader, _DURCHREICH_MAX), _ZEIT_KOERPER)
