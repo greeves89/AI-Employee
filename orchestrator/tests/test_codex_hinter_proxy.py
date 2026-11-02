@@ -35,6 +35,33 @@ class Umstellen(unittest.TestCase):
         self.assertEqual(gespeichert, {"CODEX_ACCESS_TOKEN": "enc:x.y.z"})
         self.assertIsNone(egress.platzhalter_aus(egress.CODEX_OHNE_ERNEUERUNG), "nie auflösbar")
 
+    def test_nichts_vom_original_bleibt(self):
+        """Keine Signatur, kein Erneuerungs-Token, kein Schlüssel im Agenten — nur die Angaben."""
+        kopf, inhalt, signatur = "eyJhbGciOiJSUzI1NiJ9", "eyJlbWFpbCI6ImFAZXhhbXBsZS5jb20ifQ", "SIGNATUR-ECHT"
+        roh = {**AUTH, "OPENAI_API_KEY": "sk-echt",
+               "tokens": {**AUTH["tokens"], "id_token": f"{kopf}.{inhalt}.{signatur}"}}
+        env = {"CODEX_AUTH_JSON": json.dumps(roh)}
+        with _stufe("a1"), patch("app.core.encryption.encrypt_token", lambda w: "enc:" + w):
+            egress.codex_umstellen("a1", env)
+        neu = json.loads(env["CODEX_AUTH_JSON"])
+        for echt in ("x.y.z", "rt-echt", "sk-echt", signatur, kopf):
+            self.assertNotIn(echt, env["CODEX_AUTH_JSON"])
+        self.assertIsNone(neu["OPENAI_API_KEY"])
+        teile = neu["tokens"]["id_token"].split(".")
+        self.assertEqual(len(teile), 3)
+        self.assertEqual(teile[1], inhalt, "Angaben für die CLI bleiben lesbar")
+        self.assertTrue(all(teile), "die CLI verlangt drei nicht leere Teile")
+
+    def test_unlesbares_id_token(self):
+        for kaputt in (None, "", "ohne-punkte", "a..c"):
+            with self.subTest(kaputt=kaputt):
+                env = {"CODEX_AUTH_JSON": json.dumps({**AUTH, "tokens": {**AUTH["tokens"], "id_token": kaputt}})}
+                with _stufe("a1"), patch("app.core.encryption.encrypt_token", lambda w: "enc:" + w):
+                    egress.codex_umstellen("a1", env)
+                # Ein Nicht-JWT schaltet die CLI auf api.openai.com um: immer lesbar halten.
+                self.assertEqual(json.loads(env["CODEX_AUTH_JSON"])["tokens"]["id_token"],
+                                 egress._JWT_UNSIGNIERT + ".e30.unsigniert")
+
     def test_nur_in_der_stufe(self):
         for wert, agent in (("", "a1"), ("b2", "a1")):
             with self.subTest(wert=wert), _stufe(wert):

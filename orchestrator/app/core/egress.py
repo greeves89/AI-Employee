@@ -227,13 +227,31 @@ def codex_ueber_proxy(agent_id: str) -> bool:
     return wert == "alle" or (agent_id or "").lower() in {x.strip() for x in wert.split(",") if x.strip()}
 
 
+#: Kopf eines unsignierten JWT ({"alg":"none","typ":"JWT"}).
+_JWT_UNSIGNIERT = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0"
+
+
+def _ohne_signatur(id_token: object) -> str:
+    """Das ``id_token`` ohne die Signatur von OpenAI.
+
+    Die CLI liest daraus nur Angaben (Tarif, Konto) und prüft die Signatur nicht; ein
+    signiertes Token gehört aber nicht in den Agenten. Inhalt bleibt, Kopf und
+    Signatur werden ersetzt. Ohne lesbaren Inhalt: leerer Inhalt (``{}``) — ein Wert,
+    den die CLI nicht als Token lesen kann, schaltet sie auf api.openai.com um (geprüft).
+    """
+    teile = id_token.split(".") if isinstance(id_token, str) else []
+    inhalt = teile[1] if len(teile) == 3 and teile[1] else "e30"
+    return f"{_JWT_UNSIGNIERT}.{inhalt}.unsigniert"
+
+
 def codex_umstellen(agent_id: str, env: dict[str, str]) -> dict[str, str]:
     """Codex-Zugang (``CODEX_AUTH_JSON``) durch Platzhalter ersetzen.
 
     Das Zugangs-Token wird zum Platzhalter (eingesetzt nur an ``chatgpt.com``, immer
     der aktuelle Wert), das Erneuerungs-Token zu einem Wert, der nie aufgelöst wird.
     Die CLI zerlegt das Token nicht selbst, sondern schickt es als Kopfzeile (auf
-    einer Anlage geprüft). Die Kennung des Kontos bleibt — sie ist kein Zugang.
+    einer Anlage geprüft). Die Kennung des Kontos bleibt — sie ist kein Zugang; das
+    ``id_token`` verliert seine Signatur, ein ``OPENAI_API_KEY`` daneben fällt weg.
     Liefert die Abschrift verschlüsselt für ``agent.config["egress_ki"]``.
     """
     import json
@@ -252,7 +270,11 @@ def codex_umstellen(agent_id: str, env: dict[str, str]) -> dict[str, str]:
     from app.core.encryption import encrypt_token
     tokens["access_token"] = platzhalter(KI_CODEX, KI)
     tokens["refresh_token"] = CODEX_OHNE_ERNEUERUNG
+    tokens["id_token"] = _ohne_signatur(tokens.get("id_token"))
     daten["tokens"] = tokens
+    # Ein Schlüssel daneben wäre ein zweiter Zugang im Klartext; im Token-Betrieb ungenutzt.
+    if daten.get("OPENAI_API_KEY"):
+        daten["OPENAI_API_KEY"] = None
     env["CODEX_AUTH_JSON"] = json.dumps(daten)
     return {"CODEX_ACCESS_TOKEN": encrypt_token(zugang)}
 
