@@ -87,7 +87,8 @@ def veraltet(agent_config: dict | None, agent_id: str | None = None) -> bool:
     cfg = agent_config or {}
     if bool(cfg.get("egress")) != aktiv():
         return True
-    return agent_id is not None and bool(cfg.get("egress_ki_stufe")) != ki_ueber_proxy(agent_id)
+    return agent_id is not None and (bool(cfg.get("egress_ki_stufe")) != ki_ueber_proxy(agent_id)
+                                     or bool(cfg.get("egress_codex_stufe")) != codex_ueber_proxy(agent_id))
 
 
 def platzhalter(secret_id: int, art: str = "") -> str:
@@ -195,9 +196,17 @@ def mcp_ziel(url: str) -> str | None:
 
 #: Claude-Zugang: welche Variable welche Nummer traegt, und wohin er darf.
 # Nummern der Claude-Platzhalter: Abo (OAuth) und API-Schluessel
-KI_ABO, KI_SCHLUESSEL = 0, 1
-KI_VARIABLEN = {"CLAUDE_CODE_OAUTH_TOKEN": KI_ABO, "ANTHROPIC_API_KEY": KI_SCHLUESSEL}
+KI_ABO, KI_SCHLUESSEL, KI_CODEX = 0, 1, 2
+KI_VARIABLEN = {"CLAUDE_CODE_OAUTH_TOKEN": KI_ABO, "ANTHROPIC_API_KEY": KI_SCHLUESSEL,
+                # Kein Umgebungswert: das Zugangs-Token in der auth.json der Codex-CLI.
+                "CODEX_ACCESS_TOKEN": KI_CODEX}
 KI_ZIELE = ["api.anthropic.com"]
+#: Wohin welcher Zugang darf.
+KI_ZIELE_JE = {"CLAUDE_CODE_OAUTH_TOKEN": KI_ZIELE, "ANTHROPIC_API_KEY": KI_ZIELE,
+               "CODEX_ACCESS_TOKEN": ["chatgpt.com"]}
+#: Steht statt des Erneuerungs-Tokens in der auth.json: wird nie aufgelöst. Erneuert
+#: wird zentral (CodexAuthService.ensure_fresh), nie im Agenten.
+CODEX_OHNE_ERNEUERUNG = "aie-geheim-ungenutzt"
 _KI_ANDERER_WEG = ("CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY",
                    "ANTHROPIC_BASE_URL")
 
@@ -208,6 +217,44 @@ def ki_ueber_proxy(agent_id: str) -> bool:
     if not aktiv() or not wert:
         return False
     return wert == "alle" or (agent_id or "").lower() in {x.strip() for x in wert.split(",") if x.strip()}
+
+
+def codex_ueber_proxy(agent_id: str) -> bool:
+    """Geht der Codex-Zugang dieses Agenten über den Proxy? (``EGRESS_CODEX_ZUGANG``)"""
+    wert = (getattr(settings, "egress_codex_zugang", "") or "").strip().lower()
+    if not aktiv() or not wert:
+        return False
+    return wert == "alle" or (agent_id or "").lower() in {x.strip() for x in wert.split(",") if x.strip()}
+
+
+def codex_umstellen(agent_id: str, env: dict[str, str]) -> dict[str, str]:
+    """Codex-Zugang (``CODEX_AUTH_JSON``) durch Platzhalter ersetzen.
+
+    Das Zugangs-Token wird zum Platzhalter (eingesetzt nur an ``chatgpt.com``, immer
+    der aktuelle Wert), das Erneuerungs-Token zu einem Wert, der nie aufgelöst wird.
+    Die CLI zerlegt das Token nicht selbst, sondern schickt es als Kopfzeile (auf
+    einer Anlage geprüft). Die Kennung des Kontos bleibt — sie ist kein Zugang.
+    Liefert die Abschrift verschlüsselt für ``agent.config["egress_ki"]``.
+    """
+    import json
+
+    roh = env.get("CODEX_AUTH_JSON")
+    if not roh or not codex_ueber_proxy(agent_id) or "aie-geheim-" in roh:
+        return {}
+    try:
+        daten = json.loads(roh)
+        tokens = daten.get("tokens") or {}
+        zugang = tokens.get("access_token")
+    except (ValueError, AttributeError):
+        return {}
+    if not isinstance(zugang, str) or not zugang:
+        return {}
+    from app.core.encryption import encrypt_token
+    tokens["access_token"] = platzhalter(KI_CODEX, KI)
+    tokens["refresh_token"] = CODEX_OHNE_ERNEUERUNG
+    daten["tokens"] = tokens
+    env["CODEX_AUTH_JSON"] = json.dumps(daten)
+    return {"CODEX_ACCESS_TOKEN": encrypt_token(zugang)}
 
 
 def ki_umstellen(agent_id: str, env: dict[str, str]) -> dict[str, str]:

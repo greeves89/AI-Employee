@@ -12,6 +12,7 @@ nicht. Siehe core/egress.py.
 from __future__ import annotations
 
 import hmac
+import json
 import logging
 from typing import Callable, NamedTuple
 
@@ -117,10 +118,17 @@ async def _ki_aktuell(db: AsyncSession, agent: Agent) -> dict[str, str] | None:
     try:
         _quelle, harness, geheimnis = await creds.resolve(
             db, owner_id=agent.user_id, mode=agent.mode or "claude_code",
-            model_provider=(agent.config or {}).get("model_provider") or "anthropic")
+            model_provider=(agent.config or {}).get("model_provider")
+            or ("codex" if agent.mode == "codex_cli" else "anthropic"))
     except Exception:  # noqa: BLE001
         logger.warning("Egress: Claude-Zugang von Agent %s nicht aufloesbar", scrub_log(agent.id))
         return None
+    if harness == "codex" and geheimnis:
+        try:
+            zugang = (json.loads(geheimnis).get("tokens") or {}).get("access_token")
+        except (ValueError, AttributeError):
+            return {}
+        return {"CODEX_ACCESS_TOKEN": zugang} if isinstance(zugang, str) and zugang else {}
     return creds.env_for(harness, geheimnis) if harness == "claude_code" and geheimnis else {}
 
 
@@ -137,10 +145,10 @@ async def _ki_zugang(db: AsyncSession, agent: Agent) -> list[_Freigabe]:
         return []
     aktuell = await _ki_aktuell(db, agent)
     if aktuell is None:
-        return [_Freigabe(egress.KI, egress.KI_VARIABLEN[var], var, egress.KI_ZIELE,
+        return [_Freigabe(egress.KI, egress.KI_VARIABLEN[var], var, egress.KI_ZIELE_JE[var],
                           lambda enc=enc: decrypt_token(enc))
                 for var, enc in gespeichert.items()]
-    return [_Freigabe(egress.KI, egress.KI_VARIABLEN[var], var, egress.KI_ZIELE, lambda w=aktuell[var]: w)
+    return [_Freigabe(egress.KI, egress.KI_VARIABLEN[var], var, egress.KI_ZIELE_JE[var], lambda w=aktuell[var]: w)
             for var in gespeichert if aktuell.get(var)]
 
 
