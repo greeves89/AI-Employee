@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.426.0] - 2026-11-02
+
+### Sicherheit
+- Docker-Wächter: Der Orchestrator spricht Docker nur noch über einen eigenen Dienst, der gefährliche Container (privilegiert, Host-Netz, Host-Ordner, Docker-Socket, fremde Netze, offenes Seccomp) und Befehle in fremde Container ablehnt und Agenten-Apps nach eigener Prüfung selbst startet. Das Runner-Abbild für Apps ist per Digest festgelegt.
+
+## Tests
+- 48 Wächter-Tests: Regeln mit echter SDK-Serialisierung; Durchreicher gegen nachgebauten Docker (Ströme, 101, Rahmung, Umgehungen, Zielcontainer, Netze); Compose; Netztrennung.
+- Live gegen Docker auf einer Anlage:
+  - Alle 10 echten Agenten-HostConfigs mit Seccomp sind erlaubt.
+  - Normalbetrieb geht durch: create, exec (Hijack), put/get_archive, Logs, Events, App-Netz anlegen/verbinden.
+  - Alles Gefährliche gibt 403.
+  - Compose: Test-App up/down über den Wächter, `privileged` → 422, Runner mit Socket vom Orchestrator → 403.
+- Betroffene Testmodule: keine neuen Fehlschläge (11 lokale, umgebungsbedingte identisch mit main).
+
 ## [1.425.1] - 2026-11-02
 
 ### Dokumentation
