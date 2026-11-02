@@ -442,7 +442,7 @@ class RunnerTests(unittest.TestCase):
 
     def test_runner_mit_grenzen_und_ohne_rest(self):
         docker = self._docker()
-        cp.ausfuehren(docker, QUELLE, PROJEKT, {"services": {}}, ["up", "-d"])
+        cp.ausfuehren_geprueft(docker, QUELLE, PROJEKT, {"services": {}}, ["up", "-d"])
         kw = docker.client.containers.run.call_args.kwargs
         self.assertEqual((kw["mem_limit"], kw["pids_limit"]), (cp.RUNNER_SPEICHER, cp.RUNNER_PROZESSE))
         self.assertTrue(kw["detach"])
@@ -452,7 +452,7 @@ class RunnerTests(unittest.TestCase):
         docker = self._docker()
         c = docker.client.containers.run.return_value
         c.wait.side_effect = TimeoutError("read timeout")
-        code, ausgabe = cp.ausfuehren(docker, QUELLE, PROJEKT, None, ["down"])
+        code, ausgabe = cp.ausfuehren_geprueft(docker, QUELLE, PROJEKT, None, ["down"])
         self.assertEqual(code, 124)
         self.assertIn("Zeitüberschreitung", ausgabe)
         c.kill.assert_called_once()
@@ -460,20 +460,20 @@ class RunnerTests(unittest.TestCase):
 
     def test_runner_nur_aus_der_registry_und_ueber_die_kennung(self):
         docker = self._docker()
-        cp.ausfuehren(docker, QUELLE, PROJEKT, None, ["down"])
+        cp.ausfuehren_geprueft(docker, QUELLE, PROJEKT, None, ["down"])
         self.assertEqual(docker.client.containers.run.call_args.kwargs["image"], "sha256:runner")
 
     def test_lokal_gebautes_runner_abbild_wird_ersetzt(self):
         """Hiesse ein Build docker:cli, liefe sonst Agenten-Code mit dem Docker-Socket."""
         docker = self._docker(digests=())
-        cp.ausfuehren(docker, QUELLE, PROJEKT, None, ["down"])
-        docker.client.images.pull.assert_called_once_with("docker", tag="cli")
+        cp.ausfuehren_geprueft(docker, QUELLE, PROJEKT, None, ["down"])
+        docker.client.images.pull.assert_called_once_with("docker", tag=cp.RUNNER_IMAGE.split("@")[1])
         self.assertEqual(docker.client.containers.run.call_args.kwargs["image"], "sha256:frisch")
 
     def test_ausfuehren_ueber_stdin_ohne_datei_im_workspace(self):
         docker = self._docker(b"Started")
         modell = {"name": PROJEKT, "services": {"web": {"image": "nginx"}}}
-        cp.ausfuehren(docker, QUELLE, PROJEKT, modell, ["up", "-d", "--build"])
+        cp.ausfuehren_geprueft(docker, QUELLE, PROJEKT, modell, ["up", "-d", "--build"])
         kw = docker.client.containers.run.call_args.kwargs
         self.assertEqual(json.loads(kw["environment"]["AIE_COMPOSE"]), modell)
         self.assertEqual(kw["environment"]["AIE_PROJEKT"], PROJEKT)
@@ -484,7 +484,7 @@ class RunnerTests(unittest.TestCase):
 
     def test_stoppen_ohne_datei_und_ohne_workspace(self):
         docker = self._docker(b"")
-        cp.ausfuehren(docker, QUELLE, PROJEKT, None, ["down"])
+        cp.ausfuehren_geprueft(docker, QUELLE, PROJEKT, None, ["down"])
         kw = docker.client.containers.run.call_args.kwargs
         self.assertEqual(kw["command"], ["docker", "compose", "-p", PROJEKT, "down"])
         self.assertEqual(kw["mounts"], [])

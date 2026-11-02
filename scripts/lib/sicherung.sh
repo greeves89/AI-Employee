@@ -94,21 +94,29 @@ backup_token_sicherstellen() {
 # falls er fehlt oder zu kurz ist. Orchestrator und Proxy lesen ihn aus der .env;
 # Agenten bekommen ihn nie. Eingeschaltet wird der Proxy davon nicht.
 # Rückgabe 0 = neu angelegt, 1 = war schon da (oder keine .env).
-egress_token_sicherstellen() {
-    local datei="$1" token vorhanden
+# dienst_token_sicherstellen <datei> <NAME> — einen Dienst-Schlüssel anlegen, falls
+# er fehlt oder zu kurz ist. 0 = neu angelegt, 1 = war schon da (oder keine Datei).
+dienst_token_sicherstellen() {
+    local datei="$1" name="$2" token vorhanden
     [ -f "$datei" ] || return 1
-    vorhanden=$(env_wert "$datei" EGRESS_PROXY_TOKEN)
+    vorhanden=$(env_wert "$datei" "$name")
     [ "${#vorhanden}" -ge 32 ] && return 1
     token=$(python3 -c 'import secrets; print(secrets.token_hex(32))' 2>/dev/null \
         || openssl rand -hex 32)
     [ -n "$token" ] || return 1
-    if grep -q "^EGRESS_PROXY_TOKEN=" "$datei"; then
-        sed -i.bak "s|^EGRESS_PROXY_TOKEN=.*|EGRESS_PROXY_TOKEN=${token}|" "$datei" && rm -f "${datei}.bak"
+    if grep -q "^${name}=" "$datei"; then
+        sed -i.bak "s|^${name}=.*|${name}=${token}|" "$datei" && rm -f "${datei}.bak"
     else
-        printf '\nEGRESS_PROXY_TOKEN=%s\n' "$token" >> "$datei"
+        printf '\n%s=%s\n' "$name" "$token" >> "$datei"
     fi
     return 0
 }
+
+egress_token_sicherstellen() { dienst_token_sicherstellen "$1" EGRESS_PROXY_TOKEN; }
+
+# Schlüssel zwischen Orchestrator und Docker-Wächter (P1-13). Ohne ihn startet der
+# Wächter keine Agenten-Apps.
+waechter_token_sicherstellen() { dienst_token_sicherstellen "$1" DOCKER_WAECHTER_TOKEN; }
 
 # Name des Compose-Projekts der laufenden Anlage. Volumes heißen
 # "<projekt>_<name>"; das Projekt ist ohne `name:` in der Compose-Datei der

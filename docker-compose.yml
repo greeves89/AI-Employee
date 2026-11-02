@@ -89,8 +89,49 @@ services:
       resources:
         limits:
           memory: 64M
+    # Nur der Docker-Wächter erreicht den Proxy (P1-13).
+    networks:
+      - docker-api
+
+  # Docker-Wächter (P1-13): einziger Weg des Orchestrators zu Docker. Prüft das
+  # Anlegen von Containern, exec und Volumes (kein privileged, keine Host-Pfade
+  # ausser Katalog/Second Brains, nie der Docker-Socket) und startet Agenten-Apps
+  # selbst — nach eigener Prüfung der Compose-Datei. Läuft aus dem signierten
+  # Orchestrator-Abbild, ohne Code vom Host.
+  docker-waechter:
+    image: ${AI_EMPLOYEE_REGISTRY:-ghcr.io/greeves89}/ai-employee-orchestrator:${AI_EMPLOYEE_VERSION:-latest}
+    container_name: ai-employee-docker-waechter
+    command: ["python", "-m", "app.docker_waechter"]
+    user: "65534:65534"
+    environment:
+      WAECHTER_UPSTREAM: docker-socket-proxy:2375
+      DOCKER_WAECHTER_TOKEN: ${DOCKER_WAECHTER_TOKEN:-}
+      AGENT_MOUNT_CATALOG: ${AGENT_MOUNT_CATALOG:-}
+      TZ: ${TZ:-Europe/Berlin}
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket; socket.create_connection(('127.0.0.1', 2375), 3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    depends_on:
+      docker-socket-proxy:
+        condition: service_started
+    restart: unless-stopped
     networks:
       - internal
+      - docker-api
 
   orchestrator:
     # Fertiges Abbild aus der Registry (#889); ohne Registry baut `build:` lokal.
@@ -129,7 +170,8 @@ services:
       # on the agent-network can resolve it. The compose service name "redis"
       # only works on the internal network.
       REDIS_URL_INTERNAL: redis://:${REDIS_PASSWORD:-changeme-redis-password}@ai-employee-redis:6379
-      DOCKER_HOST: tcp://docker-socket-proxy:2375
+      DOCKER_HOST: tcp://docker-waechter:2375
+      DOCKER_WAECHTER_TOKEN: ${DOCKER_WAECHTER_TOKEN:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       SKILL_REPOS: ${SKILL_REPOS:-}
@@ -271,8 +313,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      docker-socket-proxy:
-        condition: service_started
+      docker-waechter:
+        condition: service_healthy
     restart: unless-stopped
     # Cross-platform host access: Docker Desktop (Mac/Windows) provides
     # host.docker.internal automatically, but on Linux hosts it does not resolve.
@@ -483,6 +525,10 @@ volumes:
 networks:
   internal:
     driver: bridge
+  # Docker-Wächter ↔ Socket-Proxy, sonst niemand; ohne Weg nach draussen.
+  docker-api:
+    driver: bridge
+    internal: true
   agent-network:
     name: ai-employee-network
     driver: bridge

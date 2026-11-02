@@ -99,6 +99,9 @@ fi
 if egress_token_sicherstellen .env; then
     ok "EGRESS_PROXY_TOKEN angelegt (Egress-Proxy bleibt aus, bis EGRESS_PROXY_ENABLED=true)"
 fi
+if waechter_token_sicherstellen .env; then
+    ok "DOCKER_WAECHTER_TOKEN angelegt (Docker-Wächter)"
+fi
 
 # ── 5. Restart the compose services (orchestrator, frontend, ...) ─────────────
 # Dienste hinter einem Compose-Profil (tunnel: cloudflared, autoheal) nimmt

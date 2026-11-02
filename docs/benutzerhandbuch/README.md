@@ -4575,6 +4575,28 @@ Orchestrator. Ist er nicht erreichbar, gilt:
 Die Push-Sperre (kein Push in fremde Übernahme-Branches) bleibt bewusst nachsichtig: Sie
 verhindert Zusammenstöße unter Kollegen und ist keine Sicherheitsgrenze.
 
+
+### 37.12 Docker-Wächter: Docker nur noch geprüft *(seit 1.426.0)*
+
+Der Orchestrator legt Agenten, Hilfs-Container und Agenten-Apps an — dafür braucht er
+Docker. Bis 1.425 hätte jemand, der den Orchestrator übernimmt, darüber einen Container mit
+vollen Rechten oder mit dem ganzen Server-Dateisystem starten können. Seit 1.426 spricht der
+Orchestrator Docker nur noch über den **Docker-Wächter** (Dienst `docker-waechter`), und nur
+der Wächter erreicht den Docker-Zugang (eigenes, nach außen abgeschottetes Netz).
+
+| Anfrage | Was der Wächter erlaubt |
+|---|---|
+| Container anlegen | ohne `privileged`, ohne Geräte, ohne Host-Netz oder fremde Namespaces, nur die sechs Fähigkeiten der Agenten, `security_opt` nur `no-new-privileges` und ein eigenes Seccomp-Profil; Host-Ordner nur aus dem Mount-Katalog und unter den Second Brains, nie System-Ordner, nie der Docker-Socket |
+| Befehl in Container (`exec`) | nicht privilegiert |
+| Volume anlegen | nur lokal, ohne Treiber-Optionen (sonst wäre ein Volume ein versteckter Host-Ordner) |
+| Agenten-App starten/stoppen | der Wächter prüft die Compose-Datei selbst (dieselben Regeln wie Kap. 9) und startet sie; der Orchestrator bekommt keinen Container mit Docker-Socket mehr durch |
+
+Abgelehntes steht im Protokoll des Dienstes: `docker logs ai-employee-docker-waechter`.
+Der Wächter läuft aus demselben signierten Abbild wie der Orchestrator, schreibgeschützt,
+ohne Rechte und ohne Code vom Server. Seinen Schlüssel (`DOCKER_WAECHTER_TOKEN`) legen
+`setup.sh` bzw. `update.sh` selbst in der `.env` an. Das Abbild des App-Runners
+(`docker:cli`) ist per Digest festgelegt.
+
 ---
 
 ## A. Was kann ein Agent? (typische Einsätze)
