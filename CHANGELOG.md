@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.427.0] - 2026-11-02
+
+### Sicherheit
+- Docker-Wächter: Stoppen, Neustarten und Löschen nur noch für Container der Agenten; Volumes der Anlage nicht mehr löschbar; Abbilder laden, hochladen, importieren und „prune“ gesperrt; Agenten-Apps hängen nur noch das Volume des eigenen Agenten ein. Auch die Community-Variante spricht Docker jetzt nur noch über den Wächter.
+
+## Tests
+- Neue Proxy-Tests:
+  - Lebenszyklus (Dienste der Anlage 403; Agent, App und Runner an die ID)
+  - gesperrte Zugriffe (load/push/prune/fromSrc, Volumes der Anlage)
+- Neue Compose-Tests: fremdes Volume abgelehnt.
+- Schlüssel: gesetzt vor abgeleitet, deterministisch, ohne brauchbare Grundlage leer.
+- Netztrennung auch für die Community-Variante.
+- 148 Wächter-, Compose- und Abbild-Tests grün.
+- Live, im Wächter-Container einer Anlage, mit harmlosem `kill SIGCONT`:
+  - Postgres, Socket-Proxy, autoheal und Orchestrator → 403, Agent → erlaubt
+  - Runner anlegen, stoppen, löschen → ok
+  - unbezeichneter Container löschen → 403
+
 ## [1.426.1] - 2026-11-02
 
 ### Behoben
