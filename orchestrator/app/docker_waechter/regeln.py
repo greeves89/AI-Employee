@@ -296,7 +296,8 @@ def netz_verbinden(netz_name: str, koerper: dict) -> str | None:
 #: Container, die der Orchestrator stoppen, neu starten und löschen darf.
 _LEBENSZYKLUS_ARTEN = frozenset({"agent", "clone-helper", "disk-cleanup-helper", "runner"})
 #: Volumes, die der Orchestrator löschen darf: die der Agenten. Nie die der Anlage (Datenbank …).
-_VOLUME_LOESCHBAR = re.compile(r"^(workspace|claude-session|build-tools)-[A-Za-z0-9_.-]+$|^agent-[0-9a-z]{8}-")
+_VOLUME_LOESCHBAR = re.compile(
+    r"^(workspace|claude-session|build-tools|moderator-workspace)-[A-Za-z0-9_.-]+$|^agent-[0-9a-z]{8}-")
 
 
 def lebenszyklus_ziel(inspect: dict) -> str | None:

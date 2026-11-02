@@ -60,6 +60,8 @@ class ComposeImWaechter(unittest.TestCase):
             dict(befehl=["run", "--rm", "x"]),
             dict(quelle={**QUELLE, "volume": "ai-employee_postgres_data"}),
             dict(quelle={**QUELLE, "volume": "workspace-ffffffff"}),
+            dict(quelle={**QUELLE, "volume": "workspace-2ad91565-fremd"}),
+            dict(quelle={**QUELLE, "volume": "ai-employee-shared"}),
             dict(projekt=PROJEKT + "\n"),
             dict(quelle={**QUELLE, "volume": "workspace-x\n"}),
             dict(befehl=["up", "-d", "--build", "--privileged"]),

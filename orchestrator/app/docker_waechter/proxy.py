@@ -39,7 +39,8 @@ _GEPRUEFT = (
     (re.compile(rf"^{_VERSION}/containers/[^/]+/start$"), "start"),
     (re.compile(rf"^{_VERSION}/networks/create$"), "netz"),
 )
-_NETZ_VERBINDEN = re.compile(rf"^{_VERSION}/networks/(?P<id>[^/]+)/connect$")
+_NETZ_VERBINDEN = re.compile(rf"^{_VERSION}/networks/(?P<id>[^/]+)/(connect|disconnect)$")
+_NETZ_LOESCHEN = re.compile(rf"^{_VERSION}/networks/(?P<id>[^/]+)$")
 #: Stoppen, Neustarten, Pausieren, Löschen — nur Container der Agenten (regeln.lebenszyklus_ziel).
 _LEBENSZYKLUS = re.compile(rf"^(?P<v>{_VERSION})/containers/(?P<id>[^/]+)(?P<rest>/(kill|stop|restart|pause|unpause))?$")
 _VOLUME_LOESCHEN = re.compile(rf"^{_VERSION}/volumes/(?P<name>[^/]+)$")
@@ -48,6 +49,7 @@ _GESPERRT = (
     ("POST", re.compile(rf"^{_VERSION}/images/load$")),
     ("POST", re.compile(rf"^{_VERSION}/images/.+/push$")),
     ("POST", re.compile(rf"^{_VERSION}/(containers|volumes|images|networks|build)/prune$")),
+    ("DELETE", re.compile(rf"^{_VERSION}/images/.+$")),
 )
 #: Zeitgrenzen: Kopf, Körper, Verbindungsaufbau. Rohe Ströme (exec/attach) haben keine.
 _ZEIT_KOPF, _ZEIT_KOERPER, _ZEIT_VERBINDEN = 60, 300, 10
@@ -264,10 +266,13 @@ class Waechter:
         return grund, json.dumps(daten).encode()
 
     @staticmethod
-    def _verboten(methode: str, pfad: str, ziel: str) -> str | None:
+    def _verboten(methode: str, pfad: str, ziel: str, koerper_da: bool = False) -> str | None:
         for m, muster in _GESPERRT:
             if methode == m and muster.match(pfad):
                 return "Dieser Docker-Zugriff ist für die Plattform gesperrt"
+        if methode == "POST" and re.match(rf"^{_VERSION}/images/create$", pfad) and koerper_da:
+            # Docker liest fromSrc auch aus einem Formular-Körper — ein Pull hat keinen.
+            return "images/create ohne Körper"
         if methode == "POST" and re.match(rf"^{_VERSION}/images/create$", pfad):
             from urllib.parse import parse_qs
             abfrage = {k.lower(): v for k, v in parse_qs(ziel.split("?", 1)[1] if "?" in ziel else "").items()}
@@ -320,6 +325,20 @@ class Waechter:
         if orchestrator_erlaubt and str(daten.get("Name") or "").lstrip("/") == self.orchestrator_name:
             return None, kennung
         return (regel or regeln.zielcontainer)(daten), kennung
+
+    async def _netz_loeschen_pruefen(self, netz: str) -> str | None:
+        """``DELETE /networks/{id}``: nur App-Netze der Agenten (Name nachgeschlagen)."""
+        from urllib.parse import quote
+
+        try:
+            status, info = await self._nachschlagen(f"/networks/{quote(netz, safe='')}")
+        except (Abgelehnt, asyncio.TimeoutError, ValueError, ConnectionError, asyncio.IncompleteReadError,
+                IndexError) as e:
+            return f"Netz nicht prüfbar ({e})"
+        if status != 200:
+            return "Netz unbekannt"
+        name = str(info.get("Name") or "")
+        return None if name.startswith(regeln.APP_NETZ_PRAEFIX) else f"Netz {name!r} gehört nicht zu den Agenten"
 
     async def _verbinden_pruefen(self, netz: str, koerper: bytes) -> tuple[str | None, bytes]:
         """``POST /networks/{id}/connect``: Netz nachschlagen (Name, nicht ID), Container wie ein Ziel."""
@@ -415,7 +434,12 @@ class Waechter:
 
                 art = art_der_anfrage(methode, ziel)
                 pfad = pfad_bereinigt(ziel)
-                verbot = self._verboten(methode.upper(), pfad, ziel)
+                koerper_da = (_feld(felder, "Transfer-Encoding") is not None
+                              or int(_feld(felder, "Content-Length") or 0) > 0)
+                verbot = self._verboten(methode.upper(), pfad, ziel, koerper_da)
+                netz_weg = _NETZ_LOESCHEN.match(pfad) if methode.upper() == "DELETE" else None
+                if not verbot and netz_weg:
+                    verbot = await self._netz_loeschen_pruefen(netz_weg.group("id"))
                 if verbot:
                     logger.warning("Abgelehnt: %s %s — %s", methode, pfad[:120], verbot)
                     c_writer.write(_antwort(403, {"message": f"Docker-Wächter: {verbot}"}))
