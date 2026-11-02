@@ -272,6 +272,8 @@ gilt, verwalten sie in einem eigenen Bereich:
    bis an die richtige Stelle der Seite. Ohne Suchtext zeigt die Seite alle Bereiche nach
    Gruppen.
 
+   ![Suche im Admin-Bereich: „budget“ eingegeben, Treffer „Budget je Nutzer“ markiert](screenshots/91-admin-suche.png)
+
 
 3. Die Leiste zeigt die Bereiche der Anlage und trägt oben die Marke **Admin** — so
    ist jederzeit sichtbar, dass Änderungen hier alle betreffen. Ganz oben steht **Suche**.
@@ -3103,6 +3105,8 @@ Kosten gelöschter Agenten dieses Nutzers.
 Die Spalte **Diesen Monat** zeigt den Verbrauch, der Balken darunter die Auslastung (grün,
 ab 75 % gelb, ab 100 % rot). Jede Änderung steht im **Protokoll**. Beträge gibst du in der
 Anzeigewährung ein.
+
+![Budget je Nutzer: Feld „Standard“ und Stift einer Nutzerzeile markiert (Beispielnutzer)](screenshots/92-budget-je-nutzer.png)
 
 
 ### 22.8 Schlüssel & Zugangsdaten
