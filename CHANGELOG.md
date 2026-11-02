@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.428.3] - 2026-11-02
+
+### Behoben
+- Docker-Wächter: Anfragen nach einer Ruhepause konnten ohne Antwort enden (`RemoteDisconnected`), weil die Verbindung zu Docker inzwischen geschlossen war; jetzt je Anfrage eine frische Verbindung.
+
+### Tests
+- `test_docker_schliesst_ruhende_verbindung` (schlug vorher fehl); 54 Wächter-Tests grün.
+
 ## [1.428.2] - 2026-11-02
 
 ### Sicherheit
