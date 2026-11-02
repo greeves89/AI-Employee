@@ -91,6 +91,9 @@ fi
 if egress_token_sicherstellen .env; then
     ok "Generated EGRESS_PROXY_TOKEN"
 fi
+if waechter_token_sicherstellen .env; then
+    ok "DOCKER_WAECHTER_TOKEN angelegt (Docker-Wächter)"
+fi
 
 ok ".env ready"
 

@@ -44,7 +44,9 @@ from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 
-RUNNER_IMAGE = "docker:cli"
+#: Per Digest festgelegt (Index für amd64 und arm64): Der Runner hat den Docker-Socket.
+#: Ein neues Abbild unter demselben Tag wäre sonst root auf dem Server.
+RUNNER_IMAGE = "docker:cli@sha256:862099ada15c669000bef53aa4cb9d821262829f45b0dda2159ccb276443043b"
 #: App-Netz eines Agenten (bzw. Taskforce-Raums): ``ai-employee-apps-<schluessel>``,
 #: angelegt von der Plattform, erkennbar am Label. Den Namen kann keine App
 #: vergeben (Compose-Namen beginnen nach der Prüfung mit ``agent-``).
@@ -223,8 +225,8 @@ def _runner_abbild(docker) -> str:
     except ImageNotFound:
         pass
     try:
-        name, tag = RUNNER_IMAGE.split(":", 1)
-        return docker.client.images.pull(name, tag=tag).id
+        name, _, digest = RUNNER_IMAGE.partition("@")
+        return docker.client.images.pull(name.split(":", 1)[0], tag=digest).id
     except Exception as e:  # noqa: BLE001 — ohne sauberes Abbild läuft gar nichts
         raise HTTPException(status_code=503, detail=f"Das Abbild '{RUNNER_IMAGE}' ist nicht verfügbar: {e}") from None
 
@@ -290,13 +292,57 @@ def normalisieren(docker, quelle: Quelle, projekt: str, compose_datei: str) -> d
     return modell
 
 
+#: Die Compose-Befehle der Plattform — mehr führt der Wächter nicht aus.
+ERLAUBTE_BEFEHLE = (["up", "-d", "--build"], ["up", "-d", "--build", "--force-recreate"], ["down"])
+
+
 def ausfuehren(docker, quelle: Quelle, projekt: str, modell: dict | None,
                befehl: list[str]) -> tuple[int, str]:
-    """Compose mit dem GEPRÜFTEN Modell ausführen (über stdin, nicht aus einer Datei).
+    """Compose ausführen. ``modell`` ist das NORMALISIERTE, noch ungeprüfte Modell
+    (``vorbereiten``) — geprüft wird dort, wo der Docker-Socket ist.
 
+    Mit Docker-Wächter (``DOCKER_WAECHTER_TOKEN``) prüft und startet ER: der
+    Orchestrator legt selbst keinen Container mit Socket mehr an (P1-13). Ohne
+    Wächter (Entwicklung) geschieht dasselbe hier.
     ``modell=None`` nur für Befehle, die ohne Datei auskommen (``down``): Compose
     findet die Container dann über die Projektbezeichnung.
     """
+    import os
+
+    if os.environ.get("DOCKER_WAECHTER_TOKEN"):
+        return _im_waechter(quelle, projekt, modell, befehl)
+    if modell is not None:
+        modell = pruefen(modell, quelle, projekt)[0]
+    return ausfuehren_geprueft(docker, quelle, projekt, modell, befehl)
+
+
+def _im_waechter(quelle: Quelle, projekt: str, modell: dict | None, befehl: list[str]) -> tuple[int, str]:
+    import os
+    from dataclasses import asdict
+
+    import httpx
+
+    adresse = os.environ.get("DOCKER_HOST", "tcp://docker-waechter:2375").replace("tcp://", "http://", 1)
+    try:
+        antwort = httpx.post(
+            f"{adresse}/aie/compose", timeout=ZEITLIMIT_START + 60,
+            headers={"X-Waechter-Token": os.environ["DOCKER_WAECHTER_TOKEN"]},
+            json={"quelle": asdict(quelle), "projekt": projekt, "modell": modell, "befehl": befehl},
+        )
+    except httpx.HTTPError as e:
+        return 1, f"Docker-Wächter nicht erreichbar: {e}"
+    daten = antwort.json() if antwort.headers.get("content-type", "").startswith("application/json") else {}
+    if antwort.status_code == 422:
+        return 1, ablehnungstext(daten.get("verstoesse") or [str(daten.get("message", ""))])
+    if antwort.status_code != 200:
+        return 1, f"Docker-Wächter: {daten.get('message') or antwort.text[:300]}"
+    return int(daten.get("code", 1)), str(daten.get("ausgabe", ""))
+
+
+def ausfuehren_geprueft(docker, quelle: Quelle, projekt: str, modell: dict | None,
+                        befehl: list[str]) -> tuple[int, str]:
+    """Compose mit dem GEPRÜFTEN Modell ausführen (über stdin, nicht aus einer Datei).
+    Nur hier entsteht ein Container mit Docker-Socket — im Wächter."""
     if modell is None:
         return _runner(docker, ["docker", "compose", "-p", projekt, *befehl],
                        mounts=[], socket=True, netz=RUNNER_NETZ, zeitlimit=300)
@@ -744,15 +790,20 @@ def _dienst_netze(wo: str, netze_dienst: Any, netze: dict, fehler: list[str],
 
 async def vorbereiten(docker, quelle: Quelle, projekt: str, compose_datei: str, *,
                       agent_id: str | None) -> tuple[dict, list[str]]:
-    """Normalisieren, prüfen, Ordner anlegen. Ablehnung: HTTP 422 + Prüfprotokoll."""
+    """Normalisieren, prüfen, Ordner anlegen. Ablehnung: HTTP 422 + Prüfprotokoll.
+
+    Gibt das NORMALISIERTE Modell zurück, nicht das geprüfte: ``ausfuehren`` prüft
+    erneut, wo ausgeführt wird (Docker-Wächter). Die Prüfung hier liefert die
+    Meldungen für den Agenten und die anzulegenden Ordner.
+    """
     modell = await asyncio.to_thread(normalisieren, docker, quelle, projekt, compose_datei)
     try:
-        geprueft, hinweise, ordner = pruefen(modell, quelle, projekt)
+        _geprueft, hinweise, ordner = pruefen(modell, quelle, projekt)
     except ComposeAbgelehnt as e:
         await _ablehnung_protokollieren(agent_id, compose_datei, e.verstoesse)
         raise HTTPException(status_code=422, detail=ablehnungstext(e.verstoesse)) from None
     await asyncio.to_thread(ordner_anlegen, docker, quelle, ordner)
-    return geprueft, hinweise
+    return modell, hinweise
 
 
 def ablehnungstext(verstoesse: list[str]) -> str:

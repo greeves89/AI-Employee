@@ -44,8 +44,9 @@ def _unter(pfad: str, basen: tuple[str, ...]) -> bool:
 
 def mount_gesperrt(host_path: str, container_path: str) -> str | None:
     """Warum dieser Mount nicht erlaubt ist — ``None``, wenn er erlaubt ist."""
-    host = posixpath.normpath(host_path)
-    ziel = posixpath.normpath(container_path)
+    # Wie Docker: ein führendes „//“ bleibt bei normpath stehen, Docker macht „/“ daraus.
+    host = posixpath.normpath("/" + str(host_path).lstrip("/"))
+    ziel = posixpath.normpath("/" + str(container_path).lstrip("/"))
     if host == "/" or _unter(host, _HOST_GESPERRT) or "docker.sock" in host or "containerd.sock" in host:
         return f"Host-Pfad {host} ist gesperrt"
     if ziel in ("/", "/workspace") or _unter(ziel, _ZIEL_GESPERRT):
