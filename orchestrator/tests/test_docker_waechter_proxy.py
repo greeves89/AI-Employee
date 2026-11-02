@@ -20,6 +20,24 @@ async def _docker_attrappe(reader, writer):
                 if zeile.lower().startswith(b"content-length:"):
                     laenge = int(zeile.split(b":")[1])
             koerper = await reader.readexactly(laenge) if laenge else b""
+            if erste.startswith("GET /containers/") and erste.split(" ")[1].endswith("/json"):
+                name = erste.split(" ")[1].split("/")[2]
+                inspect = {
+                    "abc": {"HostConfig": {}, "Config": {"Labels": {}}},
+                    "app1": {"HostConfig": {}, "Config": {"Labels": {"com.docker.compose.project": "agent-12345678-x"}}},
+                    "proxy": {"HostConfig": {"Binds": ["/var/run/docker.sock:/var/run/docker.sock:ro"]}, "Config": {}},
+                    "heal": {"HostConfig": {}, "Mounts": [{"Source": "/var/run/docker.sock"}], "Config": {}},
+                    "postgres": {"HostConfig": {}, "Config": {"Labels": {"com.docker.compose.project": "ai-employee"}}},
+                    "cadvisor": {"HostConfig": {"Privileged": True}, "Config": {}},
+                }.get(name)
+                if inspect is None:
+                    writer.write(b"HTTP/1.1 404 Not Found\r\nContent-Length: 2\r\n\r\n{}")
+                else:
+                    text = json.dumps(inspect).encode()
+                    writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: " + str(len(text)).encode() + b"\r\n\r\n" + text)
+                await writer.drain()
+                writer.close()
+                return
             if "/exec/x/start" in erste:
                 writer.write(b"HTTP/1.1 101 UPGRADED\r\nConnection: Upgrade\r\nUpgrade: tcp\r\n\r\n")
                 await writer.drain()
@@ -160,11 +178,67 @@ class Durchreicher(unittest.IsolatedAsyncioTestCase):
                 (kopf, _), = await _senden(self.port, anfrage)
                 self.assertTrue(kopf.startswith(b"HTTP/1.1 400"), kopf)
 
+    async def test_rahmung_und_version_streng(self):
+        koerper = b'{"HostConfig": {}}'
+        faelle = [
+            b"POST /containers/create HTTP/1.0\r\nContent-Length: 18\r\n\r\n" + koerper,
+            b"POST /containers/create HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n12\n" + koerper + b"\r\n0\r\n\r\n",
+            b"POST /containers/create HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n0x12\r\n" + koerper + b"\r\n0\r\n\r\n",
+            b"POST /containers/abc/start HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n{}XX0\r\n\r\n",
+        ]
+        for anfrage in faelle:
+            with self.subTest(anfrage[:60]):
+                (kopf, _), = await _senden(self.port, anfrage)
+                self.assertTrue(kopf.startswith(b"HTTP/1.1 400"), kopf)
+
+    async def test_ungepruefter_chunked_koerper_kommt_mit_fester_laenge_an(self):
+        anfrage = (b"POST /v1.45/containers/abc/kill HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n"
+                   b"2\r\n{}\r\n0\r\n\r\n")
+        (kopf, inhalt), = await _senden(self.port, anfrage)
+        self.assertTrue(kopf.startswith(b"HTTP/1.1 201"), kopf)
+        self.assertEqual(json.loads(inhalt)["koerper"], "{}")
+
+    async def test_nicht_ascii_schluessel(self):
+        for koerper in ('{"Ho\u017ftConfig": {"Privileged": true}}', '{"HostConfig": {"Privileged": true, "\u212aey": 1}}'):
+            with self.subTest(koerper):
+                text = koerper.encode()
+                anfrage = b"POST /containers/create HTTP/1.1\r\nContent-Length: " + str(len(text)).encode() + b"\r\n\r\n" + text
+                (kopf, _), = await _senden(self.port, anfrage)
+                self.assertTrue(kopf.startswith(b"HTTP/1.1 403"), kopf)
+
     async def test_start_mit_hostconfig(self):
         (k1, _), = await _senden(self.port, _post("/v1.24/containers/abc/start", {"HostConfig": {"Privileged": True}}))
         self.assertTrue(k1.startswith(b"HTTP/1.1 403"))
         (k2, _), = await _senden(self.port, b"POST /v1.45/containers/abc/start HTTP/1.1\r\nHost: d\r\nContent-Length: 0\r\n\r\n")
         self.assertTrue(k2.startswith(b"HTTP/1.1 201"))
+
+    async def test_zielcontainer(self):
+        """Hinein nur in Agenten und ihre Apps — nie in Container mit Socket oder in Dienste der Anlage."""
+        for name in ("proxy", "heal", "postgres", "cadvisor", "unbekannt"):
+            for anfrage in (_post(f"/v1.45/containers/{name}/exec", {"Cmd": ["sh"]}),
+                            f"PUT /v1.45/containers/{name}/archive?path=/ HTTP/1.1\r\nContent-Length: 0\r\n\r\n".encode(),
+                            f"GET /v1.45/containers/{name}/export HTTP/1.1\r\n\r\n".encode(),
+                            _post(f"/v1.45/containers/{name}/update", {"Memory": 1})):
+                with self.subTest(name=name, anfrage=anfrage[:40]):
+                    (kopf, _), = await _senden(self.port, anfrage)
+                    self.assertTrue(kopf.startswith(b"HTTP/1.1 403"), kopf)
+        for name in ("abc", "app1"):
+            with self.subTest(name):
+                (kopf, _), = await _senden(self.port, _post(f"/v1.45/containers/{name}/exec", {"Cmd": ["ls"]}))
+                self.assertTrue(kopf.startswith(b"HTTP/1.1 201"), kopf)
+
+    async def test_schreibweise_und_doppelte_schluessel(self):
+        """Docker liest Feldnamen ohne Rücksicht auf die Schreibung."""
+        for koerper in ({"hostconfig": {"privileged": True}}, {"HOSTCONFIG": {"PRIVILEGED": True}},
+                        {"HostConfig": {"binds": ["/:/host"]}}):
+            with self.subTest(koerper):
+                (kopf, _), = await _senden(self.port, _post("/v1.45/containers/create", koerper))
+                self.assertTrue(kopf.startswith(b"HTTP/1.1 403"), kopf)
+        doppelt = b'{"HostConfig": {}, "hostconfig": {"Privileged": true}}'
+        anfrage = b"POST /containers/create HTTP/1.1\r\nContent-Length: " + str(len(doppelt)).encode() + b"\r\n\r\n" + doppelt
+        (kopf, inhalt), = await _senden(self.port, anfrage)
+        self.assertTrue(kopf.startswith(b"HTTP/1.1 403"), kopf)
+        self.assertIn("eindeutig", json.loads(inhalt)["message"])
 
     async def test_compose_nur_mit_schluessel(self):
         (k1, _), = await _senden(self.port, _post("/aie/compose", {"projekt": "agent-12345678-x"}))

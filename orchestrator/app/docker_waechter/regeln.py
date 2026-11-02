@@ -23,6 +23,34 @@ _EIGENER_NAMESPACE = ("", "private", "shareable", "default")
 _GESPERRTE_NETZE = ("host",)
 
 
+def klein(wert: Any) -> Any:
+    """Schlüssel klein, rekursiv — Docker (Go ``encoding/json``) liest Feldnamen ohne
+    Rücksicht auf Groß-/Kleinschreibung. ``{"hostconfig": {"privileged": true}}``
+    wirkt dort wie ``Privileged``; geprüft wird deshalb auf genau dieser Form."""
+    if isinstance(wert, dict):
+        for k in wert:
+            if not str(k).isascii():
+                # Go faltet auch „K“ (Kelvin) zu k und „ſ“ zu s: „Hoſtconfig“ wäre dort HostConfig.
+                raise ValueError(f"Schlüssel mit Nicht-ASCII-Zeichen {k!r}")
+        return {str(k).lower(): klein(v) for k, v in wert.items()}
+    if isinstance(wert, list):
+        return [klein(v) for v in wert]
+    return wert
+
+
+def ohne_dubletten(paare: list) -> dict:
+    """``object_pairs_hook``: zwei Schlüssel, die sich nur in der Schreibung
+    unterscheiden, sind mehrdeutig — welcher gilt, entschiede Docker anders als wir."""
+    gesehen = set()
+    for k, _ in paare:
+        if not str(k).isascii():
+            raise ValueError(f"Schlüssel mit Nicht-ASCII-Zeichen {k!r}")
+        if str(k).lower() in gesehen:
+            raise ValueError(f"doppelter Schlüssel {k!r}")
+        gesehen.add(str(k).lower())
+    return dict(paare)
+
+
 def _liste(wert: Any) -> list:
     return list(wert) if isinstance(wert, (list, tuple)) else []
 
@@ -69,15 +97,15 @@ def _mounts_pruefen(mounts: list, erlaubte_host_pfade: Iterable[str]) -> str | N
     for m in mounts:
         if not isinstance(m, dict):
             return "Mount in unbekannter Form"
-        art = str(m.get("Type") or "volume").lower()
+        art = str(m.get("type") or "volume").lower()
         if art == "bind":
-            grund = host_pfad_pruefen(str(m.get("Source") or ""), str(m.get("Target") or ""),
+            grund = host_pfad_pruefen(str(m.get("source") or ""), str(m.get("target") or ""),
                                       erlaubte_host_pfade)
             if grund:
                 return grund
         elif art == "volume":
-            treiber = (m.get("VolumeOptions") or {}).get("DriverConfig") or {}
-            if treiber.get("Name") not in (None, "", "local") or treiber.get("Options"):
+            treiber = (m.get("volumeoptions") or {}).get("driverconfig") or {}
+            if treiber.get("name") not in (None, "", "local") or treiber.get("options"):
                 return "Volume mit eigenem Treiber oder Treiber-Optionen ist gesperrt"
         elif art != "tmpfs":
             return f"Mount-Art {art!r} ist gesperrt"
@@ -101,48 +129,49 @@ def container_anlegen(koerper: dict, erlaubte_host_pfade: Iterable[str]) -> str 
     """``POST /containers/create`` — erlaubt nur, was die Plattform selbst anlegt."""
     if not isinstance(koerper, dict):
         return "Anfrage ist kein JSON-Objekt"
-    hc = koerper.get("HostConfig") or {}
+    koerper = klein(koerper)
+    hc = koerper.get("hostconfig") or {}
     if not isinstance(hc, dict):
         return "HostConfig in unbekannter Form"
-    if hc.get("Privileged"):
+    if hc.get("privileged"):
         return "Privileged ist gesperrt"
-    fremde = sorted({_cap(c) for c in _liste(hc.get("CapAdd"))} - ERLAUBTE_CAPS)
+    fremde = sorted({_cap(c) for c in _liste(hc.get("capadd"))} - ERLAUBTE_CAPS)
     if fremde:
         return f"Fähigkeiten {', '.join(fremde)} sind gesperrt"
-    for feld in ("Devices", "DeviceRequests", "DeviceCgroupRules"):
+    for feld in ("devices", "devicerequests", "devicecgrouprules"):
         if _liste(hc.get(feld)):
             return f"{feld} ist gesperrt"
-    netz = str(hc.get("NetworkMode") or "")
+    netz = str(hc.get("networkmode") or "")
     if netz in _GESPERRTE_NETZE or netz.startswith("container:"):
         return f"NetworkMode {netz!r} ist gesperrt"
-    for feld in ("PidMode", "IpcMode", "UTSMode", "UsernsMode", "CgroupnsMode"):
+    for feld in ("pidmode", "ipcmode", "utsmode", "usernsmode", "cgroupnsmode"):
         modus = str(hc.get(feld) or "").lower()
         if modus not in _EIGENER_NAMESPACE:
             return f"{feld} {modus!r} ist gesperrt"
-    if hc.get("Sysctls"):
+    if hc.get("sysctls"):
         return "Sysctls sind gesperrt"
-    if hc.get("CgroupParent"):
+    if hc.get("cgroupparent"):
         return "CgroupParent ist gesperrt"
-    if hc.get("VolumeDriver"):
+    if hc.get("volumedriver"):
         return "VolumeDriver ist gesperrt"
-    if str(hc.get("Runtime") or "runc") not in ("runc", ""):
+    if str(hc.get("runtime") or "runc") not in ("runc", ""):
         return f"Runtime {hc.get('Runtime')!r} ist gesperrt"
-    if hc.get("VolumesFrom"):
+    if hc.get("volumesfrom"):
         return "VolumesFrom ist gesperrt"
     # Leere Listen hier heben die Abschirmung von /proc und /sys auf (systempaths=unconfined).
-    for feld in ("MaskedPaths", "ReadonlyPaths"):
+    for feld in ("maskedpaths", "readonlypaths"):
         if feld in hc and hc.get(feld) is not None:
             return f"{feld} setzt nur Docker selbst"
-    return (_security_opt_pruefen(_liste(hc.get("SecurityOpt")))
-            or _binds_pruefen(_liste(hc.get("Binds")), erlaubte_host_pfade)
-            or _mounts_pruefen(_liste(hc.get("Mounts")), erlaubte_host_pfade))
+    return (_security_opt_pruefen(_liste(hc.get("securityopt")))
+            or _binds_pruefen(_liste(hc.get("binds")), erlaubte_host_pfade)
+            or _mounts_pruefen(_liste(hc.get("mounts")), erlaubte_host_pfade))
 
 
 def exec_anlegen(koerper: dict) -> str | None:
     """``POST /containers/{id}/exec`` — kein privilegierter Befehl."""
     if not isinstance(koerper, dict):
         return "Anfrage ist kein JSON-Objekt"
-    if koerper.get("Privileged"):
+    if klein(koerper).get("privileged"):
         return "Privilegiertes exec ist gesperrt"
     return None
 
@@ -155,9 +184,10 @@ def volume_anlegen(koerper: dict) -> str | None:
     """
     if not isinstance(koerper, dict):
         return "Anfrage ist kein JSON-Objekt"
-    if str(koerper.get("Driver") or "local") != "local":
-        return f"Volume-Treiber {koerper.get('Driver')!r} ist gesperrt"
-    if koerper.get("DriverOpts"):
+    koerper = klein(koerper)
+    if str(koerper.get("driver") or "local") != "local":
+        return f"Volume-Treiber {koerper.get('driver')!r} ist gesperrt"
+    if koerper.get("driveropts"):
         return "Volume-Optionen sind gesperrt"
     return None
 
@@ -170,4 +200,26 @@ def container_starten(koerper: dict) -> str | None:
     if not isinstance(koerper, dict):
         return "Anfrage ist kein JSON-Objekt"
     return "HostConfig beim Start ist gesperrt" if koerper else None
+
+
+def zielcontainer(inspect: dict) -> str | None:
+    """Darf der Orchestrator in diesen Container hinein (exec, Dateien, attach, update)?
+
+    Nur Agenten (ohne Compose-Bezeichnung) und Apps der Agenten (Projekt ``agent-…``).
+    Nie in einen Container mit Docker-Socket oder ``Privileged`` — wer dort einen
+    Befehl ausführt, ist root auf dem Server (Socket-Proxy, autoheal) —, und nie in
+    die Dienste der Anlage selbst (Datenbank, Wächter, Egress-Proxy …).
+    """
+    d = klein(inspect or {})
+    hc = d.get("hostconfig") or {}
+    if hc.get("privileged"):
+        return "Ziel ist privilegiert"
+    quellen = [str(b).split(":")[0] for b in _liste(hc.get("binds"))]
+    quellen += [str((m or {}).get("source") or "") for m in _liste(d.get("mounts"))]
+    if any("docker.sock" in q or "containerd.sock" in q for q in quellen):
+        return "Ziel hat den Docker-Socket"
+    projekt = ((d.get("config") or {}).get("labels") or {}).get("com.docker.compose.project")
+    if projekt is not None and not str(projekt).startswith("agent-"):
+        return f"Ziel gehört nicht zu den Agenten (Projekt {projekt!r})"
+    return None
 

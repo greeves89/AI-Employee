@@ -39,6 +39,10 @@ _GEPRUEFT = (
     (re.compile(rf"^{_VERSION}/containers/[^/]+/start$"), "start"),
 )
 _FELDNAME = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
+#: Anfragen IN einen bestehenden Container: das Ziel wird bei Docker nachgeschlagen.
+_ZIEL = re.compile(rf"^{_VERSION}/containers/([^/]+)/(exec|archive|attach|attach/ws|update|export|copy)$")
+#: Endpunkte, bei denen Docker die Verbindung auf rohe Bytes umschaltet.
+_ROHSTROM = re.compile(rf"^{_VERSION}/(containers/[^/]+/attach(/ws)?|exec/[^/]+/start)$")
 COMPOSE_PFAD = "/aie/compose"
 
 
@@ -124,17 +128,26 @@ def _kopf_bauen(erste_zeile: str, felder: list[tuple[str, str]]) -> bytes:
     return (erste_zeile + "\r\n" + "".join(f"{n}: {w}\r\n" for n, w in felder) + "\r\n").encode("latin-1")
 
 
+_CHUNK_ZEILE = re.compile(rb"^[0-9A-Fa-f]{1,8}(;[^\r\n]*)?\r\n$")
+#: Ungeprüfte Anfragen mit chunked-Körper werden ebenfalls eingelesen und mit fester
+#: Länge weitergegeben (Datei-Uploads): Docker sieht nie die Rahmung des Aufrufers.
+_DURCHREICH_MAX = 512 * 1024 * 1024
+
+
 async def _chunked_lesen(reader: asyncio.StreamReader, grenze: int | None) -> bytes:
     daten = bytearray()
     while True:
         zeile = await reader.readuntil(b"\r\n")
-        groesse = int(zeile.split(b";")[0].strip() or b"0", 16)
+        if not _CHUNK_ZEILE.match(zeile) or b"\n" in zeile[:-1]:
+            raise Abgelehnt(400, "Chunk-Rahmung nicht eindeutig")
+        groesse = int(zeile.split(b";")[0], 16)
         if groesse == 0:
             while (await reader.readuntil(b"\r\n")) != b"\r\n":
                 pass
             return bytes(daten)
         daten += await reader.readexactly(groesse)
-        await reader.readexactly(2)
+        if await reader.readexactly(2) != b"\r\n":
+            raise Abgelehnt(400, "Chunk-Rahmung nicht eindeutig")
         if grenze is not None and len(daten) > grenze:
             raise Abgelehnt(413, "Anfrage zu groß")
 
@@ -208,18 +221,50 @@ class Waechter:
         #: ``compose(koerper: dict) -> (status, antwort: dict)`` — Agenten-Apps, siehe compose.py.
         self.compose = compose
 
-    def _pruefen(self, art: str, koerper: bytes) -> str | None:
+    def _pruefen(self, art: str, koerper: bytes) -> tuple[str | None, bytes]:
+        """(Grund, Körper zum Weiterreichen). Weitergereicht wird das geprüfte JSON in
+        fester Form — nicht die Original-Bytes, die ein anderer Leser anders läse."""
+        if art == "start" and not (koerper or b"").strip():
+            return None, b""
         try:
-            daten = json.loads(koerper or b"{}")
-        except ValueError:
-            return "Anfrage ist kein JSON"
+            daten = json.loads(koerper or b"{}", object_pairs_hook=regeln.ohne_dubletten)
+        except ValueError as e:
+            return f"Anfrage ist kein eindeutiges JSON ({e})", b""
         if art == "container":
-            return regeln.container_anlegen(daten, self.erlaubte_host_pfade)
-        if art == "exec":
-            return regeln.exec_anlegen(daten)
-        if art == "start":
-            return regeln.container_starten(daten)
-        return regeln.volume_anlegen(daten)
+            grund = regeln.container_anlegen(daten, self.erlaubte_host_pfade)
+        elif art == "exec":
+            grund = regeln.exec_anlegen(daten)
+        elif art == "start":
+            grund = regeln.container_starten(daten)
+        else:
+            grund = regeln.volume_anlegen(daten)
+        return grund, json.dumps(daten).encode()
+
+    async def _ziel_pruefen(self, container: str) -> str | None:
+        """Den Zielcontainer bei Docker nachschlagen und gegen ``regeln.zielcontainer`` halten."""
+        from urllib.parse import quote
+
+        try:
+            reader, writer = await asyncio.open_connection(*self.upstream)
+        except OSError as e:
+            return f"Docker nicht erreichbar: {e}"
+        try:
+            writer.write(f"GET /containers/{quote(container, safe='')}/json HTTP/1.1\r\nHost: docker\r\n"
+                         "Connection: close\r\n\r\n".encode())
+            await writer.drain()
+            kopf = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), 10)
+            erste, felder = _kopf_zerlegen(kopf)
+            if (_feld(felder, "Transfer-Encoding") or "").lower() == "chunked":
+                inhalt = await asyncio.wait_for(_chunked_lesen(reader, _KOERPER_MAX), 10)
+            else:
+                inhalt = await asyncio.wait_for(reader.read(_KOERPER_MAX), 10)
+            if " 200 " not in erste + " ":
+                return "Zielcontainer unbekannt"
+            return regeln.zielcontainer(json.loads(inhalt))
+        except (asyncio.TimeoutError, ValueError, ConnectionError, Abgelehnt, asyncio.IncompleteReadError) as e:
+            return f"Zielcontainer nicht prüfbar ({e})"
+        finally:
+            writer.close()
 
     async def _koerper_lesen(self, reader, felder) -> bytes:
         if (_feld(felder, "Transfer-Encoding") or "").lower() == "chunked":
@@ -262,8 +307,8 @@ class Waechter:
                     await c_writer.drain()
                     return
                 teile = erste.split(" ")
-                if len(teile) != 3:
-                    c_writer.write(_antwort(400, {"message": "unlesbare Anfragezeile"}))
+                if len(teile) != 3 or teile[2] != "HTTP/1.1":
+                    c_writer.write(_antwort(400, {"message": "nur HTTP/1.1"}))
                     return
                 methode, ziel, _ = teile
 
@@ -274,6 +319,15 @@ class Waechter:
                     return
 
                 art = art_der_anfrage(methode, ziel)
+                pfad = pfad_bereinigt(ziel)
+                treffer = _ZIEL.match(pfad)
+                if treffer:
+                    grund = await self._ziel_pruefen(treffer.group(1))
+                    if grund:
+                        logger.warning("Abgelehnt: %s %s — %s", methode, pfad[:120], grund)
+                        c_writer.write(_antwort(403, {"message": f"Docker-Wächter: {grund}"}))
+                        await c_writer.drain()
+                        return
                 koerper = None
                 if art:
                     try:
@@ -281,7 +335,7 @@ class Waechter:
                     except Abgelehnt as e:
                         c_writer.write(_antwort(e.status, {"message": e.grund}))
                         return
-                    grund = self._pruefen(art, koerper)
+                    grund, koerper = self._pruefen(art, koerper)
                     if grund:
                         logger.warning("Abgelehnt: %s %s — %s", methode, pfad_bereinigt(ziel)[:120], grund)
                         c_writer.write(_antwort(403, {"message": f"Docker-Wächter: {grund}"}))
@@ -297,36 +351,51 @@ class Waechter:
                     except OSError as e:
                         c_writer.write(_antwort(502, {"message": f"Docker nicht erreichbar: {e}"}))
                         return
+                if koerper is None and (_feld(felder, "Transfer-Encoding") or "").lower() == "chunked":
+                    try:
+                        koerper = await _chunked_lesen(c_reader, _DURCHREICH_MAX)
+                    except Abgelehnt as e:
+                        c_writer.write(_antwort(e.status, {"message": e.grund}))
+                        return
+                    felder = [(n, w) for n, w in felder if n.lower() != "transfer-encoding"]
+                    felder.append(("Content-Length", str(len(koerper))))
                 u_writer.write(_kopf_bauen(erste, felder))
                 if koerper is not None:
                     u_writer.write(koerper)
-                elif (_feld(felder, "Transfer-Encoding") or "").lower() == "chunked":
-                    await _chunked_kopieren(c_reader, u_writer)
                 else:
                     await _laenge_kopieren(c_reader, u_writer, int(_feld(felder, "Content-Length") or 0))
                 await u_writer.drain()
 
-                # Antwort
-                antwort_kopf = await _kopf_lesen(u_reader)
-                if antwort_kopf is None:
-                    return
-                status_zeile, a_felder = _kopf_zerlegen(antwort_kopf)
-                c_writer.write(antwort_kopf)
-                await c_writer.drain()
-                status = int(status_zeile.split(" ")[1])
-                ohne_inhalt = methode.upper() == "HEAD" or status in (204, 304) or 100 <= status < 200
+                # Antwort — Zwischenantworten (1xx ausser 101) überspringen bis zur endgültigen.
+                rohstrom = bool(_ROHSTROM.match(pfad))
+                while True:
+                    antwort_kopf = await _kopf_lesen(u_reader)
+                    if antwort_kopf is None:
+                        return
+                    status_zeile, a_felder = _kopf_zerlegen(antwort_kopf)
+                    c_writer.write(antwort_kopf)
+                    await c_writer.drain()
+                    status = int(status_zeile.split(" ")[1])
+                    if not (100 <= status < 200) or status == 101:
+                        break
                 if status == 101:
+                    if not rohstrom:
+                        return  # Umschaltung nur für attach/exec — sonst Verbindung schliessen
                     await _durchreichen(c_reader, c_writer, u_reader, u_writer)
                     return
-                if ohne_inhalt:
+                if methode.upper() == "HEAD" or status in (204, 304):
                     continue
                 if (_feld(a_felder, "Transfer-Encoding") or "").lower() == "chunked":
                     await _chunked_kopieren(u_reader, c_writer)
                 elif _feld(a_felder, "Content-Length") is not None:
                     await _laenge_kopieren(u_reader, c_writer, int(_feld(a_felder, "Content-Length")))
-                else:
-                    # Ohne Länge: Docker schaltet auf rohen Strom (attach ohne Upgrade) — bis zum Ende.
+                elif rohstrom:
+                    # attach/exec ohne Upgrade: Docker schaltet trotzdem auf rohen Strom.
                     await _durchreichen(c_reader, c_writer, u_reader, u_writer)
+                    return
+                else:
+                    # Ohne Länge und ohne Umschaltung: bis zum Ende lesen, dann schliessen.
+                    await _pumpen(u_reader, c_writer)
                     return
                 if (_feld(a_felder, "Connection") or "").lower() == "close":
                     return
