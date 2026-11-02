@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.425.1] - 2026-11-02
+
+### Dokumentation
+- Handbuch: Bilder zur Suche im Admin-Bereich und zu „Budget je Nutzer“.
+
 ## [1.425.0] - 2026-11-02
 
 ### Neu
