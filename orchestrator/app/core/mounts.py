@@ -14,13 +14,43 @@ Security invariants:
   - host_path and mode are set server-side — never taken from user input
   - container_path for a new mount must not exactly equal /workspace (that volume
     is always mounted separately and must not be replaced)
+  - host and container paths on the deny lists (``mount_gesperrt``) are refused,
+    both when the catalog is parsed and right before Docker
   - UI never receives the host_path — only label, container_path, and mode
 """
+import posixpath
 import re
 from dataclasses import dataclass
 
 
 _LABEL_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
+
+#: Host-Pfade, die nie in einen Agenten gehoeren: das ganze Dateisystem, System-
+#: und Laufzeitordner, Docker selbst. Gesperrt ist der Pfad und alles darunter
+#: ("/" nur genau). Bis 1.424 nahm der Katalog jeden absoluten Pfad an — ein
+#: Eintrag "/" oder der Docker-Socket haette einem Agenten den Host gegeben.
+_HOST_GESPERRT = ("/etc", "/proc", "/sys", "/dev", "/boot", "/root", "/run", "/var/run",
+                  "/var/lib/docker", "/var/lib/containerd", "/usr", "/bin", "/sbin", "/lib", "/lib64")
+#: Ziele im Agenten, die ein Mount nicht ueberdecken darf: System, Pruef-Hook und
+#: Laufzeit des Agenten (sonst liesse sich der Hook durch Host-Dateien ersetzen),
+#: und die Ordner, die die Plattform selbst einhaengt.
+_ZIEL_GESPERRT = ("/etc", "/proc", "/sys", "/dev", "/usr", "/bin", "/sbin", "/lib", "/lib64",
+                  "/opt/mcp", "/opt/agent", "/opt/build-tools", "/root", "/home/agent", "/shared", "/tmp")
+
+
+def _unter(pfad: str, basen: tuple[str, ...]) -> bool:
+    return any(pfad == b or pfad.startswith(b + "/") for b in basen)
+
+
+def mount_gesperrt(host_path: str, container_path: str) -> str | None:
+    """Warum dieser Mount nicht erlaubt ist — ``None``, wenn er erlaubt ist."""
+    host = posixpath.normpath(host_path)
+    ziel = posixpath.normpath(container_path)
+    if host == "/" or _unter(host, _HOST_GESPERRT) or "docker.sock" in host or "containerd.sock" in host:
+        return f"Host-Pfad {host} ist gesperrt"
+    if ziel in ("/", "/workspace") or _unter(ziel, _ZIEL_GESPERRT):
+        return f"Ziel {ziel} ist gesperrt"
+    return None
 
 
 @dataclass(frozen=True)
@@ -60,6 +90,10 @@ def parse_mount_catalog(raw: str) -> dict[str, MountEntry]:
             continue
         if container_path == "/workspace":
             log.warning("Skipping mount catalog entry %r: container_path=/workspace is reserved", label)
+            continue
+        grund = mount_gesperrt(host_path, container_path)
+        if grund:
+            log.warning("Skipping mount catalog entry %r: %s", label, grund)
             continue
         if mode not in ("ro", "rw"):
             log.warning("Skipping mount catalog entry %r: mode must be 'ro' or 'rw'", label)
@@ -125,11 +159,21 @@ def resolve_agent_mounts(
 
 
 def mounts_to_docker_volumes(mounts: list[MountEntry]) -> dict[str, dict]:
-    """Convert MountEntry list to the volumes dict format expected by docker SDK."""
-    return {
-        m.host_path: {"bind": m.container_path, "mode": m.mode}
-        for m in mounts
-    }
+    """Convert MountEntry list to the volumes dict format expected by docker SDK.
+
+    Letzte Stelle vor Docker: auch Eintraege aus der Datenbank (Second Brains)
+    laufen noch einmal durch die Sperrliste.
+    """
+    import logging
+
+    erlaubt = {}
+    for m in mounts:
+        grund = mount_gesperrt(m.host_path, m.container_path)
+        if grund:
+            logging.getLogger(__name__).warning("Mount %r nicht eingehaengt: %s", m.label, grund)
+            continue
+        erlaubt[m.host_path] = {"bind": m.container_path, "mode": m.mode}
+    return erlaubt
 
 
 async def freigegebene_mounts(user, db) -> dict[str, str | None] | None:

@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.424.1] - 2026-11-02
+
+### Sicherheit
+- Der Mount-Katalog hängt keine System- oder Docker-Pfade des Hosts mehr ein und keine Ziele, die System oder Prüfung des Agenten überdecken würden.
+
+## Tests
+`test_mount_sperrliste.py`:
+- erlaubte Einträge bleiben
+- 15 gesperrte Host-Pfade, inkl. `..`-Umwege
+- 12 gesperrte Ziele
+- ähnliche Namen (`/etcetera`) sind nicht gesperrt
+- letzte Stelle vor Docker filtert DB-Einträge
+
+Betroffene Testmodule: neue Fehlschläge 0 (10 lokale, umgebungsbedingte Fehlschläge identisch mit main).
+
 ## [1.424.0] - 2026-11-02
 
 ### Sicherheit
