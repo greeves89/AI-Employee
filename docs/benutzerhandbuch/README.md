@@ -3033,6 +3033,11 @@ Oben rechts **+ Neues Brain**, darunter die vorhandenen Brains. Jedes Brain zeig
 **Rollen → Mountshares**. **Anbinden** an einen Agenten tut der jeweilige User im Agenten
 unter **Wissen** (Kap. 5.5).
 
+> Einträge des festen Mount-Katalogs (`AGENT_MOUNT_CATALOG` in der `.env`) mit System- oder
+> Docker-Pfaden (`/`, `/etc`, `/root`, `/var/run/docker.sock` …) oder mit einem Ziel, das System
+> oder Prüfung des Agenten überdecken würde (`/etc`, `/opt/mcp`, `/home/agent` …), werden nicht
+> eingehängt; das Protokoll nennt den Grund *(seit 1.424.1)*.
+
 ### 22.5.1 Szenario: Abteilungs-Wissen aufbauen
 1. **Second Brains → + Neues Brain** → Name „IT Operations", Slug `it_operations`,
    Modus *read-write*, Vault-Standard *IT-Support / Runbooks* → **Speichern**.
