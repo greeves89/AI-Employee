@@ -47,6 +47,11 @@ def quelle_aus(daten: Any) -> cp.Quelle | str:
         return "Volume ungültig"
     if not isinstance(praefix, str) or not _PRAEFIX.fullmatch(praefix):
         return "Präfix ungültig"
+    # Das Volume gehört zum Agenten des Präfixes (oder ist der geteilte Ordner der Taskforce) —
+    # sonst hinge der Runner fremde Daten ein, etwa das Volume der Datenbank.
+    agent8 = praefix[len("agent-"):-1]
+    if volume != "ai-employee-shared" and not volume.startswith(f"workspace-{agent8}"):
+        return "Volume gehört nicht zu diesem Agenten"
     if sicht not in _SICHTEN:
         return "Sicht ungültig"
     if teilpfad is None or teilpfad.startswith("/") or bereich is None:

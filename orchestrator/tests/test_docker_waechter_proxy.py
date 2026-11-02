@@ -35,6 +35,7 @@ async def _docker_attrappe(reader, writer):
                     "abc": {"Id": "a" * 64, "HostConfig": {}, "Config": {"Labels": {"ai-employee.type": "agent"}}},
                     "app1": {"Id": "b" * 64, "HostConfig": {}, "Config": {"Labels": {"com.docker.compose.project": "agent-12345678-x"}}},
                     "fremd": {"Id": "c" * 64, "HostConfig": {}, "Config": {"Labels": {}}},
+                    "runner1": {"Id": "f" * 64, "HostConfig": {}, "Config": {"Labels": {"ai-employee.type": "runner"}}},
                     "hostpid": {"Id": "d" * 64, "HostConfig": {"PidMode": "host"}, "Config": {"Labels": {"ai-employee.type": "agent"}}},
                     "proxy": {"HostConfig": {"Binds": ["/var/run/docker.sock:/var/run/docker.sock:ro"]}, "Config": {}},
                     "heal": {"HostConfig": {}, "Mounts": [{"Source": "/var/run/docker.sock"}], "Config": {}},
@@ -270,6 +271,36 @@ class Durchreicher(unittest.IsolatedAsyncioTestCase):
         (kopf, _), = await _senden(self.port, _post("/v1.45/networks/apps/connect",
                                                     {"Container": "abc", "EndpointConfig": {"Aliases": ["redis"]}}))
         self.assertTrue(kopf.startswith(b"HTTP/1.1 403"))
+
+    async def test_lebenszyklus_nur_fuer_agenten(self):
+        def anfrage(methode, pfad):
+            return f"{methode} {pfad} HTTP/1.1\r\nContent-Length: 0\r\n\r\n".encode()
+        for name in ("postgres", "proxy", "heal", "fremd", "ai-employee-orchestrator"):
+            for methode, pfad in (("DELETE", f"/v1.45/containers/{name}?force=1"), ("POST", f"/v1.45/containers/{name}/stop"),
+                                  ("POST", f"/v1.45/containers/{name}/kill"), ("POST", f"/v1.45/containers/{name}/restart")):
+                with self.subTest(name=name, pfad=pfad):
+                    (kopf, _), = await _senden(self.port, anfrage(methode, pfad))
+                    self.assertTrue(kopf.startswith(b"HTTP/1.1 403"), kopf)
+        for name, kennung in (("abc", "a" * 64), ("app1", "b" * 64), ("runner1", "f" * 64)):
+            with self.subTest(name):
+                (kopf, inhalt), = await _senden(self.port, anfrage("DELETE", f"/v1.45/containers/{name}?force=1"))
+                self.assertTrue(kopf.startswith(b"HTTP/1.1 201"), kopf)
+                self.assertEqual(json.loads(inhalt)["zeile"], f"DELETE /v1.45/containers/{kennung}?force=1 HTTP/1.1")
+
+    async def test_gesperrte_zugriffe(self):
+        for methode, pfad in (("POST", "/v1.45/images/load"), ("POST", "/v1.45/images/ghcr.io/x/push"),
+                              ("POST", "/v1.45/containers/prune"), ("POST", "/v1.45/volumes/prune"),
+                              ("POST", "/v1.45/images/prune"), ("POST", "/v1.45/images/create?fromSrc=http://x/a.tar"),
+                              ("POST", "/v1.45/images/create?FROMSRC=-"),
+                              ("DELETE", "/v1.45/volumes/ai-employee_postgres_data"), ("DELETE", "/v1.45/volumes/egress_ca")):
+            with self.subTest(pfad):
+                (kopf, _), = await _senden(self.port, f"{methode} {pfad} HTTP/1.1\r\nContent-Length: 0\r\n\r\n".encode())
+                self.assertTrue(kopf.startswith(b"HTTP/1.1 403"), kopf)
+        for pfad in ("/v1.45/images/create?fromImage=alpine&tag=3.20", "/v1.45/volumes/workspace-2ad91565"):
+            methode = "DELETE" if "volumes" in pfad else "POST"
+            with self.subTest(pfad):
+                (kopf, _), = await _senden(self.port, f"{methode} {pfad} HTTP/1.1\r\nContent-Length: 0\r\n\r\n".encode())
+                self.assertTrue(kopf.startswith(b"HTTP/1.1 201"), kopf)
 
     async def test_compose_nur_mit_schluessel(self):
         (k1, _), = await _senden(self.port, _post("/aie/compose", {"projekt": "agent-12345678-x"}))

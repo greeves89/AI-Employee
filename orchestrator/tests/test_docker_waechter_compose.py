@@ -58,6 +58,8 @@ class ComposeImWaechter(unittest.TestCase):
             dict(projekt="agent-ffffffff-fremd"),
             dict(projekt="ai-employee"),
             dict(befehl=["run", "--rm", "x"]),
+            dict(quelle={**QUELLE, "volume": "ai-employee_postgres_data"}),
+            dict(quelle={**QUELLE, "volume": "workspace-ffffffff"}),
             dict(projekt=PROJEKT + "\n"),
             dict(quelle={**QUELLE, "volume": "workspace-x\n"}),
             dict(befehl=["up", "-d", "--build", "--privileged"]),
@@ -121,3 +123,32 @@ class OrchestratorSchicktUngeprueft(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Schluessel(unittest.TestCase):
+    """Beide Seiten müssen denselben Schlüssel haben — gesetzt oder gleich abgeleitet."""
+
+    def test_gesetzt_vor_abgeleitet_und_beide_seiten_gleich(self):
+        from app.config import settings
+        from app.docker_waechter import schluessel as sch
+
+        with patch.dict("os.environ", {"DOCKER_WAECHTER_TOKEN": "g" * 40}):
+            self.assertEqual(sch.waechter_schluessel(), "g" * 40)
+        with patch.dict("os.environ", {"DOCKER_WAECHTER_TOKEN": ""}), \
+                patch.object(settings, "api_secret_key", "a" * 48):
+            eins = sch.waechter_schluessel()
+            self.assertEqual(len(eins), 64)
+            self.assertEqual(eins, sch.waechter_schluessel(), "deterministisch")
+            self.assertNotEqual(eins, "a" * 48, "nie der Grundschlüssel selbst")
+        for basis in ("change-me-in-production", "kurz"):
+            with self.subTest(basis), patch.dict("os.environ", {"DOCKER_WAECHTER_TOKEN": ""}), \
+                    patch.object(settings, "api_secret_key", basis):
+                self.assertEqual(sch.waechter_schluessel(), "")
+
+    def test_weg_haengt_an_der_docker_adresse(self):
+        from app.docker_waechter import schluessel as sch
+
+        with patch.dict("os.environ", {"DOCKER_HOST": "tcp://docker-waechter:2375"}):
+            self.assertTrue(sch.ueber_waechter())
+        with patch.dict("os.environ", {"DOCKER_HOST": "unix:///var/run/docker.sock"}):
+            self.assertFalse(sch.ueber_waechter())

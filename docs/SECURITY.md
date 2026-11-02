@@ -139,7 +139,8 @@ Not all services access the Docker socket equally. This matrix documents which s
 | Service | Docker Socket Access | Mount Mode | Via Proxy | Justification |
 |---------|---------------------|------------|-----------|---------------|
 | `docker-socket-proxy` | `/var/run/docker.sock` | `ro` (read-only) | N/A (is the proxy) | Mediates all Docker API access for the orchestrator. Uses `tecnativa/docker-socket-proxy` with explicit per-category env vars. |
-| `orchestrator` | `tcp://docker-socket-proxy:2375` | N/A (TCP) | **Yes** | Manages agent container lifecycle (create, start, stop, remove). Never touches the socket directly in production. |
+| `docker-waechter` | `tcp://docker-socket-proxy:2375` | N/A (TCP) | **Yes** | Docker guard (since 1.426): the only client of the proxy. Checks container create/exec/volume/network requests against an allowlist (no privileged, host namespaces, foreign networks, host paths outside the mount catalog, docker.sock; only the platform seccomp profile), allows exec/stop/remove only on agent containers and agent apps, and starts agent apps itself after re-checking the compose model. Runs from the orchestrator image, read-only, no capabilities, no volumes. |
+| `orchestrator` | `tcp://docker-waechter:2375` | N/A (TCP) | **Yes (via guard)** | Manages agent container lifecycle through the Docker guard; cannot reach the socket proxy (separate internal networks `waechter-api` / `docker-api`). |
 | `autoheal` | `/var/run/docker.sock` | `rw` | **No** | Restarts unhealthy containers (only those labeled `autoheal=true`). Only active in the `tunnel` profile. Accepted risk: privileged maintenance component with minimal scope. |
 | Agent containers | None | — | — | Agents have no Docker socket access. |
 
@@ -147,11 +148,11 @@ Not all services access the Docker socket equally. This matrix documents which s
 
 | Service | Docker Socket Access | Mount Mode | Via Proxy | Note |
 |---------|---------------------|------------|-----------|------|
-| `orchestrator` | `/var/run/docker.sock` | `rw` | **No** | Direct mount for simplified local setup. **Less hardened** than production — acceptable for single-user local development only. |
+| `docker-socket-proxy` / `docker-waechter` / `orchestrator` | proxy only (`ro`) | — | **Yes** | Same Docker guard setup as production since 1.426. The guard key is derived from `API_SECRET_KEY` unless `DOCKER_WAECHTER_TOKEN` is set. |
 
 ### Docker Apps (`docker_apps.py`)
 
-Docker App containers spawned by the orchestrator receive a direct Docker socket mount (`/var/run/docker.sock:rw`). This is required for Docker-in-Docker app functionality but represents elevated privilege. Governance: only admin users can create Docker Apps, and all Docker App operations are audit-logged.
+Agent apps are compose projects written by agents. Their compose model is normalised and checked against an allowlist (`core/compose_pruefung.py`: no privileged, no host paths, no host network, limited capabilities, ports on 127.0.0.1). The only container that receives the Docker socket is the short-lived `docker:cli` runner (pinned by digest), and since 1.426 only the Docker guard creates it, after re-checking the model itself — the orchestrator can no longer create a container with the socket.
 
 ### `docker-socket-proxy` Permitted API Categories
 
