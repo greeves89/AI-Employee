@@ -265,9 +265,17 @@ Admins arbeiten in derselben Ansicht wie alle anderen. Was für die **ganze Anla
 gilt, verwalten sie in einem eigenen Bereich:
 
 1. Unten links auf **Zum Admin-Bereich** klicken.
-2. Die Leiste zeigt jetzt die Bereiche der Anlage und trägt oben die Marke **Admin** — so
-   ist jederzeit sichtbar, dass Änderungen hier alle betreffen.
-3. Links einen Bereich wählen. Die Gruppen:
+2. Es öffnet sich die **Suche** *(seit 1.425.0)*. Tippe ein, was du einstellen möchtest,
+   zum Beispiel `budget`. Darunter erscheinen die passenden Bereiche und Stellen,
+   etwa **Kosten & Budget** und **Budget je Nutzer**. Ein **Klick** auf einen Treffer (oder
+   **Enter** für den markierten, Pfeiltasten zum Wechseln) führt direkt dorthin, bei Stellen
+   bis an die richtige Stelle der Seite. Ohne Suchtext zeigt die Seite alle Bereiche nach
+   Gruppen.
+
+
+3. Die Leiste zeigt die Bereiche der Anlage und trägt oben die Marke **Admin** — so
+   ist jederzeit sichtbar, dass Änderungen hier alle betreffen. Ganz oben steht **Suche**.
+4. Links einen Bereich wählen. Die Gruppen:
    - **Menschen** — Nutzer, Rollen & Rechte, SSO-Gruppen
    - **Agenten** — Alle Agenten, Zuweisungen, Vorlagen
    - **KI** — Modelle & Anbieter, KI-Konten, Sprache, Websuche
@@ -275,7 +283,7 @@ gilt, verwalten sie in einem eigenen Bereich:
    - **Regeln** — Master-Regeln, Datenschutz-Filter, Gesetze, Schlüssel &
      Zugangsdaten, Protokoll
    - **Anlage** — Systemzustand, Kosten & Budget, System & Lizenz, Rückmeldungen
-4. Unten auf **Zurück zur Arbeit** klicken, um in die normale Ansicht zu wechseln.
+5. Unten auf **Zurück zur Arbeit** klicken, um in die normale Ansicht zu wechseln.
 
 ![Admin-Bereich mit eigener Leiste](screenshots/38-admin-bereich.png)
 
@@ -3074,6 +3082,28 @@ Tab **Budget** — **Kostenkontrolle**.
   **Stoppen — Agent pausieren** und **Sparmodus** (Kap. 4.2).
 
 ![Budget: Schalter „Budget gilt auch im Chat“ und Kachel „Kosten diesen Monat“](screenshots/53-admin-budget.png)
+
+**Budget je Nutzer** *(seit 1.425.0)* — wie viel die Agenten eines Nutzers **zusammen** im
+Monat verbrauchen dürfen. Ist der Betrag erreicht, nehmen alle seine Agenten bis Monatsende
+keine Nachrichten und Aufgaben mehr an (Web, Telegram, Kanäle, Sprache, Zeitpläne); der
+Nutzer bekommt einen Hinweis, Administratoren eine Benachrichtigung. Gezählt werden auch
+Kosten gelöschter Agenten dieses Nutzers.
+
+1. Im Admin-Bereich **Kosten & Budget** öffnen (oder in der Suche `budget` eingeben und
+   **Budget je Nutzer** wählen).
+2. **Standard für alle Nutzer:** im Feld **Standard** rechts oben den Betrag eintragen und
+   auf **Speichern** klicken. Leer lassen = keine Grenze.
+3. **Abweichende Grenze für einen Nutzer:** in seiner Zeile auf den **Stift** klicken, dann
+   wählen:
+   - **Standard** — es gilt der Betrag von oben,
+   - **Eigene Grenze** — eigenen Betrag eintragen (höher oder niedriger als der Standard),
+   - **Keine Grenze** — dieser Nutzer ist ausgenommen.
+4. Mit dem **Haken** speichern (oder **Enter**), mit **X** abbrechen.
+
+Die Spalte **Diesen Monat** zeigt den Verbrauch, der Balken darunter die Auslastung (grün,
+ab 75 % gelb, ab 100 % rot). Jede Änderung steht im **Protokoll**. Beträge gibst du in der
+Anzeigewährung ein.
+
 
 ### 22.8 Schlüssel & Zugangsdaten
 Bereich **Schlüssel & Zugangsdaten** (Gruppe **Compliance**) — Verwaltung von **API-/Zugangs-Schlüsseln auf Plattformebene**

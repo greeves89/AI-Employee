@@ -79,6 +79,7 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "usd_eur_rate",
     # Monatsbudget auch fuer Chat-Nachrichten (#898), "True"/"False".
     "budget_gilt_fuer_chat",
+    "nutzer_budget_standard_usd",
     "aws_region",
     "vertex_project_id",
     "vertex_region",

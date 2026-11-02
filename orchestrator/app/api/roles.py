@@ -1,5 +1,6 @@
 """Custom Roles API — admin-only CRUD + user-role assignment + permission introspection."""
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -133,19 +134,41 @@ async def assign_user_role(user_id: str, body: dict, user=Depends(require_auth),
     return {"user_id": user_id, "custom_role_id": role_id}
 
 
-@router.put("/users/{user_id}/budget")
-async def set_user_budget(user_id: str, body: dict, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
-    """Set the monthly spend cap across all of a user's agents.
+class NutzerBudget(BaseModel):
+    """Monatsgrenze eines Nutzers in USD: leer = Standard der Anlage, 0 = keine Grenze."""
 
-    Body: {"budget_usd": float | null}  (null = unlimited)
+    budget_usd: float | None = Field(default=None, ge=0, le=1_000_000)
+
+
+@router.put("/users/{user_id}/budget")
+async def set_user_budget(user_id: str, body: NutzerBudget, user=Depends(require_auth),
+                          db: AsyncSession = Depends(get_db)):
+    """Monatsgrenze ueber alle Agenten eines Nutzers (Admin → Kosten & Budget).
+
+    Geprueft wird sie in ``core.budget.budget_pruefen`` — auf jedem Weg, auf dem
+    ein Agent Arbeit bekommt (Chat, Aufgaben, Zeitplaene, Kanaele, Sprache).
     """
+    from app.core.audit import protokolliere
+    from app.models.audit_log import AuditEventType
+
     _require_admin(user)
     target = await db.get(User, user_id)
     if not target:
-        raise HTTPException(status_code=404, detail="user not found")
-    target.budget_usd = body.get("budget_usd")
+        raise HTTPException(status_code=404, detail="Nutzer nicht gefunden")
+    vorher = target.budget_usd
+    target.budget_usd = body.budget_usd
+    if vorher != body.budget_usd:
+        await protokolliere(db, AuditEventType.BUDGET_CHANGED, user_id=getattr(user, "id", None),
+                            command=f"Monatsbudget von {target.email}: {_budget_text(vorher)} → {_budget_text(body.budget_usd)}",
+                            meta={"nutzer": target.id, "von": vorher, "nach": body.budget_usd})
     await db.commit()
     return {"user_id": user_id, "budget_usd": target.budget_usd}
+
+
+def _budget_text(wert: float | None) -> str:
+    if wert is None:
+        return "Standard"
+    return "keine Grenze" if wert == 0 else f"{wert:.2f} USD"
 
 
 @router.get("/me/permissions")

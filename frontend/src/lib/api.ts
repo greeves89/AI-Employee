@@ -2039,6 +2039,14 @@ export async function getAdminOverview(): Promise<AdminOverview> {
   return fetchJSON(`${getBase()}/admin/overview`);
 }
 
+/** Monatsgrenze eines Nutzers (Admin): null = Standard der Anlage, 0 = keine Grenze. */
+export async function setUserBudget(userId: string, budgetUsd: number | null): Promise<{ user_id: string; budget_usd: number | null }> {
+  return fetchJSON(`${getBase()}/roles/users/${userId}/budget`, {
+    method: "PUT",
+    body: JSON.stringify({ budget_usd: budgetUsd }),
+  });
+}
+
 export async function updateAgentBudget(
   agentId: string,
   budgetUsd: number | null,

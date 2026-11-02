@@ -167,6 +167,8 @@ export interface AdminUser {
   approved?: boolean;
   last_active_at?: string | null;
   monthly_cost_usd?: number;
+  /** Eigene Monatsgrenze in USD: null = Standard der Anlage, 0 = keine Grenze. */
+  budget_usd?: number | null;
   /** Zwei-Faktor (TOTP) eingerichtet (#915). */
   mfa_enabled?: boolean;
 }
@@ -312,6 +314,8 @@ export interface Settings {
   usd_eur_rate?: number;
   /** Gilt das Monatsbudget auch im Chat (#898)? Vorgabe an. */
   budget_gilt_fuer_chat?: boolean;
+  /** Monatsbudget je Nutzer in USD, wenn beim Nutzer keine eigene Grenze steht. 0 = keine. */
+  nutzer_budget_standard_usd?: number;
   // Provider info
   model_provider: ModelProvider;
   has_bedrock: boolean;

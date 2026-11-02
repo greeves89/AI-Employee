@@ -42,7 +42,7 @@ class BudgetBasis(unittest.IsolatedAsyncioTestCase):
                 await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
         self.einstellungen = patch.multiple(
-            budget.settings, platform_budget_usd=0.0, budget_gilt_fuer_chat=True,
+            budget.settings, platform_budget_usd=0.0, budget_gilt_fuer_chat=True, nutzer_budget_standard_usd=0.0,
             model_provider="anthropic", display_currency="USD", create=True,
         )
         self.einstellungen.start()
@@ -116,6 +116,44 @@ class Entscheidung(BudgetBasis):
             (await db.get(User, "u1")).budget_usd = 5
             await db.commit()
         await self.kosten(chat=6)
+        self.assertEqual((await self.pruefen()).art, budget.BLOCKIEREN)
+
+    async def _nutzergrenze(self, eigene, standard: float, kosten: float):
+        await self.agent(budget_usd=None)
+        async with self.Session() as db:
+            (await db.get(User, "u1")).budget_usd = eigene
+            await db.commit()
+        await self.kosten(chat=kosten)
+        with patch.object(budget.settings, "nutzer_budget_standard_usd", standard):
+            return (await self.pruefen()).art
+
+    async def test_standardbudget_je_nutzer(self):
+        """Matrix: eigene Grenze (leer/0/Wert) x Standard (0/Wert) x Kosten darueber."""
+        faelle = [
+            # eigene, standard, kosten, erwartet
+            (None, 5.0, 6, budget.BLOCKIEREN),   # Standard greift
+            (None, 5.0, 4, budget.ERLAUBEN),     # darunter
+            (None, 0.0, 99, budget.ERLAUBEN),    # kein Standard, keine eigene = frei
+            (20.0, 5.0, 6, budget.ERLAUBEN),     # eigene Grenze geht vor (hoeher)
+            (2.0, 5.0, 3, budget.BLOCKIEREN),    # eigene Grenze geht vor (niedriger)
+            (0.0, 5.0, 99, budget.ERLAUBEN),     # 0 = bewusst ohne Grenze trotz Standard
+        ]
+        for eigene, standard, kosten, erwartet in faelle:
+            with self.subTest(eigene=eigene, standard=standard, kosten=kosten):
+                await self.asyncTearDown()
+                await self.asyncSetUp()
+                self.assertEqual(await self._nutzergrenze(eigene, standard, kosten), erwartet)
+
+    async def test_nutzergrenze_zaehlt_auch_geloeschte_agenten(self):
+        """Die Kosten eines geloeschten Agenten gehoeren weiter seinem Besitzer."""
+        from app.models.kosten_historie import KostenHistorie
+
+        await self.agent(budget_usd=None)
+        async with self.Session() as db:
+            (await db.get(User, "u1")).budget_usd = 5
+            db.add(KostenHistorie(tag=JETZT.date(), agent_id="weg", user_id="u1", quelle="aufgaben", betrag_usd=6))
+            await db.commit()
+            self.assertGreaterEqual(await budget.nutzer_monatskosten(db, "u1"), 6)
         self.assertEqual((await self.pruefen()).art, budget.BLOCKIEREN)
 
     async def test_anlagenbudget(self):

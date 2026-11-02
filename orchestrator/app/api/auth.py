@@ -140,6 +140,8 @@ class UserResponse(BaseModel):
     approved: bool = True
     last_active_at: datetime | None = None
     monthly_cost_usd: float = 0.0
+    #: Eigene Monatsgrenze (Admin → Kosten & Budget): leer = Standard der Anlage, 0 = keine.
+    budget_usd: float | None = None
     tutorial_seen_at: datetime | None = None
     #: Nur zum Ableiten von ``has_photo_source`` gelesen, nie ausgeliefert.
     sso_provider: str | None = Field(default=None, exclude=True)
@@ -1060,22 +1062,17 @@ async def list_users(request: Request, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).order_by(User.created_at.desc()))
     users = result.scalars().all()
 
-    # Kosten je Nutzer im laufenden Monat — aus der einen Kostenquelle (#896),
-    # dieselbe Zahl, mit der das Nutzerbudget geprueft wird.
-    from app.core.kosten import Bereich, kosten, monatsbeginn
-    from app.models.agent import Agent
+    # Kosten je Nutzer im laufenden Monat — genau die Zahl, gegen die das
+    # Nutzerbudget geprueft wird (core.budget), also auch geloeschte Agenten.
+    # Bis 1.424 zaehlte die Liste nur bestehende Agenten und zeigte weniger an.
+    from app.core.budget import nutzer_monatskosten
+    from app.core.kosten import monatsbeginn
 
-    je_agent = (await kosten(db, Bereich.anlage(), seit=monatsbeginn())).je_agent
-    besitzer = dict((await db.execute(select(Agent.id, Agent.user_id))).all())
-    monthly_cost_by_user: dict[str, float] = defaultdict(float)
-    for agent_id, betrag in je_agent.items():
-        if besitzer.get(agent_id):
-            monthly_cost_by_user[besitzer[agent_id]] += betrag
-
+    monat = monatsbeginn()
     users_out = []
     for u in users:
         data = UserResponse.model_validate(u).model_dump()
-        data["monthly_cost_usd"] = round(monthly_cost_by_user.get(u.id, 0.0), 4)
+        data["monthly_cost_usd"] = round(await nutzer_monatskosten(db, u.id, seit=monat), 4)
         users_out.append(data)
     return {"users": users_out}
 

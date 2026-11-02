@@ -129,6 +129,9 @@ class Settings(BaseSettings):
     # Chat ungeprüft am Budget vorbei. Vorgabe an; wer den Chat ausnehmen will,
     # schaltet das unter Verwaltung → Budget bewusst ab.
     budget_gilt_fuer_chat: bool = True
+    # Monatsbudget je Nutzer, das gilt, solange beim Nutzer keine eigene Grenze steht
+    # (users.budget_usd leer). 0 = keine Grenze.
+    nutzer_budget_standard_usd: float = 0.0
 
     # Docker
     agent_image: str = "ai-employee-agent:latest"

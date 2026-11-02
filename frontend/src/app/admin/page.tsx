@@ -90,6 +90,8 @@ import type { AdminOverview } from "@/lib/api";
 import type { AdminUser, Agent, Feedback, FeedbackStatus } from "@/lib/types";
 import { formatMoney, moneyTitle, summeWieAngezeigt } from "@/lib/money";
 import { useMoney } from "@/hooks/use-money";
+import { NutzerBudget } from "@/components/admin/nutzer-budget";
+import { AdminSuche } from "@/components/admin/admin-suche";
 import { rollenName } from "@/lib/rollen";
 
 
@@ -98,35 +100,11 @@ type Tab = AdminBereich;
 // Bereiche, deren Inhalt eine eigene, vollstaendige Ansicht ist. Sie haengen
 // nicht an den Daten, die diese Seite selbst laedt (Nutzer, Agenten).
 const EMBEDDED_TABS: Tab[] = [
+  "suche",
   "modelle", "integrationen-anlage", "system", "sprache", "vorlagen",
   "ai-accounts", "second-brains", "secrets", "health", "audit", "dlp",
   "master-rules", "web-search", "gesetze",
 ];
-
-const BEREICH_SYMBOLE: Record<Tab, typeof Users> = {
-  users: Users,
-  roles: Shield,
-  "sso-groups": KeyRound,
-  agents: Cpu,
-  assignments: UserCog,
-  vorlagen: Layers,
-  modelle: Brain,
-  "ai-accounts": Cpu,
-  sprache: Mic,
-  "second-brains": Brain,
-  "web-search": Search,
-  "integrationen-anlage": Plug,
-  system: Lock,
-  pages: AppWindow,
-  "master-rules": ShieldAlert,
-  secrets: KeyRound,
-  dlp: Shield,
-  audit: ScrollText,
-  gesetze: Scale,
-  health: HeartPulse,
-  budget: DollarSign,
-  feedback: MessageSquare,
-};
 
 const stateColors: Record<string, string> = {
   running: "bg-emerald-500",
@@ -216,6 +194,24 @@ export default function AdminPage() {
     setLoading(true);
     Promise.all([fetchUsers(), fetchAgents()]).finally(() => setLoading(false));
   }, [fetchUsers, fetchAgents]);
+
+  // Sprungmarke (#nutzer-budget, #lizenz …) anspringen, sobald der Bereich steht —
+  // seine Inhalte laden nach, ein einmaliger Versuch beim Seitenwechsel kaeme zu frueh.
+  useEffect(() => {
+    const anker = typeof window !== "undefined" ? window.location.hash.slice(1) : "";
+    if (!anker || loading) return;
+    let versuche = 0;
+    const iv = setInterval(() => {
+      const ziel = document.getElementById(anker);
+      if (ziel) {
+        ziel.scrollIntoView({ behavior: "smooth", block: "start" });
+        clearInterval(iv);
+      } else if (++versuche > 40) {
+        clearInterval(iv);
+      }
+    }, 100);
+    return () => clearInterval(iv);
+  }, [tab, loading]);
 
   // Live "who is online" (admin) — poll presence.
   useEffect(() => {
@@ -552,6 +548,7 @@ export default function AdminPage() {
             {tab === "dlp" && <DlpView embedded />}
             {tab === "master-rules" && <MasterRulesView />}
             {tab === "gesetze" && <GesetzeView embedded />}
+            {tab === "suche" && <AdminSuche />}
           </div>
         ) : loading ? (
           <div className="flex items-center justify-center py-20">
@@ -1401,7 +1398,7 @@ function BudgetTab({
   return (
     <div className="space-y-6">
       {/* Idle-Stop Global Setting */}
-      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
+      <div id="leerlauf-stopp" className="scroll-mt-24 rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <h3 className="text-sm font-semibold mb-1">Untätige Agenten automatisch stoppen</h3>
@@ -1433,7 +1430,7 @@ function BudgetTab({
       </div>
 
       {/* Budget auch im Chat (#898) */}
-      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
+      <div id="chat-budget" className="scroll-mt-24 rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <h3 className="text-sm font-semibold mb-1">Budget gilt auch im Chat</h3>
@@ -1460,6 +1457,9 @@ function BudgetTab({
           </button>
         </div>
       </div>
+
+      {/* Monatsbudget je Nutzer: Standard + eigene Grenzen */}
+      <NutzerBudget />
 
       {/* Platform summary cards */}
       <div className="grid grid-cols-4 gap-4">
@@ -1502,7 +1502,7 @@ function BudgetTab({
       </div>
 
       {/* Per-agent budget table */}
-      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 overflow-hidden">
+      <div id="agenten-budget" className="scroll-mt-24 rounded-xl border border-foreground/[0.06] bg-card/80 overflow-hidden">
         <div className="px-5 py-3 border-b border-foreground/[0.06] flex items-center justify-between">
           <h3 className="text-sm font-semibold">Agenten Budget-Übersicht</h3>
           <p className="text-[11px] text-muted-foreground/50">Klick auf Stift-Icon zum Bearbeiten</p>
