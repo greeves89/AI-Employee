@@ -68,6 +68,7 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         display_currency=settings.display_currency,
         usd_eur_rate=settings.usd_eur_rate,
         budget_gilt_fuer_chat=settings.budget_gilt_fuer_chat,
+        nutzer_budget_standard_usd=settings.nutzer_budget_standard_usd,
         sso_only_login=settings.sso_only_login,
         require_user_approval=settings.require_user_approval,
         require_mfa_for_password_accounts=settings.require_mfa_for_password_accounts,
@@ -167,6 +168,7 @@ _FIELD_MAP: dict[str, str] = {
     # Budget im Chat (#898). Fehlt ein Schalter hier, verwirft die Schleife unten
     # ihn lautlos — und ohne Eintrag in ALLOWED_KEYS scheitert das Speichern.
     "budget_gilt_fuer_chat": "budget_gilt_fuer_chat",
+    "nutzer_budget_standard_usd": "nutzer_budget_standard_usd",
     "sso_only_login": "sso_only_login",
     "require_user_approval": "require_user_approval",
     # Zwei-Faktor-Pflicht (#915) — vierter Weg: Schema, diese Map, ALLOWED_KEYS, Antwort.
@@ -237,6 +239,20 @@ async def update_settings(
 
     from app.core import zwei_faktor as zf
     mfa_pflicht_vorher = zf.pflicht_aktiv()
+
+    # Standard-Monatsbudget je Nutzer: eine Grenze fuer alle — ins Protokoll.
+    if data.nutzer_budget_standard_usd is not None \
+            and data.nutzer_budget_standard_usd != settings.nutzer_budget_standard_usd:
+        from app.core.audit import protokolliere
+        from app.models.audit_log import AuditEventType
+
+        vorher, nachher = settings.nutzer_budget_standard_usd, data.nutzer_budget_standard_usd
+        await protokolliere(
+            db, AuditEventType.BUDGET_CHANGED, user_id=getattr(user, "id", None),
+            command=("Standard-Monatsbudget je Nutzer: "
+                     f"{f'{vorher:.2f} USD' if vorher else 'keine Grenze'} → "
+                     f"{f'{nachher:.2f} USD' if nachher else 'keine Grenze'}"),
+            meta={"von": vorher, "nach": nachher})
 
     # Handle simple mapped fields
     for field_name, config_attr in _FIELD_MAP.items():

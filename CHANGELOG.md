@@ -5,6 +5,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.425.0] - 2026-11-02
+
+### Neu
+- **Budget je Nutzer:** Unter Kosten & Budget legen Admins fest, wie viel die Agenten eines Nutzers zusammen im Monat verbrauchen dürfen.
+  - Es gibt einen Standard für alle und eine eigene Grenze je Nutzer.
+  - Ist der Betrag erreicht, nehmen die Agenten bis Monatsende nichts mehr an.
+- **Suche im Admin-Bereich:** „Zum Admin-Bereich“ öffnet eine Suche über alle Bereiche und wichtige Stellen; ein Klick führt direkt hin.
+
+### Behoben
+- Die Nutzerliste zeigt den Monatsverbrauch jetzt so, wie das Nutzerbudget ihn prüft (inklusive gelöschter Agenten).
+
+## Tests
+- `test_budget_pruefen.py`:
+  - Matrix eigene Grenze (leer/0/Wert) × Standard × Kosten
+  - Kosten gelöschter Agenten zählen
+- `test_nutzerbudget_api.py`:
+  - Admin setzt und protokolliert
+  - Standard/keine Grenze
+  - nur Admins, 404, ungültige Werte
+  - Einstellung speicherbar
+  - Liste liefert die Grenze
+- `test_admin_navigation_weiterleitung.py`:
+  - ohne Reiter → Suche
+  - „budget“ → Kosten & Budget + Budget je Nutzer
+  - mehrere Wörter, Umlaute, nichts gefunden
+  - jeder Bereich auffindbar
+  - jede Sprungmarke existiert als `id` im Frontend
+- Handbuch 1.5 und 22.7 ergänzt. Bildschirmfotos folgen nach dem Deploy (Demo-Konto, Beispielnutzer).
+
 ## [1.424.1] - 2026-11-02
 
 ### Sicherheit

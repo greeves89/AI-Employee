@@ -10,6 +10,7 @@
  */
 
 export type AdminBereich =
+  | "suche"
   | "users" | "roles" | "sso-groups"
   | "agents" | "assignments" | "vorlagen"
   | "modelle" | "ai-accounts" | "sprache" | "second-brains" | "web-search"
@@ -26,6 +27,8 @@ export interface AdminGruppe {
 /** Reihenfolge = Reihenfolge in der Leiste des Admin-Bereichs (Redesign 2026-10,
  *  Vorbild lavalake-Konsole: Menschen, Agenten, KI, Anbindungen, Regeln, Anlage). */
 export const ADMIN_GRUPPEN: AdminGruppe[] = [
+  // Einstieg: „Zum Admin-Bereich“ oeffnet die Suche ueber alle Bereiche.
+  { id: "start", titel: "Übersicht", bereiche: ["suche"] },
   { id: "people", titel: "Menschen", bereiche: ["users", "roles", "sso-groups"] },
   { id: "agents", titel: "Agenten", bereiche: ["agents", "assignments", "vorlagen"] },
   { id: "ki", titel: "KI", bereiche: ["modelle", "ai-accounts", "sprache", "web-search"] },
@@ -35,6 +38,7 @@ export const ADMIN_GRUPPEN: AdminGruppe[] = [
 ];
 
 export const ADMIN_BEREICH_NAMEN: Record<AdminBereich, string> = {
+  suche: "Suche",
   users: "Nutzer",
   roles: "Rollen & Rechte",
   "sso-groups": "SSO-Gruppen",
@@ -59,7 +63,7 @@ export const ADMIN_BEREICH_NAMEN: Record<AdminBereich, string> = {
   feedback: "Rückmeldungen",
 };
 
-export const STANDARD_BEREICH: AdminBereich = "users";
+export const STANDARD_BEREICH: AdminBereich = "suche";
 
 const ALLE_BEREICHE: readonly AdminBereich[] = ADMIN_GRUPPEN.flatMap((g) => g.bereiche);
 
@@ -76,7 +80,7 @@ function istBereich(tab: string): tab is AdminBereich {
   return (ALLE_BEREICHE as readonly string[]).includes(tab);
 }
 
-/** Welcher Bereich zu `?tab=` gehoert. Unbekanntes faellt auf die Nutzerliste. */
+/** Welcher Bereich zu `?tab=` gehoert. Fehlendes und Unbekanntes oeffnet die Suche. */
 export function adminBereichAusTab(tab: string | null | undefined): { bereich: AdminBereich; anker?: string } {
   if (!tab) return { bereich: STANDARD_BEREICH };
   if (istBereich(tab)) return { bereich: tab };
@@ -87,6 +91,118 @@ export function adminBereichAusTab(tab: string | null | undefined): { bereich: A
 /** Adresse eines Bereichs des Admin-Bereichs. */
 export function adminPfad(bereich: AdminBereich | "lizenz"): string {
   return `/admin?tab=${bereich}`;
+}
+
+// ---------------------------------------------------------------------------
+// Suche im Admin-Bereich
+// ---------------------------------------------------------------------------
+
+/** Ein Ziel der Suche: ein Bereich oder eine Stelle darin (``anker`` = id auf der Seite). */
+export interface AdminSuchziel {
+  titel: string;
+  beschreibung: string;
+  bereich: AdminBereich;
+  anker?: string;
+  /** Weitere Woerter, unter denen man es sucht (Synonyme, englische Begriffe). */
+  stichworte: string[];
+}
+
+/** Stichworte je Bereich — der Name des Bereichs zaehlt immer mit. */
+const BEREICH_STICHWORTE: Record<AdminBereich, { beschreibung: string; stichworte: string[] }> = {
+  suche: { beschreibung: "Alle Einstellungen des Admin-Bereichs durchsuchen.", stichworte: ["finden", "search"] },
+  users: { beschreibung: "Konten anlegen, freigeben, sperren, Passwort und Zwei-Faktor zurücksetzen.",
+    stichworte: ["benutzer", "konto", "konten", "user", "anmeldung", "passwort", "zwei-faktor", "2fa", "mfa", "einladen", "freigeben", "sperren", "löschen", "mount-rechte"] },
+  roles: { beschreibung: "Rollen, Gruppen und Rechte, Autonomie-Grenzen je Gruppe.",
+    stichworte: ["rechte", "berechtigung", "gruppe", "rolle", "permissions", "autonomie", "mountshares"] },
+  "sso-groups": { beschreibung: "Gruppen aus Microsoft Entra / SSO auf Rollen abbilden.",
+    stichworte: ["sso", "entra", "azure ad", "microsoft", "single sign-on", "gruppen"] },
+  agents: { beschreibung: "Alle Agenten der Anlage ansehen, stoppen, aktualisieren.",
+    stichworte: ["agent", "agenten", "container", "aktualisieren", "update", "stoppen"] },
+  assignments: { beschreibung: "Agenten Nutzern zuweisen.", stichworte: ["zuweisen", "zuordnung", "besitzer", "teilen"] },
+  vorlagen: { beschreibung: "Vorlagen für neue Agenten.", stichworte: ["template", "vorlage", "rollenbeschreibung"] },
+  modelle: { beschreibung: "KI-Modelle und Anbieter freischalten, Anthropic, OpenAI, Bedrock, Azure.",
+    stichworte: ["modell", "llm", "anbieter", "provider", "claude", "openai", "gpt", "bedrock", "azure", "vertex", "ollama", "katalog"] },
+  "ai-accounts": { beschreibung: "KI-Konten und Zugänge (API-Schlüssel, Abos).",
+    stichworte: ["api key", "abo", "zugang", "konto", "codex", "chatgpt", "teamlizenz"] },
+  sprache: { beschreibung: "Sprachassistent, Stimmen und Sprachmodelle.",
+    stichworte: ["voice", "stimme", "sprachassistent", "nova sonic", "elevenlabs", "transkription", "whisper"] },
+  "second-brains": { beschreibung: "Geteilte Wissens-Ablagen (Second Brains) anlegen und freigeben.",
+    stichworte: ["second brain", "wissen", "vault", "ablage", "obsidian", "mount"] },
+  "web-search": { beschreibung: "Anbieter und Einstellungen der Websuche.", stichworte: ["internet", "brave", "serp", "duckduckgo", "recherche"] },
+  "integrationen-anlage": { beschreibung: "Dienste und Konten der Anlage: Microsoft 365, Google, Git, Telegram, Teams.",
+    stichworte: ["integration", "anbindung", "microsoft 365", "m365", "outlook", "google", "github", "gitea", "forgejo", "telegram", "teams", "slack", "oauth"] },
+  system: { beschreibung: "Version, Updates, Lizenz, Anzeigewährung und Grundeinstellungen der Anlage.",
+    stichworte: ["lizenz", "version", "update", "währung", "euro", "dollar", "kurs", "einstellungen", "settings", "zwei-faktor-pflicht"] },
+  pages: { beschreibung: "Eigene Menüpunkte im Seitenmenü.", stichworte: ["menü", "link", "seite", "navigation"] },
+  "master-rules": { beschreibung: "Regeln, die für alle Agenten gelten.", stichworte: ["regeln", "richtlinie", "vorgaben", "prompt", "anweisung"] },
+  secrets: { beschreibung: "Schlüssel und Zugangsdaten für Agenten, erlaubte Ziele.",
+    stichworte: ["secret", "api-schlüssel", "token", "passwort", "zugangsdaten", "erlaubte ziele", "egress", "proxy"] },
+  dlp: { beschreibung: "Filter gegen das Versenden sensibler Daten.", stichworte: ["dlp", "datenschutz", "filter", "sensible daten", "pii"] },
+  audit: { beschreibung: "Protokoll aller sicherheitsrelevanten Aktionen.", stichworte: ["log", "protokoll", "audit", "verlauf", "nachvollziehen"] },
+  gesetze: { beschreibung: "Gesetze und Vorgaben, die Agenten beachten.", stichworte: ["recht", "dsgvo", "ai act", "compliance"] },
+  health: { beschreibung: "Zustand der Anlage: Dienste, Speicher, Sicherung, Sicherheitsstatus.",
+    stichworte: ["status", "gesundheit", "health", "speicher", "platte", "sicherung", "backup", "sicherheitsstatus", "signaturen", "monitoring"] },
+  budget: { beschreibung: "Kosten der Agenten, Budgets je Agent und je Nutzer.",
+    stichworte: ["kosten", "budget", "geld", "ausgaben", "limit", "obergrenze", "monatsbudget", "verbrauch", "rechnung"] },
+  feedback: { beschreibung: "Rückmeldungen der Nutzer.", stichworte: ["feedback", "rückmeldung", "fehler melden", "bug"] },
+};
+
+/** Einzelne Stellen innerhalb eines Bereichs, direkt anspringbar. */
+const STELLEN: AdminSuchziel[] = [
+  { titel: "Budget je Nutzer", bereich: "budget", anker: "nutzer-budget",
+    beschreibung: "Höchstbetrag, den ein Nutzer mit allen Agenten im Monat verbrauchen darf; Standard für alle.",
+    stichworte: ["nutzerbudget", "maximales budget", "höchstbetrag", "obergrenze", "limit", "user budget"] },
+  { titel: "Budget je Agent", bereich: "budget", anker: "agenten-budget",
+    beschreibung: "Monatsbudget einzelner Agenten und was bei Überschreitung passiert.",
+    stichworte: ["agentenbudget", "stoppen", "günstigeres modell", "haiku"] },
+  { titel: "Budget gilt auch im Chat", bereich: "budget", anker: "chat-budget",
+    beschreibung: "Ob ein aufgebrauchtes Budget auch Chat-Nachrichten sperrt.", stichworte: ["chat", "nachrichten", "sperre"] },
+  { titel: "Untätige Agenten automatisch stoppen", bereich: "budget", anker: "leerlauf-stopp",
+    beschreibung: "Nach wie vielen Minuten ohne Arbeit ein Agent gestoppt wird.", stichworte: ["idle", "leerlauf", "ressourcen", "minuten"] },
+  { titel: "Lizenzschlüssel", bereich: "system", anker: "lizenz",
+    beschreibung: "Lizenz der Anlage eintragen und prüfen.", stichworte: ["lizenz", "schlüssel", "license"] },
+];
+
+/** Alle Ziele: jeder Bereich (ausser der Suche selbst) und die Stellen darin. */
+export const ADMIN_SUCHZIELE: AdminSuchziel[] = [
+  ...ADMIN_GRUPPEN.flatMap((g) => g.bereiche)
+    .filter((b) => b !== "suche")
+    .map((b) => ({ titel: ADMIN_BEREICH_NAMEN[b], bereich: b, ...BEREICH_STICHWORTE[b] })),
+  ...STELLEN,
+];
+
+/** Kleinbuchstaben, Umlaute wie ausgeschrieben („Kosten“ findet „kosten“, „ae“ findet „ä“). */
+function normal(text: string): string {
+  return text.toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss");
+}
+
+/** Treffer für den Suchtext, bester zuerst. Jedes Wort muss vorkommen. */
+export function adminSuche(text: string): AdminSuchziel[] {
+  const woerter = normal(text).split(/\s+/).filter(Boolean);
+  if (!woerter.length) return [];
+  const bewertet: { ziel: AdminSuchziel; punkte: number }[] = [];
+  ADMIN_SUCHZIELE.forEach((ziel, reihenfolge) => {
+    const titel = normal(ziel.titel);
+    const bereich = normal(ADMIN_BEREICH_NAMEN[ziel.bereich]);
+    const stichworte = ziel.stichworte.map(normal);
+    const alles = [titel, bereich, normal(ziel.beschreibung), ...stichworte].join(" ");
+    if (!woerter.every((w) => alles.includes(w))) return;
+    let punkte = 0;
+    for (const w of woerter) {
+      if (titel.startsWith(w)) punkte += 6;
+      else if (titel.includes(w)) punkte += 4;
+      if (stichworte.some((s) => s.startsWith(w))) punkte += 3;
+      if (bereich.includes(w)) punkte += 1;
+    }
+    // Bei Gleichstand gewinnt die Stelle (genauer) vor dem Bereich, dann die Reihenfolge.
+    bewertet.push({ ziel, punkte: punkte * 1000 + (ziel.anker ? 500 : 0) - reihenfolge });
+  });
+  return bewertet.sort((a, b) => b.punkte - a.punkte).map((t) => t.ziel);
+}
+
+/** Adresse eines Suchziels, mit Sprungmarke. */
+export function adminZiel(ziel: Pick<AdminSuchziel, "bereich" | "anker">): string {
+  return adminPfad(ziel.bereich) + (ziel.anker ? `#${ziel.anker}` : "");
 }
 
 /** Direkt zum Lizenzschluessel (Streifen „Lizenzschlüssel eintragen“, Handbuch). */

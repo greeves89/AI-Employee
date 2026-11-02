@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class TelegramConfig(BaseModel):
@@ -26,6 +26,7 @@ class SettingsUpdate(BaseModel):
     usd_eur_rate: float | None = None
     #: Gilt das Monatsbudget auch im Chat (#898)?
     budget_gilt_fuer_chat: bool | None = None
+    nutzer_budget_standard_usd: float | None = Field(default=None, ge=0, le=1_000_000)
     sso_only_login: bool | None = None
     require_user_approval: bool | None = None
     #: Zwei-Faktor für alle Passwort-Konten erzwingen (#915).
@@ -180,6 +181,7 @@ class SettingsResponse(BaseModel):
     display_currency: str = "EUR"
     usd_eur_rate: float = 0.92
     budget_gilt_fuer_chat: bool = True
+    nutzer_budget_standard_usd: float = 0.0
     sso_only_login: bool = False
     require_user_approval: bool = False
     require_mfa_for_password_accounts: bool = False

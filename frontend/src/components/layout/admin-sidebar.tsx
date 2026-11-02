@@ -3,29 +3,13 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
-  AppWindow,
   ArrowLeft,
-  Brain,
   ChevronLeft,
   ChevronRight,
-  Cpu,
-  DollarSign,
-  HeartPulse,
-  KeyRound,
-  Layers,
-  Lock,
-  MessageSquare,
-  Mic,
-  Plug,
-  Scale,
-  ScrollText,
-  Search,
   Shield,
-  ShieldAlert,
-  UserCog,
-  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ADMIN_SYMBOLE } from "@/lib/admin-symbole";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar";
 import {
   ADMIN_BEREICH_NAMEN,
@@ -35,30 +19,6 @@ import {
   type AdminBereich,
 } from "@/lib/admin-bereiche";
 
-const SYMBOLE: Record<AdminBereich, React.ElementType> = {
-  users: Users,
-  roles: Shield,
-  "sso-groups": KeyRound,
-  agents: Cpu,
-  assignments: UserCog,
-  vorlagen: Layers,
-  modelle: Brain,
-  "ai-accounts": Cpu,
-  sprache: Mic,
-  "second-brains": Brain,
-  "web-search": Search,
-  "integrationen-anlage": Plug,
-  system: Lock,
-  pages: AppWindow,
-  "master-rules": ShieldAlert,
-  secrets: KeyRound,
-  dlp: Shield,
-  audit: ScrollText,
-  gesetze: Scale,
-  health: HeartPulse,
-  budget: DollarSign,
-  feedback: MessageSquare,
-};
 
 /** Leiste des Admin-Bereichs (Redesign 2026-10).
  *
@@ -102,7 +62,7 @@ export function AdminSidebar() {
             </h2>
             <ul className="space-y-px">
               {g.bereiche.map((id) => {
-                const Icon = SYMBOLE[id];
+                const Icon = ADMIN_SYMBOLE[id];
                 const aktiv = aktuell === id;
                 return (
                   <li key={id}>

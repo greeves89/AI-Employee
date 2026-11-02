@@ -88,10 +88,11 @@ class AdminReiterAusDerAdresse(unittest.TestCase):
     def test_lizenz_oeffnet_system_und_lizenz(self):
         self.assertEqual(self.bereich("lizenz"), {"bereich": "system", "anker": "lizenz"})
 
-    def test_kaputter_oder_fehlender_reiter_faellt_auf_nutzer_zurueck(self):
+    def test_kaputter_oder_fehlender_reiter_oeffnet_die_suche(self):
+        """„Zum Admin-Bereich“ fuehrt auf /admin — dort steht seit 1.425 die Suche."""
         for tab in (None, "", "<script>", "constructor", "__proto__"):
             with self.subTest(tab=tab):
-                self.assertEqual(self.bereich(tab)["bereich"], "users")
+                self.assertEqual(self.bereich(tab)["bereich"], "suche")
 
     def test_eine_ebene_jeder_bereich_genau_einmal_mit_namen(self):
         alle = _ausfuehren("m.ADMIN_GRUPPEN.flatMap((g) => g.bereiche)")
@@ -100,6 +101,48 @@ class AdminReiterAusDerAdresse(unittest.TestCase):
         self.assertEqual(set(namen), set(alle))
         for pflicht in ("modelle", "sprache", "system", "integrationen-anlage"):
             self.assertIn(pflicht, alle)
+
+
+@unittest.skipUnless(NODE, "Node.js nicht installiert")
+class AdminSuche(unittest.TestCase):
+    """Suche im Admin-Bereich: Eingabe → Treffer → Adresse mit Sprungmarke."""
+
+    def suche(self, text):
+        return _ausfuehren(f"m.adminSuche({json.dumps(text)}).map((z) => [z.titel, m.adminZiel(z)])")
+
+    def test_budget_findet_bereich_und_nutzerbudget(self):
+        treffer = self.suche("budget")
+        self.assertEqual(treffer[0], ["Kosten & Budget", "/admin?tab=budget"])
+        self.assertIn(["Budget je Nutzer", "/admin?tab=budget#nutzer-budget"], treffer)
+
+    def test_mehrere_woerter_genauer_treffer_zuerst(self):
+        self.assertEqual(self.suche("nutzer budget")[0], ["Budget je Nutzer", "/admin?tab=budget#nutzer-budget"])
+
+    def test_gross_klein_und_umlaute(self):
+        for text in ("KOSTEN", "schluessel", "Schlüssel", "rueckmeldungen"):
+            with self.subTest(text):
+                self.assertTrue(self.suche(text))
+
+    def test_stichworte_und_nichts_gefunden(self):
+        self.assertEqual(self.suche("telegram")[0][0], "Dienste & Konten")
+        self.assertEqual(self.suche("lizenz")[0], ["Lizenzschlüssel", "/admin?tab=system#lizenz"])
+        self.assertEqual(self.suche("xyzzy"), [])
+        self.assertEqual(self.suche("   "), [])
+
+    def test_jeder_bereich_ist_auffindbar(self):
+        bereiche = _ausfuehren("m.ADMIN_GRUPPEN.flatMap((g) => g.bereiche).filter((b) => b !== 'suche')")
+        ziele = _ausfuehren("m.ADMIN_SUCHZIELE.map((z) => z.bereich)")
+        self.assertEqual(set(bereiche), set(ziele))
+
+    def test_jede_sprungmarke_steht_im_frontend(self):
+        """Eine Marke ohne Element liefe ins Leere — die Suche fuehrte nirgendwohin."""
+        import re
+
+        quelltext = "".join(p.read_text(encoding="utf-8")
+                            for p in (MODUL.parents[1]).rglob("*.tsx"))
+        for anker in _ausfuehren("m.ADMIN_SUCHZIELE.filter((z) => z.anker).map((z) => z.anker)"):
+            with self.subTest(anker):
+                self.assertRegex(quelltext, r'id="' + re.escape(anker) + r'"')
 
 
 if __name__ == "__main__":

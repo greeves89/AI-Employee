@@ -107,7 +107,28 @@ def _hinweis(agent, grenze: str, verbraucht: float, limit: float, sparmodus_fehl
     )
     if sparmodus_fehlt:
         satz += " Für diese Laufzeit gibt es kein günstigeres Modell, deshalb wird angehalten."
-    return satz + " Ein Administrator kann das Budget unter Verwaltung → Budget erhöhen."
+    return satz + " Ein Administrator kann das Budget im Admin-Bereich unter Kosten & Budget erhöhen."
+
+
+def nutzer_grenze(nutzer) -> float | None:
+    """Monatsgrenze eines Nutzers (USD) — ``None`` = keine.
+
+    Eigene Grenze (``users.budget_usd``) vor dem Standard der Anlage
+    (``nutzer_budget_standard_usd``). Leer heisst: der Standard gilt; ``0`` heisst:
+    fuer diesen Nutzer bewusst keine Grenze.
+    """
+    if nutzer is None:
+        return None
+    eigene = getattr(nutzer, "budget_usd", None)
+    wert = eigene if eigene is not None else float(getattr(settings, "nutzer_budget_standard_usd", 0) or 0)
+    return float(wert) if wert and wert > 0 else None
+
+
+async def nutzer_monatskosten(db, user_id: str, *, seit=None) -> float:
+    """Kosten aller Agenten eines Nutzers im laufenden Monat, auch geloeschter —
+    dieselbe Zahl, gegen die die Grenze geprueft und die angezeigt wird."""
+    return (await _kosten.kosten(db, _kosten.Bereich.besitzer(user_id),
+                                 seit=seit or _kosten.monatsbeginn())).gesamt
 
 
 async def budget_pruefen(db, agent, *, fuer_chat: bool = False) -> Entscheid:
@@ -139,11 +160,11 @@ async def budget_pruefen(db, agent, *, fuer_chat: bool = False) -> Entscheid:
         from app.models.user import User
 
         besitzer = await db.scalar(select(User).where(User.id == agent.user_id))
-        if besitzer is not None and besitzer.budget_usd is not None and besitzer.budget_usd > 0:
-            summe = (await _kosten.kosten(
-                db, _kosten.Bereich.besitzer(agent.user_id), seit=monat)).gesamt
-            if summe >= besitzer.budget_usd:
-                grenze, verbraucht, limit = "nutzer", summe, float(besitzer.budget_usd)
+        nutzer_limit = nutzer_grenze(besitzer)
+        if nutzer_limit is not None:
+            summe = await nutzer_monatskosten(db, agent.user_id, seit=monat)
+            if summe >= nutzer_limit:
+                grenze, verbraucht, limit = "nutzer", summe, nutzer_limit
 
     if not grenze:
         return ERLAUBT
@@ -290,7 +311,8 @@ async def sperre_melden(db, agent, entscheid: Entscheid) -> bool:
     )
     titel = f"Budget aufgebraucht: {agent.name}"
     neu_admin = await _melden(
-        db, absender=SYSTEM_ABSENDER, ziel=f"/admin?tab=budget&agent={agent.id}",
+        db, absender=SYSTEM_ABSENDER, ziel=(f"/admin?tab=budget#nutzer-budget" if entscheid.grenze == "nutzer"
+              else f"/admin?tab=budget&agent={agent.id}"),
         typ="error", titel=titel, text=text, agent_id=agent.id,
     )
     neu_besitzer = await _melden(
