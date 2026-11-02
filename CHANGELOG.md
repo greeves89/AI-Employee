@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.428.0] - 2026-11-02
+
+### Sicherheit
+- Codex-Zugang stufenweise hinter den Egress-Proxy (`EGRESS_CODEX_ZUGANG`): Der Agent sieht nur noch Platzhalter, das Erneuerungs-Token erreicht ihn gar nicht mehr; eingesetzt wird immer das aktuelle Token, nur an `chatgpt.com`.
+
+## Tests
+- `test_codex_hinter_proxy.py`: Platzhalter statt Tokens, nur in der Stufe, kaputtes JSON, Hinweis „Aktualisieren“, Auflösung des aktuellen Tokens nur für `chatgpt.com`.
+- `test_codex_platzhalter.py` (Agent): `last_refresh` aufgefrischt, echter Zugang unberührt, Vorprüfung lässt den Platzhalter durch, Platzhalter nie zurückgemeldet.
+- 69 Egress- und 88 Codex-Tests grün.
+
 ## [1.427.1] - 2026-11-02
 
 ### Sicherheit
