@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.428.2] - 2026-11-02
+
+### Sicherheit
+- Agenten in der Proxy-Stufe bekommen die gemeinsame Zugangsdatei (Claude-Teamlizenz, Codex) auch dann nicht, wenn das Auflösen ihres Zugangs beim Anlegen scheitert.
+
+### Tests
+- `test_shared_je_nutzer.py`: Stufe für Claude und Codex, andere Agenten unverändert, Proxy aus; 92 Tests grün.
+
 ## [1.428.1] - 2026-11-02
 
 ### Sicherheit

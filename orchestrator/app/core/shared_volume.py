@@ -140,19 +140,30 @@ def geteilt_plan(user_id: str | None, *, mode: str, env: dict, ist_admin: bool) 
       Claude-Zugang hinter dem Egress-Proxy liegt.
     - ``/shared/.codex`` (gemeinsamer Codex-Zugang), nur lesend: nur Codex ohne
       eigenen Zugang und ohne API-Schlüssel.
+    - Steht der Agent in der Proxy-Stufe (``EGRESS_KI_ZUGANG``/``EGRESS_CODEX_ZUGANG``),
+      bekommt er die Datei seines Zugangs nie — auch nicht, wenn das Auflösen beim
+      Anlegen scheiterte und kein Platzhalter in ``env`` steht. Dann lieber ohne Zugang.
     - ``/shared/.plattform`` (Fehlerprotokoll), nur lesend: nur Agenten von Admins
       (und ohne Besitzer, die gehören den Admins) — das Protokoll nennt Agenten
       und Fehler aller Nutzer.
     """
-    from app.core.egress import KI_VARIABLEN, PLATZHALTER_RE
+    from app.core.egress import (
+        KI_VARIABLEN,
+        PLATZHALTER_RE,
+        codex_ueber_proxy,
+        ki_ueber_proxy,
+    )
 
     nur_lesen: list[tuple[str, str]] = []
     # Liegt der Claude-Zugang hinter dem Egress-Proxy (Platzhalter), bekommt der Agent
     # auch die Datei der Teamlizenz nicht: sie haette Vorrang und truege den Klartext.
-    ki_hinter_proxy = any(PLATZHALTER_RE.fullmatch(env.get(v) or "") for v in KI_VARIABLEN)
+    agent_id = env.get("AGENT_ID") or ""
+    ki_hinter_proxy = any(PLATZHALTER_RE.fullmatch(env.get(v) or "") for v in KI_VARIABLEN) \
+        or ki_ueber_proxy(agent_id)
     if mode != "codex_cli" and env.get("CLAUDE_CREDENTIAL_SOURCE") != "personal" and not ki_hinter_proxy:
         nur_lesen.append((AUTH_DIR, f"{SHARED_DIR}/{AUTH_DIR}"))
-    if mode == "codex_cli" and not env.get("CODEX_AUTH_JSON") and not env.get("OPENAI_API_KEY"):
+    if mode == "codex_cli" and not env.get("CODEX_AUTH_JSON") and not env.get("OPENAI_API_KEY") \
+            and not codex_ueber_proxy(agent_id):
         nur_lesen.append((CODEX_DIR, f"{SHARED_DIR}/{CODEX_DIR}"))
     if ist_admin or not user_id:
         nur_lesen.append((PLATTFORM_DIR, f"{SHARED_DIR}/{PLATTFORM_DIR}"))
