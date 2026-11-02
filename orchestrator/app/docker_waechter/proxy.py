@@ -40,7 +40,8 @@ _GEPRUEFT = (
 )
 _FELDNAME = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
 #: Anfragen IN einen bestehenden Container: das Ziel wird bei Docker nachgeschlagen.
-_ZIEL = re.compile(rf"^{_VERSION}/containers/([^/]+)/(exec|archive|attach|attach/ws|update|export|copy)$")
+_ZIEL = re.compile(rf"^(?P<v>{_VERSION})/containers/(?P<id>[^/]+)/"
+                   r"(?P<rest>exec|archive|attach|attach/ws|update|export|copy|rename)$")
 #: Endpunkte, bei denen Docker die Verbindung auf rohe Bytes umschaltet.
 _ROHSTROM = re.compile(rf"^{_VERSION}/(containers/[^/]+/attach(/ws)?|exec/[^/]+/start)$")
 COMPOSE_PFAD = "/aie/compose"
@@ -240,14 +241,16 @@ class Waechter:
             grund = regeln.volume_anlegen(daten)
         return grund, json.dumps(daten).encode()
 
-    async def _ziel_pruefen(self, container: str) -> str | None:
-        """Den Zielcontainer bei Docker nachschlagen und gegen ``regeln.zielcontainer`` halten."""
+    async def _ziel_pruefen(self, container: str) -> tuple[str | None, str]:
+        """Den Zielcontainer bei Docker nachschlagen und gegen ``regeln.zielcontainer`` halten.
+        (Grund, volle ID) — weitergereicht wird an die ID, nicht an den Namen: sonst
+        liesse sich zwischen Prüfung und Ausführung ein anderer Container so umbenennen."""
         from urllib.parse import quote
 
         try:
             reader, writer = await asyncio.open_connection(*self.upstream)
         except OSError as e:
-            return f"Docker nicht erreichbar: {e}"
+            return f"Docker nicht erreichbar: {e}", ""
         try:
             writer.write(f"GET /containers/{quote(container, safe='')}/json HTTP/1.1\r\nHost: docker\r\n"
                          "Connection: close\r\n\r\n".encode())
@@ -259,10 +262,14 @@ class Waechter:
             else:
                 inhalt = await asyncio.wait_for(reader.read(_KOERPER_MAX), 10)
             if " 200 " not in erste + " ":
-                return "Zielcontainer unbekannt"
-            return regeln.zielcontainer(json.loads(inhalt))
+                return "Zielcontainer unbekannt", ""
+            daten = json.loads(inhalt)
+            kennung = str(daten.get("Id") or "")
+            if not re.fullmatch(r"[0-9a-f]{64}", kennung):
+                return "Zielcontainer ohne gültige ID", ""
+            return regeln.zielcontainer(daten), kennung
         except (asyncio.TimeoutError, ValueError, ConnectionError, Abgelehnt, asyncio.IncompleteReadError) as e:
-            return f"Zielcontainer nicht prüfbar ({e})"
+            return f"Zielcontainer nicht prüfbar ({e})", ""
         finally:
             writer.close()
 
@@ -322,12 +329,18 @@ class Waechter:
                 pfad = pfad_bereinigt(ziel)
                 treffer = _ZIEL.match(pfad)
                 if treffer:
-                    grund = await self._ziel_pruefen(treffer.group(1))
+                    grund, kennung = await self._ziel_pruefen(treffer.group("id"))
                     if grund:
                         logger.warning("Abgelehnt: %s %s — %s", methode, pfad[:120], grund)
                         c_writer.write(_antwort(403, {"message": f"Docker-Wächter: {grund}"}))
                         await c_writer.drain()
                         return
+                    # An genau den geprüften Container: feste ID statt Name.
+                    abfrage = ziel.split("?", 1)[1] if "?" in ziel else ""
+                    ziel = f"{treffer.group('v')}/containers/{kennung}/{treffer.group('rest')}" + (
+                        f"?{abfrage}" if abfrage else "")
+                    erste = f"{methode} {ziel} HTTP/1.1"
+                    pfad = pfad_bereinigt(ziel)
                 koerper = None
                 if art:
                     try:

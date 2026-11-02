@@ -23,8 +23,10 @@ async def _docker_attrappe(reader, writer):
             if erste.startswith("GET /containers/") and erste.split(" ")[1].endswith("/json"):
                 name = erste.split(" ")[1].split("/")[2]
                 inspect = {
-                    "abc": {"HostConfig": {}, "Config": {"Labels": {}}},
-                    "app1": {"HostConfig": {}, "Config": {"Labels": {"com.docker.compose.project": "agent-12345678-x"}}},
+                    "abc": {"Id": "a" * 64, "HostConfig": {}, "Config": {"Labels": {"ai-employee.type": "agent"}}},
+                    "app1": {"Id": "b" * 64, "HostConfig": {}, "Config": {"Labels": {"com.docker.compose.project": "agent-12345678-x"}}},
+                    "fremd": {"Id": "c" * 64, "HostConfig": {}, "Config": {"Labels": {}}},
+                    "hostpid": {"Id": "d" * 64, "HostConfig": {"PidMode": "host"}, "Config": {"Labels": {"ai-employee.type": "agent"}}},
                     "proxy": {"HostConfig": {"Binds": ["/var/run/docker.sock:/var/run/docker.sock:ro"]}, "Config": {}},
                     "heal": {"HostConfig": {}, "Mounts": [{"Source": "/var/run/docker.sock"}], "Config": {}},
                     "postgres": {"HostConfig": {}, "Config": {"Labels": {"com.docker.compose.project": "ai-employee"}}},
@@ -214,7 +216,7 @@ class Durchreicher(unittest.IsolatedAsyncioTestCase):
 
     async def test_zielcontainer(self):
         """Hinein nur in Agenten und ihre Apps — nie in Container mit Socket oder in Dienste der Anlage."""
-        for name in ("proxy", "heal", "postgres", "cadvisor", "unbekannt"):
+        for name in ("proxy", "heal", "postgres", "cadvisor", "unbekannt", "fremd", "hostpid"):
             for anfrage in (_post(f"/v1.45/containers/{name}/exec", {"Cmd": ["sh"]}),
                             f"PUT /v1.45/containers/{name}/archive?path=/ HTTP/1.1\r\nContent-Length: 0\r\n\r\n".encode(),
                             f"GET /v1.45/containers/{name}/export HTTP/1.1\r\n\r\n".encode(),
@@ -222,10 +224,14 @@ class Durchreicher(unittest.IsolatedAsyncioTestCase):
                 with self.subTest(name=name, anfrage=anfrage[:40]):
                     (kopf, _), = await _senden(self.port, anfrage)
                     self.assertTrue(kopf.startswith(b"HTTP/1.1 403"), kopf)
-        for name in ("abc", "app1"):
+        for name, kennung in (("abc", "a" * 64), ("app1", "b" * 64)):
             with self.subTest(name):
-                (kopf, _), = await _senden(self.port, _post(f"/v1.45/containers/{name}/exec", {"Cmd": ["ls"]}))
+                (kopf, inhalt), = await _senden(self.port, _post(f"/v1.45/containers/{name}/exec?x=1", {"Cmd": ["ls"]}))
                 self.assertTrue(kopf.startswith(b"HTTP/1.1 201"), kopf)
+                self.assertEqual(json.loads(inhalt)["zeile"], f"POST /v1.45/containers/{kennung}/exec?x=1 HTTP/1.1",
+                                 "weitergereicht an die geprüfte ID, nicht an den Namen")
+        (kopf, _), = await _senden(self.port, _post("/v1.45/containers/proxy/rename?name=ai-agent-x", {}))
+        self.assertTrue(kopf.startswith(b"HTTP/1.1 403"), "umbenennen nur bei Agenten")
 
     async def test_schreibweise_und_doppelte_schluessel(self):
         """Docker liest Feldnamen ohne Rücksicht auf die Schreibung."""

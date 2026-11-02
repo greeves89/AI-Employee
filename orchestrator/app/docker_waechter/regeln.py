@@ -203,23 +203,31 @@ def container_starten(koerper: dict) -> str | None:
 
 
 def zielcontainer(inspect: dict) -> str | None:
-    """Darf der Orchestrator in diesen Container hinein (exec, Dateien, attach, update)?
+    """Darf der Orchestrator in diesen Container hinein (exec, Dateien, attach, update, rename)?
 
-    Nur Agenten (ohne Compose-Bezeichnung) und Apps der Agenten (Projekt ``agent-…``).
-    Nie in einen Container mit Docker-Socket oder ``Privileged`` — wer dort einen
-    Befehl ausführt, ist root auf dem Server (Socket-Proxy, autoheal) —, und nie in
-    die Dienste der Anlage selbst (Datenbank, Wächter, Egress-Proxy …).
+    Nur, was die Plattform ausdrücklich als ihres kennzeichnet: Agenten
+    (``ai-employee.type=agent``) und Apps der Agenten (Compose-Projekt ``agent-…``).
+    Und auch dann nie, wenn der Container privilegiert ist, den Docker-Socket hat
+    oder Namespaces des Hosts teilt — wer dort einen Befehl ausführt, wäre root auf
+    dem Server. Alles andere (Socket-Proxy, autoheal, Datenbank, der Wächter …) ist zu.
     """
-    d = klein(inspect or {})
+    try:
+        d = klein(inspect or {})
+    except ValueError as e:
+        return f"Ziel nicht prüfbar ({e})"
+    labels = (d.get("config") or {}).get("labels") or {}
+    projekt = str(labels.get("com.docker.compose.project") or "")
+    if labels.get("ai-employee.type") != "agent" and not projekt.startswith("agent-"):
+        return "Ziel gehört nicht zu den Agenten"
     hc = d.get("hostconfig") or {}
     if hc.get("privileged"):
         return "Ziel ist privilegiert"
+    for feld in ("pidmode", "ipcmode", "utsmode", "usernsmode", "networkmode"):
+        modus = str(hc.get(feld) or "").lower()
+        if modus == "host" or modus.startswith("container:"):
+            return f"Ziel teilt Namespaces ({feld})"
     quellen = [str(b).split(":")[0] for b in _liste(hc.get("binds"))]
     quellen += [str((m or {}).get("source") or "") for m in _liste(d.get("mounts"))]
     if any("docker.sock" in q or "containerd.sock" in q for q in quellen):
         return "Ziel hat den Docker-Socket"
-    projekt = ((d.get("config") or {}).get("labels") or {}).get("com.docker.compose.project")
-    if projekt is not None and not str(projekt).startswith("agent-"):
-        return f"Ziel gehört nicht zu den Agenten (Projekt {projekt!r})"
     return None
-
