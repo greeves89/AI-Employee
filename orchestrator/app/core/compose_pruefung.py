@@ -250,6 +250,8 @@ def _runner(docker, befehl: list[str], *, mounts: list, socket: bool, netz: str 
         kwargs["user"] = user
     c = docker.client.containers.run(
         image=_runner_abbild(docker), command=befehl, volumes=volumes, mounts=mounts,
+        # Kennzeichnung für den Docker-Wächter: Runner darf der Orchestrator stoppen/löschen.
+        labels={"ai-employee.type": "runner"},
         environment=umgebung or {}, detach=True, mem_limit=RUNNER_SPEICHER,
         pids_limit=RUNNER_PROZESSE, nano_cpus=RUNNER_CPUS, **kwargs,
     )
@@ -301,15 +303,15 @@ def ausfuehren(docker, quelle: Quelle, projekt: str, modell: dict | None,
     """Compose ausführen. ``modell`` ist das NORMALISIERTE, noch ungeprüfte Modell
     (``vorbereiten``) — geprüft wird dort, wo der Docker-Socket ist.
 
-    Mit Docker-Wächter (``DOCKER_WAECHTER_TOKEN``) prüft und startet ER: der
+    Mit Docker-Wächter (``DOCKER_HOST`` zeigt auf ihn) prüft und startet ER: der
     Orchestrator legt selbst keinen Container mit Socket mehr an (P1-13). Ohne
     Wächter (Entwicklung) geschieht dasselbe hier.
     ``modell=None`` nur für Befehle, die ohne Datei auskommen (``down``): Compose
     findet die Container dann über die Projektbezeichnung.
     """
-    import os
+    from app.docker_waechter.schluessel import ueber_waechter
 
-    if os.environ.get("DOCKER_WAECHTER_TOKEN"):
+    if ueber_waechter():
         return _im_waechter(quelle, projekt, modell, befehl)
     if modell is not None:
         modell = pruefen(modell, quelle, projekt)[0]
@@ -322,11 +324,13 @@ def _im_waechter(quelle: Quelle, projekt: str, modell: dict | None, befehl: list
 
     import httpx
 
+    from app.docker_waechter.schluessel import waechter_schluessel
+
     adresse = os.environ.get("DOCKER_HOST", "tcp://docker-waechter:2375").replace("tcp://", "http://", 1)
     try:
         antwort = httpx.post(
             f"{adresse}/aie/compose", timeout=ZEITLIMIT_START + 60,
-            headers={"X-Waechter-Token": os.environ["DOCKER_WAECHTER_TOKEN"]},
+            headers={"X-Waechter-Token": waechter_schluessel()},
             json={"quelle": asdict(quelle), "projekt": projekt, "modell": modell, "befehl": befehl},
         )
     except httpx.HTTPError as e:

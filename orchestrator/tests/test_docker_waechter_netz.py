@@ -8,6 +8,7 @@ from pathlib import Path
 import yaml
 
 COMPOSE = Path(__file__).resolve().parents[2] / "docker-compose.yml"
+COMMUNITY = Path(__file__).resolve().parents[2] / "docker-compose.community.yml"
 
 
 class Netztrennung(unittest.TestCase):
@@ -47,6 +48,21 @@ class Netztrennung(unittest.TestCase):
         mit_socket = sorted(n for n, d in self.dienste.items()
                             if any("docker.sock" in str(v) for v in d.get("volumes") or []))
         self.assertEqual(mit_socket, ["autoheal", "docker-socket-proxy"])
+
+
+
+class Community(Netztrennung):
+    """Dieselbe Trennung in der Community-Variante (kein direkter Socket mehr im Orchestrator)."""
+
+    @classmethod
+    def setUpClass(cls):
+        daten = yaml.safe_load(COMMUNITY.read_text())
+        cls.dienste, cls.netze = daten["services"], daten["networks"]
+
+    def test_niemand_sonst_haengt_den_socket_ein(self):
+        mit_socket = sorted(n for n, d in self.dienste.items()
+                            if any("docker.sock" in str(v) for v in d.get("volumes") or []))
+        self.assertEqual(mit_socket, ["docker-socket-proxy"])
 
 
 if __name__ == "__main__":

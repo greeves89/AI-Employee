@@ -4590,6 +4590,9 @@ nach außen abgeschottetes Netz).
 | Container anlegen | ohne `privileged`, ohne Geräte, ohne fremde Namespaces, nur die sechs Fähigkeiten der Agenten, nur das Seccomp-Profil der Plattform; nur ins Agenten-Netz oder ein App-Netz (nie ins Netz des Docker-Zugangs), ohne Netz-Aliase; Host-Ordner nur aus dem Mount-Katalog und unter den Second Brains, nie System-Ordner, nie der Docker-Socket |
 | In bestehende Container (exec, Dateien, attach, umbenennen, verbinden) | nur in Agenten und Apps der Agenten — nie in Dienste der Anlage oder Container mit Docker-Socket |
 | Netz anlegen | nur App-Netze der Agenten, ohne besondere Treiber oder Optionen |
+| Container stoppen, neu starten, löschen | nur Agenten, ihre Hilfs-Container und Apps *(seit 1.427.0)* |
+| Volume löschen | nur die der Agenten (Arbeitsbereich, Sitzung, Werkzeuge, Apps), nie die der Anlage *(seit 1.427.0)* |
+| Abbilder | holen ja; laden, hochladen, aus Quelle importieren und alles „prune“ gesperrt *(seit 1.427.0)* |
 | Befehl in Container (`exec`) | nicht privilegiert |
 | Volume anlegen | nur lokal, ohne Treiber-Optionen (sonst wäre ein Volume ein versteckter Host-Ordner) |
 | Agenten-App starten/stoppen | der Wächter prüft die Compose-Datei selbst (dieselben Regeln wie Kap. 9) und startet sie; der Orchestrator bekommt keinen Container mit Docker-Socket mehr durch |
@@ -4597,7 +4600,8 @@ nach außen abgeschottetes Netz).
 Abgelehntes steht im Protokoll des Dienstes: `docker logs ai-employee-docker-waechter`.
 Der Wächter läuft aus demselben signierten Abbild wie der Orchestrator, schreibgeschützt,
 ohne Rechte und ohne Code vom Server. Seinen Schlüssel (`DOCKER_WAECHTER_TOKEN`) legen
-`setup.sh` bzw. `update.sh` selbst in der `.env` an. Das Abbild des App-Runners
+`setup.sh` bzw. `update.sh` selbst in der `.env` an; fehlt er (Community-Variante), wird er aus
+`API_SECRET_KEY` abgeleitet. Seit 1.427.0 läuft auch `docker-compose.community.yml` über den Wächter. Das Abbild des App-Runners
 (`docker:cli`) ist per Digest festgelegt.
 
 ---

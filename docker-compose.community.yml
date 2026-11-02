@@ -71,6 +71,9 @@ services:
     ports:
       - "${ORCHESTRATOR_PORT:-8000}:8000"
     environment:
+      # Docker nur über den Docker-Wächter
+      DOCKER_HOST: tcp://docker-waechter:2375
+      DOCKER_WAECHTER_TOKEN: ${DOCKER_WAECHTER_TOKEN:-}
       DATABASE_URL: "postgresql+asyncpg://ai_employee:${DB_PASSWORD}@postgres:5432/ai_employee"
       REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379"
       REDIS_URL_INTERNAL: "redis://:${REDIS_PASSWORD}@redis:6379"
@@ -120,8 +123,7 @@ services:
       FEEDBACK_ISSUE_ENABLED: ${FEEDBACK_ISSUE_ENABLED:-false}
       GITHUB_REPO: ${GITHUB_REPO:-}
     volumes:
-      # Docker socket is required so the orchestrator can spawn agent containers
-      - /var/run/docker.sock:/var/run/docker.sock
+      # Kein Docker-Socket mehr: Docker nur über den Docker-Wächter (siehe unten).
       # Shared volume accessible by all agents for cross-agent file exchange
       - ai-employee-shared:/shared
       # Feedback-Widget: MD-Dateien + Screenshots ueberleben Redeploys
@@ -135,6 +137,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      docker-waechter:
         condition: service_healthy
     restart: unless-stopped
     # Cross-platform host access: on Linux host.docker.internal does not resolve
@@ -151,6 +155,69 @@ services:
     networks:
       - internal
       - agent-network
+      - waechter-api
+
+  # Docker nur geprüft (wie in docker-compose.yml): der Wächter prüft jede Anlage von
+  # Containern und startet Agenten-Apps selbst; den Docker-Zugang erreicht nur er.
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest@sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459
+    container_name: ai-employee-docker-proxy
+    environment:
+      CONTAINERS: 1
+      IMAGES: 1
+      VOLUMES: 1
+      NETWORKS: 1
+      EXEC: 1
+      POST: 1
+      AUTH: 0
+      SECRETS: 0
+      SWARM: 0
+      SERVICES: 0
+      TASKS: 0
+      NODES: 0
+      PLUGINS: 0
+      BUILD: 0
+      COMMIT: 0
+      CONFIGS: 0
+      DISTRIBUTION: 0
+      SESSION: 0
+      SYSTEM: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+    networks:
+      - docker-api
+
+  docker-waechter:
+    image: ghcr.io/greeves89/ai-employee-orchestrator:${AI_EMPLOYEE_VERSION:-latest}
+    container_name: ai-employee-docker-waechter
+    command: ["python", "-m", "app.docker_waechter"]
+    user: "65534:65534"
+    environment:
+      WAECHTER_UPSTREAM: docker-socket-proxy:2375
+      # Schlüssel zum Orchestrator: gesetzt oder aus API_SECRET_KEY abgeleitet.
+      DOCKER_WAECHTER_TOKEN: ${DOCKER_WAECHTER_TOKEN:-}
+      API_SECRET_KEY: ${API_SECRET_KEY:?API_SECRET_KEY is required in .env (32+ random chars)}
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket; socket.create_connection(('127.0.0.1', 2375), 3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      docker-socket-proxy:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - waechter-api
+      - docker-api
 
   embedding-service:
     image: ghcr.io/greeves89/ai-employee-embedding:${AI_EMPLOYEE_VERSION:-latest}
@@ -214,3 +281,9 @@ networks:
   agent-network:
     name: ai-employee-network
     driver: bridge
+  docker-api:
+    driver: bridge
+    internal: true
+  waechter-api:
+    driver: bridge
+    internal: true

@@ -2,7 +2,7 @@
 
 Umgebung:
   WAECHTER_UPSTREAM       Socket-Proxy, Standard ``docker-socket-proxy:2375``
-  DOCKER_WAECHTER_TOKEN   Dienst-Schlüssel für ``/aie/compose`` (vom Orchestrator)
+  DOCKER_WAECHTER_TOKEN   Dienst-Schlüssel für ``/aie/compose`` (sonst aus API_SECRET_KEY abgeleitet)
   AGENT_MOUNT_CATALOG, SECONDBRAIN_BASE   wie im Orchestrator: erlaubte Host-Pfade
   (der Orchestrator sieht Second Brains unter /srv/secondbrain, Standard der Einstellung)
 """
@@ -31,10 +31,12 @@ async def main() -> None:
     host, _, port = os.environ.get("WAECHTER_UPSTREAM", "docker-socket-proxy:2375").partition(":")
     upstream = (host, int(port or 2375))
     runner = SimpleNamespace(client=docker.DockerClient(base_url=f"tcp://{host}:{upstream[1]}", timeout=120))
-    schluessel = os.environ.get("DOCKER_WAECHTER_TOKEN", "")
-    if len(schluessel) < 32:
-        logging.getLogger("docker_waechter").warning("DOCKER_WAECHTER_TOKEN fehlt — Agenten-Apps sind gesperrt")
-        schluessel = ""
+    from app.docker_waechter.schluessel import waechter_schluessel
+
+    schluessel = waechter_schluessel()
+    if not schluessel:
+        logging.getLogger("docker_waechter").warning(
+            "Weder DOCKER_WAECHTER_TOKEN noch API_SECRET_KEY — Agenten-Apps sind gesperrt")
     pfade = erlaubte_host_pfade()
     # Dasselbe Profil, das docker_service den Agenten mitgibt — nur genau das ist erlaubt.
     from app.services.docker_service import _SECCOMP_PROFILE

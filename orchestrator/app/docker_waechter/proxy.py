@@ -40,6 +40,15 @@ _GEPRUEFT = (
     (re.compile(rf"^{_VERSION}/networks/create$"), "netz"),
 )
 _NETZ_VERBINDEN = re.compile(rf"^{_VERSION}/networks/(?P<id>[^/]+)/connect$")
+#: Stoppen, Neustarten, Pausieren, Löschen — nur Container der Agenten (regeln.lebenszyklus_ziel).
+_LEBENSZYKLUS = re.compile(rf"^(?P<v>{_VERSION})/containers/(?P<id>[^/]+)(?P<rest>/(kill|stop|restart|pause|unpause))?$")
+_VOLUME_LOESCHEN = re.compile(rf"^{_VERSION}/volumes/(?P<name>[^/]+)$")
+#: Nie über den Wächter: Abbilder laden/hochladen/importieren, Aufräumen im großen Stil.
+_GESPERRT = (
+    ("POST", re.compile(rf"^{_VERSION}/images/load$")),
+    ("POST", re.compile(rf"^{_VERSION}/images/.+/push$")),
+    ("POST", re.compile(rf"^{_VERSION}/(containers|volumes|images|networks|build)/prune$")),
+)
 #: Zeitgrenzen: Kopf, Körper, Verbindungsaufbau. Rohe Ströme (exec/attach) haben keine.
 _ZEIT_KOPF, _ZEIT_KOERPER, _ZEIT_VERBINDEN = 60, 300, 10
 _MAX_VERBINDUNGEN = 64
@@ -254,6 +263,21 @@ class Waechter:
             grund = regeln.volume_anlegen(daten)
         return grund, json.dumps(daten).encode()
 
+    @staticmethod
+    def _verboten(methode: str, pfad: str, ziel: str) -> str | None:
+        for m, muster in _GESPERRT:
+            if methode == m and muster.match(pfad):
+                return "Dieser Docker-Zugriff ist für die Plattform gesperrt"
+        if methode == "POST" and re.match(rf"^{_VERSION}/images/create$", pfad):
+            from urllib.parse import parse_qs
+            abfrage = {k.lower(): v for k, v in parse_qs(ziel.split("?", 1)[1] if "?" in ziel else "").items()}
+            if "fromsrc" in abfrage:
+                return "Abbild-Import aus einer Quelle ist gesperrt"
+        vol = _VOLUME_LOESCHEN.match(pfad)
+        if methode == "DELETE" and vol:
+            return regeln.volume_loeschen(vol.group("name"))
+        return None
+
     async def _nachschlagen(self, pfad: str) -> tuple[int, dict]:
         """``GET`` bei Docker (lesend, am Wächter vorbei): (Status, JSON)."""
         try:
@@ -276,7 +300,8 @@ class Waechter:
         finally:
             writer.close()
 
-    async def _ziel_pruefen(self, container: str, *, orchestrator_erlaubt: bool = False) -> tuple[str | None, str]:
+    async def _ziel_pruefen(self, container: str, *, orchestrator_erlaubt: bool = False,
+                            regel=None) -> tuple[str | None, str]:
         """Den Zielcontainer bei Docker nachschlagen und gegen ``regeln.zielcontainer`` halten.
         (Grund, volle ID) — weitergereicht wird an die ID, nicht an den Namen: sonst
         liesse sich zwischen Prüfung und Ausführung ein anderer Container so umbenennen."""
@@ -294,7 +319,7 @@ class Waechter:
             return "Zielcontainer ohne gültige ID", ""
         if orchestrator_erlaubt and str(daten.get("Name") or "").lstrip("/") == self.orchestrator_name:
             return None, kennung
-        return regeln.zielcontainer(daten), kennung
+        return (regel or regeln.zielcontainer)(daten), kennung
 
     async def _verbinden_pruefen(self, netz: str, koerper: bytes) -> tuple[str | None, bytes]:
         """``POST /networks/{id}/connect``: Netz nachschlagen (Name, nicht ID), Container wie ein Ziel."""
@@ -390,6 +415,25 @@ class Waechter:
 
                 art = art_der_anfrage(methode, ziel)
                 pfad = pfad_bereinigt(ziel)
+                verbot = self._verboten(methode.upper(), pfad, ziel)
+                if verbot:
+                    logger.warning("Abgelehnt: %s %s — %s", methode, pfad[:120], verbot)
+                    c_writer.write(_antwort(403, {"message": f"Docker-Wächter: {verbot}"}))
+                    await c_writer.drain()
+                    return
+                lz = _LEBENSZYKLUS.match(pfad)
+                if lz and (methode.upper() == "DELETE" if not lz.group("rest") else methode.upper() == "POST"):
+                    grund, kennung = await self._ziel_pruefen(lz.group("id"), regel=regeln.lebenszyklus_ziel)
+                    if grund:
+                        logger.warning("Abgelehnt: %s %s — %s", methode, pfad[:120], grund)
+                        c_writer.write(_antwort(403, {"message": f"Docker-Wächter: {grund}"}))
+                        await c_writer.drain()
+                        return
+                    abfrage = ziel.split("?", 1)[1] if "?" in ziel else ""
+                    ziel = f"{lz.group('v')}/containers/{kennung}{lz.group('rest') or ''}" + (
+                        f"?{abfrage}" if abfrage else "")
+                    erste = f"{methode} {ziel} HTTP/1.1"
+                    pfad = pfad_bereinigt(ziel)
                 treffer = _ZIEL.match(pfad)
                 if treffer:
                     grund, kennung = await self._ziel_pruefen(treffer.group("id"))

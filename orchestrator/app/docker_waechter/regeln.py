@@ -13,6 +13,7 @@ Reine Funktionen ohne Ein- und Ausgabe: ``None`` heißt erlaubt, sonst der Grund
 from __future__ import annotations
 
 import posixpath
+import re
 from typing import Any, Iterable
 
 #: Fähigkeiten, die ein Agent-Container zusätzlich bekommt (docker_service.create_container).
@@ -290,4 +291,29 @@ def netz_verbinden(netz_name: str, koerper: dict) -> str | None:
     if _liste(((klein(koerper).get("endpointconfig") or {}).get("aliases"))):
         return "Netz-Aliase sind gesperrt"
     return None
+
+
+#: Container, die der Orchestrator stoppen, neu starten und löschen darf.
+_LEBENSZYKLUS_ARTEN = frozenset({"agent", "clone-helper", "disk-cleanup-helper", "runner"})
+#: Volumes, die der Orchestrator löschen darf: die der Agenten. Nie die der Anlage (Datenbank …).
+_VOLUME_LOESCHBAR = re.compile(r"^(workspace|claude-session|build-tools)-[A-Za-z0-9_.-]+$|^agent-[0-9a-z]{8}-")
+
+
+def lebenszyklus_ziel(inspect: dict) -> str | None:
+    """Stoppen, neu starten, pausieren, löschen: nur Container der Plattform für Agenten
+    (Agent, Hilfs-Container, Runner) und Apps der Agenten — nie Dienste der Anlage."""
+    try:
+        d = klein(inspect or {})
+    except ValueError as e:
+        return f"Ziel nicht prüfbar ({e})"
+    labels = (d.get("config") or {}).get("labels") or {}
+    if labels.get("ai-employee.type") in _LEBENSZYKLUS_ARTEN:
+        return None
+    if str(labels.get("com.docker.compose.project") or "").startswith("agent-"):
+        return None
+    return "Ziel gehört nicht zu den Agenten"
+
+
+def volume_loeschen(name: str) -> str | None:
+    return None if _VOLUME_LOESCHBAR.match(str(name or "")) else f"Volume {name!r} gehört nicht zu den Agenten"
 
