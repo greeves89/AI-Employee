@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.427.1] - 2026-11-02
+
+### Sicherheit
+- Docker-Wächter: Abbild-Import auch über den Anfragekörper gesperrt, Netze trennen und löschen geprüft, Abbilder löschen gesperrt, App-Volumes genau dem Agenten zugeordnet.
+
+## Tests
+- `test_feinschliff` (8 Fälle) und 2 neue Volume-Fälle.
+- 144 Wächter- und Compose-Tests grün.
+
 ## [1.427.0] - 2026-11-02
 
 ### Sicherheit
