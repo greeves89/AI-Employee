@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.426.1] - 2026-11-02
+
+### Behoben
+- Agenten ließen sich mit 1.426.0 nicht neu anlegen: Der Docker-Wächter kannte das Seccomp-Profil der Agenten nicht. Das Profil liegt jetzt im Abbild.
+
+## Tests
+`test_seccomp_im_abbild.py`: Das Dockerfile kopiert das Profil, `.dockerignore` schließt es nicht aus.
+
 ## [1.426.0] - 2026-11-02
 
 ### Sicherheit

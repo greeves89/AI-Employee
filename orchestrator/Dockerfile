@@ -41,6 +41,9 @@ RUN pip install --no-cache-dir -e .
 COPY alembic.ini .
 COPY alembic/ ./alembic/
 COPY app/ ./app/
+# Seccomp-Profil der Agenten: der Orchestrator gibt es mit, der Docker-Wächter (gleiches
+# Abbild, ohne Code vom Host) lässt nur genau dieses zu.
+COPY seccomp-profile.json ./seccomp-profile.json
 
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
