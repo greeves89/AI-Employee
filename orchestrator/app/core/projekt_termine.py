@@ -8,12 +8,14 @@ den Vorlagen (``core/meeting_templates``).
 Am Ende einer Projekt-Besprechung (``abschluss``):
 * das Protokoll (Zusammenfassung mit Action Items) wird eine Seite im
   Projektwissen (``protokolle/…``) und eine Nachricht im Projektgespräch;
-* jedes Action Item wird eine Karte unter „Bereit“ — der Lead (oder der Takt)
-  vergibt sie. Es entstehen keine Aufträge an Agenten vorbei am Board.
+* jedes Action Item wird eine Karte in der „Inbox“ — ein Mensch gibt sie erst frei,
+  danach vergibt der Lead (oder der Takt) sie aus „Bereit“. Es entstehen keine
+  Aufträge an Agenten vorbei am Board.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -202,6 +204,14 @@ AEHNLICH_AB = 0.6
 ERLEDIGT_FENSTER = timedelta(days=14)
 #: Mehr Karten je Besprechung sind Rauschen, kein Plan.
 MAX_KARTEN = 5
+#: Höchstens so viele Nummern je Besprechung beim Hoster nachfragen — ein Protokoll
+#: voller Nummern darf das Ende der Besprechung nicht aufhalten. Eine Nummer = eine
+#: Abfrage, also ist das auch die Zahl der Lesevorgänge.
+MAX_STATUSABFRAGEN = 20
+#: Frist für die Statusabfragen zusammen (die Zeitgrenze von httpx gilt je Lesevorgang).
+#: Sie umfasst bewusst NICHT das Beschaffen des Zugangs — siehe
+#: ``_geschlossen_an_der_quelle``.
+STATUS_FRIST_SEKUNDEN = 15
 
 
 def _woerter(text: str) -> frozenset[str]:
@@ -223,7 +233,84 @@ def _items(markdown: str) -> list[str]:
     return [z.strip()[5:].strip() for z in (markdown or "").splitlines() if z.strip().startswith("- [ ]")][:MAX_ITEMS]
 
 
-async def abschluss(room_id: str, team_id: str, raum_name: str, zusammenfassung: str, agent_ids: list[str]) -> None:
+async def _geschlossen_an_der_quelle(redis, team_id: str, repo: str, nummern: set[int]) -> set[int]:
+    """Welche der genannten Issue-Nummern sind beim Hoster wirklich geschlossen?
+
+    Die Board-Spalte taugt dafür nicht: ``spalte == "erledigt"`` kennt nur Nummern,
+    zu denen überhaupt noch eine Karte liegt — gemessen am 28.10.2026 waren das
+    4 von 133 Issue-Karten, während im Repo hunderte Issues geschlossen sind. Ein
+    Protokollpunkt zu einem geschlossenen Issue *ohne* Karte passierte die Wache
+    deshalb jedes Mal und wurde wieder zur Karte; das Aufräumen von Hand half nicht,
+    weil mit der Karte auch das einzige Kennzeichen verschwand.
+
+    Eine nicht erreichbare Quelle heißt ausdrücklich *nicht* geschlossen — und das
+    gilt für beide Arten von „nicht erreichbar": eine Ausnahme UND die Antwort
+    ``None``, mit der die Anbieter 404/401/403 und eine erschöpfte Abfragegrenze
+    melden. Ein doppelter Punkt ist billiger als ein verlorener. Schon gemessene
+    Nummern bleiben gültig — bricht die Abfrage nach der Hälfte ab, zählt die Hälfte.
+
+    Gefragt wird mit EINEM Lesevorgang je Nummer (``get_issue``). Der Umweg über
+    zwei Abfragen (``issue_state`` und danach ``pull_state``) hatte genau die
+    Fehlerklasse, die diese Wache vermeiden soll: ``pull_state`` liefert auch bei
+    403/429/5xx ``None``, und ``None`` hieß dort „kein Pull Request" — eine nicht
+    lesbare Quelle machte aus einer Nummer also ein erledigtes Issue, und der Punkt
+    verschwand. Die Antwort von ``/issues/{n}`` trägt das Feld ``pull_request``
+    selbst (so unterscheiden das auch ``list_open_issues`` beider Anbieter).
+
+    Läuft in einer EIGENEN Sitzung und bekommt deshalb nur Werte, kein ORM-Objekt.
+    """
+    if not nummern or redis is None or not repo:
+        return set()
+
+    import httpx
+
+    from app.core import projekt_git
+    from app.db.session import async_session_factory
+
+    zu: set[int] = set()
+    try:
+        ziel = projekt_git.repo_ziel(repo)
+        if ziel.art == "ungueltig" or not ziel.pfad:
+            return zu
+        # EIGENE Sitzung: ``zugang`` kann beim Token-Tausch auf der übergebenen
+        # Sitzung ein ``rollback`` auslösen (``oauth_service`` tut das, wenn sein
+        # ``commit`` scheitert). Das ließe alle geladenen Objekte des Aufrufers
+        # verfallen — die Karten dieser Besprechung wären verloren, der nächste
+        # Zugriff ein Nachladen außerhalb des Async-Kontexts (MissingGreenlet).
+        async with async_session_factory() as eigene:
+            team = await eigene.get(Team, team_id)
+            if team is None:
+                return zu
+            # ``zugang`` liegt BEWUSST außerhalb der Frist. Es erneuert bei Bedarf den
+            # OAuth-Token: es wartet dafür bis zu 30 s auf die Sperre und tauscht den
+            # Refresh-Token beim Anbieter ein. Ein Abbruch mitten in diesem Tausch
+            # verbrennt den Refresh-Token — der Anbieter hat ihn dann schon gedreht,
+            # der neue ist aber nie gespeichert worden, und die Verbindung gilt als
+            # getrennt (Fehlerklasse #1013). Eine Besprechung, die 15 s früher endet,
+            # ist das nicht wert. ``zugang`` begrenzt sich selbst (Sperrfrist und die
+            # Zeitgrenzen von httpx).
+            token, anbieter = await projekt_git.zugang(eigene, redis, team)
+            async with asyncio.timeout(STATUS_FRIST_SEKUNDEN):
+                async with httpx.AsyncClient(timeout=httpx.Timeout(10.0), follow_redirects=False) as client:
+                    for nr in sorted(nummern)[:MAX_STATUSABFRAGEN]:
+                        # ``/issues/{n}`` antwortet bei GitHub UND Forgejo auch für Pull
+                        # Requests, und ``#N`` steht in einem Protokoll oft für einen PR
+                        # („PR #1126 nachziehen"). In einem gewachsenen Repo ist fast jede
+                        # Zahl „geschlossen" — ein PR ist aber kein erledigtes Issue, und so
+                        # ein Punkt darf nicht verschwinden. Das Feld ``pull_request`` steht
+                        # in derselben Antwort, es braucht keine zweite Abfrage.
+                        daten = await anbieter.get_issue(client, token, ziel.pfad, nr)
+                        if not isinstance(daten, dict):
+                            continue            # nicht lesbar: ausdrücklich NICHT geschlossen
+                        if daten.get("state") == "closed" and not daten.get("pull_request"):
+                            zu.add(nr)
+    except Exception as e:  # noqa: BLE001 — die Besprechung endet auch ohne Hoster
+        log.warning("Issue-Status für Projekt %s nicht vollständig geprüft: %s", team_id, e)
+    return zu
+
+
+async def abschluss(room_id: str, team_id: str, raum_name: str, zusammenfassung: str, agent_ids: list[str],
+                    redis=None) -> None:
     """Ende einer Projekt-Besprechung: Protokoll ins Wissen und ins Gespräch, Items als Karten."""
     from app.core import projekt_wissen, projekte
     from app.db.session import async_session_factory
@@ -274,10 +361,24 @@ async def abschluss(room_id: str, team_id: str, raum_name: str, zusammenfassung:
             or (erledigt_at is not None and (erledigt_at if erledigt_at.tzinfo else
                                              erledigt_at.replace(tzinfo=timezone.utc)) >= grenze)
         ]
+        # Je Punkt einmal: Nummern und Wörter.
+        punkte = [(p, {int(n) for n in _ISSUE_NR.findall(p)}, _woerter(p)) for p in _items(zusammenfassung)]
+        # Den Status der genannten Issues an der QUELLE messen, nicht am Kartenzustand:
+        # ohne Karte kennt das Board eine geschlossene Nummer gar nicht (#1106).
+        # Gefragt wird nur, was das Ergebnis noch ändern KANN: einen Punkt, den die
+        # Wortüberlappung schon abdeckt, überspringt die Wache ohnehin — für ihn beim
+        # Hoster nachzufragen kostet Abfragen und hält die Besprechung auf, ohne dass
+        # die Antwort etwas entscheidet. Gemessen wird dafür gegen den Stand VOR der
+        # Schleife; die Punkte, die erst durch einen anderen Punkt DESSELBEN Protokolls
+        # wegfallen, bleiben also mit drin. Das ist die sichere Richtung: ein paar
+        # Abfragen zu viel, nie ein Punkt, der ungeprüft als geschlossen gilt.
+        genannt = {n for _, nummern, w in punkte
+                   if not any(_aehnlich(w, v) for v in vergleich) for n in nummern}
+        geschlossen |= await _geschlossen_an_der_quelle(redis, team.id, team.repo or "", genannt - geschlossen)
         items, uebersprungen = [], 0
-        for item in _items(zusammenfassung):
-            nummern = {int(n) for n in _ISSUE_NR.findall(item)}
-            woerter = _woerter(item)
+        for item, nummern, woerter in punkte:
+            # ``vergleich`` wächst in der Schleife mit: so fällt auch ein Punkt weg, den
+            # erst ein VORHERIGER Punkt desselben Protokolls abdeckt.
             if (nummern and nummern <= geschlossen) or any(_aehnlich(woerter, v) for v in vergleich):
                 uebersprungen += 1
                 continue
