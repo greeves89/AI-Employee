@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.428.1] - 2026-11-02
+
+### Sicherheit
+- Codex hinter dem Proxy: Das `id_token` in der `auth.json` des Agenten trägt keine Signatur mehr, ein `OPENAI_API_KEY` daneben fällt weg.
+
+### Tests
+- `test_codex_hinter_proxy.py`: nichts vom Original-Token bleibt (Zugang, Erneuerung, Signatur, Schlüssel), unlesbares `id_token`; 71 Egress- und Codex-Tests grün.
+
 ## [1.428.0] - 2026-11-02
 
 ### Sicherheit
