@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.442.3] - 2026-11-08
+
+### Behoben
+- Sentinel: Ein Agent wurde angehalten, sobald er eine Datei aus diesem Repository mit einem schlüsselförmigen Testwert las, und mit ihm fielen alle seine Zeitpläne aus (beim Betreiber gut 21 Stunden, ohne echtes Leck). Betroffen waren 13 Dateien, darunter die Beispiel-Konfiguration und die Installationsanleitung. Die Testwerte sind jetzt im Quelltext geteilt, die Platzhalter ersetzt, und ein Wächter-Test verhindert neue (er fängt auch echte Schlüssel, die versehentlich eingecheckt werden). Öffentliche Schlüssel und Zertifikate lösen keinen Stopp mehr aus, geschwärzt werden sie weiter; Tokens und als privat gekennzeichnete Schlüssel stoppen wie bisher. Fremde Repositories schützt das nicht, das bleibt in #1198 offen.
+
 ## [1.442.0] - 2026-11-07
 
 ### Neu

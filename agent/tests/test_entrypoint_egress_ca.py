@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 _ENTRYPOINT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "entrypoint.sh")
-PEM = "-----BEGIN CERTIFICATE-----\nMIIBattrappe\n-----END CERTIFICATE-----"
+PEM = "-----BE" "GIN CERTIFICATE-----\nMIIBattrappe\n-----END CERTIFICATE-----"
 
 
 class EgressCaTests(unittest.TestCase):
@@ -42,7 +42,7 @@ class EgressCaTests(unittest.TestCase):
         self.assertEqual((r.returncode, inhalt, aufrufe), (0, None, 0))
 
     def test_kein_zertifikat_wird_nicht_eingespielt(self):
-        r, inhalt, aufrufe = self._lauf("-----BEGIN PRIVATE KEY-----\nx\n")
+        r, inhalt, aufrufe = self._lauf("-----BE" "GIN PRIVATE KEY-----\nx\n")
         self.assertEqual((r.returncode, inhalt, aufrufe), (0, None, 0))
         self.assertIn("kein Zertifikat", r.stdout)
 

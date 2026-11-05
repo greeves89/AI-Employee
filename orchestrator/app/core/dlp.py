@@ -212,6 +212,36 @@ HIGH_CONFIDENCE_SECRET_MARKERS = frozenset({
 })
 
 
+#: Bloecke, die am Format wie ein Schluessel aussehen, aber nichts Geheimes tragen.
+_OEFFENTLICHE_BLOECKE = frozenset({
+    "PUBLIC KEY",
+    "RSA PUBLIC KEY",
+    "PGP PUBLIC KEY BLOCK",
+    "CERTIFICATE",
+    "TRUSTED CERTIFICATE",
+    "CERTIFICATE REQUEST",
+    "X509 CRL",
+})
+_BLOCK_MARKE = re.compile(r"-----(?:BEGIN|END) ([^-]+)-----")
+
+
+def fremde_blockmarken(text: str) -> list[str]:
+    """Alle BEGIN-/END-Marken im Text, die nicht zu einem oeffentlichen Block gehoeren."""
+    return [m for m in _BLOCK_MARKE.findall(text) if m not in _OEFFENTLICHE_BLOECKE]
+
+
+def _ist_oeffentlicher_block(treffer: str) -> bool:
+    """Oeffentlicher Schluessel oder Zertifikat: am Format gleich, aber kein Geheimnis.
+
+    Der Blockausdruck laeuft vom ersten BEGIN bis zum ersten END. Ein Treffer kann
+    also mehrere Bloecke umfassen, auch aus verschiedenen Dateien, wenn ein Werkzeug
+    sie in einem Ergebnis ausgibt (``cat a b``). Deshalb entscheidet nicht der Kopf
+    allein: Jede Marke im Treffer muss oeffentlich sein.
+    """
+    marken = _BLOCK_MARKE.findall(treffer)
+    return bool(marken) and all(m in _OEFFENTLICHE_BLOECKE for m in marken)
+
+
 def find_high_confidence_secrets(text: str) -> list[str]:
     """Nur Geheimnisse, die am Format erkennbar sind — fuer Eingriffe, die wehtun.
 
@@ -222,7 +252,7 @@ def find_high_confidence_secrets(text: str) -> list[str]:
     treffer: list[str] = []
     for pat, repl in _SECRET_PATTERNS:
         if repl in HIGH_CONFIDENCE_SECRET_MARKERS:
-            treffer += _finds(pat, text)
+            treffer += [m for m in _finds(pat, text) if not _ist_oeffentlicher_block(m)]
     return treffer
 
 
