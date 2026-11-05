@@ -38,18 +38,18 @@ CODEX_DELIBERATE_GAPS: dict[str, str] = {
     ),
 }
 
-#: Server, deren Werkzeuge Custom-LLM ueber HTTP-MCP erreicht statt ueber
-#: definitions.py. Sie muessen dort NICHT nachgebaut sein.
-CUSTOM_LLM_VIA_HTTP: dict[str, str] = {
+#: Wie Custom-LLM an die Werkzeuge eines Servers kommt. Werkzeug fuer Werkzeug
+#: prueft das test_werkzeug_paritaet.py; nachgebaute Werkzeuge stehen in definitions.py.
+CUSTOM_LLM_WEG: dict[str, str] = {
     "msgraph": "Kommt zur Laufzeit ueber den MCP-HTTP-Client (mcp_-Praefix, vorab aktiviert).",
     "email": "Wie msgraph — HTTP-MCP, kein stdio.",
-    "hyperframes": "HTTP-MCP (Video-Dienst).",
-    "brain": "HTTP-MCP (Vault als Bearer-Server).",
+    "hyperframes": "In definitions.py nachgebaut (app/tools/hyperframes.py).",
+    "brain": "In definitions.py nachgebaut (brain_*).",
     "secondbrain": "In definitions.py nachgebaut (secondbrain_*, ueber den Executor).",
     "bash-approval": "Kein Werkzeugsatz, nur ein Freigabe-Haken.",
-    "computer-use": "Rechnersteuerung — offen, siehe test_computer_use_parity.",
-    "read-logs": "Offen, siehe unten.",
-    "skill": "Teilweise in definitions.py; Rest offen.",
+    "computer-use": "Aktionen des Sammelwerkzeugs computer_use (app/tools/paritaet.py).",
+    "read-logs": "In definitions.py nachgebaut (read_logs).",
+    "skill": "In definitions.py nachgebaut (skill_*).",
     "memory": "In definitions.py nachgebaut (memory_*).",
     "notification": "In definitions.py nachgebaut (notify_user).",
 }
@@ -131,7 +131,7 @@ class TheMatrixIsDocumentedTests(unittest.TestCase):
     """Jede verbleibende Abweichung ist benannt — keine stillen Luecken."""
 
     def test_every_claude_server_is_accounted_for_in_custom_llm(self):
-        unexplained = CLAUDE - set(CUSTOM_LLM_VIA_HTTP) - {"orchestrator"}
+        unexplained = CLAUDE - set(CUSTOM_LLM_WEG) - {"orchestrator"}
         self.assertEqual(
             unexplained, set(),
             "Fuer diese Server ist nicht festgehalten, wie Custom-LLM an ihre "

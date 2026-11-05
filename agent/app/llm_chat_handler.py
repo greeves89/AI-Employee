@@ -641,42 +641,11 @@ class LLMChatHandler:
 
         # Build system message if this is the first message
         if not self._history:
-            from app.runner_hooks import (
-                MULTIMODAL_CAPABILITY_NOTE,
-                get_identity_context,
-                get_memory_preload,
-                get_skills_context,
-                get_mounts_context,
-                get_marketplace_skill_suggestions,
-            )
-            system_prompt = settings.llm_system_prompt or (
-                "You are a helpful AI coding assistant running in a Docker container. "
-                "Your workspace is at /workspace. Use the available tools to help the user."
-            )
-            # WHO the agent is (name, role, its AGENT.md) and WHAT it already knows — the
-            # CLI runtimes read both from disk, this runtime has to be handed them. Without
-            # it the agent answers "ich habe keinen eigenen Namen" and forgets across
-            # sessions what the user told it, although it saved it.
-            system_prompt = system_prompt + get_identity_context() + get_memory_preload(text[:500])
-            system_prompt = system_prompt + MULTIMODAL_CAPABILITY_NOTE
-            system_prompt = system_prompt + (
-                "\n\n## Werkzeuge bei Bedarf nachladen\n"
-                "Dir ist nur ein KERN-Satz an Werkzeugen direkt verfügbar. Für alles "
-                "Weitere — Microsoft 365 (Mail, Kalender, Teams, OneDrive, Planner), "
-                "Wissensdatenbank, Skills, weitere Integrationen — rufe ZUERST "
-                "`search_tools` mit einer Beschreibung der gewünschten Aktion auf "
-                "(z. B. 'Ordner in OneDrive anlegen'); die passenden Werkzeuge sind "
-                "dann ab deinem nächsten Schritt aufrufbar."
-            )
-            # Host mounts / Second Brain awareness + marketplace skills — parity with
-            # the task runtimes so chat agents also search the shared vault and skills.
-            system_prompt = system_prompt + get_mounts_context()
-            skills_ctx = get_skills_context()
-            if skills_ctx:
-                system_prompt = system_prompt + "\n" + skills_ctx
-            marketplace = get_marketplace_skill_suggestions(text[:200])
-            if marketplace:
-                system_prompt = system_prompt + "\n" + marketplace
+            # Dieselben Bausteine wie im Auftragslauf — zentral, siehe
+            # compose_custom_llm_start. Freigaberegeln und Fachanleitungen setzt der
+            # ChatConsumer je Nachricht davor, Datum und Uhrzeit ebenso.
+            from app.runner_hooks import compose_custom_llm_start
+            system_prompt = compose_custom_llm_start(text, art="chat").system
             self._history.append(ChatMessage(role="system", content=system_prompt))
 
             # Den bisherigen Verlauf DIESER Unterhaltung zurueckholen.

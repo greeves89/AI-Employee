@@ -336,10 +336,10 @@ class AuftragsLaufzeitenTests(unittest.IsolatedAsyncioTestCase):
         for name in ("get_identity_context", "get_approval_rules_prefix", "get_memory_preload",
                      "get_skills_context", "get_mounts_context", "get_marketplace_skill_suggestions",
                      "get_improvement_context"):
-            p = patch(f"app.llm_runner.{name}", return_value="")
+            p = patch(f"app.runner_hooks.{name}", return_value="")
             p.start()
             self.addCleanup(p.stop)
-        p = patch("app.llm_runner.get_skill_preload", side_effect=lambda auftrag="": f"FACH[{auftrag}]")
+        p = patch("app.runner_hooks.get_skill_preload", side_effect=lambda auftrag="": f"FACH[{auftrag}]")
         p.start()
         self.addCleanup(p.stop)
         for leicht in (True, False):
