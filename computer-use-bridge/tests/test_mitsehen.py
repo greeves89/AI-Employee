@@ -52,6 +52,66 @@ class Beobachter(unittest.TestCase):
     def typen(self):
         return [e["type"] for e in self.ereignisse]
 
+    # ── „Aus meiner Arbeit lernen“ (#1023): Nutzungsprotokoll ─────────────────
+
+    def _nutzung(self):
+        return [e for e in self.ereignisse if e["type"] == "nutzung"]
+
+    def test_nutzung_nur_mit_schalter(self):
+        self.o.konfigurieren({"beobachten": True, "lernen": False})
+        self._schritte(4)
+        self.vorn["titel"] = "Anderes"
+        self._schritte(4)
+        self.assertEqual(self._nutzung(), [])
+
+    def test_nutzung_meldet_beendeten_besuch_mit_dauer_ohne_bild(self):
+        self.o.konfigurieren({"beobachten": True, "lernen": True})
+        self._schritte(5)                      # erster Blick setzt den Beginn
+        self.vorn["titel"] = "Anderes"
+        self._schritte(1)
+        n = self._nutzung()
+        self.assertEqual(len(n), 1)
+        self.assertEqual((n[0]["app"], n[0]["titel"]), ("Google Chrome", "Start"))
+        self.assertEqual(n[0]["dauer_sekunden"], 15)
+        self.assertNotIn("bild_b64", n[0])
+
+    def test_nutzung_ohne_schalter_beobachten_gibt_nichts(self):
+        self.o.konfigurieren({"beobachten": False, "lernen": True})
+        self.assertFalse(self.o.lernen)
+
+    def test_vor_dem_einschalten_gilt_nicht(self):
+        self.o.konfigurieren({"beobachten": True, "lernen": False})
+        self._schritte(10)
+        self.o.konfigurieren({"beobachten": True, "lernen": True})
+        self.vorn["titel"] = "Anderes"
+        self._schritte(1)                      # Besuch beginnt erst jetzt
+        self.assertEqual(self._nutzung(), [])
+
+    def test_kurzer_besuch_zaehlt_nicht(self):
+        self.o.konfigurieren({"beobachten": True, "lernen": True})
+        self._schritte(1)
+        self.vorn["titel"] = "Kurz"
+        self._schritte(1)
+        self.vorn["titel"] = "Weiter"
+        self._schritte(1)
+        self.assertEqual(self._nutzung(), [])
+
+    def test_private_fenster_kommen_nicht_ins_protokoll(self):
+        self.o.konfigurieren({"beobachten": True, "lernen": True})
+        self.vorn.update(app="1Password", titel="Tresor")
+        self._schritte(5)
+        self.vorn.update(app="Google Chrome", titel="Start")
+        self._schritte(1)
+        self.assertEqual(self._nutzung(), [])
+
+    def test_luecke_macht_keine_stunden_arbeit(self):
+        self.o.konfigurieren({"beobachten": True, "lernen": True})
+        self._schritte(5)
+        self.uhr.t += 3600                     # Rechner schlief
+        self.vorn["titel"] = "Nach dem Schlaf"
+        self.o.schritt()
+        self.assertEqual(self._nutzung(), [])
+
     def test_regel_trifft_einmal_je_fenster(self):
         self.o.konfigurieren({"beobachten": True, "regeln": [
             {"id": 7, "wenn_titel": "YouTube Studio", "angebot": "x", "aktiv": True}]})
