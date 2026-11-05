@@ -52,6 +52,21 @@ def engine_for_provider(provider_type: str) -> str | None:
     return REALTIME_PROVIDERS.get(provider_type, {}).get("engine")
 
 
+def sprachmodelle_des_kontos(provider_type: str | None, extra: dict | None, konto_modelle: list[dict]) -> list[dict] | None:
+    """Welche Modelle eines Kontos ins Sprach-Setup gehoeren. ``None`` = das ganze Konto nicht.
+
+    Ein Bedrock-Konto kann seit dem Custom-LLM-Betrieb reine Textmodelle tragen und mit
+    einem Bedrock-API-Schluessel laufen. Beides kann Nova Sonic nicht: Die Sprach-
+    Sitzung braucht IAM (``resolve_credentials``).
+    """
+    if provider_type != "bedrock":
+        return konto_modelle
+    if not str((extra or {}).get("aws_access_key_id") or "").strip():
+        return None
+    sprache = [m for m in konto_modelle if "sonic" in str(m.get("id") or "").lower()]
+    return None if konto_modelle and not sprache else sprache
+
+
 def resolve_credentials(account) -> dict | None:
     """Turn an AIAccount row into realtime credentials, or None if unusable.
 

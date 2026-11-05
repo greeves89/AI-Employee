@@ -399,7 +399,7 @@ export default function AgentDetailPage() {
                     {agent.mode === "custom_llm" && agent.ai_account_id
                       ? `${agent.ai_account_name ?? "KI-Konto"} / ${agent.model}`
                       : agent.mode === "custom_llm" && agent.llm_config
-                        ? `${agent.llm_config.provider_type === "openai" ? "OpenAI" : agent.llm_config.provider_type === "google" ? "Google" : "Anthropic"} / ${agent.llm_config.model_name}`
+                        ? `${agent.llm_config.provider_type === "openai" ? "OpenAI" : agent.llm_config.provider_type === "google" ? "Google" : agent.llm_config.provider_type === "bedrock" ? "AWS Bedrock" : "Anthropic"} / ${agent.llm_config.model_name}`
                         : agent.model.split("-").slice(0, 2).join("-")}
                   </span>
                 </div>

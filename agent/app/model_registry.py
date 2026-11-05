@@ -56,6 +56,11 @@ _MODELS: dict[str, tuple[int, float | None, float | None]] = {
     "gemini-2.5-flash": (1_000_000, 0.30, 2.50),
     "gemini-1.5-pro": (2_000_000, 1.25, 5.00),
     "gemini-1.5-flash": (1_000_000, 0.075, 0.30),
+    # Amazon Nova (Bedrock) — Fenster laut Modellkarten der AWS-Dokumentation
+    # (geprueft 2026-11-04). Preise je nach Region und Stufe, daher unbekannt.
+    "nova-pro": (300_000, None, None),
+    "nova-lite": (300_000, None, None),
+    "nova-micro": (128_000, None, None),
     # Local / open models — conservative defaults, no billing
     "llama": (8_192, None, None),
     "mistral": (32_768, None, None),

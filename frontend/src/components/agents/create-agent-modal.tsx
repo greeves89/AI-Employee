@@ -150,6 +150,16 @@ const PROVIDER_PRESETS: Record<string, { endpoint: string; models: string[]; noK
     models: ["local-model"],
     noKey: true,
   },
+  bedrock: {
+    // Leer = Standard-Endpunkt der Region; Modelle als Inferenzprofil (eu./us.).
+    endpoint: "",
+    models: [
+      "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
+      "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+      "eu.amazon.nova-pro-v1:0",
+      "us.amazon.nova-pro-v1:0",
+    ],
+  },
 };
 
 type AccountOption =
@@ -247,6 +257,8 @@ export function CreateAgentModal({
   const [llmProvider, setLlmProvider] = useState<LLMProviderType>("openai");
   const [llmEndpoint, setLlmEndpoint] = useState("https://api.openai.com/v1");
   const [llmApiKey, setLlmApiKey] = useState("");
+  const [llmAwsRegion, setLlmAwsRegion] = useState("eu-central-1");
+  const [llmAwsAccessKeyId, setLlmAwsAccessKeyId] = useState("");
   const [llmModelName, setLlmModelName] = useState("gpt-4o");
   const [llmMaxTokens, setLlmMaxTokens] = useState("4096");
   const [llmTemperature, setLlmTemperature] = useState("0.7");
@@ -485,6 +497,10 @@ export function CreateAgentModal({
         setError("Model Name ist erforderlich");
         return;
       }
+      if (llmProvider === "bedrock" && !llmAwsRegion.trim()) {
+        setError("AWS Region ist erforderlich");
+        return;
+      }
     }
 
     setCreating(true);
@@ -549,6 +565,9 @@ export function CreateAgentModal({
           system_prompt: llmSystemPrompt.trim(),
           tools_enabled: llmToolsEnabled,
           reasoning_effort: llmReasoningEffort,
+          ...(llmProvider === "bedrock"
+            ? { aws_region: llmAwsRegion.trim(), aws_access_key_id: llmAwsAccessKeyId.trim() }
+            : {}),
         };
         created = await api.createAgent(
           name.trim(),
@@ -1086,7 +1105,7 @@ export function CreateAgentModal({
                               Provider
                             </label>
                             <div className="grid grid-cols-3 gap-2">
-                              {(["openai", "anthropic", "google", "ollama", "lm-studio"] as LLMProviderType[]).map((p) => (
+                              {(["openai", "anthropic", "google", "ollama", "lm-studio", "bedrock"] as LLMProviderType[]).map((p) => (
                                 <button
                                   key={p}
                                   type="button"
@@ -1098,7 +1117,7 @@ export function CreateAgentModal({
                                       : "border-foreground/[0.08] text-muted-foreground hover:border-foreground/[0.15]"
                                   )}
                                 >
-                                  {p === "openai" ? "OpenAI" : p === "anthropic" ? "Anthropic" : p === "google" ? "Google" : p === "ollama" ? "Ollama" : "LM Studio"}
+                                  {p === "openai" ? "OpenAI" : p === "anthropic" ? "Anthropic" : p === "google" ? "Google" : p === "ollama" ? "Ollama" : p === "bedrock" ? "AWS Bedrock" : "LM Studio"}
                                 </button>
                               ))}
                             </div>
@@ -1116,10 +1135,44 @@ export function CreateAgentModal({
                               type="text"
                               value={llmEndpoint}
                               onChange={(e) => setLlmEndpoint(e.target.value)}
-                              placeholder="https://api.openai.com/v1"
+                              placeholder={llmProvider === "bedrock" ? "leer = Standard der Region" : "https://api.openai.com/v1"}
                               className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm font-mono outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
                             />
                           </div>
+
+                          {/* AWS Bedrock: Region und, nur bei IAM, die Access Key ID */}
+                          {llmProvider === "bedrock" && (
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                                  AWS Region <span className="text-red-400">*</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  value={llmAwsRegion}
+                                  onChange={(e) => setLlmAwsRegion(e.target.value)}
+                                  placeholder="eu-central-1"
+                                  className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm font-mono outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                                  AWS Access Key ID <span className="text-muted-foreground/40">(nur IAM)</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  value={llmAwsAccessKeyId}
+                                  onChange={(e) => setLlmAwsAccessKeyId(e.target.value)}
+                                  placeholder="leer = Bedrock-API-Schlüssel"
+                                  className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm font-mono outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
+                                />
+                              </div>
+                              <p className="col-span-2 text-[11px] text-muted-foreground/50">
+                                Mit IAM gehört unten das Secret hinein. IAM funktioniert nicht hinter dem Egress-Proxy,
+                                ein Bedrock-API-Schlüssel schon.
+                              </p>
+                            </div>
+                          )}
 
                           {/* API Key */}
                           <div>
@@ -1136,7 +1189,7 @@ export function CreateAgentModal({
                                 type={showApiKey ? "text" : "password"}
                                 value={llmApiKey}
                                 onChange={(e) => setLlmApiKey(e.target.value)}
-                                placeholder={PROVIDER_PRESETS[llmProvider]?.noKey ? "optional" : "sk-..."}
+                                placeholder={PROVIDER_PRESETS[llmProvider]?.noKey ? "optional" : llmProvider === "bedrock" ? "Bedrock-API-Schlüssel oder AWS Secret" : "sk-..."}
                                 className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 pr-10 text-sm font-mono outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
                               />
                               <button

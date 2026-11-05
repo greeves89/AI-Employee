@@ -61,6 +61,21 @@ def create_provider(
             model_name=model_name,
             **kwargs,
         )
+    elif provider_type == "bedrock":
+        # Eigene Schnittstelle (Converse), eigene Anmeldung (siehe bedrock_provider).
+        # boto3 wird erst dort geladen — andere Anbieter zahlen nicht dafuer.
+        from app.config import settings
+        from app.providers.bedrock_provider import BedrockProvider
+        return BedrockProvider(
+            api_endpoint=api_endpoint,
+            api_key=api_key,
+            model_name=model_name,
+            aws_region=settings.llm_aws_region,
+            aws_access_key_id=settings.llm_aws_access_key_id,
+            aws_session_token=settings.llm_aws_session_token,
+            iam_gesperrt=settings.llm_bedrock_iam_gesperrt,
+            **kwargs,
+        )
     elif provider_type in ("ollama", "lm-studio", "lmstudio"):
         # Ollama and LM Studio expose an OpenAI-compatible API — no API key required
         return OpenAIProvider(
