@@ -15,7 +15,7 @@ export type TaskStatus =
   | "cancelled";
 
 export type AgentMode = "claude_code" | "codex_cli" | "custom_llm";
-export type LLMProviderType = "openai" | "anthropic" | "google" | "ollama" | "lm-studio";
+export type LLMProviderType = "openai" | "anthropic" | "google" | "ollama" | "lm-studio" | "bedrock";
 
 export interface LLMConfig {
   provider_type: LLMProviderType;
@@ -27,6 +27,8 @@ export interface LLMConfig {
   system_prompt?: string;
   tools_enabled?: boolean;
   reasoning_effort?: "" | "low" | "medium" | "high";
+  aws_region?: string;
+  aws_access_key_id?: string;
 }
 
 export interface LLMConfigResponse {
@@ -40,7 +42,7 @@ export interface LLMConfigResponse {
 }
 
 export type AIAccountProviderType =
-  | "azure-openai" | "openai" | "anthropic" | "google" | "ollama" | "lm-studio";
+  | "azure-openai" | "openai" | "anthropic" | "google" | "ollama" | "lm-studio" | "bedrock";
 
 export interface AIModel {
   name: string;                       // model / Azure deployment name

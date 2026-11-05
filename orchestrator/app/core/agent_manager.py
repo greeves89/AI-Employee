@@ -15,7 +15,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from app.config import get_agent_version, settings
 from app.core import autonomy_matrix
 from app.core.agent_duty import vom_nutzer_angehalten
-from app.core.egress import ANBINDUNG, aktiv as egress_aktiv, platzhalter as egress_platzhalter
+from app.core.egress import ANBINDUNG, aktiv as egress_aktiv, bedrock_umgebung, platzhalter as egress_platzhalter
 from app.core.egress import ki_ueber_proxy as egress_ki_stufe, ki_umstellen as egress_ki_umstellen, veraltet as egress_veraltet
 from app.core.egress import codex_ueber_proxy as egress_codex_stufe, codex_umstellen as egress_codex_umstellen
 from app.core.encryption import decrypt_token
@@ -1471,6 +1471,12 @@ class AgentManager:
                     "reasoning_effort": extra.get("reasoning_effort", ""),
                     "api_version": extra.get("api_version", ""),
                     "deployment": mname,
+                    # Nur Bedrock: dieselben Felder wie die Realtime-Sprache
+                    # (core/realtime_catalog.py). Das Secret bzw. der Bedrock-API-
+                    # Schluessel steckt verschluesselt in api_key_encrypted.
+                    "aws_region": extra.get("aws_region", "") or "",
+                    "aws_access_key_id": extra.get("aws_access_key_id", "") or "",
+                    "aws_session_token": extra.get("aws_session_token", "") or "",
                 }
         if inline_llm_config:
             cfg = dict(inline_llm_config)
@@ -1506,6 +1512,9 @@ class AgentManager:
             "LLM_API_VERSION": cfg.get("api_version", "") or "",
             "LLM_DEPLOYMENT": cfg.get("deployment", "") or "",
             "DEFAULT_MODEL": cfg.get("model_name", ""),
+            # Bedrock: Region und Anmeldung; hinter dem Egress-Proxy ersetzt das
+            # LLM_API_KEY (core/egress.py). Andere Anbieter: nichts.
+            **bedrock_umgebung(cfg),
         }
 
     async def _publish_event(self, agent_id: str, event_type: str, message: str) -> None:

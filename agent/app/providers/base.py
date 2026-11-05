@@ -158,6 +158,10 @@ class LLMEvent:
     reasoning_tokens: int = 0       # Teil der Ausgabe, den das Modell „nachgedacht" hat
     cached_tokens: int = 0          # Eingabe, die aus dem Prompt-Cache gelesen wurde
     cache_write_tokens: int = 0     # Eingabe, die neu in den Cache geschrieben wurde
+    # Nur bei "error": die Einrichtung ist falsch, nicht die Leitung. Zaehlt nicht fuer
+    # den Circuit-Breaker — sonst stuende nach drei Versuchen „API unreachable“ da,
+    # wo eben noch der echte Grund stand.
+    konfigurationsfehler: bool = False
 
 
 @dataclass
@@ -300,7 +304,8 @@ class BaseLLMProvider(ABC):
         async for event in self._stream_completion_impl(messages, tools):
             if event.type == "error":
                 had_error = True
-                self.circuit_breaker.record_failure()
+                if not event.konfigurationsfehler:
+                    self.circuit_breaker.record_failure()
             elif event.type == "done" and not had_error:
                 self.circuit_breaker.record_success()
             yield event
