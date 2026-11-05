@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.443.0] - 2026-11-08
+
+### Neu
+- Bridge, Stufe 5 — **Aus meiner Arbeit lernen**: Mit einem eigenen Schalter (standardmäßig aus, braucht „Mitsehen“) merkt sich die Bridge, welche Anwendung und welchen Fenstertitel du wie lange offen hattest. Keine Bilder, nichts aus Passwortmanager-, Anmelde- und Bankfenstern, Besuche unter 5 Sekunden zählen nicht.
+- Einmal am Tag bekommt dein Agent eine Zusammenfassung der wiederkehrenden Fenster (nicht das Protokoll) und schlägt höchstens drei Regeln vor. Die Rückfrage steht im Gespräch „Bridge (Overlay)“ und unter „Vorschläge“ bei „Mitsehen und Mitdenken“; **Annehmen** legt die Regel an, **Ablehnen** wird gemerkt. Ohne dein Ja entsteht nichts. Eine Bedingung, die im Protokoll nie vorkam, wird verworfen.
+- Das Protokoll ist einsehbar („Protokoll ansehen“) und löschbar; **Ausschalten löscht es sofort** (samt den daraus abgeleiteten, nicht angenommenen Vorschlägen; bei angenommenen fällt die Begründung mit den Zahlen weg), sonst nach 30 Tagen. „Jetzt auswerten“ stößt die Auswertung ohne Warten an. Ausschalten geht auch dann, wenn „Mitsehen“ inzwischen aus ist.
+- Schutz bei Titeln, die fremder Inhalt sind: Bedingungen unter 3 Zeichen und Kombinationen aus App und Titel, die nie in einem gemeinsamen Fenster vorkamen, werden verworfen; Links und Formatierung aus Agententexten erscheinen nicht in der Rückfrage; nach „Vom Menschen gestoppt“ wird nichts mitgeschrieben; ein zweites gleichzeitiges „Annehmen“ legt keine zweite Regel an; ist das Protokoll voll (20 000 Einträge), werden die ältesten verdrängt.
+
+### Hinweise
+- Das Protokoll liegt auf dem AI-Employee-Server, nicht nur lokal auf dem Rechner (so war es im Umsetzungsvorschlag des Tickets festgehalten). Bridge ab 1.429.0 nötig; eine ältere Bridge meldet nichts, es entstehen keine Einträge. Die Auswertung braucht ein Agenten-Abbild mit „Nur ansehen“-Zug (ab 1.378.0).
+- Offen: Fenstertitel gehen (als Zusammenfassung) an das Sprachmodell des Agenten; die Stichwortliste für private Fenster erkennt Passwortmanager, Anmeldung und Banking, aber nicht jede Mail-Betreffzeile oder Gesundheitsseite. Der Auswertungs-Gesprächsfaden „bridge-lernen“ des Agenten wird beim Löschen des Protokolls nicht mitgelöscht. Die Auswertung prüft nicht erneut, ob „Mitsehen“ noch an ist.
+- Die Rückfrage läuft über den Chat und die Einstellungen, nicht über das Overlay (die Tagesauswertung läuft unabhängig von einer offenen Bridge-Sitzung).
+- Stufenwahl: Minor, weil es eine neue Fähigkeit ist.
+
+### Tests
+- `test_bridge_lernen.py` (Server: Schalter, Privatfenster, Löschen, Mandantentrennung, Auswertung, Annehmen) und sieben neue Fälle in `test_mitsehen.py` (Bridge).
+
 ## [1.442.0] - 2026-11-07
 
 ### Neu
