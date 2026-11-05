@@ -22,6 +22,7 @@ Erster Teil von #161 (Parität zwischen Custom-LLM- und Claude-Code-Agenten).
 
 ### Geändert
 - Chat und Auftrag von Custom-LLM bauen ihren Start (Identität, Gedächtnis, Fachanleitungen, Freigaberegeln, Zeitkontext) jetzt aus denselben Bausteinen. Vorher waren beide Zusammenbauten auseinandergelaufen.
+- Die Werkzeugliste in der Oberfläche (Katalog des Orchestrators) führt die neuen Werkzeuge mit auf.
 - Sprach-Setup (Nova Sonic) listet keine Bedrock-Konten mehr, die nur per API-Schlüssel laufen oder nur Textmodelle tragen.
 
 ### Behoben (im Review gefunden)
