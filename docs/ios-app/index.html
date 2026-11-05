@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="AI Employee — Self-Hosted KI-Agenten-Plattform: M365 und MCP direkt, drei Laufzeiten, alle Kanäle, Freigaben und Prüfspur. Mit iOS-App AI Employee Hub.">
-<title>AI Employee — Self-Hosted KI-Agenten-Plattform für dein Team</title>
+<meta name="description" content="Self-Hosted KI-Agenten-Plattform für Unternehmen: KI-Mitarbeiter für Microsoft 365, MCP und alle Kanäle, on-premise per Docker, mit Freigaben und iOS-App.">
+<title>AI Employee — Self-Hosted KI-Agenten-Plattform für Unternehmen</title>
 <link rel="canonical" href="https://agents.future-app.de/">
 <meta property="og:type" content="website">
-<meta property="og:title" content="AI Employee — Self-Hosted KI-Agenten-Plattform für dein Team">
+<meta property="og:title" content="AI Employee — Self-Hosted KI-Agenten-Plattform für Unternehmen">
 <meta property="og:description" content="KI-Mitarbeiter, die in deinen Systemen arbeiten: selbst betrieben per Docker, mit Freigaben, Budgets und Prüfspur. Mit iOS-App.">
 <meta property="og:url" content="https://agents.future-app.de/">
 <meta property="og:site_name" content="AI Employee">
@@ -18,7 +18,197 @@
 <meta property="og:image:alt" content="AI Employee — Dein KI-Team. Auf deiner Infrastruktur.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://agents.future-app.de/landing/og.jpg">
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "AI Employee", "description": "AI Employee — Self-Hosted KI-Agenten-Plattform: M365 und MCP direkt, drei Laufzeiten, alle Kanäle, Freigaben und Prüfspur. Mit iOS-App AI Employee Hub.", "url": "https://agents.future-app.de/", "image": "https://agents.future-app.de/landing/og.jpg", "inLanguage": "de", "applicationCategory": "BusinessApplication", "operatingSystem": "Linux (Docker Compose), iOS", "offers": {"@type": "AggregateOffer", "priceCurrency": "EUR", "lowPrice": "0", "offerCount": "5"}, "sameAs": ["https://apps.apple.com/de/app/ai-employee-hub/id6787380062", "https://github.com/greeves89/AI-Employee"]}</script>
+<meta name="twitter:title" content="AI Employee — Self-Hosted KI-Agenten-Plattform für Unternehmen">
+<meta name="twitter:description" content="KI-Mitarbeiter, die in deinen Systemen arbeiten: selbst betrieben per Docker, mit Freigaben, Budgets und Prüfspur. Mit iOS-App.">
+<meta name="twitter:image:alt" content="AI Employee — Dein KI-Team. Auf deiner Infrastruktur.">
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@graph": [
+  {
+   "@type": "Organization",
+   "@id": "https://agents.future-app.de/#organization",
+   "name": "AI Employee",
+   "url": "https://agents.future-app.de/",
+   "founder": {
+    "@type": "Person",
+    "@id": "https://daniel-alisch.site/#person",
+    "name": "Daniel Alisch",
+    "url": "https://daniel-alisch.site"
+   },
+   "sameAs": [
+    "https://apps.apple.com/de/app/ai-employee-hub/id6787380062",
+    "https://github.com/greeves89/AI-Employee"
+   ]
+  },
+  {
+   "@type": "WebSite",
+   "@id": "https://agents.future-app.de/#website",
+   "name": "AI Employee",
+   "url": "https://agents.future-app.de/",
+   "inLanguage": "de",
+   "publisher": {
+    "@id": "https://agents.future-app.de/#organization"
+   }
+  },
+  {
+   "@type": "SoftwareApplication",
+   "@id": "https://agents.future-app.de/#software",
+   "name": "AI Employee",
+   "description": "Self-Hosted KI-Agenten-Plattform für Unternehmen: KI-Mitarbeiter für Microsoft 365, MCP und alle Kanäle, on-premise per Docker, mit Freigaben und iOS-App.",
+   "url": "https://agents.future-app.de/",
+   "image": "https://agents.future-app.de/landing/og.jpg",
+   "inLanguage": "de",
+   "applicationCategory": "BusinessApplication",
+   "applicationSubCategory": "KI-Agenten-Plattform",
+   "operatingSystem": "Linux (Docker Compose), iOS",
+   "softwareRequirements": "Docker Engine 24+ mit Docker Compose v2",
+   "publisher": {
+    "@id": "https://agents.future-app.de/#organization"
+   },
+   "offers": {
+    "@type": "AggregateOffer",
+    "priceCurrency": "EUR",
+    "lowPrice": 0,
+    "offerCount": 5,
+    "offers": [
+     {
+      "@type": "Offer",
+      "name": "Community",
+      "price": 0,
+      "priceCurrency": "EUR",
+      "description": "Kostenlos für private und nicht kommerzielle Nutzung, 30 Tage Test im Unternehmen"
+     },
+     {
+      "@type": "Offer",
+      "name": "Starter",
+      "price": 149,
+      "priceCurrency": "EUR",
+      "priceSpecification": {
+       "@type": "UnitPriceSpecification",
+       "price": 149,
+       "priceCurrency": "EUR",
+       "unitCode": "MON",
+       "valueAddedTaxIncluded": false
+      },
+      "description": "149 € netto im Monat bei 12 Monaten Laufzeit, 3 Agenten je Installation"
+     },
+     {
+      "@type": "Offer",
+      "name": "Team",
+      "price": 390,
+      "priceCurrency": "EUR",
+      "priceSpecification": {
+       "@type": "UnitPriceSpecification",
+       "price": 390,
+       "priceCurrency": "EUR",
+       "unitCode": "MON",
+       "valueAddedTaxIncluded": false
+      },
+      "description": "390 € netto im Monat bei 12 Monaten Laufzeit, 10 Agenten je Installation"
+     },
+     {
+      "@type": "Offer",
+      "name": "Business",
+      "price": 990,
+      "priceCurrency": "EUR",
+      "priceSpecification": {
+       "@type": "UnitPriceSpecification",
+       "price": 990,
+       "priceCurrency": "EUR",
+       "unitCode": "MON",
+       "valueAddedTaxIncluded": false
+      },
+      "description": "990 € netto im Monat bei 12 Monaten Laufzeit, 30 Agenten je Installation"
+     },
+     {
+      "@type": "Offer",
+      "name": "Enterprise",
+      "price": 2490,
+      "priceCurrency": "EUR",
+      "priceSpecification": {
+       "@type": "UnitPriceSpecification",
+       "price": 2490,
+       "priceCurrency": "EUR",
+       "unitCode": "MON",
+       "valueAddedTaxIncluded": false,
+       "minPrice": 2490
+      },
+      "description": "ab 2490 € netto im Monat bei 12 Monaten Laufzeit, 100 Agenten je Installation"
+     }
+    ]
+   },
+   "sameAs": [
+    "https://apps.apple.com/de/app/ai-employee-hub/id6787380062",
+    "https://github.com/greeves89/AI-Employee"
+   ]
+  },
+  {
+   "@type": "FAQPage",
+   "@id": "https://agents.future-app.de/#faq",
+   "inLanguage": "de",
+   "mainEntity": [
+    {
+     "@type": "Question",
+     "name": "Was ist ein KI-Mitarbeiter?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Ein KI-Mitarbeiter ist ein KI-Agent mit Rolle, Werkzeugen und Gedächtnis, der Aufgaben selbstständig erledigt, zum Beispiel Mails beantworten, Tickets abarbeiten oder eine Morgenlage erstellen. In AI Employee läuft jeder Agent in einem eigenen Docker-Container mit eigenem Arbeitsverzeichnis. Was er selbst darf, legt die Autonomie-Matrix fest: Erlaubt, Freigabe oder Verboten. Alles auf Freigabe geht vor der Ausführung an einen Menschen."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Wie unterscheidet sich AI Employee von ChatGPT oder Microsoft Copilot?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "ChatGPT und Microsoft Copilot sind Assistenten, die der jeweilige Anbieter in seiner Cloud betreibt. AI Employee ist eine Plattform, die du selbst betreibst und auf der mehrere KI-Agenten dauerhaft für dein Team arbeiten: mit eigenem Gedächtnis, Zeitplänen, Auslösern und Workflows, in Microsoft 365, Teams, Slack, Telegram und WhatsApp. Du bist an kein Modell gebunden und behältst mit Freigaben, Budgets je Agent und Audit-Log die Kontrolle."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Läuft AI Employee on-premise und DSGVO-konform?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "AI Employee läuft per Docker auf deinen eigenen Servern, on-premise oder auf einem gemieteten Server. Daten sind je Nutzer getrennt, die Embeddings für das Gedächtnis werden lokal berechnet (bge-m3), ein DLP-Filter prüft ausgehende Texte auf Zugangsdaten und personenbezogene Daten. Das ermöglicht einen DSGVO-konformen Betrieb, weil die Daten auf deiner Infrastruktur bleiben. Nutzt du ein Sprachmodell über eine Cloud-API, verlassen die Anfragen an das Modell deine Infrastruktur; volle Datenhoheit gibt es mit einem lokalen Modell oder einem Anbieter mit EU-Hosting. Das ist keine Rechtsberatung."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Welche KI-Modelle kann ich nutzen?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Es gibt drei Laufzeiten mit gleichem Funktionsumfang: Claude Code, OpenAI Codex und einen eigenen Rahmen für weitere Modelle über Azure, AWS Bedrock, Google Vertex oder lokal über Ollama und LM Studio. Du bringst deinen eigenen Modellzugang mit, als Claude- oder ChatGPT-Abo oder als API-Schlüssel."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Was braucht man zum Betrieb?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Einen Server mit Docker Engine 24 oder neuer und Docker Compose v2, empfohlen ist Ubuntu 24.04 LTS. Als Arbeitsspeicher reichen 8 GB zum Ausprobieren, 16 GB für 3 Agenten und 32 GB für 10 Agenten. Ein Raspberry Pi 5 mit 8 GB genügt für einen Test mit ein bis zwei gleichzeitig arbeitenden Agenten. Eine Grafikkarte ist nicht nötig, weil die Modelle beim Anbieter oder auf einem eigenen Modellserver laufen."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Gibt es eine iOS-App?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Ja. AI Employee Hub gibt es im App Store für iPhone und iPad ab iOS 18. Mit der App steuerst du deine Agenten, chattest und sprichst mit ihnen und erteilst Freigaben per Push, auch unterwegs. Sie verbindet sich mit deiner eigenen Installation und zeigt jedem nur, was seine Rolle erlaubt."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Wie komme ich in die Beta und was kostet AI Employee?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Lade AI Employee Hub aus dem App Store und schreib über das Formular unten, worum es geht: Du bekommst Zugang, Demo oder Antwort direkt vom Betreiber. Für private Nutzung ist AI Employee kostenlos, Unternehmen testen 30 Tage kostenlos. Danach gibt es eine Lizenz je Installation, netto im Monat bei 12 Monaten Laufzeit: Starter 149 € (3 Agenten), Team 390 € (10), Business 990 € (30), Enterprise ab 2.490 € (100). Die Modellkosten zahlst du direkt beim Modellanbieter."
+     }
+    }
+   ]
+  }
+ ]
+}
+</script>
 <link rel="alternate" type="application/rss+xml" title="AI Employee Blog" href="/blog/feed.xml">
 <style>
 /* Schriften lokal eingebettet — keine Verbindung zu Google */
@@ -272,6 +462,7 @@
   a.tile img{display:block;width:100%;height:auto;aspect-ratio:1200/630;object-fit:cover;border-radius:10px;margin-bottom:4px}
   .tile time{font-family:var(--mono);font-size:12px;color:var(--dim);letter-spacing:.04em}
   .tile p{color:var(--muted);font-size:15px}
+  #faq .tile{align-content:start}
 
   /* CTA */
   .cta{padding:110px 0;position:relative;overflow:hidden;text-align:center}
@@ -446,6 +637,7 @@
     <div class="copy">
       <span class="eyebrow">Self-Hosted KI-Agenten-Plattform · Web + iOS</span>
       <h1><span style="white-space:nowrap">Dein KI-Team.</span><br><span class="a">Auf deiner Infrastruktur.</span></h1>
+      <p class="lede">Die Self-Hosted KI-Agenten-Plattform für Unternehmen: KI-Mitarbeiter für Microsoft&nbsp;365, MCP und alle Kanäle, betrieben on-premise auf deiner eigenen Infrastruktur.</p>
       <p class="lede">AI Employee stellt dir KI-Mitarbeiter ein, die wirklich arbeiten: in Microsoft 365, in deinen Tickets, deinen Kanälen und auf deinem Wissen — mit Freigaben, Budgets und Prüfspur. Self-Hosted per Docker, jederzeit unter deiner Kontrolle. Und mit einer iOS-App für unterwegs.</p>
       <div class="actions">
         <a class="btn primary" href="#plattform">Was die Plattform kann</a>
@@ -494,14 +686,14 @@
 <section class="platform" id="plattform">
   <div class="wrap">
     <div class="head reveal">
-      <span class="eyebrow">Die Plattform</span>
+      <span class="eyebrow">Die KI-Agenten-Plattform</span>
       <h2>Ein <span class="a">KI-Betriebssystem</span> für dein Team</h2>
       <p class="lede">Agenten mit echtem Gedächtnis, echten Werkzeugen und echten Leitplanken — auf deinen Systemen, nach deinen Regeln.</p>
     </div>
     <div class="duo">
       <div class="card reveal" style="--acc:var(--blue)">
-        <span class="eyebrow">Microsoft 365</span>
-        <h3>M365, direkt verdrahtet</h3>
+        <span class="eyebrow">Microsoft 365 · direkt verdrahtet</span>
+        <h3>KI-Agenten für Microsoft 365</h3>
         <ul>
           <li>Outlook/Exchange: Agenten lesen, beantworten und senden Mails — mit Freigabe-Netz und Empfänger-Allowlist</li>
           <li>Microsoft Graph: Kalender, Kontakte, OneDrive und SharePoint als Werkzeuge</li>
@@ -510,8 +702,8 @@
         </ul>
       </div>
       <div class="card reveal" style="--acc:var(--violet)">
-        <span class="eyebrow">Model Context Protocol</span>
-        <h3>MCP: grenzenlos erweiterbar</h3>
+        <span class="eyebrow">Model Context Protocol · grenzenlos erweiterbar</span>
+        <h3>MCP-Server für jeden Agenten</h3>
         <ul>
           <li>12 eingebaute MCP-Server je Agent — über 75 Werkzeuge, in jeder Laufzeit gleich</li>
           <li>Externe MCP-Server anbinden, inklusive OAuth-Anmeldung</li>
@@ -521,18 +713,18 @@
       </div>
     </div>
     <div class="tiles">
-      <div class="tile reveal"><h3>Drei Laufzeiten</h3><p>Claude Code, Codex CLI und Custom-LLM — jede Fähigkeit in allen dreien, per Modell-Router automatisch gewählt.</p></div>
-      <div class="tile reveal"><h3>Alle Kanäle</h3><p>Telegram, Teams, Slack und WhatsApp — inklusive Sprachnachrichten in beide Richtungen (STT/TTS).</p></div>
+      <div class="tile reveal"><h3>Drei Laufzeiten, freie Modellwahl</h3><p>Claude Code, Codex CLI und Custom-LLM — jede Fähigkeit in allen dreien, per Modell-Router automatisch gewählt.</p></div>
+      <div class="tile reveal"><h3>KI-Agenten in allen Kanälen</h3><p>Telegram, Teams, Slack und WhatsApp — inklusive Sprachnachrichten in beide Richtungen (STT/TTS).</p></div>
       <div class="tile reveal"><h3>Echtzeit-Sprache</h3><p>Speech-to-Speech je Agent über AWS Nova Sonic oder Azure Realtime — reinreden erlaubt.</p></div>
-      <div class="tile reveal"><h3>Second Brains</h3><p>Geteilte Wissens-Vaults mit Rechten, semantischer Suche, Backlinks und 3D-Graph.</p></div>
+      <div class="tile reveal"><h3>Second Brains: geteiltes Wissen</h3><p>Geteilte Wissens-Vaults mit Rechten, semantischer Suche, Backlinks und 3D-Graph.</p></div>
       <div class="tile reveal"><h3>Echtes Gedächtnis</h3><p>Agent-Memories mit automatischer Verlinkung, Wochensynthese und nächtlicher Reflexion.</p></div>
-      <div class="tile wide reveal"><h3>Vertrauen &amp; Kontrolle</h3><p>Autonomie-Matrix, Freigaben, DLP-Ausgangsfilter, abspielbare Decision-Traces, Budgets, Audit-Log.</p></div>
+      <div class="tile wide reveal"><h3>Vertrauen &amp; Kontrolle: Freigaben und Audit-Log</h3><p>Autonomie-Matrix, Freigaben, DLP-Ausgangsfilter, abspielbare Decision-Traces, Budgets, Audit-Log.</p></div>
       <div class="tile wide reveal"><h3>Automatisierung</h3><p>Workflows, Trigger (Webhook, Ereignis, Cron), Zeitpläne mit Wächtern und Selbstheilung gescheiterter Läufe.</p></div>
       <div class="tile reveal"><h3>Teamarbeit</h3><p>Agenten-Teams mit Lead und Delegation, Meeting-Räume mit echtem Arbeitsergebnis, Vertretungskette bei Ausfall.</p></div>
       <div class="tile reveal"><h3>Skills</h3><p>Marktplatz mit eigenen Quellen, Aufzeichnung-zu-Skill (Replay) und Golden-Tests als Update-Gatter.</p></div>
       <div class="tile reveal"><h3>PC &amp; Browser</h3><p>Computer-Use-Bridge für den eigenen Rechner plus Browser-Steuerung — aus allen Laufzeiten.</p></div>
       <div class="tile reveal"><h3>Modelle &amp; Konten</h3><p>Auto-Discovery neuer Modelle, Freischaltung pro Modell, eigene Claude-/ChatGPT-Abos pro Nutzer.</p></div>
-      <div class="tile reveal"><h3>Ticketsysteme</h3><p>Matrix42 und generische Anbindung — Agenten arbeiten Tickets direkt ab.</p></div>
+      <div class="tile reveal"><h3>KI-Agenten für Ticketsysteme</h3><p>Matrix42 und generische Anbindung — Agenten arbeiten Tickets direkt ab.</p></div>
     </div>
   </div>
 </section>
@@ -540,7 +732,7 @@
 <section class="demo">
   <div class="wrap">
     <div class="copy reveal">
-      <span class="eyebrow">So arbeitet ein Agent</span>
+      <span class="eyebrow">So arbeitet ein KI-Agent</span>
       <h2>Anweisen. <span class="a" style="--acc:var(--green);color:var(--green)">Zurücklehnen.</span> Abnehmen.</h2>
       <p class="lede">Ein Auftrag in Alltagssprache — der Agent plant, arbeitet mit echten Werkzeugen und meldet sich, wenn er eine Entscheidung braucht.</p>
       <ul>
@@ -561,7 +753,7 @@
   <div class="wrap">
     <div class="head reveal">
       <span class="eyebrow">AI Employee Hub — die iOS-App</span>
-      <h2>Und alles davon <span class="a">in deiner Tasche</span></h2>
+      <h2>Die iOS-App: alles davon <span class="a">in deiner Tasche</span></h2>
       <p class="lede">Die App zur Plattform: Agenten steuern, chatten, sprechen, Freigaben erteilen — von unterwegs, auf iPhone und iPad (iOS 18+). Mit Push-Freigaben, Siri-Kurzbefehlen und Echtzeit über WebSocket.</p>
       <div class="actions" style="display:flex;gap:18px;flex-wrap:wrap;align-items:center">
         <!-- Offizielle Plakette „Laden im App Store“ (Apple Marketing Tools, unverändert),
@@ -728,7 +920,7 @@
   <div class="wrap">
     <div class="head reveal">
       <span class="eyebrow">Rollen</span>
-      <h2>Für Admins und Mitglieder</h2>
+      <h2>Rollen und Rechte für Admins und Mitglieder</h2>
       <p class="lede">Die App zeigt jedem genau das, was seine Rolle auf der Plattform erlaubt. Mitglieder sehen nur ihre eigenen Agenten und Daten.</p>
     </div>
     <div class="grid">
@@ -780,21 +972,48 @@
   </div>
 </section>
 
-<section class="more" id="blog" hidden>
+<section class="more" id="blog">
   <div class="wrap">
     <div class="head reveal">
-      <span class="eyebrow">Blog</span>
-      <h2>Fragen und Antworten aus der Praxis</h2>
+      <span class="eyebrow">Aus dem Blog</span>
+      <h2>Wissen zu KI-Agenten aus der Praxis</h2>
       <p class="lede">Was beim Einsatz von KI-Agenten im Unternehmen wirklich zählt: Betrieb, Sicherheit, Kosten. <a href="/blog">Alle Beiträge</a></p>
     </div>
-    <div class="tiles" id="blogtiles"></div>
+    <div id="blogneu" hidden style="margin-bottom:16px"><div class="tiles" id="blogtiles"></div></div>
+    <div class="tiles" id="blogfest">
+      <a class="tile reveal" href="/blog/was-ist-ein-ki-mitarbeiter"><h3>Was ist ein KI-Mitarbeiter? Aufgaben und Kosten</h3><p>Ein KI-Mitarbeiter ist ein KI-Agent mit Rolle, Werkzeugen und Gedächtnis. Was er kann, was er nicht ersetzt und woraus sich seine Kosten zusammensetzen.</p></a>
+      <a class="tile reveal" href="/blog/ki-agent-vs-llm"><h3>KI-Agent vs. LLM: der Unterschied einfach erklärt</h3><p>Was unterscheidet ein Sprachmodell von einem Agenten, der damit arbeitet? Klare Abgrenzung mit Tabelle und Beispiel aus dem Vertrieb.</p></a>
+      <a class="tile reveal" href="/blog/ki-agenten-selbst-hosten"><h3>KI-Agenten selbst hosten: was du wirklich brauchst</h3><p>KI-Agenten selbst hosten geht ohne Grafikkarte und ohne Rechenzentrum. Welche Hardware reicht, was du einrichten musst und wo die Grenzen liegen.</p></a>
+      <a class="tile reveal" href="/blog/was-kostet-ein-ki-agent"><h3>Was kostet ein KI-Agent? Die drei Kostenblöcke</h3><p>Plattform, Sprachmodell und Betrieb: So schätzt du die Kosten eines KI-Agenten vor dem Start realistisch ab.</p></a>
+      <a class="tile reveal" href="/blog/ki-agent-mit-chatgpt-erstellen"><h3>KI-Agent mit ChatGPT erstellen: so weit kommst du</h3><p>Was OpenAI, Claude, Copilot Studio und Gemini für eigene Agenten anbieten und wo jeder Weg endet.</p></a>
+      <a class="tile reveal" href="/blog/was-ist-prompt-injection"><h3>Prompt Injection verhindern: Erklärung und Schutz</h3><p>Fremder Text bringt ein KI-Modell dazu, falsche Anweisungen zu befolgen. So läuft der Angriff ab und so schützt du deine Agenten.</p></a>
+    </div>
+  </div>
+</section>
+
+<section class="more" id="faq">
+  <div class="wrap">
+    <div class="head reveal">
+      <span class="eyebrow">FAQ</span>
+      <h2>Häufige Fragen zu AI Employee</h2>
+      <p class="lede">Was ein KI-Mitarbeiter ist, wo er läuft und was du für den Betrieb brauchst.</p>
+    </div>
+    <div class="tiles">
+      <div class="tile reveal"><h3>Was ist ein KI-Mitarbeiter?</h3><p>Ein KI-Mitarbeiter ist ein KI-Agent mit Rolle, Werkzeugen und Gedächtnis, der Aufgaben selbstständig erledigt, zum Beispiel Mails beantworten, Tickets abarbeiten oder eine Morgenlage erstellen. In AI Employee läuft jeder Agent in einem eigenen Docker-Container mit eigenem Arbeitsverzeichnis. Was er selbst darf, legt die Autonomie-Matrix fest: Erlaubt, Freigabe oder Verboten. Alles auf Freigabe geht vor der Ausführung an einen Menschen.</p></div>
+      <div class="tile reveal"><h3>Wie unterscheidet sich AI Employee von ChatGPT oder Microsoft Copilot?</h3><p>ChatGPT und Microsoft Copilot sind Assistenten, die der jeweilige Anbieter in seiner Cloud betreibt. AI Employee ist eine Plattform, die du selbst betreibst und auf der mehrere KI-Agenten dauerhaft für dein Team arbeiten: mit eigenem Gedächtnis, Zeitplänen, Auslösern und Workflows, in Microsoft 365, Teams, Slack, Telegram und WhatsApp. Du bist an kein Modell gebunden und behältst mit Freigaben, Budgets je Agent und Audit-Log die Kontrolle.</p></div>
+      <div class="tile wide reveal"><h3>Läuft AI Employee on-premise und DSGVO-konform?</h3><p>AI Employee läuft per Docker auf deinen eigenen Servern, on-premise oder auf einem gemieteten Server. Daten sind je Nutzer getrennt, die Embeddings für das Gedächtnis werden lokal berechnet (bge-m3), ein DLP-Filter prüft ausgehende Texte auf Zugangsdaten und personenbezogene Daten. Das ermöglicht einen DSGVO-konformen Betrieb, weil die Daten auf deiner Infrastruktur bleiben. Nutzt du ein Sprachmodell über eine Cloud-API, verlassen die Anfragen an das Modell deine Infrastruktur; volle Datenhoheit gibt es mit einem lokalen Modell oder einem Anbieter mit EU-Hosting. Das ist keine Rechtsberatung.</p></div>
+      <div class="tile reveal"><h3>Welche KI-Modelle kann ich nutzen?</h3><p>Es gibt drei Laufzeiten mit gleichem Funktionsumfang: Claude Code, OpenAI Codex und einen eigenen Rahmen für weitere Modelle über Azure, AWS Bedrock, Google Vertex oder lokal über Ollama und LM Studio. Du bringst deinen eigenen Modellzugang mit, als Claude- oder ChatGPT-Abo oder als API-Schlüssel.</p></div>
+      <div class="tile reveal"><h3>Was braucht man zum Betrieb?</h3><p>Einen Server mit Docker Engine 24 oder neuer und Docker Compose v2, empfohlen ist Ubuntu 24.04 LTS. Als Arbeitsspeicher reichen 8 GB zum Ausprobieren, 16 GB für 3 Agenten und 32 GB für 10 Agenten. Ein Raspberry Pi 5 mit 8 GB genügt für einen Test mit ein bis zwei gleichzeitig arbeitenden Agenten. Eine Grafikkarte ist nicht nötig, weil die Modelle beim Anbieter oder auf einem eigenen Modellserver laufen.</p></div>
+      <div class="tile reveal"><h3>Gibt es eine iOS-App?</h3><p>Ja. AI Employee Hub gibt es im App Store für iPhone und iPad ab iOS 18. Mit der App steuerst du deine Agenten, chattest und sprichst mit ihnen und erteilst Freigaben per Push, auch unterwegs. Sie verbindet sich mit deiner eigenen Installation und zeigt jedem nur, was seine Rolle erlaubt.</p></div>
+      <div class="tile wide reveal"><h3>Wie komme ich in die Beta und was kostet AI Employee?</h3><p>Lade AI Employee Hub aus dem App Store und schreib über das Formular unten, worum es geht: Du bekommst Zugang, Demo oder Antwort direkt vom Betreiber. Für private Nutzung ist AI Employee kostenlos, Unternehmen testen 30 Tage kostenlos. Danach gibt es eine Lizenz je Installation, netto im Monat bei 12 Monaten Laufzeit: Starter 149 € (3 Agenten), Team 390 € (10), Business 990 € (30), Enterprise ab 2.490 € (100). Die Modellkosten zahlst du direkt beim Modellanbieter.</p></div>
+    </div>
   </div>
 </section>
 
 <section class="cta" id="beta">
   <div class="wrap">
     <span class="eyebrow">Beta</span>
-    <h2>So kommst du rein</h2>
+    <h2>So kommst du in die Beta</h2>
     <p class="lede">Die App gibt es im App&nbsp;Store, die Plattform bekommst du als eigene Installation. Schreib kurz, worum es geht — du bekommst Zugang, Demo oder Antwort direkt vom Betreiber.</p>
     <div class="steps reveal">
       <div><b>Schritt 1</b>AI Employee Hub aus dem App&nbsp;Store laden — oder den QR-Code oben scannen.</div>
@@ -915,15 +1134,18 @@
   })();
   (function(){
     // Neueste Blogbeitraege: der Abschnitt erscheint nur, wenn es welche gibt.
-    var abschnitt=document.getElementById('blog'), kacheln=document.getElementById('blogtiles');
+    // Feste Kernbeiträge stehen im HTML; hier kommen bis zu drei neue dazu, die dort noch fehlen.
+    var abschnitt=document.getElementById('blogneu'), kacheln=document.getElementById('blogtiles');
     if(!abschnitt||!kacheln||!window.fetch) return;
+    var fest={};
+    document.querySelectorAll('#blogfest a.tile').forEach(function(a){fest[a.getAttribute('href')]=1});
     fetch('/blog/latest.json',{headers:{'Accept':'application/json'}})
       .then(function(r){return r.ok?r.json():null})
       .then(function(d){
         var liste=d&&d.beitraege||[];
         if(!liste.length) return;
         liste.forEach(function(b){
-          if(!/^[a-z0-9-]+$/.test(b.slug||'')) return;
+          if(!/^[a-z0-9-]+$/.test(b.slug||'')||fest['/blog/'+b.slug]||kacheln.children.length>=3) return;
           var a=document.createElement('a'); a.className='tile'; a.href='/blog/'+b.slug;
           var t=document.createElement('time'); t.dateTime=b.datum_iso||''; t.textContent=b.datum||'';
           var h=document.createElement('h3'); h.textContent=b.titel||'';

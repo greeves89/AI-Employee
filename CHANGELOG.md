@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [Unreleased]
+
+### Geändert
+- Landingpage (`docs/ios-app/index.html`) für Suchmaschinen geschärft, Optik unverändert: Zeile mit den Kernbegriffen unter der Startüberschrift, beschreibende Zwischenüberschriften (Slogans bleiben als Überzeile), Titel, Beschreibung und Twitter-Tags auf die Produktbegriffe ausgerichtet.
+- Neuer Abschnitt „Häufige Fragen“ (7 Fragen) und „Aus dem Blog“ mit sechs festen Links zu Kernbeiträgen, die ohne JavaScript im HTML stehen; neue Beiträge aus `/blog/latest.json` kommen weiterhin dazu (höchstens drei, ohne Doppelte).
+- Strukturierte Daten als `@graph`: `Organization`, `WebSite`, `SoftwareApplication` mit Lizenzpreisen als `AggregateOffer` und `FAQPage` mit demselben Wortlaut wie die sichtbaren Fragen.
+
 ## [1.428.3] - 2026-11-02
 
 ### Behoben
