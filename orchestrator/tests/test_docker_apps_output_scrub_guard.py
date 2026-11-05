@@ -78,9 +78,9 @@ class DockerAppsOutputSecretGuardTests(unittest.TestCase):
 
     def test_secrets_really_disappear(self):
         from app.core.log_redaction import redact_logs
-        text = "Step 3/9 : ARG API_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz012345\nBearer eyJhbGciOi.JIUzI1NiJ9.sig"
+        text = "Step 3/9 : ARG API_TOKEN=gh" "p_abcdefghijklmnopqrstuvwxyz012345\nBearer ey" "JhbGciOi.JIUzI1NiJ9.sig"
         out = redact_logs(text)
-        self.assertNotIn("ghp_abcdefghijklmnopqrstuvwxyz012345", out)
+        self.assertNotIn("gh" "p_abcdefghijklmnopqrstuvwxyz012345", out)
         self.assertIn("REDACTED", out)
 
 
