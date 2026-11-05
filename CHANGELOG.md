@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.444.0] - 2026-11-08
+
+Erster Teil von #161 (Parität zwischen Custom-LLM- und Claude-Code-Agenten).
+
+### Neu
+- **AWS Bedrock als Anbieter für Custom-LLM-Agenten.** Ein Agent kann jetzt ein Bedrock-Modell nutzen (Converse-API, Streaming, Werkzeugaufrufe), angemeldet per Bedrock-API-Schlüssel oder per IAM. Hinter dem Egress-Proxy läuft der API-Schlüssel nur als Platzhalter im Agenten und wird ausschließlich am Bedrock-Host der eingetragenen Region eingesetzt. IAM kann der Proxy nicht signieren; dort bleibt das Secret draußen und der Agent nennt den Grund bei der ersten Anfrage. Ein falsch eingerichtetes Konto zählt nicht mehr für den Circuit-Breaker, der Nutzer sieht den echten Grund statt „API unreachable“.
+- **Neue Werkzeuge für Custom-LLM-Agenten:** `get_docs`, `render_video`, `list_videos` (Videos wie bei Claude Code), `read_logs`, `skill_record_usage` und die Aktion `drag` in `computer_use`. Eine Paritätsmatrix (`agent/app/tools/paritaet.py`) mit Test bricht den Build, sobald ein Werkzeug der eingebauten MCP-Server weder ein Gegenstück noch eine begründete Ausnahme hat. `/diag` zeigt bei Custom-LLM, wie viele Werkzeuge das Modell sieht und welche eingetragenen MCP-Server keines liefern.
+
+### Geändert
+- Chat und Auftrag von Custom-LLM bauen ihren Start (Identität, Gedächtnis, Fachanleitungen, Freigaberegeln, Zeitkontext) jetzt aus denselben Bausteinen. Vorher waren beide Zusammenbauten auseinandergelaufen.
+- Sprach-Setup (Nova Sonic) listet keine Bedrock-Konten mehr, die nur per API-Schlüssel laufen oder nur Textmodelle tragen.
+
+### Behoben (im Review gefunden)
+- `render_video` meldete Erfolg mit dem Pfad einer alten Datei, wenn ein neuer Render gleichen Namens scheiterte.
+
+### Offen in #161 (nicht in diesem Release)
+Hooks (Pre/PostToolUse/Stop), Subagents/Task-Tool, Plan-Mode, stdio-MCP-Brücke bzw. native Email-/Microsoft-365-Werkzeuge, Browser-Modus-Umgebung für Custom-Agenten beim Anlegen, Chat-Kostenerfassung.
+
+### Tests
+- Agent: 1185+ grün, 10 Fehlschläge in `test_browser_stream` und `test_cli_update_zerstoert_nichts` sind umgebungsbedingt (kein Chromium/bash im Testlauf) und treten ohne diese Änderung gleich auf. Neu: Bedrock-Provider (Übersetzung, Strom, Fehlerpfade, Abbruch), Werkzeug-Parität, Startbausteine.
+- Orchestrator: `test_bedrock_custom_llm.py` (Region, Ziel-Host, Umgebung mit und ohne Proxy, Sprachmodelle).
+
 ## [1.442.0] - 2026-11-07
 
 ### Neu
