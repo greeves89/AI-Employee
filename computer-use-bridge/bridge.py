@@ -3353,6 +3353,11 @@ class ScreenObserver:
     MIN_ABSTAND_SECS = 60.0
     # Dieselbe Regel im selben Fenster bietet erst nach 10 Minuten wieder an.
     REGEL_RUHE_SECS = 600.0
+    # „Aus meiner Arbeit lernen“ (#1023): kuerzere Besuche zaehlen nicht, und eine
+    # Luecke zwischen zwei Blicken (Schlaf, Pause des Mitsehens) macht aus dem
+    # offenen Besuch keine Stunden Arbeit.
+    MIN_NUTZUNG_SECS = 5.0
+    MAX_NUTZUNG_SECS = 4 * 3600.0
 
     def __init__(self, melden, bild_holen=None, vordergrund_holen=None, uhr=time.monotonic):
         self._melden = melden
@@ -3362,8 +3367,12 @@ class ScreenObserver:
         self.beobachten = False
         self.mitdenken = False
         self.gestoppt = False
+        # Nur wenn der Mensch „Aus meiner Arbeit lernen“ eingeschaltet hat.
+        self.lernen = False
         self.regeln: list[dict] = []
         self._kontext: tuple[str, str] | None = None
+        self._kontext_seit: float | None = None
+        self._letzter_schritt: float | None = None
         self._abdruck: bytes | None = None
         self._unruhig_seit: float | None = None
         self._letzter_blick = -1e9
@@ -3375,6 +3384,11 @@ class ScreenObserver:
         self.beobachten = bool(cfg.get("beobachten"))
         self.mitdenken = self.beobachten and bool(cfg.get("mitdenken"))
         self.gestoppt = bool(cfg.get("gestoppt"))
+        lernen = self.beobachten and bool(cfg.get("lernen"))
+        if lernen != self.lernen:
+            # Was vor dem Einschalten lief, gehoert nicht ins Protokoll.
+            self._kontext_seit = None
+        self.lernen = lernen
         self.regeln = [r for r in (cfg.get("regeln") or []) if isinstance(r, dict)]
         log.info("Mitsehen: %s, Mitdenken: %s, %d Regel(n)",
                  "an" if self.beobachten else "aus", "an" if self.mitdenken else "aus", len(self.regeln))
@@ -3402,6 +3416,28 @@ class ScreenObserver:
             except Exception:  # noqa: BLE001 — ein Fehlblick beendet das Mitsehen nicht
                 log.debug("Mitsehen: Blick fehlgeschlagen", exc_info=True)
 
+    def _nutzung_buchen(self, jetzt: float, kontext: tuple[str, str], neuer_kontext: bool) -> None:
+        """Beim Fensterwechsel den beendeten Besuch melden (nur App, Titel, Dauer —
+        nie ein Bild). Private Fenster (Passwortmanager, Anmeldung, Banking) und
+        zu kurze oder durch eine Luecke unterbrochene Besuche kommen nicht vor."""
+        vorher, seit, letzter = self._kontext, self._kontext_seit, self._letzter_schritt
+        self._letzter_schritt = jetzt
+        luecke = letzter is None or jetzt - letzter > 3 * self.TAKT_SECS
+        if seit is None or luecke:
+            # Neu eingeschaltet oder unterbrochen: ab hier zaehlt ein frischer Besuch.
+            self._kontext_seit = jetzt if self.lernen else None
+            return
+        if not neuer_kontext:
+            return
+        self._kontext_seit = jetzt if self.lernen else None
+        if not self.lernen or self.gestoppt or vorher is None:
+            return
+        dauer = min(jetzt - seit, self.MAX_NUTZUNG_SECS)
+        if dauer < self.MIN_NUTZUNG_SECS or privates_fenster(*vorher):
+            return
+        self._melden({"type": "nutzung", "app": vorher[0], "titel": vorher[1],
+                      "dauer_sekunden": int(dauer)})
+
     def schritt(self) -> None:
         """Ein Blick. Oeffentlich, damit Tests ihn ohne Thread treiben koennen."""
         jetzt = self._uhr()
@@ -3409,6 +3445,7 @@ class ScreenObserver:
         app, titel = vorn.get("app", ""), vorn.get("titel", "")
         kontext = (app, titel)
         neuer_kontext = kontext != self._kontext
+        self._nutzung_buchen(jetzt, kontext, neuer_kontext)
         self._kontext = kontext
 
         if neuer_kontext and not self.gestoppt:

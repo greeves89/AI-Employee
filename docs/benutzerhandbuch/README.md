@@ -3399,10 +3399,30 @@ dein Ja freigibt.
 > Datenschutz und Sicherheit: Ohne **Mitsehen** schaut die Bridge nie selbst hin. Mit
 > Mitsehen allein verlassen nur Anwendungsname und Fenstertitel bei einem Regeltreffer den
 > Rechner; Bilder gehen ausschließlich mit **Mitdenken** an den Agenten — nie aus
-> Passwortmanagern, Anmelde- oder Bankfenstern. Beim Ansehen eines Bildes kann der Agent nur
+> Passwortmanagern, Anmelde- oder Bankfenstern. Mit **Aus meiner Arbeit lernen** (Schritt 4) kommen
+> zusätzlich Anwendung, Fenstertitel und Dauer in ein Protokoll — nie Bilder. Beim Ansehen eines Bildes kann der Agent nur
 > in seinem Gedächtnis lesen, nicht handeln. Das Overlay selbst fehlt in jeder
 > Bildschirmaufnahme, und der Agent kann nicht hineinklicken. Mitdenken braucht einen Agenten
 > ab Version 1.378.0 — sonst meldet das Overlay „bitte den Agenten aktualisieren“.
+
+**Schritt 4 — Aus meiner Arbeit lernen (optional, *seit 1.429.0*).** Statt Regeln selbst zu
+schreiben, kann dein Agent sie aus dem ableiten, was du täglich tust.
+1. Im Bereich **Mitsehen und Mitdenken** den Schalter **Aus meiner Arbeit lernen** einschalten
+   (standardmäßig aus; braucht **Mitsehen**).
+2. Ab jetzt meldet die Bridge, welche Anwendung und welchen Fenstertitel du wie lange offen
+   hattest — **keine Bilder**, nichts aus Passwortmanagern, Anmelde- oder Bankfenstern, Besuche
+   unter 5 Sekunden zählen nicht. Das Protokoll liegt auf deinem AI-Employee-Server und wird nach
+   30 Tagen gelöscht. Die Bridge muss dafür mindestens Version 1.429.0 haben.
+3. Einmal am Tag bekommt dein Agent eine **Zusammenfassung** (nicht das Protokoll): welche Fenster
+   an mehreren Tagen wiederkehren. Er schlägt höchstens drei Regeln vor. Ob es etwas vorzuschlagen
+   gibt, siehst du im Gespräch **Bridge (Overlay)** und unter **Vorschläge** im selben Bereich;
+   **Jetzt auswerten** stößt es sofort an.
+4. Unter **Vorschläge** siehst du die Regel samt dem Auftrag, den dein Ja freigibt. **Annehmen**
+   legt sie an (sie steht dann in der Regelliste, „vom Agenten“); **Ablehnen** merkt sich das — der
+   Agent schlägt dieselbe Bedingung nicht noch einmal vor.
+
+**Protokoll einsehen und löschen:** **Protokoll ansehen** zeigt jeden Eintrag, **Protokoll
+löschen** entfernt alle. **Ausschalten löscht das Protokoll sofort.**
 
 ---
 
