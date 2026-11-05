@@ -68,9 +68,9 @@ Edit `.env` with your settings:
 
 ```env
 # Required: authentication (choose one)
-CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-YOUR-TOKEN
+CLAUDE_CODE_OAUTH_TOKEN=sk-ant-...
 # OR
-ANTHROPIC_API_KEY=sk-ant-api-YOUR-KEY
+ANTHROPIC_API_KEY=sk-ant-...
 
 # Required: security (generate strong values!)
 API_SECRET_KEY=$(openssl rand -hex 32)

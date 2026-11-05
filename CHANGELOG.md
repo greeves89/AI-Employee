@@ -12,6 +12,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 - Neuer Abschnitt „Häufige Fragen“ (7 Fragen) und „Aus dem Blog“ mit sechs festen Links zu Kernbeiträgen, die ohne JavaScript im HTML stehen; neue Beiträge aus `/blog/latest.json` kommen weiterhin dazu (höchstens drei, ohne Doppelte).
 - Strukturierte Daten als `@graph`: `Organization`, `WebSite`, `SoftwareApplication` mit Lizenzpreisen als `AggregateOffer` und `FAQPage` mit demselben Wortlaut wie die sichtbaren Fragen.
 
+## [1.428.4] - 2026-11-05
+
+### Behoben
+- Sentinel: Ein Agent wurde angehalten, sobald er eine Datei aus diesem Repository mit einem schlüsselförmigen Testwert las, und mit ihm fielen alle seine Zeitpläne aus (beim Betreiber gut 21 Stunden, ohne echtes Leck). Betroffen waren 13 Dateien, darunter die Beispiel-Konfiguration und die Installationsanleitung. Die Testwerte sind jetzt im Quelltext geteilt, die Platzhalter ersetzt, und ein Wächter-Test verhindert neue (er fängt auch echte Schlüssel, die versehentlich eingecheckt werden). Öffentliche Schlüssel und Zertifikate lösen keinen Stopp mehr aus, geschwärzt werden sie weiter; Tokens und als privat gekennzeichnete Schlüssel stoppen wie bisher. Fremde Repositories schützt das nicht, das bleibt in #1198 offen.
+
 ## [1.428.3] - 2026-11-02
 
 ### Behoben
