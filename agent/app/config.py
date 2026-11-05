@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     llm_provider_type: str = ""  # "openai" | "anthropic" | "google"
     llm_api_endpoint: str = ""
     llm_api_key: str = ""
+    # Nur fuer provider_type "bedrock": Region und — bei IAM-Anmeldung — die Kennung
+    # zum Secret in llm_api_key. Gesperrt = Egress-Proxy aktiv, IAM kann dort nicht
+    # signieren (orchestrator/app/core/egress.py).
+    llm_aws_region: str = ""
+    llm_aws_access_key_id: str = ""
+    llm_aws_session_token: str = ""
+    llm_bedrock_iam_gesperrt: bool = False
     llm_model_name: str = ""
     # Obergrenze der Antwortlänge. **0 = keine eigene Grenze** (Vorgabe): dann
     # entscheidet das Modell, und das ist fast immer das Richtige.

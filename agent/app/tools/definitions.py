@@ -489,6 +489,38 @@ LOCAL_TOOLS: list[dict] = [
             "parameters": {"type": "object", "properties": {}},
         },
     },
+    # ── Videos (hyperframes-server.mjs) ──
+    {
+        "type": "function",
+        "function": {
+            "name": "get_docs",
+            "description": "CALL THIS FIRST before creating any video. Returns the complete Hyperframes guide with HTML composition rules, required data attributes, GSAP timeline setup, and examples.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "render_video",
+            "description": "Render an HTML composition to an MP4 video using Hyperframes. Call get_docs first to learn the required HTML structure. Returns the absolute path to the rendered MP4 file.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "html_content": {"type": "string", "description": "Full HTML content for the video composition."},
+                    "filename": {"type": "string", "description": "Output filename without extension (letters, digits, hyphens, underscores, max 64). Defaults to a timestamp-based name."},
+                },
+                "required": ["html_content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_videos",
+            "description": "List all rendered MP4 videos available for this user.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
 ]
 
 # Merge marketplace skill tools into LOCAL_TOOLS
@@ -639,7 +671,7 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                             "'type', 'key', 'hotkey', 'open_app', 'close_app', "
                             "'clipboard_read', 'clipboard_write', 'shell_run', 'ax_tree', "
                             "'find_element', 'wait_for_element', 'list_windows', "
-                            "'focus_window', 'element_press', 'element_set_value'. Browser in the agent's OWN profile (needs the "
+                            "'focus_window', 'element_press', 'element_set_value', 'drag'. Browser in the agent's OWN profile (needs the "
                             "'browser' capability): 'browser_navigate', 'browser_snapshot', "
                             "'browser_click', 'browser_fill', 'browser_wait', "
                             "'browser_capture', 'browser_tabs', 'browser_close'. "
@@ -671,7 +703,7 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                             "or screenshot {scale: 0.5, display: 2} for a second monitor "
                             "(the reply states the image size and which displays exist — "
                             "click coordinates must lie inside that size); "
-                            "mouse_click {x: 100, y: 200, button: 'left'}; type {text: 'https://example.com'}; "
+                            "mouse_click {x: 100, y: 200, button: 'left'}; drag {x1: 10, y1: 20, x2: 300, y2: 40}; type {text: 'https://example.com'}; "
                             "key {key: 'enter'}; hotkey {keys: ['ctrl', 'l']}; open_app {name: 'Edge'}; "
                             "find_element {query: 'Save', role: 'button'}; "
                             "element_press {query: 'Save', role: 'button', app: 'Excel'} "
@@ -2582,6 +2614,38 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                     "comment": {"type": "string", "description": "What worked well or what could be improved in the skill"},
                 },
                 "required": ["skill_id", "helpfulness", "rating"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "skill_record_usage",
+            "description": "Record that you actively used a skill during this task, without leaving a rating. Use skill_rate instead if you also want to rate it.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "skill_id": {"type": "integer", "description": "ID of the skill you used"},
+                    "task_id": {"type": "string", "description": "Current task ID (CURRENT_TASK_ID)"},
+                    "helpfulness": {"type": "integer", "description": "Optional: 1=not helpful, 5=essential", "minimum": 1, "maximum": 5},
+                },
+                "required": ["skill_id"],
+            },
+        },
+    },
+    # ── Selbstdiagnose (read-logs-server.mjs) ──
+    {
+        "type": "function",
+        "function": {
+            "name": "read_logs",
+            "description": "Read the recent container logs of yourself (or, if you are a team lead, a member of your team) to find the real error after a failed task or tool call. Secrets are redacted and every read is audit-logged.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "target_agent_id": {"type": "string", "description": "Optional. Whose logs to read; defaults to yourself. Only a team lead may pass a member's id."},
+                    "tail": {"type": "integer", "description": "Trailing log lines (default 200, max 1000).", "minimum": 1, "maximum": 1000},
+                    "since_minutes": {"type": "integer", "description": "Optional: only the last N minutes (max 1440).", "minimum": 1, "maximum": 1440},
+                },
             },
         },
     },

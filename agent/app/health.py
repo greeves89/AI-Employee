@@ -1,3 +1,4 @@
+import json
 import os
 
 from aiohttp import web
@@ -81,6 +82,35 @@ async def _mcp_zustand() -> dict:
     }
 
 
+def _werkzeug_zustand() -> dict | None:
+    """Was ein Custom-LLM-Agent dem Modell tatsaechlich anbietet (#161).
+
+    Die CLI-Laufzeiten beantworten das mit ``_mcp_zustand``. Hier zaehlt der
+    Katalog, weil ``discover_custom_mcp_tools`` ihn beim Start erweitert: Ein
+    Server im Eintrag, der keine Werkzeuge liefert, sieht von aussen genauso aus
+    wie ein angebundenes Postfach, nur dass der Agent es nicht bedienen kann.
+    """
+    from app.config import settings
+
+    if settings.agent_mode != "custom_llm":
+        return None
+    from app.tools.definitions import TOOL_DEFINITIONS
+    from app.tools.paritaet import server_ohne_werkzeuge
+
+    try:
+        server = list(json.loads(os.environ.get("CUSTOM_MCP_SERVERS") or "{}"))
+    except ValueError:
+        server = []
+    namen = [t["function"]["name"] for t in TOOL_DEFINITIONS]
+    return {
+        "laufzeit": "custom_llm",
+        "werkzeuge_aktiv": settings.llm_tools_enabled,
+        "anzahl": len(namen),
+        "mcp_server": sorted(server),
+        "server_ohne_werkzeuge": server_ohne_werkzeuge(server, namen),
+    }
+
+
 async def diag_handler(request: web.Request) -> web.Response:
     """Runtime self-diagnostic — surfaces whether the deployed image is affected
     by the MCP arg-stripping regression (#342). Returns HTTP 500 when degraded so
@@ -88,6 +118,7 @@ async def diag_handler(request: web.Request) -> web.Response:
     arg_parse_ok = _arg_parse_selftest()
     mcp = await _mcp_zustand()
     mcp_ok = not mcp.get("fehlend")
+    werkzeuge = _werkzeug_zustand()
     body = {
         "agent_id": request.app["agent_id"],
         "checks": {
@@ -96,6 +127,10 @@ async def diag_handler(request: web.Request) -> web.Response:
         },
         "mcp": mcp,
     }
+    if werkzeuge is not None:
+        # Nur Auskunft: ein abgelaufenes Konto ist kein kaputtes Abbild, die
+        # Ueberwachung soll deshalb nicht anschlagen.
+        body["werkzeuge"] = werkzeuge
     return web.json_response(body, status=200 if (arg_parse_ok and mcp_ok) else 500)
 
 

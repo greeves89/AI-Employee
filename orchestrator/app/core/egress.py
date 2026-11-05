@@ -37,7 +37,8 @@ logger = logging.getLogger(__name__)
 #: Arten: ``aie-geheim-<id>-…`` = Key aus der Schluesselverwaltung, ``g`` = Token
 #: einer Git-Anbindung der Plattform, ``m`` = Bearer-Token eines MCP-Servers,
 #: ``h`` = eigene Kopfzeile eines MCP-Servers (id = Server-ID * KOPF_FAKTOR + Nummer),
-#: ``k`` = Claude-Zugang des Agenten (id = Nummer der Variable in ``KI_VARIABLEN``).
+#: ``k`` = KI-Zugang des Agenten (id = Nummer der Variable in ``KI_VARIABLEN``, oder
+#: ``KI_BEDROCK`` fuer den Bedrock-API-Schluessel eines Custom-LLM-Agenten).
 PLATZHALTER_RE = re.compile(r"aie-geheim-([gmhk]?)(\d{1,10})-([0-9a-f]{12})")
 ANBINDUNG = "g"
 KI = "k"
@@ -196,7 +197,7 @@ def mcp_ziel(url: str) -> str | None:
 
 #: Claude-Zugang: welche Variable welche Nummer traegt, und wohin er darf.
 # Nummern der Claude-Platzhalter: Abo (OAuth) und API-Schluessel
-KI_ABO, KI_SCHLUESSEL, KI_CODEX = 0, 1, 2
+KI_ABO, KI_SCHLUESSEL, KI_CODEX, KI_BEDROCK = 0, 1, 2, 3
 KI_VARIABLEN = {"CLAUDE_CODE_OAUTH_TOKEN": KI_ABO, "ANTHROPIC_API_KEY": KI_SCHLUESSEL,
                 # Kein Umgebungswert: das Zugangs-Token in der auth.json der Codex-CLI.
                 "CODEX_ACCESS_TOKEN": KI_CODEX}
@@ -209,6 +210,66 @@ KI_ZIELE_JE = {"CLAUDE_CODE_OAUTH_TOKEN": KI_ZIELE, "ANTHROPIC_API_KEY": KI_ZIEL
 CODEX_OHNE_ERNEUERUNG = "aie-geheim-ungenutzt"
 _KI_ANDERER_WEG = ("CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY",
                    "ANTHROPIC_BASE_URL")
+
+
+_AWS_REGION_RE = re.compile(r"^[a-z]{2}(?:-[a-z]+)+-\d{1,2}$")
+_BEDROCK_HOST_RE = re.compile(r"(?:^|//)bedrock-runtime(?:-fips)?\.([a-z0-9-]+)\.amazonaws\.com(?:[:/]|$)")
+
+
+def bedrock_region(cfg: dict) -> str:
+    """Gueltige Region einer Bedrock-Konfiguration — sonst leer, nie ein Standardwert."""
+    roh = str(cfg.get("aws_region") or "").strip().lower()
+    if not roh:
+        m = _BEDROCK_HOST_RE.search(str(cfg.get("api_endpoint") or "").lower())
+        roh = m.group(1) if m else ""
+    return roh if _AWS_REGION_RE.match(roh) else ""
+
+
+def bedrock_ziel(cfg: dict) -> str | None:
+    """Host, an dem der Proxy einen Bedrock-API-Schluessel einsetzen darf — sonst None.
+
+    Aus der gepruefter Region gebildet, nie aus einem eingetragenen Endpunkt: Der
+    stammt aus der Konfiguration und koennte auf jedes Ziel zeigen. Ein Muster wie
+    ``*.amazonaws.com`` waere verboten (``hosts_pruefen``), die genaue Adresse nicht.
+    IAM-Zugaenge haben kein Ziel: SigV4 signiert im Agenten, dort ist nichts einzusetzen.
+    """
+    if (cfg.get("provider_type") or "").lower() != "bedrock" or str(cfg.get("aws_access_key_id") or "").strip():
+        return None
+    region = bedrock_region(cfg)
+    return f"bedrock-runtime.{region}.amazonaws.com" if region else None
+
+
+def bedrock_umgebung(cfg: dict) -> dict[str, str]:
+    """Was ein Custom-LLM-Agent mit Bedrock zusaetzlich zu ``LLM_*`` bekommt.
+
+    Ohne Proxy wie jeder andere LLM-Schluessel. Mit Proxy gibt es zwei Faelle, denn
+    AWS kennt zwei Anmeldungen:
+
+    * **Bedrock-API-Schluessel** (Bearer): Platzhalter, eingesetzt nur am Bedrock-Host
+      der Region (``api/egress.py``).
+    * **IAM** (SigV4): Die Signatur entsteht im Agenten aus dem Secret, einen
+      Platzhalter kann man nicht signieren. Das Secret kommt dann NICHT in den
+      Agenten — wer den Proxy einschaltet, hat genau das ausgeschlossen, und eine
+      langlebige IAM-Kennung reicht oft weit ueber Bedrock hinaus. Der Agent meldet
+      den Grund bei der ersten Anfrage (``LLM_BEDROCK_IAM_GESPERRT``).
+    """
+    if (cfg.get("provider_type") or "").lower() != "bedrock":
+        return {}
+    env = {"LLM_AWS_REGION": bedrock_region(cfg)}
+    zugriff = str(cfg.get("aws_access_key_id") or "").strip()
+    if not aktiv():
+        env["LLM_AWS_ACCESS_KEY_ID"] = zugriff
+        env["LLM_AWS_SESSION_TOKEN"] = str(cfg.get("aws_session_token") or "").strip()
+        return env
+    if zugriff:
+        env["LLM_API_KEY"] = ""
+        env["LLM_BEDROCK_IAM_GESPERRT"] = "true"
+    elif cfg.get("api_key") and bedrock_ziel(cfg):
+        env["LLM_API_KEY"] = platzhalter(KI_BEDROCK, KI)
+    else:
+        # Ohne gueltige Region gibt es kein Ziel — dann auch keinen Klartext.
+        env["LLM_API_KEY"] = ""
+    return env
 
 
 def ki_ueber_proxy(agent_id: str) -> bool:

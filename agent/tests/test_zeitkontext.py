@@ -207,7 +207,7 @@ class AuftragsRunnerTests(unittest.IsolatedAsyncioTestCase):
                 pass
 
         runner = LLMRunner(log_publisher=_Publisher())
-        leer = [patch(f"app.llm_runner.{n}", return_value="") for n in (
+        leer = [patch(f"app.runner_hooks.{n}", return_value="") for n in (
             "get_identity_context", "get_memory_preload", "get_skills_context",
             "get_mounts_context", "get_marketplace_skill_suggestions",
             "get_approval_rules_prefix", "get_improvement_context")]

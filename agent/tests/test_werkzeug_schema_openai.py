@@ -258,7 +258,7 @@ class AbgelehntesWerkzeugWirdGestrichen(unittest.IsolatedAsyncioTestCase):
         r = LLMRunner(log_publisher=pub)
         r._all_tools = _katalog()
         r._activated = ["mcp_Higgsfield-MCP_use_higgsfield", "mcp_X_suche"]
-        leer = [patch(f"app.llm_runner.{n}", return_value="") for n in (
+        leer = [patch(f"app.runner_hooks.{n}", return_value="") for n in (
             "get_identity_context", "get_memory_preload", "get_skills_context",
             "get_mounts_context", "get_marketplace_skill_suggestions")]
         for p in leer:

@@ -37,6 +37,9 @@ dependencies = [
     # Browserprofil verschluesselt ablegen (#828, Schritt 5): das persistente
     # Chromium-Profil enthaelt nach einer Anmeldung faktisch Zugangsdaten.
     "cryptography>=43.0",
+    # AWS Bedrock als Custom-LLM (Converse-API). Ab 1.39 kennt boto3 Bedrock-API-
+    # Schluessel (Bearer) — nur die laufen durch den Egress-Proxy.
+    "boto3>=1.39",
 ]
 
 [build-system]

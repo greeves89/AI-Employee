@@ -69,19 +69,15 @@ class EveryEntryPointUsesItTests(unittest.TestCase):
     def _src(rel: str) -> str:
         return (Path(__file__).resolve().parents[1] / rel).read_text()
 
-    def test_chat_path(self):
-        src = self._src("app/llm_chat_handler.py")
-        self.assertIn("get_identity_context()", src)
-        # get_memory_preload( statt exaktem "()" — Issue #547 gibt ihr optional den
-        # Task-/Chat-Text als task_context mit, der Aufruf selbst darf nicht fehlen.
-        self.assertIn("get_memory_preload(", src)
-
-    def test_task_path_including_lightweight(self):
-        src = self._src("app/llm_runner.py")
-        self.assertIn("get_identity_context()", src)
-        # Der leichte Zweig (Chat/Telegram) hatte KEINEN Preload — genau das war die Luecke.
-        light = src.split("if lightweight:", 1)[1].split("else:", 1)[0]
-        self.assertIn("get_memory_preload(", light)
+    def test_custom_llm_paths_use_the_shared_builder(self):
+        for rel in ("app/llm_chat_handler.py", "app/llm_runner.py"):
+            with self.subTest(rel):
+                self.assertIn("compose_custom_llm_start(", self._src(rel))
+        rumpf = self._src("app/runner_hooks.py").split("def compose_custom_llm_start", 1)[1]
+        self.assertIn("get_identity_context()", rumpf)
+        # Vor der Verzweigung nach ``art``: der leichte Zweig (Chat/Telegram) hatte
+        # KEINEN Preload — genau das war die Luecke.
+        self.assertIn("get_memory_preload(", rumpf.split("if chat:", 1)[0])
 
     def test_agent_to_agent_path(self):
         self.assertIn("get_identity_context()", self._src("app/message_consumer.py"))

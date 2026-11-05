@@ -14,7 +14,7 @@ const PROVIDERS = [
   { value: "google", label: "Google" },
   { value: "ollama", label: "Ollama" },
   { value: "lm-studio", label: "LM Studio" },
-  { value: "bedrock", label: "AWS Bedrock (Realtime-Sprache)" },
+  { value: "bedrock", label: "AWS Bedrock" },
   { value: "azure-realtime", label: "Azure Realtime (Sprache)" },
   { value: "brave-search", label: "Brave Websearch" },
 ] as const;
@@ -203,18 +203,25 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
   const save = async () => {
     const isBedrock = form.provider_type === "bedrock";
     const isBrave = form.provider_type === "brave-search";
-    // Realtime/search providers don't need a manually-typed model (Bedrock models
-    // come from the catalog; Brave has none). Auto-fill Bedrock's default.
+    const bedrockIam = isBedrock && form.aws_access_key_id.trim() !== "";
+    // Realtime/search providers don't need a manually-typed model (Brave has none).
+    // Ein Bedrock-Konto mit IAM ohne Modell ist ein reines Sprach-Konto: Standard
+    // eintragen. Mit Bedrock-API-Schluessel gibt es keine Sprache, dort ist ein
+    // Modell Pflicht.
     let models = form.models;
-    if (isBedrock && models.length === 0) {
+    if (bedrockIam && models.length === 0) {
       models = [{ name: "amazon.nova-2-sonic-v1:0", provider_type: "bedrock", api_endpoint: "", enabled: true }];
     }
     if (!form.name.trim() || (models.length === 0 && !isBrave)) {
       showToast("error", "Name und mindestens ein Modell sind Pflicht");
       return;
     }
-    if (isBedrock && !form.aws_access_key_id.trim()) {
-      showToast("error", "AWS Access Key ID ist Pflicht");
+    if (isBedrock && !form.aws_region.trim()) {
+      showToast("error", "AWS Region ist Pflicht");
+      return;
+    }
+    if (isBedrock && !bedrockIam && !form.api_key && !editingId) {
+      showToast("error", "Bedrock-API-Schlüssel oder Access Key ID mit Secret ist Pflicht");
       return;
     }
     setSaving(true);
@@ -222,8 +229,8 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
       const extra: Record<string, unknown> = {};
       if (form.api_version) extra.api_version = form.api_version;
       if (isBedrock) {
-        extra.aws_access_key_id = form.aws_access_key_id.trim();
-        extra.aws_region = form.aws_region.trim() || "us-east-1";
+        if (bedrockIam) extra.aws_access_key_id = form.aws_access_key_id.trim();
+        extra.aws_region = form.aws_region.trim();
       }
       const payload = {
         name: form.name.trim(),
@@ -430,10 +437,13 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
               {form.provider_type === "bedrock" && (
                 <div className="col-span-2 grid grid-cols-2 gap-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.04] p-3">
                   <div className="col-span-2 text-[11px] text-amber-700 dark:text-amber-400/80">
-                    AWS Bedrock für Realtime-Sprache (Nova Sonic). Modelle wählst du danach im Sprach-Setup pro Agent aus.
+                    Für Custom-LLM-Agenten (Modell-ID oben eintragen, z. B. eu.amazon.nova-pro-v1:0) und für
+                    Realtime-Sprache (Nova Sonic, Auswahl im Sprach-Setup). Mit Bedrock-API-Schlüssel die
+                    Access Key ID leer lassen: Das geht auch hinter dem Egress-Proxy, aber nicht für Sprache.
+                    Access Key ID mit Secret (IAM) geht für beides, hinter dem Egress-Proxy aber nicht.
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">AWS Access Key ID</label>
+                    <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">AWS Access Key ID (nur IAM)</label>
                     <input className={inputCls} value={form.aws_access_key_id}
                       onChange={(e) => setForm({ ...form, aws_access_key_id: e.target.value })}
                       placeholder="AKIA…" />
@@ -448,13 +458,16 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
               )}
               <div className="col-span-2">
                 <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">
-                  {form.provider_type === "bedrock" ? "AWS Secret Access Key"
+                  {form.provider_type === "bedrock"
+                    ? (form.aws_access_key_id.trim() ? "AWS Secret Access Key" : "Bedrock-API-Schlüssel")
                     : form.provider_type === "brave-search" ? "Brave API-Key" : "API-Key"}
                   {editingId && <span className="text-muted-foreground/40"> (leer = unverändert)</span>}
                 </label>
                 <input className={inputCls} type="password" value={form.api_key}
                   onChange={(e) => setForm({ ...form, api_key: e.target.value })}
-                  placeholder={form.provider_type === "bedrock" ? "AWS Secret Access Key" : "sk-… / Azure-Key"} />
+                  placeholder={form.provider_type === "bedrock"
+                    ? (form.aws_access_key_id.trim() ? "AWS Secret Access Key" : "Bedrock-API-Schlüssel")
+                    : "sk-… / Azure-Key"} />
               </div>
               {form.provider_type === "azure-openai" && (
                 <div className="col-span-2">

@@ -13,6 +13,7 @@ from pathlib import Path
 
 from app.config import settings
 from app.skills_loader import execute_skill_tool, get_skill_tool_names
+from app.tools import hyperframes
 from app.tools.definitions import ORCHESTRATOR_TOOL_NAMES
 
 logger = logging.getLogger(__name__)
@@ -63,6 +64,8 @@ TOOL_CATEGORY_MAP: dict[str, str] = {
     # legacy bucket as email/M365/external-API/git-push (#197's own
     # docstring already documents this shared-bucket tradeoff).
     "computer_use": "custom",
+    # Dieselbe Einstufung wie der hyperframes-MCP (pretooluse_hook._MCP_BARE_CATEGORY).
+    "render_video": "file_write",
     "browser": "custom",
     "tickets": "custom",
 }
@@ -85,11 +88,11 @@ ALWAYS_ALLOWED_TOOLS = frozenset({
     "brain_search", "brain_get", "brain_list", "brain_related",
     "secondbrain_search", "secondbrain_read", "secondbrain_write", "secondbrain_list",
     "list_team", "list_tasks", "list_todos", "list_schedules", "trigger_list",
-    "skill_search", "skill_get_my_skills", "skill_install", "skill_rate",
+    "skill_search", "skill_get_my_skills", "skill_install", "skill_rate", "skill_record_usage",
     "send_message", "create_task", "delegate_and_wait",
     "list_my_team", "list_team_tasks", "get_tasks_status",
     # Read-only / informational — same risk class as the group above.
-    "app_logs", "check_approval", "get_agent_conversation", "get_day_plan",
+    "app_logs", "read_logs", "get_docs", "list_videos", "check_approval", "get_agent_conversation", "get_day_plan",
     "list_agent_messages", "list_apps", "gesetze_search",
     # Liest nur im laufenden Gespraech, das der Nutzer ohnehin vor sich hat.
     "chat_search",
@@ -555,6 +558,18 @@ class ToolExecutor:
             return await client.call_tool(tool_name, tool_input)
         except Exception as e:
             return f"Error executing MCP tool {tool_name}: {e}"
+
+    # Dieselben drei Werkzeuge wie hyperframes-server.mjs (#161).
+    async def _tool_get_docs(self, _params: dict) -> str:
+        return hyperframes.docs()
+
+    async def _tool_list_videos(self, _params: dict) -> str:
+        return hyperframes.list_videos()
+
+    async def _tool_render_video(self, params: dict) -> str:
+        return await hyperframes.render_video(
+            str(params.get("html_content") or ""), params.get("filename"),
+        )
 
     def _resolve_path(self, path: str) -> str:
         """Resolve a path relative to workspace if not absolute."""

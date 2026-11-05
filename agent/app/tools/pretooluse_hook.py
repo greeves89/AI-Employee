@@ -106,10 +106,9 @@ _NATIVE_CATEGORY_MAP: dict[str, str] = {
     "write_stdin": "shell_exec",
 }
 
-# Plattform-eigene MCP-Server, deren Werkzeuge NICHT in den custom_llm-Tabellen
-# stehen (dort gibt es sie nicht): `read-logs` (eigene Containerlogs, nur
-# lesend) und der Desktop-Server, dessen Werkzeuge `computer_<aktion>` heissen
-# und in der Summe genau das sind, was `computer_use` in TOOL_CATEGORY_MAP ist.
+# Plattform-eigene MCP-Server: `read-logs` (eigene Containerlogs, nur lesend) und
+# der Desktop-Server, dessen Werkzeuge `computer_<aktion>` heissen und in der
+# Summe genau das sind, was `computer_use` in TOOL_CATEGORY_MAP ist.
 _MCP_BARE_ALWAYS_ALLOWED = frozenset({
     "read_logs",
     "skill_record_usage",  # reine Buchfuehrung, wie skill_rate
