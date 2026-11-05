@@ -1489,6 +1489,16 @@ async def _beobachter_konfig_senden(session_id: str) -> None:
         except Exception:  # noqa: BLE001 — ohne Regeln beobachtet sie trotzdem
             logger.warning("Bridge-Regeln nicht ladbar", exc_info=True)
     mitdenken = beobachten and bool(session.get("mitdenken")) and bool(session.get("agent_id"))
+    lernen = False
+    if beobachten:
+        try:
+            from app.core import bridge_lernen as bl
+            from app.db.session import async_session_factory
+
+            async with async_session_factory() as db:
+                lernen = await bl.lernen_aktiv(db, session["user_id"])
+        except Exception:  # noqa: BLE001 — ohne Antwort bleibt Lernen aus
+            logger.warning("Lern-Schalter nicht lesbar", exc_info=True)
     if mitdenken and not await _agent_kann_ansehen(session):
         mitdenken = False
         await _an_bridge(session, {
@@ -1500,6 +1510,8 @@ async def _beobachter_konfig_senden(session_id: str) -> None:
         "beobachten": beobachten,
         # Bilder schickt die Bridge nur, wenn sie auch jemand ansieht.
         "mitdenken": mitdenken,
+        # „Aus meiner Arbeit lernen“ (#1023): die Bridge meldet beendete Fensterbesuche.
+        "lernen": lernen,
         "regeln": regeln,
         "gestoppt": bool(session.get("gestoppt")),
         # Fuer den Knopf „Chat“ im Overlay — der eigene Agent des Menschen.
@@ -1948,6 +1960,144 @@ async def regel_loeschen(regel_id: int, caller=Depends(require_auth_or_agent),
     return {"ok": True}
 
 
+# ── „Aus meiner Arbeit lernen“ (#1023) ───────────────────────────────────────
+
+async def _nutzung_buchen(session: dict, msg: dict) -> None:
+    """Ein beendeter Fensterbesuch aus der Bridge ins Protokoll — nur mit Mitsehen UND
+    eingeschaltetem Lern-Schalter (den prüft ``protokoll_aufnehmen`` selbst)."""
+    from app.core import bridge_lernen as bl
+    from app.db.session import async_session_factory
+
+    if not _beobachten_erlaubt(session) or session.get("gestoppt"):
+        return
+    try:
+        async with async_session_factory() as db:
+            z = await bl.protokoll_aufnehmen(db, session["user_id"], msg.get("app"), msg.get("titel"),
+                                             msg.get("dauer_sekunden"))
+            if z is None:
+                return
+            schalter = await bl.schalter_holen(db, session["user_id"])
+            if schalter is not None and session.get("agent_id"):
+                schalter.agent_id = str(session["agent_id"])
+            await db.commit()
+    except Exception:  # noqa: BLE001 — ein verlorener Eintrag ist kein Fehler fuer den Menschen
+        logger.warning("Nutzungsprotokoll: Eintrag nicht gespeichert", exc_info=True)
+
+
+class LernenEingabe(BaseModel):
+    aktiv: bool
+    agent_id: str | None = None
+
+
+@router.get("/lernen")
+async def lernen_stand(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    from app.core import bridge_lernen as bl
+
+    z = await bl.schalter_holen(db, str(user.id))
+    return {
+        "aktiv": bool(z and z.aktiv),
+        "agent_id": z.agent_id if z else None,
+        "ausgewertet_at": z.ausgewertet_at.isoformat() if z and z.ausgewertet_at else None,
+        "eintraege": await bl.protokoll_anzahl(db, str(user.id)),
+        "aufbewahrung_tage": bl.AUFBEWAHRUNG_TAGE,
+        "vorschlaege": [bl.vorschlag_dict(v) for v in await bl.vorschlaege_laden(db, str(user.id), nur_offene=True)],
+    }
+
+
+@router.put("/lernen")
+async def lernen_schalten(body: LernenEingabe, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Der Schalter. Aus heisst aus UND weg: das Protokoll wird sofort gelöscht."""
+    from app.core import bridge_lernen as bl
+    from app.core import bridge_mitdenker as bm
+
+    user_id = str(user.id)
+    if body.agent_id and not await bm._agent_gehoert(db, user_id, body.agent_id):
+        raise HTTPException(status_code=404, detail="Agent not found or not yours")
+    await bl.schalter_setzen(db, user_id, body.aktiv, body.agent_id)
+    if not body.aktiv:
+        await bl.protokoll_loeschen(db, user_id)
+    await db.commit()
+    await beobachter_konfig_an_nutzer(user_id)
+    return {"aktiv": body.aktiv}
+
+
+@router.get("/lernen/protokoll")
+async def lernen_protokoll(limit: int = 200, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    from app.core import bridge_lernen as bl
+
+    return {"eintraege": await bl.protokoll_lesen(db, str(user.id), limit),
+            "gesamt": await bl.protokoll_anzahl(db, str(user.id))}
+
+
+@router.delete("/lernen/protokoll")
+async def lernen_protokoll_loeschen(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    from app.core import bridge_lernen as bl
+
+    n = await bl.protokoll_loeschen(db, str(user.id))
+    await db.commit()
+    return {"geloescht": n}
+
+
+@router.get("/lernen/vorschlaege")
+async def lernen_vorschlaege(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    from app.core import bridge_lernen as bl
+
+    return {"vorschlaege": [bl.vorschlag_dict(v) for v in await bl.vorschlaege_laden(db, str(user.id))]}
+
+
+@router.post("/lernen/vorschlaege/{vorschlag_id}/annehmen")
+async def lernen_vorschlag_annehmen(vorschlag_id: int, user=Depends(require_auth),
+                                    db: AsyncSession = Depends(get_db)):
+    """Das Ja des Menschen (nur er, nie ein Agent): jetzt entsteht die Regel."""
+    from app.core import bridge_lernen as bl
+    from app.core import bridge_mitdenker as bm
+
+    try:
+        ergebnis = await bl.vorschlag_annehmen(db, str(user.id), vorschlag_id)
+    except bm.RegelFehler as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    if ergebnis is None:
+        raise HTTPException(status_code=404, detail="Vorschlag nicht gefunden.")
+    await db.commit()
+    vorschlag, regel = ergebnis
+    await db.refresh(regel)
+    await beobachter_konfig_an_nutzer(str(user.id))
+    return {"vorschlag": bl.vorschlag_dict(vorschlag), "regel": bm.regel_dict(regel)}
+
+
+@router.post("/lernen/vorschlaege/{vorschlag_id}/ablehnen")
+async def lernen_vorschlag_ablehnen(vorschlag_id: int, user=Depends(require_auth),
+                                    db: AsyncSession = Depends(get_db)):
+    from app.core import bridge_lernen as bl
+
+    v = await bl.vorschlag_ablehnen(db, str(user.id), vorschlag_id)
+    if v is None:
+        raise HTTPException(status_code=404, detail="Vorschlag nicht gefunden.")
+    await db.commit()
+    return bl.vorschlag_dict(v)
+
+
+_AUSWERTUNG_LAEUFT: set[str] = set()
+
+
+@router.post("/lernen/auswerten")
+async def lernen_auswerten(user=Depends(require_auth)):
+    """„Jetzt auswerten“ statt auf die Nachtauswertung zu warten."""
+    from app.db.session import async_session_factory
+    from app.services.bridge_lernen_service import BridgeLernenDienst
+
+    # Eine Auswertung je Mensch zur Zeit (Doppelklick, Tagesdienst + Hand): sonst doppelte
+    # Agentenaufrufe und doppelte Rückfragen.
+    sperre = _AUSWERTUNG_LAEUFT
+    if str(user.id) in sperre:
+        raise HTTPException(status_code=409, detail="Die Auswertung läuft bereits.")
+    sperre.add(str(user.id))
+    try:
+        return await BridgeLernenDienst(async_session_factory, _redis).auswerten(str(user.id))
+    finally:
+        sperre.discard(str(user.id))
+
+
 # ── Bridge WebSocket ──────────────────────────────────────────────────────────
 
 ws_router = APIRouter(prefix="/ws/computer-use", tags=["computer-use-ws"])
@@ -2074,6 +2224,9 @@ async def bridge_websocket(websocket: WebSocket, session_id: str | None = None):
 
             elif msg_type == "rule_hit":
                 await _regel_treffer(session, msg)
+
+            elif msg_type == "nutzung":
+                await _nutzung_buchen(session, msg)
 
             elif msg_type == "vorschlag_antwort":
                 await _vorschlag_antwort(session_id, session, msg)
