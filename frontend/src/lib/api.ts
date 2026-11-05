@@ -4099,6 +4099,69 @@ export async function deleteBridgeRegel(id: number): Promise<void> {
   return fetchJSON(`${getBase()}/computer-use/regeln/${id}`, { method: "DELETE" });
 }
 
+/* „Aus meiner Arbeit lernen“ (#1023): Nutzungsprotokoll (App, Titel, Dauer — nie ein Bild)
+   und die Regelvorschläge, die der Agent daraus macht. Erst das Ja legt eine Regel an. */
+
+export interface BridgeVorschlag {
+  id: number;
+  name: string;
+  wenn_app: string;
+  wenn_titel: string;
+  angebot: string;
+  auftrag: string;
+  begruendung: string;
+  status: "offen" | "angenommen" | "abgelehnt";
+  regel_id: number | null;
+}
+
+export interface BridgeLernenStand {
+  aktiv: boolean;
+  agent_id: string | null;
+  ausgewertet_at: string | null;
+  eintraege: number;
+  aufbewahrung_tage: number;
+  vorschlaege: BridgeVorschlag[];
+}
+
+export interface BridgeNutzungEintrag {
+  id: number;
+  app: string;
+  titel: string;
+  dauer_sekunden: number;
+  ende: string | null;
+}
+
+export async function getBridgeLernen(): Promise<BridgeLernenStand> {
+  return fetchJSON(`${getBase()}/computer-use/lernen`);
+}
+
+export async function setBridgeLernen(aktiv: boolean, agentId?: string): Promise<{ aktiv: boolean }> {
+  return fetchJSON(`${getBase()}/computer-use/lernen`, {
+    method: "PUT",
+    body: JSON.stringify({ aktiv, agent_id: agentId ?? null }),
+  });
+}
+
+export async function getBridgeProtokoll(limit = 200): Promise<{ eintraege: BridgeNutzungEintrag[]; gesamt: number }> {
+  return fetchJSON(`${getBase()}/computer-use/lernen/protokoll?limit=${limit}`);
+}
+
+export async function deleteBridgeProtokoll(): Promise<{ geloescht: number }> {
+  return fetchJSON(`${getBase()}/computer-use/lernen/protokoll`, { method: "DELETE" });
+}
+
+export async function annehmenBridgeVorschlag(id: number): Promise<{ vorschlag: BridgeVorschlag }> {
+  return fetchJSON(`${getBase()}/computer-use/lernen/vorschlaege/${id}/annehmen`, { method: "POST" });
+}
+
+export async function ablehnenBridgeVorschlag(id: number): Promise<BridgeVorschlag> {
+  return fetchJSON(`${getBase()}/computer-use/lernen/vorschlaege/${id}/ablehnen`, { method: "POST" });
+}
+
+export async function auswertenBridgeLernen(): Promise<{ status: string; vorschlaege: number }> {
+  return fetchJSON(`${getBase()}/computer-use/lernen/auswerten`, { method: "POST" });
+}
+
 export async function getCapabilityGroups(): Promise<{ groups: CapabilityGroup[] }> {
   return fetchJSON(`${getBase()}/computer-use/capabilities`);
 }

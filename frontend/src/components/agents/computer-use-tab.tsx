@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { BridgeLernenPanel } from "./bridge-lernen-panel";
 import {
   Monitor,
   Globe,
@@ -1067,6 +1068,8 @@ function MitdenkerPanel({ agentId, session, onChange }: {
               Regel anlegen
             </button>
           </div>
+
+          <BridgeLernenPanel agentId={agentId} beobachten={beobachten} onRegelAngelegt={laden} />
 
           {fehler && <p className="text-[11px] text-red-400">{fehler}</p>}
         </div>
