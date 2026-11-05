@@ -81,5 +81,32 @@ class DiagMcpTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("mcp_arg_parse", body["checks"])
 
 
+
+
+class WerkzeugZustandCustomLlmTests(unittest.TestCase):
+    """#161: eingetragener Server ohne Werkzeuge muss sichtbar sein."""
+
+    def _zustand(self, modus, server):
+        from app import health
+        from app.config import settings
+
+        katalog = [{"function": {"name": "bash"}}, {"function": {"name": "mcp_msgraph_ms_search"}}]
+        with mock.patch.object(settings, "agent_mode", modus), \
+                mock.patch("app.tools.definitions.TOOL_DEFINITIONS", katalog), \
+                mock.patch.dict(os.environ, {"CUSTOM_MCP_SERVERS": server}):
+            return health._werkzeug_zustand()
+
+    def test_cli_laufzeit_meldet_nichts(self):
+        self.assertIsNone(self._zustand("claude_code", "{}"))
+
+    def test_server_ohne_werkzeuge_wird_genannt(self):
+        zustand = self._zustand("custom_llm", '{"msgraph": "http://a", "email": "http://b"}')
+        self.assertEqual(zustand["server_ohne_werkzeuge"], ["email"])
+        self.assertEqual(zustand["anzahl"], 2)
+
+    def test_kaputter_eintrag_wirft_nicht(self):
+        self.assertEqual(self._zustand("custom_llm", "kein json")["mcp_server"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

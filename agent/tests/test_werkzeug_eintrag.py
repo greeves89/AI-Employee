@@ -201,7 +201,7 @@ class DreiLaufzeitenGleich(unittest.IsolatedAsyncioTestCase):
         r._tool_executor.execute = AsyncMock(return_value="Ausgabe des Befehls")
         # Der Prompt-Aufbau liest /workspace und fragt den Orchestrator — hier
         # nicht die Frage, deshalb leer.
-        leer = {name: patch(f"app.llm_runner.{name}", return_value="") for name in (
+        leer = {name: patch(f"app.runner_hooks.{name}", return_value="") for name in (
             "get_identity_context", "get_memory_preload", "get_skills_context",
             "get_mounts_context", "get_marketplace_skill_suggestions")}
         for p in leer.values():
