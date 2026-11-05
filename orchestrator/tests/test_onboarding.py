@@ -182,8 +182,11 @@ class HarnessParityTests(unittest.TestCase):
         identity = hooks.split("def get_identity_context(", 1)[1].split("def get_onboarding_context(", 1)[0]
         self.assertIn("get_onboarding_context()", identity)
         # ... die CLI-Laufzeiten ueber das gemeinsame Buendel (beide Zweige).
-        bundle = hooks.split("def compose_prompt_bundle(", 1)[1].split("def get_user_feedback(", 1)[0]
+        bundle = hooks.split("def compose_prompt_bundle(", 1)[1].split("class CustomLlmStart", 1)[0]
         self.assertEqual(bundle.count("get_onboarding_context()"), 2)
+        # ... und custom_llm im Chat wie im Auftrag ueber den gemeinsamen Start (#161).
+        start = hooks.split("def compose_custom_llm_start(", 1)[1].split("def get_user_feedback(", 1)[0]
+        self.assertIn("get_onboarding_context()", start)
 
     def test_status_reaches_the_proactive_run(self):
         sched = (ORCH / "app/services/scheduler_service.py").read_text()
