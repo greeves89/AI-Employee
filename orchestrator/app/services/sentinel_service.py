@@ -340,7 +340,8 @@ class SentinelService:
             # VOR dem Fortsetzen: der Agent soll den Schritt gesperrt vorfinden. Scheitert
             # das Speichern, gibt es keinen sanften Weg (Sicherheitspruefung).
             gesichert = await self._sperren_und_merken(agent_id, befund, muster)
-        sitzungen = await self._laufende_gespraeche(agent_id) if settings.redis_acl_enabled else []
+        sitzung = await self._offener_zug(agent_id, event) if settings.redis_acl_enabled else None
+        sitzungen = [sitzung] if sitzung else []
         if (befund.weiter and gesichert and sitzungen
                 and await self._fortsetzen(agent_id, befund, sitzungen)):
             self._fingerabdruck[(agent_id, reason)] = self._abdruck(event, verdict.excerpt)
@@ -451,78 +452,50 @@ class SentinelService:
         vorher = self._fortgesetzt.get((agent_id, grund))
         return None if vorher is None else time.monotonic() - vorher
 
-    async def _laufende_gespraeche(self, agent_id: str) -> list[str]:
-        """Die Chat-Sitzungen, in denen der Agent GERADE arbeitet.
+    async def _offener_zug(self, agent_id: str, event: dict) -> str | None:
+        """Die Chat-Sitzung, aus deren OFFENEM Zug der Fund stammt — sonst None.
 
-        Der Agent fuehrt sie in seinem Status (``active_sessions``, Eintraege
-        ``chat:<sitzung>``) — dieselbe Quelle wie ``task_router.auftrag_des_laufenden_zuges``.
+        Gebunden an Daten, die nur der Orchestrator schreibt (Sicherheitspruefung): Das
+        Ereignis traegt die Kennung seines Zugs (``message_id``). Sanft fortgesetzt wird
+        nur, wenn der Orchestrator zu genau dieser Kennung eine Nutzernachricht dieses
+        Agenten gespeichert hat (ws.py, vor dem Einreihen) und noch keine Antwort (die
+        kommt erst mit „done“). Ein Agent kann so nur einen eigenen, wirklich offenen
+        Zug nennen. Ereignisse aus Auftraegen haben keinen solchen Zug: harter Weg.
+
+        Frueher galt hier „laeuft ein Auftrag, immer hart“ — live gesehen: Ein Fund im
+        Chat stoppte den Agenten und riss den parallel laufenden Projekt-Takt mit.
         """
-        try:
-            status = await self.redis.client.hgetall(f"agent:{agent_id}:status")
-            roh = (status or {}).get(b"active_sessions") or (status or {}).get("active_sessions") or "[]"
-            if isinstance(roh, bytes):
-                roh = roh.decode()
-            eintraege = json.loads(roh) if isinstance(roh, str) else []
-        except Exception:  # noqa: BLE001 — ohne Auskunft gilt der harte Weg wie bisher
-            return []
-        gemeldet = [str(e)[5:] for e in eintraege
-                    if isinstance(e, str) and e.startswith("chat:") and len(e) > 5]
-        return await self._bestaetigte_gespraeche(agent_id, gemeldet)
-
-    async def _bestaetigte_gespraeche(self, agent_id: str, gemeldet: list[str]) -> list[str]:
-        """Nur Gespraeche mit einem OFFENEN Zug, den der Orchestrator selbst kennt.
-
-        Den Status schreibt der Agent; ein gekaperter Agent koennte ein Gespraech
-        vortaeuschen und so den harten Stopp gegen den sanften tauschen. Deshalb zaehlt
-        nur, was der Orchestrator gespeichert hat (Sicherheitspruefung):
-
-        - Laeuft beim Agenten ein Auftrag, kann der Fund daraus stammen — dann nie sanft.
-        - Eine Sitzung zaehlt nur, wenn ihre letzte Nutzernachricht juenger ist als ihre
-          letzte Antwort (Zug laeuft) und aus den letzten Stunden stammt.
-        """
-        if not gemeldet:
-            return []
+        kennung = event.get("message_id")
+        if not isinstance(kennung, str) or not kennung:
+            return None
         from datetime import UTC, datetime
 
-        from sqlalchemy import func, select
+        from sqlalchemy import select
 
         from app.db.session import async_session_factory
         from app.models.chat_message import ChatMessage
-        from app.models.task import Task, TaskStatus
 
         try:
             async with async_session_factory() as db:
-                auftrag = (await db.execute(select(Task.id).where(
-                    Task.agent_id == agent_id, Task.status == TaskStatus.RUNNING,
-                ).limit(1))).first()
-                if auftrag is not None:
-                    return []
-                zeilen = await db.execute(select(
-                    ChatMessage.session_id, ChatMessage.role, func.max(ChatMessage.timestamp),
+                zeilen = (await db.execute(select(
+                    ChatMessage.role, ChatMessage.session_id, ChatMessage.timestamp,
                 ).where(
-                    ChatMessage.agent_id == agent_id,
-                    ChatMessage.session_id.in_(gemeldet[:20]),
+                    ChatMessage.agent_id == agent_id, ChatMessage.message_id == kennung,
                     ChatMessage.role.in_(("user", "assistant")),
-                ).group_by(ChatMessage.session_id, ChatMessage.role))
-                letzte: dict[str, dict[str, datetime]] = {}
-                for sitzung, rolle, zeit in zeilen:
-                    letzte.setdefault(sitzung, {})[rolle] = zeit
+                ))).all()
         except Exception:  # noqa: BLE001 — ohne Bestaetigung gilt der harte Weg
-            return []
-        grenze = datetime.now(UTC) - _GESPRAECH_FRISCH
-
-        def offen(sitzung: str) -> bool:
-            z = letzte.get(sitzung, {})
-            nutzer, antwort = z.get("user"), z.get("assistant")
-            if nutzer is None:
-                return False
-            if nutzer.tzinfo is None:
-                nutzer = nutzer.replace(tzinfo=UTC)
-            if antwort is not None and antwort.tzinfo is None:
-                antwort = antwort.replace(tzinfo=UTC)
-            return nutzer >= grenze and (antwort is None or nutzer > antwort)
-
-        return [g for g in gemeldet if offen(g)]
+            return None
+        nutzer = [z for z in zeilen if z[0] == "user"]
+        if not nutzer or any(z[0] == "assistant" for z in zeilen):
+            return None
+        _, sitzung, zeit = nutzer[0]
+        if zeit is None:
+            return None
+        if zeit.tzinfo is None:
+            zeit = zeit.replace(tzinfo=UTC)
+        if zeit < datetime.now(UTC) - _GESPRAECH_FRISCH:
+            return None
+        return sitzung or None
 
     async def _fortsetzen(self, agent_id: str, befund, sitzungen: list[str]) -> bool:
         """Den laufenden Zug anhalten und mit dem Grund in DERSELBEN Sitzung weitermachen.

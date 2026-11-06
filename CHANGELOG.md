@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.431.3] - 2026-11-06
+
+### Sicherheit
+- Sanft fortgesetzt wird nur der offene Chat-Zug, aus dem der Fund stammt: gebunden an die `message_id` des Ereignisses und die dazu vom Orchestrator gespeicherte, noch unbeantwortete Nutzernachricht. Live gesehen: Mit der bisherigen Regel „läuft ein Auftrag, immer hart“ stoppte ein Fund im Chat den Agenten und riss den parallel laufenden Projekt-Takt mit. Ein paralleler Auftrag bleibt jetzt unberührt; Funde aus Aufträgen gehen weiter den harten Weg.
+
+### Tests
+- `OffenerZug` (offener Zug, beantwortet, unbekannt/alt/ohne Kennung, Datenbank weg, paralleler Auftrag bleibt unberührt); 147 Sentinel-Tests grün.
+
 ## [1.431.2] - 2026-11-06
 
 ### Sicherheit
