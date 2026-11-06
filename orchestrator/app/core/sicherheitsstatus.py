@@ -247,6 +247,69 @@ async def _schluessel(db) -> list[dict]:
                    "Unter Schlüssel je Key die erlaubten Ziele eintragen, z. B. api.github.com.")]
 
 
+#: Klassen, die Zugangsdaten sind — wer sie durchlässt, verschenkt einen Zugang.
+_DLP_SCHLUESSEL_KLASSEN = ("secret", "secret_format", "seed_phrase")
+_DLP_KANAELE = "Telegram, Slack/Teams/Discord und Projekt-Git"
+
+
+async def _dlp(db) -> list[dict]:
+    """Prüft der DLP-Filter, was über die Kanäle hinausgeht (``dlp.evaluate_egress``)?
+
+    Er ist bei jeder Anlage zunächst aus — ohne diesen Punkt fiel das niemandem auf.
+    Gerechnet wird mit DERSELBEN Auflösung wie im Filter (``dlp.resolve_actions``:
+    Regel des Agenten vor globaler Regel vor Voreinstellung), sonst zeigte die Ampel
+    „in Ordnung“, während eine Regel für einen einzelnen Agenten Schlüssel durchlässt.
+    """
+    from app.core.dlp import resolve_actions
+    from app.models.agent import Agent
+    from app.models.dlp_rule import DlpRule
+    from app.services.settings_service import SettingsService
+
+    titel = "DLP-Filter (ausgehende Nachrichten)"
+    an = (await SettingsService(db).get("dlp_enabled")) in ("true", "1", True)
+    if not an:
+        return [_punkt(
+            "dlp", titel, WARNUNG,
+            f"Der DLP-Filter ist aus: Schlüssel, IBAN und Kreditkartennummern in Antworten der "
+            f"Agenten gehen ungeprüft über {_DLP_KANAELE} hinaus.",
+            "Admin → DLP: Filter einschalten. Voreinstellung: Schlüssel sperren, IBAN und "
+            "Kreditkarte schwärzen.")]
+    regeln = (await db.execute(select(DlpRule).where(
+        DlpRule.pii_class.in_(_DLP_SCHLUESSEL_KLASSEN)))).scalars().all()
+    klassen = dict.fromkeys(_DLP_SCHLUESSEL_KLASSEN, 1)
+    globale = [r for r in regeln if r.agent_id is None]
+
+    def durchgelassen(rs) -> list[str]:
+        return sorted(k for k, a in resolve_actions(klassen, rs).items() if a in ("allow", "log"))
+
+    global_offen = durchgelassen(globale)
+    je_agent = {}
+    for aid in sorted({r.agent_id for r in regeln if r.agent_id is not None}):
+        offen = durchgelassen(globale + [r for r in regeln if r.agent_id == aid])
+        if offen:
+            je_agent[aid] = offen
+    if global_offen:
+        return [_punkt(
+            "dlp", titel, WARNUNG,
+            f"Der DLP-Filter ist an, lässt aber Zugangsdaten durch ({', '.join(global_offen)}).",
+            "Admin → DLP: für Schlüssel, Anbieter-Formate und Seed-Phrasen „sperren“ oder "
+            "„schwärzen“ einstellen.")]
+    if je_agent:
+        namen = dict((await db.execute(select(Agent.id, Agent.name).where(
+            Agent.id.in_(list(je_agent))))).all())
+        liste = ", ".join(namen.get(a, a) for a in list(je_agent)[:5]) + (" …" if len(je_agent) > 5 else "")
+        return [_punkt(
+            "dlp", titel, WARNUNG,
+            f"Der DLP-Filter ist an, aber für {len(je_agent)} Agent(en) gibt es eine eigene Regel, "
+            f"die Zugangsdaten durchlässt: {liste}.",
+            "Admin → DLP: die Regeln dieser Agenten auf „sperren“ oder „schwärzen“ stellen.")]
+    return [_punkt(
+        "dlp", titel, OK,
+        f"An. Zugangsdaten in Antworten über {_DLP_KANAELE} werden gesperrt oder geschwärzt. "
+        "Nicht erfasst: Web-Chat, Sprache und was ein Agent selbst mit Werkzeugen sendet — "
+        "dafür sorgen Egress-Proxy und Sentinel.")]
+
+
 #: Laufzeit, Stufe, Merkmal im Agenten (entstand mit Platzhalter) und Anzeige je Zugang.
 _ZUGAENGE = (
     ("claude_code", "ki", "egress_ki_stufe", "Claude-Zugang"),
@@ -307,7 +370,7 @@ async def stand(db) -> dict:
 
     ids = [c for (c,) in (await db.execute(
         select(Agent.container_id).where(Agent.container_id.is_not(None)))).all()]
-    punkte = (_einstellungen() + await _agenten(db) + await _schluessel(db) + await _zugaenge(db)
+    punkte = (_einstellungen() + await _agenten(db) + await _schluessel(db) + await _zugaenge(db) + await _dlp(db)
               + _abbild_signaturen()
               + await asyncio.to_thread(_docker, ids))
     rang = {KRITISCH: 0, WARNUNG: 1, INFO: 2, OK: 3}

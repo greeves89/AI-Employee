@@ -58,6 +58,7 @@ GRUENDE = {
     "arbeitet": "arbeitet gerade",
     "auftrag": "ein Auftrag läuft",
     "termin": "ist in einer Besprechung",
+    "sprache": "führt gerade ein Sprachgespräch",
     "gespraech": "Gespräch in den letzten 15 Minuten",
     "fehlgeschlagen": "letzter Versuch gescheitert — bitte einzeln aktualisieren",
     "freigabe": "wartet auf eine Freigabe",
@@ -118,6 +119,10 @@ async def beschaeftigt(db, redis, agent, *, ruhe: timedelta | None = None) -> st
     if (await db.execute(select(Task.id).where(
             Task.agent_id == agent.id, Task.status == TaskStatus.RUNNING).limit(1))).scalar_one_or_none():
         return "auftrag"
+    from app.core import sprachsitzungen
+
+    if sprachsitzungen.aktiv(agent.id):
+        return "sprache"
     if await _in_besprechung(db, agent.id):
         return "termin"
     from app.models.command_approval import ApprovalStatus, CommandApproval

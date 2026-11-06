@@ -157,3 +157,81 @@ class AbbildSignaturenTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DlpTests(unittest.IsolatedAsyncioTestCase):
+    """Der DLP-Filter ist bei jeder Anlage zunächst aus — die Ampel muss das zeigen."""
+
+    async def asyncSetUp(self):
+        from app.models.dlp_rule import DlpRule
+        from app.models.platform_settings import PlatformSettings
+
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with self.engine.begin() as conn:
+            await conn.run_sync(DlpRule.metadata.create_all,
+                                tables=[DlpRule.__table__, PlatformSettings.__table__,
+                                        User.__table__, Agent.__table__])
+        self.db = async_sessionmaker(self.engine, expire_on_commit=False)()
+
+    async def asyncTearDown(self):
+        await self.db.close()
+        await self.engine.dispose()
+
+    async def _an(self, wert="true"):
+        from app.models.platform_settings import PlatformSettings
+        self.db.add(PlatformSettings(key="dlp_enabled", value=wert, is_secret=False))
+        await self.db.commit()
+
+    async def test_aus_ist_eine_warnung(self):
+        p = _stand(await ss._dlp(self.db), "dlp")
+        self.assertEqual(p["stand"], "warnung")
+        self.assertIn("Admin → DLP", p["beheben"])
+
+    async def test_an_mit_voreinstellung_ok(self):
+        await self._an()
+        p = _stand(await ss._dlp(self.db), "dlp")
+        self.assertEqual(p["stand"], "ok")
+        self.assertIn("gesperrt oder geschwärzt", p["text"])
+
+    async def test_an_aber_schluessel_durchgelassen(self):
+        from app.models.dlp_rule import DlpRule
+        await self._an()
+        self.db.add(DlpRule(pii_class="secret", action="allow", agent_id=None, enabled=True))
+        await self.db.commit()
+        self.assertEqual(_stand(await ss._dlp(self.db), "dlp")["stand"], "warnung")
+
+    async def test_regel_eines_einzelnen_agenten_wird_gemeldet(self):
+        """Der Filter nimmt die Regel des Agenten vor der globalen — die Ampel auch."""
+        from app.models.dlp_rule import DlpRule
+        await self._an()
+        self.db.add(DlpRule(pii_class="secret", action="block", agent_id=None, enabled=True))
+        self.db.add(DlpRule(pii_class="secret", action="allow", agent_id="a1", enabled=True))
+        await self.db.commit()
+        p = _stand(await ss._dlp(self.db), "dlp")
+        self.assertEqual(p["stand"], "warnung")
+        self.assertIn("a1", p["text"])
+
+    async def test_abgeschaltete_regel_zaehlt_nicht(self):
+        from app.models.dlp_rule import DlpRule
+        await self._an()
+        self.db.add(DlpRule(pii_class="secret", action="allow", agent_id="a1", enabled=False))
+        await self.db.commit()
+        self.assertEqual(_stand(await ss._dlp(self.db), "dlp")["stand"], "ok")
+
+    async def test_alle_schluessel_klassen(self):
+        from app.models.dlp_rule import DlpRule
+        await self._an()
+        for klasse in ("secret_format", "seed_phrase"):
+            with self.subTest(klasse):
+                await self.db.execute(DlpRule.__table__.delete())
+                await self.db.commit()
+                self.db.add(DlpRule(pii_class=klasse, action="log", agent_id=None, enabled=True))
+                await self.db.commit()
+                p = _stand(await ss._dlp(self.db), "dlp")
+                self.assertEqual(p["stand"], "warnung")
+                self.assertIn(klasse, p["text"])
+
+    async def test_ok_text_nennt_die_grenzen(self):
+        await self._an()
+        text = _stand(await ss._dlp(self.db), "dlp")["text"]
+        self.assertIn("Nicht erfasst", text)
