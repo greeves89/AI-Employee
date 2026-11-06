@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.434.0] - 2026-11-06
+
+### Neu
+- Sicherheitsstatus: Punkt „DLP-Filter (ausgehende Nachrichten)“. Der Filter ist bei jeder neuen Anlage zunächst aus; bisher fiel das niemandem auf. Warnung, wenn er aus ist oder Schlüssel global nur protokolliert bzw. durchlässt; in Ordnung, wenn Schlüssel gesperrt oder geschwärzt werden.
+
+### Behoben
+- Eine laufende Sprachsitzung zählt jetzt als „beschäftigt“: Das automatische Aktualisieren (1.433.0) erstellt einen Agenten nicht mehr mitten in einem Sprachgespräch neu (eine Sprachsitzung schreibt nicht laufend Chat-Zeilen). Neue Stelle `core/sprachsitzungen.py`, angemeldet nach erfolgreichem Start, abgemeldet im `finally` der Sitzung.
+
+### Tests
+- `test_sentinel_kette.py`: Sentinel als ganze Kette ohne Ersatzteile in der Mitte — Fund im Werkzeugergebnis → Sperre als echte Befehlsregel und Lehre in der Datenbank → Fortsetzen mit Plattform-Marke in denselben Zug → Abruf über `/command-policies/for-agent` → Prüfung mit dem Code des Agenten (`schritt_sperre.py`): derselbe Schritt ist mit WebFetch, `web_fetch`, curl und Codex gesperrt, ein anderer frei. Bricht ein Glied zwischen Orchestrator und Agent (Name, Muster, Antwortformat, Kern-Bildung), schlägt er an — geprüft durch absichtliches Verstellen des Regelnamens im Agenten.
+- Sicherheitsstatus DLP in beide Richtungen; Sprachsitzung als Beschäftigt-Grund.
+
 ## [1.433.1] - 2026-11-06
 
 ### Behoben
