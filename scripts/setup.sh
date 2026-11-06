@@ -27,6 +27,21 @@ command -v docker &>/dev/null         || die "Docker not installed. Get it at ht
 docker info &>/dev/null 2>&1          || die "Docker is not running. Please start Docker Desktop."
 command -v python3 &>/dev/null        || die "python3 not found."
 docker compose version &>/dev/null 2>&1 || die "docker compose plugin not found. You may have the legacy 'docker-compose' (v1). Please update Docker Desktop to get the 'docker compose' plugin (v2): https://docs.docker.com/compose/migrate/"
+command -v git &>/dev/null            || die "git not found (needed for updates). Ubuntu/Debian: sudo apt install git"
+python3 -c "import cryptography" 2>/dev/null \
+                                      || die "python3-cryptography not found (needed to create the encryption key). Ubuntu/Debian: sudo apt install python3-cryptography"
+
+# Docker 26+: older engines cannot mount per-user subfolders of a volume, so the
+# platform could not keep users' files apart (Admin → Betrieb → Sicherheitsstatus
+# reports < 26 as critical). Compose 2.20+ for the features docker-compose.yml uses.
+DOCKER_HAUPT=$(docker version --format '{{.Server.Version}}' 2>/dev/null | cut -d. -f1)
+[[ "${DOCKER_HAUPT:-0}" =~ ^[0-9]+$ ]] && (( DOCKER_HAUPT >= 26 )) \
+                                      || die "Docker ${DOCKER_HAUPT:-?}.x is too old — version 26 or newer is required. Update: https://docs.docker.com/engine/install/"
+COMPOSE_V=$(docker compose version --short 2>/dev/null | sed 's/^v//')
+COMPOSE_HAUPT=${COMPOSE_V%%.*}; COMPOSE_REST=${COMPOSE_V#*.}; COMPOSE_NEBEN=${COMPOSE_REST%%.*}
+{ [[ "$COMPOSE_HAUPT" =~ ^[0-9]+$ && "$COMPOSE_NEBEN" =~ ^[0-9]+$ ]] \
+  && (( COMPOSE_HAUPT > 2 || (COMPOSE_HAUPT == 2 && COMPOSE_NEBEN >= 20) )); } \
+                                      || die "Docker Compose ${COMPOSE_V:-?} is too old — version 2.20 or newer is required."
 
 ok "Docker is running"
 
