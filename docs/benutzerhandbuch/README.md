@@ -4704,6 +4704,12 @@ Dann steht in der Zeile „Er bleibt gestoppt, bis du fortsetzt“, mit dem Knop
 **Fortsetzen**. Ein Klick startet den Agenten und lässt ihn mit dem Grund weitermachen; die
 Sperre und die Lehre gelten weiter.
 
+**Im Projektboard:** Karten laufen als Aufträge. Einen Auftrag kann der Sentinel nicht
+mitten im Lauf fortsetzen, also beendet er den Lauf. Die Karte geht ins **Review**, mit dem
+Grund im gelben Kasten statt eines roten Fehlers. **Neuer Versuch** gibt sie mit diesem Grund
+zur Nacharbeit zurück. Die Sperre und die Lehre gelten dabei weiter, der Agent nimmt einen
+anderen Weg.
+
 > Den Fund selbst zeigt der Sentinel nie wörtlich, weder dir noch dem Agenten. Schlüssel
 > erscheinen nur gekürzt (Anfang und Ende). Ist ein Schlüssel echt und war er sichtbar,
 > erneuere ihn.

@@ -83,6 +83,9 @@ _FORTSETZUNG_FENSTER_SEKUNDEN = 15 * 60
 #: darf ihn nach einer Fortsetzung nicht verschlucken, denn der Agent laeuft weiter.
 _NACHLAUF_SEKUNDEN = 10.0
 
+#: Ein gemeldetes Gespraech zaehlt nur mit einer Nutzernachricht aus dieser Zeit.
+_GESPRAECH_FRISCH = timedelta(hours=6)
+
 #: Gleicher Wert wie disk_monitor._TASK_EVICT_GRACE — bewusst getrennt gehalten
 #: (kein Modul-Import), aber deshalb absichtlich unter demselben Namen, damit
 #: eine kuenftige Anpassung der Kulanzfrist an beiden Stellen auffaellt.
@@ -157,6 +160,8 @@ class SentinelService:
         # agent_id -> {tool_use_id: (werkzeug, eingabe)} der letzten Aufrufe, damit ein
         # Fund in einem Werkzeugergebnis seinem Schritt zugeordnet werden kann.
         self._aufrufe: dict[str, dict[str, tuple[str, dict]]] = {}
+        # agent_id -> Befund des harten Stopps, fuer die Laeufe, die er beendet (Karten).
+        self._stopp_befund: dict[str, object] = {}
         self._letzter_schlag: float = 0.0
         # The Sentinel-exclusive credential (#590 scope point 3, dependencies.py
         # require_sentinel/get_sentinel_token). Held here so _stop_agent can present
@@ -285,10 +290,16 @@ class SentinelService:
         verdict = await self._scan(agent_id, event)
         if verdict is None or not verdict.triggered:
             return
+        from app.core.sentinel_befund import WERKZEUGAUFRUF, fundstelle
+
         reason = verdict.reason or "sentinel_triggered"
         schluessel = (agent_id, reason)
+        stelle = fundstelle(event)
         seit = self._seit_fortsetzung(agent_id, reason)
-        if seit is not None and seit < _NACHLAUF_SEKUNDEN:
+        # Nachlauf: nur ECHOS desselben Fundes (Ergebnis, Antwort) bis der Hinweis
+        # eingefaltet ist. Ein Fund im eigenen Werkzeugaufruf heisst: der Agent folgt
+        # der Anweisung — das ist nie Nachlauf, sondern sofort eine Wiederholung.
+        if seit is not None and seit < _NACHLAUF_SEKUNDEN and stelle != WERKZEUGAUFRUF:
             logger.info("[Sentinel] %s/%s: Nachlauf des fortgesetzten Fundes", agent_id, reason)
             return
         wiederholt = seit is not None and seit < _FORTSETZUNG_FENSTER_SEKUNDEN
@@ -307,10 +318,9 @@ class SentinelService:
         # Hinweis gehoert, oder das Einreihen scheitert. Wirkung auf Gespraeche
         # nur mit Redis-ACL: ohne sie ist die Zuordnung ueber den Kanal keine
         # echte Grenze (#590).
-        from app.core.sentinel_befund import einordnen, fundstelle, schritt_kern, sperrmuster, zeigbar
+        from app.core.sentinel_befund import einordnen, schritt_kern, sperrmuster, zeigbar
 
         maske = verdict.excerpt if reason == "secret_in_output" else None
-        stelle = fundstelle(event)
         werkzeug, eingabe = self._schritt_von(agent_id, event, stelle)
         kern = schritt_kern(werkzeug, eingabe) if werkzeug else None
         muster = sperrmuster(kern) if settings.redis_acl_enabled else None
@@ -322,6 +332,11 @@ class SentinelService:
         sitzungen = await self._laufende_gespraeche(agent_id) if settings.redis_acl_enabled else []
         if befund.weiter and sitzungen and await self._fortsetzen(agent_id, befund, sitzungen):
             return
+        if befund.weiter:
+            # Fortsetzen ging nicht (kein Gespraech, nur ein Auftrag) — Texte fuer den Stopp.
+            befund = einordnen(reason, stelle, maske, schritt=zeigbar(kern), gesperrt=bool(muster),
+                               kein_gespraech=True)
+        self._stopp_befund[agent_id] = befund
         if not befund.weiter:
             for sitzung in sitzungen:
                 await self._zeile_im_chat(agent_id, sitzung, f"sentinel-{uuid.uuid4().hex[:12]}", befund)
@@ -419,8 +434,39 @@ class SentinelService:
             eintraege = json.loads(roh) if isinstance(roh, str) else []
         except Exception:  # noqa: BLE001 — ohne Auskunft gilt der harte Weg wie bisher
             return []
-        return [str(e)[5:] for e in eintraege
-                if isinstance(e, str) and e.startswith("chat:") and len(e) > 5]
+        gemeldet = [str(e)[5:] for e in eintraege
+                    if isinstance(e, str) and e.startswith("chat:") and len(e) > 5]
+        return await self._bestaetigte_gespraeche(agent_id, gemeldet)
+
+    async def _bestaetigte_gespraeche(self, agent_id: str, gemeldet: list[str]) -> list[str]:
+        """Nur Gespraeche, die der ORCHESTRATOR kennt: mit einer Nutzernachricht, die er
+        in den letzten Stunden selbst gespeichert hat.
+
+        Den Status schreibt der Agent; ein gekaperter Agent koennte ein Gespraech
+        vortaeuschen und so den harten Stopp gegen den sanften tauschen. Die Entscheidung
+        haengt deshalb an Daten, die nur der Orchestrator schreibt (Sicherheitspruefung).
+        """
+        if not gemeldet:
+            return []
+        from datetime import UTC, datetime
+
+        from sqlalchemy import select
+
+        from app.db.session import async_session_factory
+        from app.models.chat_message import ChatMessage
+
+        try:
+            async with async_session_factory() as db:
+                zeilen = await db.execute(select(ChatMessage.session_id).where(
+                    ChatMessage.agent_id == agent_id,
+                    ChatMessage.session_id.in_(gemeldet[:20]),
+                    ChatMessage.role == "user",
+                    ChatMessage.timestamp >= datetime.now(UTC) - _GESPRAECH_FRISCH,
+                ).distinct())
+                bekannt = {z[0] for z in zeilen}
+        except Exception:  # noqa: BLE001 — ohne Bestaetigung gilt der harte Weg
+            return []
+        return [g for g in gemeldet if g in bekannt]
 
     async def _fortsetzen(self, agent_id: str, befund, sitzungen: list[str]) -> bool:
         """Den laufenden Zug anhalten und mit dem Grund in DERSELBEN Sitzung weitermachen.
@@ -746,21 +792,40 @@ class SentinelService:
         from app.models.task import Task, TaskStatus
 
         try:
-            grund = f"Sentinel hat den Agenten angehalten (Grund: {reason})."
+            befund = self._stopp_befund.pop(agent_id, None)
+            grund = (getattr(befund, "fuer_mensch", "")
+                     or f"Sentinel hat den Agenten angehalten (Grund: {reason}).")
             anzahl = 0
             async with async_session_factory() as db:
                 result = await db.execute(
                     select(Task).where(Task.agent_id == agent_id, Task.status == TaskStatus.RUNNING)
                 )
                 jetzt = datetime.now(timezone.utc)
+                beendet = []
                 for task in result.scalars().all():
                     task.status = TaskStatus.FAILED
                     task.error = grund
                     task.completed_at = jetzt
                     task.notified = True
                     task.evict_after = jetzt + _TASK_EVICT_GRACE
+                    if befund is not None:
+                        # Fuer „Neuer Versuch“ an der Karte: der Grund und der Text, mit dem
+                        # der naechste Lauf weitermacht (Sperre und Lehre gelten weiter).
+                        task.metadata_ = {**(task.metadata_ or {}), "sentinel": {
+                            "grund": reason, "hinweis": befund.fuer_mensch,
+                            "fortsetzen": befund.fuer_agent}}
+                    beendet.append(task)
                     anzahl += 1
                 if anzahl:
+                    # Karten im Projektboard bewegen wie bei jedem anderen Laufende — vorher
+                    # blieb die Karte des gestoppten Laufs in „In Arbeit“ haengen.
+                    from app.core.projekte import lauf_beendet
+
+                    for task in beendet:
+                        try:
+                            await lauf_beendet(db, task, self.redis)
+                        except Exception:  # noqa: BLE001 — eine Karte darf den Stopp nie aufhalten
+                            logger.exception("[Sentinel] Karte zu Lauf %s nicht bewegt", task.id)
                     await db.commit()
             if anzahl:
                 logger.warning(

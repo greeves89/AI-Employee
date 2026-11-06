@@ -100,7 +100,8 @@ def fundstelle(ereignis: dict) -> str:
 
 
 def einordnen(grund: str, stelle: str, maske: str | None = None, *, wiederholt: bool = False,
-              schritt: str | None = None, gesperrt: bool = False) -> Befund:
+              schritt: str | None = None, gesperrt: bool = False,
+              kein_gespraech: bool = False) -> Befund:
     """Befund und die beiden Texte für ``grund`` an ``stelle``.
 
     Weitergemacht wird nicht, wenn derselbe Fund kurz nach einer Fortsetzung
@@ -134,7 +135,7 @@ def einordnen(grund: str, stelle: str, maske: str | None = None, *, wiederholt: 
         was = "Eine Ausgabe sah nach einem Sicherheitsvorfall aus."
         tun = "Prüfe deinen letzten Schritt und mach nur weiter, wenn er zum Auftrag gehört."
         mensch_zusatz = ""
-    weiter = not wiederholt and not (grund == "secret_in_output" and stelle == WERKZEUGAUFRUF)
+    weiter = not (wiederholt or kein_gespraech or (grund == "secret_in_output" and stelle == WERKZEUGAUFRUF))
     schritt_satz = ""
     if gesperrt:
         schritt_satz = (f" Dieser Schritt ist ab jetzt gesperrt ({schritt})." if schritt
@@ -144,7 +145,9 @@ def einordnen(grund: str, stelle: str, maske: str | None = None, *, wiederholt: 
               "Weg zu erreichen." if gesperrt else " Mach danach mit deiner Aufgabe dort weiter, wo du warst.")
     if not weiter:
         warum = (" Derselbe Fund kam kurz nach dem letzten Hinweis wieder." if wiederholt
-                 else " Ein Schlüssel in einem Werkzeugaufruf kann die Anlage verlassen.")
+                 else " Ein Schlüssel in einem Werkzeugaufruf kann die Anlage verlassen."
+                 if grund == "secret_in_output" and stelle == WERKZEUGAUFRUF
+                 else " Ein Auftrag lässt sich nicht mitten im Lauf fortsetzen.")
         return Befund(
             grund=grund, fundstelle=stelle, weiter=False, lehre=lehre,
             # Text für den Knopf „Fortsetzen“: der Mensch hat entschieden.

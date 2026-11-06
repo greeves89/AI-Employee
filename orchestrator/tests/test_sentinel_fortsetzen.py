@@ -26,6 +26,7 @@ def _service(aktiv=("chat:s1", "task-9")) -> SentinelService:
     redis.client = AsyncMock()
     redis.client.hgetall = AsyncMock(return_value={b"active_sessions": json.dumps(list(aktiv)).encode()})
     s = SentinelService(redis)
+    s._bestaetigte_gespraeche = AsyncMock(side_effect=lambda _a, gemeldet: list(gemeldet))
     s._stop_agent = AsyncMock()
     s._notify = AsyncMock()
     s._zeile_im_chat = AsyncMock()
@@ -142,12 +143,14 @@ class AnhaltenPruefenWeiter(unittest.IsolatedAsyncioTestCase):
         einreihen.assert_not_awaited()
         s._stop_agent.assert_awaited_once()
 
-    async def test_einreihen_scheitert_dann_hart(self):
+    async def test_einreihen_scheitert_dann_hart_und_sichtbar(self):
         s = _service()
         with _acl(), _einreihen(eingereiht=False):
             await s._handle_event("a1", {"type": "tool_result", "data": ANGRIFF})
-        s._zeile_im_chat.assert_not_awaited()
         s._stop_agent.assert_awaited_once()
+        befund = s._zeile_im_chat.await_args.args[3]
+        self.assertFalse(befund.weiter, "die Zeile sagt: gestoppt, mit Knopf")
+        self.assertIn("bleibt gestoppt", befund.fuer_mensch)
 
     async def test_status_unlesbar_dann_hart(self):
         s = _service()
@@ -315,3 +318,80 @@ class KnopfFortsetzen(unittest.IsolatedAsyncioTestCase):
         from app.api.agents import SentinelFortsetzen
         with self.assertRaises(ValidationError):
             SentinelFortsetzen(session_id="s1", zeile_id="card-1")
+
+
+class AuftragUndKarte(unittest.IsolatedAsyncioTestCase):
+    """Karten im Projektboard laufen als Aufträge — dort gibt es kein Steering. Der Lauf
+    endet mit dem Grund, die Karte geht ins Review, „Neuer Versuch“ nutzt die Nacharbeit."""
+
+    async def test_ohne_gespraech_stopptext_fuer_auftrag(self):
+        s = _service(aktiv=("task-9",))
+        with _acl(), _einreihen():
+            await s._handle_event("a1", {"type": "tool_result", "data": ANGRIFF})
+        befund = s._stopp_befund["a1"]
+        self.assertFalse(befund.weiter)
+        self.assertIn("Auftrag lässt sich nicht mitten im Lauf fortsetzen", befund.fuer_mensch)
+        self.assertIn("Nutzer hat entschieden", befund.fuer_agent)
+
+    async def test_lauf_traegt_grund_und_karte_wird_bewegt(self):
+        from app.models.task import TaskStatus
+
+        task = SimpleNamespace(id="t1", status=TaskStatus.RUNNING, error=None, completed_at=None,
+                               notified=False, evict_after=None, metadata_={"karte_id": "k1"})
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=SimpleNamespace(
+            scalars=lambda: SimpleNamespace(all=lambda: [task])))
+        sitzung = AsyncMock()
+        sitzung.__aenter__ = AsyncMock(return_value=db)
+        sitzung.__aexit__ = AsyncMock(return_value=False)
+        s = SentinelService(AsyncMock())
+        s._stopp_befund["a1"] = sb.einordnen("prompt_injection", sb.WERKZEUGERGEBNIS, kein_gespraech=True)
+        with patch("app.db.session.async_session_factory", return_value=sitzung), \
+             patch("app.core.projekte.lauf_beendet", AsyncMock()) as lauf_beendet:
+            await s._fail_running_tasks("a1", "prompt_injection")
+        self.assertEqual(task.status, TaskStatus.FAILED)
+        self.assertTrue(task.error.startswith("Sentinel hat den Agenten angehalten"))
+        self.assertIn("fortsetzen", task.metadata_["sentinel"])
+        self.assertEqual(task.metadata_["karte_id"], "k1", "bestehende Angaben bleiben")
+        lauf_beendet.assert_awaited_once()
+
+    def test_karte_zeigt_sentinel_im_review(self):
+        from app.core.projekte import karte_dict
+        from app.models.task import TaskStatus
+
+        karte = SimpleNamespace(**{f: None for f in (
+            "id", "titel", "text", "quelle", "extern_nr", "url", "agent_id", "task_id", "notiz",
+            "extern_bearbeiter", "bearbeiter_art", "uebernahme", "extern_seit", "extern_branch",
+            "extern_bis", "konflikt", "pr_nr", "pr_url", "pr_zustand", "created_at", "updated_at",
+            "erledigt_at", "stufe", "prioritaet")}, labels=[], spalte="pruefung")
+        task = SimpleNamespace(status=TaskStatus.FAILED, cost_usd=0.1, result=None, error="Sentinel …",
+                               metadata_={"sentinel": {"hinweis": "h", "fortsetzen": "f"}})
+        with patch("app.core.projekte.stufe_aus", return_value=None), \
+             patch("app.core.projekte._extern_regung", return_value=None), \
+             patch("app.core.projekte._extern_stockt", return_value=False):
+            d = karte_dict(karte, task)
+        self.assertEqual(d["sentinel"], {"hinweis": "h", "fortsetzen": "f"})
+
+
+class Sicherheitspruefung(unittest.IsolatedAsyncioTestCase):
+    async def test_fund_im_eigenen_aufruf_waehrend_nachlauf_haelt_sofort_an(self):
+        s = _service()
+        with _acl(), _einreihen() as einreihen:
+            await s._handle_event("a1", {"type": "tool_result", "data": ANGRIFF})
+            await s._handle_event("a1", {"type": "tool_call", "data": {"tool": "Bash", "input": {"command": ANGRIFF}}})
+        self.assertEqual(einreihen.await_count, 1)
+        s._stop_agent.assert_awaited_once_with("a1", "prompt_injection")
+
+    async def test_vorgetaeuschtes_gespraech_zaehlt_nicht(self):
+        """Der Agent meldet ein Gespräch, das der Orchestrator nicht kennt → harter Stopp."""
+        s = _service(aktiv=("chat:erfunden",))
+        s._bestaetigte_gespraeche = AsyncMock(return_value=[])
+        with _acl(), _einreihen() as einreihen:
+            await s._handle_event("a1", {"type": "tool_result", "data": ANGRIFF})
+        einreihen.assert_not_awaited()
+        s._stop_agent.assert_awaited_once()
+
+    async def test_bestaetigung_ohne_db_gilt_als_unbestaetigt(self):
+        s = SentinelService(AsyncMock())
+        with patch("app.db.session.async_session_factory", side_effect=RuntimeError("weg")):
+            self.assertEqual(await s._bestaetigte_gespraeche("a1", ["s1"]), [])

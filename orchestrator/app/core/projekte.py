@@ -187,6 +187,8 @@ def karte_dict(k: ProjektKarte, task: Task | None = None, *, lauf_sichtbar: bool
         "kosten_usd": task.cost_usd if task is not None and lauf_sichtbar else None,
         "ergebnis": (task.result if voll else _kurz(task.result, 400)) if zeigen else None,
         "fehler": (task.error if voll else _kurz(task.error, 300)) if zeigen else None,
+        # Vom Sentinel angehalten: Grund und Text für „Neuer Versuch“ (Nacharbeit).
+        "sentinel": ((task.metadata_ or {}).get("sentinel") or None) if zeigen else None,
     }
 
 
