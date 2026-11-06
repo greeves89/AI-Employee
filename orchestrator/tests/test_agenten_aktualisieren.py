@@ -310,3 +310,35 @@ class EndpunktTests(Basis):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SprachsitzungTests(Basis):
+    """Eine Sprachsitzung schreibt nicht laufend Chat-Zeilen — sie zählt trotzdem als Gespräch."""
+
+    async def test_offene_sprachsitzung_ist_beschaeftigt(self):
+        from app.core import sprachsitzungen
+        await self.anlegen(_agent("v1", "Stimme"))
+        agent = await self.db.get(Agent, "v1")
+        sprachsitzungen.anmelden("v1")
+        sprachsitzungen.anmelden("v1")        # zwei Geräte
+        try:
+            self.assertEqual(await aa.beschaeftigt(self.db, self.redis, agent, ruhe=aa.RUHE), "sprache")
+            sprachsitzungen.abmelden("v1")
+            self.assertTrue(sprachsitzungen.aktiv("v1"), "eine Sitzung ist noch offen")
+        finally:
+            sprachsitzungen.abmelden("v1")
+        self.assertFalse(sprachsitzungen.aktiv("v1"))
+        self.assertIsNone(await aa.beschaeftigt(self.db, self.redis, agent, ruhe=aa.RUHE))
+
+    def test_abmelden_ohne_anmelden_schadet_nicht(self):
+        from app.core import sprachsitzungen
+        sprachsitzungen.abmelden("nie-da")
+        self.assertFalse(sprachsitzungen.aktiv("nie-da"))
+
+    def test_ws_meldet_an_und_im_finally_ab(self):
+        """Verdrahtung: Anmelden nach erfolgreichem Start, Abmelden im finally der Sitzung."""
+        from pathlib import Path
+        quelle = (Path(__file__).resolve().parents[1] / "app" / "api" / "ws.py").read_text()
+        an, ab = quelle.index("sprachsitzungen.anmelden(agent_id)"), quelle.index("sprachsitzungen.abmelden(agent_id)")
+        self.assertLess(quelle.index('reason="voice init failed"'), an, "erst nach erfolgreichem Start")
+        self.assertIn("finally:", quelle[an:ab])

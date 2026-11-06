@@ -1256,6 +1256,11 @@ async def ws_agent_voice(
         await websocket.close(code=1011, reason="voice init failed")
         return
 
+    # Ab hier läuft ein Gespräch: kein automatisches Neuerstellen des Agenten
+    # (core/agenten_aktualisieren.beschaeftigt). Abmelden im finally unten.
+    from app.core import sprachsitzungen
+    sprachsitzungen.anmelden(agent_id)
+
     async def pump_outbound():
         try:
             async for evt in session.outbound():
@@ -1345,6 +1350,7 @@ async def ws_agent_voice(
     except Exception:
         logger.exception("voice ws error")
     finally:
+        sprachsitzungen.abmelden(agent_id)
         await session.close()
         out_task.cancel()
         try:
