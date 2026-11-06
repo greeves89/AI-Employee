@@ -145,7 +145,9 @@ class RecreateOrderTests(unittest.TestCase):
                 zeilen[zeile - 1] = zeilen[zeile - 1][:von] + zeilen[zeile - 1][bis:]
         block = "".join(zeilen)
         refresh = block.find("refresh_access_token")
-        stop = block.find("stop_container")
+        # Seit 1.434.1 hält update_agent den alten Behälter über _alten_behaelter_beiseite an
+        # (angehalten + beiseitegestellt statt entfernt, Rücksprung möglich).
+        stop = block.find("_alten_behaelter_beiseite(")
         self.assertGreater(stop, -1, "update_agent stoppt den alten Container nicht mehr?")
         self.assertGreater(refresh, -1, "Kein Token-Refresh vor dem Neuerstellen")
         self.assertLess(refresh, stop,

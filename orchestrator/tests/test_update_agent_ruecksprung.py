@@ -19,6 +19,21 @@ from app.models.agent import AgentState
 
 NAME = "ai-agent-test-a1b2c3d4"
 
+_TOKEN = None
+
+
+def setUpModule():
+    """Token-Erneuerung (vor dem Anhalten) ist hier nicht Gegenstand — keine Netzaufrufe."""
+    global _TOKEN
+    from unittest.mock import patch
+    _TOKEN = patch("app.services.claude_token_service.ClaudeTokenService",
+                   return_value=SimpleNamespace(refresh_access_token=AsyncMock()))
+    _TOKEN.start()
+
+
+def tearDownModule():
+    _TOKEN.stop()
+
 
 class FakeBehaelter:
     def __init__(self, cid, name, status="running", rename_fehler=False, haelt_nicht=False):
@@ -71,6 +86,7 @@ def _manager(docker, neu_erstellen, container_id="alt1"):
     mgr.agent = SimpleNamespace(id="a1b2c3d4", name="Test", container_id=container_id,
                                 state=AgentState.RUNNING, config={})
     mgr._get_agent = AsyncMock(return_value=mgr.agent)
+    mgr._cancel_open_chats = AsyncMock()
 
     async def bauen(aid):
         ergebnis = await neu_erstellen(aid)
@@ -92,6 +108,22 @@ def _neu(docker, mgr_ref, festschreiben=True, danach_fehler=None):
 
 
 class Ruecksprung(unittest.IsolatedAsyncioTestCase):
+    async def test_token_und_chats_vor_dem_anhalten(self):
+        """Reihenfolge wie vor 1.434.1: Token erneuern, offene Chats beenden, DANN anhalten."""
+        from unittest.mock import patch
+        docker = FakeDocker(FakeBehaelter("alt1", NAME))
+        reihenfolge = []
+        docker.stop_container = lambda cid: (reihenfolge.append("anhalten"),
+                                             setattr(docker._get(cid), "status", "exited"))
+        ref = [None]
+        mgr = ref[0] = _manager(docker, _neu(docker, ref))
+        mgr._cancel_open_chats = AsyncMock(side_effect=lambda *a: reihenfolge.append("chats"))
+        token = SimpleNamespace(refresh_access_token=AsyncMock(
+            side_effect=lambda: reihenfolge.append("token")))
+        with patch("app.services.claude_token_service.ClaudeTokenService", return_value=token):
+            await mgr.update_agent("a1b2c3d4")
+        self.assertEqual(reihenfolge, ["token", "chats", "anhalten"])
+
     async def test_erfolg_alter_erst_danach_entfernt_und_waehrenddessen_kein_verweis(self):
         docker = FakeDocker(FakeBehaelter("alt1", NAME))
         ref, beobachtet = [None], []
