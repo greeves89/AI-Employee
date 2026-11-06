@@ -2550,6 +2550,11 @@ Geprüft werden unter anderem:
 - ob alle Agenten auf dem aktuellen Stand sind
 - die Docker-Version
 - ob Agenten-Apps vom Netz der Plattform getrennt laufen
+- welche Keys Agenten noch im Klartext sehen und ob Claude- und Codex-Zugang hinter dem
+  Egress-Proxy liegen (Kap. 37.10)
+- ob der DLP-Filter an ist und Schlüssel sperrt oder schwärzt, bevor eine Antwort die Anlage
+  über Telegram, Slack/Teams/Discord oder Projekt-Git verlässt *(seit 1.434.0)*. Er ist bei jeder
+  neuen Anlage zunächst aus; einschalten unter **Admin → DLP**.
 
 Kritische Punkte stehen oben. Unter jedem Punkt steht, **was er bedeutet** und **wie man ihn
 behebt**.

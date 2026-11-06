@@ -247,6 +247,37 @@ async def _schluessel(db) -> list[dict]:
                    "Unter Schlüssel je Key die erlaubten Ziele eintragen, z. B. api.github.com.")]
 
 
+async def _dlp(db) -> list[dict]:
+    """Prüft der DLP-Filter, was die Anlage verlässt (Telegram, Kanäle, Projekt-Git)?
+
+    Er ist bei jeder Anlage zunächst aus — ohne diesen Punkt fiel das niemandem auf.
+    """
+    from app.core.dlp import DEFAULT_ACTIONS
+    from app.models.dlp_rule import DlpRule
+    from app.services.settings_service import SettingsService
+
+    titel = "DLP-Filter (ausgehende Nachrichten)"
+    an = (await SettingsService(db).get("dlp_enabled")) in ("true", "1", True)
+    if not an:
+        return [_punkt(
+            "dlp", titel, WARNUNG,
+            "Der DLP-Filter ist aus: Schlüssel, IBAN und Kreditkartennummern in Antworten der "
+            "Agenten gehen ungeprüft über Telegram, Slack/Teams/Discord und Projekt-Git hinaus.",
+            "Admin → DLP: Filter einschalten. Voreinstellung: Schlüssel sperren, IBAN und "
+            "Kreditkarte schwärzen.")]
+    global_regeln = {r.pii_class: r.action for r in (await db.execute(
+        select(DlpRule).where(DlpRule.agent_id.is_(None), DlpRule.enabled.is_(True)))).scalars()}
+    schluessel = global_regeln.get("secret", DEFAULT_ACTIONS["secret"])
+    if schluessel in ("allow", "log"):
+        return [_punkt(
+            "dlp", titel, WARNUNG,
+            f"Der DLP-Filter ist an, lässt Schlüssel aber durch (Regel „{schluessel}“).",
+            "Admin → DLP: für Schlüssel „sperren“ oder „schwärzen“ einstellen.")]
+    return [_punkt("dlp", titel, OK,
+                   f"An. Schlüssel werden {'gesperrt' if schluessel == 'block' else 'geschwärzt'}, "
+                   "bevor eine Antwort die Anlage verlässt.")]
+
+
 #: Laufzeit, Stufe, Merkmal im Agenten (entstand mit Platzhalter) und Anzeige je Zugang.
 _ZUGAENGE = (
     ("claude_code", "ki", "egress_ki_stufe", "Claude-Zugang"),
@@ -307,7 +338,7 @@ async def stand(db) -> dict:
 
     ids = [c for (c,) in (await db.execute(
         select(Agent.container_id).where(Agent.container_id.is_not(None)))).all()]
-    punkte = (_einstellungen() + await _agenten(db) + await _schluessel(db) + await _zugaenge(db)
+    punkte = (_einstellungen() + await _agenten(db) + await _schluessel(db) + await _zugaenge(db) + await _dlp(db)
               + _abbild_signaturen()
               + await asyncio.to_thread(_docker, ids))
     rang = {KRITISCH: 0, WARNUNG: 1, INFO: 2, OK: 3}

@@ -157,3 +157,51 @@ class AbbildSignaturenTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DlpTests(unittest.IsolatedAsyncioTestCase):
+    """Der DLP-Filter ist bei jeder Anlage zunächst aus — die Ampel muss das zeigen."""
+
+    async def asyncSetUp(self):
+        from app.models.dlp_rule import DlpRule
+        from app.models.platform_settings import PlatformSettings
+
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with self.engine.begin() as conn:
+            await conn.run_sync(DlpRule.metadata.create_all,
+                                tables=[DlpRule.__table__, PlatformSettings.__table__])
+        self.db = async_sessionmaker(self.engine, expire_on_commit=False)()
+
+    async def asyncTearDown(self):
+        await self.db.close()
+        await self.engine.dispose()
+
+    async def _an(self, wert="true"):
+        from app.models.platform_settings import PlatformSettings
+        self.db.add(PlatformSettings(key="dlp_enabled", value=wert, is_secret=False))
+        await self.db.commit()
+
+    async def test_aus_ist_eine_warnung(self):
+        p = _stand(await ss._dlp(self.db), "dlp")
+        self.assertEqual(p["stand"], "warnung")
+        self.assertIn("Admin → DLP", p["beheben"])
+
+    async def test_an_mit_voreinstellung_ok(self):
+        await self._an()
+        p = _stand(await ss._dlp(self.db), "dlp")
+        self.assertEqual(p["stand"], "ok")
+        self.assertIn("gesperrt", p["text"])
+
+    async def test_an_aber_schluessel_durchgelassen(self):
+        from app.models.dlp_rule import DlpRule
+        await self._an()
+        self.db.add(DlpRule(pii_class="secret", action="allow", agent_id=None, enabled=True))
+        await self.db.commit()
+        self.assertEqual(_stand(await ss._dlp(self.db), "dlp")["stand"], "warnung")
+
+    async def test_regel_eines_einzelnen_agenten_zaehlt_nicht_global(self):
+        from app.models.dlp_rule import DlpRule
+        await self._an()
+        self.db.add(DlpRule(pii_class="secret", action="allow", agent_id="a1", enabled=True))
+        await self.db.commit()
+        self.assertEqual(_stand(await ss._dlp(self.db), "dlp")["stand"], "ok")
