@@ -318,7 +318,12 @@ class SentinelService:
         # Hinweis gehoert, oder das Einreihen scheitert. Wirkung auf Gespraeche
         # nur mit Redis-ACL: ohne sie ist die Zuordnung ueber den Kanal keine
         # echte Grenze (#590).
-        from app.core.sentinel_befund import einordnen, schritt_kern, sperrmuster, zeigbar
+        from app.core.sentinel_befund import (
+            einordnen,
+            schritt_kern,
+            sperrmuster,
+            zeigbar,
+        )
 
         maske = verdict.excerpt if reason == "secret_in_output" else None
         werkzeug, eingabe = self._schritt_von(agent_id, event, stelle)
@@ -439,34 +444,59 @@ class SentinelService:
         return await self._bestaetigte_gespraeche(agent_id, gemeldet)
 
     async def _bestaetigte_gespraeche(self, agent_id: str, gemeldet: list[str]) -> list[str]:
-        """Nur Gespraeche, die der ORCHESTRATOR kennt: mit einer Nutzernachricht, die er
-        in den letzten Stunden selbst gespeichert hat.
+        """Nur Gespraeche mit einem OFFENEN Zug, den der Orchestrator selbst kennt.
 
         Den Status schreibt der Agent; ein gekaperter Agent koennte ein Gespraech
-        vortaeuschen und so den harten Stopp gegen den sanften tauschen. Die Entscheidung
-        haengt deshalb an Daten, die nur der Orchestrator schreibt (Sicherheitspruefung).
+        vortaeuschen und so den harten Stopp gegen den sanften tauschen. Deshalb zaehlt
+        nur, was der Orchestrator gespeichert hat (Sicherheitspruefung):
+
+        - Laeuft beim Agenten ein Auftrag, kann der Fund daraus stammen — dann nie sanft.
+        - Eine Sitzung zaehlt nur, wenn ihre letzte Nutzernachricht juenger ist als ihre
+          letzte Antwort (Zug laeuft) und aus den letzten Stunden stammt.
         """
         if not gemeldet:
             return []
         from datetime import UTC, datetime
 
-        from sqlalchemy import select
+        from sqlalchemy import func, select
 
         from app.db.session import async_session_factory
         from app.models.chat_message import ChatMessage
+        from app.models.task import Task, TaskStatus
 
         try:
             async with async_session_factory() as db:
-                zeilen = await db.execute(select(ChatMessage.session_id).where(
+                auftrag = (await db.execute(select(Task.id).where(
+                    Task.agent_id == agent_id, Task.status == TaskStatus.RUNNING,
+                ).limit(1))).first()
+                if auftrag is not None:
+                    return []
+                zeilen = await db.execute(select(
+                    ChatMessage.session_id, ChatMessage.role, func.max(ChatMessage.timestamp),
+                ).where(
                     ChatMessage.agent_id == agent_id,
                     ChatMessage.session_id.in_(gemeldet[:20]),
-                    ChatMessage.role == "user",
-                    ChatMessage.timestamp >= datetime.now(UTC) - _GESPRAECH_FRISCH,
-                ).distinct())
-                bekannt = {z[0] for z in zeilen}
+                    ChatMessage.role.in_(("user", "assistant")),
+                ).group_by(ChatMessage.session_id, ChatMessage.role))
+                letzte: dict[str, dict[str, datetime]] = {}
+                for sitzung, rolle, zeit in zeilen:
+                    letzte.setdefault(sitzung, {})[rolle] = zeit
         except Exception:  # noqa: BLE001 — ohne Bestaetigung gilt der harte Weg
             return []
-        return [g for g in gemeldet if g in bekannt]
+        grenze = datetime.now(UTC) - _GESPRAECH_FRISCH
+
+        def offen(sitzung: str) -> bool:
+            z = letzte.get(sitzung, {})
+            nutzer, antwort = z.get("user"), z.get("assistant")
+            if nutzer is None:
+                return False
+            if nutzer.tzinfo is None:
+                nutzer = nutzer.replace(tzinfo=UTC)
+            if antwort is not None and antwort.tzinfo is None:
+                antwort = antwort.replace(tzinfo=UTC)
+            return nutzer >= grenze and (antwort is None or nutzer > antwort)
+
+        return [g for g in gemeldet if offen(g)]
 
     async def _fortsetzen(self, agent_id: str, befund, sitzungen: list[str]) -> bool:
         """Den laufenden Zug anhalten und mit dem Grund in DERSELBEN Sitzung weitermachen.

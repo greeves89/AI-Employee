@@ -395,3 +395,32 @@ class Sicherheitspruefung(unittest.IsolatedAsyncioTestCase):
         s = SentinelService(AsyncMock())
         with patch("app.db.session.async_session_factory", side_effect=RuntimeError("weg")):
             self.assertEqual(await s._bestaetigte_gespraeche("a1", ["s1"]), [])
+
+
+class OffenerZug(unittest.IsolatedAsyncioTestCase):
+    """Sicherheitsprüfung: nur ein Gespräch mit OFFENEM Zug zählt, und nie bei laufendem Auftrag."""
+
+    def _sitzung(self, auftrag, zeilen):
+        from datetime import UTC, datetime, timedelta
+        jetzt = datetime.now(UTC)
+        db = AsyncMock()
+        ergebnisse = [SimpleNamespace(first=lambda: auftrag),
+                      [(s, r, jetzt - timedelta(minutes=m)) for s, r, m in zeilen]]
+        db.execute = AsyncMock(side_effect=ergebnisse)
+        cm = AsyncMock()
+        cm.__aenter__ = AsyncMock(return_value=db)
+        cm.__aexit__ = AsyncMock(return_value=False)
+        return patch("app.db.session.async_session_factory", return_value=cm)
+
+    async def test_nur_offener_zug(self):
+        s = SentinelService(AsyncMock())
+        zeilen = [("offen", "user", 1), ("offen", "assistant", 5),      # neue Frage nach letzter Antwort
+                  ("fertig", "user", 10), ("fertig", "assistant", 2),   # schon beantwortet
+                  ("alt", "user", 60 * 7)]                               # zu alt
+        with self._sitzung(None, zeilen):
+            self.assertEqual(await s._bestaetigte_gespraeche("a1", ["offen", "fertig", "alt", "fremd"]), ["offen"])
+
+    async def test_laufender_auftrag_heisst_immer_hart(self):
+        s = SentinelService(AsyncMock())
+        with self._sitzung(("t1",), [("offen", "user", 1)]):
+            self.assertEqual(await s._bestaetigte_gespraeche("a1", ["offen"]), [])

@@ -16,7 +16,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ### Sicherheit
 - Nach einer Fortsetzung verschluckt die 60-Sekunden-Sturmsperre einen erneuten Fund nicht mehr (der Agent läuft ja weiter), sondern führt zum harten Stopp.
-- Ob sanft fortgesetzt wird, entscheidet nicht mehr der Agent allein: Ein gemeldetes Gespräch zählt nur mit einer Nutzernachricht, die der Orchestrator selbst gespeichert hat. Ein Fund im eigenen Werkzeugaufruf kurz nach einem Hinweis führt sofort zum harten Stopp.
+- Ob sanft fortgesetzt wird, entscheidet nicht mehr der Agent allein: Ein gemeldetes Gespräch zählt nur mit einem offenen Zug, den der Orchestrator selbst gespeichert hat (letzte Nutzernachricht jünger als die letzte Antwort), und nie, während beim Agenten ein Auftrag läuft. Ein Fund im eigenen Werkzeugaufruf kurz nach einem Hinweis führt sofort zum harten Stopp.
 - Weder Umlenk-Formulierung noch Schlüssel stehen im Hinweis, in der Sperrregel oder in der Lehre.
 
 ### Doku
