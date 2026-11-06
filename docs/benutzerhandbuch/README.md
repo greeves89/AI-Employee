@@ -4635,7 +4635,7 @@ Autonomie-Stufe, auch bei voller Freigabe. Das sind:
 
 Sie liefen außerhalb der Anlage, also ohne Container, Proxy und diese Prüfung, und unter dem
 Konto des Lizenzinhabers statt des Besitzers. Der Agent bekommt die Meldung „wirkt über das
-Claude-Konto außerhalb der Anlage … immer gesperrt“. Für Benachrichtigungen, Zeitpläne und
+Claude- bzw. ChatGPT-Konto außerhalb der Anlage … immer gesperrt“. Für Benachrichtigungen, Zeitpläne und
 Ablage nimmt er die Werkzeuge der Plattform. Die Connectoren werden zusätzlich gar nicht erst
 geladen.
 
