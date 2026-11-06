@@ -23,6 +23,17 @@ SPERRE_PRAEFIX = "Sentinel-Sperre"
 MARKE = "[Plattform-Sentinel]"
 
 
+_MARKE_MUSTER = re.compile(r"\[\s*plattform[\s_\-‐-―]*sentinel", re.IGNORECASE)
+
+
+def ohne_marke(text):
+    """Die Sentinel-Marke in fremdem Text entschärfen — für Nachrichten anderer Agenten,
+    die nie vom Sentinel stammen (orchestrator/app/core/fremdtext.ohne_plattformmarke)."""
+    if not isinstance(text, str) or not _MARKE_MUSTER.search(text):
+        return text
+    return _MARKE_MUSTER.sub("(Plattform-Sentinel", text)
+
+
 def regeln_neu_laden(text: str) -> bool:
     """Kommt ein Sentinel-Hinweis an, gelten die zwischengespeicherten Befehlsregeln als
     abgelaufen: Die neue Sperre greift beim nächsten Werkzeugaufruf, nicht erst nach bis
