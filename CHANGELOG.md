@@ -9,12 +9,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ### Sicherheit
 - Werkzeuge, die über das Claude-Konto außerhalb der Anlage wirken (`RemoteTrigger`, `DesignSync`, `PushNotification`, Artifact-Werkzeuge, Connectoren des Kontos `mcp__claude_ai_…`), sind für Agenten in jeder Autonomie-Stufe gesperrt. Bisher galten sie als „unbekannt“ und waren ohne Freigabeliste (volle Freigabe) erlaubt. Zweite Schicht in den verwalteten Einstellungen des Abbilds: `permissions.deny` und `ENABLE_CLAUDEAI_MCP_SERVERS=false`.
+- Codex: Connectoren des ChatGPT-Kontos („Apps“, ab codex-cli 0.167 eingeschaltet) in der verwalteten Richtlinie fest abgeschaltet (`features.apps = false`, bleibt aus trotz `-c` und Nutzer-Einstellung), der Prüf-Hook sperrt `mcp__codex_apps__…` zusätzlich.
 
 ### Doku
 - Handbuch 37.10: Freigabe am Proxy wirkt nach dem Aktualisieren spätestens nach einer Minute. 37.11: Sperre der Konto-Werkzeuge.
 
 ### Tests
-- `KontoWerkzeugeTests` (gesperrt ohne und mit voller Freigabeliste, lokale Werkzeuge unberührt), `test_konto_werkzeuge_zweite_schicht`; 46 Hook- und Richtlinien-Tests grün.
+- `KontoWerkzeugeTests` (gesperrt ohne und mit voller Freigabeliste, lokale Werkzeuge unberührt), `test_konto_werkzeuge_zweite_schicht`, `test_keine_connectoren_des_chatgpt_kontos`; 56 Hook- und Richtlinien-Tests grün.
 
 ## [Unreleased]
 

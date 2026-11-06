@@ -173,10 +173,6 @@ class ResponseShapeTests(unittest.TestCase):
         self.assertTrue(out["permissionDecisionReason"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class KontoWerkzeugeTests(unittest.TestCase):
     """Werkzeuge, die über das Claude-Konto nach aussen wirken (Cloud-Agenten,
     Veröffentlichen auf claude.ai, Connectoren des Kontos). Sie laufen ausserhalb
@@ -187,7 +183,7 @@ class KontoWerkzeugeTests(unittest.TestCase):
     GESPERRT = ("RemoteTrigger", "DesignSync", "PushNotification", "Artifact",
                 "ArtifactComments", "ArtifactData", "ArtifactCheck",
                 "mcp__claude_ai_Gmail__search_threads", "mcp__claude_ai_Google_Drive__read",
-                "mcp__claude_ai_Claude_Docs__batch")
+                "mcp__claude_ai_Claude_Docs__batch", "mcp__codex_apps__gmail_search")
 
     def test_gesperrt_auch_ohne_freigabeliste(self):
         with patch("app.tools.pretooluse_hook._get_allowed_categories", return_value=None):
@@ -213,3 +209,7 @@ class KontoWerkzeugeTests(unittest.TestCase):
                          "mcp__claude_aide__notiz", "mcp__notifications__send_notification"):
                 with self.subTest(tool=name):
                     self.assertEqual(_entscheidung(name), "allow")
+
+
+if __name__ == "__main__":
+    unittest.main()

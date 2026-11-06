@@ -90,6 +90,11 @@ class CodexRichtlinie(unittest.TestCase):
         self.assertIs(self.r["allow_managed_hooks_only"], True)
         self.assertIs(self.r["features"]["hooks"], True)
 
+    def test_keine_connectoren_des_chatgpt_kontos(self):
+        """`apps` ist ab codex-cli 0.167 an; festgenagelt aus (live geprüft: bleibt aus
+        trotz `-c features.apps=true` und Nutzer-config.toml)."""
+        self.assertIs(self.r["features"]["apps"], False)
+
     def test_jeder_werkzeugaufruf_geht_durch_das_skript(self):
         gruppe = self.r["hooks"]["PreToolUse"][0]
         self.assertEqual(gruppe["matcher"], ".*")

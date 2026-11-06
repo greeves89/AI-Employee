@@ -4586,7 +4586,8 @@ Autonomie-Stufe, auch bei voller Freigabe. Das sind:
 - `DesignSync`,
 - `PushNotification`,
 - die Artifact-Werkzeuge (Veröffentlichen auf claude.ai),
-- die Connectoren des Kontos (`mcp__claude_ai_…`, etwa Mail, Ablage, Kalender).
+- die Connectoren des Kontos (`mcp__claude_ai_…`, etwa Mail, Ablage, Kalender),
+- bei Codex die Connectoren des ChatGPT-Kontos („Apps“, `mcp__codex_apps__…`).
 
 Sie liefen außerhalb der Anlage, also ohne Container, Proxy und diese Prüfung, und unter dem
 Konto des Lizenzinhabers statt des Besitzers. Der Agent bekommt die Meldung „wirkt über das

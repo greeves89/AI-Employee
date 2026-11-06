@@ -186,7 +186,10 @@ _KONTO_WERKZEUGE = frozenset({
     "RemoteTrigger", "DesignSync", "PushNotification",
     "Artifact", "ArtifactComments", "ArtifactData", "ArtifactCheck",
 })
-_KONTO_CONNECTOR = "mcp__claude_ai_"
+# Connectoren des Claude-Kontos ("claude.ai Gmail" → mcp__claude_ai_Gmail__…) und
+# des ChatGPT-Kontos bei Codex ("Apps", Server codex_apps; abgeschaltet in
+# agent/richtlinie/requirements.toml).
+_KONTO_CONNECTOR = ("mcp__claude_ai_", "mcp__codex_apps__")
 
 
 def _ueber_das_konto(tool_name: str) -> bool:
