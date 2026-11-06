@@ -29,7 +29,8 @@ def _service(aktiv=("chat:s1", "task-9")) -> SentinelService:
     redis.client = AsyncMock()
     redis.client.hgetall = AsyncMock(return_value={b"active_sessions": json.dumps(list(aktiv)).encode()})
     s = SentinelService(redis)
-    s._bestaetigte_gespraeche = AsyncMock(side_effect=lambda _a, gemeldet: list(gemeldet))
+    offen = next((e[5:] for e in aktiv if e.startswith("chat:")), None)
+    s._offener_zug = AsyncMock(return_value=offen)
     s._stop_agent = AsyncMock()
     s._notify = AsyncMock()
     s._zeile_im_chat = AsyncMock()
@@ -154,14 +155,6 @@ class AnhaltenPruefenWeiter(unittest.IsolatedAsyncioTestCase):
         befund = s._zeile_im_chat.await_args.args[3]
         self.assertFalse(befund.weiter, "die Zeile sagt: gestoppt, mit Knopf")
         self.assertIn("bleibt gestoppt", befund.fuer_mensch)
-
-    async def test_status_unlesbar_dann_hart(self):
-        s = _service()
-        s.redis.client.hgetall = AsyncMock(side_effect=ConnectionError("weg"))
-        with _acl(), _einreihen() as einreihen:
-            await s._handle_event("a1", {"type": "tool_result", "data": ANGRIFF})
-        einreihen.assert_not_awaited()
-        s._stop_agent.assert_awaited_once()
 
     async def test_harmloses_ereignis_tut_nichts(self):
         s = _service()
@@ -390,48 +383,56 @@ class Sicherheitspruefung(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(einreihen.await_count, 1)
         s._stop_agent.assert_awaited_once_with("a1", "prompt_injection")
 
-    async def test_vorgetaeuschtes_gespraech_zaehlt_nicht(self):
-        """Der Agent meldet ein Gespräch, das der Orchestrator nicht kennt → harter Stopp."""
-        s = _service(aktiv=("chat:erfunden",))
-        s._bestaetigte_gespraeche = AsyncMock(return_value=[])
+    async def test_fund_ohne_offenen_zug_haelt_hart_an(self):
+        """Der Agent meldet ein Gespräch, der Orchestrator kennt keinen offenen Zug dazu."""
+        s = _service(aktiv=())
         with _acl(), _einreihen() as einreihen:
-            await s._handle_event("a1", {"type": "tool_result", "data": ANGRIFF})
+            await s._handle_event("a1", {"type": "tool_result", "message_id": "m-erfunden", "data": ANGRIFF})
         einreihen.assert_not_awaited()
         s._stop_agent.assert_awaited_once()
 
-    async def test_bestaetigung_ohne_db_gilt_als_unbestaetigt(self):
-        s = SentinelService(AsyncMock())
-        with patch("app.db.session.async_session_factory", side_effect=RuntimeError("weg")):
-            self.assertEqual(await s._bestaetigte_gespraeche("a1", ["s1"]), [])
-
 
 class OffenerZug(unittest.IsolatedAsyncioTestCase):
-    """Sicherheitsprüfung: nur ein Gespräch mit OFFENEM Zug zählt, und nie bei laufendem Auftrag."""
+    """Sicherheitsprüfung, live geschärft: sanft nur für den OFFENEN Chat-Zug, aus dem der
+    Fund stammt — gebunden an die vom Orchestrator gespeicherte Nutzernachricht."""
 
-    def _sitzung(self, auftrag, zeilen):
+    def _db(self, zeilen=None, fehler=None):
         from datetime import UTC, datetime, timedelta
         jetzt = datetime.now(UTC)
         db = AsyncMock()
-        ergebnisse = [SimpleNamespace(first=lambda: auftrag),
-                      [(s, r, jetzt - timedelta(minutes=m)) for s, r, m in zeilen]]
-        db.execute = AsyncMock(side_effect=ergebnisse)
+        if fehler:
+            db.execute = AsyncMock(side_effect=fehler)
+        else:
+            werte = [(r, sid, jetzt - timedelta(minutes=m)) for r, sid, m in zeilen]
+            db.execute = AsyncMock(return_value=SimpleNamespace(all=lambda: werte))
         cm = AsyncMock()
         cm.__aenter__ = AsyncMock(return_value=db)
         cm.__aexit__ = AsyncMock(return_value=False)
         return patch("app.db.session.async_session_factory", return_value=cm)
 
-    async def test_nur_offener_zug(self):
-        s = SentinelService(AsyncMock())
-        zeilen = [("offen", "user", 1), ("offen", "assistant", 5),      # neue Frage nach letzter Antwort
-                  ("fertig", "user", 10), ("fertig", "assistant", 2),   # schon beantwortet
-                  ("alt", "user", 60 * 7)]                               # zu alt
-        with self._sitzung(None, zeilen):
-            self.assertEqual(await s._bestaetigte_gespraeche("a1", ["offen", "fertig", "alt", "fremd"]), ["offen"])
+    async def _zug(self, ereignis, **db):
+        with self._db(**db):
+            return await SentinelService(AsyncMock())._offener_zug("a1", ereignis)
 
-    async def test_laufender_auftrag_heisst_immer_hart(self):
-        s = SentinelService(AsyncMock())
-        with self._sitzung(("t1",), [("offen", "user", 1)]):
-            self.assertEqual(await s._bestaetigte_gespraeche("a1", ["offen"]), [])
+    async def test_offener_zug_gibt_seine_sitzung(self):
+        self.assertEqual(await self._zug({"message_id": "m1"}, zeilen=[("user", "s1", 1)]), "s1")
+
+    async def test_beantworteter_zug_nicht(self):
+        self.assertIsNone(await self._zug({"message_id": "m1"}, zeilen=[("user", "s1", 3), ("assistant", "s1", 1)]))
+
+    async def test_unbekannter_alter_oder_ohne_kennung_nicht(self):
+        self.assertIsNone(await self._zug({"message_id": "m1"}, zeilen=[]))
+        self.assertIsNone(await self._zug({"message_id": "m1"}, zeilen=[("user", "s1", 60 * 7)]))
+        self.assertIsNone(await self._zug({}, zeilen=[("user", "s1", 1)]))
+        self.assertIsNone(await self._zug({"message_id": "m1"}, fehler=RuntimeError("weg")))
+
+    async def test_paralleler_auftrag_bleibt_unberuehrt(self):
+        """Fund im offenen Chat-Zug: sanft, auch wenn nebenher ein Auftrag läuft."""
+        s = _service()
+        with _acl(), _einreihen() as einreihen:
+            await s._handle_event("a1", {"type": "tool_result", "message_id": "m1", "data": ANGRIFF})
+        einreihen.assert_awaited_once()
+        s._stop_agent.assert_not_awaited()
 
 
 class NachlaufNurEcho(unittest.IsolatedAsyncioTestCase):

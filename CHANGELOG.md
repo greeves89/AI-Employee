@@ -10,6 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 ### Sicherheit
 - Sentinel-Nachlauf: In den 10 s nach einer Fortsetzung wird nur noch ein Echo des Fundes übergangen (dasselbe Werkzeugergebnis oder dieselbe erkannte Formulierung). Jeder andere Fund gilt als Wiederholung und führt zum harten Stopp.
 - Sanft fortgesetzt wird nur, wenn die Sperre des Schritts gespeichert ist; sonst harter Stopp mit sichtbarer Zeile.
+- Sanft fortgesetzt wird nur der offene Chat-Zug, aus dem der Fund stammt: gebunden an die `message_id` des Ereignisses und die dazu vom Orchestrator gespeicherte, noch unbeantwortete Nutzernachricht. Live gesehen: Mit der bisherigen Regel „läuft ein Auftrag, immer hart“ stoppte ein Fund im Chat den Agenten und riss den parallel laufenden Projekt-Takt mit. Ein paralleler Auftrag bleibt jetzt unberührt; Funde aus Aufträgen gehen weiter den harten Weg.
 - Der Agent lädt die Befehlsregeln sofort neu, sobald ein Sentinel-Hinweis ankommt: Die neue Sperre greift beim nächsten Werkzeugaufruf, nicht erst nach bis zu 10 s Zwischenspeicher.
 
 ### Tests
