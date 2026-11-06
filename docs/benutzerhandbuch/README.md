@@ -4659,9 +4659,9 @@ Die Einträge `EGRESS_KI_ZUGANG` und `EGRESS_CODEX_ZUGANG` in der `.env` sind nu
 Startwert, solange in der Oberfläche nichts gespeichert wurde. Eine dort gespeicherte Stufe
 (auch **Aus**) gilt auch nach einem Neustart.
 
-**Ausschalten:** denselben Schalter ausschalten und die Rückfrage bestätigen. Die Agenten
-bekommen die Keys nach dem Aktualisieren wieder im Klartext; im Prüfprotokoll steht das
-Ausschalten als Absenken.
+**Ausschalten:** denselben Schalter ausschalten und die Rückfrage bestätigen. Laufende Agenten
+arbeiten weiter wie bisher; erst wenn sie neu erstellt werden (im Leerlauf automatisch),
+bekommen sie die Keys wieder im Klartext. Im Prüfprotokoll steht das Ausschalten als Absenken.
 
 Ersetzt wird nur, wo Keys hingehören: in Kopfzeilen (etwa `Authorization`, auch bei git)
 und als ganzer Wert eines Anmelde-Parameters in der Adresse oder einem Formular (`key`,

@@ -818,16 +818,18 @@ async def set_egress_proxy(body: EgressSchalter, user=Depends(require_admin),
             raise HTTPException(status_code=400, detail=(
                 "Der Dienst-Schlüssel des Proxys fehlt. Auf dem Server einmal "
                 "./scripts/update.sh ausführen — es legt ihn an — und dann erneut einschalten."))
-        if not await asyncio.to_thread(egress.proxy_erreichbar):
+        if not await asyncio.to_thread(lambda: egress.proxy_erreichbar(frisch=True)):
             raise HTTPException(status_code=400, detail=(
                 "Der Proxy-Dienst antwortet nicht (Container ai-employee-egress-proxy). "
                 "Erst ihn starten (docker compose up -d), dann einschalten."))
     vorher = bool(settings.egress_proxy_enabled)
+    if vorher == body.an:
+        return await _egress_stufen_stand(db)       # nichts geändert — kein Protokolleintrag
     await SettingsService(db).set("egress_proxy_enabled", "true" if body.an else "false")
     await protokolliere(
         db, AuditEventType.SETTINGS_CHANGED, user_id=getattr(user, "id", None),
         command=f"Egress-Proxy: {'an' if vorher else 'aus'} → {'an' if body.an else 'aus'}"
-                + (" (gesenkt: Keys wieder im Klartext in Agenten)" if vorher and not body.an else ""),
+                + (" (gesenkt: neu erstellte Agenten bekommen Keys im Klartext)" if vorher and not body.an else ""),
         meta={"keys": ["egress_proxy_enabled"], "von": vorher, "nach": body.an,
               "aktion": "egress_proxy_aus" if vorher and not body.an else "egress_proxy"},
     )

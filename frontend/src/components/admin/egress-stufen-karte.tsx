@@ -204,8 +204,9 @@ export function EgressStufenKarte() {
       const ok = await confirm({
         title: "Egress-Proxy ausschalten?",
         message:
-          "Nach dem Aktualisieren bekommen die Agenten alle Keys und Zugänge wieder im Klartext " +
-          "und können sie an beliebige Ziele schicken. Die Änderung steht im Prüfprotokoll.",
+          "Laufende Agenten arbeiten weiter wie bisher. Sobald sie neu erstellt werden (im " +
+          "Leerlauf automatisch), bekommen sie alle Keys und Zugänge wieder im Klartext und " +
+          "können sie an beliebige Ziele schicken. Die Änderung steht im Prüfprotokoll.",
         variant: "warning",
         confirmLabel: "Ausschalten",
       });

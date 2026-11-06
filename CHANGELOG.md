@@ -11,12 +11,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 - Egress-Proxy ein- und ausschalten in der Oberfläche (Admin → Betrieb → „Zugänge hinter dem Proxy“) statt über `EGRESS_PROXY_ENABLED` in der `.env` und einen Neustart. Eingeschaltet wird nur, wenn der Dienst-Schlüssel vorliegt und der Proxy-Dienst antwortet — sonst nennt die Karte den Grund und was zu tun ist. Die Agenten ziehen danach im Leerlauf selbst nach (1.433.0) oder sofort über „Jetzt aktualisieren“. API `PUT /settings/egress-proxy` (nur Admins).
 
 ### Sicherheit
+- Ausschalten unterbricht keine laufenden Agenten: Der Orchestrator beantwortet den Proxy, solange der Dienst-Schlüssel da ist, nicht nur bei eingeschaltetem Schalter. Agenten mit Platzhaltern arbeiten so weiter, bis sie neu erstellt sind (im Leerlauf automatisch); der Schalter bestimmt nur, wie neue Behälter entstehen. Vorher wäre bei ihnen nach dem Ausschalten jedes HTTPS ausgefallen, mit Netzwächter ohne Ausweg.
 - Ausschalten fragt nach und steht im Prüfprotokoll als Absenken („Egress-Proxy: an → aus (gesenkt …)“, `egress_proxy_aus`). Ein gespeichertes „aus“ gilt auch nach einem Neustart gegen die `.env`.
 - Die Karte zeigt veraltete Agenten auch nach dem Ausschalten (sie tragen noch Platzhalter), nicht nur bei eingeschaltetem Proxy.
 - Sicherheitsstatus „Keys in Agenten“ verweist auf die Oberfläche statt auf die `.env`.
 
 ### Tests
-- Hauptschalter: nur Admins, aus/an mit Protokoll und Absenken-Markierung, „aus“ übersteht den Neustart gegen die `.env`, Einschalten ohne Dienst-Schlüssel bzw. ohne erreichbaren Proxy-Dienst abgelehnt, Stand nennt die Voraussetzungen, Erreichbarkeitsprüfung.
+- Hauptschalter: nur Admins, laufende Agenten nach dem Ausschalten weiter bedient, unveränderter Schalter ohne Protokolleintrag, Erreichbarkeit für die Anzeige zwischengespeichert und beim Einschalten frisch geprüft, aus/an mit Protokoll und Absenken-Markierung, „aus“ übersteht den Neustart gegen die `.env`, Einschalten ohne Dienst-Schlüssel bzw. ohne erreichbaren Proxy-Dienst abgelehnt, Stand nennt die Voraussetzungen, Erreichbarkeitsprüfung.
 
 ## [1.434.1] - 2026-11-06
 

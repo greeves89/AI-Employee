@@ -286,6 +286,17 @@ class HauptschalterTests(DbTestFall):
         async with self.Session() as frisch:
             self.assertEqual((await frisch.get(PlatformSettings, "egress_proxy_enabled")).value, "true")
 
+    async def test_nach_dem_ausschalten_werden_laufende_agenten_weiter_bedient(self):
+        """Sonst fiele bei allen Agenten mit Platzhaltern sofort jedes HTTPS aus (Prüfung M1)."""
+        await self.schalten(False)
+        self.assertFalse(egress.aktiv(), "neue Agenten ohne Proxy")
+        self.assertTrue(egress.ist_proxy_anfrage(f"Bearer {TOKEN}"), "Proxy wird weiter beantwortet")
+
+    async def test_unveraendert_kein_protokolleintrag(self):
+        from app.models.audit_log import AuditLog
+        await self.schalten(True)            # war schon an
+        self.assertEqual((await self.db.execute(select(AuditLog))).scalars().all(), [])
+
     async def test_aus_uebersteht_den_neustart_gegen_env(self):
         await self.schalten(False)
         settings.egress_proxy_enabled = True          # .env sagt an
@@ -319,6 +330,17 @@ class HauptschalterTests(DbTestFall):
 class ProxyErreichbarTests(unittest.TestCase):
     def test_nicht_erreichbar_und_ohne_adresse(self):
         with patch.object(settings, "egress_proxy_url", "http://127.0.0.1:1"):
-            self.assertFalse(egress.proxy_erreichbar(zeit=0.5))
+            self.assertFalse(egress.proxy_erreichbar(zeit=0.5, frisch=True))
         with patch.object(settings, "egress_proxy_url", ""):
-            self.assertFalse(egress.proxy_erreichbar())
+            self.assertFalse(egress.proxy_erreichbar(frisch=True))
+
+    def test_anzeige_zwischengespeichert_einschalten_frisch(self):
+        aufrufe = []
+        with patch.object(settings, "egress_proxy_url", "http://proxy.example.invalid:8080"), \
+                patch.object(egress, "_verbinden", lambda url, zeit: aufrufe.append(url) or True):
+            egress._ERREICHBAR.clear()
+            egress.proxy_erreichbar()
+            egress.proxy_erreichbar()
+            self.assertEqual(len(aufrufe), 1, "Anzeige: einmal je 10 s")
+            egress.proxy_erreichbar(frisch=True)
+            self.assertEqual(len(aufrufe), 2, "Einschalten prüft immer frisch")

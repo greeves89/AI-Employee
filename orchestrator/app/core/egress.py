@@ -76,13 +76,30 @@ def dienst_schluessel_da() -> bool:
     return len(settings.egress_proxy_token or "") >= DIENST_TOKEN_MINDESTLAENGE
 
 
-def proxy_erreichbar(zeit: float = 2.0) -> bool:
+_ERREICHBAR: dict[str, tuple[float, bool]] = {}
+
+
+def proxy_erreichbar(zeit: float = 2.0, *, frisch: bool = False) -> bool:
     """Nimmt der Proxy-Dienst Verbindungen an? Vor dem Einschalten geprüft — sonst gingen
-    alle Agenten nach dem Aktualisieren über einen Proxy hinaus, den es nicht gibt."""
+    alle Agenten nach dem Aktualisieren über einen Proxy hinaus, den es nicht gibt.
+    Für die Anzeige 10 s zwischengespeichert; beim Einschalten immer frisch."""
+    import time as _time
+
+    jetzt = _time.monotonic()
+    url = settings.egress_proxy_url or ""
+    vorher = _ERREICHBAR.get(url)
+    if not frisch and vorher and jetzt - vorher[0] < 10:
+        return vorher[1]
+    ergebnis = _verbinden(url, zeit)
+    _ERREICHBAR[url] = (jetzt, ergebnis)
+    return ergebnis
+
+
+def _verbinden(url: str, zeit: float) -> bool:
     import socket
     from urllib.parse import urlparse
 
-    ziel = urlparse(settings.egress_proxy_url or "")
+    ziel = urlparse(url)
     if not ziel.hostname:
         return False
     try:
@@ -93,9 +110,18 @@ def proxy_erreichbar(zeit: float = 2.0) -> bool:
 
 
 def ist_proxy_anfrage(authorization: str) -> bool:
-    """Traegt die Anfrage den Dienst-Schluessel des Proxys? (Vergleich in konstanter Zeit)"""
+    """Traegt die Anfrage den Dienst-Schluessel des Proxys? (Vergleich in konstanter Zeit)
+
+    Haengt am Dienst-Schluessel, NICHT am Schalter: Wird der Proxy ausgeschaltet, tragen
+    die laufenden Agenten noch Platzhalter und gehen ueber ihn hinaus, bis sie neu
+    erstellt sind. Beantwortete der Orchestrator den Proxy dann nicht mehr, fiele bei
+    ihnen jeder HTTPS-Zugriff aus (Claude, Git, Web) — mit Netzwaechter ohne Ausweg.
+    Aufgeloest wird ohnehin nur, was ein Agent beim Anlegen als Platzhalter bekam
+    (``agent.config``); neu erstellte Agenten ohne Proxy haben nichts aufzuloesen.
+    """
     token = (authorization or "").removeprefix("Bearer ").strip()
-    return aktiv() and bool(token) and hmac.compare_digest(token.encode(), settings.egress_proxy_token.encode())
+    return (dienst_schluessel_da() and bool(token)
+            and hmac.compare_digest(token.encode(), settings.egress_proxy_token.encode()))
 
 
 def veraltet(agent_config: dict | None, agent_id: str | None = None) -> bool:
