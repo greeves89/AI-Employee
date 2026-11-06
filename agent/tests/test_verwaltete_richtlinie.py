@@ -56,6 +56,13 @@ class ClaudeCodeRichtlinie(unittest.TestCase):
         self.assertEqual({k for k, v in env.items() if v == ""}, LADER_VARIABLEN)
         self.assertFalse(VORHANDENSEIN_SCHALTET & set(env))
 
+    def test_konto_werkzeuge_zweite_schicht(self):
+        """Werkzeuge über das Claude-Konto: dieselbe Liste wie im Hook, dazu keine
+        Connectoren des Kontos laden (Mail, Ablage, Kalender des Lizenzinhabers)."""
+        from app.tools.pretooluse_hook import _KONTO_WERKZEUGE
+        self.assertEqual(set(self.r["permissions"]["deny"]), set(_KONTO_WERKZEUGE))
+        self.assertEqual(self.r["env"]["ENABLE_CLAUDEAI_MCP_SERVERS"], "false")
+
     def test_jeder_werkzeugaufruf_geht_durch_das_skript(self):
         gruppe = self.r["hooks"]["PreToolUse"][0]
         self.assertEqual(gruppe["matcher"], "*")
