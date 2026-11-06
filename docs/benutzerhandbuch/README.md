@@ -4596,6 +4596,12 @@ privaten Schlüssel.
 5. Läuft der Agent ein paar Tage ohne Auffälligkeiten, auf **Alle Agenten** stellen und
    wieder aktualisieren. **Aus** nimmt den Zugang wieder vor den Proxy.
 
+![Karte „Zugänge hinter dem Proxy“: Stufe „Ausgewählte“ und „Speichern“](screenshots/f25-zugaenge-hinter-proxy.png)
+
+Wer eine Stufe absenkt (etwa von **Alle Agenten** auf **Aus**), muss das bestätigen: Die
+betroffenen Agenten bekommen den Zugang nach dem nächsten Aktualisieren wieder im Klartext.
+Im Prüfprotokoll steht die Änderung mit vorher und nachher, ein Absenken ist markiert.
+
 Im **Sicherheitsstatus** zeigen die Punkte **Claude-Zugang hinter dem Proxy** und
 **Codex-Zugang hinter dem Proxy**, welche Agenten den Zugang noch im Klartext bekommen
 und welche erst aktualisiert werden müssen.

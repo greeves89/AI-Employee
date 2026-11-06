@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.432.1] - 2026-11-06
+
+### Dokumentation
+- Benutzerhandbuch 37.10: Bildschirmfoto der Karte „Zugänge hinter dem Proxy“ (Demodaten, Klickziele markiert) und Hinweis zur Rückfrage beim Absenken einer Stufe. PDF neu erzeugt.
+
 ## [1.432.0] - 2026-11-06
 
 ### Neu
