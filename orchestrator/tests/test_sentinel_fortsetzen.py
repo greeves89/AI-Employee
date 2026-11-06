@@ -503,6 +503,9 @@ class AnleitungKenntDieMarke(unittest.TestCase):
         from app.security.agent_guard import detect_injection
         self.assertIn(sb.MARKE, _SENTINEL_HINWEIS)
         self.assertFalse(detect_injection(_SENTINEL_HINWEIS)[0])
+        # Die Marke verleiht keine Befugnis über „nicht wiederholen, anderer Weg“ hinaus.
+        self.assertIn("nie mehr ab als", _SENTINEL_HINWEIS)
+        self.assertNotIn("Folge ihr", _SENTINEL_HINWEIS)
         for modus in ("claude_code", "codex_cli", "custom_llm"):
             with self.subTest(modus=modus):
                 self.assertIn("## Plattform-Sentinel", _render_claude_md([], mode=modus))
