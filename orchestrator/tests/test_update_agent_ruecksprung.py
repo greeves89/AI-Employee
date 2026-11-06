@@ -67,7 +67,7 @@ class FakeDocker:
 def _manager(docker, neu_erstellen, container_id="alt1"):
     mgr = AgentManager.__new__(AgentManager)
     mgr.docker = docker
-    mgr.db = MagicMock(rollback=AsyncMock(), commit=AsyncMock())
+    mgr.db = MagicMock(rollback=AsyncMock(), commit=AsyncMock(), refresh=AsyncMock())
     mgr.agent = SimpleNamespace(id="a1b2c3d4", name="Test", container_id=container_id,
                                 state=AgentState.RUNNING, config={})
     mgr._get_agent = AsyncMock(return_value=mgr.agent)
@@ -84,7 +84,7 @@ def _neu(docker, mgr_ref, festschreiben=True, danach_fehler=None):
         docker.behaelter["neu1"] = FakeBehaelter("neu1", NAME)
         if festschreiben:
             mgr_ref[0].agent.container_id = "neu1"
-            mgr_ref[0]._neubau_festgeschrieben = "neu1"
+            am._festgeschrieben[aid] = "neu1"
         if danach_fehler:
             raise danach_fehler
         return mgr_ref[0].agent
@@ -109,8 +109,9 @@ class Ruecksprung(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(docker.entfernt, ["alt1"])
         self.assertEqual(mgr.agent.container_id, "neu1")
 
-    async def test_fehlschlag_alter_zurueck_aber_angehalten(self):
-        """Kein automatischer Neustart: ein entzogener Zugang darf nicht weiter gelten."""
+    async def test_fehlschlag_ohne_wartung_alter_entfernt_agent_angehalten(self):
+        """Neuerstellen entzieht auch Zugänge: der alte Behälter darf nicht der des Agenten
+        bleiben — sonst brächte ihn der nächste Start mit den entzogenen Zugängen hoch."""
         docker = FakeDocker(FakeBehaelter("alt1", NAME))
 
         async def neu(aid):
@@ -120,9 +121,9 @@ class Ruecksprung(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(RuntimeError):
             await mgr.update_agent("a1b2c3d4")
         self.assertIn("halb", docker.entfernt)
-        self.assertEqual(docker.behaelter["alt1"].name, NAME)
+        self.assertIn("alt1", docker.entfernt)
         self.assertEqual(docker.gestartet, [])
-        self.assertEqual(mgr.agent.container_id, "alt1")
+        self.assertIsNone(mgr.agent.container_id, "nächster Start baut neu")
         self.assertEqual(mgr.agent.state, AgentState.STOPPED)
         self.assertEqual(mgr.agent.config["stop_reason"]["type"], "aktualisieren_gescheitert")
 
@@ -132,6 +133,8 @@ class Ruecksprung(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(RuntimeError):
             await mgr.update_agent("a1b2c3d4", wartung=True)
         self.assertEqual(docker.gestartet, ["alt1"])
+        self.assertEqual(docker.behaelter["alt1"].name, NAME)
+        self.assertEqual(mgr.agent.container_id, "alt1")
         self.assertNotEqual(mgr.agent.state, AgentState.STOPPED)
 
     async def test_gestoppter_alter_bleibt_gestoppt_ohne_stoppgrund(self):
@@ -192,6 +195,33 @@ class Ruecksprung(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(maximal[0], 1)
 
 
+class KeinZweiterNeubau(unittest.IsolatedAsyncioTestCase):
+    async def test_wartender_start_findet_fertigen_neubau(self):
+        """Wecken während eines Updates: nicht den gerade fertigen Agenten noch einmal bauen."""
+        from unittest.mock import patch
+        docker = FakeDocker(FakeBehaelter("neu1", NAME))
+        docker.get_container_status = lambda cid: "running"
+        neu = AsyncMock()
+        mgr = _manager(docker, neu, container_id="neu1")
+        with patch("app.core.agenten_aktualisieren.veraltet", return_value=False):
+            ergebnis = await mgr.update_agent("a1b2c3d4", nur_wenn_noetig=True)
+        neu.assert_not_awaited()
+        self.assertIs(ergebnis, mgr.agent)
+        mgr.db.refresh.assert_awaited()
+
+    async def test_ohne_flag_wird_gebaut(self):
+        docker = FakeDocker()
+        neu = AsyncMock(return_value=SimpleNamespace())
+        mgr = _manager(docker, neu, container_id=None)
+        await mgr.update_agent("a1b2c3d4", nur_wenn_noetig=True)
+        neu.assert_awaited_once()
+
+    def test_muster_nur_fuer_beiseitegestellte(self):
+        self.assertTrue(am._ALT_MUSTER.search("ai-agent-x-a1b2c3d4-alt-1794000409"))
+        self.assertFalse(am._ALT_MUSTER.search("ai-agent-alt-support-a1b2c3d4"), "Agent heißt „Alt-Support“")
+        self.assertFalse(am._ALT_MUSTER.search("ai-agent-x-a1b2c3d4-alt-12"))
+
+
 class AufraeumenBeimStart(unittest.IsolatedAsyncioTestCase):
     async def test_reste_entfernt_verwendeter_bekommt_namen_zurueck(self):
         from unittest.mock import patch
@@ -199,8 +229,9 @@ class AufraeumenBeimStart(unittest.IsolatedAsyncioTestCase):
         gebraucht = FakeBehaelter("g1", "ai-agent-zwei-e5f6a7b8" + am.ALT_MARKE + "1700000000", status="exited")
         laufend = FakeBehaelter("l1", "ai-agent-drei-11112222" + am.ALT_MARKE + "1700000000", status="running")
         normal = FakeBehaelter("n1", "ai-agent-vier-33334444", status="running")
+        alt_support = FakeBehaelter("s1", "ai-agent-alt-support-55556666", status="exited")
         docker = SimpleNamespace(client=SimpleNamespace(containers=SimpleNamespace(
-            list=lambda **k: [weg, gebraucht, laufend, normal])))
+            list=lambda **k: [weg, gebraucht, laufend, normal, alt_support])))
         db = MagicMock()
         db.execute = AsyncMock(return_value=MagicMock(all=lambda: [("g1",), ("n1",)]))
         fabrik = MagicMock()
@@ -212,6 +243,7 @@ class AufraeumenBeimStart(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(getattr(weg, "entfernt", False))
         self.assertEqual(gebraucht.name, "ai-agent-zwei-e5f6a7b8")
         self.assertFalse(getattr(laufend, "entfernt", False), "laufende nie anfassen")
+        self.assertFalse(getattr(alt_support, "entfernt", False), "Agent „Alt-Support“ ist kein Rest")
 
 
 if __name__ == "__main__":

@@ -251,7 +251,7 @@ class StartTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_veraltet_wird_neu_erstellt(self):
         mgr = await self._start(ALT)
-        mgr.update_agent.assert_awaited_once_with("a1")
+        mgr.update_agent.assert_awaited_once_with("a1", nur_wenn_noetig=True)
         mgr.docker.start_container.assert_not_called()
 
     async def test_aktuell_startet_normal(self):

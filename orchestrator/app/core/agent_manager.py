@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from functools import partial
@@ -80,8 +81,14 @@ _codex_recreate_lock = asyncio.Lock()
 #: Behälter wiederzubeleben (zwei Behälter auf denselben Volumes).
 _neubau_locks: dict[str, asyncio.Lock] = {}
 
-#: Namensteil beiseitegestellter Behälter (``AgentManager.update_agent``).
+#: Namensteil beiseitegestellter Behälter (``AgentManager.update_agent``); danach folgt
+#: die Zeit in Sekunden (zehn Ziffern). Nur dieses ganze Muster gilt als beiseitegestellt —
+#: ein Agent namens „Alt-Support“ heißt ``ai-agent-alt-support-…`` und bleibt unberührt.
 ALT_MARKE = "-alt-"
+_ALT_MUSTER = re.compile(re.escape(ALT_MARKE) + r"\d{10}$")
+
+#: Je Agent: Behälter-ID, sobald der Neubau festgeschrieben ist (kein Rücksprung mehr).
+_festgeschrieben: dict[str, str] = {}
 _CODEX_RECREATE_STAGGER_S = 5.0
 
 
@@ -1146,7 +1153,7 @@ async def alte_behaelter_aufraeumen(docker) -> dict:
             lambda: docker.client.containers.list(all=True, filters={"label": "ai-employee.type=agent"}))
     except Exception:  # noqa: BLE001
         return ergebnis
-    alte = [c for c in behaelter if ALT_MARKE in (c.name or "") and c.status != "running"]
+    alte = [c for c in behaelter if _ALT_MUSTER.search(c.name or "") and c.status != "running"]
     if not alte:
         return ergebnis
     async with async_session_factory() as db:
@@ -1156,7 +1163,7 @@ async def alte_behaelter_aufraeumen(docker) -> dict:
     for c in alte:
         try:
             if c.id in verwendet:
-                urname = _re.sub(_re.escape(ALT_MARKE) + r"\d+$", "", c.name)
+                urname = _ALT_MUSTER.sub("", c.name)
                 if urname not in namen:
                     await asyncio.to_thread(c.rename, urname)
                     ergebnis["zurueck"] += 1
@@ -2370,7 +2377,7 @@ class AgentManager:
         if not agent.container_id:
             # No container exists — recreate it (keeps volumes/data)
             logger.info(f"Agent {scrub_log(agent_id)} has no container — recreating via update_agent")
-            return await self.update_agent(agent_id)
+            return await self.update_agent(agent_id, nur_wenn_noetig=True)
         # Veraltet (neue Version oder andere Proxy-Stufe)? Dann nicht den alten Behälter
         # hochfahren, sondern neu erstellen — sonst liefe ein gestoppter Agent nach
         # jedem Release weiter auf dem alten Stand (core/agenten_aktualisieren.py).
@@ -2383,13 +2390,13 @@ class AgentManager:
                 and await asyncio.to_thread(self.docker.get_container_status, agent.container_id) != "running":
             if await _aa.abbild_bereit(self.docker):
                 logger.info(f"Agent {scrub_log(agent_id)} ist veraltet — beim Start neu erstellt")
-                return await self.update_agent(agent_id)
+                return await self.update_agent(agent_id, nur_wenn_noetig=True)
             logger.warning(f"Agent {scrub_log(agent_id)} ist veraltet, Abbild fehlt — startet auf dem alten Stand")
         try:
             self.docker.start_container(agent.container_id)
         except NotFound:
             logger.warning(f"Container {scrub_log(agent.container_id)} not found for agent {scrub_log(agent_id)} — recreating")
-            return await self.update_agent(agent_id)
+            return await self.update_agent(agent_id, nur_wenn_noetig=True)
         await self.refresh_instructions(agent)
         agent.state = AgentState.RUNNING
         agent.config = self._clear_stale_stop_reason(agent.config)
@@ -2470,7 +2477,8 @@ class AgentManager:
             logger.warning(f"Could not refresh instructions for agent {agent.id}: {e}")
             return False
 
-    async def update_agent(self, agent_id: str, *, wartung: bool = False) -> Agent:
+    async def update_agent(self, agent_id: str, *, wartung: bool = False,
+                           nur_wenn_noetig: bool = False) -> Agent:
         """Behälter mit dem aktuellen Abbild neu erstellen — mit Rücksprung.
 
         Früher wurde der alte Behälter ZUERST entfernt und erst dann der neue erstellt.
@@ -2479,16 +2487,26 @@ class AgentManager:
         nur angehalten und unter anderem Namen beiseitegestellt; entfernt wird er erst,
         wenn der neue steht.
 
-        Scheitert es VOR dem Festschreiben, kommt der alte unter seinem Namen zurück.
-        Wieder GESTARTET wird er nur bei reiner Wartung (``wartung=True``: automatisches
-        Aktualisieren). Sonst kann das Neuerstellen dazu dienen, einen Zugang zu entziehen
-        (Schlüssel entfernt, Rechte gekürzt) — der alte Behälter trüge ihn noch. Dann
-        bleibt er angehalten, der Agent steht mit Grund auf „gestoppt“.
+        Scheitert es VOR dem Festschreiben: Bei reiner Wartung (``wartung=True``:
+        automatisches Aktualisieren) kommt der alte unter seinem Namen zurück und läuft
+        weiter. Sonst kann das Neuerstellen dazu dienen, einen Zugang zu entziehen
+        (Schlüssel entfernt, Rechte gekürzt) — der alte Behälter trüge ihn noch. Dann wird
+        er entfernt, der Agent steht mit Grund auf „gestoppt“, der nächste Start baut neu.
         Nach dem Festschreiben gibt es keinen Rücksprung mehr: der neue Behälter gilt.
+
+        ``nur_wenn_noetig`` (Start-Wege): Wer auf den Lock gewartet hat, findet oft einen
+        gerade fertigen Neubau vor — dann nicht ein zweites Mal neu erstellen.
         """
         sperre = _neubau_locks.setdefault(agent_id, asyncio.Lock())
         async with sperre:
             agent = await self._get_agent(agent_id)
+            # Frisch lesen: wer gewartet hat, hält sonst den Stand von vor dem anderen Neubau.
+            await self.db.refresh(agent)
+            if nur_wenn_noetig and agent.container_id:
+                from app.core.agenten_aktualisieren import veraltet as _veraltet
+                if not _veraltet(agent) and await asyncio.to_thread(
+                        self.docker.get_container_status, agent.container_id) == "running":
+                    return agent
             container_name = f"ai-agent-{_container_slug(agent.name)}-{agent_id}"
             alte_id = agent.container_id
             beiseite = self._alten_behaelter_beiseite(alte_id, container_name)
@@ -2498,16 +2516,17 @@ class AgentManager:
                 # hier, statt den alten Behälter wiederzubeleben.
                 agent.container_id = None
                 await self.db.commit()
-            self._neubau_festgeschrieben = None
+            _festgeschrieben.pop(agent_id, None)
             try:
                 neu = await self._update_agent_neu_erstellen(agent_id)
             except BaseException:
-                if self._neubau_festgeschrieben:
+                if _festgeschrieben.pop(agent_id, None):
                     self._alte_entfernen(beiseite)
                     raise
                 await self._beiseite_zurueck(agent_id, beiseite, container_name, alte_id,
                                              starten=wartung)
                 raise
+            _festgeschrieben.pop(agent_id, None)
             self._alte_entfernen(beiseite)
             return neu
 
@@ -2557,8 +2576,18 @@ class AgentManager:
 
     async def _beiseite_zurueck(self, agent_id: str, beiseite: list, container_name: str,
                                 alte_id: str | None, *, starten: bool) -> None:
-        """Neuerstellen vor dem Festschreiben gescheitert: halb erstellten neuen Behälter
-        entfernen, alten unter seinem Namen zurück; starten nur bei Wartung (siehe update_agent)."""
+        """Neuerstellen vor dem Festschreiben gescheitert.
+
+        Halb erstellten neuen Behälter entfernen. Dann:
+
+        * **Wartung** (``starten=True``, automatisches Aktualisieren): Der alte kommt unter
+          seinem Namen zurück und läuft weiter, wie er lief — dasselbe, was er vorher durfte.
+        * **Sonst**: Der alte wird entfernt. Neuerstellen dient auch dem Entziehen von
+          Zugängen (Schlüssel entfernt, Rechte gekürzt); bliebe der alte Behälter der des
+          Agenten, brächte ihn der nächste Start mit den entzogenen Zugängen wieder hoch.
+          Der Agent zeigt dann auf keinen Behälter, steht mit Grund auf gestoppt, und der
+          nächste Start baut ihn mit dem aktuellen Stand neu.
+        """
         alte = {cid for cid, _n, _l in beiseite}
         try:
             neu = self.docker.client.containers.get(container_name)
@@ -2566,35 +2595,40 @@ class AgentManager:
                 self.docker.remove_container(neu.id)
         except Exception:  # noqa: BLE001
             pass
-        gestartet = False
+        gestartet, zurueck = False, None
         for cid, name, lief in beiseite:
             try:
-                c = self.docker.client.containers.get(cid)
-                c.rename(name)
-                if lief and starten:
-                    self.docker.start_container(cid)
-                    gestartet = True
+                if starten:
+                    c = self.docker.client.containers.get(cid)
+                    c.rename(name)
+                    zurueck = cid
+                    if lief:
+                        self.docker.start_container(cid)
+                        gestartet = True
+                else:
+                    self.docker.remove_container(cid)
             except Exception as e:  # noqa: BLE001
-                logger.error(f"Agent {scrub_log(agent_id)}: alter Behälter nicht wiederherstellbar: {scrub_log(e)}")
+                logger.error(f"Agent {scrub_log(agent_id)}: alter Behälter nicht wiederherstellbar/entfernbar: "
+                             f"{scrub_log(e)}")
         try:
             await self.db.rollback()
             if beiseite:
                 agent = await self._get_agent(agent_id)
-                agent.container_id = alte_id if alte_id in alte else beiseite[0][0]
+                agent.container_id = zurueck
                 if any(lief for _c, _n, lief in beiseite) and not gestartet:
                     agent.state = AgentState.STOPPED
                     agent.config = {**(agent.config or {}), "stop_reason": {
                         "type": "aktualisieren_gescheitert",
                         "message": "Aktualisieren gescheitert — Agent angehalten",
-                        "detail": "Der neue Behälter ließ sich nicht erstellen. Der alte bleibt "
-                                  "angehalten, damit entzogene Zugänge nicht weiter gelten. "
-                                  "Starten nimmt den alten Stand wieder auf.",
+                        "detail": "Der neue Behälter ließ sich nicht erstellen. Der alte wurde "
+                                  "nicht wieder gestartet, damit entzogene Zugänge nicht weiter "
+                                  "gelten. Der nächste Start baut den Agenten neu.",
                         "at": datetime.now(timezone.utc).isoformat(),
                     }}
                     flag_modified(agent, "config")
                 await self.db.commit()
-            logger.warning(f"Agent {scrub_log(agent_id)}: Neuerstellen gescheitert, alter Behälter "
-                           f"zurück ({'läuft' if gestartet else 'angehalten'})")
+            logger.warning(f"Agent {scrub_log(agent_id)}: Neuerstellen gescheitert — "
+                           f"{'alter Behälter läuft weiter' if gestartet else 'Agent angehalten'}")
         except Exception:  # noqa: BLE001
             logger.exception(f"Agent {scrub_log(agent_id)}: Zustand nach Rücksprung nicht gespeichert")
 
@@ -2830,7 +2864,7 @@ class AgentManager:
         flag_modified(agent, "config")
         await self.db.commit()
         # Ab hier steht der neue Behälter fest: kein Rücksprung mehr (update_agent).
-        self._neubau_festgeschrieben = container.id
+        _festgeschrieben[agent_id] = container.id
         # Siehe restart_agent: vor dem refresh.
         await self._verwaiste_aufgaben_beenden(agent_id)
         await self.db.refresh(agent)

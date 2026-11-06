@@ -4434,7 +4434,11 @@ erledigt die Anlage selbst:
 - Jedes automatische Aktualisieren steht im Prüfprotokoll („Automatisch aktualisiert auf …“).
   Scheitert es, läuft der Agent auf seinem alten Stand weiter *(seit 1.434.1: der alte
   Behälter wird erst entfernt, wenn der neue steht)*, und **die Automatik ruht** für diese
-  Version, damit nicht ein Agent nach dem anderen betroffen ist. Häufigster Grund: Das Agenten-Abbild fehlt auf dem Server (etwa ohne
+  Version, damit nicht ein Agent nach dem anderen betroffen ist.
+- Scheitert ein **von Hand** ausgelöstes Aktualisieren (Knopf, Schlüssel oder Rechte
+  geändert), wird der Agent angehalten („Aktualisieren gescheitert“) statt auf dem alten Stand
+  weiterzulaufen — der alte Behälter könnte einen gerade entzogenen Zugang noch tragen. Der
+  nächste Start baut ihn neu. Häufigster Grund: Das Agenten-Abbild fehlt auf dem Server (etwa ohne
   Zugang zur Registry). Danach in der Karte **Wieder aufnehmen** klicken.
 
 Einsehen und abschalten unter **Admin → Betrieb → Agenten aktuell halten**:
