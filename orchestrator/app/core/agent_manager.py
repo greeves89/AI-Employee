@@ -2420,7 +2420,89 @@ class AgentManager:
             return False
 
     async def update_agent(self, agent_id: str) -> Agent:
-        """Recreate agent container with latest image, preserving all data (volumes)."""
+        """Behälter mit dem aktuellen Abbild neu erstellen — mit Rücksprung.
+
+        Früher wurde der alte Behälter ZUERST entfernt und erst dann der neue erstellt.
+        Scheiterte das Erstellen (Abbild fehlt, Docker-Wächter lehnt eine Einstellung
+        ab, Platte voll), war der Agent weg und nicht mehr startbar. Jetzt wird der alte
+        nur angehalten und unter anderem Namen beiseitegestellt; entfernt wird er erst,
+        wenn der neue steht. Scheitert es, kommt der alte unter seinem Namen zurück und
+        läuft weiter wie vorher (``_beiseite_zurueck``). Daten liegen ohnehin in Volumes.
+        """
+        agent = await self._get_agent(agent_id)
+        container_name = f"ai-agent-{_container_slug(agent.name)}-{agent_id}"
+        beiseite = self._alten_behaelter_beiseite(agent.container_id, container_name)
+        try:
+            neu = await self._update_agent_neu_erstellen(agent_id)
+        except BaseException:
+            await self._beiseite_zurueck(agent_id, beiseite, container_name)
+            raise
+        for cid, _name, _lief in beiseite:
+            try:
+                self.docker.remove_container(cid)
+            except (NotFound, APIError) as e:
+                logger.warning(f"Alter Behälter {scrub_log(cid[:12])} nicht entfernt: {scrub_log(e)}")
+        return neu
+
+    def _alten_behaelter_beiseite(self, container_id: str | None, container_name: str) -> list:
+        """Alten Behälter anhalten und umbenennen statt löschen. → [(id, alter_name, lief)]"""
+        import time as _time
+
+        beiseite, gesehen = [], set()
+        for ref in [container_id, container_name]:
+            if not ref:
+                continue
+            try:
+                c = self.docker.client.containers.get(ref)
+            except (NotFound, APIError):
+                continue
+            if c.id in gesehen:
+                continue
+            gesehen.add(c.id)
+            lief = c.status == "running"
+            try:
+                self.docker.stop_container(c.id)
+            except (NotFound, APIError):
+                pass
+            alter_name = (c.name or container_name).lstrip("/")   # VOR dem Umbenennen merken
+            try:
+                c.rename(f"{container_name}-alt-{int(_time.time())}")
+                beiseite.append((c.id, alter_name, lief))
+            except (NotFound, APIError) as e:
+                # Umbenennen gesperrt oder gescheitert: wie früher entfernen, damit der
+                # neue Behälter seinen Namen bekommt — der Rücksprung entfällt dann.
+                logger.warning(f"Behälter {scrub_log(c.id[:12])} nicht umbenannt ({scrub_log(e)}), entfernt")
+                try:
+                    self.docker.remove_container(c.id)
+                except (NotFound, APIError):
+                    pass
+        return beiseite
+
+    async def _beiseite_zurueck(self, agent_id: str, beiseite: list, container_name: str) -> None:
+        """Neuerstellen gescheitert: halb erstellten neuen Behälter entfernen, alten zurück."""
+        alte = {cid for cid, _n, _l in beiseite}
+        try:
+            neu = self.docker.client.containers.get(container_name)
+            if neu.id not in alte:
+                self.docker.remove_container(neu.id)
+        except (NotFound, APIError):
+            pass
+        for cid, name, lief in beiseite:
+            try:
+                c = self.docker.client.containers.get(cid)
+                c.rename(name)
+                if lief:
+                    self.docker.start_container(cid)
+                logger.warning(f"Agent {scrub_log(agent_id)}: Neuerstellen gescheitert, alter Behälter zurück")
+            except (NotFound, APIError) as e:
+                logger.error(f"Agent {scrub_log(agent_id)}: alter Behälter nicht wiederherstellbar: {scrub_log(e)}")
+        try:
+            await self.db.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+
+    async def _update_agent_neu_erstellen(self, agent_id: str) -> Agent:
+        """Der eigentliche Neubau; der alte Behälter ist schon beiseitegestellt (``update_agent``)."""
         agent = await self._get_agent(agent_id)
         config = agent.config or {}
 
@@ -2443,20 +2525,8 @@ class AgentManager:
         # Clear any open chat's "Thinking..." before we kill the in-flight response.
         await self._cancel_open_chats(agent_id, "Agent wird aktualisiert — laufende Antwort abgebrochen.")
 
-        # 1. Stop and remove old container (volumes stay!)
+        # 1. Der alte Behälter ist schon angehalten und beiseitegestellt (update_agent).
         container_name = f"ai-agent-{_container_slug(agent.name)}-{agent_id}"
-        # Try by container_id first, then by name (handles stale IDs)
-        for ref in [agent.container_id, container_name]:
-            if not ref:
-                continue
-            try:
-                self.docker.stop_container(ref)
-            except (NotFound, APIError):
-                pass
-            try:
-                self.docker.remove_container(ref)
-            except (NotFound, APIError):
-                pass
 
         # 2. Build environment based on mode (same logic as restart)
         volume_name = agent.volume_name

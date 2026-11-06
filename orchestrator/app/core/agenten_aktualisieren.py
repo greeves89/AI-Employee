@@ -47,8 +47,10 @@ RUHE = timedelta(minutes=15)
 FEHLGESCHLAGEN = "auto_update_fehlgeschlagen"
 
 #: Einstellung: nach dem ERSTEN Fehlschlag einer Version hält die Automatik ganz an.
-#: ``update_agent`` entfernt den alten Behälter, bevor der neue steht — fehlt etwa das
-#: Abbild, wäre sonst alle fünf Minuten ein weiterer Agent weg (Sicherheitsprüfung).
+#: Seit 1.434.1 springt ``update_agent`` bei einem Fehlschlag auf den alten Behälter
+#: zurück; das Anhalten bleibt trotzdem: ein Fehler, der bei einem Agenten auftritt,
+#: tritt meist bei allen auf — dann soll ein Mensch nachsehen, statt dass jeder Agent
+#: alle fünf Minuten kurz angehalten wird.
 ANGEHALTEN = "agenten_auto_update_angehalten"
 
 #: Ergebnisse von ``DockerService.abbild_sicherstellen``, mit denen ein neuer Behälter entsteht.

@@ -23,8 +23,9 @@ from pathlib import Path
 
 _QUELLE = Path(__file__).resolve().parents[1] / "app" / "core" / "agent_manager.py"
 
-#: Jede Methode, die einen Agenten-Container baut.
-BAUWEGE = ("create_agent", "restart_agent", "update_agent")
+#: Jede Methode, die einen Agenten-Container baut. ``update_agent`` stellt seit 1.434.1
+#: nur den alten Behälter beiseite; gebaut wird in ``_update_agent_neu_erstellen``.
+BAUWEGE = ("create_agent", "restart_agent", "_update_agent_neu_erstellen")
 
 
 def _quelltext(name: str) -> str:
@@ -56,7 +57,7 @@ class BrowserSchalterWirktUeberall(unittest.TestCase):
         ``agent.browser_mode`` lesen. Eine Kopie des Arguments waere dort
         stillschweigend immer ``False``.
         """
-        for weg in ("restart_agent", "update_agent"):
+        for weg in ("restart_agent", "_update_agent_neu_erstellen"):
             with self.subTest(bauweg=weg):
                 self.assertIn("agent.browser_mode", _quelltext(weg))
 
@@ -90,7 +91,7 @@ class BrowserSchalterWirktUeberall(unittest.TestCase):
         Container fuer einen Agenten, der sie schon haben KANN -- lesen sie
         sie nicht, wirkt ein PATCH nie.
         """
-        for weg in ("restart_agent", "update_agent"):
+        for weg in ("restart_agent", "_update_agent_neu_erstellen"):
             with self.subTest(bauweg=weg):
                 self.assertIn("browser_allowed_domains", _quelltext(weg))
 

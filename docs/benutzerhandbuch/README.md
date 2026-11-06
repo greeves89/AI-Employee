@@ -4432,8 +4432,9 @@ erledigt die Anlage selbst:
 - **Gestoppte Agenten** werden beim nächsten Start neu erstellt *(bis 1.432 starteten sie auf
   dem alten Stand)*.
 - Jedes automatische Aktualisieren steht im Prüfprotokoll („Automatisch aktualisiert auf …“).
-  Scheitert es, **ruht die Automatik** für diese Version, damit nicht ein Agent nach dem
-  anderen betroffen ist. Häufigster Grund: Das Agenten-Abbild fehlt auf dem Server (etwa ohne
+  Scheitert es, läuft der Agent auf seinem alten Stand weiter *(seit 1.434.1: der alte
+  Behälter wird erst entfernt, wenn der neue steht)*, und **die Automatik ruht** für diese
+  Version, damit nicht ein Agent nach dem anderen betroffen ist. Häufigster Grund: Das Agenten-Abbild fehlt auf dem Server (etwa ohne
   Zugang zur Registry). Danach in der Karte **Wieder aufnehmen** klicken.
 
 Einsehen und abschalten unter **Admin → Betrieb → Agenten aktuell halten**:

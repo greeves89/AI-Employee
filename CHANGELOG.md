@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.434.1] - 2026-11-06
+
+### Behoben
+- Agent aktualisieren mit Rücksprung: Bisher wurde der alte Behälter ZUERST entfernt und dann der neue erstellt. Scheiterte das Erstellen (Abbild fehlt, Docker-Wächter lehnt eine Einstellung ab, Platte voll), war der Agent weg und nicht mehr startbar. Jetzt wird der alte nur angehalten und unter anderem Namen beiseitegestellt; entfernt wird er erst, wenn der neue steht. Scheitert es (auch bei einem Abbruch), wird ein halb erstellter neuer Behälter entfernt und der alte kommt unter seinem Namen zurück — lief er vorher, läuft er wieder. Gilt für jeden Weg: Knopf „Aktualisieren“, „Alle aktualisieren“, Start eines veralteten Agenten, automatisches Aktualisieren.
+
+### Tests
+- `test_update_agent_ruecksprung.py`: Erfolg (alter erst danach entfernt, beim Erstellen schon angehalten), Fehlschlag (halber neuer weg, alter zurück und gestartet), gestoppter alter bleibt gestoppt, ohne alten Behälter, Umbenennen gesperrt (Verhalten wie früher), Abbruch während des Erstellens. Fand beim Bau selbst einen Fehler (alter Name erst nach dem Umbenennen gemerkt). Quelltext-Tests auf den neuen Bauweg `_update_agent_neu_erstellen` umgestellt; 251 Tests der betroffenen Bereiche grün.
+
 ## [1.434.0] - 2026-11-06
 
 ### Neu

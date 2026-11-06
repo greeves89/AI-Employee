@@ -308,6 +308,6 @@ class ContainerTimezoneTests(unittest.TestCase):
         self.assertIn('"TZ": agent_timezone(None)', block("create_agent"))
         # Bestehend: seine eigene. Die Vorgabe waere hier falsch — ein auf Berlin
         # eingestellter Agent liefe nach einem Neustart ploetzlich in UTC.
-        for fn in ("restart_agent", "update_agent"):
+        for fn in ("restart_agent", "_update_agent_neu_erstellen"):
             with self.subTest(fn):
                 self.assertIn('"TZ": agent_timezone(config)', block(fn))
