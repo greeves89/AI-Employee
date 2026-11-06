@@ -645,6 +645,8 @@ class ChatConsumer:
     def _prepare_text(self, text: str, telegram_ctx: dict | None, source: str, handler: object,
                       uebertrag: str = "") -> str:
         from app.runner_hooks import get_approval_rules_prefix
+        from app.tools.schritt_sperre import regeln_neu_laden
+        regeln_neu_laden(text)
         is_new = self._is_new_session(handler)
         # Claude Code hat den Verlauf verdichtet (compact_boundary): die Sitzung
         # laeuft weiter, aber Regeln und Skill-Block standen nur im ersten Zug und

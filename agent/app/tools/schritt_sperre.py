@@ -18,6 +18,24 @@ import json
 import re
 
 SPERRE_PRAEFIX = "Sentinel-Sperre"
+#: Anfang jedes Hinweises, den der Sentinel in die laufende Sitzung einfaltet
+#: (orchestrator/app/core/sentinel_befund.MARKE).
+MARKE = "[Plattform-Sentinel]"
+
+
+def regeln_neu_laden(text: str) -> bool:
+    """Kommt ein Sentinel-Hinweis an, gelten die zwischengespeicherten Befehlsregeln als
+    abgelaufen: Die neue Sperre greift beim nächsten Werkzeugaufruf, nicht erst nach bis
+    zu 10 s Zwischenspeicher. Die Liste selbst bleibt als letzter bekannter Stand.
+    Ein Nutzer, der die Marke tippt, löst nur ein frühes Neuladen aus — harmlos.
+    """
+    if not str(text or "").lstrip().startswith(MARKE):
+        return False
+    from app.tools import executor
+
+    liste, _ = executor._get_command_policies._cache
+    executor._get_command_policies._cache = (liste, 0.0)
+    return True
 
 _URL = ("url",)
 _DATEI = ("file_path", "path", "notebook_path", "filename")

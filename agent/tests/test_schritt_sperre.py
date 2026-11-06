@@ -67,6 +67,30 @@ class Kern(unittest.TestCase):
         self.assertIsNone(sp.sperre_fuer("WebFetch", {"url": URL}, None))
 
 
+class SofortNeuLaden(unittest.TestCase):
+    """Sicherheitsprüfung: die neue Sperre greift beim nächsten Aufruf, nicht erst
+    nach bis zu 10 s Zwischenspeicher der Befehlsregeln."""
+
+    def test_sentinel_hinweis_laesst_den_zwischenspeicher_ablaufen(self):
+        from app.tools import executor
+        alt = executor._get_command_policies._cache
+        try:
+            executor._get_command_policies._cache = ([{"name": "x"}], 9e18)
+            self.assertFalse(sp.regeln_neu_laden("Hallo"))
+            self.assertEqual(executor._get_command_policies._cache[1], 9e18)
+            self.assertTrue(sp.regeln_neu_laden(sp.MARKE + " Ich habe deinen Lauf angehalten."))
+            liste, ablauf = executor._get_command_policies._cache
+            self.assertEqual((liste, ablauf), ([{"name": "x"}], 0.0), "Liste bleibt als letzter Stand")
+        finally:
+            executor._get_command_policies._cache = alt
+
+    def test_jede_eingehende_nachricht_laeuft_durch_die_pruefung(self):
+        import inspect
+
+        from app.chat_consumer import ChatConsumer
+        self.assertIn("regeln_neu_laden(text)", inspect.getsource(ChatConsumer._prepare_text))
+
+
 class ImHook(unittest.IsolatedAsyncioTestCase):
     async def test_hook_lehnt_den_gesperrten_schritt_ab_alles_andere_bleibt(self):
         with patch("app.tools.executor._get_command_policies", AsyncMock(return_value=[_regel(URL)])), \

@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.431.2] - 2026-11-06
+
+### Sicherheit
+- Sentinel-Nachlauf: In den 10 s nach einer Fortsetzung wird nur noch ein Echo des Fundes übergangen (dasselbe Werkzeugergebnis oder dieselbe erkannte Formulierung). Jeder andere Fund gilt als Wiederholung und führt zum harten Stopp.
+- Sanft fortgesetzt wird nur, wenn die Sperre des Schritts gespeichert ist; sonst harter Stopp mit sichtbarer Zeile.
+- Der Agent lädt die Befehlsregeln sofort neu, sobald ein Sentinel-Hinweis ankommt: Die neue Sperre greift beim nächsten Werkzeugaufruf, nicht erst nach bis zu 10 s Zwischenspeicher.
+
+### Tests
+- `NachlaufNurEcho` (Echo, anderer Fund, Sperre nicht gespeichert), `SofortNeuLaden` (Agent).
+
 ## [1.431.1] - 2026-11-06
 
 ### Behoben
