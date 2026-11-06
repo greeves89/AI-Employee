@@ -293,7 +293,7 @@ class SentinelService:
         verdict = await self._scan(agent_id, event)
         if verdict is None or not verdict.triggered:
             return
-        from app.core.sentinel_befund import WERKZEUGAUFRUF, fundstelle
+        from app.core.sentinel_befund import ANTWORT, WERKZEUGAUFRUF, fundstelle
 
         reason = verdict.reason or "sentinel_triggered"
         schluessel = (agent_id, reason)
@@ -307,6 +307,15 @@ class SentinelService:
             logger.info("[Sentinel] %s/%s: Echo des fortgesetzten Fundes", agent_id, reason)
             return
         wiederholt = seit is not None and seit < _FORTSETZUNG_FENSTER_SEKUNDEN
+        if wiederholt and stelle == ANTWORT and reason == "prompt_injection":
+            # Nach einem Hinweis beschreibt der Agent dem Menschen oft, was in der Quelle
+            # stand — live gesehen: sinngemäß übersetzt, und das trifft das Muster. Eine
+            # Antwort ist keine Handlung; Werkzeugaufrufe und neue Inhalte von außen
+            # bleiben scharf (Wiederholung = harter Stopp).
+            # Ein Schluessel in der Antwort ist dagegen ein Abfluss: nur fuer Umlenkungen.
+            logger.warning("[Sentinel] %s/%s: Antwort nennt den Fund — keine Handlung", agent_id, reason)
+            await self._beobachtet(agent_id, reason)
+            return
         if wiederholt:
             # Nach einer Fortsetzung laeuft der Agent weiter: die Sturmsperre darf
             # einen erneuten Fund hier nicht verschlucken.
@@ -432,6 +441,20 @@ class SentinelService:
             logger.exception("[Sentinel] Sperre/Lehre fuer %s nicht gespeichert", agent_id)
             return False
 
+    async def _beobachtet(self, agent_id: str, grund: str) -> None:
+        """Ein Fund ohne Eingriff steht trotzdem im Prüfprotokoll (Sicherheitsprüfung)."""
+        from app.db.session import async_session_factory
+        from app.models.audit_log import AuditEventType, AuditLog
+
+        try:
+            async with async_session_factory() as db:
+                db.add(AuditLog(agent_id=agent_id, event_type=AuditEventType.AGENT_STOPPED.value,
+                                outcome="beobachtet",
+                                meta={"by": "sentinel", "reason": grund, "fundstelle": "antwort"}))
+                await db.commit()
+        except Exception:  # noqa: BLE001
+            logger.exception("[Sentinel] Beobachtung fuer %s nicht vermerkt", agent_id)
+
     @staticmethod
     def _abdruck(event: dict, auszug: str | None) -> tuple[str | None, str | None]:
         daten = event.get("data") if isinstance(event.get("data"), dict) else {}
@@ -518,7 +541,7 @@ class SentinelService:
                 e = await einreihen(self.redis.client, agent_id, {
                     "id": kennung, "text": befund.fuer_agent, "model": None,
                     "chat_session_id": sitzung, "source": "webapp",
-                })
+                }, plattform=True)
             except Exception:  # noqa: BLE001
                 logger.exception("[Sentinel] Hinweis an %s/%s nicht eingereiht", agent_id, sitzung)
                 continue

@@ -107,7 +107,18 @@ async def _budget_entscheid(agent_id: str, *, fuer_chat: bool = True):
         return budget.ERLAUBT
 
 
-async def einreihen(redis_client, agent_id: str, payload: dict | str) -> Einreihung:
+def _ohne_marke(payload: dict, *felder: str) -> dict:
+    """Die Sentinel-Marke in den Textfeldern entschärfen (fremdtext.ohne_plattformmarke)."""
+    from app.core.fremdtext import ohne_plattformmarke
+
+    for feld in felder:
+        if isinstance(payload.get(feld), str):
+            payload[feld] = ohne_plattformmarke(payload[feld])
+    return payload
+
+
+async def einreihen(redis_client, agent_id: str, payload: dict | str, *,
+                    plattform: bool = False) -> Einreihung:
     """Eine Nachricht in die Chat-Warteschlange des Agenten legen — nach Budgetprüfung.
 
     Bis v1.362 schrieben Web-Chat, Kiosk, Telegram, die Kanäle, die Sprachfront,
@@ -124,6 +135,9 @@ async def einreihen(redis_client, agent_id: str, payload: dict | str) -> Einreih
     if isinstance(payload, str):
         payload = json.loads(payload)
     payload = dict(payload)
+    if not plattform:
+        # Nur der Sentinel selbst (``plattform=True``) darf mit der Marke sprechen.
+        _ohne_marke(payload, "text")
 
     from app.core import budget
 
@@ -182,7 +196,7 @@ async def aufgabe_einreihen(redis_client, agent_id: str, payload: dict | str) ->
     """
     from app.core import budget
 
-    payload = _als_dict(payload)
+    payload = _ohne_marke(_als_dict(payload), "message", "text", "content", "prompt")
     entscheid = await _budget_entscheid(agent_id, fuer_chat=False)
     if entscheid.art == budget.BLOCKIEREN:
         if payload.get("id"):
@@ -216,7 +230,7 @@ async def nachricht_einreihen(
     """
     from app.core import budget
 
-    payload = _als_dict(payload)
+    payload = _ohne_marke(_als_dict(payload), "message", "text", "content", "prompt")
     entscheid = await _budget_entscheid(agent_id, fuer_chat=False)
     if entscheid.art == budget.BLOCKIEREN:
         return Einreihung(False, hinweis=entscheid.hinweis)

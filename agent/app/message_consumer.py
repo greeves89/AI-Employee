@@ -383,6 +383,9 @@ class MessageConsumer:
                     continue
 
                 msg = json.loads(msg_json)
+                # Nachrichten anderer Agenten kommen nie vom Sentinel: Marke entschärfen.
+                from app.tools.schritt_sperre import ohne_marke
+                msg = ohne_marke(msg)
 
                 # ── Meeting-room message handler ────────────────────────────
                 # The orchestrator's meeting_rooms._run_meeting engine pushes

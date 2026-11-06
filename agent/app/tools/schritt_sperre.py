@@ -23,6 +23,35 @@ SPERRE_PRAEFIX = "Sentinel-Sperre"
 MARKE = "[Plattform-Sentinel]"
 
 
+_MARKE_MUSTER = re.compile(r"\[\s*plattform[\s_\-‐-―]*sentinel", re.IGNORECASE)
+#: Volle Breite → ASCII, Zeichen für Zeichen (wie orchestrator/app/core/fremdtext._sichtbar).
+_VOLLE_BREITE = {c: c - 0xFEE0 for c in range(0xFF01, 0xFF5F)}
+
+
+def _sichtbar(text: str) -> str:
+    import unicodedata
+
+    t = text.translate(_VOLLE_BREITE)
+    return "".join(z for z in t if z in "\n\t" or unicodedata.category(z)[0] != "C")
+
+
+def ohne_marke(wert):
+    """Die Sentinel-Marke in fremdem Text entschärfen — für Nachrichten anderer Agenten,
+    die nie vom Sentinel stammen. Gleiche Regel wie im Orchestrator
+    (``fremdtext.ohne_plattformmarke``: volle Breite, unsichtbare Zeichen), und durch
+    verschachtelte Felder hindurch. Text ohne Marke bleibt unverändert."""
+    if isinstance(wert, dict):
+        return {k: ohne_marke(v) for k, v in wert.items()}
+    if isinstance(wert, list):
+        return [ohne_marke(v) for v in wert]
+    if not isinstance(wert, str):
+        return wert
+    sichtbar = _sichtbar(wert)
+    if not _MARKE_MUSTER.search(sichtbar):
+        return wert
+    return _MARKE_MUSTER.sub("(Plattform-Sentinel", sichtbar)
+
+
 def regeln_neu_laden(text: str) -> bool:
     """Kommt ein Sentinel-Hinweis an, gelten die zwischengespeicherten Befehlsregeln als
     abgelaufen: Die neue Sperre greift beim nächsten Werkzeugaufruf, nicht erst nach bis

@@ -38,6 +38,22 @@ def entschaerft(text: str | None) -> str:
     return _MARKE.sub(lambda m: f"({m.group(1)}EXTERNAL-DATA", _sichtbar(text or ""))
 
 
+#: Die Marke des Plattform-Sentinels (core/sentinel_befund.MARKE). Die Agenten-Anleitung
+#: gibt einer Chat-Nachricht mit dieser Marke Gewicht — tippen darf sie deshalb niemand
+#: (Sicherheitsprüfung): alles, was nicht vom Sentinel selbst kommt, wird entschärft.
+_SENTINEL_MARKE = re.compile(r"\[\s*plattform[\s_\-‐-―]*sentinel", re.IGNORECASE)
+
+
+def ohne_plattformmarke(text: str | None) -> str:
+    """``[Plattform-Sentinel`` in fremdem Text unwirksam machen (auch volle Breite,
+    unsichtbare Zeichen dazwischen). Text ohne Marke bleibt unverändert."""
+    roh = text or ""
+    sichtbar = _sichtbar(roh)
+    if not _SENTINEL_MARKE.search(sichtbar):
+        return roh
+    return _SENTINEL_MARKE.sub("(Plattform-Sentinel", sichtbar)
+
+
 def einzeilig(text: str | None, hoechstens: int) -> str:
     """Entschärft, auf eine Zeile gezogen und gekürzt — für Betreffs, Namen, Titel."""
     return " ".join(entschaerft(text).split())[:hoechstens]

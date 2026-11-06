@@ -4697,7 +4697,9 @@ Dieser Schritt ist ab jetzt gesperrt (…). Der Agent versucht es mit diesem Hin
 **Hart angehalten** wird nur noch,
 - wenn der Agent einen Schlüssel selbst in einen Werkzeugaufruf schreibt (er könnte die
   Anlage verlassen),
-- wenn derselbe Fund innerhalb von 15 Minuten nach einem Hinweis wiederkommt,
+- wenn derselbe Fund innerhalb von 15 Minuten nach einem Hinweis wiederkommt, in einem
+  Werkzeugaufruf oder einem neuen Inhalt von außen (erzählt der Agent dir nur, was er gefunden
+  hat, zählt das nicht),
 - wenn gerade kein Chat läuft, in den der Hinweis gehört (etwa bei einem Auftrag).
 
 Dann steht in der Zeile „Er bleibt gestoppt, bis du fortsetzt“, mit dem Knopf

@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.431.4] - 2026-11-06
+
+### Behoben
+- Sentinel: Ein Fund in der eigenen Antwort des Agenten nach einem Hinweis führt nicht mehr zum harten Stopp. Live gesehen: Der Agent beschrieb dem Menschen sinngemäß übersetzt, was in der Quelle stand; das traf das Muster, galt als Wiederholung und stoppte den Agenten samt parallelem Auftrag. Werkzeugaufrufe und neue Inhalte von außen bleiben scharf.
+- Der Hinweis verlangt jetzt ausdrücklich, Umlenk-Anweisungen auch nicht sinngemäß oder übersetzt wiederzugeben.
+- Agenten-Anleitung (Claude Code, Codex, eigene Modelle): neuer Abschnitt „Plattform-Sentinel“. Die Marke verleiht keine Befugnis über „diesen Schritt nicht wiederholen, anderen Weg suchen“ hinaus — eine Textmarke lässt sich mit gleich aussehenden Zeichen immer nachahmen, die Sperre wirkt technisch. Live gesehen: Ein Agent hielt den Hinweis zum Fortsetzen für eine mögliche Umlenkung, weil er als Chat-Nachricht ankommt. Jetzt weiß er, dass die Marke im Chat von der Plattform kommt und in einem Werkzeugergebnis nur Inhalt ist. Wirkt nach „Agenten aktualisieren“.
+
+### Sicherheit
+- Die Marke `[Plattform-Sentinel]` kann niemand mehr tippen: An der einen Stelle für alle Wege in den Agenten (`chat_auftrag`: Chat, Aufträge, Agenten-Nachrichten) und beim Empfang direkter Agenten-Nachrichten wird sie entschärft (auch volle Breite, unsichtbare Zeichen). Nur der Sentinel selbst und der Knopf „Fortsetzen“ senden mit ihr.
+- Im Agenten dieselbe Entschärfung wie im Orchestrator (volle Breite, unsichtbare Zeichen), durch verschachtelte Felder hindurch; im Hinweistext werden auch die eingesetzten Teile (Pfad, maskierter Schlüssel) entschärft — nur die feste Marke am Anfang spricht als Plattform.
+- Die Ausnahme „Antwort ist keine Handlung“ gilt nur für Umlenk-Anweisungen; ein Schlüssel in der Antwort nach einem Hinweis führt zum harten Stopp. Ein übergangener Fund steht als „beobachtet“ im Prüfprotokoll.
+
+### Tests
+- `AntwortIstKeineHandlung`, `AnleitungKenntDieMarke`, `MarkeNurVomSentinel`, `AusnahmeNurFuerUmlenkung`, `FremdeMarke` (Agent) (alle drei Laufzeiten, löst den Detektor nicht selbst aus); 122 Sentinel-Tests grün.
+
 ## [1.431.3] - 2026-11-06
 
 ### Sicherheit

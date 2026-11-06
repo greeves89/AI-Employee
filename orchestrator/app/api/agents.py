@@ -1259,7 +1259,7 @@ async def sentinel_fortsetzen(
     einreihung = await einreihen(redis.client if redis else None, agent_id, {
         "id": f"{body.zeile_id}-weiter", "text": str(meta.get("fortsetzen") or ""), "model": None,
         "chat_session_id": body.session_id, "source": "webapp",
-    })
+    }, plattform=True)
     if not getattr(einreihung, "eingereiht", False):
         raise HTTPException(status_code=409, detail="Fortsetzen nicht möglich (Budget oder Warteschlange)")
     meta["fortgesetzt"] = True
