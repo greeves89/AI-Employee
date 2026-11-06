@@ -293,7 +293,7 @@ class SentinelService:
         verdict = await self._scan(agent_id, event)
         if verdict is None or not verdict.triggered:
             return
-        from app.core.sentinel_befund import WERKZEUGAUFRUF, fundstelle
+        from app.core.sentinel_befund import ANTWORT, WERKZEUGAUFRUF, fundstelle
 
         reason = verdict.reason or "sentinel_triggered"
         schluessel = (agent_id, reason)
@@ -307,6 +307,13 @@ class SentinelService:
             logger.info("[Sentinel] %s/%s: Echo des fortgesetzten Fundes", agent_id, reason)
             return
         wiederholt = seit is not None and seit < _FORTSETZUNG_FENSTER_SEKUNDEN
+        if wiederholt and stelle == ANTWORT:
+            # Nach einem Hinweis beschreibt der Agent dem Menschen oft, was in der Quelle
+            # stand — live gesehen: sinngemäß übersetzt, und das trifft das Muster. Eine
+            # Antwort ist keine Handlung; Werkzeugaufrufe und neue Inhalte von außen
+            # bleiben scharf (Wiederholung = harter Stopp).
+            logger.info("[Sentinel] %s/%s: Antwort nennt den Fund — keine Handlung", agent_id, reason)
+            return
         if wiederholt:
             # Nach einer Fortsetzung laeuft der Agent weiter: die Sturmsperre darf
             # einen erneuten Fund hier nicht verschlucken.

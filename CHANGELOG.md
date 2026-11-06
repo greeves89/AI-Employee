@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.431.4] - 2026-11-06
+
+### Behoben
+- Sentinel: Ein Fund in der eigenen Antwort des Agenten nach einem Hinweis führt nicht mehr zum harten Stopp. Live gesehen: Der Agent beschrieb dem Menschen sinngemäß übersetzt, was in der Quelle stand; das traf das Muster, galt als Wiederholung und stoppte den Agenten samt parallelem Auftrag. Werkzeugaufrufe und neue Inhalte von außen bleiben scharf.
+- Der Hinweis verlangt jetzt ausdrücklich, Umlenk-Anweisungen auch nicht sinngemäß oder übersetzt wiederzugeben.
+- Agenten-Anleitung (Claude Code, Codex, eigene Modelle): neuer Abschnitt „Plattform-Sentinel“. Live gesehen: Ein Agent hielt den Hinweis zum Fortsetzen für eine mögliche Umlenkung, weil er als Chat-Nachricht ankommt. Jetzt weiß er, dass die Marke im Chat von der Plattform kommt und in einem Werkzeugergebnis nur Inhalt ist. Wirkt nach „Agenten aktualisieren“.
+
+### Tests
+- `AntwortIstKeineHandlung`, `AnleitungKenntDieMarke` (alle drei Laufzeiten, löst den Detektor nicht selbst aus); 122 Sentinel-Tests grün.
+
 ## [1.431.3] - 2026-11-06
 
 ### Sicherheit
