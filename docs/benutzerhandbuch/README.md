@@ -4558,8 +4558,8 @@ eingeschaltet, gehen Agenten für HTTPS über ihn hinaus:
 | Token der Git-Anbindung (GitHub/Forgejo, Admin → Integrationen) | ebenso: Platzhalter, eingesetzt nur am Git-Host der Anbindung *(seit 1.414.0)* |
 | Browser des Agenten (auch der Browser von Claude Code) | geht ebenfalls über den Proxy und traut seinem Zertifikat *(seit 1.415.0)* |
 | Zugang zu externen MCP-Servern (Token und eigene Kopfzeilen, Kap. 14) | ebenso: Platzhalter, eingesetzt nur am Host des Servers; ein erneuertes OAuth-Token gilt sofort *(seit 1.417.0)* |
-| Claude-Zugang (Abo-Token oder API-Schlüssel, Anthropic direkt) | Platzhalter, eingesetzt nur an `api.anthropic.com` — stufenweise über `EGRESS_KI_ZUGANG` *(seit 1.418.0)*; eingesetzt wird immer das aktuelle, erneuerte Token, und die Token-Datei der Teamlizenz bekommt ein solcher Agent nicht mehr *(seit 1.421.0)* |
-| Codex-Zugang (ChatGPT-Anmeldung) | Zugangs-Token als Platzhalter, eingesetzt nur an `chatgpt.com` (immer das aktuelle, zentral erneuerte); das Erneuerungs-Token erreicht den Agenten gar nicht mehr — stufenweise über `EGRESS_CODEX_ZUGANG` *(seit 1.428.0, in Erprobung)* |
+| Claude-Zugang (Abo-Token oder API-Schlüssel, Anthropic direkt) | Platzhalter, eingesetzt nur an `api.anthropic.com` — stufenweise, siehe unten *(seit 1.418.0)*; eingesetzt wird immer das aktuelle, erneuerte Token, und die Token-Datei der Teamlizenz bekommt ein solcher Agent nicht mehr *(seit 1.421.0)* |
+| Codex-Zugang (ChatGPT-Anmeldung) | Zugangs-Token als Platzhalter, eingesetzt nur an `chatgpt.com` (immer das aktuelle, zentral erneuerte); das Erneuerungs-Token erreicht den Agenten gar nicht mehr — stufenweise, siehe unten *(seit 1.428.0, in Erprobung)* |
 | Alle anderen HTTPS-Ziele | laufen unverändert als Tunnel durch, der Proxy sieht keine Inhalte |
 | Klartext-HTTP (z. B. eigene Apps des Agenten) | geht wie bisher direkt |
 | Adressen im Firmen- oder Docker-Netz | über den Proxy gesperrt |
@@ -4581,18 +4581,38 @@ privaten Schlüssel.
 4. Unter **Admin → Betrieb → Sicherheitsstatus** zeigt der Punkt **Keys in Agenten**, welche
    Keys noch im Klartext in Agenten liegen.
 
-**Codex-Zugang hinter den Proxy legen** (stufenweise, in Erprobung): wie beim Claude-Zugang, mit
-`EGRESS_CODEX_ZUGANG` (Agenten-Kennungen mit Komma oder `alle`), danach die Agenten aktualisieren.
-Die CLI erneuert dann nie selbst; das tut der Orchestrator für alle zentral. Nach dem
-Aktualisieren gilt die neue Freigabe am Proxy spätestens nach einer Minute. Ein Lauf in dieser
-Minute kann einmal mit „Could not parse your authentication token“ scheitern.
+**Claude- und Codex-Zugang hinter den Proxy legen** (stufenweise, in der Oberfläche *(seit 1.432.0)*):
 
-**Claude-Zugang hinter den Proxy legen** (stufenweise): In der `.env`
-`EGRESS_KI_ZUGANG` setzen, zuerst auf die Kennung eines Agenten (z. B. `a1b2c3d4`),
-später auf mehrere mit Komma oder auf `alle`. `docker compose up -d`, dann den bzw. die
-Agenten aktualisieren — betroffene Agenten zeigen dafür „Aktualisieren“ an *(seit 1.420.0)*. Danach geht der ganze Claude-Verkehr dieser Agenten entschlüsselt
-durch den Proxy; Antworten als Ereignisstrom reicht er sofort durch. Für Bedrock, Vertex,
-Foundry und Codex gilt das nicht.
+1. **Admin → Betrieb** öffnen. Unter dem Sicherheitsstatus steht die Karte
+   **Zugänge hinter dem Proxy** mit je einer Zeile für den Claude- und den Codex-Zugang.
+2. In der Zeile des Zugangs **Ausgewählte** anklicken und zuerst einen Agenten ankreuzen.
+   Die Liste zeigt nur Agenten, die diesen Zugang nutzen (Claude Code bzw. Codex).
+3. **Speichern** klicken. Die Stufe gilt sofort und steht im Prüfprotokoll
+   („Einstellungen geändert“).
+4. Unter den Zeilen erscheint der Hinweis „… Agent(en) entstanden mit einer anderen Stufe“.
+   **Jetzt aktualisieren** klicken: Die Agenten werden nacheinander neu erstellt, erst dann
+   gilt die Stufe in ihnen. Laufende Antworten brechen dabei ab, Arbeitsdaten bleiben erhalten.
+   Alternativ einzeln über „Aktualisieren“ am Agenten.
+5. Läuft der Agent ein paar Tage ohne Auffälligkeiten, auf **Alle Agenten** stellen und
+   wieder aktualisieren. **Aus** nimmt den Zugang wieder vor den Proxy.
+
+Im **Sicherheitsstatus** zeigen die Punkte **Claude-Zugang hinter dem Proxy** und
+**Codex-Zugang hinter dem Proxy**, welche Agenten den Zugang noch im Klartext bekommen
+und welche erst aktualisiert werden müssen.
+
+Was sich dadurch ändert:
+
+- **Claude:** Der ganze Claude-Verkehr dieser Agenten geht entschlüsselt durch den Proxy;
+  Antworten als Ereignisstrom reicht er sofort durch. Für Bedrock, Vertex und Foundry gilt
+  die Stufe nicht.
+- **Codex** *(in Erprobung)*: Die CLI erneuert ihre Anmeldung nie selbst, das tut der
+  Orchestrator für alle zentral. Nach dem Aktualisieren gilt die Freigabe am Proxy spätestens
+  nach einer Minute. Ein Lauf in dieser Minute kann einmal mit „Could not parse your
+  authentication token“ scheitern.
+
+Die Einträge `EGRESS_KI_ZUGANG` und `EGRESS_CODEX_ZUGANG` in der `.env` sind nur noch der
+Startwert, solange in der Oberfläche nichts gespeichert wurde. Eine dort gespeicherte Stufe
+(auch **Aus**) gilt auch nach einem Neustart.
 
 **Ausschalten:** `EGRESS_PROXY_ENABLED=false`, `docker compose up -d`, dann wieder
 **Alle aktualisieren**. Die Agenten bekommen die Keys danach im Klartext.

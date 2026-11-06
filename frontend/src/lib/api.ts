@@ -1932,6 +1932,33 @@ export async function getSicherheit(): Promise<SicherheitsStand> {
   return fetchJSON(`${getBase()}/settings/sicherheit`);
 }
 
+/** Stufe eines Zugangs hinter dem Egress-Proxy (Admin → Betrieb). */
+export interface EgressStufe {
+  modus: "aus" | "auswahl" | "alle";
+  agenten: string[];
+}
+
+export interface EgressStufenStand {
+  proxy_aktiv: boolean;
+  ki: EgressStufe;
+  codex: EgressStufe;
+  agenten: { id: string; name: string; laufzeit: string; veraltet: boolean }[];
+}
+
+export async function getEgressStufen(): Promise<EgressStufenStand> {
+  return fetchJSON(`${getBase()}/settings/egress-stufen`);
+}
+
+export async function setEgressStufe(
+  art: "ki" | "codex",
+  stufe: EgressStufe,
+): Promise<EgressStufenStand> {
+  return fetchJSON(`${getBase()}/settings/egress-stufen`, {
+    method: "PUT",
+    body: JSON.stringify({ art, ...stufe }),
+  });
+}
+
 export async function getDatenschutz(): Promise<DatenschutzStand> {
   return fetchJSON(`${getBase()}/settings/datenschutz`);
 }

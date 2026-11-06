@@ -211,20 +211,74 @@ _KI_ANDERER_WEG = ("CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_
                    "ANTHROPIC_BASE_URL")
 
 
+#: Die beiden Stufen-Schalter und ihre Einstellungsschlüssel (in der Oberfläche unter
+#: Admin → Betrieb → „Zugänge hinter dem Proxy“, sonst Startwert aus der .env).
+STUFEN = {"ki": "egress_ki_zugang", "codex": "egress_codex_zugang"}
+STUFEN_MODI = ("aus", "auswahl", "alle")
+_AGENT_ID = re.compile(r"^[0-9a-f]{8}$")
+
+
+def stufe_lesen(wert: str | None) -> dict:
+    """``""``/``"aus"`` → aus, ``"alle"`` → alle, sonst die Agenten-Kennungen der Auswahl."""
+    roh = (wert or "").strip().lower()
+    if not roh or roh == "aus":
+        return {"modus": "aus", "agenten": []}
+    if roh == "alle":
+        return {"modus": "alle", "agenten": []}
+    teile = sorted({x.strip() for x in roh.split(",") if x.strip()})
+    unfoermig = [x for x in teile if not _AGENT_ID.match(x)]
+    if unfoermig:
+        # Etwa „true“ in der .env: trifft keinen Agenten — der Zugang ginge im Klartext
+        # hinaus. Laut melden; der Sicherheitsstatus zeigt die Agenten mit Klartext.
+        logger.warning("Proxy-Stufe enthält %d Eintrag/Einträge, die keine Agenten-Kennung sind",
+                       len(unfoermig))
+    return {"modus": "auswahl", "agenten": teile}
+
+
+def stufe_gesenkt(alt: dict, neu: dict) -> bool:
+    """Deckt die neue Stufe weniger Agenten ab als die alte? (dann im Prüfprotokoll markiert)"""
+    if alt["modus"] == "aus":
+        return False
+    if alt["modus"] == "alle":
+        return neu["modus"] != "alle"
+    return neu["modus"] == "aus" or (neu["modus"] == "auswahl"
+                                     and not set(alt["agenten"]) <= set(neu["agenten"]))
+
+
+def stufe_schreiben(modus: str, agenten: list[str] | None = None) -> str:
+    """Gegenstück zu ``stufe_lesen``. Unbekannter Modus oder unförmige Kennung: ValueError.
+
+    „aus“ wird als ``"aus"`` gespeichert, nicht leer: leere Werte übergeht das Laden
+    beim Start, dann gälte nach einem Neustart wieder der Startwert aus der ``.env``.
+    """
+    if modus not in STUFEN_MODI:
+        raise ValueError(f"Unbekannter Modus: {modus}")
+    if modus == "aus":
+        return "aus"
+    if modus == "alle":
+        return "alle"
+    ids = sorted({str(a).strip().lower() for a in (agenten or [])})
+    if not ids or any(not _AGENT_ID.match(a) for a in ids):
+        raise ValueError("Auswahl braucht gültige Agenten-Kennungen")
+    return ",".join(ids)
+
+
 def ki_ueber_proxy(agent_id: str) -> bool:
     """Geht der Claude-Zugang dieses Agenten ueber den Proxy? (``EGRESS_KI_ZUGANG``)"""
-    wert = (settings.egress_ki_zugang or "").strip().lower()
-    if not aktiv() or not wert:
-        return False
-    return wert == "alle" or (agent_id or "").lower() in {x.strip() for x in wert.split(",") if x.strip()}
+    return _stufe_trifft(settings.egress_ki_zugang, agent_id)
 
 
 def codex_ueber_proxy(agent_id: str) -> bool:
     """Geht der Codex-Zugang dieses Agenten über den Proxy? (``EGRESS_CODEX_ZUGANG``)"""
-    wert = (getattr(settings, "egress_codex_zugang", "") or "").strip().lower()
-    if not aktiv() or not wert:
+    return _stufe_trifft(getattr(settings, "egress_codex_zugang", ""), agent_id)
+
+
+def _stufe_trifft(wert: str | None, agent_id: str) -> bool:
+    if not aktiv():
         return False
-    return wert == "alle" or (agent_id or "").lower() in {x.strip() for x in wert.split(",") if x.strip()}
+    stufe = stufe_lesen(wert)
+    return stufe["modus"] == "alle" or (
+        stufe["modus"] == "auswahl" and (agent_id or "").lower() in stufe["agenten"])
 
 
 #: Kopf eines unsignierten JWT ({"alg":"none","typ":"JWT"}).
