@@ -157,6 +157,9 @@ class SentinelService:
         self._letzter_vorfall: dict[tuple[str, str], float] = {}
         # (agent_id, grund) -> Zeitpunkt der letzten Fortsetzung mit Hinweis.
         self._fortgesetzt: dict[tuple[str, str], float] = {}
+        # (agent_id, grund) -> Fingerabdruck des fortgesetzten Fundes (tool_use_id, Muster):
+        # im Nachlauf zaehlt nur ein ECHO davon, jeder andere Fund ist eine Wiederholung.
+        self._fingerabdruck: dict[tuple[str, str], tuple[str | None, str | None]] = {}
         # agent_id -> {tool_use_id: (werkzeug, eingabe)} der letzten Aufrufe, damit ein
         # Fund in einem Werkzeugergebnis seinem Schritt zugeordnet werden kann.
         self._aufrufe: dict[str, dict[str, tuple[str, dict]]] = {}
@@ -299,8 +302,9 @@ class SentinelService:
         # Nachlauf: nur ECHOS desselben Fundes (Ergebnis, Antwort) bis der Hinweis
         # eingefaltet ist. Ein Fund im eigenen Werkzeugaufruf heisst: der Agent folgt
         # der Anweisung — das ist nie Nachlauf, sondern sofort eine Wiederholung.
-        if seit is not None and seit < _NACHLAUF_SEKUNDEN and stelle != WERKZEUGAUFRUF:
-            logger.info("[Sentinel] %s/%s: Nachlauf des fortgesetzten Fundes", agent_id, reason)
+        if (seit is not None and seit < _NACHLAUF_SEKUNDEN and stelle != WERKZEUGAUFRUF
+                and self._ist_echo(agent_id, reason, event, verdict.excerpt)):
+            logger.info("[Sentinel] %s/%s: Echo des fortgesetzten Fundes", agent_id, reason)
             return
         wiederholt = seit is not None and seit < _FORTSETZUNG_FENSTER_SEKUNDEN
         if wiederholt:
@@ -331,14 +335,19 @@ class SentinelService:
         muster = sperrmuster(kern) if settings.redis_acl_enabled else None
         befund = einordnen(reason, stelle, maske, wiederholt=wiederholt,
                            schritt=zeigbar(kern), gesperrt=bool(muster))
+        gesichert = True
         if muster:
-            # VOR dem Fortsetzen: der Agent soll den Schritt gesperrt vorfinden.
-            await self._sperren_und_merken(agent_id, befund, muster)
+            # VOR dem Fortsetzen: der Agent soll den Schritt gesperrt vorfinden. Scheitert
+            # das Speichern, gibt es keinen sanften Weg (Sicherheitspruefung).
+            gesichert = await self._sperren_und_merken(agent_id, befund, muster)
         sitzungen = await self._laufende_gespraeche(agent_id) if settings.redis_acl_enabled else []
-        if befund.weiter and sitzungen and await self._fortsetzen(agent_id, befund, sitzungen):
+        if (befund.weiter and gesichert and sitzungen
+                and await self._fortsetzen(agent_id, befund, sitzungen)):
+            self._fingerabdruck[(agent_id, reason)] = self._abdruck(event, verdict.excerpt)
             return
         if befund.weiter:
-            # Fortsetzen ging nicht (kein Gespraech, nur ein Auftrag) — Texte fuer den Stopp.
+            # Fortsetzen ging nicht (kein Gespraech, nur ein Auftrag, Sperre nicht
+            # gespeichert) — Texte fuer den Stopp.
             befund = einordnen(reason, stelle, maske, schritt=zeigbar(kern), gesperrt=bool(muster),
                                kein_gespraech=True)
         self._stopp_befund[agent_id] = befund
@@ -379,7 +388,7 @@ class SentinelService:
             return self._aufrufe.get(agent_id, {}).get(str(daten.get("tool_use_id") or ""), (None, None))
         return None, None
 
-    async def _sperren_und_merken(self, agent_id: str, befund, muster: str) -> None:
+    async def _sperren_und_merken(self, agent_id: str, befund, muster: str) -> bool:
         """Den Schritt sperren (Befehlsregel des Agenten) und die Lehre ins Gedächtnis legen.
 
         Die Sperre ist eine gewöhnliche agentbezogene Befehlsregel: sichtbar und löschbar
@@ -417,8 +426,25 @@ class SentinelService:
                         content=f"Lehre vom Sentinel: {befund.lehre}"[:4000], importance=4,
                     ))
                 await db.commit()
-        except Exception:  # noqa: BLE001 — ohne Sperre geht es mit dem Hinweis allein weiter
+            return True
+        except Exception:  # noqa: BLE001 — ohne gespeicherte Sperre: harter Weg (Aufrufer)
             logger.exception("[Sentinel] Sperre/Lehre fuer %s nicht gespeichert", agent_id)
+            return False
+
+    @staticmethod
+    def _abdruck(event: dict, auszug: str | None) -> tuple[str | None, str | None]:
+        daten = event.get("data") if isinstance(event.get("data"), dict) else {}
+        kennung = daten.get("tool_use_id")
+        return (kennung if isinstance(kennung, str) else None, auszug)
+
+    def _ist_echo(self, agent_id: str, grund: str, event: dict, auszug: str | None) -> bool:
+        """Dasselbe Werkzeugergebnis noch einmal oder dieselbe erkannte Formulierung —
+        nicht irgendein Fund im Nachlauf (Sicherheitspruefung)."""
+        vorher = self._fingerabdruck.get((agent_id, grund))
+        if vorher is None:
+            return False
+        kennung, muster = self._abdruck(event, auszug)
+        return (kennung is not None and kennung == vorher[0]) or (muster is not None and muster == vorher[1])
 
     def _seit_fortsetzung(self, agent_id: str, grund: str) -> float | None:
         """Sekunden seit der letzten Fortsetzung mit diesem Grund, sonst None."""
