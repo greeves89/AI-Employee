@@ -1959,6 +1959,26 @@ export async function setEgressStufe(
   });
 }
 
+/** Agenten im Leerlauf selbst aktualisieren (Admin → Betrieb). */
+export interface AgentenUpdatesStand {
+  modus: "leerlauf" | "aus";
+  version: string;
+  /** Nach einem Fehlschlag für diese Version angehalten — Speichern nimmt es wieder auf. */
+  angehalten: boolean;
+  ausstehend: { id: string; name: string; version: string | null; grund: string; text: string }[];
+}
+
+export async function getAgentenUpdates(): Promise<AgentenUpdatesStand> {
+  return fetchJSON(`${getBase()}/settings/agenten-updates`);
+}
+
+export async function setAgentenUpdates(modus: AgentenUpdatesStand["modus"]): Promise<AgentenUpdatesStand> {
+  return fetchJSON(`${getBase()}/settings/agenten-updates`, {
+    method: "PUT",
+    body: JSON.stringify({ modus }),
+  });
+}
+
 export async function getDatenschutz(): Promise<DatenschutzStand> {
   return fetchJSON(`${getBase()}/settings/datenschutz`);
 }

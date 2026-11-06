@@ -2320,6 +2320,20 @@ class AgentManager:
             # No container exists — recreate it (keeps volumes/data)
             logger.info(f"Agent {scrub_log(agent_id)} has no container — recreating via update_agent")
             return await self.update_agent(agent_id)
+        # Veraltet (neue Version oder andere Proxy-Stufe)? Dann nicht den alten Behälter
+        # hochfahren, sondern neu erstellen — sonst liefe ein gestoppter Agent nach
+        # jedem Release weiter auf dem alten Stand (core/agenten_aktualisieren.py).
+        # Nur, wenn der Behälter wirklich steht: „Start“ auf einen laufenden Agenten
+        # (Doppelklick, „Fortsetzen“, Concierge) darf ihn nicht mitten im Zug abreißen.
+        # Und nur mit vorhandenem Abbild: ``update_agent`` entfernt den alten Behälter
+        # zuerst — ohne Abbild wäre der Agent danach gar nicht mehr startbar.
+        from app.core import agenten_aktualisieren as _aa
+        if _aa.veraltet(agent) \
+                and await asyncio.to_thread(self.docker.get_container_status, agent.container_id) != "running":
+            if await _aa.abbild_bereit(self.docker):
+                logger.info(f"Agent {scrub_log(agent_id)} ist veraltet — beim Start neu erstellt")
+                return await self.update_agent(agent_id)
+            logger.warning(f"Agent {scrub_log(agent_id)} ist veraltet, Abbild fehlt — startet auf dem alten Stand")
         try:
             self.docker.start_container(agent.container_id)
         except NotFound:

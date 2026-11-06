@@ -21,6 +21,7 @@ class AuditEventType(str, Enum):
     AGENT_STOPPED = "agent_stopped"               # agent container stopped
     AGENT_CREATED = "agent_created"               # new agent created
     AGENT_DELETED = "agent_deleted"               # agent deleted
+    AGENT_UPDATED = "agent_updated"               # Behälter neu erstellt (Update), auch automatisch
     # Governance / policy changes
     AUTONOMY_LEVEL_CHANGED = "autonomy_level_changed"   # agent autonomy level changed
     BUDGET_CHANGED = "budget_changed"                   # monthly budget of a user or the default changed

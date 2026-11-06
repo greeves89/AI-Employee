@@ -302,6 +302,10 @@ class Settings(BaseSettings):
     egress_ki_zugang: str = ""
     # Codex-Zugang (ChatGPT-Anmeldung) nur als Platzhalter: "" aus, "alle" oder Agenten-IDs.
     egress_codex_zugang: str = ""
+    # Agenten im Leerlauf selbst aktualisieren (core/agenten_aktualisieren.py): "leerlauf" | "aus".
+    agenten_auto_update: str = "leerlauf"
+    # Version, bei der das automatische Aktualisieren gescheitert ist — dann ruht es für sie.
+    agenten_auto_update_angehalten: str = ""
     # When True, each agent container connects to Redis with its OWN least-privilege
     # ACL user (derived deterministically from api_secret_key, see redis_service.py
     # ensure_agent_acl_user) instead of the single shared admin credential every
