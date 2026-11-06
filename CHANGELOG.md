@@ -8,14 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 ## [1.434.0] - 2026-11-06
 
 ### Neu
-- Sicherheitsstatus: Punkt „DLP-Filter (ausgehende Nachrichten)“. Der Filter ist bei jeder neuen Anlage zunächst aus; bisher fiel das niemandem auf. Warnung, wenn er aus ist oder Schlüssel global nur protokolliert bzw. durchlässt; in Ordnung, wenn Schlüssel gesperrt oder geschwärzt werden.
+- Sicherheitsstatus: Punkt „DLP-Filter (ausgehende Nachrichten)“. Der Filter ist bei jeder neuen Anlage zunächst aus; bisher fiel das niemandem auf. Gerechnet wird mit derselben Auflösung wie im Filter (Regel des Agenten vor globaler Regel vor Voreinstellung) für alle Zugangsdaten-Klassen (Schlüssel, Anbieter-Formate, Seed-Phrasen): Warnung, wenn der Filter aus ist, global Zugangsdaten durchlässt oder eine Regel für einzelne Agenten es tut (mit Namen). Der Text nennt auch, was der Filter nicht erfasst (Web-Chat, Sprache, eigene Werkzeugaufrufe der Agenten).
 
 ### Behoben
-- Eine laufende Sprachsitzung zählt jetzt als „beschäftigt“: Das automatische Aktualisieren (1.433.0) erstellt einen Agenten nicht mehr mitten in einem Sprachgespräch neu (eine Sprachsitzung schreibt nicht laufend Chat-Zeilen). Neue Stelle `core/sprachsitzungen.py`, angemeldet nach erfolgreichem Start, abgemeldet im `finally` der Sitzung.
+- Eine laufende Sprachsitzung zählt jetzt als „beschäftigt“: Das automatische Aktualisieren (1.433.0) erstellt einen Agenten nicht mehr mitten in einem Sprachgespräch neu (eine Sprachsitzung schreibt nicht laufend Chat-Zeilen). Neue Stelle `core/sprachsitzungen.py`, angemeldet nach erfolgreichem Start, Lebenszeichen bei jeder Nachricht, abgemeldet im `finally` der Sitzung. Eine halb offene Verbindung (Tab offen, Gerät schläft) zählt nach 10 Minuten ohne Lebenszeichen nicht mehr.
 
 ### Tests
 - `test_sentinel_kette.py`: Sentinel als ganze Kette ohne Ersatzteile in der Mitte — Fund im Werkzeugergebnis → Sperre als echte Befehlsregel und Lehre in der Datenbank → Fortsetzen mit Plattform-Marke in denselben Zug → Abruf über `/command-policies/for-agent` → Prüfung mit dem Code des Agenten (`schritt_sperre.py`): derselbe Schritt ist mit WebFetch, `web_fetch`, curl und Codex gesperrt, ein anderer frei. Bricht ein Glied zwischen Orchestrator und Agent (Name, Muster, Antwortformat, Kern-Bildung), schlägt er an — geprüft durch absichtliches Verstellen des Regelnamens im Agenten.
-- Sicherheitsstatus DLP in beide Richtungen; Sprachsitzung als Beschäftigt-Grund.
+- Sicherheitsstatus DLP in beide Richtungen (auch Regel eines einzelnen Agenten, abgeschaltete Regel, alle Zugangsdaten-Klassen); Sprachsitzung als Beschäftigt-Grund inkl. Ablauf ohne Lebenszeichen; Verdrahtung im Sprach-Endpunkt über den Syntaxbaum geprüft (schlägt an, wenn das Lebenszeichen fehlt).
 
 ## [1.433.1] - 2026-11-06
 

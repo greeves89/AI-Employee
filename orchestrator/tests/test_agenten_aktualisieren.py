@@ -319,26 +319,57 @@ class SprachsitzungTests(Basis):
         from app.core import sprachsitzungen
         await self.anlegen(_agent("v1", "Stimme"))
         agent = await self.db.get(Agent, "v1")
-        sprachsitzungen.anmelden("v1")
-        sprachsitzungen.anmelden("v1")        # zwei Geräte
+        k1, k2 = sprachsitzungen.anmelden("v1"), sprachsitzungen.anmelden("v1")   # zwei Geräte
         try:
             self.assertEqual(await aa.beschaeftigt(self.db, self.redis, agent, ruhe=aa.RUHE), "sprache")
-            sprachsitzungen.abmelden("v1")
+            sprachsitzungen.abmelden(k1)
             self.assertTrue(sprachsitzungen.aktiv("v1"), "eine Sitzung ist noch offen")
         finally:
-            sprachsitzungen.abmelden("v1")
+            sprachsitzungen.abmelden(k2)
         self.assertFalse(sprachsitzungen.aktiv("v1"))
         self.assertIsNone(await aa.beschaeftigt(self.db, self.redis, agent, ruhe=aa.RUHE))
 
-    def test_abmelden_ohne_anmelden_schadet_nicht(self):
+    def test_halb_offene_sitzung_zaehlt_nach_zehn_minuten_nicht_mehr(self):
+        """Tab offen, Gerät schläft: ohne Lebenszeichen darf sie das Update nicht ewig sperren."""
         from app.core import sprachsitzungen
-        sprachsitzungen.abmelden("nie-da")
+        jetzt = [1000.0]
+        with patch.object(sprachsitzungen.time, "monotonic", lambda: jetzt[0]):
+            k = sprachsitzungen.anmelden("v2")
+            try:
+                jetzt[0] += sprachsitzungen.FRISCH - 1
+                self.assertTrue(sprachsitzungen.aktiv("v2"))
+                sprachsitzungen.lebenszeichen(k)
+                jetzt[0] += sprachsitzungen.FRISCH - 1
+                self.assertTrue(sprachsitzungen.aktiv("v2"), "Lebenszeichen hält sie frisch")
+                jetzt[0] += 2
+                self.assertFalse(sprachsitzungen.aktiv("v2"))
+            finally:
+                sprachsitzungen.abmelden(k)
+
+    def test_abmelden_unbekannter_kennung_schadet_nicht(self):
+        from app.core import sprachsitzungen
+        sprachsitzungen.abmelden(-1)
         self.assertFalse(sprachsitzungen.aktiv("nie-da"))
 
     def test_ws_meldet_an_und_im_finally_ab(self):
-        """Verdrahtung: Anmelden nach erfolgreichem Start, Abmelden im finally der Sitzung."""
+        """Verdrahtung im Syntaxbaum (nicht im Text): angemeldet im Sprach-Endpunkt, abgemeldet
+        im finally genau des try, das danach kommt; Lebenszeichen in der Empfangsschleife."""
+        import ast
         from pathlib import Path
-        quelle = (Path(__file__).resolve().parents[1] / "app" / "api" / "ws.py").read_text()
-        an, ab = quelle.index("sprachsitzungen.anmelden(agent_id)"), quelle.index("sprachsitzungen.abmelden(agent_id)")
-        self.assertLess(quelle.index('reason="voice init failed"'), an, "erst nach erfolgreichem Start")
-        self.assertIn("finally:", quelle[an:ab])
+        baum = ast.parse((Path(__file__).resolve().parents[1] / "app" / "api" / "ws.py").read_text())
+        fn = next(n for n in ast.walk(baum) if isinstance(n, ast.AsyncFunctionDef) and n.name == "ws_agent_voice")
+
+        def ruft(knoten, name):
+            return any(isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
+                       and c.func.attr == name and getattr(c.func.value, "id", "") == "sprachsitzungen"
+                       for c in ast.walk(knoten))
+        koerper = fn.body
+        an = next(i for i, n in enumerate(koerper) if ruft(n, "anmelden"))
+        versuch = next(n for n in koerper[an + 1:] if isinstance(n, ast.Try))
+        self.assertTrue(any(ruft(n, "abmelden") for n in versuch.finalbody), "abmelden im finally")
+        self.assertTrue(any(ruft(n, "lebenszeichen") for n in versuch.body), "Lebenszeichen im Gespräch")
+        self.assertFalse(any(ruft(n, "anmelden") for n in koerper[:an]))
+
+
+if __name__ == "__main__":
+    unittest.main()
