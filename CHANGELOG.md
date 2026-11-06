@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.430.0] - 2026-11-06
+
+### Neu
+- Standard-Skills im Agenten-Abbild: geprüfte Kopien mit festem Stand (`agent/skills_standard/`, im Abbild `/opt/skills-standard`, root-eigen), die jeder Agent beim Start in den Skill-Ordner seiner Laufzeit legt: Claude Code `.claude/skills`, Codex und eigene Modelle `.agents/skills`. Ohne Netz, ganze Pakete samt Kit und Skripten. Nachgezogen wird nur, was von dort stammt und sich geändert hat; ein gleichnamiger eigener Skill bleibt unangetastet.
+- Erster Standard-Skill: **anatomy** (MIT, Stand `1482e8469b0a`) erklärt Abläufe, Systeme und Mechanismen als interaktive isometrische Zeichnung. Geprüft: kein Netz, kein `eval`, keine Installation; das Veröffentlichen in die öffentliche Galerie des Projekts ist entfernt (`HERKUNFT.md`).
+
+### Behoben
+- Ablehnungsmeldung für Konto-Werkzeuge nennt auch das ChatGPT-Konto (Codex-Apps), nicht nur das Claude-Konto.
+
+### Doku
+- Handbuch: neuer Einstieg „Auf einen Blick: So arbeitet AI Employee“ mit einer Abbildung, gebaut mit anatomy (interaktiv unter `docs/benutzerhandbuch/figuren/so-arbeitet-ai-employee/`); Kap. 10.4 Standard-Skills. PDF neu erzeugt.
+
+### Tests
+- `test_standard_skills.py`: ganzes Paket je Laufzeit, gleicher Stand unangetastet, neuer Stand nachgezogen, eigener Skill nie überschrieben, fehlende Quelle, Verweis als Ziel; die mitgelieferte Kopie hat Lizenz, Stand, Herkunft und nichts zum Veröffentlichen, das Kit spricht kein Netz.
+- Abbildung: Linienprüfung des Skills 0 von 400 offenen Enden in beiden Fassungen, Konsole sauber, Handy-Breite ohne Querscrollen.
+
 ## [1.429.0] - 2026-11-06
 
 ### Sicherheit

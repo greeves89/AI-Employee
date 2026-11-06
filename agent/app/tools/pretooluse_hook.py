@@ -201,7 +201,7 @@ def decide(tool_name: str, tool_input: dict | None = None) -> dict:
     zusaetzlich ``system_config`` (siehe ``_LAUFZEIT_KONFIG``)."""
     if _ueber_das_konto(tool_name):
         return _deny(
-            f"Werkzeug '{tool_name}' wirkt über das Claude-Konto außerhalb der Anlage "
+            f"Werkzeug '{tool_name}' wirkt über das Claude- bzw. ChatGPT-Konto außerhalb der Anlage "
             "(ohne deren Schutz) — auf Agenten immer gesperrt. Für Benachrichtigungen, "
             "Zeitpläne und Ablage die Werkzeuge der Plattform verwenden."
         )

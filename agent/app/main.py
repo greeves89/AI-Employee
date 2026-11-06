@@ -772,6 +772,11 @@ async def main() -> None:
         setup_default_skills()
         print(f"[Agent {agent_id}] Default skills checked")
 
+    # Mitgelieferte Standard-Skills aus dem Abbild — für JEDE Laufzeit, ohne Netz.
+    from app.standard_skills import bereitstellen
+    for name in bereitstellen(mode):
+        print(f"[Agent {agent_id}] Standard-Skill bereitgestellt: {name}")
+
     # Bootstrap knowledge.md from template (if not exists)
     await bootstrap_knowledge()
 

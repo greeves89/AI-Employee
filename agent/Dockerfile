@@ -145,6 +145,14 @@ COPY richtlinie/requirements.toml /etc/codex/requirements.toml
 RUN chmod 755 /etc/claude-code /etc/codex /opt/mcp/pretooluse-hook.mjs \
     && chmod 644 /etc/claude-code/managed-settings.json /etc/codex/requirements.toml
 
+# Mitgelieferte Standard-Skills (geprüfte Kopien mit festem Stand, siehe HERKUNFT.md):
+# root-eigen und nur lesbar; der Agent legt sie beim Start in den Skill-Ordner seiner
+# Laufzeit (app/standard_skills.py) — ohne Netz, statt `npx skills add` von GitHub.
+COPY skills_standard/ /opt/skills-standard/
+RUN chown -R root:root /opt/skills-standard \
+    && find /opt/skills-standard -type d -exec chmod 755 {} + \
+    && find /opt/skills-standard -type f -exec chmod 644 {} +
+
 # Create workspace directory owned by agent user
 RUN mkdir -p /workspace && chown agent:agent /workspace
 
@@ -182,4 +190,4 @@ CMD ["python", "-s", "-m", "app.main"]
 # Versions-Label GANZ AM ENDE (#889): stand es oben, machte jede neue Versionsnummer
 # alle folgenden Schichten ungueltig — jedes Release baute das ganze Abbild neu.
 # Hier aendert es nur noch die letzte, leere Schicht. Muss VERSION entsprechen.
-LABEL ai-employee.version="1.429.0"
+LABEL ai-employee.version="1.430.0"

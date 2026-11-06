@@ -17,6 +17,34 @@ Seitenleiste stehen links; Aktions-Buttons meist oben rechts auf der Seite.
 
 ---
 
+## Auf einen Blick: So arbeitet AI Employee
+
+![So arbeitet AI Employee: Einwurf, Orchestrator-Schlitten, drei Agenten-Kabinen mit Prüf-Schleusen und der Proxy-Turm](screenshots/00-so-arbeitet-ai-employee.png)
+
+Stell dir AI Employee als Sortieranlage auf einer Grundplatte vor. Die Grundplatte ist
+deine Anlage, sie läuft bei dir. Ein Auftrag läuft in sechs Schritten durch:
+
+1. **Eingang**: Deine Nachricht kommt an, egal ob aus dem Chat, aus Telegram, Teams oder per
+   Sprache. Alle Kanäle münden in denselben Einwurf.
+2. **Orchestrator**: Der Schlitten bringt den Auftrag zu *deinem* Agenten. Agenten anderer
+   Nutzer sieht und erreicht er nicht.
+3. **Agent**: Jeder Agent arbeitet abgeschlossen in seiner eigenen Kabine, einem eigenen
+   Container mit eigenem Arbeitsordner und Gedächtnis.
+4. **Prüfung**: Vor jedem Werkzeugaufruf, ob Datei schreiben, Befehl ausführen oder Mail
+   senden, steht eine Schleuse. Sie prüft ihn gegen die Freigaben deines Agenten. Was mehr
+   darf, fragt dich vorher (Kap. 13).
+5. **Proxy**: Alles, was nach außen geht, läuft durch einen Turm. Der Agent kennt nur
+   Platzhalter statt echter Schlüssel. Den echten Schlüssel stempelt erst der Proxy ein,
+   und nur am Ziel, für das er gedacht ist (wenn der Egress-Proxy eingeschaltet ist, Kap. 37.10).
+6. **Antwort**: Das Ergebnis kommt dorthin zurück, wo du gefragt hast.
+
+Die Abbildung gibt es auch zum Anfassen: `docs/benutzerhandbuch/figuren/so-arbeitet-ai-employee/`
+(Datei `so-arbeitet-ai-employee.html` im Browser öffnen; mit der Maus wählst du den Agenten,
+die Pfeiltasten gehen auch). Gebaut ist sie mit dem Standard-Skill **anatomy** (Kap. 10.4),
+den jeder Agent mitbringt.
+
+---
+
 ## In 2 Minuten: Die wichtigsten Begriffe
 
 Bevor du loslegst — diese Begriffe begegnen dir überall:
@@ -1999,6 +2027,22 @@ Oben im Skill-Marktplatz klappt der Kasten **Skill-Quellen (Admin)** auf:
    GitHub oder ein selbst betriebener Git-Server (Forgejo, GitLab).
 
 ![Skill-Quellen mit Kennzeichen „eingebaut“ und Schalter „aktiv“](screenshots/68-skill-quellen.png)
+
+### 10.4 Standard-Skills in jedem Agenten *(seit 1.430.0)*
+
+Manche Skills bringt jeder Agent von Anfang an mit. Das gilt für Claude Code, für Codex und für
+eigene Modelle, auch ohne Internet. Sie liegen geprüft und mit festem Stand im Agenten-Abbild,
+und der Agent legt sie beim Start in seinen Skill-Ordner. Mit einem neuen Abbild kommt der neue
+Stand dazu. Ein eigener Skill mit demselben Namen bleibt dabei unangetastet.
+
+| Skill | Wofür | So fragst du |
+|---|---|---|
+| **anatomy** | erklärt Abläufe, Systeme und Mechanismen als interaktive isometrische Zeichnung (eine HTML-Seite, auf Wunsch als A4-PDF) | „/anatomy erkläre, wie unsere Freigabe von Rechnungen funktioniert, interaktiv“ |
+
+> Die Zeichnung entsteht im Arbeitsordner des Agenten (eine HTML-Datei). Teilen kannst du sie
+> wie jede Datei, oder als App freigeben (Kap. 32). Das Veröffentlichen in die öffentliche
+> Galerie des Skill-Projekts ist in AI Employee entfernt: Inhalte der Anlage gehen nicht nach
+> außen.
 
 ### 10.1 Szenario: Präsentations-Skill nutzen
 1. **Skill Marketplace** → „Präsentation" suchen → Skill öffnen → **einem Agenten
@@ -4591,7 +4635,7 @@ Autonomie-Stufe, auch bei voller Freigabe. Das sind:
 
 Sie liefen außerhalb der Anlage, also ohne Container, Proxy und diese Prüfung, und unter dem
 Konto des Lizenzinhabers statt des Besitzers. Der Agent bekommt die Meldung „wirkt über das
-Claude-Konto außerhalb der Anlage … immer gesperrt“. Für Benachrichtigungen, Zeitpläne und
+Claude- bzw. ChatGPT-Konto außerhalb der Anlage … immer gesperrt“. Für Benachrichtigungen, Zeitpläne und
 Ablage nimmt er die Werkzeuge der Plattform. Die Connectoren werden zusätzlich gar nicht erst
 geladen.
 

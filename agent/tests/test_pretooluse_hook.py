@@ -191,7 +191,7 @@ class KontoWerkzeugeTests(unittest.TestCase):
                 with self.subTest(tool=name):
                     ergebnis = decide(name)["hookSpecificOutput"]
                     self.assertEqual(ergebnis["permissionDecision"], "deny")
-                    self.assertIn("Claude-Konto", ergebnis["permissionDecisionReason"])
+                    self.assertIn("Konto außerhalb der Anlage", ergebnis["permissionDecisionReason"])
 
     def test_gesperrt_auch_wenn_alle_kategorien_freigegeben(self):
         alle = {"shell_exec", "file_write", "file_read", "custom", "browser", "computer_use",
