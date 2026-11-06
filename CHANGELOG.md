@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.433.1] - 2026-11-06
+
+### Behoben
+- `scripts/setup.sh` prüft jetzt, was die Anlage wirklich braucht, und bricht sonst mit einer klaren Meldung ab: Docker 26 oder neuer (ältere Versionen können die Ordner der Nutzer nicht trennen, der Sicherheitsstatus meldet sie als kritisch), Docker Compose 2.20 oder neuer, `git` und `python3-cryptography`. Vorher lief die Einrichtung mit Docker 24 durch.
+- `docs/INSTALLATION.md`: Docker 26+ statt 24+, benötigte Pakete, Liste der ausgehenden Ziele (u. a. `ghcr.io`, Sigstore für die Signaturprüfung, Docker Hub, npm), TLS-Hinweis zum mitgelieferten Caddy und beide Entra-Weiterleitungsadressen.
+
 ## [1.433.0] - 2026-11-06
 
 ### Neu

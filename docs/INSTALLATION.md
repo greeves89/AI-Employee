@@ -7,11 +7,34 @@
 | CPU | 4 cores | 8+ cores |
 | RAM | 8 GB (trial, 1–2 working agents) | 16 GB (3 agents), 32 GB (10 agents) |
 | Disk | 64 GB SSD | 128 GB+ NVMe (≈25 GB base + up to 10 GB per agent) |
-| OS | Ubuntu 22.04 / Debian 12 / macOS 13+ | Ubuntu 24.04 LTS |
-| Docker | 24.0+ | Latest |
+| OS | Ubuntu 22.04 / Debian 12 / macOS 13+ (x86_64 preferred, arm64 supported) | Ubuntu 24.04 LTS |
+| Docker | **26.0+** (older engines cannot keep users' folders apart; the security status reports them as critical, `setup.sh` refuses) | Latest |
 | Docker Compose | 2.20+ | Latest |
 
 Sizing per edition (measured values, 3/10/30/100 agents): see the user manual, chapter 37.0 "Hardware je Edition".
+
+Also needed on the host: `git`, `python3` with `python3-cryptography`, `curl`
+(Ubuntu/Debian: `sudo apt install git python3-cryptography curl`). `setup.sh` checks all of it.
+
+### Network (outbound HTTPS 443)
+
+| Target | Why |
+|---|---|
+| Model provider (Anthropic, Bedrock, Azure, your LiteLLM, …) | the models |
+| `github.com`, `ghcr.io` | code, updates and the prebuilt, signed images |
+| `tuf-repo-cdn.sigstore.dev`, `rekor.sigstore.dev` | image signature check (without it the images are built locally) |
+| `registry-1.docker.io`, `production.cloudflare.docker.com` | Postgres, Redis, Caddy and helper images |
+| `registry.npmjs.org` | the agents keep their CLI tools current |
+| OS package mirrors | system updates |
+| `lizenzen.future-app.de` (optional) | daily heartbeat without content, can be switched off (Admin → Betrieb) |
+
+Inbound: only the reverse proxy (443, plus 80 for the redirect). The bundled Caddy speaks
+plain HTTP; TLS terminates at Cloudflare Tunnel, at an existing reverse proxy, or in a
+`conf.d/*.caddy` snippet with your certificate and key (PEM).
+
+Microsoft Entra ID (SSO and Microsoft 365 for agents): register both redirect URIs,
+`https://<host>/api/v1/auth/sso/microsoft/callback` and
+`https://<host>/api/v1/integrations/microsoft/callback`.
 
 ## Prerequisites
 
