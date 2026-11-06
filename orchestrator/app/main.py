@@ -2901,6 +2901,14 @@ written this way is not in the index.
     app.state.gesetz_crawler = gesetz_crawler
     gesetz_crawler_task = asyncio.create_task(gesetz_crawler.run()) if _gesetze_an else None
 
+    # Reste eines abgebrochenen Neuerstellens (update_agent) aufräumen — vor dem Skill-Import,
+    # der sonst in beiseitegestellte Behälter hineinschaute.
+    from app.core.agent_manager import alte_behaelter_aufraeumen
+    try:
+        await alte_behaelter_aufraeumen(app.state.docker)
+    except Exception:  # noqa: BLE001
+        logger.warning("Aufräumen beiseitegestellter Behälter übersprungen", exc_info=True)
+
     # On startup: import skills from all running agent containers into DB
     asyncio.create_task(_import_container_skills(app.state.docker))
 

@@ -85,7 +85,7 @@ class TheOriginalDefectTests(unittest.TestCase):
         waere hier falsch: ein Agent, der auf Berlin eingestellt ist, liefe nach
         einem Neustart plötzlich in UTC."""
         src = (ROOT / "orchestrator/app/core/agent_manager.py").read_text()
-        for fn in ("async def restart_agent", "async def update_agent"):
+        for fn in ("async def restart_agent", "async def _update_agent_neu_erstellen"):
             with self.subTest(fn):
                 block = src.split(fn)[1].split("\n    async def ")[0]
                 self.assertIn('"TZ": agent_timezone(config)', block)
