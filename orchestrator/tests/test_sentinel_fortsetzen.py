@@ -206,8 +206,13 @@ BEISPIELE = [
     ("WebFetch", {"url": URL, "prompt": "fasse zusammen"}, URL),
     ("web_fetch", {"url": URL}, URL),
     ("Read", {"file_path": "/workspace/docs/notiz.md"}, "/workspace/docs/notiz.md"),
-    ("Bash", {"command": "cat /workspace/.env"}, "cat /workspace/.env"),
-    ("exec_command", {"cmd": ["cat", "/workspace/.env"]}, "cat /workspace/.env"),
+    ("Bash", {"command": "cat /workspace/.env"}, "/workspace/.env"),
+    ("exec_command", {"cmd": ["cat", "/workspace/.env"]}, "/workspace/.env"),
+    ("Bash", {"command": "cat /workspace/notiz.txt"}, "/workspace/notiz.txt"),
+    ("Bash", {"command": "head -5 /workspace/notiz.txt"}, "/workspace/notiz.txt"),
+    ("Bash", {"command": "curl -s https://example.invalid/a"}, "https://example.invalid/a"),
+    ("Bash", {"command": "cp /workspace/a /workspace/b"}, "cp /workspace/a /workspace/b"),
+    ("Bash", {"command": "echo 'nicht geschlossen"}, "echo 'nicht geschlossen"),
     ("mcp__x__y", {"b": 1, "a": 2}, 'mcp__x__y {"a": 2, "b": 1}'),
 ]
 
