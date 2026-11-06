@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.432.0] - 2026-11-06
+
+### Neu
+- Admin → Betrieb: Karte „Zugänge hinter dem Proxy“. Ein Admin legt den Claude- und den Codex-Zugang der Plattform stufenweise hinter den Egress-Proxy (Aus / Ausgewählte Agenten / Alle Agenten), ohne `.env` und ohne Neustart. Die Auswahl zeigt nur Agenten, die den Zugang nutzen. Agenten, die mit einer anderen Stufe entstanden sind, lassen sich direkt in der Karte nacheinander aktualisieren.
+- Sicherheitsstatus: neue Punkte „Claude-Zugang hinter dem Proxy“ und „Codex-Zugang hinter dem Proxy“ — melden Agenten, die den Zugang noch im Klartext bekommen oder erst aktualisiert werden müssen.
+
+### Geändert
+- `EGRESS_KI_ZUGANG` und `EGRESS_CODEX_ZUGANG` in der `.env` sind nur noch der Startwert. Eine in der Oberfläche gespeicherte Stufe gilt auch nach einem Neustart, auch „Aus“.
+- Benutzerhandbuch 37.10: Klick-Anleitung für die Stufen statt `.env`-Einträgen.
+
+### Sicherheit
+- Nur Administratoren (GET/PUT `/settings/egress-stufen`). Abgelehnt werden unbekannte Zugänge und Modi, leere Auswahl, unförmige Kennungen und Agenten, die es nicht gibt oder die den Zugang nicht nutzen. Jede Änderung steht im Prüfprotokoll.
+
+### Tests
+- `test_egress_stufen_oberflaeche.py`: Lesen/Schreiben der Stufe, „Aus“ übersteht den Neustart, Wirkung je Stufe, Endpunkte (nur Admins, Ablehnungen, sofort wirksam, gespeichert, protokolliert), Sicherheitsstatus in beide Richtungen.
+
 ## [1.431.4] - 2026-11-06
 
 ### Behoben

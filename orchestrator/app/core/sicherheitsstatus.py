@@ -247,6 +247,58 @@ async def _schluessel(db) -> list[dict]:
                    "Unter Schlüssel je Key die erlaubten Ziele eintragen, z. B. api.github.com.")]
 
 
+#: Laufzeit, Stufe, Merkmal im Agenten (entstand mit Platzhalter) und Anzeige je Zugang.
+_ZUGAENGE = (
+    ("claude_code", "ki", "egress_ki_stufe", "Claude-Zugang"),
+    ("codex_cli", "codex", "egress_codex_stufe", "Codex-Zugang"),
+)
+
+
+async def _zugaenge(db) -> list[dict]:
+    """Sehen Agenten den Claude- bzw. Codex-Zugang der Plattform nur als Platzhalter?
+
+    Nur mit eingeschaltetem Egress-Proxy — ohne ihn gibt es keine Platzhalter, das
+    meldet schon der Punkt „Keys in Agenten“.
+    """
+    from app.core import egress
+    from app.models.agent import Agent
+
+    if not egress.aktiv():
+        return []
+    zeilen = (await db.execute(select(Agent.id, Agent.name, Agent.mode, Agent.config))).all()
+    punkte = []
+    for laufzeit, art, merkmal, name in _ZUGAENGE:
+        titel = f"{name} hinter dem Proxy"
+        betroffen = [z for z in zeilen if z.mode == laufzeit]
+        if not betroffen:
+            punkte.append(_punkt(f"zugang_{art}", titel, INFO, f"Kein Agent nutzt den {name}."))
+            continue
+        trifft = egress.ki_ueber_proxy if art == "ki" else egress.codex_ueber_proxy
+        klar = sorted(z.name for z in betroffen if not trifft(z.id))
+        alt = sorted(z.name for z in betroffen
+                     if trifft(z.id) and not (z.config or {}).get(merkmal))
+        liste = lambda namen: ", ".join(namen[:5]) + (" …" if len(namen) > 5 else "")  # noqa: E731
+        if klar:
+            punkte.append(_punkt(
+                f"zugang_{art}", titel, WARNUNG,
+                f"{len(klar)} von {len(betroffen)} Agent(en) bekommen den {name} im Klartext: "
+                f"{liste(klar)}. Ein Agent kann ihn ausgeben oder an beliebige Ziele schicken.",
+                "Unter „Zugänge hinter dem Proxy“ auf „Alle Agenten“ stellen, danach die Agenten "
+                "aktualisieren (Agenten → „Alle aktualisieren“)."))
+        elif alt:
+            punkte.append(_punkt(
+                f"zugang_{art}", titel, WARNUNG,
+                f"Die Stufe gilt, aber {len(alt)} Agent(en) entstanden vorher und tragen den "
+                f"{name} noch im Klartext: {liste(alt)}.",
+                "Die Agenten aktualisieren (Agenten → „Alle aktualisieren“)."))
+        else:
+            punkte.append(_punkt(
+                f"zugang_{art}", titel, OK,
+                f"Alle {len(betroffen)} Agent(en) sehen den {name} nur als Platzhalter; der "
+                "Egress-Proxy setzt ihn erst am Anbieter ein."))
+    return punkte
+
+
 async def stand(db) -> dict:
     """Alle Punkte, kritischste zuerst, plus eine Zusammenfassung."""
     import asyncio
@@ -255,7 +307,8 @@ async def stand(db) -> dict:
 
     ids = [c for (c,) in (await db.execute(
         select(Agent.container_id).where(Agent.container_id.is_not(None)))).all()]
-    punkte = (_einstellungen() + await _agenten(db) + await _schluessel(db) + _abbild_signaturen()
+    punkte = (_einstellungen() + await _agenten(db) + await _schluessel(db) + await _zugaenge(db)
+              + _abbild_signaturen()
               + await asyncio.to_thread(_docker, ids))
     rang = {KRITISCH: 0, WARNUNG: 1, INFO: 2, OK: 3}
     punkte.sort(key=lambda p: rang[p["stand"]])

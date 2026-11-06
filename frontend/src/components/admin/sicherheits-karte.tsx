@@ -78,7 +78,7 @@ export function SicherheitsKarte() {
                   : warnung
                     ? `Keine kritischen Punkte, ${warnung} Warnung${warnung === 1 ? "" : "en"}.`
                     : "Alles in Ordnung."}{" "}
-                Die Prüfung liest nur; geändert wird in der .env oder bei den Agenten.
+                Die Prüfung liest nur; geändert wird in den Karten darunter, bei den Agenten oder in der .env.
               </p>
             </div>
             <button

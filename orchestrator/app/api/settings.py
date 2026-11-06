@@ -758,6 +758,74 @@ async def get_sicherheit(
     return await stand(db)
 
 
+class EgressStufe(BaseModel):
+    art: str            # "ki" (Claude-Zugang) | "codex" (Codex-Zugang)
+    modus: str          # "aus" | "auswahl" | "alle"
+    agenten: list[str] = []
+
+
+#: Welche Laufzeit eine Stufe betrifft — eine Auswahl nimmt nur passende Agenten.
+_STUFE_LAUFZEIT = {"ki": "claude_code", "codex": "codex_cli"}
+
+
+async def _egress_stufen_stand(db: AsyncSession) -> dict:
+    from app.core import egress
+    from app.models.agent import Agent
+
+    agenten = (await db.execute(
+        select(Agent.id, Agent.name, Agent.mode, Agent.config).order_by(Agent.name))).all()
+    return {
+        "proxy_aktiv": egress.aktiv(),
+        "ki": egress.stufe_lesen(settings.egress_ki_zugang),
+        "codex": egress.stufe_lesen(getattr(settings, "egress_codex_zugang", "")),
+        # ``veraltet``: der Behälter entstand mit einer anderen Stufe — erst
+        # „Aktualisieren“ setzt die neue Stufe im Agenten um.
+        "agenten": [{"id": a.id, "name": a.name, "laufzeit": a.mode,
+                     "veraltet": egress.aktiv() and egress.veraltet(a.config, a.id)}
+                    for a in agenten],
+    }
+
+
+@router.get("/egress-stufen")
+async def get_egress_stufen(user=Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Admin: Für welche Agenten liegen Claude- und Codex-Zugang hinter dem Egress-Proxy?"""
+    return await _egress_stufen_stand(db)
+
+
+@router.put("/egress-stufen")
+async def set_egress_stufe(body: EgressStufe, user=Depends(require_admin),
+                           db: AsyncSession = Depends(get_db)):
+    """Admin: eine Stufe setzen — gespeichert, sofort wirksam (ein Prozess), im Prüfprotokoll.
+
+    Wirkt für Agenten, die danach angelegt oder aktualisiert werden; die übrigen zeigen
+    „Aktualisieren“ (``egress.veraltet`` vergleicht die Stufe in ihrer Konfiguration).
+    """
+    from app.core import egress
+    from app.models.agent import Agent
+
+    schluessel = egress.STUFEN.get(body.art)
+    if schluessel is None:
+        raise HTTPException(status_code=400, detail="Unbekannter Zugang")
+    try:
+        wert = egress.stufe_schreiben(body.modus, body.agenten)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    if body.modus == "auswahl":
+        ids = wert.split(",")
+        passend = set((await db.execute(select(Agent.id).where(
+            Agent.id.in_(ids), Agent.mode == _STUFE_LAUFZEIT[body.art],
+        ))).scalars().all())
+        fehlt = [i for i in ids if i not in passend]
+        if fehlt:
+            raise HTTPException(status_code=400,
+                                detail="Kein passender Agent: " + ", ".join(fehlt[:10]))
+    await SettingsService(db).set(schluessel, wert)
+    await _einstellungen_protokollieren(db, user, [schluessel])
+    await db.commit()
+    setattr(settings, schluessel, wert)
+    return await _egress_stufen_stand(db)
+
+
 @router.get("/datenschutz")
 async def get_datenschutz(
     user=Depends(require_admin),
