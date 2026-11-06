@@ -45,6 +45,7 @@ class Bereitstellen(unittest.TestCase):
                 ziel = self.ws / ordner / "anatomy"
                 self.assertTrue((ziel / "SKILL.md").is_file())
                 self.assertTrue((ziel / "kit" / "teil.mjs").is_file(), "das ganze Paket, nicht nur SKILL.md")
+                self.assertEqual(ziel.stat().st_mode & 0o777, 0o700, "nur für den Agenten selbst")
 
     def test_gleicher_stand_bleibt_unangetastet(self):
         ss.bereitstellen("claude_code", quelle=self.quelle, workspace=self.ws)

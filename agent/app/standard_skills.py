@@ -59,7 +59,7 @@ def bereitstellen(laufzeit: str, *, quelle: Path = QUELLE, workspace: Path | Non
             # symlinks=True: ein Verweis im Paket bleibt Verweis, statt Fremdes mitzukopieren
             shutil.copytree(skill, ziel, symlinks=True)
             (ziel / MARKE).write_text(stand + "\n")
-            os.chmod(ziel, 0o755)
+            os.chmod(ziel, 0o700)  # nur der Agent selbst
             gelegt.append(skill.name)
         except OSError as e:
             print(f"[Agent] Standard-Skill {skill.name} nicht bereitgestellt: {e}")
