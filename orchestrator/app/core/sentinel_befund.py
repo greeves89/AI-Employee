@@ -127,6 +127,12 @@ def einordnen(grund: str, stelle: str, maske: str | None = None, *, wiederholt: 
     wiederkommt (der Hinweis hat nicht gereicht) oder wenn der Agent einen
     Schlüssel selbst in einen Werkzeugaufruf schreibt: das sieht nach Abfluss aus.
     """
+    from app.core.fremdtext import ohne_plattformmarke
+
+    # Eingesetzte Teile kommen aus fremdem Inhalt (Pfad, Adresse, maskierter Schlüssel):
+    # nur die feste MARKE am Anfang darf als Plattform sprechen (Sicherheitsprüfung).
+    schritt = ohne_plattformmarke(schritt) if schritt else schritt
+    maske = ohne_plattformmarke(maske) if maske else maske
     selbst = stelle != WERKZEUGERGEBNIS
     wo = "einem Werkzeugaufruf" if stelle == WERKZEUGAUFRUF else "der eigenen Antwort"
     if grund == "prompt_injection":

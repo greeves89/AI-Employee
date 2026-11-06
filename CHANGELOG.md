@@ -14,6 +14,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ### Sicherheit
 - Die Marke `[Plattform-Sentinel]` kann niemand mehr tippen: An der einen Stelle für alle Wege in den Agenten (`chat_auftrag`: Chat, Aufträge, Agenten-Nachrichten) und beim Empfang direkter Agenten-Nachrichten wird sie entschärft (auch volle Breite, unsichtbare Zeichen). Nur der Sentinel selbst und der Knopf „Fortsetzen“ senden mit ihr.
+- Im Agenten dieselbe Entschärfung wie im Orchestrator (volle Breite, unsichtbare Zeichen), durch verschachtelte Felder hindurch; im Hinweistext werden auch die eingesetzten Teile (Pfad, maskierter Schlüssel) entschärft — nur die feste Marke am Anfang spricht als Plattform.
 - Die Ausnahme „Antwort ist keine Handlung“ gilt nur für Umlenk-Anweisungen; ein Schlüssel in der Antwort nach einem Hinweis führt zum harten Stopp. Ein übergangener Fund steht als „beobachtet“ im Prüfprotokoll.
 
 ### Tests
