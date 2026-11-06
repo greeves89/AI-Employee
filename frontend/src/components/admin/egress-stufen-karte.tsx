@@ -10,6 +10,10 @@
  * Die übrigen zeigen „Aktualisieren“; die Karte bietet das für sie gesammelt an —
  * nacheinander, nicht gleichzeitig (Codex-Agenten teilen sich eine Anmeldung).
  *
+ * Oben der Hauptschalter für den Egress-Proxy (PUT /settings/egress-proxy, seit 1.435.0):
+ * einschalten nur mit Dienst-Schlüssel und erreichbarem Proxy-Dienst, ausschalten mit
+ * Rückfrage. Die Agenten ziehen danach im Leerlauf selbst nach.
+ *
  * Serverseitig nur für Administratoren (GET/PUT /settings/egress-stufen); jede
  * Änderung steht im Prüfprotokoll. Der Wert aus der .env ist nur der Startwert.
  */
@@ -156,6 +160,7 @@ export function EgressStufenKarte() {
   const [fehler, setFehler] = useState<string | null>(null);
   const [speichert, setSpeichert] = useState<Art | null>(null);
   const [aktualisiert, setAktualisiert] = useState<string | null>(null);
+  const [schaltet, setSchaltet] = useState(false);
 
   const laden = useCallback(async () => {
     try {
@@ -191,6 +196,31 @@ export function EgressStufenKarte() {
       toast.error("Nicht gespeichert", apiFehlertext(e));
     } finally {
       setSpeichert(null);
+    }
+  }
+
+  async function proxySchalten(an: boolean) {
+    if (!an) {
+      const ok = await confirm({
+        title: "Egress-Proxy ausschalten?",
+        message:
+          "Laufende Agenten arbeiten weiter wie bisher. Sobald sie neu erstellt werden (im " +
+          "Leerlauf automatisch), bekommen sie alle Keys und Zugänge wieder im Klartext und " +
+          "können sie an beliebige Ziele schicken. Die Änderung steht im Prüfprotokoll.",
+        variant: "warning",
+        confirmLabel: "Ausschalten",
+      });
+      if (!ok) return;
+    }
+    setSchaltet(true);
+    try {
+      setStand(await api.setEgressProxy(an));
+      toast.success(an ? "Egress-Proxy eingeschaltet" : "Egress-Proxy ausgeschaltet",
+        "Die Agenten ziehen im Leerlauf nach, oder sofort über „Jetzt aktualisieren“.");
+    } catch (e) {
+      toast.error("Nicht umgeschaltet", apiFehlertext(e));
+    } finally {
+      setSchaltet(false);
     }
   }
 
@@ -248,12 +278,39 @@ export function EgressStufenKarte() {
             ist, gilt auch nach einem Neustart; die Einträge in der .env sind nur der Startwert.
           </p>
 
-          {!stand.proxy_aktiv ? (
-            <p className="mt-3 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-              Der Egress-Proxy ist aus. Ohne ihn gelten die Stufen nicht — erst den Proxy
-              einschalten (siehe Benutzerhandbuch, Abschnitt Egress-Proxy).
-            </p>
-          ) : null}
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-foreground/[0.06] px-3 py-2.5">
+            <div className="min-w-0">
+              <p className="text-[13px] font-medium">Egress-Proxy</p>
+              <p className="text-xs text-muted-foreground">
+                {stand.proxy_aktiv
+                  ? "An: Keys aus der Schlüsselverwaltung, Git- und MCP-Zugänge sehen Agenten nur als Platzhalter."
+                  : !stand.dienst_schluessel
+                    ? "Aus. Zum Einschalten fehlt der Dienst-Schlüssel — auf dem Server einmal ./scripts/update.sh ausführen."
+                    : !stand.proxy_erreichbar
+                      ? "Aus. Der Proxy-Dienst antwortet nicht — erst ihn starten (docker compose up -d)."
+                      : "Aus: Agenten bekommen Keys im Klartext."}
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={stand.proxy_eingeschaltet}
+              aria-label="Egress-Proxy ein- oder ausschalten"
+              disabled={schaltet || (!stand.proxy_eingeschaltet && (!stand.dienst_schluessel || !stand.proxy_erreichbar))}
+              onClick={() => proxySchalten(!stand.proxy_eingeschaltet)}
+              className={cn(
+                "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-50",
+                stand.proxy_eingeschaltet ? "bg-primary" : "bg-foreground/20",
+              )}
+            >
+              <span
+                className={cn(
+                  "inline-block h-4 w-4 rounded-full bg-white shadow transition-transform",
+                  stand.proxy_eingeschaltet ? "translate-x-4" : "translate-x-0.5",
+                )}
+              />
+            </button>
+          </div>
 
           <div className="mt-2 divide-y divide-foreground/[0.05]">
             {ZUGAENGE.map((z) => (
@@ -268,7 +325,7 @@ export function EgressStufenKarte() {
             ))}
           </div>
 
-          {stand.proxy_aktiv && veraltet.length > 0 && (
+          {veraltet.length > 0 && (
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-amber-500/10 px-3 py-2">
               <p className="text-xs text-amber-700 dark:text-amber-300">
                 {aktualisiert

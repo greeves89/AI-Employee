@@ -138,9 +138,13 @@ class SchalterTests(unittest.TestCase):
         with patch.object(settings, "egress_proxy_enabled", True), patch.object(settings, "egress_proxy_token", "kurz"):
             self.assertFalse(egress.aktiv())
             self.assertFalse(egress.ist_proxy_anfrage("Bearer kurz"))
+        # Ausgeschaltet, aber mit Dienst-Schlüssel: keine NEUEN Agenten über den Proxy —
+        # die laufenden mit Platzhaltern bedient er weiter, bis sie neu erstellt sind
+        # (seit 1.435.0; vorher fiel bei ihnen nach dem Ausschalten jedes HTTPS aus).
         with patch.object(settings, "egress_proxy_enabled", False), patch.object(settings, "egress_proxy_token", TOKEN):
             self.assertFalse(egress.aktiv())
-            self.assertFalse(egress.ist_proxy_anfrage(f"Bearer {TOKEN}"))
+            self.assertTrue(egress.ist_proxy_anfrage(f"Bearer {TOKEN}"))
+            self.assertFalse(egress.ist_proxy_anfrage("Bearer " + "x" * 64))
 
     def test_proxy_anfrage(self):
         with patch.object(settings, "egress_proxy_enabled", True), patch.object(settings, "egress_proxy_token", TOKEN):

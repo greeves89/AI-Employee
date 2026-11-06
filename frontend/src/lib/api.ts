@@ -1940,6 +1940,10 @@ export interface EgressStufe {
 
 export interface EgressStufenStand {
   proxy_aktiv: boolean;
+  /** Hauptschalter und was ihn trägt (Dienst-Schlüssel, erreichbarer Proxy-Dienst). */
+  proxy_eingeschaltet: boolean;
+  dienst_schluessel: boolean;
+  proxy_erreichbar: boolean;
   ki: EgressStufe;
   codex: EgressStufe;
   agenten: { id: string; name: string; laufzeit: string; veraltet: boolean }[];
@@ -1947,6 +1951,13 @@ export interface EgressStufenStand {
 
 export async function getEgressStufen(): Promise<EgressStufenStand> {
   return fetchJSON(`${getBase()}/settings/egress-stufen`);
+}
+
+export async function setEgressProxy(an: boolean): Promise<EgressStufenStand> {
+  return fetchJSON(`${getBase()}/settings/egress-proxy`, {
+    method: "PUT",
+    body: JSON.stringify({ an }),
+  });
 }
 
 export async function setEgressStufe(

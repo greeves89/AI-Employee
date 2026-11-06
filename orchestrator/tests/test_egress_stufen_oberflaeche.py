@@ -119,6 +119,8 @@ class DbTestFall(unittest.IsolatedAsyncioTestCase):
             patch.object(settings, "egress_ki_zugang", ""),
             patch.object(settings, "egress_codex_zugang", ""),
             patch.object(api, "_stufe_protokollieren", AsyncMock()),
+            # Keine echte Verbindung zum Proxy-Dienst in Tests (DNS-Wartezeit).
+            patch.object(egress, "proxy_erreichbar", return_value=True),
         ]
         for p in self.patches:
             p.start()
@@ -245,3 +247,100 @@ class SicherheitsstatusTests(DbTestFall):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HauptschalterTests(DbTestFall):
+    """Egress-Proxy ein/aus in der Oberfläche (PUT /settings/egress-proxy)."""
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        from app.models.audit_log import AuditLog
+        async with self.engine.begin() as conn:
+            await conn.run_sync(AuditLog.metadata.create_all, tables=[AuditLog.__table__])
+        self.erreichbar = patch.object(egress, "proxy_erreichbar", return_value=True)
+        self.erreichbar.start()
+
+    async def asyncTearDown(self):
+        self.erreichbar.stop()
+        await super().asyncTearDown()
+
+    async def schalten(self, an):
+        return await api.set_egress_proxy(api.EgressSchalter(an=an), user=ADMIN, db=self.db)
+
+    def test_nur_fuer_admins(self):
+        self.assertIs(inspect.signature(api.set_egress_proxy).parameters["user"].default.dependency,
+                      require_admin)
+
+    async def test_aus_und_wieder_an_mit_protokoll(self):
+        from app.models.audit_log import AuditLog
+        stand = await self.schalten(False)
+        self.assertFalse(settings.egress_proxy_enabled)
+        self.assertFalse(stand["proxy_aktiv"])
+        self.assertTrue(any(a["veraltet"] for a in stand["agenten"]),
+                        "Agenten von vorher tragen Platzhalter — sie müssen nachziehen")
+        stand = await self.schalten(True)
+        self.assertTrue(stand["proxy_aktiv"])
+        eintraege = (await self.db.execute(select(AuditLog).order_by(AuditLog.id))).scalars().all()
+        self.assertEqual([e.meta["aktion"] for e in eintraege], ["egress_proxy_aus", "egress_proxy"])
+        self.assertIn("gesenkt", eintraege[0].command)
+        async with self.Session() as frisch:
+            self.assertEqual((await frisch.get(PlatformSettings, "egress_proxy_enabled")).value, "true")
+
+    async def test_nach_dem_ausschalten_werden_laufende_agenten_weiter_bedient(self):
+        """Sonst fiele bei allen Agenten mit Platzhaltern sofort jedes HTTPS aus (Prüfung M1)."""
+        await self.schalten(False)
+        self.assertFalse(egress.aktiv(), "neue Agenten ohne Proxy")
+        self.assertTrue(egress.ist_proxy_anfrage(f"Bearer {TOKEN}"), "Proxy wird weiter beantwortet")
+
+    async def test_unveraendert_kein_protokolleintrag(self):
+        from app.models.audit_log import AuditLog
+        await self.schalten(True)            # war schon an
+        self.assertEqual((await self.db.execute(select(AuditLog))).scalars().all(), [])
+
+    async def test_aus_uebersteht_den_neustart_gegen_env(self):
+        await self.schalten(False)
+        settings.egress_proxy_enabled = True          # .env sagt an
+        async with self.Session() as frisch:
+            await SettingsService(frisch).load_into_config()
+        self.assertFalse(settings.egress_proxy_enabled, "gespeichertes „aus“ gewinnt")
+
+    async def test_einschalten_ohne_dienstschluessel_abgelehnt(self):
+        await self.schalten(False)
+        with patch.object(settings, "egress_proxy_token", "kurz"):
+            with self.assertRaises(HTTPException) as f:
+                await self.schalten(True)
+        self.assertEqual(f.exception.status_code, 400)
+        self.assertIn("update.sh", f.exception.detail)
+        self.assertFalse(settings.egress_proxy_enabled)
+
+    async def test_einschalten_ohne_proxy_dienst_abgelehnt(self):
+        await self.schalten(False)
+        with patch.object(egress, "proxy_erreichbar", return_value=False):
+            with self.assertRaises(HTTPException) as f:
+                await self.schalten(True)
+        self.assertIn("antwortet nicht", f.exception.detail)
+        self.assertFalse(settings.egress_proxy_enabled)
+
+    async def test_stand_nennt_was_den_schalter_traegt(self):
+        stand = await api.get_egress_stufen(user=ADMIN, db=self.db)
+        self.assertEqual((stand["proxy_eingeschaltet"], stand["dienst_schluessel"], stand["proxy_erreichbar"]),
+                         (True, True, True))
+
+
+class ProxyErreichbarTests(unittest.TestCase):
+    def test_nicht_erreichbar_und_ohne_adresse(self):
+        with patch.object(settings, "egress_proxy_url", "http://127.0.0.1:1"):
+            self.assertFalse(egress.proxy_erreichbar(zeit=0.5, frisch=True))
+        with patch.object(settings, "egress_proxy_url", ""):
+            self.assertFalse(egress.proxy_erreichbar(frisch=True))
+
+    def test_anzeige_zwischengespeichert_einschalten_frisch(self):
+        aufrufe = []
+        with patch.object(settings, "egress_proxy_url", "http://proxy.example.invalid:8080"), \
+                patch.object(egress, "_verbinden", lambda url, zeit: aufrufe.append(url) or True):
+            egress._ERREICHBAR.clear()
+            egress.proxy_erreichbar()
+            egress.proxy_erreichbar()
+            self.assertEqual(len(aufrufe), 1, "Anzeige: einmal je 10 s")
+            egress.proxy_erreichbar(frisch=True)
+            self.assertEqual(len(aufrufe), 2, "Einschalten prüft immer frisch")

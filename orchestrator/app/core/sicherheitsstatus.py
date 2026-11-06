@@ -238,8 +238,8 @@ async def _schluessel(db) -> list[dict]:
         return [_punkt("egress", titel, WARNUNG,
                        f"{len(klartext)} Key(s) liegen im Klartext in Agenten: {liste}. "
                        "Ein Agent kann sie ausgeben oder an beliebige Ziele schicken.",
-                       "Egress-Proxy einschalten (EGRESS_PROXY_ENABLED=true in der .env) und je Key "
-                       "unter Schlüssel die erlaubten Ziele eintragen.")]
+                       "Admin → Betrieb → „Zugänge hinter dem Proxy“: Egress-Proxy einschalten, und je "
+                       "Key unter Schlüssel die erlaubten Ziele eintragen.")]
     dazu = (f" Dazu {len(alte_behaelter)} Key(s) in Agenten von vor dem Einschalten (Aktualisieren)."
             if alte_behaelter else "")
     return [_punkt("egress", titel, WARNUNG,
