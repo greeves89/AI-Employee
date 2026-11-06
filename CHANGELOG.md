@@ -8,10 +8,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 ## [1.434.1] - 2026-11-06
 
 ### Behoben
-- Agent aktualisieren mit Rücksprung: Bisher wurde der alte Behälter ZUERST entfernt und dann der neue erstellt. Scheiterte das Erstellen (Abbild fehlt, Docker-Wächter lehnt eine Einstellung ab, Platte voll), war der Agent weg und nicht mehr startbar. Jetzt wird der alte nur angehalten und unter anderem Namen beiseitegestellt; entfernt wird er erst, wenn der neue steht. Scheitert es (auch bei einem Abbruch), wird ein halb erstellter neuer Behälter entfernt und der alte kommt unter seinem Namen zurück — lief er vorher, läuft er wieder. Gilt für jeden Weg: Knopf „Aktualisieren“, „Alle aktualisieren“, Start eines veralteten Agenten, automatisches Aktualisieren.
+- Agent aktualisieren mit Rücksprung: Bisher wurde der alte Behälter ZUERST entfernt und dann der neue erstellt. Scheiterte das Erstellen (Abbild fehlt, Docker-Wächter lehnt eine Einstellung ab, Platte voll), war der Agent weg und nicht mehr startbar. Jetzt wird der alte nachweislich angehalten und unter anderem Namen beiseitegestellt; entfernt wird er erst, wenn der neue steht. Gilt für jeden Weg (Knopf, „Alle aktualisieren“, Start eines veralteten Agenten, automatisches Aktualisieren, Schlüssel und Rechte).
+
+### Sicherheit
+- Scheitert das Neuerstellen, kommt der alte Behälter unter seinem Namen zurück, wird aber nur bei reiner Wartung (automatisches Aktualisieren) wieder gestartet. Neuerstellen dient auch dazu, Zugänge zu entziehen (Schlüssel entfernt, Rechte gekürzt) — der alte Behälter trüge sie noch. Sonst bleibt er angehalten, der Agent steht mit Grund „Aktualisieren gescheitert“ auf gestoppt.
+- Nach dem Festschreiben des neuen Behälters gibt es keinen Rücksprung mehr (etwa bei einer abgebrochenen Anfrage): der neue gilt, der alte wird entfernt.
+- Während des Neubaus zeigt der Agent auf keinen Behälter, und je Agent läuft nur ein Neubau: Wecken, Start oder ein zweiter Klick warten, statt den alten Behälter neben dem neuen wiederzubeleben (zwei Agenten auf denselben Volumes).
+- Beim Start räumt der Orchestrator Reste eines abgebrochenen Neubaus auf (beiseitegestellte Behälter; ein noch verwendeter bekommt seinen Namen zurück).
 
 ### Tests
-- `test_update_agent_ruecksprung.py`: Erfolg (alter erst danach entfernt, beim Erstellen schon angehalten), Fehlschlag (halber neuer weg, alter zurück und gestartet), gestoppter alter bleibt gestoppt, ohne alten Behälter, Umbenennen gesperrt (Verhalten wie früher), Abbruch während des Erstellens. Fand beim Bau selbst einen Fehler (alter Name erst nach dem Umbenennen gemerkt). Quelltext-Tests auf den neuen Bauweg `_update_agent_neu_erstellen` umgestellt; 251 Tests der betroffenen Bereiche grün.
+- `test_update_agent_ruecksprung.py` (11): Erfolg, Fehlschlag ohne/mit Wartung, gestoppter alter, Fehler nach dem Festschreiben, alter hält nicht an, Umbenennen gesperrt, Abbruch, zwei gleichzeitige Neubauten, Aufräumen beim Start. Fand beim Bau einen Fehler (alter Name erst nach dem Umbenennen gemerkt). Quelltext-Tests auf den Bauweg `_update_agent_neu_erstellen` umgestellt; 271 Tests der betroffenen Bereiche grün.
 
 ## [1.434.0] - 2026-11-06
 

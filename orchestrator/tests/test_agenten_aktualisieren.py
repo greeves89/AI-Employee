@@ -127,7 +127,7 @@ class TickTests(Basis):
             def __init__(inner, db, docker, redis):
                 inner.db = db
 
-            async def update_agent(inner, aid):
+            async def update_agent(inner, aid, **k):
                 if aid in fehler_bei:
                     raise RuntimeError("Abbild fehlt")
                 agent = await inner.db.get(Agent, aid)

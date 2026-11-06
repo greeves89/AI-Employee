@@ -75,6 +75,13 @@ DEFAULT_PERMISSIONS: list[str] = []
 # (re)creation — one at a time, with a settle delay — so a bulk "Update All" can no
 # longer trigger that collision. See memory: codex-shared-auth-recreate-gotcha.
 _codex_recreate_lock = asyncio.Lock()
+#: Ein Neuerstellen je Agent zur Zeit. Während es läuft, zeigt ``agent.container_id`` auf
+#: nichts — ein gleichzeitiger Start wartet hier, statt den beiseitegestellten alten
+#: Behälter wiederzubeleben (zwei Behälter auf denselben Volumes).
+_neubau_locks: dict[str, asyncio.Lock] = {}
+
+#: Namensteil beiseitegestellter Behälter (``AgentManager.update_agent``).
+ALT_MARKE = "-alt-"
 _CODEX_RECREATE_STAGGER_S = 5.0
 
 
@@ -1117,6 +1124,50 @@ def _browser_geheimnisse(agent_id: str) -> dict[str, str]:
         "BROWSER_PROFIL_KEY": agent_schluessel("browser-profil", agent_id),
         "BROWSER_ZUGANG": agent_schluessel("browser-zugang", agent_id),
     }
+
+
+async def alte_behaelter_aufraeumen(docker) -> dict:
+    """Beim Start: beiseitegestellte Behälter (``update_agent``) nach einem Absturz aufräumen.
+
+    Stürzt der Orchestrator zwischen Beiseitestellen und Entfernen ab, bleibt ein
+    angehaltener ``…-alt-<zeit>``-Behälter liegen. Zeigt ein Agent noch auf ihn (Absturz
+    vor dem Festschreiben), bekommt er seinen Namen zurück und bleibt sein Behälter;
+    sonst wird er entfernt. Laufende werden nie angefasst.
+    """
+    import re as _re
+
+    from sqlalchemy import select as _select
+
+    from app.db.session import async_session_factory
+
+    ergebnis = {"entfernt": 0, "zurueck": 0}
+    try:
+        behaelter = await asyncio.to_thread(
+            lambda: docker.client.containers.list(all=True, filters={"label": "ai-employee.type=agent"}))
+    except Exception:  # noqa: BLE001
+        return ergebnis
+    alte = [c for c in behaelter if ALT_MARKE in (c.name or "") and c.status != "running"]
+    if not alte:
+        return ergebnis
+    async with async_session_factory() as db:
+        from app.models.agent import Agent
+        verwendet = {cid for (cid,) in (await db.execute(_select(Agent.container_id))).all() if cid}
+    namen = {c.name for c in behaelter}
+    for c in alte:
+        try:
+            if c.id in verwendet:
+                urname = _re.sub(_re.escape(ALT_MARKE) + r"\d+$", "", c.name)
+                if urname not in namen:
+                    await asyncio.to_thread(c.rename, urname)
+                    ergebnis["zurueck"] += 1
+            else:
+                await asyncio.to_thread(c.remove, force=True)
+                ergebnis["entfernt"] += 1
+        except Exception:  # noqa: BLE001
+            logger.warning("Beiseitegestellter Behälter %s nicht aufgeräumt", c.name, exc_info=True)
+    if any(ergebnis.values()):
+        logger.info("Beiseitegestellte Behälter aufgeräumt: %s", ergebnis)
+    return ergebnis
 
 
 class AgentManager:
@@ -2419,33 +2470,61 @@ class AgentManager:
             logger.warning(f"Could not refresh instructions for agent {agent.id}: {e}")
             return False
 
-    async def update_agent(self, agent_id: str) -> Agent:
+    async def update_agent(self, agent_id: str, *, wartung: bool = False) -> Agent:
         """Behälter mit dem aktuellen Abbild neu erstellen — mit Rücksprung.
 
         Früher wurde der alte Behälter ZUERST entfernt und erst dann der neue erstellt.
         Scheiterte das Erstellen (Abbild fehlt, Docker-Wächter lehnt eine Einstellung
         ab, Platte voll), war der Agent weg und nicht mehr startbar. Jetzt wird der alte
         nur angehalten und unter anderem Namen beiseitegestellt; entfernt wird er erst,
-        wenn der neue steht. Scheitert es, kommt der alte unter seinem Namen zurück und
-        läuft weiter wie vorher (``_beiseite_zurueck``). Daten liegen ohnehin in Volumes.
+        wenn der neue steht.
+
+        Scheitert es VOR dem Festschreiben, kommt der alte unter seinem Namen zurück.
+        Wieder GESTARTET wird er nur bei reiner Wartung (``wartung=True``: automatisches
+        Aktualisieren). Sonst kann das Neuerstellen dazu dienen, einen Zugang zu entziehen
+        (Schlüssel entfernt, Rechte gekürzt) — der alte Behälter trüge ihn noch. Dann
+        bleibt er angehalten, der Agent steht mit Grund auf „gestoppt“.
+        Nach dem Festschreiben gibt es keinen Rücksprung mehr: der neue Behälter gilt.
         """
-        agent = await self._get_agent(agent_id)
-        container_name = f"ai-agent-{_container_slug(agent.name)}-{agent_id}"
-        beiseite = self._alten_behaelter_beiseite(agent.container_id, container_name)
-        try:
-            neu = await self._update_agent_neu_erstellen(agent_id)
-        except BaseException:
-            await self._beiseite_zurueck(agent_id, beiseite, container_name)
-            raise
+        sperre = _neubau_locks.setdefault(agent_id, asyncio.Lock())
+        async with sperre:
+            agent = await self._get_agent(agent_id)
+            container_name = f"ai-agent-{_container_slug(agent.name)}-{agent_id}"
+            alte_id = agent.container_id
+            beiseite = self._alten_behaelter_beiseite(alte_id, container_name)
+            if beiseite:
+                # Während des Neubaus zeigt der Agent auf keinen Behälter: Wecken, Start
+                # oder Plattenwächter gehen über start_agent → update_agent und warten
+                # hier, statt den alten Behälter wiederzubeleben.
+                agent.container_id = None
+                await self.db.commit()
+            self._neubau_festgeschrieben = None
+            try:
+                neu = await self._update_agent_neu_erstellen(agent_id)
+            except BaseException:
+                if self._neubau_festgeschrieben:
+                    self._alte_entfernen(beiseite)
+                    raise
+                await self._beiseite_zurueck(agent_id, beiseite, container_name, alte_id,
+                                             starten=wartung)
+                raise
+            self._alte_entfernen(beiseite)
+            return neu
+
+    def _alte_entfernen(self, beiseite: list) -> None:
         for cid, _name, _lief in beiseite:
             try:
                 self.docker.remove_container(cid)
-            except (NotFound, APIError) as e:
+            except Exception as e:  # noqa: BLE001 — Rest räumt der Start auf (alte_behaelter_aufraeumen)
                 logger.warning(f"Alter Behälter {scrub_log(cid[:12])} nicht entfernt: {scrub_log(e)}")
-        return neu
 
     def _alten_behaelter_beiseite(self, container_id: str | None, container_name: str) -> list:
-        """Alten Behälter anhalten und umbenennen statt löschen. → [(id, alter_name, lief)]"""
+        """Alten Behälter anhalten und umbenennen statt löschen. → [(id, alter_name, lief)]
+
+        Umbenannt wird nur ein Behälter, der nachweislich steht — ein laufender alter neben
+        dem neuen hieße zwei Agenten auf denselben Volumes. Steht er nicht oder lässt er
+        sich nicht umbenennen, wird er wie früher entfernt (dann ohne Rücksprung).
+        """
         import time as _time
 
         beiseite, gesehen = [], set()
@@ -2460,46 +2539,65 @@ class AgentManager:
                 continue
             gesehen.add(c.id)
             lief = c.status == "running"
-            try:
-                self.docker.stop_container(c.id)
-            except (NotFound, APIError):
-                pass
             alter_name = (c.name or container_name).lstrip("/")   # VOR dem Umbenennen merken
             try:
-                c.rename(f"{container_name}-alt-{int(_time.time())}")
+                self.docker.stop_container(c.id)
+                c.reload()
+                if c.status == "running":
+                    raise APIError("Behälter steht nicht")
+                c.rename(f"{container_name}{ALT_MARKE}{int(_time.time())}")
                 beiseite.append((c.id, alter_name, lief))
-            except (NotFound, APIError) as e:
-                # Umbenennen gesperrt oder gescheitert: wie früher entfernen, damit der
-                # neue Behälter seinen Namen bekommt — der Rücksprung entfällt dann.
-                logger.warning(f"Behälter {scrub_log(c.id[:12])} nicht umbenannt ({scrub_log(e)}), entfernt")
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Behälter {scrub_log(c.id[:12])} nicht beiseitegestellt ({scrub_log(e)}), entfernt")
                 try:
                     self.docker.remove_container(c.id)
-                except (NotFound, APIError):
+                except Exception:  # noqa: BLE001
                     pass
         return beiseite
 
-    async def _beiseite_zurueck(self, agent_id: str, beiseite: list, container_name: str) -> None:
-        """Neuerstellen gescheitert: halb erstellten neuen Behälter entfernen, alten zurück."""
+    async def _beiseite_zurueck(self, agent_id: str, beiseite: list, container_name: str,
+                                alte_id: str | None, *, starten: bool) -> None:
+        """Neuerstellen vor dem Festschreiben gescheitert: halb erstellten neuen Behälter
+        entfernen, alten unter seinem Namen zurück; starten nur bei Wartung (siehe update_agent)."""
         alte = {cid for cid, _n, _l in beiseite}
         try:
             neu = self.docker.client.containers.get(container_name)
             if neu.id not in alte:
                 self.docker.remove_container(neu.id)
-        except (NotFound, APIError):
+        except Exception:  # noqa: BLE001
             pass
+        gestartet = False
         for cid, name, lief in beiseite:
             try:
                 c = self.docker.client.containers.get(cid)
                 c.rename(name)
-                if lief:
+                if lief and starten:
                     self.docker.start_container(cid)
-                logger.warning(f"Agent {scrub_log(agent_id)}: Neuerstellen gescheitert, alter Behälter zurück")
-            except (NotFound, APIError) as e:
+                    gestartet = True
+            except Exception as e:  # noqa: BLE001
                 logger.error(f"Agent {scrub_log(agent_id)}: alter Behälter nicht wiederherstellbar: {scrub_log(e)}")
         try:
             await self.db.rollback()
+            if beiseite:
+                agent = await self._get_agent(agent_id)
+                agent.container_id = alte_id if alte_id in alte else beiseite[0][0]
+                if any(lief for _c, _n, lief in beiseite) and not gestartet:
+                    agent.state = AgentState.STOPPED
+                    agent.config = {**(agent.config or {}), "stop_reason": {
+                        "type": "aktualisieren_gescheitert",
+                        "message": "Aktualisieren gescheitert — Agent angehalten",
+                        "detail": "Der neue Behälter ließ sich nicht erstellen. Der alte bleibt "
+                                  "angehalten, damit entzogene Zugänge nicht weiter gelten. "
+                                  "Starten nimmt den alten Stand wieder auf.",
+                        "at": datetime.now(timezone.utc).isoformat(),
+                    }}
+                    flag_modified(agent, "config")
+                await self.db.commit()
+            logger.warning(f"Agent {scrub_log(agent_id)}: Neuerstellen gescheitert, alter Behälter "
+                           f"zurück ({'läuft' if gestartet else 'angehalten'})")
         except Exception:  # noqa: BLE001
-            pass
+            logger.exception(f"Agent {scrub_log(agent_id)}: Zustand nach Rücksprung nicht gespeichert")
+
 
     async def _update_agent_neu_erstellen(self, agent_id: str) -> Agent:
         """Der eigentliche Neubau; der alte Behälter ist schon beiseitegestellt (``update_agent``)."""
@@ -2731,6 +2829,8 @@ class AgentManager:
         agent.config = self._clear_stale_stop_reason(config)
         flag_modified(agent, "config")
         await self.db.commit()
+        # Ab hier steht der neue Behälter fest: kein Rücksprung mehr (update_agent).
+        self._neubau_festgeschrieben = container.id
         # Siehe restart_agent: vor dem refresh.
         await self._verwaiste_aufgaben_beenden(agent_id)
         await self.db.refresh(agent)

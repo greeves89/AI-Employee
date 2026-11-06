@@ -219,7 +219,7 @@ async def tick(docker, redis) -> dict | None:
             break
         if kandidat is None:
             return None
-        # Erst das Abbild: ``update_agent`` entfernt den alten Behälter vor dem neuen.
+        # Erst das Abbild: ohne es scheitert jedes Neuerstellen (Rücksprung, aber unnötig).
         if not await abbild_bereit(docker):
             logger.warning("[Aktualisieren] Agenten-Abbild %s nicht verfügbar — kein Agent angefasst",
                            settings.agent_image)
@@ -231,7 +231,7 @@ async def tick(docker, redis) -> dict | None:
         # Vor dem Neuerstellen festhalten: nach Commit/Rollback sind die Felder abgelaufen.
         aid, name, von = kandidat.id, kandidat.name, (kandidat.config or {}).get("agent_version")
         try:
-            await AgentManager(db, docker, redis).update_agent(aid)
+            await AgentManager(db, docker, redis).update_agent(aid, wartung=True)
         except Exception as e:  # noqa: BLE001 — ein Agent darf den Takt nicht anhalten
             logger.warning("[Aktualisieren] %s gescheitert, Automatik für %s angehalten: %s",
                            aid, get_agent_version(), e)
