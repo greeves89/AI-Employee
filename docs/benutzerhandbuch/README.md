@@ -4417,6 +4417,29 @@ Das Ergebnis der letzten Prüfung zeigt **Admin → Betrieb → Sicherheitsstatu
 Cloudflared, Docker-Proxy, Autoheal, Egress-Proxy) sind in der `docker-compose.yml` per
 Digest festgelegt; neue Fassungen kommen als Vorschlag über Dependabot.
 
+**Agenten ziehen von selbst nach** *(seit 1.433.0)*. Nach einem Update brauchen die Agenten
+einen neuen Behälter, damit neue Sicherheitsregeln und Funktionen in ihnen gelten. Das
+erledigt die Anlage selbst:
+
+- **Laufende Agenten** werden im Leerlauf neu erstellt: nie während eines Auftrags, einer
+  Besprechung, einer offenen Freigabe oder in den ersten 15 Minuten nach einem Gespräch, und
+  höchstens ein Agent alle fünf Minuten. Arbeitsdaten und Gesprächsverläufe bleiben erhalten.
+- **Gestoppte Agenten** werden beim nächsten Start neu erstellt *(bis 1.432 starteten sie auf
+  dem alten Stand)*.
+- Jedes automatische Aktualisieren steht im Prüfprotokoll („Automatisch aktualisiert auf …“).
+  Scheitert es, **ruht die Automatik** für diese Version, damit nicht ein Agent nach dem
+  anderen betroffen ist. Häufigster Grund: Das Agenten-Abbild fehlt auf dem Server (etwa ohne
+  Zugang zur Registry). Danach in der Karte **Wieder aufnehmen** klicken.
+
+Einsehen und abschalten unter **Admin → Betrieb → Agenten aktuell halten**:
+
+1. **Admin → Betrieb** öffnen.
+2. In der Karte **Agenten aktuell halten** steht, welche Agenten noch auf ein Update warten
+   und warum (etwa „ein Auftrag läuft“ oder „gestoppt — wird beim nächsten Start
+   aktualisiert“).
+3. **Aus** schaltet das Aktualisieren im Leerlauf ab; dann bleibt nur **Alle aktualisieren**
+   auf der Seite **Agenten**. Gestoppte Agenten werden beim Start trotzdem aktualisiert.
+
 **Rücksprung** auf den Stand vor dem Update: `git checkout <commit von vorher>`, dann
 `bash -c '. scripts/lib/abbilder.sh && abbilder_bereitstellen 0' && docker compose up -d`
 (holt die Abbilder dieser älteren Version), dann die Sicherung von vorhin mit

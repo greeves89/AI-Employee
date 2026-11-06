@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.433.0] - 2026-11-06
+
+### Neu
+- Agenten ziehen nach einem Update selbst nach: Laufende Agenten, die einen neuen Behälter brauchen (neue Version oder andere Proxy-Stufe), werden im Leerlauf neu erstellt — nie während eines Auftrags, einer Besprechung oder in den 15 Minuten nach einem Gespräch, höchstens einer alle fünf Minuten (gestaffelt, Codex-Agenten teilen sich eine Anmeldung). Ebenso nie bei einer offenen Freigabe. Vorher wird geprüft, ob das Agenten-Abbild vorliegt, und unmittelbar vor dem Neuerstellen noch einmal, ob der Agent inzwischen beschäftigt ist. Jeder Lauf steht im Prüfprotokoll (`agent_updated`). Scheitert einer, ruht die Automatik für diese Version ganz (das Neuerstellen entfernt den alten Behälter zuerst — sonst träfe es alle fünf Minuten den nächsten Agenten), bis ein Admin sie in der Karte wieder aufnimmt.
+- Admin → Betrieb: Karte „Agenten aktuell halten“ — Schalter „Im Leerlauf“ / „Aus“ und die Liste der wartenden Agenten mit Grund. API GET/PUT `/settings/agenten-updates` (nur Admins).
+
+### Behoben
+- Ein gestoppter Agent startete nach einem Update auf seinem alten Behälter weiter; neue Sicherheitsregeln und Funktionen kamen bei ihm nie an. Jetzt wird ein veralteter Agent beim Start neu erstellt — nur wenn sein Behälter wirklich steht (ein „Start“ auf einen laufenden Agenten reißt ihn nicht ab) und das Abbild vorliegt (sonst startet er wie bisher auf dem alten Stand).
+
+### Geändert
+- Die Prüfung „Ist der Agent gerade beschäftigt?“ gibt es nur noch an einer Stelle (`core/agenten_aktualisieren.beschaeftigt`); der Leerlauf-Stopp nutzt sie mit.
+- Benutzerhandbuch 37.4: Abschnitt „Agenten ziehen von selbst nach“.
+
+### Tests
+- `test_agenten_aktualisieren.py`: jeder Beschäftigt-Grund in beide Richtungen, einer je Durchlauf, nie beschäftigte/aktuelle/gestoppte Agenten, „Aus“, Fehlschlag einmalig mit Protokoll, Start eines veralteten Agenten, Endpunkte.
+
 ## [1.432.1] - 2026-11-06
 
 ### Dokumentation

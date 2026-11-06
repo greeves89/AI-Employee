@@ -370,6 +370,16 @@ class SchedulerService:
                             logger.info("[Scheduler] IdleStop: stopped %s idle agent(s)", n)
                     except Exception as e:
                         logger.warning("[Scheduler] IdleStop error: %s", e)
+                    # Agenten im Leerlauf aktuell halten — derselbe Takt, höchstens einer
+                    # je Durchlauf (gestaffelt). Nach dem Leerlauf-Stopp: ein gerade
+                    # gestoppter Agent wird erst beim nächsten Start aktualisiert.
+                    try:
+                        from app.core import agenten_aktualisieren
+                        ergebnis = await agenten_aktualisieren.tick(self.docker, self.redis)
+                        if ergebnis:
+                            logger.info("[Scheduler] Agenten-Update: %s", ergebnis)
+                    except Exception as e:
+                        logger.warning("[Scheduler] Agenten-Update-Fehler: %r", e, exc_info=True)
                 self._feeds_counter += 30
                 if self._feeds_counter >= 300:  # every 5 min
                     self._feeds_counter = 0
@@ -2775,7 +2785,6 @@ class SchedulerService:
         from app.db.session import resilient_session
         from app.models.agent import Agent, AgentState
         from app.models.platform_settings import PlatformSettings
-        from app.models.task import Task, TaskStatus
 
         stopped = 0
         async with resilient_session() as db:
@@ -2798,49 +2807,17 @@ class SchedulerService:
                 return 0
             mgr = AgentManager(db, self.docker, self.redis)
 
-            for agent in agents:
-                if agent.state == AgentState.WORKING:
-                    logger.debug("[IdleStop] Skip %s (%s) — DB state is WORKING", agent.id, agent.name)
-                    continue
+            from app.core.agenten_aktualisieren import beschaeftigt
 
+            for agent in agents:
                 # Always-on agents are never idle-reaped (same flag as the user-lifecycle sweep).
                 if (agent.config or {}).get("always_on"):
                     continue
-
-                try:
-                    live_status = await self.redis.get_agent_status(agent.id)
-                except Exception:
-                    live_status = {}
-                live_state = live_status.get("state")
-                current_task = live_status.get("current_task")
-                if live_state == "working" or current_task:
-                    logger.debug(
-                        "[IdleStop] Skip %s (%s) — live state=%r current_task=%r",
-                        agent.id, agent.name, live_state, current_task,
-                    )
-                    continue
-
-                active_task = (await db.execute(
-                    select(Task.id)
-                    .where(Task.agent_id == agent.id, Task.status == TaskStatus.RUNNING)
-                    .limit(1)
-                )).scalar_one_or_none()
-                if active_task:
-                    logger.debug("[IdleStop] Skip %s (%s) — task %s is still RUNNING", agent.id, agent.name, active_task)
-                    continue
-
-                # Keep-warm: don't reap an agent that is a participant of a RUNNING meeting —
-                # it idles between its turns but is needed again seconds later (avoids the
-                # stop/restart churn and "[Agent hat nicht geantwortet]").
-                from app.models.meeting_room import MeetingRoom as _MeetingRoom
-                in_meeting = (await db.execute(
-                    select(_MeetingRoom.id).where(
-                        _MeetingRoom.state == "running",
-                        _MeetingRoom.agent_ids.contains([agent.id]),
-                    ).limit(1)
-                )).scalar_one_or_none()
-                if in_meeting:
-                    logger.debug("[IdleStop] Skip %s (%s) — active in meeting %s", agent.id, agent.name, in_meeting)
+                # Arbeitet, Auftrag läuft, sitzt in einer laufenden Besprechung (dort ruht
+                # er nur zwischen seinen Beiträgen): die eine gemeinsame Prüfung.
+                grund = await beschaeftigt(db, self.redis, agent)
+                if grund:
+                    logger.debug("[IdleStop] Skip %s (%s) — %s", agent.id, agent.name, grund)
                     continue
 
                 cfg = agent.config or {}

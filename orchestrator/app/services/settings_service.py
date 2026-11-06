@@ -84,6 +84,8 @@ ALLOWED_KEYS = SECRET_KEYS | {
     # Oberfläche einstellbar, die .env liefert nur den Startwert.
     "egress_ki_zugang",
     "egress_codex_zugang",
+    "agenten_auto_update",
+    "agenten_auto_update_angehalten",
     "aws_region",
     "vertex_project_id",
     "vertex_region",

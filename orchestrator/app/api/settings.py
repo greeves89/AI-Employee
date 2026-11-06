@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -848,6 +848,58 @@ async def _stufe_protokollieren(db: AsyncSession, user, art: str, von: dict, nac
         meta={"keys": [egress.STUFEN[art]], "aktion": "egress_stufe_gesenkt" if gesenkt else "egress_stufe",
               "art": art, "von": von, "nach": nach},
     )
+
+
+class AgentenUpdates(BaseModel):
+    modus: str = Field(max_length=10)   # "leerlauf" | "aus"
+
+
+async def _agenten_updates_stand(db: AsyncSession, request: Request | None = None) -> dict:
+    from app.core import agenten_aktualisieren as aa
+    from app.config import get_agent_version
+    from app.models.agent import Agent
+
+    redis = getattr(getattr(request, "app", None), "state", None)
+    redis = getattr(redis, "redis", None)
+    agenten = (await db.execute(select(Agent).order_by(Agent.name))).scalars().all()
+    ausstehend = []
+    for a in agenten:
+        if aa.veraltet(a):
+            g = await aa.grund(db, redis, a)
+            ausstehend.append({"id": a.id, "name": a.name, "version": (a.config or {}).get("agent_version"),
+                               "grund": g, "text": aa.GRUENDE[g]})
+    return {"modus": aa.modus(), "version": get_agent_version(), "angehalten": aa.angehalten(),
+            "ausstehend": ausstehend}
+
+
+@router.get("/agenten-updates")
+async def get_agenten_updates(request: Request, user=Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Admin: Werden Agenten im Leerlauf selbst aktualisiert, und welche warten noch?"""
+    return await _agenten_updates_stand(db, request)
+
+
+@router.put("/agenten-updates")
+async def set_agenten_updates(body: AgentenUpdates, request: Request, user=Depends(require_admin),
+                              db: AsyncSession = Depends(get_db)):
+    """Admin: automatisches Aktualisieren ein/aus — gespeichert, sofort wirksam, protokolliert."""
+    from app.core import agenten_aktualisieren as aa
+
+    if body.modus not in aa.MODI:
+        raise HTTPException(status_code=400, detail="Unbekannter Modus")
+    svc = SettingsService(db)
+    await svc.set(aa.EINSTELLUNG, body.modus)
+    geaendert = [aa.EINSTELLUNG]
+    if aa.angehalten():
+        # Speichern heißt hier auch: „Ich habe nachgesehen, weiter.“ Die Automatik
+        # nimmt die Arbeit nach einem Fehlschlag erst damit wieder auf.
+        await svc.set(aa.ANGEHALTEN, "-")
+        geaendert.append(aa.ANGEHALTEN)
+    await _einstellungen_protokollieren(db, user, geaendert)
+    await db.commit()
+    setattr(settings, aa.EINSTELLUNG, body.modus)
+    if aa.ANGEHALTEN in geaendert:
+        setattr(settings, aa.ANGEHALTEN, "-")
+    return await _agenten_updates_stand(db, request)
 
 
 @router.get("/datenschutz")

@@ -86,6 +86,7 @@ import { DatensicherungKarte } from "@/components/admin/datensicherung-karte";
 import { DatenschutzKarte } from "@/components/admin/datenschutz-karte";
 import { SicherheitsKarte } from "@/components/admin/sicherheits-karte";
 import { EgressStufenKarte } from "@/components/admin/egress-stufen-karte";
+import { AgentenUpdatesKarte } from "@/components/admin/agenten-updates-karte";
 import { nutzerLoeschenMitRueckfrage } from "@/components/admin/nutzer-loeschen";
 import type { AdminOverview } from "@/lib/api";
 import type { AdminUser, Agent, Feedback, FeedbackStatus } from "@/lib/types";
@@ -544,7 +545,7 @@ export default function AdminPage() {
             {tab === "second-brains" && <SecondBrainsView embedded />}
             {tab === "web-search" && <WebSearchView embedded />}
             {tab === "secrets" && <SecretsView embedded />}
-            {tab === "health" && <><SicherheitsKarte /><EgressStufenKarte /><DatensicherungKarte /><DatenschutzKarte /><HealthView embedded /></>}
+            {tab === "health" && <><SicherheitsKarte /><AgentenUpdatesKarte /><EgressStufenKarte /><DatensicherungKarte /><DatenschutzKarte /><HealthView embedded /></>}
             {tab === "audit" && <AuditView embedded />}
             {tab === "dlp" && <DlpView embedded />}
             {tab === "master-rules" && <MasterRulesView />}
