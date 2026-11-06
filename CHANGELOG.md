@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.431.1] - 2026-11-06
+
+### Behoben
+- Sentinel-Sperre: Nennt ein gesperrter Befehl genau eine Datei oder genau eine Adresse, gilt die Sperre für diese und nicht nur für den genauen Befehl. Live auf dem Pi gefunden: Nach einer Sperre auf `cat DATEI` gingen `head` und `Read` auf dieselbe Datei noch durch. Jetzt trifft sie jedes Lesen der Datei, in allen Laufzeiten; eine Sperre auf `curl URL` trifft auch `WebFetch`.
+
+### Tests
+- `test_sperre_auf_datei_trifft_jedes_lesen`, gemeinsame Kern-Beispiele (Agent und Orchestrator) um Datei- und URL-Fälle erweitert.
+
 ## [1.431.0] - 2026-11-06
 
 ### Geändert

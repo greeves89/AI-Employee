@@ -33,11 +33,30 @@ def schritt_kern(werkzeug: str, eingabe) -> str:
             if isinstance(wert, list):
                 wert = " ".join(str(t) for t in wert)
             if isinstance(wert, str) and wert.strip():
-                return wert.strip()
+                return _ziel_im_befehl(wert.strip()) if felder is _BEFEHL else wert.strip()
     try:
         return f"{werkzeug} {json.dumps(e, sort_keys=True, ensure_ascii=False)}"[:4000]
     except (TypeError, ValueError):
         return f"{werkzeug} {e}"[:4000]
+
+
+def _ziel_im_befehl(befehl: str) -> str:
+    """Nennt ein Befehl genau EINE Datei oder genau EINE Adresse, ist sie der Kern —
+    sonst der ganze Befehl. Eine Sperre auf ``cat /a/b.txt`` soll auch ``head`` oder
+    ``Read`` auf dieselbe Datei treffen, eine auf ``curl URL`` auch ``WebFetch``."""
+    import shlex
+
+    try:
+        teile = shlex.split(befehl)
+    except ValueError:
+        return befehl
+    urls = [t for t in teile if t.startswith(("http://", "https://"))]
+    pfade = [t for t in teile[1:] if not t.startswith("-") and "/" in t and not t.startswith(("http://", "https://"))]
+    if len(urls) == 1 and not pfade:
+        return urls[0]
+    if len(pfade) == 1 and not urls:
+        return pfade[0]
+    return befehl
 
 
 def sperre_fuer(werkzeug: str, eingabe, regeln) -> dict | None:
