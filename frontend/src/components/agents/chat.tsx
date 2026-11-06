@@ -16,6 +16,7 @@ import {
   ChevronDown,
   Target,
   CirclePause,
+  ShieldAlert,
   Copy,
 } from "lucide-react";
 import { useWebSocket } from "@/hooks/use-websocket";
@@ -194,7 +195,7 @@ interface ChatMessage {
   toolCalls?: { tool: string; input: string }[];
   /** Verweist auf eine Auftrags-Kachel; die Zeile wird dann als Kachel gezeichnet. */
   taskCardId?: string;
-  meta?: { cost_usd?: number; duration_ms?: number; num_turns?: number; input_tokens?: number; output_tokens?: number; reasoning_tokens?: number; cached_tokens?: number; cache_write_tokens?: number; context_tokens?: number; presented_files?: ChatFile[]; context_excluded?: boolean; tool_output_excluded?: boolean; source?: string; runde?: number; anhaenge?: { path: string; filename?: string; media_type?: string; size?: number }[]; plan?: boolean; ziel?: ZielStand };
+  meta?: { cost_usd?: number; duration_ms?: number; num_turns?: number; input_tokens?: number; output_tokens?: number; reasoning_tokens?: number; cached_tokens?: number; cache_write_tokens?: number; context_tokens?: number; presented_files?: ChatFile[]; context_excluded?: boolean; tool_output_excluded?: boolean; source?: string; gestoppt?: boolean; fortgesetzt?: boolean; runde?: number; anhaenge?: { path: string; filename?: string; media_type?: string; size?: number }[]; plan?: boolean; ziel?: ZielStand };
   images?: ChatImage[];
   files?: ChatFile[];
 }
@@ -207,7 +208,8 @@ interface ChatEvent {
     | "approval_request"  // Freigabe angelegt (approvals.py) — Anstoss fuer den Banner-Abgleich
     | "attached"  // Quittung auf {action: "attach"} (ws.py)
     | "goal"  // /goal gesetzt oder beendet (ws.py) — Anstoß, den Ziel-Stand neu zu laden
-    | "stillstand";  // #891: Zug endete mit einer Ankündigung, danach lief nichts (app/core/ankuendigung.py)
+    | "stillstand"  // #891: Zug endete mit einer Ankündigung, danach lief nichts (app/core/ankuendigung.py)
+    | "sentinel";  // Sentinel hat angehalten, geprüft und mit dem Grund fortgesetzt (services/sentinel_service.py)
   data: Record<string, unknown>;
   timestamp: string;
 }
@@ -1497,6 +1499,26 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
       return;
     }
 
+    // Der Sentinel hat den laufenden Zug kurz angehalten, geprueft und mit dem Grund
+    // fortgesetzt. Statuszeile in genau diesem Gespraech, wie die Stillstands-Zeile.
+    if (type === "sentinel") {
+      if (!event.session_id || event.session_id !== activeSessionIdRef.current) return;
+      const zeile = data as { id?: string; content?: string; gestoppt?: boolean };
+      const id = String(zeile.id || `sentinel-${Date.now()}`);
+      setMessages((prev) =>
+        prev.some((m) => m.id === id)
+          ? prev
+          : [...prev, {
+              id,
+              role: "system" as const,
+              content: String(zeile.content || "Sentinel hat kurz angehalten und geprüft."),
+              timestamp: event.timestamp || new Date().toISOString(),
+              meta: { source: "sentinel", gestoppt: !!zeile.gestoppt },
+            }],
+      );
+      return;
+    }
+
     if (type === "task_card") {
       const card = data as unknown as TaskCard;
       if (!card?.task_id) return;
@@ -2116,6 +2138,19 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
       )));
     } catch (e) {
       chatToast.error("Nicht möglich", e instanceof Error ? e.message : undefined);
+    }
+  }, [agentId, activeSessionId]);
+
+  // Sentinel hat hart angehalten: der Mensch entscheidet, dass es weitergeht.
+  const sentinelFortsetzen = useCallback(async (messageId: string) => {
+    if (!activeSessionId) return;
+    try {
+      await api.sentinelFortsetzen(agentId, activeSessionId, messageId);
+      setMessages((prev) => prev.map((m) => (
+        m.id === messageId ? { ...m, meta: { ...m.meta, fortgesetzt: true } } : m
+      )));
+    } catch (e) {
+      chatToast.error("Fortsetzen nicht möglich", e instanceof Error ? e.message : undefined);
     }
   }, [agentId, activeSessionId]);
 
@@ -2792,6 +2827,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
               onFork={forkFrom}
               onRewind={rewindTo}
               onToggleExclude={toggleContextExclusion}
+              onSentinelFortsetzen={sentinelFortsetzen}
               // „Weitermachen“ nur, solange die Statuszeile das Letzte im Gespräch ist
               // und der Agent nicht schon wieder arbeitet.
               onWeitermachen={idx === arr.length - 1 && !isWaiting
@@ -3513,12 +3549,14 @@ function MessageRow({
   onRewind,
   onToggleExclude,
   onWeitermachen,
+  onSentinelFortsetzen,
 }: {
   message: ChatMessage;
   onFork?: (messageId: string) => void;
   onRewind?: (messageId: string) => void;
   onToggleExclude?: (messageId: string, scope: "message" | "tool_output", excluded: boolean) => void;
   onWeitermachen?: () => void;
+  onSentinelFortsetzen?: (messageId: string) => void;
 }) {
   // #891: Ankündigung ohne Weiterarbeit — Statuszeile wie eine Goal-Runde, mit Knopf.
   if (message.role === "system" && message.meta?.source === "stillstand") {
@@ -3535,6 +3573,30 @@ function MessageRow({
             <Play className="h-3 w-3" />
             Weitermachen
           </button>
+        )}
+      </div>
+    );
+  }
+
+  // Sentinel: angehalten, geprueft, mit dem Grund fortgesetzt — sichtbar statt stumm.
+  if (message.role === "system" && message.meta?.source === "sentinel") {
+    const offen = message.meta.gestoppt && !message.meta.fortgesetzt;
+    return (
+      <div className="flex flex-wrap items-start gap-2 py-1 pl-1 text-xs text-muted-foreground" role="status">
+        <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+        <span className="min-w-0 flex-1">{message.content}</span>
+        {offen && onSentinelFortsetzen && (
+          <button
+            type="button"
+            onClick={() => onSentinelFortsetzen(message.id)}
+            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-xs text-foreground hover:bg-accent"
+          >
+            <Play className="h-3 w-3" />
+            Fortsetzen
+          </button>
+        )}
+        {message.meta.gestoppt && message.meta.fortgesetzt && (
+          <span className="text-[11px] text-muted-foreground">Fortgesetzt</span>
         )}
       </div>
     );

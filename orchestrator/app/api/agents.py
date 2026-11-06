@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1212,6 +1212,61 @@ async def start_agent(
         return {"status": "started", "agent_id": agent.id}
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent nicht gefunden")
+
+
+class SentinelFortsetzen(BaseModel):
+    session_id: str = Field(min_length=1, max_length=200)
+    zeile_id: str = Field(min_length=1, max_length=64, pattern=r"^sentinel-[0-9a-f]{12}$")
+
+
+@router.post("/{agent_id}/sentinel-fortsetzen")
+async def sentinel_fortsetzen(
+    agent_id: str,
+    body: SentinelFortsetzen,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Knopf „Fortsetzen“ an der Sentinel-Zeile nach einem harten Stopp.
+
+    Der Mensch hat entschieden: Agent starten und in DERSELBEN Sitzung mit dem Grund
+    weitermachen lassen. Den Text hat der Sentinel beim Stopp an der Zeile abgelegt
+    (``meta.fortsetzen``); die Sperre des Schritts und die Lehre bleiben bestehen.
+    Ein zweiter Klick tut nichts.
+    """
+    await _check_owner(agent_id, user, db)
+    from sqlalchemy.orm.attributes import flag_modified
+
+    from app.core.chat_auftrag import einreihen
+    from app.models.chat_message import ChatMessage
+
+    zeile = (await db.execute(select(ChatMessage).where(
+        ChatMessage.agent_id == agent_id, ChatMessage.session_id == body.session_id,
+        ChatMessage.message_id == body.zeile_id,
+    ))).scalar_one_or_none()
+    meta = dict(zeile.meta or {}) if zeile else {}
+    if not zeile or meta.get("source") != "sentinel" or not meta.get("gestoppt"):
+        raise HTTPException(status_code=404, detail="Kein angehaltener Lauf zu dieser Zeile")
+    if meta.get("fortgesetzt"):
+        return {"status": "bereits_fortgesetzt"}
+    try:
+        agent = await manager.start_agent(agent_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
+    from app.core import agent_duty
+    agent_duty.nutzerhalt_setzen(agent, False)
+    redis = getattr(manager, "redis", None)
+    einreihung = await einreihen(redis.client if redis else None, agent_id, {
+        "id": f"{body.zeile_id}-weiter", "text": str(meta.get("fortsetzen") or ""), "model": None,
+        "chat_session_id": body.session_id, "source": "webapp",
+    })
+    if not getattr(einreihung, "eingereiht", False):
+        raise HTTPException(status_code=409, detail="Fortsetzen nicht möglich (Budget oder Warteschlange)")
+    meta["fortgesetzt"] = True
+    zeile.meta = meta
+    flag_modified(zeile, "meta")
+    await db.commit()
+    return {"status": "fortgesetzt"}
 
 
 @router.post("/{agent_id}/restart")
