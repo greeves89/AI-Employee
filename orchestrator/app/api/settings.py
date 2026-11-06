@@ -1,7 +1,7 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -759,9 +759,9 @@ async def get_sicherheit(
 
 
 class EgressStufe(BaseModel):
-    art: str            # "ki" (Claude-Zugang) | "codex" (Codex-Zugang)
-    modus: str          # "aus" | "auswahl" | "alle"
-    agenten: list[str] = []
+    art: str = Field(max_length=10)     # "ki" (Claude-Zugang) | "codex" (Codex-Zugang)
+    modus: str = Field(max_length=10)   # "aus" | "auswahl" | "alle"
+    agenten: list[str] = Field(default_factory=list, max_length=500)
 
 
 #: Welche Laufzeit eine Stufe betrifft — eine Auswahl nimmt nur passende Agenten.
@@ -819,11 +819,35 @@ async def set_egress_stufe(body: EgressStufe, user=Depends(require_admin),
         if fehlt:
             raise HTTPException(status_code=400,
                                 detail="Kein passender Agent: " + ", ".join(fehlt[:10]))
+    von = egress.stufe_lesen(getattr(settings, schluessel, ""))
+    nach = egress.stufe_lesen(wert)
+    gesenkt = egress.stufe_gesenkt(von, nach)
     await SettingsService(db).set(schluessel, wert)
-    await _einstellungen_protokollieren(db, user, [schluessel])
+    await _stufe_protokollieren(db, user, body.art, von, nach, gesenkt)
     await db.commit()
     setattr(settings, schluessel, wert)
     return await _egress_stufen_stand(db)
+
+
+async def _stufe_protokollieren(db: AsyncSession, user, art: str, von: dict, nach: dict,
+                                gesenkt: bool) -> None:
+    """Wie jede Einstellung, aber mit vorher/nachher — ein Absenken heißt: Agenten bekommen
+    den Zugang wieder im Klartext. Das muss im Protokoll ohne Nachrechnen sichtbar sein."""
+    from app.core import egress
+    from app.core.audit import protokolliere
+    from app.models.audit_log import AuditEventType
+
+    def kurz(stufe: dict) -> str:
+        return ",".join(stufe["agenten"]) if stufe["modus"] == "auswahl" else stufe["modus"]
+
+    name = "Claude-Zugang" if art == "ki" else "Codex-Zugang"
+    await protokolliere(
+        db, AuditEventType.SETTINGS_CHANGED, user_id=getattr(user, "id", None),
+        command=(f"Proxy-Stufe {name}: {kurz(von)} → {kurz(nach)}"
+                 + (" (gesenkt: Klartext für mehr Agenten)" if gesenkt else ""))[:500],
+        meta={"keys": [egress.STUFEN[art]], "aktion": "egress_stufe_gesenkt" if gesenkt else "egress_stufe",
+              "art": art, "von": von, "nach": nach},
+    )
 
 
 @router.get("/datenschutz")

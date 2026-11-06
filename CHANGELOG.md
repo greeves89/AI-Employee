@@ -16,7 +16,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 - Benutzerhandbuch 37.10: Klick-Anleitung für die Stufen statt `.env`-Einträgen.
 
 ### Sicherheit
-- Nur Administratoren (GET/PUT `/settings/egress-stufen`). Abgelehnt werden unbekannte Zugänge und Modi, leere Auswahl, unförmige Kennungen und Agenten, die es nicht gibt oder die den Zugang nicht nutzen. Jede Änderung steht im Prüfprotokoll.
+- Nur Administratoren (GET/PUT `/settings/egress-stufen`). Abgelehnt werden unbekannte Zugänge und Modi, leere Auswahl, unförmige Kennungen, mehr als 500 Einträge und Agenten, die es nicht gibt oder die den Zugang nicht nutzen.
+- Prüfprotokoll mit vorher/nachher („Proxy-Stufe Codex-Zugang: alle → aus“). Ein Absenken ist markiert (`egress_stufe_gesenkt`), die Oberfläche fragt vorher nach.
+- Ein unförmiger Wert in der `.env` (etwa `true`) wird im Protokoll des Orchestrators gemeldet statt still als Auswahl ohne Treffer zu gelten.
 
 ### Tests
 - `test_egress_stufen_oberflaeche.py`: Lesen/Schreiben der Stufe, „Aus“ übersteht den Neustart, Wirkung je Stufe, Endpunkte (nur Admins, Ablehnungen, sofort wirksam, gespeichert, protokolliert), Sicherheitsstatus in beide Richtungen.

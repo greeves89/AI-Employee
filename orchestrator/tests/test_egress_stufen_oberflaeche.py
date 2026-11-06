@@ -22,10 +22,12 @@ from app.models.platform_settings import PlatformSettings
 from app.models.user import User, UserRole
 from app.services.settings_service import SettingsService
 from fastapi import HTTPException
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 TOKEN = "p" * 64
+#: Vor dem Ersetzen in den Endpunkt-Tests festgehalten — der Protokoll-Test prüft das Original.
+_PROTOKOLL_ECHT = api._stufe_protokollieren
 ADMIN = User(id="ad", email="admin@example.invalid", name="Admin", role=UserRole.ADMIN)
 
 
@@ -54,6 +56,23 @@ class StufeLesenSchreibenTests(unittest.TestCase):
         self.assertEqual(egress.stufe_lesen(" Alle ")["modus"], "alle")
         self.assertEqual(egress.stufe_lesen("a1b2c3d4, e5f6a7b8"),
                          {"modus": "auswahl", "agenten": ["a1b2c3d4", "e5f6a7b8"]})
+
+    def test_gesenkt(self):
+        L = egress.stufe_lesen
+        for alt, neu, erwartet in (("alle", "aus", True), ("alle", "aaaaaaaa", True), ("aus", "alle", False),
+                                   ("aaaaaaaa", "aus", True), ("aaaaaaaa,bbbbbbbb", "aaaaaaaa", True),
+                                   ("aaaaaaaa", "aaaaaaaa,bbbbbbbb", False), ("aaaaaaaa", "alle", False),
+                                   ("alle", "alle", False)):
+            with self.subTest(alt=alt, neu=neu):
+                self.assertEqual(egress.stufe_gesenkt(L(alt), L(neu)), erwartet)
+
+    def test_unfoermige_env_werte_laut(self):
+        """„true“ trifft keinen Agenten — nicht still als Auswahl anzeigen."""
+        with self.assertLogs("app.core.egress", "WARNING"):
+            self.assertEqual(egress.stufe_lesen("true"), {"modus": "auswahl", "agenten": ["true"]})
+        with patch.object(settings, "egress_proxy_enabled", True), patch.object(settings, "egress_proxy_token", TOKEN), \
+                patch.object(settings, "egress_ki_zugang", "true"), self.assertLogs("app.core.egress", "WARNING"):
+            self.assertFalse(egress.ki_ueber_proxy("aaaaaaaa"), "„true“ heißt nicht „alle“")
 
     def test_ungueltig(self):
         for modus, agenten in (("teilweise", []), ("auswahl", []), ("auswahl", ["../etc"]),
@@ -99,7 +118,7 @@ class DbTestFall(unittest.IsolatedAsyncioTestCase):
         self.patches = _proxy_an() + [
             patch.object(settings, "egress_ki_zugang", ""),
             patch.object(settings, "egress_codex_zugang", ""),
-            patch.object(api, "_einstellungen_protokollieren", AsyncMock()),
+            patch.object(api, "_stufe_protokollieren", AsyncMock()),
         ]
         for p in self.patches:
             p.start()
@@ -138,8 +157,29 @@ class EndpunktTests(DbTestFall):
                          "nur der umgestellte Agent zeigt „Aktualisieren“")
         async with self.Session() as frisch:
             self.assertEqual((await SettingsService(frisch).get_all())["egress_ki_zugang"], "aaaaaaaa")
-        api._einstellungen_protokollieren.assert_awaited_once()
-        self.assertEqual(api._einstellungen_protokollieren.await_args.args[2], ["egress_ki_zugang"])
+        api._stufe_protokollieren.assert_awaited_once()
+        _, _, art, von, nach, gesenkt = api._stufe_protokollieren.await_args.args
+        self.assertEqual((art, von["modus"], nach["agenten"], gesenkt), ("ki", "aus", ["aaaaaaaa"], False))
+
+    async def test_absenken_wird_markiert(self):
+        await self.setzen("ki", "alle")
+        await self.setzen("ki", "auswahl", ["aaaaaaaa"])
+        self.assertTrue(api._stufe_protokollieren.await_args.args[5], "alle → Auswahl = gesenkt")
+        await self.setzen("ki", "auswahl", ["aaaaaaaa", "bbbbbbbb"])
+        self.assertFalse(api._stufe_protokollieren.await_args.args[5], "Auswahl erweitert")
+
+    async def test_protokolleintrag(self):
+        """Der echte Eintrag nennt vorher/nachher und markiert das Absenken."""
+        from app.models.audit_log import AuditLog
+        async with self.engine.begin() as conn:
+            await conn.run_sync(AuditLog.metadata.create_all, tables=[AuditLog.__table__])
+        await _PROTOKOLL_ECHT(self.db, ADMIN, "codex", egress.stufe_lesen("alle"),
+                                        egress.stufe_lesen("aus"), True)
+        await self.db.commit()
+        eintrag = (await self.db.execute(select(AuditLog))).scalars().one()
+        self.assertIn("Codex-Zugang: alle → aus", eintrag.command)
+        self.assertIn("gesenkt", eintrag.command)
+        self.assertEqual(eintrag.meta["aktion"], "egress_stufe_gesenkt")
 
     async def test_aus_uebersteht_den_neustart(self):
         await self.setzen("codex", "alle")
@@ -167,7 +207,7 @@ class EndpunktTests(DbTestFall):
                     await self.setzen(art, modus, agenten)
                 self.assertEqual(fehler.exception.status_code, 400)
         self.assertEqual(settings.egress_ki_zugang, "", "nichts übernommen")
-        api._einstellungen_protokollieren.assert_not_awaited()
+        api._stufe_protokollieren.assert_not_awaited()
 
 
 class SicherheitsstatusTests(DbTestFall):

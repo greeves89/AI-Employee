@@ -41,6 +41,13 @@ function gleich(a: EgressStufe, b: EgressStufe): boolean {
   return [...a.agenten].sort().join(",") === [...b.agenten].sort().join(",");
 }
 
+/** Deckt die neue Stufe weniger Agenten ab? Spiegel von ``egress.stufe_gesenkt``. */
+function gesenkt(alt: EgressStufe, neu: EgressStufe): boolean {
+  if (alt.modus === "aus") return false;
+  if (alt.modus === "alle") return neu.modus !== "alle";
+  return neu.modus === "aus" || (neu.modus === "auswahl" && alt.agenten.some((a) => !neu.agenten.includes(a)));
+}
+
 function ZugangZeile({
   name,
   stufe,
@@ -164,6 +171,18 @@ export function EgressStufenKarte() {
   const veraltet = useMemo(() => (stand?.agenten ?? []).filter((a) => a.veraltet), [stand]);
 
   async function speichern(art: Art, neu: EgressStufe, name: string) {
+    if (stand?.proxy_aktiv && gesenkt(stand[art], neu)) {
+      const ok = await confirm({
+        title: `${name} für weniger Agenten schützen?`,
+        message:
+          "Agenten, die nicht mehr in der Stufe sind, bekommen den Zugang nach dem nächsten " +
+          "Aktualisieren wieder im Klartext und könnten ihn ausgeben oder weitergeben. " +
+          "Die Änderung steht im Prüfprotokoll.",
+        variant: "warning",
+        confirmLabel: "Trotzdem speichern",
+      });
+      if (!ok) return;
+    }
     setSpeichert(art);
     try {
       setStand(await api.setEgressStufe(art, neu));
@@ -225,7 +244,8 @@ export function EgressStufenKarte() {
             Hinter dem Proxy sieht ein Agent den Claude- bzw. Codex-Zugang der Plattform nur als
             Platzhalter; erst der Egress-Proxy setzt ihn beim Anbieter ein. Schrittweise
             einschalten: erst einzelne Agenten, nach ein paar Tagen alle. Eine neue Stufe gilt
-            für Agenten, die danach entstehen oder aktualisiert werden.
+            für Agenten, die danach entstehen oder aktualisiert werden. Was hier gespeichert
+            ist, gilt auch nach einem Neustart; die Einträge in der .env sind nur der Startwert.
           </p>
 
           {!stand.proxy_aktiv ? (

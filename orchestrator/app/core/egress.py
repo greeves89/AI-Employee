@@ -225,7 +225,24 @@ def stufe_lesen(wert: str | None) -> dict:
         return {"modus": "aus", "agenten": []}
     if roh == "alle":
         return {"modus": "alle", "agenten": []}
-    return {"modus": "auswahl", "agenten": sorted({x.strip() for x in roh.split(",") if x.strip()})}
+    teile = sorted({x.strip() for x in roh.split(",") if x.strip()})
+    unfoermig = [x for x in teile if not _AGENT_ID.match(x)]
+    if unfoermig:
+        # Etwa „true“ in der .env: trifft keinen Agenten — der Zugang ginge im Klartext
+        # hinaus. Laut melden; der Sicherheitsstatus zeigt die Agenten mit Klartext.
+        logger.warning("Proxy-Stufe enthält %d Eintrag/Einträge, die keine Agenten-Kennung sind",
+                       len(unfoermig))
+    return {"modus": "auswahl", "agenten": teile}
+
+
+def stufe_gesenkt(alt: dict, neu: dict) -> bool:
+    """Deckt die neue Stufe weniger Agenten ab als die alte? (dann im Prüfprotokoll markiert)"""
+    if alt["modus"] == "aus":
+        return False
+    if alt["modus"] == "alle":
+        return neu["modus"] != "alle"
+    return neu["modus"] == "aus" or (neu["modus"] == "auswahl"
+                                     and not set(alt["agenten"]) <= set(neu["agenten"]))
 
 
 def stufe_schreiben(modus: str, agenten: list[str] | None = None) -> str:
