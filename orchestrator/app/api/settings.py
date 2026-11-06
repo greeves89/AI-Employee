@@ -774,16 +774,66 @@ async def _egress_stufen_stand(db: AsyncSession) -> dict:
 
     agenten = (await db.execute(
         select(Agent.id, Agent.name, Agent.mode, Agent.config).order_by(Agent.name))).all()
+    import asyncio
+
     return {
         "proxy_aktiv": egress.aktiv(),
+        # Hauptschalter (seit 1.435.0 in der Oberfläche) und was ihn trägt.
+        "proxy_eingeschaltet": bool(settings.egress_proxy_enabled),
+        "dienst_schluessel": egress.dienst_schluessel_da(),
+        "proxy_erreichbar": await asyncio.to_thread(egress.proxy_erreichbar),
         "ki": egress.stufe_lesen(settings.egress_ki_zugang),
         "codex": egress.stufe_lesen(getattr(settings, "egress_codex_zugang", "")),
         # ``veraltet``: der Behälter entstand mit einer anderen Stufe — erst
         # „Aktualisieren“ setzt die neue Stufe im Agenten um.
         "agenten": [{"id": a.id, "name": a.name, "laufzeit": a.mode,
-                     "veraltet": egress.aktiv() and egress.veraltet(a.config, a.id)}
+                     # Auch nach dem AUSschalten: Agenten von vorher tragen noch Platzhalter.
+                     "veraltet": egress.veraltet(a.config, a.id)}
                     for a in agenten],
     }
+
+
+class EgressSchalter(BaseModel):
+    an: bool
+
+
+@router.put("/egress-proxy")
+async def set_egress_proxy(body: EgressSchalter, user=Depends(require_admin),
+                           db: AsyncSession = Depends(get_db)):
+    """Admin: Egress-Proxy ein- oder ausschalten — ohne .env und ohne Neustart.
+
+    Eingeschaltet wird nur, wenn Dienst-Schlüssel und Proxy-Dienst da sind; sonst liefen
+    die Agenten nach dem Aktualisieren über einen Proxy, der sie nicht hinauslässt. Die
+    Agenten ziehen danach selbst nach (automatisches Aktualisieren im Leerlauf) oder per
+    „Aktualisieren“. Ausschalten ist ein Absenken und steht so im Prüfprotokoll.
+    """
+    import asyncio
+
+    from app.core import egress
+    from app.core.audit import protokolliere
+    from app.models.audit_log import AuditEventType
+
+    if body.an:
+        if not egress.dienst_schluessel_da():
+            raise HTTPException(status_code=400, detail=(
+                "Der Dienst-Schlüssel des Proxys fehlt. Auf dem Server einmal "
+                "./scripts/update.sh ausführen — es legt ihn an — und dann erneut einschalten."))
+        if not await asyncio.to_thread(egress.proxy_erreichbar):
+            raise HTTPException(status_code=400, detail=(
+                "Der Proxy-Dienst antwortet nicht (Container ai-employee-egress-proxy). "
+                "Erst ihn starten (docker compose up -d), dann einschalten."))
+    vorher = bool(settings.egress_proxy_enabled)
+    await SettingsService(db).set("egress_proxy_enabled", "true" if body.an else "false")
+    await protokolliere(
+        db, AuditEventType.SETTINGS_CHANGED, user_id=getattr(user, "id", None),
+        command=f"Egress-Proxy: {'an' if vorher else 'aus'} → {'an' if body.an else 'aus'}"
+                + (" (gesenkt: Keys wieder im Klartext in Agenten)" if vorher and not body.an else ""),
+        meta={"keys": ["egress_proxy_enabled"], "von": vorher, "nach": body.an,
+              "aktion": "egress_proxy_aus" if vorher and not body.an else "egress_proxy"},
+    )
+    await db.commit()
+    setattr(settings, "egress_proxy_enabled", body.an)
+    return await _egress_stufen_stand(db)
 
 
 @router.get("/egress-stufen")

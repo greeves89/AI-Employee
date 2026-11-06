@@ -4605,14 +4605,20 @@ Der Proxy prüft jede Anmeldung und jeden Key beim Orchestrator mit einem eigene
 Dienst-Schlüssel. Agenten bekommen nur das öffentliche Zertifikat des Proxys, nie dessen
 privaten Schlüssel.
 
-**Einschalten** (einmal, auf dem Server):
+**Einschalten** *(seit 1.435.0 in der Oberfläche)*:
 
-1. `./scripts/update.sh` legt den Dienst-Schlüssel `EGRESS_PROXY_TOKEN` in der `.env` an.
-2. In der `.env` `EGRESS_PROXY_ENABLED=true` setzen und `docker compose up -d` ausführen.
-3. Auf der Seite **Agenten** erscheint **Alle aktualisieren (n)**: Jeder Agent, der noch
-   ohne Proxy entstanden ist, zählt dazu. Klicken. Erst danach gehen die Agenten über den Proxy.
+1. **Admin → Betrieb** öffnen, Karte **Zugänge hinter dem Proxy**.
+2. Ganz oben steht der Schalter **Egress-Proxy**. Einschalten.
+   - Ist er ausgegraut, nennt die Zeile darunter den Grund: Fehlt der Dienst-Schlüssel, auf
+     dem Server einmal `./scripts/update.sh` ausführen (es legt `EGRESS_PROXY_TOKEN` in der
+     `.env` an). Antwortet der Proxy-Dienst nicht, ihn mit `docker compose up -d` starten.
+3. Die Agenten ziehen von selbst nach (Kap. 37.4, „Agenten ziehen von selbst nach“), oder
+   sofort über **Jetzt aktualisieren** in derselben Karte. Erst danach gehen sie über den Proxy.
 4. Unter **Admin → Betrieb → Sicherheitsstatus** zeigt der Punkt **Keys in Agenten**, welche
    Keys noch im Klartext in Agenten liegen.
+
+Der Eintrag `EGRESS_PROXY_ENABLED` in der `.env` ist nur noch der Startwert; was in der
+Oberfläche gespeichert ist, gilt auch nach einem Neustart.
 
 **Claude- und Codex-Zugang hinter den Proxy legen** (stufenweise, in der Oberfläche *(seit 1.432.0)*):
 
@@ -4653,8 +4659,9 @@ Die Einträge `EGRESS_KI_ZUGANG` und `EGRESS_CODEX_ZUGANG` in der `.env` sind nu
 Startwert, solange in der Oberfläche nichts gespeichert wurde. Eine dort gespeicherte Stufe
 (auch **Aus**) gilt auch nach einem Neustart.
 
-**Ausschalten:** `EGRESS_PROXY_ENABLED=false`, `docker compose up -d`, dann wieder
-**Alle aktualisieren**. Die Agenten bekommen die Keys danach im Klartext.
+**Ausschalten:** denselben Schalter ausschalten und die Rückfrage bestätigen. Die Agenten
+bekommen die Keys nach dem Aktualisieren wieder im Klartext; im Prüfprotokoll steht das
+Ausschalten als Absenken.
 
 Ersetzt wird nur, wo Keys hingehören: in Kopfzeilen (etwa `Authorization`, auch bei git)
 und als ganzer Wert eines Anmelde-Parameters in der Adresse oder einem Formular (`key`,

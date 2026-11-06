@@ -70,6 +70,28 @@ def aktiv() -> bool:
                 and len(settings.egress_proxy_token or "") >= DIENST_TOKEN_MINDESTLAENGE)
 
 
+def dienst_schluessel_da() -> bool:
+    """Liegt der Dienst-Schlüssel vor, mit dem sich der Proxy beim Orchestrator ausweist?
+    (legen ``setup.sh``/``update.sh`` in der ``.env`` an — ohne ihn bleibt der Proxy aus)"""
+    return len(settings.egress_proxy_token or "") >= DIENST_TOKEN_MINDESTLAENGE
+
+
+def proxy_erreichbar(zeit: float = 2.0) -> bool:
+    """Nimmt der Proxy-Dienst Verbindungen an? Vor dem Einschalten geprüft — sonst gingen
+    alle Agenten nach dem Aktualisieren über einen Proxy hinaus, den es nicht gibt."""
+    import socket
+    from urllib.parse import urlparse
+
+    ziel = urlparse(settings.egress_proxy_url or "")
+    if not ziel.hostname:
+        return False
+    try:
+        with socket.create_connection((ziel.hostname, ziel.port or 8080), timeout=zeit):
+            return True
+    except OSError:
+        return False
+
+
 def ist_proxy_anfrage(authorization: str) -> bool:
     """Traegt die Anfrage den Dienst-Schluessel des Proxys? (Vergleich in konstanter Zeit)"""
     token = (authorization or "").removeprefix("Bearer ").strip()

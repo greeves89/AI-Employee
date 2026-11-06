@@ -82,6 +82,7 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "nutzer_budget_standard_usd",
     # Proxy-Stufen für den Claude- und den Codex-Zugang (core/egress.STUFEN) — in der
     # Oberfläche einstellbar, die .env liefert nur den Startwert.
+    "egress_proxy_enabled",
     "egress_ki_zugang",
     "egress_codex_zugang",
     "agenten_auto_update",
