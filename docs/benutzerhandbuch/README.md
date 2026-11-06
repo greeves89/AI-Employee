@@ -4673,6 +4673,47 @@ ohne Rechte und ohne Code vom Server. Seinen Schlüssel (`DOCKER_WAECHTER_TOKEN`
 
 ---
 
+### 37.13 Sentinel: anhalten, prüfen, anders weitermachen *(seit 1.431.0)*
+
+Der Sentinel liest bei jedem Agenten mit. Er schlägt an, wenn eine Umlenk-Anweisung
+(Prompt-Injektion) oder ein Zugangsschlüssel auftaucht. Bis 1.430 hielt er dann den ganzen
+Agenten an: Im Chat brach die Antwort einfach ab, der Grund stand nur bei den
+Benachrichtigungen. Jetzt läuft es so:
+
+1. **Anhalten:** Er unterbricht nur den laufenden Schritt. Der Agent bleibt an.
+2. **Prüfen:** Er ordnet den Fund ein. Stand die Anweisung in einer gelesenen Quelle oder in
+   der eigenen Antwort? Hat der Agent einen Schlüssel nur gelesen oder selbst verwendet?
+3. **Schritt sperren:** Den auslösenden Schritt (dieselbe Webseite, dieselbe Datei, derselbe
+   Befehl) sperrt er für diesen Agenten, mit jedem Werkzeug, auch per `curl`. Die Sperre
+   steht unter **Admin → Befehlsregeln** als „Sentinel-Sperre …“ und lässt sich dort löschen.
+4. **Merken:** Die Lehre kommt ins Gedächtnis des Agenten (Kategorie „learning“).
+5. **Anders weitermachen:** Der Agent bekommt den Grund und setzt in derselben Sitzung fort,
+   auf einem anderen Weg.
+
+Im Chat siehst du dazu eine Zeile mit Schild-Symbol, zum Beispiel: „Sentinel hat kurz
+angehalten: Ein Werkzeugergebnis enthielt eine Anweisung, die den Agenten umlenken sollte.
+Dieser Schritt ist ab jetzt gesperrt (…). Der Agent versucht es mit diesem Hinweis anders.“
+
+**Hart angehalten** wird nur noch,
+- wenn der Agent einen Schlüssel selbst in einen Werkzeugaufruf schreibt (er könnte die
+  Anlage verlassen),
+- wenn derselbe Fund innerhalb von 15 Minuten nach einem Hinweis wiederkommt,
+- wenn gerade kein Chat läuft, in den der Hinweis gehört (etwa bei einem Auftrag).
+
+Dann steht in der Zeile „Er bleibt gestoppt, bis du fortsetzt“, mit dem Knopf
+**Fortsetzen**. Ein Klick startet den Agenten und lässt ihn mit dem Grund weitermachen; die
+Sperre und die Lehre gelten weiter.
+
+**Im Projektboard:** Karten laufen als Aufträge. Einen Auftrag kann der Sentinel nicht
+mitten im Lauf fortsetzen, also beendet er den Lauf. Die Karte geht ins **Review**, mit dem
+Grund im gelben Kasten statt eines roten Fehlers. **Neuer Versuch** gibt sie mit diesem Grund
+zur Nacharbeit zurück. Die Sperre und die Lehre gelten dabei weiter, der Agent nimmt einen
+anderen Weg.
+
+> Den Fund selbst zeigt der Sentinel nie wörtlich, weder dir noch dem Agenten. Schlüssel
+> erscheinen nur gekürzt (Anfang und Ende). Ist ein Schlüssel echt und war er sichtbar,
+> erneuere ihn.
+
 ## A. Was kann ein Agent? (typische Einsätze)
 
 Damit klar wird, **wofür** du Agenten nutzt — ein paar Beispiele, die du einfach im

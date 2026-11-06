@@ -284,6 +284,12 @@ async def decide_async(tool_name: str, tool_input: dict | None = None, *, cwd: s
     lauf_grund = await werkzeug_pruefen(tool_name, tool_input, lauf)
     if lauf_grund:
         return _deny(lauf_grund)
+    # Vom Sentinel gesperrte Schritte (URL, Datei, Befehl) — jedes Werkzeug.
+    from app.tools.schritt_sperre import gesperrt
+
+    sperre = await gesperrt(tool_name, tool_input)
+    if sperre:
+        return _deny(sperre)
     if tool_name not in _SHELL_WERKZEUGE:
         return base
     eingabe = tool_input or {}

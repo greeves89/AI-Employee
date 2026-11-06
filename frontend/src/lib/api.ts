@@ -451,6 +451,14 @@ export async function startAgent(id: string): Promise<void> {
   await fetchJSON(`${getBase()}/agents/${id}/start`, { method: "POST" });
 }
 
+/** Knopf „Fortsetzen“ an der Sentinel-Zeile: Agent starten und mit dem Grund weitermachen. */
+export async function sentinelFortsetzen(agentId: string, sessionId: string, zeileId: string) {
+  return fetchJSON<{ status: string }>(`${getBase()}/agents/${agentId}/sentinel-fortsetzen`, {
+    method: "POST",
+    body: JSON.stringify({ session_id: sessionId, zeile_id: zeileId }),
+  });
+}
+
 export async function restartAgent(id: string): Promise<Agent> {
   return fetchJSON(`${getBase()}/agents/${id}/restart`, { method: "POST" });
 }

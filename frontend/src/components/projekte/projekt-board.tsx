@@ -10,7 +10,7 @@
 import { useEffect, useState } from "react";
 import { UserRound,
   ArrowLeft, ArrowRight, ArrowRightLeft, Bot, Check, CircleDot, CornerUpLeft, ExternalLink, FoldHorizontal, GitBranch,
-  GitPullRequest, Globe, Loader2, MessageCircleQuestion, Play, Plus, ScrollText, Server, Terminal, Trash2, TriangleAlert,
+  GitPullRequest, Globe, Loader2, MessageCircleQuestion, Play, Plus, ScrollText, Server, ShieldAlert, Terminal, Trash2, TriangleAlert,
   UnfoldHorizontal, Unlock,
 } from "lucide-react";
 import type { Agent } from "@/lib/types";
@@ -517,7 +517,23 @@ function Karte({
 
       <PrLink karte={karte} />
 
-      {(karte.spalte === "pruefung" || karte.spalte === "triage") && (karte.fehler || karte.ergebnis) && (
+      {/* Vom Sentinel angehalten: Grund statt eines roten Fehlers, mit „Neuer Versuch“ —
+          die vorhandene Nacharbeit, mit dem Grund als Hinweis (Sperre und Lehre gelten weiter). */}
+      {karte.spalte === "pruefung" && karte.sentinel && (
+        <div className="mt-2 flex flex-col gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-xs text-muted-foreground" role="status">
+          <p className="flex items-start gap-1.5">
+            <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+            <span className="line-clamp-5">{karte.sentinel.hinweis}</span>
+          </p>
+          <div>
+            <Knopf haupt onClick={() => aktionen.zurueckgeben(karte, karte.sentinel!.fortsetzen, null)}>
+              <Play className="h-3 w-3" /> Neuer Versuch
+            </Knopf>
+          </div>
+        </div>
+      )}
+
+      {(karte.spalte === "pruefung" || karte.spalte === "triage") && !karte.sentinel && (karte.fehler || karte.ergebnis) && (
         <p className={cn("mt-2 line-clamp-4 whitespace-pre-line text-xs", gescheitert ? "text-red-500" : "text-muted-foreground")}>
           {gescheitert && <TriangleAlert className="mr-1 inline h-3 w-3" />}
           {karte.fehler ?? karte.ergebnis}

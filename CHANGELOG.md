@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.431.0] - 2026-11-06
+
+### Geändert
+- Sentinel: anhalten, prüfen, anders weitermachen statt den ganzen Agenten zu stoppen. Bei einem Fund (Umlenk-Anweisung, Zugangsschlüssel) unterbricht er den laufenden Zug über das Live-Steering, sperrt den auslösenden Schritt (URL, Datei, Befehl) als agentbezogene Befehlsregel „Sentinel-Sperre“, legt die Lehre im Gedächtnis ab und lässt den Agenten in derselben Sitzung mit dem Grund weitermachen. Im Chat steht eine Statuszeile mit dem Grund, live und im Verlauf.
+- Hart angehalten wird nur noch, wenn der Agent einen Schlüssel selbst in einen Werkzeugaufruf schreibt, derselbe Fund kurz nach einem Hinweis wiederkommt oder kein Chat läuft. Auch dann steht der Grund im Chat, mit dem Knopf „Fortsetzen“.
+- Sentinel-Sperren gelten für jedes Werkzeug in allen Laufzeiten (Prüf-Hook für Claude Code und Codex, Executor für eigene Modelle), gewöhnliche Befehlsregeln weiter nur für Shell-Befehle.
+
+- Projektboard: Stoppt der Sentinel den Lauf einer Karte, geht sie ins Review (vorher blieb sie in „In Arbeit“ hängen) und zeigt den Grund mit dem Knopf „Neuer Versuch“ (Nacharbeit mit dem Grund als Hinweis).
+
+### Sicherheit
+- Nach einer Fortsetzung verschluckt die 60-Sekunden-Sturmsperre einen erneuten Fund nicht mehr (der Agent läuft ja weiter), sondern führt zum harten Stopp.
+- Ob sanft fortgesetzt wird, entscheidet nicht mehr der Agent allein: Ein gemeldetes Gespräch zählt nur mit einem offenen Zug, den der Orchestrator selbst gespeichert hat (letzte Nutzernachricht jünger als die letzte Antwort), und nie, während beim Agenten ein Auftrag läuft. Ein Fund im eigenen Werkzeugaufruf kurz nach einem Hinweis führt sofort zum harten Stopp.
+- Weder Umlenk-Formulierung noch Schlüssel stehen im Hinweis, in der Sperrregel oder in der Lehre.
+
+### Doku
+- Handbuch 37.13 Sentinel.
+
+### Tests
+- `test_sentinel_fortsetzen.py` (Einordnung, Schleifenschutz, Fortsetzen, Nachlauf, Wiederholung trotz Sturmsperre, Schlüssel im Aufruf, Sperre vor dem Fortsetzen, Knopf), `test_schritt_sperre.py` (gleicher Kern je Laufzeit, Hook, Executor); 106 Sentinel- und 38 Hook-Tests grün. Live auf dem Pi: echter Chat-Zug angehalten, Zeile live, dieselbe Sitzung fortgesetzt, Container lief durch.
+
 ## [1.430.0] - 2026-11-06
 
 ### Neu

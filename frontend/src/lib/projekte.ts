@@ -62,6 +62,8 @@ export interface ProjektKarte {
   kosten_usd: number | null;
   ergebnis: string | null;
   fehler: string | null;
+  /** Vom Sentinel angehalten: Grund für die Karte und Text für „Neuer Versuch“. */
+  sentinel?: { grund?: string; hinweis: string; fortsetzen: string } | null;
 }
 
 export interface ProjektLauf {

@@ -493,6 +493,13 @@ class ToolExecutor:
         if lauf_grund:
             return f"[GESPERRT] {lauf_grund}"
 
+        # Vom Sentinel gesperrte Schritte — dieselbe Regel wie im Hook.
+        from app.tools.schritt_sperre import gesperrt
+
+        sperre = await gesperrt(tool_name, tool_input)
+        if sperre:
+            return sperre
+
         if tool_name in CONCURRENT_SAFE_TOOLS:
             async with self._semaphore:
                 return await self._execute_inner(tool_name, tool_input)
