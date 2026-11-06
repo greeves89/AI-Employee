@@ -175,10 +175,36 @@ _SHELL_WERKZEUGE = frozenset({"Bash", "exec_command", "shell_command", "local_sh
 # Hook und custom_llm-Executor, siehe app/tools/schreibschutz.py.
 from app.tools.schreibschutz import geschuetzte_kategorie  # noqa: E402
 
+# Werkzeuge, die ueber das Claude-Konto nach aussen wirken: Cloud-Agenten starten,
+# auf claude.ai veroeffentlichen, das Handy des Kontoinhabers anpingen, Connectoren
+# des Kontos (Mail, Ablage, Kalender). Sie laufen ausserhalb der Anlage — ohne
+# Container, Egress-Proxy und diesen Hook — und unter dem Konto des Lizenzinhabers,
+# nicht des Besitzers. Darum in JEDER Stufe gesperrt, auch bei "Alles erlaubt".
+# Zweite Schicht: permissions.deny und ENABLE_CLAUDEAI_MCP_SERVERS in
+# agent/richtlinie/managed-settings.json.
+_KONTO_WERKZEUGE = frozenset({
+    "RemoteTrigger", "DesignSync", "PushNotification",
+    "Artifact", "ArtifactComments", "ArtifactData", "ArtifactCheck",
+})
+# Connectoren des Claude-Kontos ("claude.ai Gmail" → mcp__claude_ai_Gmail__…) und
+# des ChatGPT-Kontos bei Codex ("Apps", Server codex_apps; abgeschaltet in
+# agent/richtlinie/requirements.toml).
+_KONTO_CONNECTOR = ("mcp__claude_ai_", "mcp__codex_apps__")
+
+
+def _ueber_das_konto(tool_name: str) -> bool:
+    return tool_name in _KONTO_WERKZEUGE or tool_name.startswith(_KONTO_CONNECTOR)
+
 
 def decide(tool_name: str, tool_input: dict | None = None) -> dict:
     """Kategorie-Entscheidung; Schreiben in die Laufzeit-Konfiguration braucht
     zusaetzlich ``system_config`` (siehe ``_LAUFZEIT_KONFIG``)."""
+    if _ueber_das_konto(tool_name):
+        return _deny(
+            f"Werkzeug '{tool_name}' wirkt über das Claude-Konto außerhalb der Anlage "
+            "(ohne deren Schutz) — auf Agenten immer gesperrt. Für Benachrichtigungen, "
+            "Zeitpläne und Ablage die Werkzeuge der Plattform verwenden."
+        )
     schutz = geschuetzte_kategorie(tool_name, tool_input)
     if schutz:
         kategorie, grund = schutz

@@ -173,5 +173,43 @@ class ResponseShapeTests(unittest.TestCase):
         self.assertTrue(out["permissionDecisionReason"])
 
 
+class KontoWerkzeugeTests(unittest.TestCase):
+    """Werkzeuge, die über das Claude-Konto nach aussen wirken (Cloud-Agenten,
+    Veröffentlichen auf claude.ai, Connectoren des Kontos). Sie laufen ausserhalb
+    der Anlage — ohne Container, Egress-Proxy und diesen Hook — und unter dem Konto
+    des Lizenzinhabers, nicht des Besitzers. Gesperrt in JEDER Stufe, auch ohne
+    Freigabeliste (L4 "Alles erlaubt"), wo Unbekanntes sonst durchgeht."""
+
+    GESPERRT = ("RemoteTrigger", "DesignSync", "PushNotification", "Artifact",
+                "ArtifactComments", "ArtifactData", "ArtifactCheck",
+                "mcp__claude_ai_Gmail__search_threads", "mcp__claude_ai_Google_Drive__read",
+                "mcp__claude_ai_Claude_Docs__batch", "mcp__codex_apps__gmail_search")
+
+    def test_gesperrt_auch_ohne_freigabeliste(self):
+        with patch("app.tools.pretooluse_hook._get_allowed_categories", return_value=None):
+            for name in self.GESPERRT:
+                with self.subTest(tool=name):
+                    ergebnis = decide(name)["hookSpecificOutput"]
+                    self.assertEqual(ergebnis["permissionDecision"], "deny")
+                    self.assertIn("Claude-Konto", ergebnis["permissionDecisionReason"])
+
+    def test_gesperrt_auch_wenn_alle_kategorien_freigegeben(self):
+        alle = {"shell_exec", "file_write", "file_read", "custom", "browser", "computer_use",
+                "knowledge_write", "system_config"}
+        with patch("app.tools.pretooluse_hook._get_allowed_categories", return_value=alle):
+            for name in self.GESPERRT:
+                with self.subTest(tool=name):
+                    self.assertEqual(_entscheidung(name), "deny")
+
+    def test_lokale_werkzeuge_bleiben_wie_bisher(self):
+        """Nur die Konto-Werkzeuge: lokale Zeitpläne, Workflows und eigene MCP-Server
+        mit ähnlichem Namen bleiben unberührt."""
+        with patch("app.tools.pretooluse_hook._get_allowed_categories", return_value=None):
+            for name in ("Workflow", "CronCreate", "ScheduleWakeup", "SendMessage",
+                         "mcp__claude_aide__notiz", "mcp__notifications__send_notification"):
+                with self.subTest(tool=name):
+                    self.assertEqual(_entscheidung(name), "allow")
+
+
 if __name__ == "__main__":
     unittest.main()

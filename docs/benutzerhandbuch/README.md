@@ -4539,7 +4539,9 @@ privaten Schlüssel.
 
 **Codex-Zugang hinter den Proxy legen** (stufenweise, in Erprobung): wie beim Claude-Zugang, mit
 `EGRESS_CODEX_ZUGANG` (Agenten-Kennungen mit Komma oder `alle`), danach die Agenten aktualisieren.
-Die CLI erneuert dann nie selbst; das tut der Orchestrator für alle zentral.
+Die CLI erneuert dann nie selbst; das tut der Orchestrator für alle zentral. Nach dem
+Aktualisieren gilt die neue Freigabe am Proxy spätestens nach einer Minute. Ein Lauf in dieser
+Minute kann einmal mit „Could not parse your authentication token“ scheitern.
 
 **Claude-Zugang hinter den Proxy legen** (stufenweise): In der `.env`
 `EGRESS_KI_ZUGANG` setzen, zuerst auf die Kennung eines Agenten (z. B. `a1b2c3d4`),
@@ -4577,6 +4579,22 @@ Orchestrator. Ist er nicht erreichbar, gilt:
 | Die Shell des Agenten greift den Prüfserver an (ptrace, Speicher) | der Kernel lehnt ab: der Agenten-Prozess ist dafür abgeschirmt *(seit 1.423.0)* |
 
 *Bis 1.421 ließen Freigabeliste, Befehlsregeln und MCP-Prüfung in diesen Fällen alles durch.*
+
+**Werkzeuge über das Claude-Konto sind immer gesperrt** *(seit 1.429.0)*, in jeder
+Autonomie-Stufe, auch bei voller Freigabe. Das sind:
+- `RemoteTrigger` (startet Cloud-Agenten),
+- `DesignSync`,
+- `PushNotification`,
+- die Artifact-Werkzeuge (Veröffentlichen auf claude.ai),
+- die Connectoren des Kontos (`mcp__claude_ai_…`, etwa Mail, Ablage, Kalender),
+- bei Codex die Connectoren des ChatGPT-Kontos („Apps“, `mcp__codex_apps__…`).
+
+Sie liefen außerhalb der Anlage, also ohne Container, Proxy und diese Prüfung, und unter dem
+Konto des Lizenzinhabers statt des Besitzers. Der Agent bekommt die Meldung „wirkt über das
+Claude-Konto außerhalb der Anlage … immer gesperrt“. Für Benachrichtigungen, Zeitpläne und
+Ablage nimmt er die Werkzeuge der Plattform. Die Connectoren werden zusätzlich gar nicht erst
+geladen.
+
 Die Push-Sperre (kein Push in fremde Übernahme-Branches) bleibt bewusst nachsichtig: Sie
 verhindert Zusammenstöße unter Kollegen und ist keine Sicherheitsgrenze.
 

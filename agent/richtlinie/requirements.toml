@@ -11,6 +11,10 @@ allow_managed_hooks_only = true
 
 [features]
 hooks = true
+# Keine Connectoren des ChatGPT-Kontos ("Apps"): alle Codex-Agenten teilen das Konto,
+# sie liefen unter dem Konto des Inhabers und ausserhalb der Anlage. Festgenagelt
+# wie hooks; der Pruef-Hook sperrt mcp__codex_apps__ zusaetzlich.
+apps = false
 
 [hooks]
 managed_dir = "/opt/mcp"

@@ -1,5 +1,16 @@
 {
   "allowManagedHooksOnly": true,
+  "permissions": {
+    "deny": [
+      "RemoteTrigger",
+      "DesignSync",
+      "PushNotification",
+      "Artifact",
+      "ArtifactComments",
+      "ArtifactData",
+      "ArtifactCheck"
+    ]
+  },
   "env": {
     "GCONV_PATH": "",
     "GETCONF_DIR": "",
@@ -24,7 +35,8 @@
     "TZDIR": "",
     "BASH_ENV": "",
     "ENV": "",
-    "CLAUDE_CODE_SHELL_PREFIX": ""
+    "CLAUDE_CODE_SHELL_PREFIX": "",
+    "ENABLE_CLAUDEAI_MCP_SERVERS": "false"
   },
   "hooks": {
     "PreToolUse": [
