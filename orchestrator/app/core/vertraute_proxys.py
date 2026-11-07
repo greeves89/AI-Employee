@@ -85,7 +85,7 @@ class VertrauterProxy:
                     netze.append(ipaddress.ip_network(eintrag[4][0]))
             except (OSError, asyncio.TimeoutError):
                 fehlschlag = True
-                logger.debug("Vertrauter Proxy %r nicht auflösbar", name)
+                logger.debug("Ein Eintrag aus TRUSTED_PROXY_HOSTS ist nicht auflösbar")
         self._netze = tuple(netze)
         self._stand = time.monotonic()
         self._gueltig = FEHLSCHLAG_S if fehlschlag else GUELTIG_S

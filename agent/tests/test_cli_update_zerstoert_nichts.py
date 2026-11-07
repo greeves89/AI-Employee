@@ -226,11 +226,16 @@ class CliAktualisierungTest(unittest.TestCase):
         with open(pfad, "w") as f:
             f.write(textwrap.dedent(f"""\
                 #!/bin/bash
-                if [ "$1" = "view" ]; then echo "2.0.0-neu"; exit 0; fi
+                if [ "$1" = "view" ]; then env > "{spur}.view"; echo "2.0.0-neu"; exit 0; fi
                 env > "{spur}"
                 exit 1
             """))
-        os.chmod(pfad, 0o755)
+        os.chmod(pfad, 0o700)
+        # Auch die (frisch geladene) CLI selbst läuft hier als root: ``--version``.
+        cli = os.path.join(self.module, _PAKET, "cli.js")
+        with open(cli, "w") as f:
+            f.write(f'#!/bin/sh\nenv > "{spur}.cli"\necho "1.0.0-alt"\n')
+        os.chmod(cli, 0o700)
         from app import serverwerte
         geheim = {n: f"geheim-{n}" for n in serverwerte.NUR_SERVER + ("AGENT_TOKEN",)}
         alt = dict(os.environ)
@@ -240,10 +245,11 @@ class CliAktualisierungTest(unittest.TestCase):
         finally:
             os.environ.clear()
             os.environ.update(alt)
-        umgebung = open(spur).read()
-        for name in geheim:
-            self.assertNotIn(f"{name}=", umgebung, name)
-        self.assertIn("HTTPS_PROXY=http://a:b@egress:8080", umgebung)
+        for datei in (spur, spur + ".view", spur + ".cli"):
+            umgebung = open(datei).read()
+            for name in geheim:
+                self.assertNotIn(f"{name}=", umgebung, f"{name} in {os.path.basename(datei)}")
+            self.assertIn("HTTPS_PROXY=http://a:b@egress:8080", umgebung)
 
     def test_nach_dem_einhaengen_bleibt_kein_schutt_liegen(self):
         """Die Ausweich-Kopie muss weg sein -- sonst waechst das Abbild bei
