@@ -5327,10 +5327,12 @@ export async function karteExternFreigeben(id: string, karteId: string): Promise
   return fetchJSON(`${getBase()}/teams/${id}/karten/${karteId}/extern-freigeben`, { method: "POST" });
 }
 
-export async function karteZurueckgeben(id: string, karteId: string, hinweis: string, agentId?: string | null): Promise<ProjektKarte> {
+export async function karteZurueckgeben(id: string, karteId: string, hinweis: string, agentId?: string | null,
+  befunde = false): Promise<ProjektKarte> {
   return fetchJSON(`${getBase()}/teams/${id}/karten/${karteId}/zurueckgeben`, {
     method: "POST",
-    body: JSON.stringify({ hinweis, ...(agentId ? { agent_id: agentId } : {}) }),
+    // ``befunde``: der Server hängt die Befunde des blinden Prüfers gerahmt an (core/pruefung).
+    body: JSON.stringify({ hinweis, ...(agentId ? { agent_id: agentId } : {}), ...(befunde ? { befunde: true } : {}) }),
   });
 }
 

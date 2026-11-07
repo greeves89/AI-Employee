@@ -74,6 +74,7 @@ export interface ProjektKarte {
     befunde?: string[] | null;
     vermutungen?: string[] | null;
     task_id?: string | null;
+    grund?: string | null;
   } | null;
 }
 

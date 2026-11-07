@@ -64,6 +64,8 @@ export interface BoardAktionen {
   uebergabeOeffnen?: (k: ProjektKarte) => void;
   // agentId leer: der bisherige Bearbeiter — ist er nicht mehr im Projekt, der Lead.
   zurueckgeben: (k: ProjektKarte, hinweis: string, agentId: string | null) => Promise<void>;
+  /** Mit den Befunden des blinden Prüfers zurückgeben — der Server nimmt sie aus der Prüfung. */
+  mitBefundenZurueckgeben: (k: ProjektKarte) => Promise<void>;
   anlegen: (titel: string, text: string) => Promise<void>;
 }
 
@@ -546,19 +548,18 @@ function Karte({
               bestanden: "Blinder Prüfer: bestanden",
               nacharbeit: `Blinder Prüfer: Nacharbeit (${karte.pruefung.befunde?.length ?? 0} Befund${(karte.pruefung.befunde?.length ?? 0) === 1 ? "" : "e"})`,
               ohne_urteil: "Blinder Prüfer: ohne klares Urteil — bitte selbst prüfen",
-              gescheitert: "Blinder Prüfer: Prüflauf gescheitert — bitte selbst prüfen",
+              gescheitert: `Blinder Prüfer: ${karte.pruefung.grund || "Prüflauf gescheitert"} — bitte selbst prüfen`,
             }[karte.pruefung.status]}
             {karte.pruefung.blind === false && <span className="font-normal text-muted-foreground">(derselbe Agent, neuer Lauf)</span>}
           </p>
           {!!karte.pruefung.befunde?.length && (
             <ul className="mt-1 list-disc space-y-0.5 pl-4 text-muted-foreground">
-              {karte.pruefung.befunde.slice(0, 5).map((b, i) => <li key={i} className="line-clamp-2">{b}</li>)}
+              {karte.pruefung.befunde.map((b, i) => <li key={i} className="line-clamp-3">{b}</li>)}
             </ul>
           )}
           {karte.pruefung.status === "nacharbeit" && !!karte.pruefung.befunde?.length && (
             <div className="mt-1.5">
-              <Knopf onClick={() => aktionen.zurueckgeben(karte,
-                "Der blinde Prüfer hat Nacharbeit gefunden:\n" + karte.pruefung!.befunde!.map((b) => `- ${b}`).join("\n"), null)}>
+              <Knopf onClick={() => aktionen.mitBefundenZurueckgeben(karte)}>
                 <CornerUpLeft className="h-3 w-3" /> Mit Befunden zurückgeben
               </Knopf>
             </div>

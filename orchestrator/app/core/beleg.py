@@ -61,9 +61,14 @@ _BEFUND = re.compile(r"^[\s>*_`#\-–—•]*befund[*_`]*\s*:[*_`]*\s*(\S.*)$", 
 _VERMUTUNG = re.compile(r"^[\s>*_`#\-–—•]*vermutung[*_`]*\s*:[*_`]*\s*(\S.*)$", re.IGNORECASE | re.MULTILINE)
 
 
+_KEIN_BEFUND = re.compile(r"^(kein(e|er)?|none|n/?a|[-–—]+)\W*$", re.IGNORECASE)
+
+
 def befunde(text: str | None) -> list[str]:
-    """Die Zeilen „Befund: …“ (Inhalt ohne Präfix, gekürzt) — für Board und Rückgabe."""
-    return [m.group(1).strip()[:500] for m in _BEFUND.finditer(text or "")]
+    """Die Zeilen „Befund: …“ (Inhalt ohne Präfix, gekürzt) — für Board und Rückgabe.
+    „Befund: keiner“ ist keiner."""
+    return [m.group(1).strip()[:500] for m in _BEFUND.finditer(text or "")
+            if not _KEIN_BEFUND.match(m.group(1).strip())]
 
 
 def vermutungen(text: str | None) -> list[str]:

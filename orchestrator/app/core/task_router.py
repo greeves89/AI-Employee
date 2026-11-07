@@ -1000,9 +1000,11 @@ class TaskRouter:
             logger.warning("Projekt zu Lauf %s nicht nachgezogen: %s", scrub_log(task_id), scrub_log(e))
         # Blinder Prüfer (core/pruefung): fertige Karte → Prüflauf; Prüflauf → Ergebnis am Umsetzer.
         try:
-            if not abgebrochen:
-                from app.core import pruefung
+            from app.core import pruefung
 
+            # Ein abgebrochener PRÜFlauf muss sein Ergebnis („gescheitert“) trotzdem
+            # melden — sonst stünde die Karte ewig auf „prüft gerade“.
+            if not abgebrochen or (task.metadata_ or {}).get("rolle") == pruefung.ROLLE:
                 await pruefung.nach_lauf(self, task)
         except Exception as e:  # noqa: BLE001 — die Prüfung darf das Abschliessen nie stoppen
             logger.warning("Prüfung zu Lauf %s nicht nachgezogen: %s", scrub_log(task_id), scrub_log(e))

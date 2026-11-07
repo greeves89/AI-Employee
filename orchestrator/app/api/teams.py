@@ -1324,7 +1324,10 @@ async def _ergebnis_festhalten(db: AsyncSession, t: Team, karte: dict, task, use
 
 
 class Zurueckgeben(BaseModel):
-    hinweis: str = Field(min_length=1, max_length=8000)
+    hinweis: str = Field(default="", max_length=8000)
+    # Mit den Befunden des blinden Prüfers zurückgeben (core/pruefung): der Server nimmt
+    # sie aus der gespeicherten Prüfung — gerahmt als Material, nicht als Anweisung.
+    befunde: bool = False
     # Leer: an den bisherigen Bearbeiter, solange er im Projekt ist — sonst an den Lead.
     # Sonst direkt an dieses Mitglied (oder den Lead).
     agent_id: str | None = None
@@ -1368,7 +1371,16 @@ async def karte_zurueckgeben(team_id: str, karte_id: str, body: Zurueckgeben, re
     await db.commit()
 
     fremd = await _fremd_fuer(karte, ziel or t.lead_agent_id, db)
-    prompt = projekte.nacharbeit_prompt(karte, alt, body.hinweis, t.name, fremd=fremd)
+    pruefer_befunde = ""
+    if body.befunde and alt is not None:
+        from app.core.pruefung import rueckgabe_text
+        pruefer_befunde = rueckgabe_text((alt.metadata_ or {}).get("pruefung") or {})
+    if not body.hinweis.strip() and not pruefer_befunde:
+        karte.spalte = "pruefung"
+        await db.commit()
+        raise HTTPException(status_code=422, detail="Schreib dazu, was anders werden soll.")
+    prompt = projekte.nacharbeit_prompt(karte, alt, body.hinweis, t.name, fremd=fremd,
+                                        pruefer_befunde=pruefer_befunde)
     titel = f"Nacharbeit: {projekte.lauf_titel(karte, fremd)}"[:200]
     try:
         if ueber_lead:
