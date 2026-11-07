@@ -1,6 +1,6 @@
 # Sicherheitsmodell von AI Employee
 
-Stand: 07.11.2026 (Version 1.440.0). Dieses Dokument ist die eine Übersicht, an der sich jede
+Stand: 07.11.2026 (Version 1.440.1). Dieses Dokument ist die eine Übersicht, an der sich jede
 Sicherheitsänderung ausrichtet: welche Schichten es gibt, wo jede durchgesetzt wird, wo man sie
 sieht und was noch offen ist. Betriebsanleitungen stehen im [Security Guide](SECURITY.md) und im
 [Benutzerhandbuch](benutzerhandbuch/README.md).
@@ -19,7 +19,7 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
 
 | Schicht | Verhindert | Durchsetzung | Sichtbar im Sicherheitsstatus |
 |---|---|---|---|
-| Anmeldung und Nutzertrennung | fremde Konten, fremde Agenten sehen, Anmelde-Bremse umgehen | `dependencies.get_current_user`, `require_agent_access`, Zwei-Faktor, Absenderadresse nur vom Eingang (`core/vertraute_proxys`) | `api_secret`, `cors`, `kiosk` |
+| Anmeldung und Nutzertrennung | fremde Konten, fremde Agenten sehen, Anmelde-Bremse umgehen | `dependencies.get_current_user`, `require_agent_access`, Zwei-Faktor, Absenderadresse nur vom Eingang (`core/vertraute_proxys`) | `api_secret`, `cors`, `kiosk`, `absender` |
 | Identität der Agenten | ausgelaufenes Agenten- oder Sentinel-Token von außen benutzen, fremde Redis-Postfächer | `dependencies.agent_zugang_pruefen` (einzige Prüfung, auch in `require_sentinel`), Redis-ACL je Agent | `agenten_token`, `redis_acl`, `redis_passwort` |
 | Fremdtext | Anweisungen aus Mails, Webseiten, Prüfberichten ausführen | `core/fremdtext.rahmen`, Sentinel | `sentinel` |
 | Handlungen | gefährliche Befehle, Löschen, Senden ohne Freigabe | Autonomie-Matrix, Freigaben, Sentinel-Sperre (`CommandPolicy`), verwalteter PreToolUse-Hook (`agent/richtlinie`) | `sentinel` |
@@ -56,6 +56,9 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
    konnte eine beliebige Absenderadresse vorgeben (Anmelde-Bremse, Rate-Limit, Protokoll).
    **Behoben in 1.440.0:** uvicorn wertet keine Proxy-Kopfzeilen mehr aus. Die äußerste
    Middleware tut es nur, wenn die Gegenstelle der Eingangs-Proxy ist (`TRUSTED_PROXY_HOSTS`).
+   Live gefunden: Eine eigene `docker-compose.override.yml` kann den Startbefehl mit dem alten
+   Schalter überschreiben. Seit 1.440.1 warnt der Sicherheitsstatus (`absender`), weil er die
+   Startargumente des laufenden Servers liest.
 4. **Werkzeuge erbten Server-Zugänge.** Redis-Anmeldung, Browserprofil-Schlüssel, Zugänge zu
    eigenen MCP-Servern, der eigene Codex-Zugang und der Ausweis am Browser-Bildstrom standen in der Umgebung jedes Kindprozesses
    (CLI, Bash-Befehle, Paket-Skripte, gemeinsamer MCP-Prozess).

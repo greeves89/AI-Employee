@@ -212,5 +212,53 @@ class ZusammenspielTests(unittest.TestCase):
         asyncio.run(ablauf())
 
 
+
+class SicherheitsstatusTests(unittest.TestCase):
+    """Eine Override-Datei kann das Abbild überschreiben — live auf der Testanlage gefunden.
+
+    Der Statuspunkt liest die Startargumente des LAUFENDEN Servers, nicht das Dockerfile.
+    """
+
+    BASIS = ["/usr/local/bin/python3.12", "/usr/local/bin/uvicorn", "app.main:app", "--host", "0.0.0.0"]
+
+    def _stand(self, args, env=None):
+        from app.core import sicherheitsstatus as ss
+        with patch.dict("os.environ", env or {}, clear=False):
+            punkte = ss._absender(args)
+        return punkte[0]["stand"] if punkte else None
+
+    def test_abbild_ok(self):
+        self.assertEqual(self._stand(self.BASIS + ["--no-proxy-headers"]), "ok")
+
+    def test_override_mit_stern_warnt(self):
+        for args in (self.BASIS + ["--forwarded-allow-ips", "*"],
+                     self.BASIS + ["--forwarded-allow-ips=*"],
+                     self.BASIS + ["--forwarded-allow-ips", "10.0.0.1, *"]):
+            with self.subTest(args=args[-1]):
+                self.assertEqual(self._stand(args), "warnung")
+
+    def test_umgebungsvariable_mit_stern_warnt(self):
+        self.assertEqual(self._stand(self.BASIS, {"FORWARDED_ALLOW_IPS": "*"}), "warnung")
+
+    def test_bestimmte_adressen_ok(self):
+        self.assertEqual(self._stand(self.BASIS + ["--forwarded-allow-ips", "172.19.0.10"]), "ok")
+
+    def test_ohne_uvicorn_kein_punkt(self):
+        self.assertIsNone(self._stand(["python", "-m", "pytest"]))
+        from app.core import sicherheitsstatus as ss
+        self.assertEqual(ss._uvicorn_argumente(("/gibt/es/nicht",)), [])
+
+    def test_warnung_sagt_wie_beheben(self):
+        from app.core import sicherheitsstatus as ss
+        p = ss._absender(self.BASIS + ["--forwarded-allow-ips", "*"])[0]
+        self.assertIn("--no-proxy-headers", p["beheben"])
+        self.assertIn("docker-compose.override.yml", p["beheben"])
+
+    def test_steht_in_der_gesamtliste(self):
+        import inspect
+        from app.core import sicherheitsstatus as ss
+        self.assertIn("_absender()", inspect.getsource(ss.stand))
+
+
 if __name__ == "__main__":
     unittest.main()

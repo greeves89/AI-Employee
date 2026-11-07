@@ -4845,6 +4845,8 @@ die übrigen Zugänge im Agenten:
 - **Nur der Eingang darf eine Absenderadresse weitergeben** *(seit 1.440.0)*. Die Adresse,
   die Anmelde-Bremse und Protokoll sehen, übernimmt der Server nur von Caddy. Ein Agent kann
   keine fremde Adresse mehr vorgeben.
+  Der Sicherheitsstatus prüft das am laufenden Server *(seit 1.440.1)*. Steht in einer eigenen
+  `docker-compose.override.yml` noch `--forwarded-allow-ips "*"`, warnt er und sagt, was zu ändern ist.
 
 **Nur bei eigenem Proxy direkt vor dem Server:** Steht bei dir etwas anderes als Caddy
 unmittelbar vor dem Server (nicht vor Caddy), trag es in die `.env` ein, mehrere Einträge mit
