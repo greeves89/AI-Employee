@@ -93,6 +93,35 @@ def _zuweisungen(src: str, name: str, ziel: str) -> list[tuple[int, str, list[st
     return gefunden
 
 
+def _aufrufe(src: str, name: str, funktion: str, erstes_argument: str) -> list[tuple[int, str, list[str]]]:
+    """ALLE Aufrufe ``funktion("<erstes_argument>", …)`` in der Funktion ``name``, je als
+    (Zeile, Aufruf, ``if``-Bedingungen der Ahnen) — wie ``_zuweisungen``."""
+    for fn in ast.walk(ast.parse(src)):
+        if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) and fn.name == name:
+            break
+    else:
+        raise AssertionError(f"def {name}: nicht gefunden")
+
+    gefunden: list[tuple[int, str, list[str]]] = []
+
+    def suche(knoten, ahnen):
+        for kind in ast.iter_child_nodes(knoten):
+            if (isinstance(kind, ast.Call) and ast.get_source_segment(src, kind.func) == funktion
+                    and kind.args and isinstance(kind.args[0], ast.Constant)
+                    and kind.args[0].value == erstes_argument):
+                gefunden.append((
+                    kind.lineno,
+                    ast.get_source_segment(src, kind) or "",
+                    [ast.get_source_segment(src, a.test) for a in ahnen if isinstance(a, ast.If)],
+                ))
+            suche(kind, ahnen + [kind])
+
+    suche(fn, [])
+    if not gefunden:
+        raise AssertionError(f"{funktion}({erstes_argument!r}, …) nicht in {name} gefunden")
+    return gefunden
+
+
 def _schleifenstart(src: str) -> tuple[str, str]:
     """(Startbedingung, Ausdruck fuer register_via_cli) des Aufrufs von
     refresh_mcp_credentials_loop im Agenten-Start — als Quelltext der AST-Knoten,
@@ -161,14 +190,15 @@ class AgentSideTests(unittest.TestCase):
     def test_env_is_updated_for_every_mode(self):
         """Das Auffrischen der Umgebung ist der Teil, von dem Codex lebt — es
         darf nicht unter `if register_via_cli:` (fuer Codex aus) rutschen."""
-        for ziel, wert in (('os.environ["CUSTOM_MCP_AUTH"]', "auth"),
-                           ('os.environ["CUSTOM_MCP_SERVERS"]', "servers")):
-            with self.subTest(ziel):
-                alle = _zuweisungen(self.SRC, "refresh_mcp_credentials_loop", ziel)
-                self.assertIn(f"{ziel} = json.dumps({wert})", [anw for _, anw, _ in alle])
-                for zeile, anweisung, bedingungen in alle:
-                    self.assertEqual(bedingungen, [],
-                                     f"Zeile {zeile}: `{anweisung}` steht unter if {bedingungen}")
+        # Zugänge seit 1.440.0 über serverwerte.setzen (nicht mehr in die Umgebung).
+        auth = _aufrufe(self.SRC, "refresh_mcp_credentials_loop", "serverwerte.setzen", "CUSTOM_MCP_AUTH")
+        servers = _zuweisungen(self.SRC, "refresh_mcp_credentials_loop", 'os.environ["CUSTOM_MCP_SERVERS"]')
+        self.assertIn('serverwerte.setzen("CUSTOM_MCP_AUTH", json.dumps(auth))', [a for _, a, _ in auth])
+        self.assertIn('os.environ["CUSTOM_MCP_SERVERS"] = json.dumps(servers)', [a for _, a, _ in servers])
+        for zeile, anweisung, bedingungen in auth + servers:
+            with self.subTest(zeile=zeile):
+                self.assertEqual(bedingungen, [],
+                                 f"Zeile {zeile}: `{anweisung}` steht unter if {bedingungen}")
 
 
 class CodexReadsTheEnvTests(unittest.TestCase):
@@ -177,7 +207,9 @@ class CodexReadsTheEnvTests(unittest.TestCase):
     SRC = (AGENT / "app/codex_runner.py").read_text()
 
     def test_codex_reads_custom_mcp_auth(self):
-        self.assertIn('env.get("CUSTOM_MCP_AUTH"', self.SRC)
+        # Seit 1.440.0 liegen die Zugänge im Server-Speicher (agent/app/serverwerte.py),
+        # nicht mehr in der Umgebung — gelesen werden sie bei jedem Aufruf frisch.
+        self.assertIn('serverwerte.get("CUSTOM_MCP_AUTH")', self.SRC)
         self.assertIn('env.get("CUSTOM_MCP_SERVERS"', self.SRC)
 
     def test_codex_env_is_a_live_copy_of_os_environ(self):
@@ -196,7 +228,10 @@ class OrderingTests(unittest.TestCase):
         passenden Zugangsdaten. Neue Server vor neuen Tokens zu schreiben ergaebe
         einen 401 aus einem halb gelesenen Zustand."""
         src = (AGENT / "app/main.py").read_text()
-        auth = _zuweisungen(src, "refresh_mcp_credentials_loop", 'os.environ["CUSTOM_MCP_AUTH"]')
+        # Zugänge gehen seit 1.440.0 in den Server-Speicher (serverwerte.setzen), die
+        # Serverliste bleibt in der Umgebung. Die Reihenfolge gilt unverändert.
+        auth = _aufrufe(src, "refresh_mcp_credentials_loop", "serverwerte.setzen", "CUSTOM_MCP_AUTH") \
+            + _aufrufe(src, "refresh_mcp_credentials_loop", "serverwerte.setzen", "CUSTOM_MCP_HEADERS")
         servers = _zuweisungen(src, "refresh_mcp_credentials_loop", 'os.environ["CUSTOM_MCP_SERVERS"]')
         # JEDE AUTH-Zuweisung vor JEDER SERVERS-Zuweisung — nicht nur die erste
         # gefundene, sonst deckt ein unbedingter Koeder die echte Reihenfolge zu.
