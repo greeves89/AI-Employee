@@ -746,7 +746,9 @@ def _ensure_codex_mcp_config(codex_home: str, env: dict) -> bool:
 
     # Custom HTTP MCP servers from CUSTOM_MCP_SERVERS env var
     custom_raw = env.get("CUSTOM_MCP_SERVERS", "")
-    auth_raw = env.get("CUSTOM_MCP_AUTH", "")
+    # Zugänge aus dem Server-Speicher (serverwerte) — und nie in die Umgebung von Codex.
+    from app import serverwerte
+    auth_raw = env.pop("CUSTOM_MCP_AUTH", "") or serverwerte.get("CUSTOM_MCP_AUTH")
     if custom_raw:
         try:
             custom_servers: dict = json.loads(custom_raw)

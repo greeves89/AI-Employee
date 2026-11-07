@@ -222,6 +222,28 @@ class VerdrahtungTests(unittest.TestCase):
                 self.assertIn("agent_zugang_pruefen(request", (APP / datei).read_text(encoding="utf-8"))
 
 
+
+class SentinelZugangTests(unittest.IsolatedAsyncioTestCase):
+    """Der Sentinel-Zugang ist ebenso abgeleitet und ewig gültig — nur von innen."""
+
+    async def test_von_innen_ja_ueber_eingang_nein(self):
+        from fastapi import HTTPException
+
+        from app.dependencies import get_sentinel_token, require_sentinel
+        kopf = {"Authorization": f"Bearer {get_sentinel_token()}"}
+        self.assertIsInstance(await require_sentinel(_anfrage(**kopf)), dep.SentinelPrincipal)
+        for weg in ({"X_Forwarded_For": "1.2.3.4"}, {"client": "127.0.0.1"}):
+            with self.subTest(weg=weg), self.assertRaises(HTTPException) as e:
+                await require_sentinel(_anfrage(**{**weg, **kopf}))
+            self.assertEqual(e.exception.status_code, 403)
+
+    def test_kein_endpunkt_nimmt_ihn_an(self):
+        """Stand 1.440.0: kein Router hängt an require_sentinel. Kommt einer dazu, gilt die
+        Eingangsprüfung oben — dieser Test erinnert daran, das Sicherheitsmodell nachzuziehen."""
+        funde = [f for f in APP.rglob("*.py") if "Depends(require_sentinel)" in f.read_text(encoding="utf-8")]
+        self.assertEqual(funde, [], "Sentinel-Endpunkt neu: docs/SICHERHEITSMODELL.md nachziehen")
+
+
 class SicherheitsstatusTests(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self):

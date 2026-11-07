@@ -73,7 +73,9 @@ async def test_refresh_updates_env_when_token_rotates(monkeypatch):
     }
     await _run_one_iteration(monkeypatch, payload, register_via_cli=False)
 
-    assert json.loads(main.os.environ["CUSTOM_MCP_AUTH"]) == {"srv": "new-token"}
+    from app import serverwerte
+    assert json.loads(serverwerte.get("CUSTOM_MCP_AUTH")) == {"srv": "new-token"}
+    assert "CUSTOM_MCP_AUTH" not in main.os.environ, "rotierte Zugänge nie in die Umgebung"
 
 
 @pytest.mark.asyncio

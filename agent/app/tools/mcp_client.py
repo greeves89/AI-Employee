@@ -53,7 +53,8 @@ class MCPHTTPClient:
         except (json.JSONDecodeError, TypeError):
             logger.warning("Could not parse CUSTOM_MCP_SERVERS env var")
         # Optional per-server bearer tokens
-        custom_auth = os.environ.get("CUSTOM_MCP_AUTH", "")
+        from app import serverwerte
+        custom_auth = serverwerte.get("CUSTOM_MCP_AUTH")
         if custom_auth:
             try:
                 auth = json.loads(custom_auth)
@@ -62,7 +63,7 @@ class MCPHTTPClient:
             except (json.JSONDecodeError, TypeError):
                 logger.warning("Could not parse CUSTOM_MCP_AUTH env var")
         # Optional per-server custom auth headers (x-api-key etc.)
-        custom_headers = os.environ.get("CUSTOM_MCP_HEADERS", "")
+        custom_headers = serverwerte.get("CUSTOM_MCP_HEADERS")
         if custom_headers:
             try:
                 hdrs = json.loads(custom_headers)

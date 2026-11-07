@@ -218,6 +218,33 @@ class CliAktualisierungTest(unittest.TestCase):
             "Die neue Fassung wurde nicht eingehaengt.\n" + ergebnis.stdout + ergebnis.stderr,
         )
 
+    def test_paket_skripte_sehen_keine_server_zugaenge(self):
+        """npm-Paket-Skripte laufen hier als root: Server-Zugänge und Agenten-Token
+        bekommen sie nicht (1.440.0), die Proxy-Angaben schon."""
+        spur = os.path.join(self.attrappen, "umgebung")
+        pfad = os.path.join(self.attrappen, "npm")
+        with open(pfad, "w") as f:
+            f.write(textwrap.dedent(f"""\
+                #!/bin/bash
+                if [ "$1" = "view" ]; then echo "2.0.0-neu"; exit 0; fi
+                env > "{spur}"
+                exit 1
+            """))
+        os.chmod(pfad, 0o755)
+        from app import serverwerte
+        geheim = {n: f"geheim-{n}" for n in serverwerte.NUR_SERVER + ("AGENT_TOKEN",)}
+        alt = dict(os.environ)
+        os.environ.update(geheim, HTTPS_PROXY="http://a:b@egress:8080")
+        try:
+            self._lauf(frist="10")
+        finally:
+            os.environ.clear()
+            os.environ.update(alt)
+        umgebung = open(spur).read()
+        for name in geheim:
+            self.assertNotIn(f"{name}=", umgebung, name)
+        self.assertIn("HTTPS_PROXY=http://a:b@egress:8080", umgebung)
+
     def test_nach_dem_einhaengen_bleibt_kein_schutt_liegen(self):
         """Die Ausweich-Kopie muss weg sein -- sonst waechst das Abbild bei
         jedem Start um eine weitere Fassung."""

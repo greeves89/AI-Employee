@@ -3102,6 +3102,13 @@ else:
         allow_headers=["Content-Type", "Authorization"],
     )
 
+# ZULETZT hinzugefügt = äußerste Schicht: Absenderadresse und Schema aus den
+# Proxy-Kopfzeilen nur, wenn die Gegenstelle der Eingangs-Proxy ist (uvicorn läuft mit
+# --no-proxy-headers). Rate-Limit und Anmelde-Bremse sehen so die richtige Adresse.
+from app.core.vertraute_proxys import VertrauterProxy  # noqa: E402
+
+app.add_middleware(VertrauterProxy)
+
 
 # Delegation an einen Agenten, den es nicht (mehr) gibt: 400 mit der vollen
 # Meldung. Sie ist an den AGENTEN gerichtet — er liest sie als Werkzeug-Antwort

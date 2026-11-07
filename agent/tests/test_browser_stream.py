@@ -78,9 +78,12 @@ class BrowserStreamTest(unittest.IsolatedAsyncioTestCase):
         await context.route("**/*", _antworten)
         await self.browser.run({"action": "navigate", "url": "https://example.com"})
 
+        # Der Orchestrator weist sich am Bildstrom aus (zugang_erlaubt); ohne Ausweis 403.
+        from app import serverwerte
+        serverwerte._werte["BROWSER_ZUGANG"] = "test-zugang"
         app = web.Application()
         app.router.add_get("/browser/stream", self.bs.stream_handler)
-        self.client = TestClient(TestServer(app))
+        self.client = TestClient(TestServer(app), headers={self.bs.ZUGANG_KOPF: "test-zugang"})
         await self.client.start_server()
 
     async def asyncTearDown(self):

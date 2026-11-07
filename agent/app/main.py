@@ -69,8 +69,9 @@ def _run_mcp_remove(name: str) -> bool:
 
 
 def _load_custom_mcp_auth() -> dict:
-    """Parse CUSTOM_MCP_AUTH ({server_name: bearer_token}) from the environment."""
-    raw = os.environ.get("CUSTOM_MCP_AUTH", "")
+    """Parse CUSTOM_MCP_AUTH ({server_name: bearer_token}) — reiner Server-Wert (``serverwerte``)."""
+    from app import serverwerte
+    raw = serverwerte.get("CUSTOM_MCP_AUTH")
     if not raw:
         return {}
     try:
@@ -82,8 +83,9 @@ def _load_custom_mcp_auth() -> dict:
 
 
 def _load_custom_mcp_headers() -> dict:
-    """Parse CUSTOM_MCP_HEADERS ({server_name: {header: value}}) from the environment."""
-    raw = os.environ.get("CUSTOM_MCP_HEADERS", "")
+    """Parse CUSTOM_MCP_HEADERS ({server_name: {header: value}}) — reiner Server-Wert (``serverwerte``)."""
+    from app import serverwerte
+    raw = serverwerte.get("CUSTOM_MCP_HEADERS")
     if not raw:
         return {}
     try:
@@ -486,8 +488,11 @@ async def refresh_mcp_credentials_loop(agent_id: str, register_via_cli: bool, in
         # that harmful torn read impossible: seeing new SERVERS guarantees the
         # new creds are already in place. The reverse (old SERVERS + new creds)
         # is harmless — a rotated token applied to an already-known server.
-        os.environ["CUSTOM_MCP_AUTH"] = json.dumps(auth)
-        os.environ["CUSTOM_MCP_HEADERS"] = json.dumps(headers)
+        # Zugänge in den Server-Speicher, nie in die Umgebung (serverwerte): sonst erbte
+        # sie nach der ersten Erneuerung wieder jeder Kindprozess.
+        from app import serverwerte
+        serverwerte.setzen("CUSTOM_MCP_AUTH", json.dumps(auth))
+        serverwerte.setzen("CUSTOM_MCP_HEADERS", json.dumps(headers))
         os.environ["CUSTOM_MCP_SERVERS"] = json.dumps(servers)
 
         failed_names: set[str] = set()
@@ -590,7 +595,8 @@ def setup_codex_auth() -> None:
     target = os.path.join(codex_home, "auth.json")
     os.environ["CODEX_HOME"] = codex_home
 
-    own = (os.environ.get("CODEX_AUTH_JSON") or "").strip()
+    from app import serverwerte
+    own = serverwerte.get("CODEX_AUTH_JSON").strip()
     if own:
         try:
             os.makedirs(codex_home, exist_ok=True)
@@ -599,7 +605,7 @@ def setup_codex_auth() -> None:
             os.chmod(target, 0o600)
             # Aus der Umgebung entfernen, damit der Zugang nicht in jedem
             # Prozessabbild und in `env`-Ausgaben mitläuft.
-            os.environ.pop("CODEX_AUTH_JSON", None)
+            serverwerte.entfernen("CODEX_AUTH_JSON")
             # Hinter dem Egress-Proxy: Platzhalter — nie als eigener Zugang zurückmelden.
             codex_auth_sync.record_start("platzhalter" if "aie-geheim-" in own else "own")
             print(f"[Agent] Codex auth configured from own credential at {target}")
@@ -738,10 +744,22 @@ async def main() -> None:
     mode = settings.agent_mode
     print(f"[Agent {agent_id}] Starting up (mode: {mode})...")
 
+    # Vor dem ersten Kindprozess: Zugänge, die nur dieser Prozess braucht, aus der
+    # Umgebung nehmen — CLI, Werkzeuge und MCP-Prozess erben sie dann nicht.
+    from app import serverwerte
+    genommen = serverwerte.uebernehmen()
+    if genommen:
+        print(f"[Agent {agent_id}] Nur für den Server, nicht für Werkzeuge: {', '.join(genommen)}")
+
     # Vor allem anderen: der Pruefserver des Hooks laeuft in diesem Prozess.
     from app.richtlinie import pruefserver_abschirmen
     if pruefserver_abschirmen():
         print(f"[Agent {agent_id}] Pruefserver vor ptrace und Speicherzugriff abgeschirmt")
+    else:
+        # Ohne Abschirmung kann die eigene Shell /proc/<pid>/environ und den Speicher dieses
+        # Prozesses lesen — und damit auch die Server-Werte (serverwerte), die hier liegen.
+        print(f"[Agent {agent_id}] WARNUNG: Agenten-Prozess NICHT abgeschirmt — Werkzeuge "
+              "koennen Pruefserver und Server-Zugaenge lesen", flush=True)
 
     if mode == "custom_llm":
         # Custom LLM mode: skip Claude CLI setup, but set up integrations

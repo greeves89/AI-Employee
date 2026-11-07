@@ -28,7 +28,6 @@ import asyncio
 import base64
 import json
 import logging
-import os
 import time
 from collections import deque
 
@@ -92,7 +91,8 @@ def zugang_erlaubt(request: web.Request) -> bool:
     """
     import hmac
 
-    erwartet = os.environ.get("BROWSER_ZUGANG", "")
+    from app import serverwerte
+    erwartet = serverwerte.get("BROWSER_ZUGANG")
     gegeben = request.headers.get(ZUGANG_KOPF, "")
     return bool(erwartet) and hmac.compare_digest(gegeben.encode(), erwartet.encode())
 

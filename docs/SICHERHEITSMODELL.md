@@ -1,6 +1,6 @@
 # Sicherheitsmodell von AI Employee
 
-Stand: 07.11.2026 (Version 1.439.0). Dieses Dokument ist die eine Übersicht, an der sich jede
+Stand: 07.11.2026 (Version 1.440.0). Dieses Dokument ist die eine Übersicht, an der sich jede
 Sicherheitsänderung ausrichtet: welche Schichten es gibt, wo jede durchgesetzt wird, wo man sie
 sieht und was noch offen ist. Betriebsanleitungen stehen im [Security Guide](SECURITY.md) und im
 [Benutzerhandbuch](benutzerhandbuch/README.md).
@@ -19,11 +19,11 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
 
 | Schicht | Verhindert | Durchsetzung | Sichtbar im Sicherheitsstatus |
 |---|---|---|---|
-| Anmeldung und Nutzertrennung | fremde Konten, fremde Agenten sehen | `dependencies.get_current_user`, `require_agent_access`, Zwei-Faktor | `api_secret`, `cors`, `kiosk` |
-| Identität der Agenten | ausgelaufenes Agenten-Token von außen benutzen, fremde Redis-Postfächer | `dependencies.agent_zugang_pruefen` (einzige Prüfung), Redis-ACL je Agent | `agenten_token`, `redis_acl`, `redis_passwort` |
+| Anmeldung und Nutzertrennung | fremde Konten, fremde Agenten sehen, Anmelde-Bremse umgehen | `dependencies.get_current_user`, `require_agent_access`, Zwei-Faktor, Absenderadresse nur vom Eingang (`core/vertraute_proxys`) | `api_secret`, `cors`, `kiosk` |
+| Identität der Agenten | ausgelaufenes Agenten- oder Sentinel-Token von außen benutzen, fremde Redis-Postfächer | `dependencies.agent_zugang_pruefen` (einzige Prüfung, auch in `require_sentinel`), Redis-ACL je Agent | `agenten_token`, `redis_acl`, `redis_passwort` |
 | Fremdtext | Anweisungen aus Mails, Webseiten, Prüfberichten ausführen | `core/fremdtext.rahmen`, Sentinel | `sentinel` |
 | Handlungen | gefährliche Befehle, Löschen, Senden ohne Freigabe | Autonomie-Matrix, Freigaben, Sentinel-Sperre (`CommandPolicy`), verwalteter PreToolUse-Hook (`agent/richtlinie`) | `sentinel` |
-| Zugänge | Schlüssel im Agenten, Schlüssel im Klartext in der Datenbank | Schlüsselverwaltung (Fernet, `ENCRYPTION_KEY`), Egress-Platzhalter | `encryption_key`, Schlüssel, Zugänge (Claude/Codex) |
+| Zugänge | Schlüssel im Agenten, Schlüssel im Klartext in der Datenbank, Server-Zugänge in Werkzeug-Ausgaben | Schlüsselverwaltung (Fernet, `ENCRYPTION_KEY`), Egress-Platzhalter, Server-Werte nicht in der Umgebung (`agent/app/serverwerte.py`) | `encryption_key`, Schlüssel, Zugänge (Claude/Codex) |
 | Ausgang | Schlüssel an falsche Ziele, Zugriff aufs Heimnetz | Egress-Proxy (Schlüssel nur an ihre freigegebenen Ziele), Netzwächter (`scripts/netzwaechter.py`), DLP-Filter | `dlp`, Zugänge |
 | Container und Host | Ausbruch, Docker-Steuerung, Heimnetz, Host | Docker-Wächter (`docker_waechter/regeln.py`), Seccomp, Netzwächter, signierte Abbilder | Docker-Punkte, Abbild-Signaturen |
 | Betrieb | veraltete Agenten, Datenverlust, fehlende Spur | Agenten-Aktualisierung im Leerlauf, Sicherung, Prüfprotokoll, Aufbewahrung | Agenten-Punkte |
@@ -51,20 +51,45 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
    Arbeitsdaten könnten aber an jedes Ziel abfließen, ob durch den Proxy oder an ihm vorbei.
    Alle Ports durch den Proxy zu zwingen, änderte daran wenig. Wirksam wäre nur eine Zielliste
    je Agent → Entscheidung, siehe unten.
-3. **Uvicorn vertraut `X-Forwarded-For` von jedem Absender** (`--forwarded-allow-ips "*"`).
-   Ein Agent kann die Absenderadresse fälschen, die Protokoll und Ratenbegrenzung sehen.
-   → offener Punkt 2.
+3. **Uvicorn vertraute `X-Forwarded-For` von jedem Absender** (`--forwarded-allow-ips "*"`).
+   Ein Agent im Docker-Netz, bei der Community-Variante sogar ein Angreifer aus dem Internet,
+   konnte eine beliebige Absenderadresse vorgeben (Anmelde-Bremse, Rate-Limit, Protokoll).
+   **Behoben in 1.440.0:** uvicorn wertet keine Proxy-Kopfzeilen mehr aus. Die äußerste
+   Middleware tut es nur, wenn die Gegenstelle der Eingangs-Proxy ist (`TRUSTED_PROXY_HOSTS`).
+4. **Werkzeuge erbten Server-Zugänge.** Redis-Anmeldung, Browserprofil-Schlüssel, Zugänge zu
+   eigenen MCP-Servern, der eigene Codex-Zugang und der Ausweis am Browser-Bildstrom standen in der Umgebung jedes Kindprozesses
+   (CLI, Bash-Befehle, Paket-Skripte, gemeinsamer MCP-Prozess).
+   **Behoben in 1.440.0:** Der Agenten-Server nimmt sie beim Start an einer Stelle aus der
+   Umgebung (`serverwerte.uebernehmen`). Seine eigene `/proc/<pid>/environ` ist für den
+   Agenten-Nutzer nicht lesbar (nicht „dumpbar“, `richtlinie.pruefserver_abschirmen`, live
+   geprüft; scheitert das, meldet der Agent es laut). Auch die npm-Paket-Skripte beim
+   Containerstart (`entrypoint.sh`, als root) bekommen die Werte nicht mehr.
+   **Was das nicht abdeckt:** Zugänge, die eine CLI selbst braucht, liegen weiter dort, wo die
+   CLI sie liest: Claude Code führt die Kopfzeilen eigener MCP-Server in `~/.claude.json`,
+   Codex bekommt sie als `MCP_TOKEN_<name>`, der eigene Codex-Zugang liegt in
+   `~/.codex/auth.json`. Hinter dem Egress-Proxy sind das Platzhalter, die internen
+   MCP-Dienste (Mail, Exchange, Graph) tragen das Agenten-Token, das nur von innen gilt.
+   Das Agenten-Token bleibt für Werkzeuge (`ai-team`, Proxy-Adresse).
+5. **Sentinel-Zugang** ist wie das Agenten-Token abgeleitet und ewig gültig. Kein Endpunkt
+   nimmt ihn an (geprüft). Seit 1.440.0 gilt für `require_sentinel` trotzdem dieselbe
+   Eingangsprüfung, und ein Test meldet den ersten Endpunkt, der ihn nutzt.
 
 ## Offene Punkte, nach Risiko
 
 | # | Punkt | Schicht | Lösung | Stand |
 |---|---|---|---|---|
-| 1 | Werkzeuge erben Zugänge | Zugänge | Eine Funktion `werkzeug_umgebung()` für alle vier CLI-Starts (`chat_handler`, `agent_runner`, `message_consumer`, `codex_runner`): `AGENT_TOKEN`, `REDIS_URL`, `BROWSER_PROFIL_KEY`, `CUSTOM_MCP_AUTH`, `CODEX_AUTH_JSON` raus. Die MCP-Server bekommen ihre Werte schon heute ausdrücklich in ihrer Konfiguration. Grenze: der gemeinsame MCP-Prozess läuft unter derselben Kennung. | nächster Schritt |
-| 2 | Gefälschte Absenderadresse | Anmeldung | Uvicorn nur Caddy vertrauen lassen statt `*`. | geplant |
-| 3 | Kontingent-Bremse für Abo-Konten | Betrieb | Wie die Zeitplan-Kostenbremse, aber für Abo-Kontingente (Claude, ChatGPT). | geplant |
-| 4 | Release mit Probelauf | Betrieb (Lieferkette) | Release-Skript mit Trockenlauf, CI-Status von `main` als Pflicht. | geplant |
-| 5 | Sentinel-Zugang ist wie das Agenten-Token aus `API_SECRET_KEY` abgeleitet und gilt von überall | Identität | Dieselbe Eingangsprüfung, falls der Sentinel je über HTTP ruft. Heute läuft er im Orchestrator-Prozess. | prüfen |
-| 6 | Codex-Zugang auf der Testanlage nur für einen Agenten hinter dem Proxy | Zugänge | Betreiberentscheidung, der Sicherheitsstatus zeigt es. | Information |
+| 1 | Release mit Probelauf | Betrieb (Lieferkette) | Das Release-Skript ins Repo (heute nur auf dem Rechner des Entwicklers), mit Trockenlauf und harten Prüfungen: CI auf dem gemergten Stand grün, `VERSION` = Dockerfile-Label = Tag = Changelog, Kopf des PR wie geprüft. | nächster Schritt |
+| 2 | Kontingent-Bremse für Abo-Konten | Betrieb (Verfügbarkeit) | Meldet ein Abo-Konto (Claude, ChatGPT) „Limit erreicht“, halten Zeitpläne und Hintergrundläufe bis zur Freigabezeit an, statt in Schleife weiterzulaufen. Wie die Zeitplan-Kostenbremse. | geplant |
+| 3 | Codex-Zugang auf der Testanlage nur für einen Agenten hinter dem Proxy | Zugänge | Betreiberentscheidung, der Sicherheitsstatus zeigt es. | Information |
+
+### Erledigt am 07.11.2026
+
+| Punkt | Version |
+|---|---|
+| Agenten-Token nur aus dem Agentennetz | 1.439.0 |
+| Absenderadresse nur vom Eingangs-Proxy | 1.440.0 |
+| Werkzeuge erben keine Server-Zugänge | 1.440.0 |
+| Sentinel-Zugang nur von innen | 1.440.0 |
 
 ### Braucht eine Entscheidung
 
@@ -85,6 +110,9 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
   (`tests/test_agenten_zugang_nur_innen.py` schlägt sonst an).
 - Neue Zugänge für Agenten laufen über die Schlüsselverwaltung und den Egress-Proxy, nie als
   Klartext in der Umgebung.
+- Ein Zugang, den nur der Agenten-Server braucht, gehört in `serverwerte.NUR_SERVER` und wird
+  nur über `serverwerte.get` gelesen (`agent/tests/test_serverwerte.py` schlägt sonst an).
+- Proxy-Kopfzeilen wertet nur `core/vertraute_proxys` aus, nie ein Endpunkt selbst.
 - Text aus fremden Quellen geht nur gerahmt (`fremdtext.rahmen`) an ein Modell.
 - Eine neue Schutzschicht ist erst fertig mit Statuspunkt, Test in beide Richtungen und
   Eintrag in diesem Dokument.

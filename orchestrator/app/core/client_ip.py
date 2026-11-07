@@ -1,8 +1,8 @@
 """Die Adresse des Aufrufers — EINE Stelle für Rate-Limit und Anmelde-Bremse.
 
-``request.client.host`` ist bereits die Adresse, die uvicorn aus
-``X-Forwarded-For`` ermittelt hat — und zwar nur von den Proxys, denen es per
-``--forwarded-allow-ips`` vertraut (siehe orchestrator/Dockerfile). Hier wird
+``request.client.host`` ist bereits die Adresse aus ``X-Forwarded-For`` — und zwar nur,
+wenn die Gegenstelle der Eingangs-Proxy ist (``core/vertraute_proxys``, seit 1.440.0;
+vorher vertraute uvicorn per ``--forwarded-allow-ips "*"`` jedem Absender). Hier wird
 ``X-Forwarded-For`` bewusst NICHT noch einmal selbst ausgewertet: das wäre ein
 zweiter, von außen fälschbarer Weg.
 """

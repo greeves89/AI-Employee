@@ -95,6 +95,8 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
       CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN:-}
+      # Container direkt vor dem Server, deren X-Forwarded-For gilt (Handbuch 37.14).
+      TRUSTED_PROXY_HOSTS: ${TRUSTED_PROXY_HOSTS:-ai-employee-caddy}
       # Push-Meldungen an die mobile App (Apple Push Notification service).
       # Ohne diese Werte verschickt der Server keine Push-Meldungen. Der
       # Schluessel ist ein mehrzeiliges PEM; in der .env wird er einzeilig mit

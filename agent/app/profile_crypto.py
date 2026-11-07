@@ -48,7 +48,8 @@ class KeinSchluessel(RuntimeError):
 
 
 def _schluessel() -> bytes:
-    wert = os.environ.get("BROWSER_PROFIL_KEY", "")
+    from app import serverwerte
+    wert = serverwerte.get("BROWSER_PROFIL_KEY")
     try:
         Fernet(wert.encode())
     except Exception as e:  # noqa: BLE001 — leer oder kein Fernet-Schluessel
