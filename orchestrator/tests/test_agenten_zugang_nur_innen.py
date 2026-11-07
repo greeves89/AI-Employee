@@ -33,9 +33,19 @@ from app.dependencies import agent_zugang_pruefen, make_agent_token, verify_agen
 APP = pathlib.Path(__file__).resolve().parents[1] / "app"
 
 
-def _anfrage(**koepfe) -> Request:
+def _anfrage(client: str = "172.18.0.6", **koepfe) -> Request:
+    """Eine Anfrage; ``client`` ist die Gegenstelle (Agenten-Container im Docker-Netz)."""
     return Request({"type": "http", "method": "GET", "path": "/api/v1/x", "query_string": b"",
+                    "client": (client, 40000),
                     "headers": [(k.lower().replace("_", "-").encode(), v.encode()) for k, v in koepfe.items()]})
+
+
+#: /proc/net/route eines Orchestrators in zwei Docker-Netzen (Werte wie auf der Testanlage).
+ROUTEN = """Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWindow\tIRTT
+eth0\t00000000\t010012AC\t0003\t0\t0\t0\t00000000\t0\t0\t0
+eth0\t000012AC\t00000000\t0001\t0\t0\t0\t0000FFFF\t0\t0\t0
+eth1\t000015AC\t00000000\t0001\t0\t0\t0\t0000FFFF\t0\t0\t0
+"""
 
 
 class PruefungTests(unittest.TestCase):
@@ -57,20 +67,56 @@ class PruefungTests(unittest.TestCase):
         self.assertFalse(agent_zugang_pruefen(_anfrage(), self.aid, ""))
 
     def test_jeder_eingangskopf_weist_ab(self):
-        for kopf in ("X_Forwarded_For", "Forwarded", "X_Real_IP", "Cf_Connecting_IP", "Cf_Ray"):
+        for kopf in ("X_Forwarded_For", "Forwarded", "X_Real_IP", "Cf_Connecting_IP", "Cf_Ray",
+                     "Via", "X_Forwarded_Host"):
             with self.subTest(kopf=kopf), patch.object(dep, "_abweisung_merken") as merken:
                 self.assertFalse(agent_zugang_pruefen(_anfrage(**{kopf: "203.0.113.7"}), self.aid, self.token))
                 merken.assert_called_once()
 
-    def test_leerer_kopf_zaehlt_nicht(self):
-        """Ein leer gesetzter Kopf ist kein Proxy-Weg (Caddy setzt immer eine Adresse)."""
-        self.assertTrue(agent_zugang_pruefen(_anfrage(X_Forwarded_For=""), self.aid, self.token))
+    def test_leerer_kopf_zaehlt_auch(self):
+        """Es zählt das Vorhandensein: ein leerer Kopf vor dem echten darf nicht durchrutschen."""
+        with patch.object(dep, "_abweisung_merken"):
+            self.assertFalse(agent_zugang_pruefen(_anfrage(X_Forwarded_For=""), self.aid, self.token))
+
+    def test_ueber_den_veroeffentlichten_port_abgewiesen(self):
+        """Host-nginx direkt auf 127.0.0.1:8000: kommt vom Gateway des Docker-Netzes an."""
+        with patch.object(dep, "_gateways", return_value=frozenset({"172.18.0.1"})), \
+                patch.object(dep, "_gateways_cache", (-1e9, frozenset())), \
+                patch.object(dep, "_abweisung_merken") as merken:
+            self.assertFalse(agent_zugang_pruefen(_anfrage(client="172.18.0.1"), self.aid, self.token))
+            self.assertFalse(agent_zugang_pruefen(_anfrage(client="127.0.0.1"), self.aid, self.token))
+            self.assertFalse(agent_zugang_pruefen(_anfrage(client="::1"), self.aid, self.token))
+            self.assertTrue(agent_zugang_pruefen(_anfrage(client="172.18.0.6"), self.aid, self.token))
+        self.assertEqual(merken.call_count, 3)
+
 
     def test_falsches_token_von_aussen_wird_nicht_protokolliert(self):
         """Raten von außen ist kein Leck — nur ein GÜLTIGES Token von außen ist ein Befund."""
         with patch.object(dep, "_abweisung_merken") as merken:
             self.assertFalse(agent_zugang_pruefen(_anfrage(X_Forwarded_For="1.2.3.4"), self.aid, "0" * 32))
             merken.assert_not_called()
+
+
+class GatewayTests(unittest.TestCase):
+
+    def test_gateways_aus_der_routentabelle(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", suffix=".route", delete=False) as fh:
+            fh.write(ROUTEN)
+        self.assertEqual(dep._gateways(fh.name), frozenset({"172.18.0.1", "172.21.0.1"}))
+        pathlib.Path(fh.name).unlink()
+
+    def test_ohne_routentabelle_keine(self):
+        self.assertEqual(dep._gateways("/gibt/es/nicht"), frozenset())
+
+    def test_agentenadressen_sind_keine_gateways(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", suffix=".route", delete=False) as fh:
+            fh.write(ROUTEN)
+        gw = dep._gateways(fh.name)
+        pathlib.Path(fh.name).unlink()
+        for ip in ("172.18.0.4", "172.18.0.6", "172.21.0.22"):
+            self.assertNotIn(ip, gw)
 
 
 class ProtokollTests(unittest.IsolatedAsyncioTestCase):
@@ -90,6 +136,24 @@ class ProtokollTests(unittest.IsolatedAsyncioTestCase):
             dep._abweisung_merken("bbbb2222", _anfrage(X_Forwarded_For="1.2.3.4"))
             await asyncio.sleep(0)
         self.assertEqual([a for a, _ in aufrufe], ["aaaa1111", "bbbb2222"])
+
+    async def test_logzeile_ebenfalls_gedrosselt(self):
+        async def protokollieren(aid, pfad):
+            pass
+
+        with patch.object(dep, "_abweisung_protokollieren", protokollieren), \
+                self.assertLogs("app.dependencies", level="WARNING") as log:
+            for _ in range(5):
+                dep._abweisung_merken("aaaa1111", _anfrage(X_Forwarded_For="1.2.3.4"))
+            await asyncio.sleep(0)
+        self.assertEqual(len(log.records), 1)
+
+    async def test_fehlgeschlagenes_protokoll_gibt_die_drosselung_frei(self):
+        dep._abgewiesen_zuletzt["aaaa1111"] = 1.0
+        with patch("app.db.session.async_session_factory", side_effect=RuntimeError("db weg")), \
+                self.assertLogs("app.dependencies", level="ERROR"):
+            await dep._abweisung_protokollieren("aaaa1111", "/x")
+        self.assertNotIn("aaaa1111", dep._abgewiesen_zuletzt)
 
     async def test_eintrag_landet_im_pruefprotokoll(self):
         from app.models.audit_log import AuditEventType, AuditLog

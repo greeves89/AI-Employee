@@ -36,9 +36,11 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
    `API_SECRET_KEY` abgeleitet und ändert sich nie: Ein Leck über eine Build-Ausgabe, ein
    Paket-Skript oder Prompt-Injection wäre ein dauerhafter Zugang von außen gewesen. Geprüft
    wurde es an sieben Stellen, jede mit eigenem Vergleich.
-   **Behoben in 1.439.0:** eine Prüfung (`agent_zugang_pruefen`). Ein Token gilt nur ohne
-   Proxy-Kopfzeilen (Caddy setzt `X-Forwarded-For` bei jeder Anfrage, Agenten rufen direkt im
-   Docker-Netz). Ein gültiges Token von außen landet im Prüfprotokoll
+   **Behoben in 1.439.0:** eine Prüfung (`agent_zugang_pruefen`). Ein Token gilt nur, wenn die
+   Anfrage direkt aus einem Container kommt: ohne Proxy-Kopfzeilen (Caddy setzt
+   `X-Forwarded-For` und `Via` bei jeder Anfrage, auch gegen den `Connection`-Trick, gegen das
+   Caddy-Abbild der Anlage nachgestellt) und nicht über den veröffentlichten Port des
+   Orchestrators auf dem Host (kommt vom Gateway des Docker-Netzes an). Ein gültiges Token von außen landet im Prüfprotokoll
    (`agent_token_extern`) und färbt den Sicherheitsstatus rot. Ein Test verhindert eine
    achte Vergleichsstelle.
 2. **Der Ausgang ins Internet ist offen, mit Absicht.** Agenten brauchen das offene Web. Der
@@ -61,7 +63,8 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
 | 2 | Gefälschte Absenderadresse | Anmeldung | Uvicorn nur Caddy vertrauen lassen statt `*`. | geplant |
 | 3 | Kontingent-Bremse für Abo-Konten | Betrieb | Wie die Zeitplan-Kostenbremse, aber für Abo-Kontingente (Claude, ChatGPT). | geplant |
 | 4 | Release mit Probelauf | Betrieb (Lieferkette) | Release-Skript mit Trockenlauf, CI-Status von `main` als Pflicht. | geplant |
-| 5 | Codex-Zugang auf der Testanlage nur für einen Agenten hinter dem Proxy | Zugänge | Betreiberentscheidung, der Sicherheitsstatus zeigt es. | Information |
+| 5 | Sentinel-Zugang ist wie das Agenten-Token aus `API_SECRET_KEY` abgeleitet und gilt von überall | Identität | Dieselbe Eingangsprüfung, falls der Sentinel je über HTTP ruft. Heute läuft er im Orchestrator-Prozess. | prüfen |
+| 6 | Codex-Zugang auf der Testanlage nur für einen Agenten hinter dem Proxy | Zugänge | Betreiberentscheidung, der Sicherheitsstatus zeigt es. | Information |
 
 ### Braucht eine Entscheidung
 
