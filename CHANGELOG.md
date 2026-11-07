@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.437.2] - 2026-11-07
+
+### Behoben
+- Blinder Prüfer bei Karten ohne Repo, Pull Request oder Branch: Ihr Ergebnis liegt im Arbeitsordner des Umsetzers, den ein anderer Agent nicht sieht (jeder hat seinen eigenen). Live gesehen: Der Prüfer suchte die verlangte Datei in seinem eigenen Ordner — das Urteil „Nacharbeit“ stimmte nur, weil die Datei wirklich fehlte. Jetzt prüft in diesem Fall der Umsetzer selbst in einem neuen Lauf (als „nicht blind“ gekennzeichnet), und der Prüfauftrag sagt, wo das Ergebnis liegt. Blind über Agenten hinweg wird geprüft, sobald ein geteilter Stand da ist.
+
+### Tests
+- Ohne geteilten Stand prüft der Umsetzer selbst; was als geteilter Stand zählt (unförmige Werte nicht).
+
 ## [1.437.1] - 2026-11-07
 
 ### Behoben

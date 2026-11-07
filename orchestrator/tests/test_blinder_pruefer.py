@@ -206,6 +206,26 @@ class AblaufTests(unittest.IsolatedAsyncioTestCase):
         await pruefung.nach_lauf(self.router, alt)
         self.assertEqual((await self.umsetzer()).metadata_["pruefung"]["status"], pruefung.LAEUFT)
 
+    async def test_ohne_geteilten_stand_prueft_der_umsetzer_selbst(self):
+        """Ohne Repo/PR/Branch sieht ein anderer Agent das Ergebnis nicht (eigene Arbeitsordner).
+        Live gesehen: Der Prüfer suchte die Datei in seinem Ordner."""
+        team = await self.db.get(Team, "t1")
+        team.repo = None
+        karte = await self.db.get(ProjektKarte, "k1")
+        karte.pr_url = None
+        await self.db.commit()
+        await pruefung.nach_lauf(self.router, await self.umsetzer())
+        self.assertEqual(self.erstellt[0].agent_id, "a1")
+        self.assertFalse((await self.umsetzer()).metadata_["pruefung"]["blind"])
+        self.assertIn("deinem Arbeitsordner", self.erstellt[0].prompt)
+
+    def test_geteilter_stand(self):
+        self.assertTrue(pruefung.geteilter_stand("org/app", None, None))
+        self.assertTrue(pruefung.geteilter_stand(None, "https://example.invalid/pr/1", None))
+        self.assertTrue(pruefung.geteilter_stand(None, None, "3-login"))
+        self.assertFalse(pruefung.geteilter_stand(None, None, None))
+        self.assertFalse(pruefung.geteilter_stand("x; rm -rf", "javascript:1", "a b"), "unförmig zählt nicht")
+
     async def test_einziger_agent_prueft_sich_in_neuem_lauf(self):
         team = await self.db.get(Team, "t1")
         team.member_agent_ids = ["a1"]
