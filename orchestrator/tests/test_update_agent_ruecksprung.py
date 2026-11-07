@@ -310,6 +310,40 @@ class StoppWaehrendNeubau(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(gebaut), 1, "der wartende Start baut nach dem Stopp nicht neu")
         self.assertEqual(mgr.agent.state, AgentState.STOPPED)
 
+    async def test_entzug_wird_trotz_stopp_gebaut_und_bleibt_angehalten(self):
+        """Neubau zum Entziehen eines Zugangs (wartung=False), Stopp kommt, während er auf den
+        Lock wartet: nicht überspringen — sonst bliebe der alte Behälter mit dem entzogenen
+        Zugang der des Agenten (automatische Sicherheitsprüfung)."""
+        docker = FakeDocker(FakeBehaelter("alt1", NAME))
+        ref, gebaut = [None], []
+        darf_weiter = asyncio.Event()
+
+        async def neu(aid):
+            gebaut.append(aid)
+            await darf_weiter.wait()
+            nid = f"neu{len(gebaut)}"
+            docker.behaelter[nid] = FakeBehaelter(nid, NAME)
+            ref[0].agent.container_id = nid
+            am._festgeschrieben[aid] = nid
+            return ref[0].agent
+        mgr = ref[0] = _manager(docker, neu)
+        mgr._publish_event = AsyncMock()
+        docker.angehalten = []
+        echt_stop = docker.stop_container
+        docker.stop_container = lambda cid: (docker.angehalten.append(cid), echt_stop(cid))
+        erster = asyncio.create_task(mgr.update_agent("a1b2c3d4", wartung=True))
+        await asyncio.sleep(0.01)
+        entzug = asyncio.create_task(mgr.update_agent("a1b2c3d4"))       # Schlüssel entfernt
+        await asyncio.sleep(0.01)
+        await mgr.stop_agent("a1b2c3d4")
+        darf_weiter.set()
+        await erster
+        await entzug
+        self.assertEqual(len(gebaut), 2, "der Entzug-Neubau läuft trotz Stopp")
+        self.assertEqual(mgr.agent.container_id, "neu2")
+        self.assertIn("neu2", docker.angehalten, "neuer Behälter bleibt angehalten")
+        self.assertEqual(mgr.agent.state, AgentState.STOPPED)
+
     async def test_stopp_ohne_neubau_wie_bisher(self):
         docker = FakeDocker(FakeBehaelter("alt1", NAME))
         mgr = _manager(docker, AsyncMock())

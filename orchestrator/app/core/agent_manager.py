@@ -2518,9 +2518,13 @@ class AgentManager:
             agent = await self._get_agent(agent_id)
             # Frisch lesen: wer gewartet hat, hält sonst den Stand von vor dem anderen Neubau.
             await self.db.refresh(agent)
-            if _gestoppt_seit(agent_id, angefragt):
+            if _gestoppt_seit(agent_id, angefragt) and (nur_wenn_noetig or wartung):
                 # Nach dieser Anfrage wurde der Agent gestoppt (etwa vom Sentinel, während
-                # ein anderer Neubau lief): nicht wieder hochfahren.
+                # ein anderer Neubau lief). Ein Start oder eine Wartung ist damit hinfällig.
+                # NICHT übersprungen wird jeder andere Neubau: er kann einen Zugang entziehen
+                # (Schlüssel entfernt, Rechte gekürzt) — bliebe der alte Behälter, brächte ihn
+                # der nächste Start mit dem entzogenen Zugang hoch. Der läuft also durch und
+                # hält den neuen Behälter danach an (siehe unten).
                 logger.info(f"Agent {scrub_log(agent_id)}: Neubau übersprungen — seit der Anfrage gestoppt")
                 return agent
             if nur_wenn_noetig and agent.container_id:
