@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.437.1] - 2026-11-07
+
+### Behoben
+- Der Lauscher für Auftragsabschlüsse baute seinen `TaskRouter` ohne Docker. Damit weckte ein Abschluss keinen gestoppten Agenten: Live gesehen blieb der Lauf des blinden Prüfers (1.437.0) acht Minuten in der Warteschlange eines gestoppten Agenten liegen. Betroffen waren auch die schon vorgesehenen Weckrufe für den Eltern-Agenten einer Teilaufgabe, den Auftraggeber einer Delegation und die Wiederholung der Selbstheilung — sie liefen auf diesem Weg still ins Leere. Der Lauscher bekommt jetzt Docker.
+
+### Tests
+- `test_abschluss_weckt_agenten.py`: Router im Lauscher mit Docker, Lauscher mit Docker gestartet (Gegenprobe ohne Änderung schlägt an).
+
 ## [1.437.0] - 2026-11-07
 
 ### Neu
