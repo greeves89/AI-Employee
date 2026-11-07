@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.442.0] - 2026-11-07
+
+### Neu
+- **Kontingent-Bremse** (`core/kontingent.py`). Ist das Abo-Kontingent eines Agenten erschöpft (Claude „You've hit your limit · resets 1pm“, Codex „try again in 2 hours“), scheiterte bis zur Freigabe jeder Zeitplan-Lauf sofort, und ein gestoppter Agent wurde dafür jedes Mal geweckt. Am 27.–30.08.2026 waren das 23 Läufe mit einem einzigen Grund. Erkannt wurde das schon (#680, „Kontingent erschoepft“), gebremst nicht.
+  - Jetzt merkt sich der Orchestrator beim ersten solchen Lauf die Freigabezeit aus der Meldung (sonst eine Stunde, höchstens 5 Stunden) und meldet **einmal**.
+  - Der Zeitplan-Dienst legt fällige Läufe dieses Agenten auf die Freigabezeit und holt sie dann einmal nach, ohne in der Zwischenzeit zu wecken.
+  - Ein erfolgreicher Lauf hebt die Pause auf.
+  - Gegen Missbrauch: Der Text kommt aus dem Agenten. Deshalb gilt höchstens 5 Stunden, und nur eine kurze Limit-Meldung zählt; ein langer Bericht, der sie zitiert, pausiert nichts.
+- Benutzerhandbuch 12.2.
+
+### Tests
+- `test_kontingent_bremse.py` (20 Tests):
+  - Freigabezeit aus Claude- und Codex-Meldungen: Uhrzeit mit Zone, vorbei heißt morgen, Minuten, Datum, „try again in“, unlesbar, Grenzen, unbekannte Zone.
+  - Speicher: neu, nie verkürzen, verlängern, aufheben; ohne Redis keine Bremse.
+  - Router: einmal melden, Limit im Fehlertext, langer Text bremst nicht, Deckel 5 h, anderer Fehler bremst nicht, Erfolg hebt auf, Störung stoppt das Abschließen nie.
+  - Zeitplan: auf die Freigabe gelegt und nicht geweckt; ohne Pause wie bisher.
+  - Gegenproben: ohne Scheduler-Prüfung 1 Fehler, ohne Aufheben 1, ohne Längengrenze 1. Die Scheduler- und Router-Suiten (1328 Tests) sind grün.
+
 ## [1.441.0] - 2026-11-07
 
 ### Neu
