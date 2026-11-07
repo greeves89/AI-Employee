@@ -9,7 +9,6 @@ Tool definitions, EWS calls and JSON-RPC dispatch live in
 plus the agent OWNER's mailbox email (impersonation target).
 """
 
-import hmac
 import logging
 
 from fastapi import APIRouter, Request
@@ -21,7 +20,7 @@ from app.core import ms_access
 from app.core.encryption import decrypt_token
 from app.core.exchange_mcp import handle_mcp_request, mcp_error
 from app.db.session import async_session_factory
-from app.dependencies import make_agent_token
+from app.dependencies import agent_zugang_pruefen
 from app.models.agent import Agent
 from app.models.oauth_integration import OAuthIntegration, OAuthProvider
 from app.models.user import User
@@ -112,7 +111,7 @@ async def _resolve_context(agent_id: str, db: AsyncSession) -> dict | None:
 async def mcp_exchange_endpoint(agent_id: str, request: Request):
     """MCP Streamable HTTP endpoint for on-prem Exchange tools (agent transport)."""
     token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-    if not token or not hmac.compare_digest(token, make_agent_token(agent_id)):
+    if not agent_zugang_pruefen(request, agent_id, token):
         return JSONResponse(mcp_error(None, -32600, "Unauthorized"), status_code=401)
 
     try:

@@ -11,7 +11,6 @@ nicht. Siehe core/egress.py.
 
 from __future__ import annotations
 
-import hmac
 import json
 import logging
 from typing import Callable, NamedTuple
@@ -28,7 +27,7 @@ from app.core.encryption import decrypt_token
 from app.core.log_redaction import scrub_log
 from app.core.secret_zugriff import nutzbare_secrets_des_besitzers, secrets_des_agenten
 from app.db.session import get_db
-from app.dependencies import make_agent_token
+from app.dependencies import agent_zugang_pruefen
 from app.models.agent import Agent
 
 logger = logging.getLogger(__name__)
@@ -152,8 +151,8 @@ async def _ki_zugang(db: AsyncSession, agent: Agent) -> list[_Freigabe]:
             for var in gespeichert if aktuell.get(var)]
 
 
-async def _freigaben(db: AsyncSession, body: Verbindung) -> list[_Freigabe]:
-    if not hmac.compare_digest(body.agent_token.encode(), make_agent_token(body.agent_id).encode()):
+async def _freigaben(db: AsyncSession, body: Verbindung, request: Request) -> list[_Freigabe]:
+    if not agent_zugang_pruefen(request, body.agent_id, body.agent_token):
         raise HTTPException(status_code=401, detail="Agent unbekannt")
     agent = await db.get(Agent, body.agent_id)
     if agent is None:
@@ -168,13 +167,13 @@ async def _freigaben(db: AsyncSession, body: Verbindung) -> list[_Freigabe]:
 
 
 @router.post("/verbindung", dependencies=[Depends(_nur_proxy)])
-async def verbindung(body: Verbindung, db: AsyncSession = Depends(get_db)):
-    return {"hosts": sorted({h for f in await _freigaben(db, body) for h in f.hosts})}
+async def verbindung(body: Verbindung, request: Request, db: AsyncSession = Depends(get_db)):
+    return {"hosts": sorted({h for f in await _freigaben(db, body, request) for h in f.hosts})}
 
 
 @router.post("/aufloesen", dependencies=[Depends(_nur_proxy)])
-async def aufloesen(body: Aufloesen, db: AsyncSession = Depends(get_db)):
-    nach_id = {(f.art, f.id): f for f in await _freigaben(db, body)}
+async def aufloesen(body: Aufloesen, request: Request, db: AsyncSession = Depends(get_db)):
+    nach_id = {(f.art, f.id): f for f in await _freigaben(db, body, request)}
     werte: dict[str, str] = {}
     abgelehnt: list[dict] = []
     for p in dict.fromkeys(body.platzhalter):

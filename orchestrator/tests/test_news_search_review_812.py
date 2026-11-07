@@ -218,7 +218,7 @@ class HttpMitEchterTokenPruefungTests(_MitDatenbank):
                 yield db
 
         app.dependency_overrides[get_db] = _db
-        self.http = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+        self.http = httpx.AsyncClient(transport=httpx.ASGITransport(app=app, client=("172.18.0.6", 40000)), base_url="http://test")  # wie ein Agenten-Container
 
     async def asyncTearDown(self):
         await self.http.aclose()

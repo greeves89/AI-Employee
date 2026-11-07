@@ -310,6 +310,44 @@ async def _dlp(db) -> list[dict]:
         "dafür sorgen Egress-Proxy und Sentinel.")]
 
 
+async def _agenten_token(db) -> list[dict]:
+    """Agenten-Tokens gelten nur aus dem Agentennetz (``dependencies.agent_zugang_pruefen``).
+
+    Die Sperre selbst ist immer an. Der Punkt zeigt, ob in den letzten 7 Tagen ein
+    GÜLTIGES Token über den öffentlichen Eingang kam — das heißt: es ist ausgelaufen
+    (Ausgabe eines Werkzeugs, Paket-Skript, Prompt-Injection) und wird von außen probiert.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import func
+
+    from app.models.agent import Agent
+    from app.models.audit_log import AuditEventType, AuditLog
+
+    titel = "Agenten-Zugänge nur aus dem Agentennetz"
+    seit = datetime.now(timezone.utc) - timedelta(days=7)
+    zeilen = (await db.execute(
+        select(AuditLog.agent_id, func.count()).where(
+            AuditLog.event_type == AuditEventType.AGENT_TOKEN_EXTERN, AuditLog.created_at >= seit)
+        .group_by(AuditLog.agent_id))).all()
+    if not zeilen:
+        return [_punkt(
+            "agenten_token", titel, OK,
+            "Ein Agenten-Token gilt nur, wenn der Aufruf direkt aus dem Agentennetz kommt. Über die "
+            "öffentliche Adresse wird es abgewiesen; in den letzten 7 Tagen hat das niemand versucht.")]
+    namen = dict((await db.execute(select(Agent.id, Agent.name).where(
+        Agent.id.in_([a for a, _ in zeilen])))).all())
+    liste = ", ".join(namen.get(a, a) for a, _ in zeilen[:5]) + (" …" if len(zeilen) > 5 else "")
+    return [_punkt(
+        "agenten_token", titel, KRITISCH,
+        f"Das Token von {len(zeilen)} Agent(en) wurde in den letzten 7 Tagen über die öffentliche "
+        f"Adresse benutzt und abgewiesen: {liste}. Das Token ist also nach außen gelangt.",
+        "Audit-Log, Ereignis „Agenten-Token von außen abgewiesen“: Zeitpunkt und Pfad ansehen. Den "
+        "Agenten prüfen (Verlauf, installierte Pakete, Skills). Ein neues Token gibt es nur mit "
+        "neuem API_SECRET_KEY: das meldet alle Nutzer ab und braucht danach „Agenten aktualisieren“."
+        )]
+
+
 #: Laufzeit, Stufe, Merkmal im Agenten (entstand mit Platzhalter) und Anzeige je Zugang.
 _ZUGAENGE = (
     ("claude_code", "ki", "egress_ki_stufe", "Claude-Zugang"),
@@ -371,6 +409,7 @@ async def stand(db) -> dict:
     ids = [c for (c,) in (await db.execute(
         select(Agent.container_id).where(Agent.container_id.is_not(None)))).all()]
     punkte = (_einstellungen() + await _agenten(db) + await _schluessel(db) + await _zugaenge(db) + await _dlp(db)
+              + await _agenten_token(db)
               + _abbild_signaturen()
               + await asyncio.to_thread(_docker, ids))
     rang = {KRITISCH: 0, WARNUNG: 1, INFO: 2, OK: 3}

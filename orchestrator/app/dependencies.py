@@ -345,10 +345,147 @@ def make_agent_token(agent_id: str) -> str:
     ).hexdigest()[:32]
 
 
+#: Kopfzeilen, die ein vorgeschalteter Proxy setzt. Caddy setzt X-Forwarded-For, Via und
+#: X-Forwarded-Host bei JEDER weitergereichten Anfrage selbst — auch wenn der Client sie per
+#: ``Connection: X-Forwarded-For`` als hop-by-hop ausgeben will (gegen das Caddy-Abbild der
+#: Anlage nachgestellt, 2.11.4). Der Cloudflare-Tunnel setzt Cf-Connecting-IP/Cf-Ray, nginx
+#: X-Real-IP. Agenten rufen den Orchestrator direkt im Docker-Netz (``ORCHESTRATOR_URL``) und
+#: senden keinen davon. Es zählt das Vorhandensein, auch leer.
+_EINGANG_KOEPFE = ("x-forwarded-for", "forwarded", "x-real-ip", "cf-connecting-ip", "cf-ray",
+                   "via", "x-forwarded-host")
+
+#: Höchstens ein Prüfprotokoll-Eintrag (und eine Logzeile) je Agent und Zeitraum — ein
+#: Angreifer mit geleaktem Token soll Protokoll und Log nicht fluten können.
+_ABGEWIESEN_PAUSE = 600.0
+_abgewiesen_zuletzt: dict[str, float] = {}
+_protokoll_aufgaben: set = set()
+
+_ROUTEN_DATEI = "/proc/net/route"
+_ZUGANG_NETZ_PAUSE = 60.0
+_gateways_cache: tuple[float, frozenset[str]] = (-_ZUGANG_NETZ_PAUSE, frozenset())
+
+
+def _gateways(datei: str = _ROUTEN_DATEI) -> frozenset[str]:
+    """Die Gateways der Docker-Netze, in denen der Orchestrator hängt.
+
+    Über einen veröffentlichten Port (``127.0.0.1:8000`` in der Compose-Datei) kommt eine
+    Anfrage vom Gateway des Netzes an, nicht von einem Container. Docker vergibt als
+    Gateway die erste Adresse eines Netzes; dazu das Standard-Gateway aus der Routentabelle.
+    """
+    import ipaddress
+    import socket
+    import struct
+
+    def ip(hexwert: str) -> ipaddress.IPv4Address:
+        return ipaddress.IPv4Address(socket.inet_ntoa(struct.pack("<L", int(hexwert, 16))))
+
+    gefunden: set[str] = set()
+    try:
+        zeilen = open(datei, encoding="ascii").read().splitlines()[1:]
+    except OSError:
+        return frozenset()
+    for zeile in zeilen:
+        teile = zeile.split()
+        if len(teile) < 8:
+            continue
+        ziel, gateway, maske = ip(teile[1]), ip(teile[2]), ip(teile[7])
+        if int(gateway):
+            gefunden.add(str(gateway))
+        if int(ziel) and int(maske):
+            netz = ipaddress.IPv4Network(f"{ziel}/{maske}", strict=False)
+            if netz.num_addresses > 2:
+                gefunden.add(str(netz.network_address + 1))
+    return frozenset(gefunden)
+
+
+def _kam_ueber_veroeffentlichten_port(request: Request) -> bool:
+    """Kommt die Anfrage vom Host (Loopback, Gateway eines Docker-Netzes) statt aus einem Container?"""
+    import ipaddress
+    import time
+
+    global _gateways_cache
+    client = getattr(request, "client", None)
+    host = (client.host if client else "") or ""
+    try:
+        if ipaddress.ip_address(host).is_loopback:
+            return True
+    except ValueError:
+        return False
+    jetzt = time.monotonic()
+    if jetzt - _gateways_cache[0] >= _ZUGANG_NETZ_PAUSE:
+        _gateways_cache = (jetzt, _gateways())
+    return host in _gateways_cache[1]
+
+
+def kam_ueber_eingang(request: Request) -> bool:
+    """Kam die Anfrage über einen Eingang herein statt direkt aus einem Agenten-Container?
+
+    Eingang heißt: ein vorgeschalteter Proxy (Caddy, Tunnel, nginx — erkennbar an seinen
+    Kopfzeilen) oder der veröffentlichte Port des Orchestrators auf dem Host. Ohne
+    Proxy-Kopfzeilen ist ``request.client`` die echte Gegenstelle (uvicorn schreibt sie nur
+    aus ``X-Forwarded-For`` um).
+    """
+    if any(k in request.headers for k in _EINGANG_KOEPFE):
+        return True
+    return _kam_ueber_veroeffentlichten_port(request)
+
+
+def agent_zugang_pruefen(request: Request, agent_id: str, token: str) -> bool:
+    """DIE Prüfung eines Agenten-Tokens — alle Endpunkte, die eins annehmen, rufen sie.
+
+    Gültig ist ein Token nur, wenn es zum Agenten passt UND die Anfrage direkt aus einem
+    Container kommt. Das Token ist aus ``api_secret_key`` abgeleitet und ändert sich
+    nie; ohne die zweite Bedingung wäre ein einmal ausgelaufenes Token (Build-Ausgabe,
+    Paket-Skript, Prompt-Injection) ein dauerhafter Zugang von außen. Abweisungen
+    landen im Prüfprotokoll und im Sicherheitsstatus.
+    """
+    if not agent_id or not token:
+        return False
+    if not hmac.compare_digest(token.encode(), make_agent_token(agent_id).encode()):
+        return False
+    if kam_ueber_eingang(request):
+        _abweisung_merken(agent_id, request)
+        return False
+    return True
+
+
+def _abweisung_merken(agent_id: str, request: Request) -> None:
+    import asyncio
+    import time
+
+    jetzt = time.monotonic()
+    if jetzt - _abgewiesen_zuletzt.get(agent_id, -_ABGEWIESEN_PAUSE) < _ABGEWIESEN_PAUSE:
+        return
+    _abgewiesen_zuletzt[agent_id] = jetzt
+    pfad = request.url.path[:200]
+    logger.warning("Agenten-Token über einen Eingang abgewiesen (Agent %s, Pfad %r)", agent_id, pfad)
+    try:
+        aufgabe = asyncio.get_running_loop().create_task(_abweisung_protokollieren(agent_id, pfad))
+    except RuntimeError:
+        return
+    _protokoll_aufgaben.add(aufgabe)
+    aufgabe.add_done_callback(_protokoll_aufgaben.discard)
+
+
+async def _abweisung_protokollieren(agent_id: str, pfad: str) -> None:
+    try:
+        from app.db.session import async_session_factory
+        from app.models.audit_log import AuditEventType, AuditLog
+        async with async_session_factory() as db:
+            db.add(AuditLog(agent_id=agent_id, event_type=AuditEventType.AGENT_TOKEN_EXTERN,
+                            outcome="blocked", command=pfad))
+            await db.commit()
+    except Exception:
+        # Nicht festgehalten: der nächste Versuch soll es erneut versuchen dürfen.
+        _abgewiesen_zuletzt.pop(agent_id, None)
+        logger.exception("Abweisung eines Agenten-Tokens nicht protokolliert")
+
+
 async def verify_agent_token(request: Request) -> dict:
     """Verify that the request comes from an authenticated agent.
 
-    Checks Authorization header against HMAC-derived token.
+    Checks Authorization header against HMAC-derived token — and that it did not
+    come in through the public entrance (``agent_zugang_pruefen``).
     Returns {"agent_id": str} on success.
     """
     auth = request.headers.get("Authorization", "")
@@ -366,8 +503,7 @@ async def verify_agent_token(request: Request) -> dict:
     if not agent_id or not token:
         raise HTTPException(status_code=401, detail="Missing agent credentials")
 
-    expected = make_agent_token(agent_id)
-    if not hmac.compare_digest(token, expected):
+    if not agent_zugang_pruefen(request, agent_id, token):
         raise HTTPException(status_code=401, detail="Invalid agent token")
 
     return {"agent_id": agent_id}

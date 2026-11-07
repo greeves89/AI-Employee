@@ -2591,6 +2591,12 @@ Geprüft werden unter anderem:
 - ob der DLP-Filter an ist und Schlüssel sperrt oder schwärzt, bevor eine Antwort die Anlage
   über Telegram, Slack/Teams/Discord oder Projekt-Git verlässt *(seit 1.434.0)*. Er ist bei jeder
   neuen Anlage zunächst aus; einschalten unter **Admin → DLP**.
+- ob ein **Agenten-Token von außen** benutzt wurde *(seit 1.439.0)*. Ein Agent meldet sich mit
+  einem Token beim Server an. Das gilt nur direkt aus dem Netz der Agenten, über die öffentliche
+  Adresse wird es abgewiesen. Kam in den letzten 7 Tagen trotzdem ein gültiges Token von außen,
+  ist der Punkt **rot**: Das Token ist nach außen gelangt (etwa über die Ausgabe eines Werkzeugs
+  oder ein Paket-Skript). Wann und über welchen Pfad, steht im **Audit-Log** (Seitenleiste → **Audit**) beim
+  Ereignis **Agenten-Token von außen abgewiesen**.
 
 Kritische Punkte stehen oben. Unter jedem Punkt steht, **was er bedeutet** und **wie man ihn
 behebt**.

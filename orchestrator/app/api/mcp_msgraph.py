@@ -9,7 +9,6 @@ Tool definitions, Graph calls, and JSON-RPC dispatch live in
 the Microsoft access token from the agent's OWNER's connected account.
 """
 
-import hmac
 import logging
 
 from fastapi import APIRouter, Request
@@ -18,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import async_session_factory
-from app.dependencies import make_agent_token
+from app.dependencies import agent_zugang_pruefen
 from app.models.agent import Agent
 from app.services.oauth_service import OAuthService
 from app.core import ms_access
@@ -55,7 +54,7 @@ async def mcp_msgraph_endpoint(agent_id: str, request: Request):
     # only `Authorization: Bearer <token>` (no X-Agent-ID header), so verify the
     # bearer directly against the HMAC token derived from the path agent_id.
     token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-    if not token or not hmac.compare_digest(token, make_agent_token(agent_id)):
+    if not agent_zugang_pruefen(request, agent_id, token):
         return JSONResponse(mcp_error(None, -32600, "Unauthorized"), status_code=401)
 
     try:
