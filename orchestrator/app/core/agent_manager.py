@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from functools import partial
@@ -90,9 +91,16 @@ _ALT_MUSTER = re.compile(re.escape(ALT_MARKE) + r"\d{10}$")
 #: Je Agent: Behälter-ID, sobald der Neubau festgeschrieben ist (kein Rücksprung mehr).
 _festgeschrieben: dict[str, str] = {}
 
-#: Stopp, der während eines Neubaus kam (Nutzer, Sentinel, Leerlauf-Stopp). Der Agent
-#: zeigt dann auf keinen Behälter — ohne diesen Merker liefe der neue danach einfach los.
-_stopp_waehrend_neubau: set[str] = set()
+#: Zeitpunkt des letzten Stopps je Agent (Nutzer, Sentinel, Leerlauf-Stopp). Ein Neubau,
+#: der VOR einem Stopp angefragt wurde, gilt danach als überholt: er wird übersprungen
+#: (wartete er noch auf den Lock) oder sein neuer Behälter sofort angehalten (lief er
+#: schon). Ein Zeitpunkt statt eines Merkers: nichts kann „liegen bleiben“ und einen
+#: späteren Neubau anhalten, und ein schon wartender Start überstimmt keinen Stopp.
+_letzter_stopp: dict[str, float] = {}
+
+
+def _gestoppt_seit(agent_id: str, zeitpunkt: float) -> bool:
+    return _letzter_stopp.get(agent_id, 0.0) > zeitpunkt
 _CODEX_RECREATE_STAGGER_S = 5.0
 
 
@@ -2325,12 +2333,10 @@ class AgentManager:
 
     async def stop_agent(self, agent_id: str) -> Agent:
         await self._publish_event(agent_id, "system", "Agent stopping...")
-        sperre = _neubau_locks.get(agent_id)
-        if sperre is not None and sperre.locked():
-            # Gerade im Neubau: nicht warten (ein Sentinel-Stopp darf nicht hängen),
-            # sondern vormerken — update_agent hält den neuen Behälter gleich danach an.
-            _stopp_waehrend_neubau.add(agent_id)
         agent = await self._get_agent(agent_id)
+        # Nicht auf einen laufenden Neubau warten (ein Sentinel-Stopp darf nicht hängen):
+        # update_agent sieht den Zeitpunkt und hält den neuen Behälter an bzw. baut nicht.
+        _letzter_stopp[agent_id] = time.monotonic()
         if agent.container_id:
             try:
                 self.docker.stop_container(agent.container_id)
@@ -2506,11 +2512,17 @@ class AgentManager:
         ``nur_wenn_noetig`` (Start-Wege): Wer auf den Lock gewartet hat, findet oft einen
         gerade fertigen Neubau vor — dann nicht ein zweites Mal neu erstellen.
         """
+        angefragt = time.monotonic()
         sperre = _neubau_locks.setdefault(agent_id, asyncio.Lock())
         async with sperre:
             agent = await self._get_agent(agent_id)
             # Frisch lesen: wer gewartet hat, hält sonst den Stand von vor dem anderen Neubau.
             await self.db.refresh(agent)
+            if _gestoppt_seit(agent_id, angefragt):
+                # Nach dieser Anfrage wurde der Agent gestoppt (etwa vom Sentinel, während
+                # ein anderer Neubau lief): nicht wieder hochfahren.
+                logger.info(f"Agent {scrub_log(agent_id)}: Neubau übersprungen — seit der Anfrage gestoppt")
+                return agent
             if nur_wenn_noetig and agent.container_id:
                 from app.core.agenten_aktualisieren import veraltet as _veraltet
                 if not _veraltet(agent) and await asyncio.to_thread(
@@ -2551,15 +2563,14 @@ class AgentManager:
                 if _festgeschrieben.pop(agent_id, None):
                     self._alte_entfernen(beiseite)
                     raise
-                gestoppt = agent_id in _stopp_waehrend_neubau
-                _stopp_waehrend_neubau.discard(agent_id)
+                gestoppt = _gestoppt_seit(agent_id, angefragt)
                 await self._beiseite_zurueck(agent_id, beiseite, container_name, alte_id,
-                                             starten=wartung and not gestoppt)
+                                             behalten=wartung, starten=wartung and not gestoppt,
+                                             gestoppt=gestoppt)
                 raise
             _festgeschrieben.pop(agent_id, None)
             self._alte_entfernen(beiseite)
-            if agent_id in _stopp_waehrend_neubau:
-                _stopp_waehrend_neubau.discard(agent_id)
+            if _gestoppt_seit(agent_id, angefragt):
                 logger.info(f"Agent {scrub_log(agent_id)}: Stopp kam während des Neubaus — jetzt angehalten")
                 try:
                     if neu.container_id:
@@ -2615,13 +2626,15 @@ class AgentManager:
         return beiseite
 
     async def _beiseite_zurueck(self, agent_id: str, beiseite: list, container_name: str,
-                                alte_id: str | None, *, starten: bool) -> None:
+                                alte_id: str | None, *, behalten: bool, starten: bool,
+                                gestoppt: bool = False) -> None:
         """Neuerstellen vor dem Festschreiben gescheitert.
 
         Halb erstellten neuen Behälter entfernen. Dann:
 
-        * **Wartung** (``starten=True``, automatisches Aktualisieren): Der alte kommt unter
-          seinem Namen zurück und läuft weiter, wie er lief — dasselbe, was er vorher durfte.
+        * **Wartung** (``behalten=True``, automatisches Aktualisieren): Der alte kommt unter
+          seinem Namen zurück und läuft weiter, wie er lief — dasselbe, was er vorher durfte;
+          kam inzwischen ein Stopp (``starten=False``), bleibt er angehalten.
         * **Sonst**: Der alte wird entfernt. Neuerstellen dient auch dem Entziehen von
           Zugängen (Schlüssel entfernt, Rechte gekürzt); bliebe der alte Behälter der des
           Agenten, brächte ihn der nächste Start mit den entzogenen Zugängen wieder hoch.
@@ -2638,11 +2651,11 @@ class AgentManager:
         gestartet, zurueck = False, None
         for cid, name, lief in beiseite:
             try:
-                if starten:
+                if behalten:
                     c = self.docker.client.containers.get(cid)
                     c.rename(name)
                     zurueck = cid
-                    if lief:
+                    if lief and starten:
                         self.docker.start_container(cid)
                         gestartet = True
                 else:
@@ -2655,7 +2668,9 @@ class AgentManager:
             if beiseite:
                 agent = await self._get_agent(agent_id)
                 agent.container_id = zurueck
-                if any(lief for _c, _n, lief in beiseite) and not gestartet:
+                if gestoppt:
+                    agent.state = AgentState.STOPPED          # gewollt angehalten, kein Fehlergrund
+                elif any(lief for _c, _n, lief in beiseite) and not gestartet:
                     agent.state = AgentState.STOPPED
                     agent.config = {**(agent.config or {}), "stop_reason": {
                         "type": "aktualisieren_gescheitert",

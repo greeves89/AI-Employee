@@ -91,6 +91,7 @@ def proxy_pruefen(zeit: float = 5.0) -> str:
       antwortet **407** — beide Seiten passen zusammen (``PROBE_OK``);
     * passt er nicht (Proxy läuft mit einem alten Schlüssel aus der ``.env``) oder erreicht
       der Proxy den Orchestrator nicht, antwortet er **503** (``PROBE_SCHLUESSEL``);
+    * 407 zählt nur mit dem Bereich ``ai-employee`` — sonst antwortet ein fremder Proxy;
     * keine Verbindung zum Proxy-Dienst: ``PROBE_AUS``.
 
     Ein TCP-Test allein bestand auch mit falschem Schlüssel — eingeschaltet, nach dem
@@ -111,12 +112,20 @@ def proxy_pruefen(zeit: float = 5.0) -> str:
         with socket.create_connection((ziel.hostname, ziel.port or 8080), timeout=zeit) as s:
             s.settimeout(zeit)
             s.sendall(anfrage)
-            antwort = s.recv(256).decode("latin-1", "replace")
+            roh = b""
+            # Bis zum Ende der Kopfzeilen lesen (TCP darf in Stücken liefern), höchstens 4 KB.
+            while b"\r\n\r\n" not in roh and len(roh) < 4096:
+                stueck = s.recv(1024)
+                if not stueck:
+                    break
+                roh += stueck
     except OSError:
         return PROBE_AUS
+    antwort = roh.decode("latin-1", "replace")
     teile = antwort.split(" ", 2)
     code = teile[1] if len(teile) > 1 else ""
-    if code == "407":
+    # 407 allein könnte jeder Proxy sagen — der eigene nennt seinen Bereich (aie_egress.py).
+    if code == "407" and 'realm="ai-employee"' in antwort:
         return PROBE_OK
     if code == "503":
         return PROBE_SCHLUESSEL

@@ -826,8 +826,9 @@ async def set_egress_proxy(body: EgressSchalter, user=Depends(require_admin),
         if probe != egress.PROBE_OK:
             raise HTTPException(status_code=400, detail=(
                 "Der Proxy-Dienst läuft, wird vom Orchestrator aber nicht angenommen — meist läuft "
-                "er noch mit einem alten Dienst-Schlüssel. Auf dem Server "
-                "docker compose up -d egress-proxy ausführen, dann erneut einschalten."))
+                "er noch mit einem alten Dienst-Schlüssel, seltener erreicht er den Orchestrator "
+                "im Netz nicht. Auf dem Server docker compose up -d egress-proxy ausführen, dann "
+                "erneut einschalten."))
     vorher = bool(settings.egress_proxy_enabled)
     if vorher == body.an:
         return await _egress_stufen_stand(db)       # nichts geändert — kein Protokolleintrag

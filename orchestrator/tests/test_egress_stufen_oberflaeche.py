@@ -339,8 +339,10 @@ class HauptschalterTests(DbTestFall):
 
 
 class FakeVerbindung:
-    def __init__(self, antwort: bytes):
-        self.antwort, self.gesendet = antwort, b""
+    def __init__(self, antwort: bytes, stuecke: int = 1):
+        self.gesendet = b""
+        groesse = max(1, -(-len(antwort) // stuecke)) if antwort else 1
+        self.teile = [antwort[i:i + groesse] for i in range(0, len(antwort), groesse)] or [b""]
 
     def __enter__(self):
         return self
@@ -355,14 +357,14 @@ class FakeVerbindung:
         self.gesendet += daten
 
     def recv(self, n):
-        return self.antwort
+        return self.teile.pop(0) if self.teile else b""
 
 
 class ProbeTests(unittest.TestCase):
     """Probe-Anmeldung über den Proxy: 407 = beide Seiten kennen denselben Dienst-Schlüssel."""
 
-    def _probe(self, antwort=None, fehler=None):
-        verbindung = FakeVerbindung(antwort or b"")
+    def _probe(self, antwort=None, fehler=None, stuecke=1):
+        verbindung = FakeVerbindung(antwort or b"", stuecke)
 
         def verbinden(adresse, timeout):
             if fehler:
@@ -373,19 +375,26 @@ class ProbeTests(unittest.TestCase):
             return egress.proxy_pruefen(), verbindung
 
     def test_ergebnisse(self):
-        for antwort, erwartet in ((b"HTTP/1.1 407 Proxy Authentication Required\r\n", egress.PROBE_OK),
-                                  (b"HTTP/1.1 503 Service Unavailable\r\n", egress.PROBE_SCHLUESSEL),
-                                  (b"HTTP/1.1 200 Connection established\r\n", egress.PROBE_UNKLAR),
+        eigen = b'HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="ai-employee"\r\n\r\n'
+        for antwort, erwartet in ((eigen, egress.PROBE_OK),
+                                  (b'HTTP/1.1 407 x\r\nProxy-Authenticate: Basic realm="corp"\r\n\r\n',
+                                   egress.PROBE_UNKLAR),                       # fremder Proxy
+                                  (b"HTTP/1.1 503 Service Unavailable\r\n\r\n", egress.PROBE_SCHLUESSEL),
+                                  (b"HTTP/1.1 200 Connection established\r\n\r\n", egress.PROBE_UNKLAR),
                                   (b"", egress.PROBE_UNKLAR)):
             with self.subTest(antwort):
                 self.assertEqual(self._probe(antwort)[0], erwartet)
+
+    def test_antwort_in_stuecken(self):
+        eigen = b'HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="ai-employee"\r\n\r\n'
+        self.assertEqual(self._probe(eigen, stuecke=9)[0], egress.PROBE_OK)
 
     def test_keine_verbindung(self):
         self.assertEqual(self._probe(fehler=ConnectionRefusedError())[0], egress.PROBE_AUS)
 
     def test_meldet_sich_wie_ein_agent_an_den_es_nicht_gibt(self):
         import base64
-        _, verbindung = self._probe(b"HTTP/1.1 407 x\r\n")
+        _, verbindung = self._probe(b'HTTP/1.1 407 x\r\nProxy-Authenticate: Basic realm="ai-employee"\r\n\r\n')
         text = verbindung.gesendet.decode()
         self.assertTrue(text.startswith("CONNECT probe.invalid:443 HTTP/1.1"))
         kopf = next(z for z in text.split("\r\n") if z.startswith("Proxy-Authorization: Basic "))

@@ -9,11 +9,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ### Behoben
 - Egress-Proxy einschalten prüft jetzt, ob Proxy und Orchestrator einander am Dienst-Schlüssel erkennen — mit einer Probe-Anmeldung über den Proxy (unbekannte Kennung: passt der Schlüssel, antwortet der Proxy mit 407, sonst mit 503). Vorher genügte eine TCP-Verbindung; lief der Proxy noch mit einem alten Schlüssel, hätte nach dem Einschalten jeder Agent nur 503 bekommen. Keine Änderung am Proxy nötig.
-- Ein Stopp während eines Neubaus (Nutzer, Sentinel, Leerlauf-Stopp) ging verloren: Der Agent zeigte in dieser Zeit auf keinen Behälter, der neue lief danach einfach los. Jetzt wird der Stopp vorgemerkt, ohne auf den Neubau zu warten, und der neue Behälter gleich danach angehalten; bei einem Fehlschlag wird der alte auch bei Wartung nicht wieder gestartet.
+- Ein Stopp während eines Neubaus (Nutzer, Sentinel, Leerlauf-Stopp) ging verloren: Der Agent zeigte in dieser Zeit auf keinen Behälter, der neue lief danach einfach los. Jetzt merkt sich jeder Stopp seinen Zeitpunkt, ohne auf den Neubau zu warten; ein Neubau, der vor dem Stopp angefragt wurde, hält seinen neuen Behälter sofort an — oder wird übersprungen, wenn er noch wartete. So überstimmt auch ein schon wartender Start keinen Sentinel-Stopp, und ein früherer Stopp kann keinen späteren Neubau anhalten. Scheitert der Neubau nach einem Stopp, bleibt der alte Behälter bei Wartung erhalten, aber angehalten, ohne Fehlergrund.
+- Probe zusätzlich robust: liest die Antwort bis zum Ende der Kopfzeilen und zählt 407 nur mit dem Bereich `ai-employee` (ein fremder Proxy fordert auch eine Anmeldung).
 
 ### Tests
 - Probe: 407/503/sonstiges/keine Verbindung, Anmeldung mit zufälligem Token, Gegenprobe gegen die echte Proxy-Logik (`egress_logik`); Einschalten mit altem Dienst-Schlüssel im Proxy abgelehnt.
-- Stopp während des Neubaus: neuer Behälter danach angehalten, Stopp wartet nicht, bei Fehlschlag kein Neustart des alten, ohne Neubau wie bisher. Gegenprobe (Merker ignoriert) schlägt an.
+- Stopp während des Neubaus: neuer Behälter danach angehalten, Stopp wartet nicht, bei Fehlschlag kein Neustart des alten (bei Wartung erhalten, ohne Fehlergrund), wartender Start überstimmt keinen Stopp, früherer Stopp hält keinen späteren Neubau an, unbekannter Agent hinterlässt nichts. Gegenproben schlagen an.
+- Probe: Antwort in Stücken, fremder Proxy mit anderem Bereich.
 
 ## [1.435.0] - 2026-11-06
 

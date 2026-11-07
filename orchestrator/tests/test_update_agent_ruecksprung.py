@@ -80,6 +80,11 @@ class FakeDocker:
 
 
 def _manager(docker, neu_erstellen, container_id="alt1"):
+    # Modulweiter Zustand je Test frisch (jeder Test hat seine eigene Ereignisschleife;
+    # ein Lock aus einem früheren Test wäre an dessen Schleife gebunden).
+    am._neubau_locks.clear()
+    am._letzter_stopp.clear()
+    am._festgeschrieben.clear()
     mgr = AgentManager.__new__(AgentManager)
     mgr.docker = docker
     mgr.db = MagicMock(rollback=AsyncMock(), commit=AsyncMock(), refresh=AsyncMock())
@@ -249,7 +254,6 @@ class StoppWaehrendNeubau(unittest.IsolatedAsyncioTestCase):
         await mgr.update_agent("a1b2c3d4", wartung=True)
         self.assertIn("neu1", docker.angehalten)
         self.assertEqual(mgr.agent.state, AgentState.STOPPED)
-        self.assertNotIn("a1b2c3d4", am._stopp_waehrend_neubau)
 
     async def test_stopp_waehrend_neubau_bei_fehlschlag_startet_den_alten_nicht(self):
         docker = FakeDocker(FakeBehaelter("alt1", NAME))
@@ -263,14 +267,63 @@ class StoppWaehrendNeubau(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(RuntimeError):
             await mgr.update_agent("a1b2c3d4", wartung=True)
         self.assertEqual(docker.gestartet, [], "gestoppt bleibt gestoppt, auch bei Wartung")
+        self.assertEqual(docker.behaelter["alt1"].name, NAME, "bei Wartung bleibt der alte erhalten (angehalten)")
+        self.assertNotIn("stop_reason", mgr.agent.config, "gewollter Stopp ist kein Fehlergrund")
+        self.assertEqual(mgr.agent.state, AgentState.STOPPED)
+
+    async def test_alter_stopp_haelt_keinen_spaeteren_neubau_an(self):
+        """Nichts darf „liegen bleiben“: ein Stopp von früher wirkt nicht auf einen neuen Neubau."""
+        docker = FakeDocker(FakeBehaelter("alt1", NAME))
+        ref = [None]
+        mgr = ref[0] = _manager(docker, _neu(docker, ref))
+        mgr._publish_event = AsyncMock()
+        await mgr.stop_agent("a1b2c3d4")              # Stopp VOR der Anfrage
+        await asyncio.sleep(0.001)
+        await mgr.update_agent("a1b2c3d4")
+        self.assertEqual(mgr.agent.container_id, "neu1")
+        self.assertNotIn("neu1", getattr(docker, "angehalten", []))
+
+    async def test_wartender_start_ueberstimmt_keinen_stopp(self):
+        """Start wartet auf einen laufenden Neubau, DANN kommt der Sentinel-Stopp: der Agent
+        darf danach nicht wieder hochfahren (Prüfung: wartender Start überstimmte den Stopp)."""
+        docker = FakeDocker(FakeBehaelter("alt1", NAME))
+        ref, gebaut = [None], []
+        darf_weiter = asyncio.Event()
+
+        async def neu(aid):
+            gebaut.append(aid)
+            await darf_weiter.wait()
+            docker.behaelter.setdefault("neu1", FakeBehaelter("neu1", NAME))
+            ref[0].agent.container_id = "neu1"
+            am._festgeschrieben[aid] = "neu1"
+            return ref[0].agent
+        mgr = ref[0] = _manager(docker, neu)
+        mgr._publish_event = AsyncMock()
+        erster = asyncio.create_task(mgr.update_agent("a1b2c3d4", wartung=True))
+        await asyncio.sleep(0.01)
+        wartender = asyncio.create_task(mgr.update_agent("a1b2c3d4", nur_wenn_noetig=True))
+        await asyncio.sleep(0.01)
+        await mgr.stop_agent("a1b2c3d4")              # Sentinel
+        darf_weiter.set()
+        await erster
+        await wartender
+        self.assertEqual(len(gebaut), 1, "der wartende Start baut nach dem Stopp nicht neu")
+        self.assertEqual(mgr.agent.state, AgentState.STOPPED)
 
     async def test_stopp_ohne_neubau_wie_bisher(self):
         docker = FakeDocker(FakeBehaelter("alt1", NAME))
         mgr = _manager(docker, AsyncMock())
         mgr._publish_event = AsyncMock()
         await mgr.stop_agent("a1b2c3d4")
-        self.assertNotIn("a1b2c3d4", am._stopp_waehrend_neubau)
         self.assertEqual(mgr.agent.state, AgentState.STOPPED)
+
+    async def test_stopp_fuer_unbekannten_agenten_hinterlaesst_nichts(self):
+        mgr = _manager(FakeDocker(), AsyncMock())
+        mgr._publish_event = AsyncMock()
+        mgr._get_agent = AsyncMock(side_effect=ValueError("nicht gefunden"))
+        with self.assertRaises(ValueError):
+            await mgr.stop_agent("ffffffff")
+        self.assertNotIn("ffffffff", am._letzter_stopp)
 
 
 class KeinZweiterNeubau(unittest.IsolatedAsyncioTestCase):
