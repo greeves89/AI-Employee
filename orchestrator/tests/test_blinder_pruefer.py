@@ -232,6 +232,16 @@ class AblaufFehlerTests(AblaufTests):
         await pruefung.nach_lauf(self.router, pt)
         self.assertEqual((await self.umsetzer()).metadata_["pruefung"]["status"], pruefung.GESCHEITERT)
 
+    async def test_scheiternder_start_verwirft_den_abschluss_nicht(self):
+        """Der Rollback beim Scheitern darf den Abschluss des Umsetzers nicht mitnehmen
+        (automatische Sicherheitsprüfung): Status/Ergebnis bleiben gespeichert."""
+        u = await self.umsetzer()
+        u.result = "Neues Ergebnis\nBeleg: Tests grün"          # noch nicht festgeschrieben
+        self.router.create_and_route_task = AsyncMock(side_effect=RuntimeError("Projektbudget erschöpft"))
+        await pruefung.nach_lauf(self.router, u)
+        async with async_sessionmaker(self.engine, expire_on_commit=False)() as frisch:
+            self.assertEqual((await frisch.get(Task, "u1")).result, "Neues Ergebnis\nBeleg: Tests grün")
+
     async def test_start_scheitert_sichtbar(self):
         self.router.create_and_route_task = AsyncMock(side_effect=RuntimeError("Projektbudget erschöpft"))
         await pruefung.nach_lauf(self.router, await self.umsetzer())

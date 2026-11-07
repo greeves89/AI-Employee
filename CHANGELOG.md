@@ -17,6 +17,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 - Prüfer nur aus Agenten desselben Besitzers wie der Umsetzer (gemischte Projekte); der Lead geht vor.
 - Abgebrochene, nicht startbare (etwa Budget) oder hängende Prüfläufe erscheinen als „gescheitert — bitte selbst prüfen“ statt ewig „prüft gerade“; die Zuordnung ist sofort festgeschrieben.
 - Urteil nur aus der genauen Schlusszeile; „Befund: keiner“ ist keiner.
+- Bevor der Prüflauf angelegt wird, ist der Abschluss des Umsetzers festgeschrieben: Scheitert das Anlegen, nimmt der Rollback Status, Kosten und Karten-Spalte nicht mit.
 
 ### Datenbank
 - Migration `i7j8k9l0m1n2`: `teams.blinder_pruefer` (BOOLEAN, leer = aus).

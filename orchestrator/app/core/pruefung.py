@@ -161,6 +161,10 @@ async def _pruefung_starten(router, task) -> None:
         titel=karte.titel, story=karte.text or karte.titel, projekt=team.name, repo=team.repo,
         pr_url=karte.pr_url, branch=karte.extern_branch, karte_id=karte.id, quelle=karte.quelle,
     )
+    # Erst den Abschluss des Umsetzers festschreiben (Status, Kosten, Karte im Review):
+    # Scheitert das Anlegen des Prüflaufs, verwirft der Rollback unten sonst auch diesen
+    # Abschluss — die Sitzung gehört dem ganzen Auftragsabschluss (TaskRouter).
+    await db.commit()
     # Vor dem Anlegen festhalten: nach einem Rollback sind geladene Felder abgelaufen.
     tid, kid, task_klasse = task.id, karte.id, type(task)
     try:
