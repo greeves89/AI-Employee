@@ -15,5 +15,15 @@ def _richtlinie_vorhanden(request, monkeypatch):
     monkeypatch.setattr(richtlinie, "fehlt", lambda: None)
 
 
+@pytest.fixture(autouse=True)
+def _serverwerte_leer():
+    """Der Speicher der Server-Werte ist Prozess-Zustand — je Test frisch."""
+    from app import serverwerte
+
+    serverwerte._werte.clear()
+    yield
+    serverwerte._werte.clear()
+
+
 def pytest_configure(config):
     config.addinivalue_line("markers", "echte_richtlinie: prueft die echten Hook-Dateien")

@@ -125,8 +125,11 @@ class McpEnvWriteOrderGuardTests(unittest.TestCase):
         from pathlib import Path
         src = (Path(__file__).resolve().parents[2] / "agent/app/main.py").read_text()
         block = src.split("Always refresh the in-process env", 1)[1].split("failed_names", 1)[0]
-        pos = {name: block.index(f'os.environ["CUSTOM_MCP_{name}"]')
-               for name in ("SERVERS", "AUTH", "HEADERS")}
+        # AUTH/HEADERS gehen seit 1.440.0 in den Server-Speicher (serverwerte.setzen),
+        # SERVERS bleibt in der Umgebung — die Reihenfolge gilt unverändert.
+        pos = {"SERVERS": block.index('os.environ["CUSTOM_MCP_SERVERS"]'),
+               **{name: block.index(f'serverwerte.setzen("CUSTOM_MCP_{name}"')
+                  for name in ("AUTH", "HEADERS")}}
         self.assertGreater(pos["SERVERS"], pos["AUTH"],
                            "CUSTOM_MCP_SERVERS muss NACH AUTH geschrieben werden")
         self.assertGreater(pos["SERVERS"], pos["HEADERS"],

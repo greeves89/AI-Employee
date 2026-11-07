@@ -2591,7 +2591,7 @@ Geprüft werden unter anderem:
 - ob der DLP-Filter an ist und Schlüssel sperrt oder schwärzt, bevor eine Antwort die Anlage
   über Telegram, Slack/Teams/Discord oder Projekt-Git verlässt *(seit 1.434.0)*. Er ist bei jeder
   neuen Anlage zunächst aus; einschalten unter **Admin → DLP**.
-- ob ein **Agenten-Token von außen** benutzt wurde *(seit 1.439.0)*. Ein Agent meldet sich mit
+- ob ein **Agenten-Token von außen** benutzt wurde *(seit 1.439.0, Kap. 37.14)*. Ein Agent meldet sich mit
   einem Token beim Server an. Das gilt nur direkt aus dem Netz der Agenten, über die öffentliche
   Adresse wird es abgewiesen. Kam in den letzten 7 Tagen trotzdem ein gültiges Token von außen,
   ist der Punkt **rot**: Das Token ist nach außen gelangt (etwa über die Ausgabe eines Werkzeugs
@@ -4826,6 +4826,39 @@ anderen Weg.
 > Den Fund selbst zeigt der Sentinel nie wörtlich, weder dir noch dem Agenten. Schlüssel
 > erscheinen nur gekürzt (Anfang und Ende). Ist ein Schlüssel echt und war er sichtbar,
 > erneuere ihn.
+
+### 37.14 Zugänge der Agenten: nur von innen, nicht für Werkzeuge *(seit 1.439.0)*
+
+Jeder Agent meldet sich mit einem eigenen Token beim Server an. Drei Regeln schützen es und
+die übrigen Zugänge im Agenten:
+
+- **Das Agenten-Token gilt nur aus dem Netz der Agenten.** Über die öffentliche Adresse, über
+  Caddy oder über den Port des Servers auf dem Host wird es abgewiesen. Kommt trotzdem ein
+  gültiges Token von außen, wird der Sicherheitsstatus rot (Kap. 19), und im Audit-Log steht
+  **Agenten-Token von außen abgewiesen** mit Zeit und Pfad.
+- **Werkzeuge sehen nur, was sie brauchen** *(seit 1.440.0)*. Die Anmeldung an Redis, der
+  Schlüssel des Browserprofils, die Zugänge zu eigenen MCP-Servern und der eigene Codex-Zugang
+  bleiben im Agenten-Server. Was das Modell startet (Befehle, `npm install`, Build-Werkzeuge),
+  bekommt sie nicht mehr in seine Umgebung. Damit tauchen sie auch nicht mehr auf, wenn ein
+  Werkzeug seine Umgebung ausgibt. Nach dem Update gilt das für einen Agenten, sobald er
+  aktualisiert ist (Kap. 37.4).
+- **Nur der Eingang darf eine Absenderadresse weitergeben** *(seit 1.440.0)*. Die Adresse,
+  die Anmelde-Bremse und Protokoll sehen, übernimmt der Server nur von Caddy. Ein Agent kann
+  keine fremde Adresse mehr vorgeben.
+
+**Nur bei eigenem Proxy direkt vor dem Server:** Steht bei dir etwas anderes als Caddy
+unmittelbar vor dem Server (nicht vor Caddy), trag es in die `.env` ein, mehrere Einträge mit
+Komma getrennt, und starte den Server neu. Ein Container steht mit seinem Namen dort, ein
+nginx auf dem Host mit der Gateway-Adresse des Docker-Netzes (etwa `172.18.0.1`, zu sehen
+mit `docker network inspect`). Auch ganze Netze gehen (`10.9.0.0/16`):
+
+```
+TRUSTED_PROXY_HOSTS=ai-employee-caddy,mein-proxy
+```
+
+Ein nginx **vor** Caddy (der übliche Fall) braucht keinen Eintrag. Ohne passenden Eintrag
+sieht der Server als Absender nur den Proxy. Die Anmelde-Bremse je Adresse ruht dann, die je
+Konto wirkt weiter.
 
 ## A. Was kann ein Agent? (typische Einsätze)
 

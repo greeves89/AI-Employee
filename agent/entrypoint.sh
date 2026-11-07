@@ -26,6 +26,11 @@ export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--dns-result-order=ipv4first
 # Pi gemessen brauchte allein die Installation von @anthropic-ai/claude-code
 # 51 Sekunden -- die frueheren 60 s trafen genau die Abbruchkante.
 NPM_FRIST="${ENTRYPOINT_NPM_TIMEOUT:-300}"
+# Paket-Skripte von npm (preinstall/postinstall) und die frisch geladene CLI selbst
+# (``--version``) laufen hier als root mit der Umgebung des Containers. Zugänge, die nur der Agenten-Server braucht
+# (app/serverwerte.py: NUR_SERVER), und das Agenten-Token bekommen sie nicht.
+# Die Proxy-Angaben bleiben: npm erreicht die Registry nur darüber.
+OHNE_ZUGAENGE="env -u REDIS_URL -u REDIS_PASSWORD -u BROWSER_PROFIL_KEY -u CUSTOM_MCP_AUTH -u CUSTOM_MCP_HEADERS -u CODEX_AUTH_JSON -u BROWSER_ZUGANG -u AGENT_TOKEN"
 # Frist fuer die Versionsabfrage vor einer Installation (siehe update_cli).
 NPM_VIEW_FRIST="${ENTRYPOINT_NPM_VIEW_TIMEOUT:-20}"
 
@@ -60,9 +65,9 @@ update_cli() {
   # codex, bevor der Agent ueberhaupt zuhoerte. Jeder geweckte Agent brauchte
   # so ueber eine Minute bis zur ersten Antwort. Die Versionsabfrage kostet
   # eine Sekunde.
-  installiert="$("$BIN_DIR/$bin" --version 2>/dev/null | head -1 || true)"
+  installiert="$($OHNE_ZUGAENGE "$BIN_DIR/$bin" --version 2>/dev/null | head -1 || true)"
   if [ -n "$installiert" ]; then
-    neueste="$(timeout -k 2 "${NPM_VIEW_FRIST}" npm view "$pkg" version 2>/dev/null | tail -1 | tr -d '[:space:]' || true)"
+    neueste="$($OHNE_ZUGAENGE timeout -k 2 "${NPM_VIEW_FRIST}" npm view "$pkg" version 2>/dev/null | tail -1 | tr -d '[:space:]' || true)"
     if [ -z "$neueste" ]; then
       # Registry nicht erreichbar: eine Installation liefe nur in die Frist.
       echo "[entrypoint] ${pkg} bleibt bei ${installiert} (Registry nicht erreichbar)"
@@ -87,7 +92,7 @@ update_cli() {
   # --engine-strict: verlangt die neue Fassung eine neuere Node-Version als die im
   # Image, scheitert die Installation hier -- und die vorhandene Fassung bleibt,
   # statt dass ein CLI eingehaengt wird, das mit dieser Node nicht laeuft.
-  if ! timeout -k 10 "$NPM_FRIST" npm install -g --engine-strict --prefix "$stage" "${pkg}@latest" >"$log" 2>&1; then
+  if ! $OHNE_ZUGAENGE timeout -k 10 "$NPM_FRIST" npm install -g --engine-strict --prefix "$stage" "${pkg}@latest" >"$log" 2>&1; then
     rm -rf "$stage"
     echo "[entrypoint] ${pkg} nicht aktualisiert (offline, Registry-Fehler oder Frist) -- vorhandene Fassung bleibt unangetastet"
     return 0
@@ -142,9 +147,9 @@ update_cli() {
   # Geprueft wird gezielt die soeben eingehaengte Datei, nicht das, was der
   # Suchpfad gerade findet: Sonst koennte eine gleichnamige CLI woanders im
   # Pfad einen kaputten Einbau als geglueckt durchgehen lassen.
-  if [ -x "$BIN_DIR/$bin" ] && "$BIN_DIR/$bin" --version >/dev/null 2>&1; then
+  if [ -x "$BIN_DIR/$bin" ] && $OHNE_ZUGAENGE "$BIN_DIR/$bin" --version >/dev/null 2>&1; then
     rm -rf "$dst.vorher"
-    echo "[entrypoint] ${pkg} aktuell ($("$BIN_DIR/$bin" --version 2>/dev/null | head -1))"
+    echo "[entrypoint] ${pkg} aktuell ($($OHNE_ZUGAENGE "$BIN_DIR/$bin" --version 2>/dev/null | head -1))"
   elif [ -e "$dst.vorher" ]; then
     rm -rf "$dst"
     mv "$dst.vorher" "$dst"

@@ -586,6 +586,11 @@ async def require_sentinel(request: Request) -> SentinelPrincipal:
     token = auth.removeprefix("Bearer ").strip()
     if not token or not hmac.compare_digest(token, get_sentinel_token()):
         raise HTTPException(status_code=403, detail="Sentinel credential required")
+    # Wie das Agenten-Token aus api_secret_key abgeleitet und nie erneuert: nur von innen
+    # (dieselbe Eingangsprüfung wie agent_zugang_pruefen). Heute nimmt ihn kein Endpunkt an.
+    if kam_ueber_eingang(request):
+        logger.warning("Sentinel-Zugang über einen Eingang abgewiesen (Pfad %r)", request.url.path[:200])
+        raise HTTPException(status_code=403, detail="Sentinel credential required")
     return SentinelPrincipal()
 
 
