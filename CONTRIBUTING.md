@@ -154,6 +154,22 @@ Keep the subject under 72 characters. Use the body to explain *why*, not *what*.
 6. **Fill out the PR template** (what changed, why, how to test).
 7. **Respond to review feedback** — we try to review within 3 business days.
 
+### Releasing (maintainers)
+
+A release merges one pull request, tags it and publishes the GitHub release; installations then
+update themselves with `scripts/update.sh`. Always go through the release runner:
+
+```bash
+python3 scripts/release.py <PR>               # dry run: all checks + plan, changes nothing
+python3 scripts/release.py <PR> --warten      # dry run after waiting for the PR's CI
+python3 scripts/release.py <PR> --ausfuehren  # squash-merge exactly the checked head, tag, release
+```
+
+It refuses to release unless the PR is open, targets `main` and merges cleanly; `VERSION`, the
+agent image label and a CHANGELOG section agree and are newer than `main`; the tag is free; every
+check on the PR is green; and the last CI run on `main` is green. Release notes are the
+CHANGELOG section of the version.
+
 ## Code Standards
 
 ### Python (orchestrator, agent, embedding-service)
