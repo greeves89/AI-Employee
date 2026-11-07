@@ -33,6 +33,14 @@ REGEL = (
 #: „Beleg:“ am Zeilenanfang (auch hinter Markdown-Zeichen) ODER nach einem Trenner im Satz
 #: („… angelegt — Beleg: cat ergab 42“, live so gesehen). Nicht mitten im Satz („Den Beleg:
 #: liefere ich später“): davor muss Zeilenanfang, Gedankenstrich, Satzzeichen oder eine schließende Klammer stehen.
+#: Für Prüfer und jeden, der einen Fehler meldet — wortgleich in Anleitung und Prüfauftrag.
+BEFUND_REGEL = (
+    "Meldest du einen Fehler oder Befund, schreib je Befund eine Zeile "
+    "„Befund: <Ort> — <was passiert> — <wie gesehen>“: Ort als Datei:Zeile, Adresse oder Schritt; "
+    "was passiert als Eingabe → falsches Ergebnis; wie gesehen: nachgestellt (mit Befehl) oder nur "
+    "gelesen. Was du nicht nachgestellt hast, schreib als „Vermutung: …“ — nicht als Befund."
+)
+
 _ZEILE = re.compile(
     r"(?:^|[—–;.!?)\]]|\s-)[\s>*_`#\-–—•]*(beleg|ungeprüft|ungeprueft)[*_`]*\s*:[*_`]*\s*\S",
     re.IGNORECASE | re.MULTILINE,
@@ -47,3 +55,16 @@ def stand(text: str | None) -> str:
     if treffer:
         return UNGEPRUEFT
     return FEHLT
+
+
+_BEFUND = re.compile(r"^[\s>*_`#\-–—•]*befund[*_`]*\s*:[*_`]*\s*(\S.*)$", re.IGNORECASE | re.MULTILINE)
+_VERMUTUNG = re.compile(r"^[\s>*_`#\-–—•]*vermutung[*_`]*\s*:[*_`]*\s*(\S.*)$", re.IGNORECASE | re.MULTILINE)
+
+
+def befunde(text: str | None) -> list[str]:
+    """Die Zeilen „Befund: …“ (Inhalt ohne Präfix, gekürzt) — für Board und Rückgabe."""
+    return [m.group(1).strip()[:500] for m in _BEFUND.finditer(text or "")]
+
+
+def vermutungen(text: str | None) -> list[str]:
+    return [m.group(1).strip()[:500] for m in _VERMUTUNG.finditer(text or "")]

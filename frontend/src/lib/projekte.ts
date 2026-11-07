@@ -66,6 +66,15 @@ export interface ProjektKarte {
   sentinel?: { grund?: string; hinweis: string; fortsetzen: string } | null;
   /** „Fertig nur mit Beleg“: steht im Ergebnis, was geprüft wurde? (core/beleg) */
   beleg?: "beleg" | "ungeprueft" | "fehlt" | null;
+  /** Blinder Prüfer (core/pruefung): Stand und Befunde des Prüflaufs. */
+  pruefung?: {
+    status: "laeuft" | "bestanden" | "nacharbeit" | "ohne_urteil" | "gescheitert";
+    agent_id?: string | null;
+    blind?: boolean;
+    befunde?: string[] | null;
+    vermutungen?: string[] | null;
+    task_id?: string | null;
+  } | null;
 }
 
 export interface ProjektLauf {

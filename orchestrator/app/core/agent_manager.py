@@ -1097,8 +1097,8 @@ _SENTINEL_HINWEIS = (
 
 def _beleg_hinweis() -> str:
     """„Fertig“ nur mit Beleg (``core/beleg``) — vorn, kurz, für alle Laufzeiten."""
-    from app.core.beleg import REGEL
-    return "## Fertig nur mit Beleg\n- " + REGEL + "\n\n"
+    from app.core.beleg import BEFUND_REGEL, REGEL
+    return "## Fertig nur mit Beleg\n- " + REGEL + "\n- " + BEFUND_REGEL + "\n\n"
 
 
 def _render_claude_md(agent_mounts: list[str], catalog: dict | None = None,

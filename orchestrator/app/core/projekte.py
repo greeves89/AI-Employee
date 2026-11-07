@@ -162,6 +162,8 @@ def karte_dict(k: ProjektKarte, task: Task | None = None, *, lauf_sichtbar: bool
         "task_status": (task.status.value if hasattr(task.status, "value") else str(task.status)) if task else None,
         # „Fertig nur mit Beleg“ (core/beleg): beleg | ungeprueft | fehlt — fürs Review.
         "beleg": ((task.metadata_ or {}).get("beleg") if task is not None and zeigen else None),
+        # Blinder Prüfer (core/pruefung): läuft / bestanden / nacharbeit mit Befunden.
+        "pruefung": (_pruefung_fuer_karte(task) if zeigen else None),
         "stufe": stufe_aus(k, task),
         "notiz": k.notiz,
         "extern_bearbeiter": k.extern_bearbeiter,
@@ -193,6 +195,11 @@ def karte_dict(k: ProjektKarte, task: Task | None = None, *, lauf_sichtbar: bool
         # Vom Sentinel angehalten: Grund und Text für „Neuer Versuch“ (Nacharbeit).
         "sentinel": ((task.metadata_ or {}).get("sentinel") or None) if zeigen else None,
     }
+
+
+def _pruefung_fuer_karte(task) -> dict | None:
+    from app.core.pruefung import fuer_karte
+    return fuer_karte(task)
 
 
 def wartet_auf_dich(k: ProjektKarte) -> bool:

@@ -998,6 +998,14 @@ class TaskRouter:
                 await antwort_aus_lauf(self.db, task)
         except Exception as e:  # noqa: BLE001 — das Board darf das Abschliessen nie stoppen
             logger.warning("Projekt zu Lauf %s nicht nachgezogen: %s", scrub_log(task_id), scrub_log(e))
+        # Blinder Prüfer (core/pruefung): fertige Karte → Prüflauf; Prüflauf → Ergebnis am Umsetzer.
+        try:
+            if not abgebrochen:
+                from app.core import pruefung
+
+                await pruefung.nach_lauf(self, task)
+        except Exception as e:  # noqa: BLE001 — die Prüfung darf das Abschliessen nie stoppen
+            logger.warning("Prüfung zu Lauf %s nicht nachgezogen: %s", scrub_log(task_id), scrub_log(e))
 
         # Update agent metrics for self-improvement tracking
         if agent_id:

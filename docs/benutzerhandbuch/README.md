@@ -1235,6 +1235,22 @@ unter dem Ergebnis gelb **„Ohne Beleg gemeldet — bitte selbst prüfen“**; 
 ausdrücklich nicht prüfen können, steht **„Vom Agenten als ungeprüft gemeldet“**. Das ist
 kein Fehler, aber ein Grund, genauer hinzusehen, bevor du abnimmst.
 
+**Blinder Prüfer** *(seit 1.437.0)*: Ist er im Projekt eingeschaltet (Projekt bearbeiten →
+**Blinder Prüfer**), prüft ein anderer Agent des Projekts jede fertige Karte, bevor du sie
+abnimmst. Er bekommt nur die Story, den Pull Request und den Branch, nicht den Bericht des
+Umsetzers, und prüft deshalb, was gebaut ist, nicht was behauptet wird. Im Review steht dann:
+
+- **Blinder Prüfer prüft gerade …** — der Prüflauf läuft.
+- **Blinder Prüfer: bestanden** (grün).
+- **Blinder Prüfer: Nacharbeit (n Befunde)** — mit den Befunden in der Form „Ort — was passiert
+  — wie gesehen“. **Mit Befunden zurückgeben** gibt die Karte mit genau diesen Punkten als
+  Hinweis an den Umsetzer zurück.
+- **ohne klares Urteil** oder **Prüflauf gescheitert** — dann selbst prüfen.
+
+Gibt es nur einen Agenten im Projekt, prüft er in einem neuen Lauf selbst (dann steht
+„derselbe Agent, neuer Lauf“ dabei). Jede Prüfung ist ein zusätzlicher Lauf und kostet
+entsprechend. Abnehmen oder zurückgeben entscheidest weiterhin du.
+
 - **Abnehmen** — das Ergebnis passt. Die Karte wandert zu **Erledigt**.
 - **Zurückgeben** — es öffnet sich ein Fenster. Schreibe hinein, was anders werden soll,
   und klicke **Zurückgeben**. Unter **Wer arbeitet nach?** steht vorausgewählt:

@@ -64,6 +64,7 @@ class UpdateTeam(BaseModel):
     # Rückkanal „@ai-employee …“ im Issue: "an", "aus" oder "auto" (an nur bei privatem
     # Repo mit Schlüssel).
     rueckkanal: str | None = Field(default=None, pattern="^(an|aus|auto)$")
+    blinder_pruefer: bool | None = None
 
 
 def _farbe(wert: str | None) -> str | None:
@@ -102,6 +103,7 @@ def _serialize(t: Team) -> dict:
         "max_uebernahmen": getattr(t, "max_uebernahmen", None),
         "abgelaufene_uebernehmen": bool(getattr(t, "abgelaufene_uebernehmen", False)),
         "rueckkanal": {True: "an", False: "aus"}.get(getattr(t, "rueckkanal", None), "auto"),
+        "blinder_pruefer": bool(getattr(t, "blinder_pruefer", None)),
         "repo_oeffentlich": getattr(t, "repo_oeffentlich", None),
         "art": getattr(t, "art", None) or "projekt",
     }
@@ -453,6 +455,7 @@ async def update_team(team_id: str, body: UpdateTeam, user=Depends(require_auth)
     if body.max_uebernahmen is not None: t.max_uebernahmen = body.max_uebernahmen or None
     if body.abgelaufene_uebernehmen is not None: t.abgelaufene_uebernehmen = body.abgelaufene_uebernehmen
     if body.rueckkanal is not None: t.rueckkanal = {"an": True, "aus": False}.get(body.rueckkanal)
+    if body.blinder_pruefer is not None: t.blinder_pruefer = body.blinder_pruefer
     _validate_lead(t.member_agent_ids, t.lead_agent_id)
     await db.commit(); await db.refresh(t)
     await _projekt_nachziehen(db, t)

@@ -64,3 +64,6 @@ class Team(Base, TimestampMixin):
     # ist, liest der Abgleich (None = unbekannt).
     rueckkanal: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
     repo_oeffentlich: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
+    # Blinder Prüfer (core/pruefung): Fertige Karten prüft ein zweiter Lauf, der nur Story,
+    # PR und Branch kennt — nicht den Bericht des Umsetzers. None/False = aus.
+    blinder_pruefer: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)

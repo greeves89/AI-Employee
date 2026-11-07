@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.437.0] - 2026-11-07
+
+### Neu
+- Blinder Prüfer für Projekte (`core/pruefung.py`): Ist er eingeschaltet (Projekt bearbeiten → „Blinder Prüfer“), startet beim Übergang einer Karte ins Review ein Prüflauf bei einem anderen Agenten des Projekts. Er bekommt Story, Pull Request, Branch und Repo — bewusst NICHT den Bericht des Umsetzers —, prüft in einem frischen Verzeichnis, ändert nichts am Stand und schließt mit „PRÜFUNG: BESTANDEN“ oder „PRÜFUNG: NACHARBEIT“. Gibt es nur einen Agenten, prüft er in einem neuen Lauf selbst (als „nicht blind“ gekennzeichnet). Das Board zeigt im Review „prüft gerade“ / „bestanden“ / „Nacharbeit (n Befunde)“ mit den Befunden und dem Knopf „Mit Befunden zurückgeben“; abnehmen entscheidet weiterhin der Mensch. Eingehängt am Ende jedes Laufs (`TaskRouter`), ohne eigenen Takt; fehlertolerant.
+- Befund-Regel (`core/beleg.py`): Fehler und Befunde als „Befund: Ort — was passiert — wie gesehen“, nicht Nachgestelltes als „Vermutung: …“. In der Agenten-Anleitung aller Laufzeiten und im Prüfauftrag; der Server liest die Befunde für das Board. „Bestanden“ mit Befunden gilt als Nacharbeit; ein abgeschwächter Test oder eine abgeschaltete Prüfung ist ein Befund.
+
+### Datenbank
+- Migration `i7j8k9l0m1n2`: `teams.blinder_pruefer` (BOOLEAN, leer = aus).
+
+### Tests
+- `test_blinder_pruefer.py`: Urteil nur aus der Schlusszeile, Prüferwahl, Prüfauftrag ohne Bericht (Gegenprobe: Bericht in den Auftrag gemischt → Test schlägt an), ganzer Ablauf über das echte `nach_lauf` (läuft → Nacharbeit mit Befunden → Board), keine doppelte Prüfung, Prüflauf wird nicht selbst geprüft, „bestanden“ mit Befund, gescheitert/ohne Urteil, nur bei eingeschaltet + erfolgreich + Review, ältere Prüfung zählt nicht, einziger Agent; Befund-Regel in jeder Laufzeit. Neue Spalte in der Liste des Postgres-Migrationstests.
+
 ## [1.436.1] - 2026-11-07
 
 ### Behoben

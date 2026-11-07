@@ -4807,6 +4807,8 @@ export interface Team {
   abgelaufene_uebernehmen?: boolean;
   /** Rückkanal „@ai-employee …“ im Issue: an, aus oder auto (an nur bei privatem Repo mit Schlüssel). */
   rueckkanal?: "an" | "aus" | "auto";
+  /** Blinder Prüfer: fertige Karten prüft ein zweiter Lauf ohne den Bericht des Umsetzers. */
+  blinder_pruefer?: boolean;
   /** Ob das Repo öffentlich ist (beim Abgleich gelesen; leer = unbekannt). */
   repo_oeffentlich?: boolean | null;
 }
@@ -5142,6 +5144,7 @@ export async function updateTeam(
     max_uebernahmen?: number;
     abgelaufene_uebernehmen?: boolean;
     rueckkanal?: "an" | "aus" | "auto";
+    blinder_pruefer?: boolean;
   },
 ): Promise<Team> {
   return fetchJSON(`${getBase()}/teams/${id}`, {
