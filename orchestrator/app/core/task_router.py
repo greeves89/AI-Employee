@@ -962,6 +962,10 @@ class TaskRouter:
                 )
                 if agent_id:
                     await self._melde_ausfall_serie(agent_id, task, grund)
+        # Kontingent-Bremse (core/kontingent): erschöpftes Abo-Kontingent → Zeitpläne
+        # dieses Agenten bis zur Freigabe anhalten; ein erfolgreicher Lauf hebt sie auf.
+        if task.agent_id or agent_id:
+            await self._kontingent_vermerken(task.agent_id or agent_id, task)
         # „Fertig nur mit Beleg“ (core/beleg): steht im Ergebnis, was geprüft wurde?
         # Das Board zeigt es im Review; ein Ergebnis ohne Beleg ist kein Fehler, aber
         # ein Hinweis an den Menschen, der abnimmt.
@@ -1556,6 +1560,49 @@ class TaskRouter:
             return True
 
         return False
+
+    async def _kontingent_vermerken(self, agent_id: str, task) -> None:
+        """Erschöpftes Kontingent merken (einmal melden), erfolgreichen Lauf als Ende werten."""
+        from app.core import kontingent
+        from app.core.run_outcome import warum_kein_erfolg
+
+        try:
+            if task.status == TaskStatus.COMPLETED:
+                await kontingent.aufheben(self.redis, agent_id)
+                return
+            # Nur kurze Meldungen zählen (kontingent.KURZ): Ein echtes Limit ist eine Zeile,
+            # ein langer Text, der sie nur enthält, legt keine Zeitpläne still.
+            text = "\n".join(t.strip() for t in (task.error, task.result)
+                              if t and t.strip() and t != kontingent.GRUND)
+            if len(text) > kontingent.KURZ or warum_kein_erfolg(text, None) != kontingent.GRUND:
+                return
+            bis = kontingent.bis_wann(text, datetime.now(timezone.utc))
+            if not await kontingent.pausieren(self.redis, agent_id, bis):
+                return
+            from app.models.notification import Notification
+
+            uhrzeit = bis.astimezone()       # Ortszeit des Servers (TZ in der Compose-Datei)
+            notif = Notification(
+                agent_id=agent_id,
+                type="warning",
+                title="Kontingent erschöpft — Zeitpläne pausieren",
+                message=(
+                    f"Das Abo-Kontingent dieses Agenten ist aufgebraucht. Seine Zeitpläne "
+                    f"pausieren bis {uhrzeit:%d.%m. %H:%M} Uhr und holen den fälligen Lauf "
+                    f"dann nach, statt bis dahin immer wieder zu scheitern."
+                )[:240],
+                priority="normal",
+                action_url="/tasks",
+                meta={"type": "kontingent_pause", "bis": bis.isoformat(), "task_id": task.id},
+            )
+            self.db.add(notif)
+            await self.db.commit()
+            await self.db.refresh(notif)
+            await self._publish_notification(notif)
+            logger.warning("Kontingent erschöpft bei Agent %s — Zeitpläne pausieren bis %s",
+                           scrub_log(agent_id), bis.isoformat())
+        except Exception as e:  # noqa: BLE001 — die Bremse darf das Abschließen nie stoppen
+            logger.warning("Kontingent-Bremse für Lauf %s nicht gesetzt: %s", scrub_log(task.id), scrub_log(e))
 
     async def _melde_ausfall_serie(self, agent_id: str, task, grund: str) -> None:
         """Meldet, wenn mehrere Laeufe in Folge nur so AUSSAHEN, als gaebe es sie.

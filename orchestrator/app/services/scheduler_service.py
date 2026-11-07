@@ -929,6 +929,20 @@ class SchedulerService:
                 select(Agent).where(Agent.id == schedule.agent_id)
             )).scalar_one_or_none()
             if duty_agent is not None:
+                # Kontingent-Bremse (core/kontingent): Ist das Abo-Kontingent erschöpft,
+                # scheiterte jeder Lauf bis zur Freigabe sofort — und ein gestoppter Agent
+                # würde dafür jedes Mal geweckt. Den fälligen Lauf auf die Freigabezeit
+                # legen: Er wird dann einmal nachgeholt, statt bis dahin zu scheitern.
+                from app.core import kontingent
+
+                pause_bis = await kontingent.pausiert_bis(self.redis, schedule.agent_id)
+                if pause_bis is not None and pause_bis > now:
+                    schedule.next_run_at = pause_bis + timedelta(minutes=1)
+                    logger.info(
+                        "[Scheduler] %s verschoben auf %s — Kontingent von Agent %s erschöpft",
+                        schedule.name, schedule.next_run_at.isoformat(), schedule.agent_id,
+                    )
+                    return
                 # Ein gestoppter Agent (Idle-/UserLifecycle-Stop) ist kein
                 # Ausfall, solange er sich wecken laesst: faellige Zeitplaene
                 # und Kalender-Bloecke STARTEN ihn — vorher galt er als DOWN,

@@ -2195,6 +2195,22 @@ wie es war.
 2. **Auftrag** „Fasse offene Tickets zusammen und poste die 3 dringendsten.", **Wie oft?**
    *Täglich* um *08:00*, **Agent** = IT-Helfer → **Zeitplan anlegen**.
 
+### 12.2 Kontingent erschöpft: Zeitpläne pausieren *(seit 1.442.0)*
+
+Läuft ein Agent über ein Abo (Claude, ChatGPT/Codex) und ist dessen Kontingent aufgebraucht,
+scheitert bis zur Freigabe jeder Lauf sofort. Die Anlage erkennt das am ersten solchen Lauf und
+pausiert die Zeitpläne **dieses Agenten** bis zu der Uhrzeit, die der Anbieter nennt
+(„resets 1pm“, „try again in 2 hours“), höchstens 5 Stunden lang:
+
+- Du bekommst **eine** Meldung: **Kontingent erschöpft — Zeitpläne pausieren** mit der Uhrzeit.
+- Fällige Läufe werden auf diese Uhrzeit gelegt und dann **einmal nachgeholt**. Ein gestoppter
+  Agent wird in der Zwischenzeit nicht geweckt.
+- Ist das Kontingent dann noch nicht zurück (etwa ein Wochenlimit), folgt die nächste Pause.
+- Ein erfolgreicher Lauf beendet die Pause sofort.
+
+Chats bremst das nicht: Schreibst du dem Agenten, siehst du die Meldung des Anbieters direkt.
+Einen anderen Zugang (eigenes Abo, API-Schlüssel) richtet die Verwaltung unter **AI-Accounts** ein.
+
 ---
 
 ## 13. Approvals (Freigaben)
