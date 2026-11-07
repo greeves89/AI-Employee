@@ -722,7 +722,9 @@ Runde selbstständig weiter, bis er es erreicht hat.
    *Abbildung 43: Das Ziel-Banner mit Runde und dem Knopf „Ziel beenden“*
 
 4. Ist das Ziel erfüllt, schreibt der Agent **ZIEL ERREICHT** und das Banner wird grün
-   (*„Ziel erreicht nach 3 Runden“*).
+   (*„Ziel erreicht nach 3 Runden“*). Darüber nennt er in einer Zeile **„Beleg: …“**, was er
+   geprüft hat *(seit 1.436.0)*. Fehlt der Beleg, bekommt er einmal eine Runde, um ihn
+   nachzuliefern; kann er nicht prüfen, schreibt er „Ungeprüft: …“ mit dem Grund.
 
    ![Ziel erreicht](screenshots/44-goal-erreicht.png)
    *Abbildung 44: Ziel erreicht — der Agent hat nach drei Runden aufgehört*
@@ -1226,6 +1228,12 @@ Auszug aus dem Ergebnis. Hat der Agent stattdessen eine Rückfrage gestellt, ste
 **Triage** (siehe 6a.3).
 
 ![Karten im Review mit Ergebnis, Kosten und den Knöpfen Abnehmen und Zurückgeben](screenshots/74-projekt-abnahme.png)
+
+Agenten melden „fertig“ mit einer Zeile **„Beleg: …“** — was sie geprüft haben und mit
+welchem Ergebnis (Test, Befehl, Datei, Bildschirmfoto) *(seit 1.436.0)*. Fehlt sie, steht
+unter dem Ergebnis gelb **„Ohne Beleg gemeldet — bitte selbst prüfen“**; hat der Agent
+ausdrücklich nicht prüfen können, steht **„Vom Agenten als ungeprüft gemeldet“**. Das ist
+kein Fehler, aber ein Grund, genauer hinzusehen, bevor du abnimmst.
 
 - **Abnehmen** — das Ergebnis passt. Die Karte wandert zu **Erledigt**.
 - **Zurückgeben** — es öffnet sich ein Fenster. Schreibe hinein, was anders werden soll,

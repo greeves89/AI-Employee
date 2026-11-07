@@ -1095,6 +1095,12 @@ _SENTINEL_HINWEIS = (
 )
 
 
+def _beleg_hinweis() -> str:
+    """„Fertig“ nur mit Beleg (``core/beleg``) — vorn, kurz, für alle Laufzeiten."""
+    from app.core.beleg import REGEL
+    return "## Fertig nur mit Beleg\n- " + REGEL + "\n\n"
+
+
 def _render_claude_md(agent_mounts: list[str], catalog: dict | None = None,
                       workspace_size_gb: float | None = None,
                       agent_name: str = "", agent_role: str = "",
@@ -1115,7 +1121,7 @@ def _render_claude_md(agent_mounts: list[str], catalog: dict | None = None,
     # Erstes weg.
     # Der Build-Abschnitt steht vorn aus demselben Grund: er ist kurz, und ein
     # Agent, der ihn nicht kennt, baut die .exe gar nicht erst.
-    return master_rules + _laufzeit_hinweis(mode) + _SENTINEL_HINWEIS + (_BUILD_TOOLS_HINWEIS if build_tools else "") + (
+    return master_rules + _laufzeit_hinweis(mode) + _SENTINEL_HINWEIS + _beleg_hinweis() + (_BUILD_TOOLS_HINWEIS if build_tools else "") + (
         DEFAULT_CLAUDE_MD
         .replace("$AGENT_IDENTITY", _identity_line(agent_name, agent_role))
         .replace("$AGENT_WORKSPACE_SIZE_GB", str(size))
@@ -2712,8 +2718,11 @@ class AgentManager:
                     }}
                     flag_modified(agent, "config")
                 await self.db.commit()
-            logger.warning(f"Agent {scrub_log(agent_id)}: Neuerstellen gescheitert — "
-                           f"{'alter Behälter läuft weiter' if gestartet else 'Agent angehalten'}")
+            if gestoppt:
+                logger.info(f"Agent {scrub_log(agent_id)}: Neubau wegen Stopp beendet — Agent bleibt gestoppt")
+            else:
+                logger.warning(f"Agent {scrub_log(agent_id)}: Neuerstellen gescheitert — "
+                               f"{'alter Behälter läuft weiter' if gestartet else 'Agent angehalten'}")
         except Exception:  # noqa: BLE001
             logger.exception(f"Agent {scrub_log(agent_id)}: Zustand nach Rücksprung nicht gespeichert")
 

@@ -962,6 +962,17 @@ class TaskRouter:
                 )
                 if agent_id:
                     await self._melde_ausfall_serie(agent_id, task, grund)
+        # „Fertig nur mit Beleg“ (core/beleg): steht im Ergebnis, was geprüft wurde?
+        # Das Board zeigt es im Review; ein Ergebnis ohne Beleg ist kein Fehler, aber
+        # ein Hinweis an den Menschen, der abnimmt.
+        if task.status == TaskStatus.COMPLETED:
+            try:
+                from app.core.beleg import stand as _beleg_stand
+
+                # Neues Dict zuweisen — SQLAlchemy erkennt die Änderung daran.
+                task.metadata_ = {**(task.metadata_ or {}), "beleg": _beleg_stand(task.result)}
+            except Exception as e:  # noqa: BLE001 — ein Hinweis darf das Abschließen nie stoppen
+                logger.warning("Beleg-Stand zu Lauf %s nicht vermerkt: %s", scrub_log(task_id), scrub_log(e))
         task.cost_usd = data.get("cost_usd")
         task.input_tokens = data.get("input_tokens")
         task.output_tokens = data.get("output_tokens")

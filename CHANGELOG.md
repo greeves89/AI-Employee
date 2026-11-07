@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.436.0] - 2026-11-07
+
+### Neu
+- „Fertig nur mit Beleg“: Agenten melden Erledigtes mit einer Zeile „Beleg: …“ (was geprüft wurde, mit Ergebnis) oder ausdrücklich „Ungeprüft: …“ mit Grund — statt Erfolg zu behaupten. Eine Regel, eine Erkennung (`core/beleg.py`), überall gleich:
+  - Agenten-Anleitung für alle Laufzeiten (Claude Code, Codex, eigene Modelle): neuer Abschnitt „Fertig nur mit Beleg“. Wirkt nach „Agenten aktualisieren“ — bzw. von selbst im Leerlauf (1.433.0).
+  - Ziel-Modus (/goal): „ZIEL ERREICHT“ ohne Beleg wird einmal nachgefordert (eine Runde mit Hinweis), beim zweiten Mal gilt es — keine Schleife bis zur Rundengrenze.
+  - Aufträge: Der Stand steht im Lauf (`beleg`: beleg / ungeprueft / fehlt). Board-Karten zeigen im Review „Ohne Beleg gemeldet — bitte selbst prüfen“ bzw. „Vom Agenten als ungeprüft gemeldet“; der Kartenauftrag nennt die Regel.
+
+### Geändert
+- Logzeile bei einem Neubau, der wegen eines Stopps endet: „Neubau wegen Stopp beendet“ statt „Neuerstellen gescheitert“.
+- Benutzerhandbuch: Ziel-Modus und Abnahme im Projekt-Board.
+
+### Tests
+- `test_beleg.py`: Erkennung (auch hinter Markdown, nicht im Satz, leer zählt nicht), Ziel-Modus (mit Beleg fertig, ungeprüft gilt, ohne Beleg einmal nachfordern dann gilt es, nicht über die Rundengrenze, Hinweis vor dem Auftrag), Auftrag/Board (Stand im Lauf, nur im Review sichtbar, Kartenauftrag nennt die Regel), Anleitung in jeder Laufzeit. Vermerk im Auftragsabschluss fehlertolerant (darf das Abschließen nie stoppen).
+
 ## [1.435.1] - 2026-11-07
 
 ### Behoben
