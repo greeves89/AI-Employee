@@ -310,6 +310,55 @@ async def _dlp(db) -> list[dict]:
         "dafür sorgen Egress-Proxy und Sentinel.")]
 
 
+def _uvicorn_argumente(dateien=("/proc/1/cmdline", "/proc/self/cmdline")) -> list[str]:
+    """Die Startargumente des Servers — so, wie er WIRKLICH läuft (Override-Dateien inklusive)."""
+    for datei in dateien:
+        try:
+            teile = [t.decode("utf-8", "replace") for t in open(datei, "rb").read().split(b"\0") if t]
+        except OSError:
+            continue
+        if any("uvicorn" in t for t in teile):
+            return teile
+    return []
+
+
+def _absender(argumente: list[str] | None = None) -> list[dict]:
+    """Übernimmt der Server die Absenderadresse nur vom Eingangs-Proxy (``core/vertraute_proxys``)?
+
+    Das Abbild startet uvicorn mit ``--no-proxy-headers``. Eine eigene Override-Datei kann
+    das überschreiben — auf der Testanlage stand dort noch ``--forwarded-allow-ips "*"``
+    (live gefunden mit 1.440.0): Dann wertet uvicorn ``X-Forwarded-For`` von JEDEM Absender
+    aus, bevor die Middleware die echte Gegenstelle sieht, und ein Agent kann der
+    Anmelde-Bremse und dem Protokoll eine beliebige Adresse vorgeben.
+    """
+    args = _uvicorn_argumente() if argumente is None else argumente
+    if not any("uvicorn" in a for a in args):
+        return []                       # nicht ermittelbar (anderer Start, Tests)
+    titel = "Absenderadresse nur vom Eingang"
+    if "--no-proxy-headers" in args:
+        return [_punkt("absender", titel, OK,
+                       "Der Server übernimmt Weiterleitungsangaben nur vom Eingangs-Proxy "
+                       "(TRUSTED_PROXY_HOSTS). Ein Agent kann keine fremde Adresse vorgeben.")]
+    erlaubt = os.environ.get("FORWARDED_ALLOW_IPS", "")
+    for i, a in enumerate(args):
+        if a == "--forwarded-allow-ips" and i + 1 < len(args):
+            erlaubt = args[i + 1]
+        elif a.startswith("--forwarded-allow-ips="):
+            erlaubt = a.split("=", 1)[1]
+    if "*" in [e.strip() for e in erlaubt.split(",")]:
+        return [_punkt(
+            "absender", titel, WARNUNG,
+            "Der Server ist mit --forwarded-allow-ips \"*\" gestartet: Er übernimmt die "
+            "Absenderadresse von jedem Aufrufer. Ein Agent kann der Anmelde-Bremse und dem "
+            "Protokoll damit eine beliebige Adresse vorgeben.",
+            "Meist steht das in einer eigenen docker-compose.override.yml beim Dienst "
+            "orchestrator unter command. Dort --forwarded-allow-ips und \"*\" durch "
+            "--no-proxy-headers ersetzen und den Orchestrator neu erstellen "
+            "(docker compose up -d orchestrator).")]
+    return [_punkt("absender", titel, OK,
+                   "Der Server übernimmt Weiterleitungsangaben nicht von beliebigen Aufrufern.")]
+
+
 async def _agenten_token(db) -> list[dict]:
     """Agenten-Tokens gelten nur aus dem Agentennetz (``dependencies.agent_zugang_pruefen``).
 
@@ -409,7 +458,7 @@ async def stand(db) -> dict:
     ids = [c for (c,) in (await db.execute(
         select(Agent.container_id).where(Agent.container_id.is_not(None)))).all()]
     punkte = (_einstellungen() + await _agenten(db) + await _schluessel(db) + await _zugaenge(db) + await _dlp(db)
-              + await _agenten_token(db)
+              + await _agenten_token(db) + _absender()
               + _abbild_signaturen()
               + await asyncio.to_thread(_docker, ids))
     rang = {KRITISCH: 0, WARNUNG: 1, INFO: 2, OK: 3}

@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.440.1] - 2026-11-07
+
+### Sicherheit
+- Neuer Punkt im Sicherheitsstatus: **Absenderadresse nur vom Eingang**. Live mit 1.440.0 gefunden: Auf der Testanlage überschrieb eine eigene `docker-compose.override.yml` den Startbefehl des Servers mit `--forwarded-allow-ips "*"`. Damit wertete uvicorn `X-Forwarded-For` wieder von jedem Absender aus, bevor die neue Middleware die echte Gegenstelle sah. Ein Agent konnte so weiter eine fremde Adresse vorgeben (nachgestellt: `X-Forwarded-For: 6.6.6.6` aus einem Agenten-Container kam an). Das Abbild selbst war richtig. Der Punkt liest die Startargumente des LAUFENDEN Servers (`/proc/1/cmdline`, auch `FORWARDED_ALLOW_IPS`), warnt bei `*` und sagt, was in der Override-Datei zu ändern ist.
+
+### Tests
+- `test_vertraute_proxys.py`: Abbild ok; Override mit `*` in allen Schreibweisen warnt, ebenso die Umgebungsvariable; bestimmte Adressen ok; ohne uvicorn kein Punkt; die Warnung nennt die Behebung. Gegenprobe: ohne Erkennung 6 Fehler. Gegen die echten Startargumente der Testanlage geprüft: Warnung.
+
 ## [1.440.0] - 2026-11-07
 
 ### Sicherheit
