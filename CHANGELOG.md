@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.439.0] - 2026-11-07
+
+### Sicherheit
+- **Agenten-Tokens gelten nur noch aus dem Netz der Agenten.** Live gesehen: Das Token eines Agenten wurde über die öffentliche Adresse (Tunnel → Caddy → Orchestrator) genauso angenommen wie direkt aus dem Docker-Netz. Das Token ist aus `API_SECRET_KEY` abgeleitet und ändert sich nie; ein einmal ausgelaufenes Token (Build-Ausgabe, Paket-Skript, Prompt-Injection) war damit ein dauerhafter Zugang von außen. Jetzt gibt es genau eine Prüfung (`dependencies.agent_zugang_pruefen`): Das Token muss passen, und die Anfrage darf keine Kopfzeile eines vorgeschalteten Proxys tragen (`X-Forwarded-For`, `Forwarded`, `X-Real-IP`, `Cf-Connecting-IP`, `Cf-Ray`). Caddy setzt `X-Forwarded-For` bei jeder Anfrage selbst, Agenten rufen den Orchestrator direkt. Die sieben Stellen, die bisher jede für sich verglichen (Agenten-Endpunkte, MCP für Mail, Exchange und Microsoft Graph, URL-Freigaben, Autonomie-Regeln, Egress-Proxy), nutzen jetzt diese eine Prüfung.
+- Ein gültiges Token von außen landet im Prüfprotokoll (`agent_token_extern`, höchstens ein Eintrag je Agent in 10 Minuten) und färbt den neuen Punkt **Agenten-Zugänge nur aus dem Agentennetz** im Sicherheitsstatus rot.
+- Neu: `docs/SICHERHEITSMODELL.md`, die eine Übersicht aller Schutzschichten mit Durchsetzungsstelle, Statuspunkt, Befunden und offenen Punkten nach Risiko.
+
+### Tests
+- `test_agenten_zugang_nur_innen.py`: MC/DC der Prüfung, jede Proxy-Kopfzeile einzeln, echte FastAPI-Abhängigkeit (direkt 200, über Caddy 401), Protokolleintrag und Drosselung, Sicherheitsstatus in beide Richtungen, und ein AST-Test, der jede weitere eigene Vergleichsstelle für Agenten-Tokens ablehnt. Gegenprobe: Ohne die Eingangsprüfung schlagen 6 Tests fehl.
+- `test_egress.py`: Der Egress-Proxy weist ein gültiges Token ab, das über den Eingang kam.
+
 ## [1.438.0] - 2026-11-07
 
 ### Neu

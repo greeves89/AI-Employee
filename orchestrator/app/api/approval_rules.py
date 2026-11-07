@@ -1,6 +1,5 @@
 """Approval Rules API — user-defined rules that tell agents when to request approval."""
 
-import hmac
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -8,7 +7,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies import require_auth, make_agent_token
+from app.dependencies import agent_zugang_pruefen, require_auth
 from app.models.approval_rule import ApprovalRule
 from app.models.autonomy_preset_rule import AutonomyPresetRule
 
@@ -602,7 +601,7 @@ async def get_rules_for_agent(
     backward compatibility.
     """
     token = request.headers.get("X-Agent-Token", "")
-    if not token or not hmac.compare_digest(token, make_agent_token(agent_id)):
+    if not agent_zugang_pruefen(request, agent_id, token):
         raise HTTPException(status_code=403, detail="Invalid agent token")
     from app.models.agent import Agent
     from app.core import autonomy_matrix as am

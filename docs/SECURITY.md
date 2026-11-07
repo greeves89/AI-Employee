@@ -23,6 +23,8 @@ This document covers the security architecture, hardening checklist, network seg
 
 ## Security Architecture Overview
 
+> **Current layer model, enforcement points and open items:** see [SICHERHEITSMODELL.md](SICHERHEITSMODELL.md) (German). The diagram below is the original overview; the ingress today is Cloudflare Tunnel → Caddy, and Docker access goes through the Docker-Wächter.
+
 The platform is designed with defense-in-depth. Key security layers:
 
 ```

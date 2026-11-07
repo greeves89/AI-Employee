@@ -20,6 +20,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
+from starlette.requests import Request
 
 from app.api import egress as api_egress
 from app.config import settings
@@ -31,6 +32,12 @@ from tests.test_secrets_gehoeren_ihrem_ersteller import ADMIN, MITGLIED, Secrets
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "egress"))
 import egress_logik as logik  # noqa: E402
+
+
+def _vom_proxy(**koepfe) -> Request:
+    """Eine Anfrage, wie sie der Egress-Proxy direkt im Docker-Netz stellt."""
+    return Request({"type": "http", "method": "POST", "path": "/api/v1/egress/x", "query_string": b"",
+                    "headers": [(k.lower().encode(), v.encode()) for k, v in koepfe.items()]})
 
 TOKEN = "p" * 64
 
@@ -288,7 +295,7 @@ class EgressDatenTests(SecretsTestBasis):
 
     async def _aufloesen(self, host, *platz, agent="a1"):
         body = api_egress.Aufloesen(**self._anm(agent), host=host, platzhalter=list(platz))
-        return await api_egress.aufloesen(body, db=self.db)
+        return await api_egress.aufloesen(body, _vom_proxy(), db=self.db)
 
     # --- Einspielen --------------------------------------------------------------
     async def test_einspielen_mit_proxy(self):
@@ -333,17 +340,24 @@ class EgressDatenTests(SecretsTestBasis):
 
     # --- Verbindung ----------------------------------------------------------------
     async def test_verbindung_liefert_ziele(self):
-        r = await api_egress.verbindung(api_egress.Verbindung(**self._anm()), db=self.db)
+        r = await api_egress.verbindung(api_egress.Verbindung(**self._anm()), _vom_proxy(), db=self.db)
         self.assertEqual(r, {"hosts": ["api.github.com", "github.com"]})
-        r = await api_egress.verbindung(api_egress.Verbindung(**self._anm("a2")), db=self.db)
+        r = await api_egress.verbindung(api_egress.Verbindung(**self._anm("a2")), _vom_proxy(), db=self.db)
         self.assertEqual(r, {"hosts": []})
 
     async def test_verbindung_falsches_token(self):
         for body in ({"agent_id": "a1", "agent_token": "falsch"},
                      {**self._anm("zz"), "agent_id": "zz"}):          # gueltiges Token, Agent unbekannt
             with self.subTest(body["agent_id"]), self.assertRaises(HTTPException) as e:
-                await api_egress.verbindung(api_egress.Verbindung(**body), db=self.db)
+                await api_egress.verbindung(api_egress.Verbindung(**body), _vom_proxy(), db=self.db)
             self.assertEqual(e.exception.status_code, 401)
+
+    async def test_verbindung_ueber_den_eingang_abgewiesen(self):
+        """Gültiges Token, aber über Caddy hereingekommen: auch hier gilt die Eingangssperre."""
+        with patch("app.dependencies._abweisung_merken"), self.assertRaises(HTTPException) as e:
+            await api_egress.verbindung(api_egress.Verbindung(**self._anm()),
+                                        _vom_proxy(**{"x-forwarded-for": "203.0.113.7"}), db=self.db)
+        self.assertEqual(e.exception.status_code, 401)
 
     def test_nur_mit_dienstschluessel(self):
         for kopf in ("", "Bearer falsch", f"Bearer {TOKEN[:-1]}"):
@@ -408,7 +422,7 @@ class EgressDatenTests(SecretsTestBasis):
     async def test_anbindung_ueber_den_proxy(self):
         i = await self._anbindung()
         g = egress.platzhalter(i.id, egress.ANBINDUNG)
-        r = await api_egress.verbindung(api_egress.Verbindung(**self._anm()), db=self.db)
+        r = await api_egress.verbindung(api_egress.Verbindung(**self._anm()), _vom_proxy(), db=self.db)
         self.assertIn("uploads.github.com", r["hosts"])
         self.assertEqual(await self._aufloesen("api.github.com", g), {"werte": {g: "ghp_plattform_123"}})
         self.assertEqual((await self._aufloesen("evil.example.com", g)).status_code, 403)
@@ -449,7 +463,7 @@ class EgressDatenTests(SecretsTestBasis):
         server = self._mcp_server()
         with patch("app.core.agent_mcp_servers.servers_for_agent",
                    AsyncMock(side_effect=lambda db, aid, cfg: server if aid == "a1" else [])):
-            r = await api_egress.verbindung(api_egress.Verbindung(**self._anm()), db=self.db)
+            r = await api_egress.verbindung(api_egress.Verbindung(**self._anm()), _vom_proxy(), db=self.db)
             self.assertIn("mcp.example.com", r["hosts"])
             self.assertNotIn("test-mcp-server", r["hosts"], "interne Server nie aufbrechen")
             m = egress.platzhalter(7, egress.MCP)
@@ -489,7 +503,7 @@ class EgressDatenTests(SecretsTestBasis):
         team.start()
         self.addCleanup(team.stop)
         k = egress.platzhalter(0, egress.KI)
-        r = await api_egress.verbindung(api_egress.Verbindung(**self._anm()), db=self.db)
+        r = await api_egress.verbindung(api_egress.Verbindung(**self._anm()), _vom_proxy(), db=self.db)
         self.assertIn("api.anthropic.com", r["hosts"])
         self.assertEqual(await self._aufloesen("api.anthropic.com", k), {"werte": {k: "sk-ant-oat01-echt"}})
         self.assertEqual((await self._aufloesen("evil.example.com", k)).status_code, 403)

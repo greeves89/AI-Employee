@@ -5,7 +5,6 @@ gegen den Token der Agenten-ID im Pfad geprueft. Das Google-Token des Besitzers
 bleibt im Orchestrator (``core/gmail_mcp.py``).
 """
 
-import hmac
 import logging
 
 from fastapi import APIRouter, Request
@@ -16,7 +15,7 @@ from app.core import faehigkeiten
 from app.core.gmail_mcp import handle_mcp_request
 from app.core.msgraph_mcp import mcp_error
 from app.db.session import async_session_factory
-from app.dependencies import make_agent_token
+from app.dependencies import agent_zugang_pruefen
 from app.models.agent import Agent
 from app.services.oauth_service import OAuthService
 
@@ -27,7 +26,7 @@ router = APIRouter(prefix="/mcp", tags=["mcp-email"])
 @router.post("/email/{agent_id}")
 async def mcp_email_endpoint(agent_id: str, request: Request):
     token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-    if not token or not hmac.compare_digest(token, make_agent_token(agent_id)):
+    if not agent_zugang_pruefen(request, agent_id, token):
         return JSONResponse(mcp_error(None, -32600, "Unauthorized"), status_code=401)
     try:
         body = await request.json()

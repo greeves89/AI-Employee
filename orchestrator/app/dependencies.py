@@ -345,10 +345,74 @@ def make_agent_token(agent_id: str) -> str:
     ).hexdigest()[:32]
 
 
+#: Kopfzeilen, die ein vorgeschalteter Proxy setzt. Caddy setzt X-Forwarded-For bei
+#: JEDER weitergereichten Anfrage selbst (der Client kann ihn nicht entfernen), der
+#: Cloudflare-Tunnel zusätzlich Cf-Connecting-IP/Cf-Ray, nginx X-Real-IP. Agenten rufen
+#: den Orchestrator direkt im Docker-Netz (``ORCHESTRATOR_URL``) und senden keinen davon.
+_EINGANG_KOEPFE = ("x-forwarded-for", "forwarded", "x-real-ip", "cf-connecting-ip", "cf-ray")
+
+#: Höchstens ein Prüfprotokoll-Eintrag je Agent und Zeitraum — ein Angreifer mit
+#: geleaktem Token soll das Protokoll nicht fluten können.
+_ABGEWIESEN_PAUSE = 600.0
+_abgewiesen_zuletzt: dict[str, float] = {}
+
+
+def kam_ueber_eingang(request: Request) -> bool:
+    """Kam die Anfrage über den öffentlichen Eingang (Caddy/Tunnel/nginx) herein?"""
+    return any(request.headers.get(k) for k in _EINGANG_KOEPFE)
+
+
+def agent_zugang_pruefen(request: Request, agent_id: str, token: str) -> bool:
+    """DIE Prüfung eines Agenten-Tokens — alle Endpunkte, die eins annehmen, rufen sie.
+
+    Gültig ist ein Token nur, wenn es zum Agenten passt UND die Anfrage aus dem
+    Agentennetz kommt. Das Token ist aus ``api_secret_key`` abgeleitet und ändert sich
+    nie; ohne die zweite Bedingung wäre ein einmal ausgelaufenes Token (Build-Ausgabe,
+    Paket-Skript, Prompt-Injection) ein dauerhafter Zugang von außen. Abweisungen von
+    außen landen im Prüfprotokoll und im Sicherheitsstatus.
+    """
+    if not agent_id or not token:
+        return False
+    if not hmac.compare_digest(token.encode(), make_agent_token(agent_id).encode()):
+        return False
+    if kam_ueber_eingang(request):
+        _abweisung_merken(agent_id, request)
+        return False
+    return True
+
+
+def _abweisung_merken(agent_id: str, request: Request) -> None:
+    import asyncio
+    import time
+
+    logger.warning("Agenten-Token von außen abgewiesen (Agent %s, Pfad %s)", agent_id, request.url.path)
+    jetzt = time.monotonic()
+    if jetzt - _abgewiesen_zuletzt.get(agent_id, -_ABGEWIESEN_PAUSE) < _ABGEWIESEN_PAUSE:
+        return
+    _abgewiesen_zuletzt[agent_id] = jetzt
+    try:
+        asyncio.get_running_loop().create_task(_abweisung_protokollieren(agent_id, request.url.path))
+    except RuntimeError:
+        pass
+
+
+async def _abweisung_protokollieren(agent_id: str, pfad: str) -> None:
+    try:
+        from app.db.session import async_session_factory
+        from app.models.audit_log import AuditEventType, AuditLog
+        async with async_session_factory() as db:
+            db.add(AuditLog(agent_id=agent_id, event_type=AuditEventType.AGENT_TOKEN_EXTERN,
+                            outcome="blocked", command=pfad[:200]))
+            await db.commit()
+    except Exception:
+        logger.exception("Abweisung eines Agenten-Tokens nicht protokolliert")
+
+
 async def verify_agent_token(request: Request) -> dict:
     """Verify that the request comes from an authenticated agent.
 
-    Checks Authorization header against HMAC-derived token.
+    Checks Authorization header against HMAC-derived token — and that it did not
+    come in through the public entrance (``agent_zugang_pruefen``).
     Returns {"agent_id": str} on success.
     """
     auth = request.headers.get("Authorization", "")
@@ -366,8 +430,7 @@ async def verify_agent_token(request: Request) -> dict:
     if not agent_id or not token:
         raise HTTPException(status_code=401, detail="Missing agent credentials")
 
-    expected = make_agent_token(agent_id)
-    if not hmac.compare_digest(token, expected):
+    if not agent_zugang_pruefen(request, agent_id, token):
         raise HTTPException(status_code=401, detail="Invalid agent token")
 
     return {"agent_id": agent_id}

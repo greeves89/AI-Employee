@@ -362,11 +362,10 @@ async def get_agent_allowlist(
     enforce its own allowlist — must keep working, else the allowlist fails open), OR a
     user session that owns the agent (admin bypass). No longer anonymous.
     """
-    import hmac
-    from app.dependencies import make_agent_token, require_auth
+    from app.dependencies import agent_zugang_pruefen, require_auth
     agent_token = request.headers.get("X-Agent-Token", "")
     if agent_token:
-        if not hmac.compare_digest(agent_token, make_agent_token(agent_id)):
+        if not agent_zugang_pruefen(request, agent_id, agent_token):
             raise HTTPException(status_code=403, detail="Invalid agent token")
     else:
         user = await require_auth(request, db)

@@ -495,6 +495,7 @@ const EVENT_INFO: Record<string, { label: string; desc: string }> = {
   question_answered: { label: "Rückfrage beantwortet", desc: "Eine Person hat eine Rückfrage des Agenten beantwortet. Das ist eine Antwort, keine Freigabe eines Befehls." },
   approval_cancelled: { label: "Freigabe verworfen", desc: "Eine offene Anfrage wurde verworfen — einzeln oder über „Alle verwerfen“." },
   approval_expired: { label: "Freigabe abgelaufen", desc: "Eine Anfrage blieb unbeantwortet und ist nach Ablauf der Frist verfallen." },
+  agent_token_extern: { label: "Agenten-Token von außen abgewiesen", desc: "Ein gültiges Agenten-Token kam über die öffentliche Adresse statt aus dem Netz der Agenten. Es ist nach außen gelangt — Agenten prüfen." },
   login_succeeded: { label: "Anmeldung", desc: "Eine Person hat sich angemeldet." },
   login_failed: { label: "Fehlgeschlagene Anmeldung", desc: "Ein Anmeldeversuch ist gescheitert. Das Passwort wird nie gespeichert." },
   logout: { label: "Abmeldung", desc: "Eine Person hat sich abgemeldet." },
