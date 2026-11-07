@@ -4612,6 +4612,9 @@ privaten Schlüssel.
    - Ist er ausgegraut, nennt die Zeile darunter den Grund: Fehlt der Dienst-Schlüssel, auf
      dem Server einmal `./scripts/update.sh` ausführen (es legt `EGRESS_PROXY_TOKEN` in der
      `.env` an). Antwortet der Proxy-Dienst nicht, ihn mit `docker compose up -d` starten.
+   - Beim Einschalten meldet sich die Anlage einmal zur Probe über den Proxy an *(seit
+     1.435.1)*. Meldet sie „wird vom Orchestrator nicht angenommen“, läuft der Proxy noch mit
+     einem alten Dienst-Schlüssel: `docker compose up -d egress-proxy`, dann erneut einschalten.
 3. Die Agenten ziehen von selbst nach (Kap. 37.4, „Agenten ziehen von selbst nach“), oder
    sofort über **Jetzt aktualisieren** in derselben Karte. Erst danach gehen sie über den Proxy.
 4. Unter **Admin → Betrieb → Sicherheitsstatus** zeigt der Punkt **Keys in Agenten**, welche

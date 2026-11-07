@@ -76,6 +76,62 @@ def dienst_schluessel_da() -> bool:
     return len(settings.egress_proxy_token or "") >= DIENST_TOKEN_MINDESTLAENGE
 
 
+#: Ergebnis der Probe-Anmeldung (``proxy_pruefen``).
+PROBE_OK, PROBE_SCHLUESSEL, PROBE_AUS, PROBE_UNKLAR = "ok", "schluessel", "nicht_erreichbar", "unklar"
+
+
+def proxy_pruefen(zeit: float = 5.0) -> str:
+    """Erkennen Proxy und Orchestrator einander am Dienst-Schlüssel? — ohne Eingriff in den Proxy.
+
+    Die Probe meldet sich beim Proxy wie ein Agent an, aber mit einer Kennung, die es
+    nicht gibt. Der Proxy fragt daraufhin den Orchestrator (``/egress/verbindung``) mit
+    SEINEM Dienst-Schlüssel:
+
+    * passt der Schlüssel, lehnt der Orchestrator nur den Agenten ab (401), und der Proxy
+      antwortet **407** — beide Seiten passen zusammen (``PROBE_OK``);
+    * passt er nicht (Proxy läuft mit einem alten Schlüssel aus der ``.env``) oder erreicht
+      der Proxy den Orchestrator nicht, antwortet er **503** (``PROBE_SCHLUESSEL``);
+    * 407 zählt nur mit dem Bereich ``ai-employee`` — sonst antwortet ein fremder Proxy;
+    * keine Verbindung zum Proxy-Dienst: ``PROBE_AUS``.
+
+    Ein TCP-Test allein bestand auch mit falschem Schlüssel — eingeschaltet, nach dem
+    Aktualisieren, hätte dann jeder Agent nur 503 bekommen (Sicherheitsprüfung M2).
+    """
+    import base64
+    import secrets
+    import socket
+    from urllib.parse import urlparse
+
+    ziel = urlparse(settings.egress_proxy_url or "")
+    if not ziel.hostname:
+        return PROBE_AUS
+    anmeldung = base64.b64encode(f"aie-probe:{secrets.token_hex(16)}".encode()).decode()
+    anfrage = (f"CONNECT probe.invalid:443 HTTP/1.1\r\nHost: probe.invalid:443\r\n"
+               f"Proxy-Authorization: Basic {anmeldung}\r\n\r\n").encode()
+    try:
+        with socket.create_connection((ziel.hostname, ziel.port or 8080), timeout=zeit) as s:
+            s.settimeout(zeit)
+            s.sendall(anfrage)
+            roh = b""
+            # Bis zum Ende der Kopfzeilen lesen (TCP darf in Stücken liefern), höchstens 4 KB.
+            while b"\r\n\r\n" not in roh and len(roh) < 4096:
+                stueck = s.recv(1024)
+                if not stueck:
+                    break
+                roh += stueck
+    except OSError:
+        return PROBE_AUS
+    antwort = roh.decode("latin-1", "replace")
+    teile = antwort.split(" ", 2)
+    code = teile[1] if len(teile) > 1 else ""
+    # 407 allein könnte jeder Proxy sagen — der eigene nennt seinen Bereich (aie_egress.py).
+    if code == "407" and 'realm="ai-employee"' in antwort:
+        return PROBE_OK
+    if code == "503":
+        return PROBE_SCHLUESSEL
+    return PROBE_UNKLAR
+
+
 _ERREICHBAR: dict[str, tuple[float, bool]] = {}
 
 

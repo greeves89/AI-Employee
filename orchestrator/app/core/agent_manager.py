@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from functools import partial
@@ -89,6 +90,26 @@ _ALT_MUSTER = re.compile(re.escape(ALT_MARKE) + r"\d{10}$")
 
 #: Je Agent: Behälter-ID, sobald der Neubau festgeschrieben ist (kein Rücksprung mehr).
 _festgeschrieben: dict[str, str] = {}
+
+#: Zeitpunkt des letzten Stopps je Agent (Nutzer, Sentinel, Leerlauf-Stopp). Ein Neubau,
+#: der VOR einem Stopp angefragt wurde, gilt danach als überholt: er wird übersprungen
+#: (wartete er noch auf den Lock) oder sein neuer Behälter sofort angehalten (lief er
+#: schon). Ein Zeitpunkt statt eines Merkers: nichts kann „liegen bleiben“ und einen
+#: späteren Neubau anhalten, und ein schon wartender Start überstimmt keinen Stopp.
+_letzter_stopp: dict[str, float] = {}
+
+
+def _gestoppt_seit(agent_id: str, zeitpunkt: float) -> bool:
+    return _letzter_stopp.get(agent_id, 0.0) > zeitpunkt
+
+
+#: Zeitpunkt der Anfrage des gerade laufenden Neubaus je Agent (für die Prüfung kurz vor
+#: dem Erstellen in ``_update_agent_neu_erstellen``).
+_neubau_angefragt: dict[str, float] = {}
+
+
+class NeubauGestoppt(Exception):
+    """Während des Neubaus kam ein Stopp — vor dem Erstellen abgebrochen, nichts gestartet."""
 _CODEX_RECREATE_STAGGER_S = 5.0
 
 
@@ -2322,6 +2343,9 @@ class AgentManager:
     async def stop_agent(self, agent_id: str) -> Agent:
         await self._publish_event(agent_id, "system", "Agent stopping...")
         agent = await self._get_agent(agent_id)
+        # Nicht auf einen laufenden Neubau warten (ein Sentinel-Stopp darf nicht hängen):
+        # update_agent sieht den Zeitpunkt und hält den neuen Behälter an bzw. baut nicht.
+        _letzter_stopp[agent_id] = time.monotonic()
         if agent.container_id:
             try:
                 self.docker.stop_container(agent.container_id)
@@ -2497,11 +2521,19 @@ class AgentManager:
         ``nur_wenn_noetig`` (Start-Wege): Wer auf den Lock gewartet hat, findet oft einen
         gerade fertigen Neubau vor — dann nicht ein zweites Mal neu erstellen.
         """
+        angefragt = time.monotonic()
         sperre = _neubau_locks.setdefault(agent_id, asyncio.Lock())
         async with sperre:
             agent = await self._get_agent(agent_id)
             # Frisch lesen: wer gewartet hat, hält sonst den Stand von vor dem anderen Neubau.
             await self.db.refresh(agent)
+            if _gestoppt_seit(agent_id, angefragt):
+                # Nach dieser Anfrage wurde der Agent gestoppt (etwa vom Sentinel, während
+                # ein anderer Neubau lief): KEIN neuer Behälter, der auch nur kurz läuft.
+                if not (nur_wenn_noetig or wartung):
+                    await self._entzug_ohne_neubau(agent, agent_id)
+                logger.info(f"Agent {scrub_log(agent_id)}: Neubau übersprungen — seit der Anfrage gestoppt")
+                return agent
             if nur_wenn_noetig and agent.container_id:
                 from app.core.agenten_aktualisieren import veraltet as _veraltet
                 if not _veraltet(agent) and await asyncio.to_thread(
@@ -2536,18 +2568,48 @@ class AgentManager:
                 agent.container_id = None
                 await self.db.commit()
             _festgeschrieben.pop(agent_id, None)
+            _neubau_angefragt[agent_id] = angefragt
             try:
                 neu = await self._update_agent_neu_erstellen(agent_id)
-            except BaseException:
+            except BaseException as fehler:
                 if _festgeschrieben.pop(agent_id, None):
                     self._alte_entfernen(beiseite)
                     raise
+                gestoppt = _gestoppt_seit(agent_id, angefragt)
                 await self._beiseite_zurueck(agent_id, beiseite, container_name, alte_id,
-                                             starten=wartung)
+                                             behalten=wartung, starten=wartung and not gestoppt,
+                                             gestoppt=gestoppt)
+                if isinstance(fehler, NeubauGestoppt):
+                    # Gewollt: kein Fehler für den Aufrufer (die Automatik hielte sonst an).
+                    logger.info(f"Agent {scrub_log(agent_id)}: Neubau wegen Stopp vor dem Erstellen beendet")
+                    return await self._get_agent(agent_id)
                 raise
+            finally:
+                _neubau_angefragt.pop(agent_id, None)
             _festgeschrieben.pop(agent_id, None)
             self._alte_entfernen(beiseite)
+            if _gestoppt_seit(agent_id, angefragt):
+                logger.info(f"Agent {scrub_log(agent_id)}: Stopp kam während des Neubaus — jetzt angehalten")
+                try:
+                    if neu.container_id:
+                        self.docker.stop_container(neu.container_id)
+                except (NotFound, APIError) as e:
+                    logger.warning(f"Neuer Behälter von {scrub_log(agent_id)} nicht angehalten: {scrub_log(e)}")
+                neu.state = AgentState.STOPPED
+                await self.db.commit()
             return neu
+
+    async def _entzug_ohne_neubau(self, agent, agent_id: str) -> None:
+        """Ein Neubau, der einen Zugang entziehen kann (Schlüssel entfernt, Rechte gekürzt),
+        nach einem Stopp: keinen neuen Behälter starten, aber den alten entfernen — sonst
+        brächte ihn der nächste Start mit dem entzogenen Zugang hoch. Der Agent bleibt
+        gestoppt und zeigt auf keinen Behälter; der nächste Start baut frisch."""
+        alte = self._alten_behaelter_beiseite(
+            agent.container_id, f"ai-agent-{_container_slug(agent.name)}-{agent_id}")
+        self._alte_entfernen(alte)
+        agent.container_id = None
+        agent.state = AgentState.STOPPED
+        await self.db.commit()
 
     def _alte_entfernen(self, beiseite: list) -> None:
         for cid, _name, _lief in beiseite:
@@ -2594,13 +2656,15 @@ class AgentManager:
         return beiseite
 
     async def _beiseite_zurueck(self, agent_id: str, beiseite: list, container_name: str,
-                                alte_id: str | None, *, starten: bool) -> None:
+                                alte_id: str | None, *, behalten: bool, starten: bool,
+                                gestoppt: bool = False) -> None:
         """Neuerstellen vor dem Festschreiben gescheitert.
 
         Halb erstellten neuen Behälter entfernen. Dann:
 
-        * **Wartung** (``starten=True``, automatisches Aktualisieren): Der alte kommt unter
-          seinem Namen zurück und läuft weiter, wie er lief — dasselbe, was er vorher durfte.
+        * **Wartung** (``behalten=True``, automatisches Aktualisieren): Der alte kommt unter
+          seinem Namen zurück und läuft weiter, wie er lief — dasselbe, was er vorher durfte;
+          kam inzwischen ein Stopp (``starten=False``), bleibt er angehalten.
         * **Sonst**: Der alte wird entfernt. Neuerstellen dient auch dem Entziehen von
           Zugängen (Schlüssel entfernt, Rechte gekürzt); bliebe der alte Behälter der des
           Agenten, brächte ihn der nächste Start mit den entzogenen Zugängen wieder hoch.
@@ -2617,11 +2681,11 @@ class AgentManager:
         gestartet, zurueck = False, None
         for cid, name, lief in beiseite:
             try:
-                if starten:
+                if behalten:
                     c = self.docker.client.containers.get(cid)
                     c.rename(name)
                     zurueck = cid
-                    if lief:
+                    if lief and starten:
                         self.docker.start_container(cid)
                         gestartet = True
                 else:
@@ -2634,7 +2698,9 @@ class AgentManager:
             if beiseite:
                 agent = await self._get_agent(agent_id)
                 agent.container_id = zurueck
-                if any(lief for _c, _n, lief in beiseite) and not gestartet:
+                if gestoppt:
+                    agent.state = AgentState.STOPPED          # gewollt angehalten, kein Fehlergrund
+                elif any(lief for _c, _n, lief in beiseite) and not gestartet:
                     agent.state = AgentState.STOPPED
                     agent.config = {**(agent.config or {}), "stop_reason": {
                         "type": "aktualisieren_gescheitert",
@@ -2805,11 +2871,17 @@ class AgentManager:
                     bind_mounts=bind_mounts,
                 ),
             )
+        # Kam seit der Anfrage ein Stopp (Nutzer, Sentinel)? Dann gar nicht erst einen
+        # Behälter erstellen, der sofort liefe — update_agent räumt auf.
+        if _gestoppt_seit(agent_id, _neubau_angefragt.get(agent_id, float("inf"))):
+            raise NeubauGestoppt(agent_id)
         if mode == "codex_cli":
             # Serialize Codex recreation: only ONE codex container comes up at a time
             # (+ settle delay) so their CLIs never refresh the shared single-use token
             # in parallel — the cause of the fleet-wide refresh_token_reused outage.
             async with _codex_recreate_lock:
+                if _gestoppt_seit(agent_id, _neubau_angefragt.get(agent_id, float("inf"))):
+                    raise NeubauGestoppt(agent_id)       # auch nach dem Warten auf den Lock
                 container = _create_agent_container()
                 await asyncio.sleep(_CODEX_RECREATE_STAGGER_S)
         else:
