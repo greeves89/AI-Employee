@@ -13,6 +13,7 @@ Zeitplan-Dienst setzt fällige Läufe dieses Agenten auf die Freigabezeit — ei
 nachgeholt, sobald wieder Kontingent da ist, statt in der Zwischenzeit sinnlos zu scheitern.
 
 Gilt je Agent: Teilen sich mehrere Agenten ein Konto, scheitert jeder höchstens einmal.
+Jede Pause ist höchstens 5 Stunden lang und wird gemeldet (siehe ``HOECHSTENS``).
 Chats bremst das nicht — ein Mensch sieht die Meldung des Anbieters direkt.
 """
 
@@ -28,7 +29,14 @@ logger = logging.getLogger(__name__)
 GRUND = "Kontingent erschoepft"          # wie run_outcome._SIGNATUREN
 VORGABE = timedelta(hours=1)               # Freigabezeit nicht lesbar
 MINDESTENS = timedelta(minutes=5)
-HOECHSTENS = timedelta(days=7)
+#: Höchstens 5 Stunden, auch wenn die Meldung „resets Nov 14“ sagt: Der Text kommt aus dem
+#: Agenten, und ein manipulierter Agent könnte seine Zeitpläne sonst tagelang stilllegen.
+#: Danach versucht der Zeitplan EINEN Lauf; ist das Kontingent noch aus, folgt die nächste
+#: Pause. Ein echtes Wochenlimit kostet so einen Lauf je 5 Stunden statt einen je Takt.
+HOECHSTENS = timedelta(hours=5)
+#: Eine echte Limit-Meldung ist eine kurze Zeile. Ein langer Text, der sie nur ENTHÄLT
+#: (Bericht über Limits, eingeschleuster Text), pausiert nichts.
+KURZ = 400
 
 _SCHLUESSEL = "kontingent:pause:{}"
 
@@ -56,7 +64,7 @@ def _zone(name: str | None):
 def bis_wann(text: str | None, jetzt: datetime) -> datetime:
     """Bis wann das Kontingent erschöpft ist — aus der Meldung, sonst ``jetzt + 1 h``.
 
-    Ergebnis liegt immer zwischen 5 Minuten und 7 Tagen nach ``jetzt`` (UTC).
+    Ergebnis liegt immer zwischen 5 Minuten und 5 Stunden nach ``jetzt`` (UTC).
     """
     jetzt = jetzt.astimezone(timezone.utc)
     text = text or ""

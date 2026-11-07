@@ -25,31 +25,37 @@ class BisWannTests(unittest.TestCase):
                          datetime(2026, 11, 7, 12, 0, tzinfo=timezone.utc))
 
     def test_uhrzeit_schon_vorbei_heisst_morgen(self):
+        # 9 Uhr Berlin ist vorbei → morgen 9 Uhr, gedeckelt auf 5 Stunden
         self.assertEqual(kontingent.bis_wann("You've hit your limit - resets 9am (Europe/Berlin)", JETZT),
-                         datetime(2026, 11, 8, 8, 0, tzinfo=timezone.utc))
+                         JETZT + timedelta(hours=5))
+        self.assertEqual(kontingent.bis_wann("You've hit your limit - resets 10am (UTC)", JETZT + timedelta(hours=23)),
+                         datetime(2026, 11, 8, 10, 0, tzinfo=timezone.utc))
 
     def test_minuten_und_ohne_zone_utc(self):
-        self.assertEqual(kontingent.bis_wann("You've hit your usage limit · resets 3:30pm", JETZT),
-                         datetime(2026, 11, 7, 15, 30, tzinfo=timezone.utc))
+        self.assertEqual(kontingent.bis_wann("You've hit your usage limit · resets 2:30pm", JETZT),
+                         datetime(2026, 11, 7, 14, 30, tzinfo=timezone.utc))
 
-    def test_wochenlimit_mit_datum(self):
+    def test_wochenlimit_mit_datum_hoechstens_fuenf_stunden(self):
+        """Datum wird gelesen, aber gedeckelt: der Text kommt aus dem Agenten."""
         self.assertEqual(
             kontingent.bis_wann("You've hit your weekly limit · resets Nov 10, 9am (Europe/Berlin)", JETZT),
-            datetime(2026, 11, 10, 8, 0, tzinfo=timezone.utc))
+            JETZT + timedelta(hours=5))
+        self.assertEqual(
+            kontingent.bis_wann("You've hit your weekly limit · resets Nov 7, 2pm (Europe/Berlin)", JETZT),
+            datetime(2026, 11, 7, 13, 0, tzinfo=timezone.utc))
 
     def test_codex_try_again_in(self):
         self.assertEqual(kontingent.bis_wann(
             "You've hit your usage limit. Upgrade to Pro or try again in 2 hours 5 minutes.", JETZT),
             JETZT + timedelta(hours=2, minutes=5))
-        self.assertEqual(kontingent.bis_wann("try again in 1 day 3 hours", JETZT),
-                         JETZT + timedelta(days=1, hours=3))
+        self.assertEqual(kontingent.bis_wann("try again in 4 hours", JETZT), JETZT + timedelta(hours=4))
 
     def test_unlesbar_eine_stunde(self):
         self.assertEqual(kontingent.bis_wann("429 Too Many Requests", JETZT), JETZT + timedelta(hours=1))
         self.assertEqual(kontingent.bis_wann(None, JETZT), JETZT + timedelta(hours=1))
 
     def test_grenzen(self):
-        self.assertEqual(kontingent.bis_wann("try again in 30 days", JETZT), JETZT + timedelta(days=7))
+        self.assertEqual(kontingent.bis_wann("try again in 30 days", JETZT), JETZT + timedelta(hours=5))
         self.assertEqual(kontingent.bis_wann("try again in 1 minute", JETZT), JETZT + timedelta(minutes=5))
 
     def test_unbekannte_zone_gilt_als_utc(self):
@@ -148,6 +154,22 @@ class RouterTests(unittest.IsolatedAsyncioTestCase):
         bis = await kontingent.pausiert_bis(router.redis, "a1")
         self.assertIsNotNone(bis)
         self.assertAlmostEqual((bis - datetime.now(timezone.utc)).total_seconds(), 7200, delta=60)
+
+    async def test_langer_text_mit_limit_satz_bremst_nicht(self):
+        """Ein Bericht, der die Meldung zitiert, oder eingeschleuster Text: keine Pause."""
+        router = self._router()
+        bericht = ("Ich habe die Fehler der Woche ausgewertet. " * 20
+                   + "Dreimal kam: You've hit your weekly limit · resets Nov 14, 9am (Europe/Berlin).")
+        await router._kontingent_vermerken("a1", self._lauf(TaskStatus.FAILED, error=kontingent.GRUND, result=bericht))
+        self.assertIsNone(await kontingent.pausiert_bis(router.redis, "a1"))
+        self.assertIsNone(self.meldung)
+
+    async def test_pause_hoechstens_fuenf_stunden(self):
+        router = self._router()
+        await router._kontingent_vermerken("a1", self._lauf(
+            TaskStatus.FAILED, error="You've hit your weekly limit · resets Nov 30, 9am (Europe/Berlin)"))
+        bis = await kontingent.pausiert_bis(router.redis, "a1")
+        self.assertLessEqual(bis - datetime.now(timezone.utc), timedelta(hours=5))
 
     async def test_anderer_fehler_bremst_nicht(self):
         router = self._router()

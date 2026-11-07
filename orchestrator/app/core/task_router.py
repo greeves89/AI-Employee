@@ -1570,8 +1570,11 @@ class TaskRouter:
             if task.status == TaskStatus.COMPLETED:
                 await kontingent.aufheben(self.redis, agent_id)
                 return
-            text = f"{task.error or ''}\n{task.result or ''}"
-            if task.error != kontingent.GRUND and warum_kein_erfolg(text, None) != kontingent.GRUND:
+            # Nur kurze Meldungen zählen (kontingent.KURZ): Ein echtes Limit ist eine Zeile,
+            # ein langer Text, der sie nur enthält, legt keine Zeitpläne still.
+            text = "\n".join(t.strip() for t in (task.error, task.result)
+                              if t and t.strip() and t != kontingent.GRUND)
+            if len(text) > kontingent.KURZ or warum_kein_erfolg(text, None) != kontingent.GRUND:
                 return
             bis = kontingent.bis_wann(text, datetime.now(timezone.utc))
             if not await kontingent.pausieren(self.redis, agent_id, bis):
