@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.441.0] - 2026-11-07
+
+### Neu
+- **Release-Läufer** `scripts/release.py`. Ein Release (Merge, Tag, GitHub-Release, danach holen die Anlagen den Stand mit `scripts/update.sh`) lief bisher als Kette von Hand auf dem Rechner des Entwicklers. Was dabei schiefgehen kann, ist schon passiert: `main` war eine Woche rot, ohne dass es auffiel; zwei Stände trugen dieselbe Nummer (#699, #707); ein PR bekam nach der Prüfung noch einen Commit. Der Läufer prüft vor jeder Änderung:
+  - PR offen, Ziel `main`, ohne Konflikt mergebar
+  - `VERSION` = Label im Agenten-Abbild, CHANGELOG-Abschnitt vorhanden, Version größer als auf `main` (`release_track_check`)
+  - Tag noch frei
+  - alle Prüfungen des PR grün
+  - letzter CI-Lauf auf `main` grün
+
+  Ohne `--ausfuehren` ist es ein Probelauf, der nichts ändert. Mit `--ausfuehren` wird genau der geprüfte Kopf gemergt (`--match-head-commit`). Danach wird geprüft, dass auf `main` die erwartete Version steht, erst dann folgen Tag und Release mit dem CHANGELOG-Abschnitt als Notizen. Dieses Release ist mit dem Läufer selbst entstanden.
+- CONTRIBUTING: Abschnitt „Releasing“.
+
+### Tests
+- `test_release_laeufer.py`: Jede Beanstandung einzeln (14 Bedingungen), Release-Notizen aus dem CHANGELOG. Ein GitHub-Double belegt: Der Probelauf macht keinen ändernden Aufruf, eine Beanstandung verhindert auch mit `--ausfuehren` alles, die Reihenfolge ist Merge → Tag → Push → Release, bei falscher Version nach dem Merge gibt es keinen Tag. Dazu das Warten auf die CI. Gegenproben: ohne Probelauf-Sperre 1 Fehler, ohne `main`-Prüfung 3. Echter Probelauf gegen einen PR mit laufender CI: korrekt abgewiesen.
+
 ## [1.440.1] - 2026-11-07
 
 ### Sicherheit

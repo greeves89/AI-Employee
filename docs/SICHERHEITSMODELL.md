@@ -1,6 +1,6 @@
 # Sicherheitsmodell von AI Employee
 
-Stand: 07.11.2026 (Version 1.440.1). Dieses Dokument ist die eine Übersicht, an der sich jede
+Stand: 07.11.2026 (Version 1.441.0). Dieses Dokument ist die eine Übersicht, an der sich jede
 Sicherheitsänderung ausrichtet: welche Schichten es gibt, wo jede durchgesetzt wird, wo man sie
 sieht und was noch offen ist. Betriebsanleitungen stehen im [Security Guide](SECURITY.md) und im
 [Benutzerhandbuch](benutzerhandbuch/README.md).
@@ -81,9 +81,8 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
 
 | # | Punkt | Schicht | Lösung | Stand |
 |---|---|---|---|---|
-| 1 | Release mit Probelauf | Betrieb (Lieferkette) | Das Release-Skript ins Repo (heute nur auf dem Rechner des Entwicklers), mit Trockenlauf und harten Prüfungen: CI auf dem gemergten Stand grün, `VERSION` = Dockerfile-Label = Tag = Changelog, Kopf des PR wie geprüft. | nächster Schritt |
-| 2 | Kontingent-Bremse für Abo-Konten | Betrieb (Verfügbarkeit) | Meldet ein Abo-Konto (Claude, ChatGPT) „Limit erreicht“, halten Zeitpläne und Hintergrundläufe bis zur Freigabezeit an, statt in Schleife weiterzulaufen. Wie die Zeitplan-Kostenbremse. | geplant |
-| 3 | Codex-Zugang auf der Testanlage nur für einen Agenten hinter dem Proxy | Zugänge | Betreiberentscheidung, der Sicherheitsstatus zeigt es. | Information |
+| 1 | Kontingent-Bremse für Abo-Konten | Betrieb (Verfügbarkeit) | Meldet ein Abo-Konto (Claude, ChatGPT) „Limit erreicht“, halten Zeitpläne und Hintergrundläufe bis zur Freigabezeit an, statt in Schleife weiterzulaufen. Wie die Zeitplan-Kostenbremse. | nächster Schritt |
+| 2 | Codex-Zugang auf der Testanlage nur für einen Agenten hinter dem Proxy | Zugänge | Betreiberentscheidung, der Sicherheitsstatus zeigt es. | Information |
 
 ### Erledigt am 07.11.2026
 
@@ -93,6 +92,8 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
 | Absenderadresse nur vom Eingangs-Proxy | 1.440.0 |
 | Werkzeuge erben keine Server-Zugänge | 1.440.0 |
 | Sentinel-Zugang nur von innen | 1.440.0 |
+| Absenderadresse: Warnung bei Override im laufenden Server | 1.440.1 |
+| Release-Läufer mit Probelauf und harten Prüfungen (`scripts/release.py`) | 1.441.0 |
 
 ### Braucht eine Entscheidung
 
