@@ -75,6 +75,11 @@ def _sicher(wert: str | None, muster: re.Pattern) -> str | None:
     return wert if wert and muster.match(wert) else None
 
 
+def geteilter_stand(repo: str | None, pr_url: str | None, branch: str | None) -> bool:
+    """Gibt es einen Stand, den auch ein ANDERER Agent sehen kann (Repo, PR, Branch)?"""
+    return bool(_sicher(repo, _REPO) or _sicher(pr_url, _URL) or _sicher(branch, _REF))
+
+
 def pruefauftrag(*, titel: str, story: str, projekt: str, repo: str | None, pr_url: str | None,
                  branch: str | None, karte_id: str, quelle: str = "karte") -> str:
     """Der Auftrag an den Prüfer — bewusst OHNE das Ergebnis des Umsetzers.
@@ -92,8 +97,8 @@ def pruefauftrag(*, titel: str, story: str, projekt: str, repo: str | None, pr_u
     if b := _sicher(branch, _REF):
         stand.append(f"- Branch: {b}")
     if not stand:
-        stand.append("- Kein PR/Branch gemeldet — prüfe den Stand, den die Story beschreibt "
-                     "(Dateien im Projekt, Ergebnis im Arbeitsordner).")
+        stand.append("- Kein Repo, PR oder Branch — das Ergebnis liegt in deinem Arbeitsordner "
+                     "(/workspace) bzw. dort, wo die Story es verlangt. Prüfe es dort.")
     return (
         f"Prüfauftrag (blinder Prüfer) im Projekt „{einzeilig(projekt, 120)}“ (karte_id={karte_id}).\n\n"
         "Ein anderer Lauf hat diese Karte umgesetzt. Du siehst absichtlich NICHT seinen Bericht: "
@@ -155,6 +160,11 @@ async def _pruefung_starten(router, task) -> None:
     besitzer = dict((await db.execute(select(Agent.id, Agent.user_id).where(
         Agent.id.in_([k for k in kandidaten if k])))).all())
     pruefer = pruefer_waehlen(team.member_agent_ids, team.lead_agent_id, task.agent_id, besitzer)
+    if not geteilter_stand(team.repo, karte.pr_url, karte.extern_branch):
+        # Ohne Repo, PR oder Branch liegt das Ergebnis im Arbeitsordner des Umsetzers — den
+        # sieht ein anderer Agent nicht (jeder hat seinen eigenen). Live gesehen: Der Prüfer
+        # suchte die Datei in SEINEM Ordner. Dann prüft der Umsetzer in einem neuen Lauf.
+        pruefer = task.agent_id
     if not pruefer or pruefer not in besitzer:
         return
     auftrag = pruefauftrag(

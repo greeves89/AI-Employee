@@ -1248,7 +1248,9 @@ Umsetzers, und prüft deshalb, was gebaut ist, nicht was behauptet wird. Im Revi
 - **ohne klares Urteil** oder **Prüflauf gescheitert** — dann selbst prüfen.
 
 Gibt es nur einen Agenten im Projekt, prüft er in einem neuen Lauf selbst (dann steht
-„derselbe Agent, neuer Lauf“ dabei). Jede Prüfung ist ein zusätzlicher Lauf und kostet
+„derselbe Agent, neuer Lauf“ dabei). Dasselbe gilt für Karten ohne Repo, Pull Request oder
+Branch *(seit 1.437.2)*: Ihr Ergebnis liegt im Arbeitsordner des Umsetzers, und den sieht
+ein anderer Agent nicht. Wirklich blind prüft der Prüfer also bei Projekten mit Repo. Jede Prüfung ist ein zusätzlicher Lauf und kostet
 entsprechend. Abnehmen oder zurückgeben entscheidest weiterhin du.
 
 - **Abnehmen** — das Ergebnis passt. Die Karte wandert zu **Erledigt**.
