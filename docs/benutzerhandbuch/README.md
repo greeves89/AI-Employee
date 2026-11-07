@@ -1062,6 +1062,16 @@ Arbeitstakt.
 Ein Klick auf eine Projektkarte öffnet das Projekt. Die Seite ist von oben nach unten
 geordnet — das Wichtigste zuerst:
 
+**Statuszeile** *(seit 1.438.0)*: Ganz oben — und in der Projektliste unter dem Namen — steht in
+einer Zeile, wo das Projekt steht, das Dringendste zuerst:
+
+| Farbe | Bedeutung | Beispiel |
+|---|---|---|
+| rot | **Blockiert** — ein Konflikt oder ein gescheiterter Lauf im Review | „Blockiert: 1 Konflikt, 1 gescheitert“ |
+| gelb | **Wartet auf dich** — Rückfragen, Karten zur Abnahme, PRs zum Mergen | „Wartet auf dich: 2 Rückfragen an dich, 3 zur Abnahme“ |
+| blau | **Arbeitet** — Agenten arbeiten Karten ab | „Arbeitet: arbeitet (2)“ |
+| grau | **Ruht** — nichts läuft, nichts wartet | „4 bereit“ |
+
 ![Projektseite: oben die Kennzahlenleiste, darunter „Auftrag geben“ und die Reiter mit dem Board](screenshots/72-projekt-raum.png)
 
 1. **Kennzahlenleiste** — der Fluss der Karten als Zahlen: **Inbox › Triage › Bereit ›

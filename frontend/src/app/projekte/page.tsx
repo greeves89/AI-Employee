@@ -6,6 +6,7 @@ import { FolderKanban, Loader2, Plus } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { CreateTeamModal } from "@/components/agents/create-team-modal";
 import { ProjektRaum } from "@/components/projekte/projekt-raum";
+import { ProjektStatusZeile } from "@/components/projekte/projekt-status";
 import { ProjektVerlauf } from "@/components/projekte/projekt-board";
 import { useAgents } from "@/hooks/use-agents";
 import * as api from "@/lib/api";
@@ -105,6 +106,7 @@ export default function ProjektePage() {
                         <span className="truncate">{pr.name}</span>
                       </h2>
                       {pr.description && <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{pr.description}</p>}
+                      <ProjektStatusZeile status={pr.status} className="mt-1.5" />
                       <p className="mt-0.5 text-[11px] text-muted-foreground">
                         {pr.takt?.aktiv ? `Takt ${TAKTE.find((t) => t.minuten === pr.takt.minuten)?.label.toLowerCase() ?? "an"} · nächster ${bis(pr.takt.naechster_lauf) ?? "—"}` : "Takt aus"}
                         {pr.kennzahlen.eingang ? ` · ${pr.kennzahlen.eingang} in der Inbox` : ""}

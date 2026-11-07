@@ -1,6 +1,6 @@
 import type { ActivityTimelineResponse, AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, FeedbackStatus, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, DayPlanItem, ProactiveResponse, Responsibility, ReflectionRun, ReflectionStatus, Task, Schedule, FileEntry, Settings, SecondBrain, Integration, TodoListResponse, WebhookEvent } from "./types";
 import { getApiUrl, getBase, getWsUrl } from "./config";
-import type { ProjektBesprechung, ProjektBoard, ProjektKarte, ProjektKennzahlen, ProjektLauf, ProjektNachricht, ProjektTakt, ProjektTermin } from "./projekte";
+import type { ProjektBesprechung, ProjektBoard, ProjektKarte, ProjektKennzahlen, ProjektLauf, ProjektNachricht, ProjektStatus, ProjektTakt, ProjektTermin } from "./projekte";
 
 let _refreshing: Promise<void> | null = null;
 
@@ -5188,6 +5188,7 @@ export async function delegateToTeam(
 
 export interface ProjektUebersicht extends Team {
   kennzahlen: ProjektKennzahlen;
+  status?: ProjektStatus;
   laufend: ProjektLauf[];
   naechste: ProjektKarte[];
   takt: ProjektTakt;

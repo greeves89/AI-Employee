@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.438.0] - 2026-11-07
+
+### Neu
+- Statuszeile je Projekt (`core/projekte.status`): eine Zeile, wo das Projekt steht — **Blockiert** (Konflikt, gescheiterter Lauf im Review) vor **Wartet auf dich** (Rückfragen, Karten zur Abnahme, PRs zum Mergen) vor **Arbeitet** vor **Ruht**, das Dringendste zuerst und alles Zutreffende genannt. In der Projektliste unter dem Namen und oben auf der Projektseite; aus den Kennzahlen des Boards berechnet (eine Stelle, keine eigene Abfrage). Neue Kennzahl `gescheitert` (Review-Karten mit gescheitertem Lauf).
+- Benutzerhandbuch 6a.2: Statuszeile.
+
+### Tests
+- `test_projekt_status.py`: jede Bedingung einzeln (MC/DC), Rangfolge, nichts doppelt gezählt, leere Kennzahlen.
+
 ## [1.437.2] - 2026-11-07
 
 ### Behoben
