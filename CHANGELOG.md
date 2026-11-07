@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.436.1] - 2026-11-07
+
+### Behoben
+- Beleg-Erkennung zu streng: Im Live-Test schrieb ein Agent den Beleg in denselben Satz („… angelegt — Beleg: `cat …` ergab `42`.“) — gezählt wurde nur eine Zeile, die mit „Beleg:“ beginnt, das Board hätte „ohne Beleg“ gezeigt. Jetzt zählt „Beleg:“/„Ungeprüft:“ auch nach einem Gedankenstrich, Satzzeichen oder einer schließenden Klammer, weiterhin nicht mitten im Satz („Den Beleg: liefere ich später“). Die Regel für Agenten sagt jetzt ausdrücklich „am Ende eine eigene Zeile“.
+
+### Tests
+- Der live gesehene Satz als Testfall, dazu Satzende, Semikolon, Fettdruck, Klammer-Auf und Satzmitte.
+
 ## [1.436.0] - 2026-11-07
 
 ### Neu

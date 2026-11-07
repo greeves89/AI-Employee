@@ -27,7 +27,15 @@ class ErkennungTests(unittest.TestCase):
             "> Ungeprüft: kein Zugang zur Testumgebung": beleg.UNGEPRUEFT,
             "Ungeprueft: Abbild fehlt": beleg.UNGEPRUEFT,
             "Beleg: a\nUngeprüft: b": beleg.BELEG,
+            # Live so geschrieben (1.436.0, Demo-Agent): Beleg im selben Satz nach Gedankenstrich.
+            "Erledigt. Datei `/workspace/beleg_test.txt` mit Inhalt `42` angelegt — Beleg: "
+            "`cat /workspace/beleg_test.txt` ergab `42`.": beleg.BELEG,
+            "Fertig. Beleg: Tests grün": beleg.BELEG,
+            "Fertig (Beleg: Tests grün)": beleg.FEHLT,               # Klammer-Auf ist kein Trenner
+            "Fertig; ungeprüft: kein Zugang": beleg.UNGEPRUEFT,
+            "**Beleg**: Bildschirmfoto liegt bei": beleg.BELEG,
             "Erledigt, alles gut.": beleg.FEHLT,
+            "Ich habe den Beleg: noch nicht": beleg.FEHLT,
             "Den Beleg: liefere ich später": beleg.FEHLT,       # im Satz, nicht als Zeile
             "Beleg:": beleg.FEHLT,                              # leer zählt nicht
             "": beleg.FEHLT,

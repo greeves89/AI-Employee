@@ -23,14 +23,20 @@ BELEG, UNGEPRUEFT, FEHLT = "beleg", "ungeprueft", "fehlt"
 
 #: Für Agenten — in Anleitung, Kartenauftrag und Ziel-Regeln wortgleich.
 REGEL = (
-    "Meldest du etwas als erledigt (Auftrag, Karte, Ziel, Aufgabe), schreib eine Zeile "
-    "„Beleg: …“ dazu: was du geprüft hast und mit welchem Ergebnis (Test mit Ergebnis, "
+    "Meldest du etwas als erledigt (Auftrag, Karte, Ziel, Aufgabe), schreib am Ende eine "
+    "eigene Zeile „Beleg: …“: was du geprüft hast und mit welchem Ergebnis (Test mit Ergebnis, "
     "Befehl und Ausgabe, Datei, Adresse, Bildschirmfoto). Konntest du nicht prüfen, "
     "schreib stattdessen „Ungeprüft: …“ mit dem Grund — nie Erfolg behaupten, den du nicht "
     "gesehen hast."
 )
 
-_ZEILE = re.compile(r"^[\s>*_`#\-–—•]*(beleg|ungeprüft|ungeprueft)\s*:\s*\S", re.IGNORECASE | re.MULTILINE)
+#: „Beleg:“ am Zeilenanfang (auch hinter Markdown-Zeichen) ODER nach einem Trenner im Satz
+#: („… angelegt — Beleg: cat ergab 42“, live so gesehen). Nicht mitten im Satz („Den Beleg:
+#: liefere ich später“): davor muss Zeilenanfang, Gedankenstrich, Satzzeichen oder eine schließende Klammer stehen.
+_ZEILE = re.compile(
+    r"(?:^|[—–;.!?)\]]|\s-)[\s>*_`#\-–—•]*(beleg|ungeprüft|ungeprueft)[*_`]*\s*:[*_`]*\s*\S",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 
 def stand(text: str | None) -> str:
