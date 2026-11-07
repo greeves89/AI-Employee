@@ -170,6 +170,16 @@ export default function ProjektPage() {
         throw e;
       }
     },
+    mitBefundenZurueckgeben: async (k) => {
+      try {
+        await api.karteZurueckgeben(id, k.id, "", null, true);
+        toast.success("Mit Befunden zurückgegeben", "Die Nacharbeit läuft.");
+        await laden();
+      } catch (e) {
+        toast.error("Nicht zurückgegeben", apiFehlertext(e));
+        throw e;
+      }
+    },
     zurueckgeben: async (k, hinweis, agentId) => {
       try {
         await api.karteZurueckgeben(id, k.id, hinweis, agentId);

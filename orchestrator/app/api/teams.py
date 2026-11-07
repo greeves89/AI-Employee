@@ -64,6 +64,7 @@ class UpdateTeam(BaseModel):
     # Rückkanal „@ai-employee …“ im Issue: "an", "aus" oder "auto" (an nur bei privatem
     # Repo mit Schlüssel).
     rueckkanal: str | None = Field(default=None, pattern="^(an|aus|auto)$")
+    blinder_pruefer: bool | None = None
 
 
 def _farbe(wert: str | None) -> str | None:
@@ -102,6 +103,7 @@ def _serialize(t: Team) -> dict:
         "max_uebernahmen": getattr(t, "max_uebernahmen", None),
         "abgelaufene_uebernehmen": bool(getattr(t, "abgelaufene_uebernehmen", False)),
         "rueckkanal": {True: "an", False: "aus"}.get(getattr(t, "rueckkanal", None), "auto"),
+        "blinder_pruefer": bool(getattr(t, "blinder_pruefer", None)),
         "repo_oeffentlich": getattr(t, "repo_oeffentlich", None),
         "art": getattr(t, "art", None) or "projekt",
     }
@@ -453,6 +455,7 @@ async def update_team(team_id: str, body: UpdateTeam, user=Depends(require_auth)
     if body.max_uebernahmen is not None: t.max_uebernahmen = body.max_uebernahmen or None
     if body.abgelaufene_uebernehmen is not None: t.abgelaufene_uebernehmen = body.abgelaufene_uebernehmen
     if body.rueckkanal is not None: t.rueckkanal = {"an": True, "aus": False}.get(body.rueckkanal)
+    if body.blinder_pruefer is not None: t.blinder_pruefer = body.blinder_pruefer
     _validate_lead(t.member_agent_ids, t.lead_agent_id)
     await db.commit(); await db.refresh(t)
     await _projekt_nachziehen(db, t)
@@ -1321,7 +1324,10 @@ async def _ergebnis_festhalten(db: AsyncSession, t: Team, karte: dict, task, use
 
 
 class Zurueckgeben(BaseModel):
-    hinweis: str = Field(min_length=1, max_length=8000)
+    hinweis: str = Field(default="", max_length=8000)
+    # Mit den Befunden des blinden Prüfers zurückgeben (core/pruefung): der Server nimmt
+    # sie aus der gespeicherten Prüfung — gerahmt als Material, nicht als Anweisung.
+    befunde: bool = False
     # Leer: an den bisherigen Bearbeiter, solange er im Projekt ist — sonst an den Lead.
     # Sonst direkt an dieses Mitglied (oder den Lead).
     agent_id: str | None = None
@@ -1365,7 +1371,16 @@ async def karte_zurueckgeben(team_id: str, karte_id: str, body: Zurueckgeben, re
     await db.commit()
 
     fremd = await _fremd_fuer(karte, ziel or t.lead_agent_id, db)
-    prompt = projekte.nacharbeit_prompt(karte, alt, body.hinweis, t.name, fremd=fremd)
+    pruefer_befunde = ""
+    if body.befunde and alt is not None:
+        from app.core.pruefung import rueckgabe_text
+        pruefer_befunde = rueckgabe_text((alt.metadata_ or {}).get("pruefung") or {})
+    if not body.hinweis.strip() and not pruefer_befunde:
+        karte.spalte = "pruefung"
+        await db.commit()
+        raise HTTPException(status_code=422, detail="Schreib dazu, was anders werden soll.")
+    prompt = projekte.nacharbeit_prompt(karte, alt, body.hinweis, t.name, fremd=fremd,
+                                        pruefer_befunde=pruefer_befunde)
     titel = f"Nacharbeit: {projekte.lauf_titel(karte, fremd)}"[:200]
     try:
         if ueber_lead:

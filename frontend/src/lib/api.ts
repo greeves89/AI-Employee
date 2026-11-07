@@ -4807,6 +4807,8 @@ export interface Team {
   abgelaufene_uebernehmen?: boolean;
   /** Rückkanal „@ai-employee …“ im Issue: an, aus oder auto (an nur bei privatem Repo mit Schlüssel). */
   rueckkanal?: "an" | "aus" | "auto";
+  /** Blinder Prüfer: fertige Karten prüft ein zweiter Lauf ohne den Bericht des Umsetzers. */
+  blinder_pruefer?: boolean;
   /** Ob das Repo öffentlich ist (beim Abgleich gelesen; leer = unbekannt). */
   repo_oeffentlich?: boolean | null;
 }
@@ -5142,6 +5144,7 @@ export async function updateTeam(
     max_uebernahmen?: number;
     abgelaufene_uebernehmen?: boolean;
     rueckkanal?: "an" | "aus" | "auto";
+    blinder_pruefer?: boolean;
   },
 ): Promise<Team> {
   return fetchJSON(`${getBase()}/teams/${id}`, {
@@ -5324,10 +5327,12 @@ export async function karteExternFreigeben(id: string, karteId: string): Promise
   return fetchJSON(`${getBase()}/teams/${id}/karten/${karteId}/extern-freigeben`, { method: "POST" });
 }
 
-export async function karteZurueckgeben(id: string, karteId: string, hinweis: string, agentId?: string | null): Promise<ProjektKarte> {
+export async function karteZurueckgeben(id: string, karteId: string, hinweis: string, agentId?: string | null,
+  befunde = false): Promise<ProjektKarte> {
   return fetchJSON(`${getBase()}/teams/${id}/karten/${karteId}/zurueckgeben`, {
     method: "POST",
-    body: JSON.stringify({ hinweis, ...(agentId ? { agent_id: agentId } : {}) }),
+    // ``befunde``: der Server hängt die Befunde des blinden Prüfers gerahmt an (core/pruefung).
+    body: JSON.stringify({ hinweis, ...(agentId ? { agent_id: agentId } : {}), ...(befunde ? { befunde: true } : {}) }),
   });
 }
 

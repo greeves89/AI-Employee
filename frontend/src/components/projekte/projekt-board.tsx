@@ -64,6 +64,8 @@ export interface BoardAktionen {
   uebergabeOeffnen?: (k: ProjektKarte) => void;
   // agentId leer: der bisherige Bearbeiter — ist er nicht mehr im Projekt, der Lead.
   zurueckgeben: (k: ProjektKarte, hinweis: string, agentId: string | null) => Promise<void>;
+  /** Mit den Befunden des blinden Prüfers zurückgeben — der Server nimmt sie aus der Prüfung. */
+  mitBefundenZurueckgeben: (k: ProjektKarte) => Promise<void>;
   anlegen: (titel: string, text: string) => Promise<void>;
 }
 
@@ -530,6 +532,38 @@ function Karte({
               <Play className="h-3 w-3" /> Neuer Versuch
             </Knopf>
           </div>
+        </div>
+      )}
+
+      {/* Blinder Prüfer: läuft / bestanden / Nacharbeit mit Befunden — entscheiden tut der Mensch. */}
+      {karte.spalte === "pruefung" && karte.pruefung && (
+        <div className={cn("mt-2 rounded-md border p-2 text-xs", karte.pruefung.status === "bestanden"
+          ? "border-emerald-500/30 bg-emerald-500/5" : "border-amber-500/30 bg-amber-500/5")} role="status">
+          <p className="flex items-center gap-1.5 font-medium">
+            {karte.pruefung.status === "laeuft" ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+              : karte.pruefung.status === "bestanden" ? <Check className="h-3 w-3 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+              : <ShieldAlert className="h-3 w-3 text-amber-600 dark:text-amber-400" aria-hidden="true" />}
+            {{
+              laeuft: "Blinder Prüfer prüft gerade …",
+              bestanden: "Blinder Prüfer: bestanden",
+              nacharbeit: `Blinder Prüfer: Nacharbeit (${karte.pruefung.befunde?.length ?? 0} Befund${(karte.pruefung.befunde?.length ?? 0) === 1 ? "" : "e"})`,
+              ohne_urteil: "Blinder Prüfer: ohne klares Urteil — bitte selbst prüfen",
+              gescheitert: `Blinder Prüfer: ${karte.pruefung.grund || "Prüflauf gescheitert"} — bitte selbst prüfen`,
+            }[karte.pruefung.status]}
+            {karte.pruefung.blind === false && <span className="font-normal text-muted-foreground">(derselbe Agent, neuer Lauf)</span>}
+          </p>
+          {!!karte.pruefung.befunde?.length && (
+            <ul className="mt-1 list-disc space-y-0.5 pl-4 text-muted-foreground">
+              {karte.pruefung.befunde.map((b, i) => <li key={i} className="line-clamp-3">{b}</li>)}
+            </ul>
+          )}
+          {karte.pruefung.status === "nacharbeit" && !!karte.pruefung.befunde?.length && (
+            <div className="mt-1.5">
+              <Knopf onClick={() => aktionen.mitBefundenZurueckgeben(karte)}>
+                <CornerUpLeft className="h-3 w-3" /> Mit Befunden zurückgeben
+              </Knopf>
+            </div>
+          )}
         </div>
       )}
 

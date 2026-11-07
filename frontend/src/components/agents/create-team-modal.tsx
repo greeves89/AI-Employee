@@ -50,6 +50,7 @@ export function CreateTeamModal({
   const [maxUebernahmen, setMaxUebernahmen] = useState<number>(2);
   const [abloesen, setAbloesen] = useState(false);
   const [rueckkanal, setRueckkanal] = useState<"an" | "aus" | "auto">("auto");
+  const [blinderPruefer, setBlinderPruefer] = useState(false);
   const [schluesselListe, setSchluesselListe] = useState<{ id: number; name: string; key_name: string }[]>([]);
   const [brains, setBrains] = useState<string[]>([]);
   const [brainListe, setBrainListe] = useState<{ label: string; name: string; description: string | null }[]>([]);
@@ -74,6 +75,7 @@ export function CreateTeamModal({
       setMaxUebernahmen(team?.max_uebernahmen ?? 2);
       setAbloesen(!!team?.abgelaufene_uebernehmen);
       setRueckkanal(team?.rueckkanal ?? "auto");
+      setBlinderPruefer(!!team?.blinder_pruefer);
       setBrains(team?.angebundene_brains ?? []);
       setError(null);
     }
@@ -116,7 +118,7 @@ export function CreateTeamModal({
         description: description.trim() || undefined,
         member_agent_ids: memberIds,
         lead_agent_id: leadAgentId || null,
-        ...(projekt ? { farbe, takt_minuten: takt, geteilt_mit: geteilt } : {}),
+        ...(projekt ? { farbe, takt_minuten: takt, geteilt_mit: geteilt, blinder_pruefer: blinderPruefer } : {}),
         ...(projekt ? { repo: repo.trim(), repo_secret_id: repo.trim() ? schluessel : 0 } : {}),
         ...(projekt && isEdit && repo.trim() ? {
           uebernahme_stunden: uebernahmeStunden, max_uebernahmen: maxUebernahmen, abgelaufene_uebernehmen: abloesen,
@@ -300,6 +302,19 @@ export function CreateTeamModal({
                           </div>
                         )}
                       </div>
+                    )}
+
+                    {projekt && (
+                      <label className="flex items-start gap-2 rounded-lg border border-foreground/[0.06] p-3 text-[11px] text-muted-foreground">
+                        <input type="checkbox" checked={blinderPruefer} onChange={(e) => setBlinderPruefer(e.target.checked)} className="mt-0.5" />
+                        <span>
+                          <span className="block text-xs font-medium text-foreground">Blinder Prüfer</span>
+                          Ist eine Karte fertig, prüft sie ein anderer Agent des Projekts — er kennt nur die Story,
+                          den Pull Request und den Branch, nicht den Bericht des Umsetzers. Sein Ergebnis steht im
+                          Review; abnehmen oder zurückgeben entscheidest du. Gibt es nur einen Agenten, prüft er in
+                          einem neuen Lauf selbst. Kostet einen zusätzlichen Lauf je Karte.
+                        </span>
+                      </label>
                     )}
 
                     {projekt && brainListe.length > 0 && (
