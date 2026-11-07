@@ -101,6 +101,15 @@ _letzter_stopp: dict[str, float] = {}
 
 def _gestoppt_seit(agent_id: str, zeitpunkt: float) -> bool:
     return _letzter_stopp.get(agent_id, 0.0) > zeitpunkt
+
+
+#: Zeitpunkt der Anfrage des gerade laufenden Neubaus je Agent (für die Prüfung kurz vor
+#: dem Erstellen in ``_update_agent_neu_erstellen``).
+_neubau_angefragt: dict[str, float] = {}
+
+
+class NeubauGestoppt(Exception):
+    """Während des Neubaus kam ein Stopp — vor dem Erstellen abgebrochen, nichts gestartet."""
 _CODEX_RECREATE_STAGGER_S = 5.0
 
 
@@ -2518,13 +2527,11 @@ class AgentManager:
             agent = await self._get_agent(agent_id)
             # Frisch lesen: wer gewartet hat, hält sonst den Stand von vor dem anderen Neubau.
             await self.db.refresh(agent)
-            if _gestoppt_seit(agent_id, angefragt) and (nur_wenn_noetig or wartung):
+            if _gestoppt_seit(agent_id, angefragt):
                 # Nach dieser Anfrage wurde der Agent gestoppt (etwa vom Sentinel, während
-                # ein anderer Neubau lief). Ein Start oder eine Wartung ist damit hinfällig.
-                # NICHT übersprungen wird jeder andere Neubau: er kann einen Zugang entziehen
-                # (Schlüssel entfernt, Rechte gekürzt) — bliebe der alte Behälter, brächte ihn
-                # der nächste Start mit dem entzogenen Zugang hoch. Der läuft also durch und
-                # hält den neuen Behälter danach an (siehe unten).
+                # ein anderer Neubau lief): KEIN neuer Behälter, der auch nur kurz läuft.
+                if not (nur_wenn_noetig or wartung):
+                    await self._entzug_ohne_neubau(agent, agent_id)
                 logger.info(f"Agent {scrub_log(agent_id)}: Neubau übersprungen — seit der Anfrage gestoppt")
                 return agent
             if nur_wenn_noetig and agent.container_id:
@@ -2561,9 +2568,10 @@ class AgentManager:
                 agent.container_id = None
                 await self.db.commit()
             _festgeschrieben.pop(agent_id, None)
+            _neubau_angefragt[agent_id] = angefragt
             try:
                 neu = await self._update_agent_neu_erstellen(agent_id)
-            except BaseException:
+            except BaseException as fehler:
                 if _festgeschrieben.pop(agent_id, None):
                     self._alte_entfernen(beiseite)
                     raise
@@ -2571,7 +2579,13 @@ class AgentManager:
                 await self._beiseite_zurueck(agent_id, beiseite, container_name, alte_id,
                                              behalten=wartung, starten=wartung and not gestoppt,
                                              gestoppt=gestoppt)
+                if isinstance(fehler, NeubauGestoppt):
+                    # Gewollt: kein Fehler für den Aufrufer (die Automatik hielte sonst an).
+                    logger.info(f"Agent {scrub_log(agent_id)}: Neubau wegen Stopp vor dem Erstellen beendet")
+                    return await self._get_agent(agent_id)
                 raise
+            finally:
+                _neubau_angefragt.pop(agent_id, None)
             _festgeschrieben.pop(agent_id, None)
             self._alte_entfernen(beiseite)
             if _gestoppt_seit(agent_id, angefragt):
@@ -2584,6 +2598,18 @@ class AgentManager:
                 neu.state = AgentState.STOPPED
                 await self.db.commit()
             return neu
+
+    async def _entzug_ohne_neubau(self, agent, agent_id: str) -> None:
+        """Ein Neubau, der einen Zugang entziehen kann (Schlüssel entfernt, Rechte gekürzt),
+        nach einem Stopp: keinen neuen Behälter starten, aber den alten entfernen — sonst
+        brächte ihn der nächste Start mit dem entzogenen Zugang hoch. Der Agent bleibt
+        gestoppt und zeigt auf keinen Behälter; der nächste Start baut frisch."""
+        alte = self._alten_behaelter_beiseite(
+            agent.container_id, f"ai-agent-{_container_slug(agent.name)}-{agent_id}")
+        self._alte_entfernen(alte)
+        agent.container_id = None
+        agent.state = AgentState.STOPPED
+        await self.db.commit()
 
     def _alte_entfernen(self, beiseite: list) -> None:
         for cid, _name, _lief in beiseite:
@@ -2845,11 +2871,17 @@ class AgentManager:
                     bind_mounts=bind_mounts,
                 ),
             )
+        # Kam seit der Anfrage ein Stopp (Nutzer, Sentinel)? Dann gar nicht erst einen
+        # Behälter erstellen, der sofort liefe — update_agent räumt auf.
+        if _gestoppt_seit(agent_id, _neubau_angefragt.get(agent_id, float("inf"))):
+            raise NeubauGestoppt(agent_id)
         if mode == "codex_cli":
             # Serialize Codex recreation: only ONE codex container comes up at a time
             # (+ settle delay) so their CLIs never refresh the shared single-use token
             # in parallel — the cause of the fleet-wide refresh_token_reused outage.
             async with _codex_recreate_lock:
+                if _gestoppt_seit(agent_id, _neubau_angefragt.get(agent_id, float("inf"))):
+                    raise NeubauGestoppt(agent_id)       # auch nach dem Warten auf den Lock
                 container = _create_agent_container()
                 await asyncio.sleep(_CODEX_RECREATE_STAGGER_S)
         else:

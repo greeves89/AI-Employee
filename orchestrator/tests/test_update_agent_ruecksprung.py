@@ -310,10 +310,10 @@ class StoppWaehrendNeubau(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(gebaut), 1, "der wartende Start baut nach dem Stopp nicht neu")
         self.assertEqual(mgr.agent.state, AgentState.STOPPED)
 
-    async def test_entzug_wird_trotz_stopp_gebaut_und_bleibt_angehalten(self):
+    async def test_entzug_nach_stopp_baut_nichts_und_entfernt_den_alten(self):
         """Neubau zum Entziehen eines Zugangs (wartung=False), Stopp kommt, während er auf den
-        Lock wartet: nicht überspringen — sonst bliebe der alte Behälter mit dem entzogenen
-        Zugang der des Agenten (automatische Sicherheitsprüfung)."""
+        Lock wartet: kein neuer Behälter, der auch nur kurz läuft (Sentinel-Stopp gilt), und
+        der alte mit dem entzogenen Zugang verschwindet — der nächste Start baut frisch."""
         docker = FakeDocker(FakeBehaelter("alt1", NAME))
         ref, gebaut = [None], []
         darf_weiter = asyncio.Event()
@@ -328,9 +328,6 @@ class StoppWaehrendNeubau(unittest.IsolatedAsyncioTestCase):
             return ref[0].agent
         mgr = ref[0] = _manager(docker, neu)
         mgr._publish_event = AsyncMock()
-        docker.angehalten = []
-        echt_stop = docker.stop_container
-        docker.stop_container = lambda cid: (docker.angehalten.append(cid), echt_stop(cid))
         erster = asyncio.create_task(mgr.update_agent("a1b2c3d4", wartung=True))
         await asyncio.sleep(0.01)
         entzug = asyncio.create_task(mgr.update_agent("a1b2c3d4"))       # Schlüssel entfernt
@@ -339,10 +336,51 @@ class StoppWaehrendNeubau(unittest.IsolatedAsyncioTestCase):
         darf_weiter.set()
         await erster
         await entzug
-        self.assertEqual(len(gebaut), 2, "der Entzug-Neubau läuft trotz Stopp")
-        self.assertEqual(mgr.agent.container_id, "neu2")
-        self.assertIn("neu2", docker.angehalten, "neuer Behälter bleibt angehalten")
+        self.assertEqual(len(gebaut), 1, "nach dem Stopp entsteht kein weiterer Behälter")
+        self.assertEqual(docker.behaelter, {}, "kein Behälter mit dem entzogenen Zugang bleibt")
+        self.assertIsNone(mgr.agent.container_id)
         self.assertEqual(mgr.agent.state, AgentState.STOPPED)
+
+    async def test_stopp_waehrend_des_baus_vor_dem_erstellen_kein_start(self):
+        """Stopp kommt mitten im Bau, aber vor dem Erstellen: es entsteht kein Behälter, kein
+        Fehler für den Aufrufer (sonst hielte die Automatik an), Wartung behält den alten
+        angehalten."""
+        docker = FakeDocker(FakeBehaelter("alt1", NAME))
+        ref = [None]
+
+        async def neu(aid):
+            await ref[0].stop_agent(aid)                 # Sentinel, mitten im Bau
+            await asyncio.sleep(0.001)
+            # so prüft _update_agent_neu_erstellen vor dem Erstellen:
+            if am._gestoppt_seit(aid, am._neubau_angefragt.get(aid, float("inf"))):
+                raise am.NeubauGestoppt(aid)
+            raise AssertionError("hätte nicht erstellt werden dürfen")
+        mgr = ref[0] = _manager(docker, neu)
+        mgr._publish_event = AsyncMock()
+        ergebnis = await mgr.update_agent("a1b2c3d4", wartung=True)
+        self.assertIs(ergebnis, mgr.agent)
+        self.assertEqual(docker.gestartet, [])
+        self.assertEqual(docker.behaelter["alt1"].name, NAME)
+        self.assertEqual(mgr.agent.state, AgentState.STOPPED)
+        self.assertEqual(am._neubau_angefragt, {}, "nichts bleibt liegen")
+
+    def test_pruefung_steht_vor_dem_erstellen_im_bauweg(self):
+        """Verdrahtung im Syntaxbaum: im Bauweg steht die Stopp-Prüfung vor jedem Erstellen."""
+        import ast
+        from pathlib import Path
+        baum = ast.parse((Path(__file__).resolve().parents[1] / "app/core/agent_manager.py").read_text())
+        fn = next(n for n in ast.walk(baum)
+                  if isinstance(n, ast.AsyncFunctionDef) and n.name == "_update_agent_neu_erstellen")
+        def erstellt(knoten):
+            return any(isinstance(n, ast.Call) and getattr(n.func, "id", "") == "_create_agent_container"
+                       for n in ast.walk(knoten))
+
+        def prueft(knoten):
+            return any(isinstance(n, ast.Raise) and "NeubauGestoppt" in ast.dump(n) for n in ast.walk(knoten))
+        # Die Anweisung, in der erstellt wird (der Zweig Codex/sonst) — davor, auf derselben
+        # Ebene, eine eigene Prüfung; die im Codex-Zweig allein deckt den anderen Zweig nicht.
+        i = next(i for i, n in enumerate(fn.body) if erstellt(n))
+        self.assertTrue(any(prueft(n) for n in fn.body[:i]), "Prüfung vor dem Erstellen fehlt")
 
     async def test_stopp_ohne_neubau_wie_bisher(self):
         docker = FakeDocker(FakeBehaelter("alt1", NAME))
