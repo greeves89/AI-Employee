@@ -533,6 +533,14 @@ function Karte({
         </div>
       )}
 
+      {/* „Fertig nur mit Beleg“: im Review sehen, ob der Agent geprüft hat. */}
+      {karte.spalte === "pruefung" && !karte.sentinel && !gescheitert && (karte.beleg === "fehlt" || karte.beleg === "ungeprueft") && (
+        <p className="mt-2 flex items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-400" role="status">
+          <ShieldAlert className="h-3 w-3 shrink-0" aria-hidden="true" />
+          {karte.beleg === "fehlt" ? "Ohne Beleg gemeldet — bitte selbst prüfen" : "Vom Agenten als ungeprüft gemeldet"}
+        </p>
+      )}
+
       {(karte.spalte === "pruefung" || karte.spalte === "triage") && !karte.sentinel && (karte.fehler || karte.ergebnis) && (
         <p className={cn("mt-2 line-clamp-4 whitespace-pre-line text-xs", gescheitert ? "text-red-500" : "text-muted-foreground")}>
           {gescheitert && <TriangleAlert className="mr-1 inline h-3 w-3" />}

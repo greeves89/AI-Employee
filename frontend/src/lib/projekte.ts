@@ -64,6 +64,8 @@ export interface ProjektKarte {
   fehler: string | null;
   /** Vom Sentinel angehalten: Grund für die Karte und Text für „Neuer Versuch“. */
   sentinel?: { grund?: string; hinweis: string; fortsetzen: string } | null;
+  /** „Fertig nur mit Beleg“: steht im Ergebnis, was geprüft wurde? (core/beleg) */
+  beleg?: "beleg" | "ungeprueft" | "fehlt" | null;
 }
 
 export interface ProjektLauf {

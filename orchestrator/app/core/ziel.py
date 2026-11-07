@@ -67,7 +67,8 @@ def befehl(text: str) -> tuple[str, str] | None:
 
 _REGELN = (
     "Beende deine Antwort mit GENAU EINER dieser Zeilen, sobald sie zutrifft:\n"
-    f"{ERREICHT} — das Ziel ist vollständig erfüllt und von dir geprüft.\n"
+    f"{ERREICHT} — das Ziel ist vollständig erfüllt und von dir geprüft; darüber eine Zeile "
+    "„Beleg: …“ (was du geprüft hast, mit Ergebnis).\n"
     f"{PAUSIERT}: <deine Frage> — du kommst ohne Entscheidung des Nutzers nicht weiter.\n"
     "Trifft keine zu, schreib keine davon — dann geht es automatisch mit der nächsten Runde weiter."
 )
@@ -209,7 +210,18 @@ async def nach_zug(
     ziel, runden = beansprucht[0], int(beansprucht[1])
 
     urteil = "pausiert" if fehlgeschlagen else bewerte(antwort)
+    beleg_nachfordern = False
     if urteil == "erreicht":
+        # „Fertig nur mit Beleg“ (core/beleg): ohne Beleg EINMAL nachfordern. Beim zweiten
+        # Mal gilt es — eine Schleife bis zur Rundengrenze kostete nur Geld.
+        from app.core.beleg import FEHLT, stand as _beleg_stand
+
+        schluessel = f"ziel:beleg:{agent_id}:{session_id}"
+        if _beleg_stand(antwort) == FEHLT and not await _schon_nachgefordert(redis_client, schluessel):
+            beleg_nachfordern = runden < ZIEL_MAX_RUNDEN
+    if beleg_nachfordern:
+        neu = AKTIV
+    elif urteil == "erreicht":
         neu = ERLEDIGT
     elif urteil == "pausiert":
         neu = PAUSE
@@ -223,13 +235,32 @@ async def nach_zug(
     await db.commit()
 
     if neu == AKTIV:
-        if await naechste_runde(redis_client, agent_id, session_id, ziel, runden + 1) is None:
+        if await naechste_runde(redis_client, agent_id, session_id, ziel, runden + 1,
+                                beleg_fehlt=beleg_nachfordern) is None:
             neu = PAUSE  # Budget gesperrt — ``budget_gesperrt`` hat pausiert
     return neu
 
 
+async def _schon_nachgefordert(redis_client, schluessel: str) -> bool:
+    """Wurde der Beleg in diesem Gespräch schon einmal nachgefordert? (merkt es sich 1 Tag)"""
+    try:
+        return not await redis_client.set(schluessel, "1", nx=True, ex=86400)
+    except Exception:  # noqa: BLE001 — ohne Redis lieber nicht nachfordern als endlos
+        return True
+
+
+#: Zusatz, wenn „ZIEL ERREICHT“ ohne Beleg kam (``core/beleg``).
+BELEG_NACHFORDERN = (
+    "Du hast ZIEL ERREICHT gemeldet, aber keinen Beleg genannt. Prüfe das Ergebnis jetzt "
+    "wirklich (Test, Befehl, Datei ansehen) und nenne in einer Zeile „Beleg: …“, was du geprüft "
+    "hast und mit welchem Ergebnis — oder „Ungeprüft: …“ mit dem Grund. Dann erneut die "
+    "Schlusszeile."
+)
+
+
 async def naechste_runde(
     redis_client, agent_id: str, session_id: str, ziel: str, runde: int,
+    *, beleg_fehlt: bool = False,
 ) -> str | None:
     """Eine Runde einreihen — wie eine Chat-Nachricht, nur ohne Tippen.
 
@@ -255,7 +286,7 @@ async def naechste_runde(
 
     einreihung = await einreihen(redis_client, agent_id, {
         "id": message_id,
-        "text": auftrag(ziel, runde),
+        "text": (BELEG_NACHFORDERN + "\n\n" if beleg_fehlt else "") + auftrag(ziel, runde),
         "model": None,
         "images": [],
         "source": "webapp",

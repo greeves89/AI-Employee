@@ -108,7 +108,8 @@ class NachZugTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_erreicht_beendet(self):
         await self._setzen()
-        self.assertEqual(await self._zug("m1", "Fertig.\nZIEL ERREICHT"), ziel.ERLEDIGT)
+        # Seit „Fertig nur mit Beleg“ (core/beleg) gehört die Beleg-Zeile dazu.
+        self.assertEqual(await self._zug("m1", "Fertig.\nBeleg: pytest 12 grün\nZIEL ERREICHT"), ziel.ERLEDIGT)
         self.naechste.assert_not_awaited()
 
     async def test_pausiert_wartet_und_naechste_nutzerantwort_setzt_fort(self):

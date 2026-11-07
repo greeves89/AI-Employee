@@ -39,6 +39,7 @@ from sqlalchemy.orm import defer
 
 from app.core.fremdtext import einzeilig
 from app.core.uebernahme import SELBST_MERGEN_REGEL
+from app.core.beleg import REGEL as BELEG_REGEL
 from app.models.projekt_karte import ABGESCHLOSSEN, SPALTEN, STUFEN, ProjektKarte
 from app.models.task import Task, TaskStatus
 
@@ -159,6 +160,8 @@ def karte_dict(k: ProjektKarte, task: Task | None = None, *, lauf_sichtbar: bool
         "agent_id": k.agent_id,
         "task_id": k.task_id,
         "task_status": (task.status.value if hasattr(task.status, "value") else str(task.status)) if task else None,
+        # „Fertig nur mit Beleg“ (core/beleg): beleg | ungeprueft | fehlt — fürs Review.
+        "beleg": ((task.metadata_ or {}).get("beleg") if task is not None and zeigen else None),
         "stufe": stufe_aus(k, task),
         "notiz": k.notiz,
         "extern_bearbeiter": k.extern_bearbeiter,
@@ -562,7 +565,8 @@ def karten_auftrag(karte: ProjektKarte, projekt_name: str, *, fremd: bool = Fals
         "- Erkenntnisse, die das ganze Projekt betreffen, hältst du mit `projekt_wissen_schreiben` fest.\n"
         + RUECKFRAGE_REGEL
         + f"- Arbeitest du mit einem Pull Request: {SELBST_MERGEN_REGEL}\n"
-        + "- Bist du fertig, schließ den Lauf mit einem kurzen Ergebnis ab — die Karte geht dann ins Review."
+        + "- Bist du fertig, schließ den Lauf mit einem kurzen Ergebnis ab — die Karte geht dann ins Review. "
+        + BELEG_REGEL
         + (
             f"\n\n## Regeln für das Issue #{karte.extern_nr}\n"
             f"- Das Board hat das Issue im Repo schon als übernommen markiert (In-Arbeit-Tag und "
