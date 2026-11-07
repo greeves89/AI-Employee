@@ -353,7 +353,7 @@ async def _refresh_claude_token() -> None:
         await asyncio.sleep(30)  # Check file every 30s (cheap file read, NOT an API call)
 
 
-async def _listen_task_events(redis: RedisService) -> None:
+async def _listen_task_events(redis: RedisService, docker=None) -> None:
     """Background task that listens for task start + completion events from agents."""
     try:
         pubsub = await redis.subscribe("task:completions")
@@ -391,7 +391,10 @@ async def _listen_task_events(redis: RedisService) -> None:
 
                 async with async_session_factory() as db:
                     lb = LoadBalancer(redis)
-                    router = TaskRouter(db, redis, lb)
+                    # Mit Docker: Ein Abschluss legt Folge-Läufe an (blinder Prüfer,
+                    # Workflow-Schritte) — ohne Docker weckt der Router deren gestoppte
+                    # Agenten nicht, und der Lauf bliebe in der Warteschlange liegen.
+                    router = TaskRouter(db, redis, lb, docker_service=docker)
                     if channel == "task:started":
                         await router.handle_task_start(data)
                     elif channel == "task:heartbeat":
@@ -2836,7 +2839,7 @@ written this way is not in the index.
         logger.warning(f"Job-state recovery failed: {e}")
 
     # Start background task listener (completions + starts)
-    completion_task = asyncio.create_task(_listen_task_events(app.state.redis))
+    completion_task = asyncio.create_task(_listen_task_events(app.state.redis, app.state.docker))
 
     # Start chat completion persistence listener
     chat_persist_task = asyncio.create_task(_listen_chat_completions(app.state.redis))
