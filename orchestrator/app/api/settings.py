@@ -818,10 +818,16 @@ async def set_egress_proxy(body: EgressSchalter, user=Depends(require_admin),
             raise HTTPException(status_code=400, detail=(
                 "Der Dienst-Schlüssel des Proxys fehlt. Auf dem Server einmal "
                 "./scripts/update.sh ausführen — es legt ihn an — und dann erneut einschalten."))
-        if not await asyncio.to_thread(lambda: egress.proxy_erreichbar(frisch=True)):
+        probe = await asyncio.to_thread(egress.proxy_pruefen)
+        if probe == egress.PROBE_AUS:
             raise HTTPException(status_code=400, detail=(
                 "Der Proxy-Dienst antwortet nicht (Container ai-employee-egress-proxy). "
                 "Erst ihn starten (docker compose up -d), dann einschalten."))
+        if probe != egress.PROBE_OK:
+            raise HTTPException(status_code=400, detail=(
+                "Der Proxy-Dienst läuft, wird vom Orchestrator aber nicht angenommen — meist läuft "
+                "er noch mit einem alten Dienst-Schlüssel. Auf dem Server "
+                "docker compose up -d egress-proxy ausführen, dann erneut einschalten."))
     vorher = bool(settings.egress_proxy_enabled)
     if vorher == body.an:
         return await _egress_stufen_stand(db)       # nichts geändert — kein Protokolleintrag

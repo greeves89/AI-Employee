@@ -121,6 +121,7 @@ class DbTestFall(unittest.IsolatedAsyncioTestCase):
             patch.object(api, "_stufe_protokollieren", AsyncMock()),
             # Keine echte Verbindung zum Proxy-Dienst in Tests (DNS-Wartezeit).
             patch.object(egress, "proxy_erreichbar", return_value=True),
+            patch.object(egress, "proxy_pruefen", return_value=egress.PROBE_OK),
         ]
         for p in self.patches:
             p.start()
@@ -315,16 +316,97 @@ class HauptschalterTests(DbTestFall):
 
     async def test_einschalten_ohne_proxy_dienst_abgelehnt(self):
         await self.schalten(False)
-        with patch.object(egress, "proxy_erreichbar", return_value=False):
+        with patch.object(egress, "proxy_pruefen", return_value=egress.PROBE_AUS):
             with self.assertRaises(HTTPException) as f:
                 await self.schalten(True)
         self.assertIn("antwortet nicht", f.exception.detail)
+        self.assertFalse(settings.egress_proxy_enabled)
+
+    async def test_einschalten_mit_altem_dienstschluessel_im_proxy_abgelehnt(self):
+        """TCP ginge — aber der Proxy wird vom Orchestrator nicht angenommen (Prüfung M2)."""
+        await self.schalten(False)
+        for probe in (egress.PROBE_SCHLUESSEL, egress.PROBE_UNKLAR):
+            with self.subTest(probe), patch.object(egress, "proxy_pruefen", return_value=probe):
+                with self.assertRaises(HTTPException) as f:
+                    await self.schalten(True)
+                self.assertIn("alten Dienst-Schlüssel", f.exception.detail)
         self.assertFalse(settings.egress_proxy_enabled)
 
     async def test_stand_nennt_was_den_schalter_traegt(self):
         stand = await api.get_egress_stufen(user=ADMIN, db=self.db)
         self.assertEqual((stand["proxy_eingeschaltet"], stand["dienst_schluessel"], stand["proxy_erreichbar"]),
                          (True, True, True))
+
+
+class FakeVerbindung:
+    def __init__(self, antwort: bytes):
+        self.antwort, self.gesendet = antwort, b""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def settimeout(self, t):
+        pass
+
+    def sendall(self, daten):
+        self.gesendet += daten
+
+    def recv(self, n):
+        return self.antwort
+
+
+class ProbeTests(unittest.TestCase):
+    """Probe-Anmeldung über den Proxy: 407 = beide Seiten kennen denselben Dienst-Schlüssel."""
+
+    def _probe(self, antwort=None, fehler=None):
+        verbindung = FakeVerbindung(antwort or b"")
+
+        def verbinden(adresse, timeout):
+            if fehler:
+                raise fehler
+            return verbindung
+        with patch.object(settings, "egress_proxy_url", "http://proxy.example.invalid:8080"), \
+                patch("socket.create_connection", verbinden):
+            return egress.proxy_pruefen(), verbindung
+
+    def test_ergebnisse(self):
+        for antwort, erwartet in ((b"HTTP/1.1 407 Proxy Authentication Required\r\n", egress.PROBE_OK),
+                                  (b"HTTP/1.1 503 Service Unavailable\r\n", egress.PROBE_SCHLUESSEL),
+                                  (b"HTTP/1.1 200 Connection established\r\n", egress.PROBE_UNKLAR),
+                                  (b"", egress.PROBE_UNKLAR)):
+            with self.subTest(antwort):
+                self.assertEqual(self._probe(antwort)[0], erwartet)
+
+    def test_keine_verbindung(self):
+        self.assertEqual(self._probe(fehler=ConnectionRefusedError())[0], egress.PROBE_AUS)
+
+    def test_meldet_sich_wie_ein_agent_an_den_es_nicht_gibt(self):
+        import base64
+        _, verbindung = self._probe(b"HTTP/1.1 407 x\r\n")
+        text = verbindung.gesendet.decode()
+        self.assertTrue(text.startswith("CONNECT probe.invalid:443 HTTP/1.1"))
+        kopf = next(z for z in text.split("\r\n") if z.startswith("Proxy-Authorization: Basic "))
+        kennung, _, token = base64.b64decode(kopf.split()[-1]).decode().partition(":")
+        self.assertEqual(kennung, "aie-probe")
+        self.assertGreaterEqual(len(token), 32, "zufällig, kein festes Probe-Kennwort")
+
+    def test_echter_ablauf_gegen_proxy_logik(self):
+        """Gegen die echte Proxy-Logik: passt der Dienst-Schlüssel, lehnt der Orchestrator nur
+        den unbekannten Agenten ab (401) → Anmeldung None → Proxy 407; sonst Fehler → 503."""
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "egress"))
+        import egress_logik as logik
+        agent = logik.anmeldung("Basic " + __import__("base64").b64encode(b"aie-probe:" + b"a" * 32).decode())
+        self.assertIsNotNone(agent, "die Probe-Anmeldung muss als Anmeldung durchgehen")
+        richtig = logik.Orchestrator("http://o", "t", senden=lambda pfad, daten: (401, {}))
+        self.assertIsNone(richtig.hosts(agent), "→ 407 im Proxy")
+        falsch = logik.Orchestrator("http://o", "t", senden=lambda pfad, daten: (403, {}))
+        with self.assertRaises(logik.OrchestratorFehler):
+            falsch.hosts(agent)           # → 503 im Proxy
 
 
 class ProxyErreichbarTests(unittest.TestCase):

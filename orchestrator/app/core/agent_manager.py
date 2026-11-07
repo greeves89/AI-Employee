@@ -89,6 +89,10 @@ _ALT_MUSTER = re.compile(re.escape(ALT_MARKE) + r"\d{10}$")
 
 #: Je Agent: Behälter-ID, sobald der Neubau festgeschrieben ist (kein Rücksprung mehr).
 _festgeschrieben: dict[str, str] = {}
+
+#: Stopp, der während eines Neubaus kam (Nutzer, Sentinel, Leerlauf-Stopp). Der Agent
+#: zeigt dann auf keinen Behälter — ohne diesen Merker liefe der neue danach einfach los.
+_stopp_waehrend_neubau: set[str] = set()
 _CODEX_RECREATE_STAGGER_S = 5.0
 
 
@@ -2321,6 +2325,11 @@ class AgentManager:
 
     async def stop_agent(self, agent_id: str) -> Agent:
         await self._publish_event(agent_id, "system", "Agent stopping...")
+        sperre = _neubau_locks.get(agent_id)
+        if sperre is not None and sperre.locked():
+            # Gerade im Neubau: nicht warten (ein Sentinel-Stopp darf nicht hängen),
+            # sondern vormerken — update_agent hält den neuen Behälter gleich danach an.
+            _stopp_waehrend_neubau.add(agent_id)
         agent = await self._get_agent(agent_id)
         if agent.container_id:
             try:
@@ -2542,11 +2551,23 @@ class AgentManager:
                 if _festgeschrieben.pop(agent_id, None):
                     self._alte_entfernen(beiseite)
                     raise
+                gestoppt = agent_id in _stopp_waehrend_neubau
+                _stopp_waehrend_neubau.discard(agent_id)
                 await self._beiseite_zurueck(agent_id, beiseite, container_name, alte_id,
-                                             starten=wartung)
+                                             starten=wartung and not gestoppt)
                 raise
             _festgeschrieben.pop(agent_id, None)
             self._alte_entfernen(beiseite)
+            if agent_id in _stopp_waehrend_neubau:
+                _stopp_waehrend_neubau.discard(agent_id)
+                logger.info(f"Agent {scrub_log(agent_id)}: Stopp kam während des Neubaus — jetzt angehalten")
+                try:
+                    if neu.container_id:
+                        self.docker.stop_container(neu.container_id)
+                except (NotFound, APIError) as e:
+                    logger.warning(f"Neuer Behälter von {scrub_log(agent_id)} nicht angehalten: {scrub_log(e)}")
+                neu.state = AgentState.STOPPED
+                await self.db.commit()
             return neu
 
     def _alte_entfernen(self, beiseite: list) -> None:

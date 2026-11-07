@@ -227,6 +227,52 @@ class Ruecksprung(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(maximal[0], 1)
 
 
+class StoppWaehrendNeubau(unittest.IsolatedAsyncioTestCase):
+    async def test_stopp_waehrend_neubau_haelt_den_neuen_an(self):
+        """Nutzer oder Sentinel stoppen, während gebaut wird: Der neue Behälter darf danach
+        nicht einfach loslaufen."""
+        docker = FakeDocker(FakeBehaelter("alt1", NAME))
+        docker.angehalten = []
+        echt_stop = docker.stop_container
+        docker.stop_container = lambda cid: (docker.angehalten.append(cid), echt_stop(cid))
+        ref = [None]
+
+        async def neu(aid):
+            # Mitten im Bau kommt der Stopp — er darf nicht auf den Neubau warten.
+            await asyncio.wait_for(ref[0].stop_agent(aid), timeout=1)
+            docker.behaelter["neu1"] = FakeBehaelter("neu1", NAME)
+            ref[0].agent.container_id = "neu1"
+            am._festgeschrieben[aid] = "neu1"
+            return ref[0].agent
+        mgr = ref[0] = _manager(docker, neu)
+        mgr._publish_event = AsyncMock()
+        await mgr.update_agent("a1b2c3d4", wartung=True)
+        self.assertIn("neu1", docker.angehalten)
+        self.assertEqual(mgr.agent.state, AgentState.STOPPED)
+        self.assertNotIn("a1b2c3d4", am._stopp_waehrend_neubau)
+
+    async def test_stopp_waehrend_neubau_bei_fehlschlag_startet_den_alten_nicht(self):
+        docker = FakeDocker(FakeBehaelter("alt1", NAME))
+        ref = [None]
+
+        async def neu(aid):
+            await ref[0].stop_agent(aid)
+            raise RuntimeError("Abbild fehlt")
+        mgr = ref[0] = _manager(docker, neu)
+        mgr._publish_event = AsyncMock()
+        with self.assertRaises(RuntimeError):
+            await mgr.update_agent("a1b2c3d4", wartung=True)
+        self.assertEqual(docker.gestartet, [], "gestoppt bleibt gestoppt, auch bei Wartung")
+
+    async def test_stopp_ohne_neubau_wie_bisher(self):
+        docker = FakeDocker(FakeBehaelter("alt1", NAME))
+        mgr = _manager(docker, AsyncMock())
+        mgr._publish_event = AsyncMock()
+        await mgr.stop_agent("a1b2c3d4")
+        self.assertNotIn("a1b2c3d4", am._stopp_waehrend_neubau)
+        self.assertEqual(mgr.agent.state, AgentState.STOPPED)
+
+
 class KeinZweiterNeubau(unittest.IsolatedAsyncioTestCase):
     async def test_wartender_start_findet_fertigen_neubau(self):
         """Wecken während eines Updates: nicht den gerade fertigen Agenten noch einmal bauen."""
