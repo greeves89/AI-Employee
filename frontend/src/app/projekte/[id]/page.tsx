@@ -20,6 +20,7 @@ import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import { useAgents } from "@/hooks/use-agents";
 import { useAuthStore } from "@/lib/auth";
 import * as api from "@/lib/api";
+import { ProjektStatusZeile } from "@/components/projekte/projekt-status";
 import { apiFehlertext } from "@/lib/api-fehler";
 import { agentZustand } from "@/lib/aufgaben-anzeige";
 import { projektFarbe, type ProjektBoard } from "@/lib/projekte";
@@ -86,7 +87,7 @@ export default function ProjektPage() {
       if (stand === zuletzt.current) return;
       zuletzt.current = stand;
       setProjekt(r.projekt);
-      setBoard({ spalten: r.spalten, laufend: r.laufend, kennzahlen: r.kennzahlen, takt: r.takt });
+      setBoard({ spalten: r.spalten, laufend: r.laufend, kennzahlen: r.kennzahlen, takt: r.takt, status: r.status });
       setFehler(null);
     } catch (e) {
       if (meiner === lauf.current) setFehler(apiFehlertext(e, "Das Projekt konnte nicht geladen werden."));
@@ -297,6 +298,7 @@ export default function ProjektPage() {
       />
 
       <div className="space-y-4 p-4 sm:p-6">
+        <ProjektStatusZeile status={board?.status} />
         {veraltet.length > 0 && (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
             <TriangleAlert className="h-3.5 w-3.5" />

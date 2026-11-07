@@ -373,6 +373,7 @@ async def projekte_uebersicht(user=Depends(require_auth), db: AsyncSession = Dep
         ergebnis.append({
             **_fuer(t, user),
             "kennzahlen": b["kennzahlen"],
+            "status": b["status"],
             "laufend": b["laufend"][:5],
             "naechste": b["spalten"]["bereit"][:3],
             "takt": await _takt_info(db, t),

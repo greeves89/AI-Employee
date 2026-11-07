@@ -121,11 +121,18 @@ export interface ProjektTakt {
   agent_id: string | null;
 }
 
+/** Statuszeile je Projekt (core/projekte.status): das Dringendste zuerst. */
+export interface ProjektStatus {
+  stufe: "blockiert" | "wartet" | "arbeitet" | "ruht";
+  text: string;
+}
+
 export interface ProjektBoard {
   spalten: Record<ProjektSpalte, ProjektKarte[]>;
   laufend: ProjektLauf[];
   kennzahlen: ProjektKennzahlen;
   takt: ProjektTakt;
+  status?: ProjektStatus;
 }
 
 /** Spalten des Boards in ihrer Reihenfolge. ``beschreibung``: graue Zeile unter dem Namen.
