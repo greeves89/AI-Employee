@@ -1,13 +1,13 @@
 """bridge_lernen: Schalter, Nutzungsprotokoll und Regelvorschläge (#1023)
 
 Revision ID: d7e3b91a4c52
-Revises: f3a4b5c6d7e8
+Revises: i7j8k9l0m1n2
 Create Date: 2026-11-04
 """
 from alembic import op
 
 revision = "d7e3b91a4c52"
-down_revision = "f3a4b5c6d7e8"
+down_revision = "i7j8k9l0m1n2"
 branch_labels = None
 depends_on = None
 
