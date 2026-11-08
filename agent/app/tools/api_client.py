@@ -2136,6 +2136,40 @@ class OrchestratorAPIClient:
             )
         return f"Error recording skill usage: {result}"
 
+    async def skill_record_usage(self, params: dict) -> str:
+        """Nutzung ohne Bewertung festhalten — wie skill-server.mjs."""
+        if not params.get("skill_id"):
+            return "Error: skill_id is required"
+        body = {"skill_id": params["skill_id"], "task_id": params.get("task_id")}
+        if params.get("helpfulness") is not None:
+            body["helpfulness"] = params["helpfulness"]
+        result = await self._request("POST", "/skills/agent/record-usage", json=body)
+        if isinstance(result, dict) and result.get("status") in ("recorded", "updated"):
+            return f"Usage recorded. Total uses: {result.get('usage_count', 'n/a')}"
+        return f"Error recording skill usage: {result}"
+
+    async def read_logs(self, params: dict) -> str:
+        """Eigene Containerlogs (als Team-Lead auch die eines Mitglieds), wie read-logs-server.mjs.
+
+        Rechte, Schwärzung und Protokoll liegen beim Orchestrator.
+        """
+        query: dict = {"tail": params.get("tail") or 200}
+        if params.get("target_agent_id"):
+            query["target_agent_id"] = params["target_agent_id"]
+        if params.get("since_minutes"):
+            query["since_minutes"] = params["since_minutes"]
+        result = await self._request("GET", "/agents/logs", params=query)
+        if isinstance(result, str):
+            return result
+        logs = (result.get("logs") or "").strip()
+        wer = "your own container" if result.get("agent_id") == self.agent_id else f"agent {result.get('agent_id')}"
+        if not logs:
+            return f"No recent log lines for {wer}."
+        return (
+            f"Logs for {wer} (last {result.get('tail')} lines, secrets redacted):\n\n"
+            + self._gerahmt("container-logs", logs)
+        )
+
     # ── App Management (my own docker-compose apps; orchestrator runs them) ──
 
     async def list_apps(self, params: dict) -> str:

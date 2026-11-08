@@ -11,6 +11,7 @@ import os
 import urllib.parse
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 
 from app.config import settings
 
@@ -1042,6 +1043,105 @@ def compose_prompt_bundle(prompt: str, lightweight: bool) -> str:
         + mounts
         + marketplace
         + get_improvement_context()
+    )
+
+
+#: Das sagt die Claude-CLI ihrem Modell selbst; Custom-LLM hat diesen Unterbau nicht.
+TOOL_USAGE_RULES = """
+TOOL USAGE RULES (follow strictly):
+- To modify an existing file, use `edit_file` or `multi_edit` — NEVER use `write_file` unless creating a brand-new file. Full overwrites waste tokens and corrupt large files.
+- To search code, use `grep` (content) or `glob` (filenames). Do NOT shell out to bash for grep/find.
+- To fetch docs or URLs, use `web_fetch`. Do NOT use bash(curl) for web content.
+- To inspect git state, use `git_status` / `git_diff`, not `bash("git ...")`.
+- `bash` is for building, testing, installing packages, running scripts — not for file I/O or search.
+
+WORKFLOW:
+1. Explore first (glob / grep / read_file / list_files) before editing.
+2. For edits, include enough surrounding context in `old_string` so it's unique.
+3. After writing code, run the build/tests via `bash` to validate. Never claim success on unverified code.
+"""
+
+#: Beide Custom-LLM-Wege laden Werkzeuge ueber ``search_tools`` nach.
+WERKZEUGE_NACHLADEN = (
+    "\n\n## Werkzeuge bei Bedarf nachladen\n"
+    "Dir ist nur ein KERN-Satz an Werkzeugen direkt verfügbar. Für alles "
+    "Weitere — Microsoft 365 (Mail, Kalender, Teams, OneDrive, Planner), "
+    "Wissensdatenbank, Skills, weitere Integrationen — rufe ZUERST "
+    "`search_tools` mit einer Beschreibung der gewünschten Aktion auf "
+    "(z. B. 'Ordner in OneDrive anlegen'); die passenden Werkzeuge sind "
+    "dann ab deinem nächsten Schritt aufrufbar."
+)
+
+_CUSTOM_LLM_BASIS = {
+    "chat": (
+        "You are a helpful AI coding assistant running in a Docker container. "
+        "Your workspace is at /workspace. Use the available tools to help the user."
+    ),
+    "lauf": (
+        "You are a helpful AI coding assistant running in a Docker container. "
+        "Your workspace is at /workspace. Use the available tools to complete tasks."
+    ),
+}
+
+
+@dataclass(frozen=True)
+class CustomLlmStart:
+    """Was ein Custom-LLM-Weg dem Modell mitgibt, bevor es arbeitet."""
+
+    system: str
+    vor_auftrag: str = ""
+    nach_auftrag: str = ""
+
+
+def compose_custom_llm_start(auftrag: str, *, art: str, task_id: str = "") -> CustomLlmStart:
+    """Der eine Startaufbau fuer alle Custom-LLM-Wege (#161).
+
+    ``art``: ``auftrag`` (LLMRunner, volle Aufgabe), ``kurzlauf`` (LLMRunner,
+    lightweight) oder ``chat`` (LLMChatHandler, erste Nachricht).
+
+    Die CLI-Laufzeiten bekommen ihren Kontext aus ``compose_prompt_bundle`` in
+    einem Stueck; Custom-LLM teilt ihn auf Systemprompt und Nutzernachricht auf.
+    Diese Aufteilung stand bisher zweimal da und lief auseinander: Benutzer-
+    Korrekturen, Einrichtungsstand, Speicherwarnung und sogar die
+    ``CURRENT_TASK_ID``, auf die sich ``TASK_STARTUP_PREFIX`` beruft, kamen hier
+    nie an. Was nur ein Weg bekommt, steht deshalb sichtbar an ``art``.
+    """
+    if art not in ("auftrag", "kurzlauf", "chat"):
+        raise ValueError(f"Unbekannte Startart: {art}")
+    chat = art == "chat"
+    voll = art == "auftrag"
+
+    basis = settings.llm_system_prompt or _CUSTOM_LLM_BASIS["chat" if chat else "lauf"]
+    system = (
+        basis + get_identity_context() + MULTIMODAL_CAPABILITY_NOTE
+        + "\n\n" + TOOL_USAGE_RULES + WERKZEUGE_NACHLADEN
+    )
+    if voll:
+        system += get_approval_rules_prefix()
+    system += get_mounts_context() + get_memory_preload(auftrag[:500]) + get_user_feedback()
+    if voll:
+        system += get_improvement_context()
+    skills = get_skills_context()
+    if skills:
+        system += "\n" + skills
+
+    # Wechselt von Lauf zu Lauf — im Auftragslauf deshalb in die Nutzernachricht,
+    # damit der Systemprompt fuer den Anbieter-Cache gleich bleibt.
+    wechselnd = get_onboarding_context() + get_disk_incident_context()
+    marketplace = get_marketplace_skill_suggestions(auftrag[:200])
+    if chat:
+        # Der Chat hat keine eigene Startnachricht. Freigaberegeln, Fachanleitungen
+        # und Datum setzt der ChatConsumer vor jede Nachricht (auch fuer diese Laufzeit).
+        return CustomLlmStart(system=system + wechselnd + ("\n" + marketplace if marketplace else ""))
+
+    vor = (
+        (f"CURRENT_TASK_ID: {task_id}\n\n" if task_id else "")
+        + (TASK_STARTUP_PREFIX if voll else CHAT_STARTUP_PREFIX)
+        + wechselnd + get_skill_preload(auftrag) + marketplace
+        + zeitkontext() + "\n\n"
+    )
+    return CustomLlmStart(
+        system=system, vor_auftrag=vor, nach_auftrag=SELF_IMPROVEMENT_SUFFIX if voll else "",
     )
 
 

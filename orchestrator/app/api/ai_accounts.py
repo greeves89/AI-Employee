@@ -210,7 +210,7 @@ async def list_realtime_models(
     a realtime provider (AWS Bedrock, Azure Realtime, …), list the models the user
     can pick. ``value`` = ``"<account_id>:<model_id>"``.
     """
-    from app.core.realtime_catalog import REALTIME_PROVIDERS, IMPLEMENTED_ENGINES
+    from app.core.realtime_catalog import REALTIME_PROVIDERS, IMPLEMENTED_ENGINES, sprachmodelle_des_kontos
 
     rows = (await db.execute(
         select(AIAccount).where(AIAccount.is_active.is_(True)).order_by(AIAccount.name)
@@ -231,6 +231,9 @@ async def list_realtime_models(
             {"id": m["name"], "label": m.get("label") or m["name"]}
             for m in (a.models or []) if isinstance(m, dict) and m.get("name")
         ]
+        acct_models = sprachmodelle_des_kontos(a.provider_type, a.extra, acct_models)
+        if acct_models is None:
+            continue
         for m in (acct_models or prov["models"]):
             out.append({
                 "account_id": a.id,

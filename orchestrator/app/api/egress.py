@@ -151,6 +151,35 @@ async def _ki_zugang(db: AsyncSession, agent: Agent) -> list[_Freigabe]:
             for var in gespeichert if aktuell.get(var)]
 
 
+async def _bedrock_zugang(db: AsyncSession, agent: Agent) -> list[_Freigabe]:
+    """Bedrock-API-Schluessel eines Custom-LLM-Agenten — aus derselben Quelle wie beim
+    Einspielen (agent_manager._effective_llm_config): Konto vor eigener Konfiguration.
+
+    Immer der aktuelle Wert, keine Abschrift im Agenten-Eintrag: Ein gewechselter
+    Schluessel gilt sofort, ein abgeschaltetes Konto sperrt auch hinter dem Proxy.
+    """
+    if agent.mode != "custom_llm":
+        return []
+    if agent.ai_account_id:
+        from app.models.ai_account import AIAccount
+        konto = await db.get(AIAccount, agent.ai_account_id)
+        if konto is None or not konto.is_active:
+            return []
+        extra = konto.extra or {}
+        bedrock = konto.provider_type == "bedrock" or any(
+            isinstance(m, dict) and m.get("provider_type") == "bedrock" for m in konto.models or [])
+        cfg = {"provider_type": "bedrock" if bedrock else konto.provider_type, "api_endpoint": konto.api_endpoint,
+               "aws_region": extra.get("aws_region"), "aws_access_key_id": extra.get("aws_access_key_id")}
+        enc = konto.api_key_encrypted
+    else:
+        cfg = agent.llm_config or {}
+        enc = cfg.get("api_key_encrypted")
+    host = egress.bedrock_ziel(cfg)
+    if not (enc and host):
+        return []
+    return [_Freigabe(egress.KI, egress.KI_BEDROCK, "Bedrock-API-Schlüssel", [host], lambda: decrypt_token(enc))]
+
+
 async def _freigaben(db: AsyncSession, body: Verbindung, request: Request) -> list[_Freigabe]:
     if not agent_zugang_pruefen(request, body.agent_id, body.agent_token):
         raise HTTPException(status_code=401, detail="Agent unbekannt")
@@ -163,7 +192,8 @@ async def _freigaben(db: AsyncSession, body: Verbindung, request: Request) -> li
              for s in secrets if s.erlaubte_hosts]
             + await _anbindungen(db, agent)
             + await _mcp_zugaenge(db, agent)
-            + await _ki_zugang(db, agent))
+            + await _ki_zugang(db, agent)
+            + await _bedrock_zugang(db, agent))
 
 
 @router.post("/verbindung", dependencies=[Depends(_nur_proxy)])

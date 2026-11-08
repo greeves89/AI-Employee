@@ -7,7 +7,7 @@ from app.models.agent import AgentState
 
 AgentMode = Literal["claude_code", "codex_cli", "custom_llm"]
 AutonomyLevel = Literal["l1", "l2", "l3", "l4", "custom"]
-LLMProviderType = Literal["openai", "anthropic", "google", "ollama", "lm-studio"]
+LLMProviderType = Literal["openai", "anthropic", "google", "ollama", "lm-studio", "bedrock"]
 
 # Was passiert, wenn das Monatsbudget eines Agenten aufgebraucht ist (#898):
 #   "stop"  = keine neuen Aufgaben/Chat-Nachrichten, Admin wird benachrichtigt (Vorgabe)
@@ -38,6 +38,10 @@ class LLMConfig(BaseModel):
     tools_enabled: bool = True
     thinking_mode: ThinkingMode = "auto"  # "off"=never, "auto"=model decides, "on"=always
     reasoning_effort: ReasoningEffort = ""
+    # Nur Bedrock. api_key ist dann der Bedrock-API-Schluessel oder, mit
+    # aws_access_key_id, das Secret dazu (geht nicht durch den Egress-Proxy).
+    aws_region: str = ""
+    aws_access_key_id: str = ""
 
 
 class LLMConfigUpdate(BaseModel):
@@ -45,6 +49,8 @@ class LLMConfigUpdate(BaseModel):
     api_endpoint: str | None = None
     api_key: str | None = None  # only set if user wants to change it
     model_name: str | None = None
+    aws_region: str | None = None
+    aws_access_key_id: str | None = None
     max_tokens: int | None = None
     temperature: float | None = None
     system_prompt: str | None = None

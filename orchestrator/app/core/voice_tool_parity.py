@@ -88,6 +88,10 @@ DELEGIERT = frozenset({
     # Regeln fuers Bridge-Overlay (#1019): legt der Agent an, der sie nach dem Ja
     # auch ausfuehrt — die Sprachfront bittet ihn darum.
     "bildschirm_regel_anlegen", "bildschirm_regeln", "bildschirm_regel_loeschen",
+    # #161: Videowerkzeuge und Protokoll/Doku-Zugriff laufen im Agenten-Container
+    # (Render, eigene Logs) — die Sprachfront bittet den Agenten darum.
+    "get_docs", "list_videos", "render_video", "read_logs",
+    "skill_record_usage",
 })
 
 #: Andere Namen für dieselbe Sache. Die Sprachfront ist historisch gewachsen und

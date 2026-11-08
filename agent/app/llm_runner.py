@@ -12,19 +12,7 @@ from app.config import llm_default_reasoning_effort, settings
 from app.log_publisher import LogPublisher
 from app.providers import create_provider
 from app.providers.base import BaseLLMProvider, ChatMessage, LLMEvent, format_exception
-from app.runner_hooks import (
-    MULTIMODAL_CAPABILITY_NOTE,
-    SELF_IMPROVEMENT_SUFFIX,
-    TASK_STARTUP_PREFIX,
-    get_approval_rules_prefix,
-    get_identity_context,
-    get_improvement_context,
-    get_marketplace_skill_suggestions,
-    get_memory_preload,
-    get_mounts_context,
-    get_skill_preload,
-    get_skills_context,
-)
+from app.runner_hooks import compose_custom_llm_start
 from app.tools.definitions import TOOL_DEFINITIONS
 from app.werkzeug_eintrag import WerkzeugListe
 from app.tools.executor import ToolExecutor
@@ -42,20 +30,6 @@ MAX_TURNS_HARD_CAP = 200
 
 # Context compression triggers at context_compressor.effective_threshold_tokens
 # (min of 75% of the model window or an absolute token budget).
-
-TOOL_USAGE_RULES = """
-TOOL USAGE RULES (follow strictly):
-- To modify an existing file, use `edit_file` or `multi_edit` — NEVER use `write_file` unless creating a brand-new file. Full overwrites waste tokens and corrupt large files.
-- To search code, use `grep` (content) or `glob` (filenames). Do NOT shell out to bash for grep/find.
-- To fetch docs or URLs, use `web_fetch`. Do NOT use bash(curl) for web content.
-- To inspect git state, use `git_status` / `git_diff`, not `bash("git ...")`.
-- `bash` is for building, testing, installing packages, running scripts — not for file I/O or search.
-
-WORKFLOW:
-1. Explore first (glob / grep / read_file / list_files) before editing.
-2. For edits, include enough surrounding context in `old_string` so it's unique.
-3. After writing code, run the build/tests via `bash` to validate. Never claim success on unverified code.
-"""
 
 def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     """Estimate USD cost based on token counts (delegates to the model registry).
@@ -350,60 +324,12 @@ class LLMRunner:
         # Lauf — die Push-Sperre erkennt daran Läufe des Arbeitstakts (#1117).
         self._tool_executor.lauf = task_id
 
-        # Build system prompt
-        base_system = settings.llm_system_prompt or (
-            "You are a helpful AI coding assistant running in a Docker container. "
-            "Your workspace is at /workspace. Use the available tools to complete tasks."
+        # Dieselben Bausteine wie im Chat — zentral, siehe compose_custom_llm_start.
+        start = compose_custom_llm_start(
+            prompt, art="kurzlauf" if lightweight else "auftrag", task_id=task_id,
         )
-        # Identity (name, role, AGENT.md) for BOTH branches — this runtime never reads
-        # the instruction file from disk the way the CLI runtimes do.
-        base_system = base_system + get_identity_context() + MULTIMODAL_CAPABILITY_NOTE
-
-        skills_ctx = get_skills_context()
-        # Zugewiesene Fachanleitungen (Liste + zum Auftrag passende Anleitung) — war hier
-        # importiert, aber nie gerufen: Custom-LLM-Auftraege kannten ihre Skills nicht.
-        # In die Nutzernachricht, wie bei den CLI-Laufzeiten (Systemprompt bleibt gleich).
-        fach = get_skill_preload(prompt)
-        # Host mounts / Second Brain awareness — custom_llm builds its own system
-        # prompt and never reads the instruction file, so inject it here (parity
-        # with the CLI runtimes, which get it via the bundle / CLAUDE.md).
-        mounts_ctx = get_mounts_context()
-
-        # Datum/Wochentag/Uhrzeit (#905) in die Nutzernachricht, nicht in den
-        # Systemprompt — der bleibt so ueber Laeufe hinweg gleich (Cache).
-        from app.runner_hooks import zeitkontext
-        zeit = zeitkontext() + "\n\n"
-
-        if lightweight:
-            from app.runner_hooks import CHAT_STARTUP_PREFIX
-            # Chat/Telegram deserves the same recall as a task run — the user's standing
-            # preferences (how to address them, what they decided) live in memory, and a
-            # quick reply that ignores them is exactly what feels like amnesia.
-            system_prompt = (
-                base_system + "\n\n" + TOOL_USAGE_RULES + mounts_ctx + get_memory_preload(prompt[:500])
-            )
-            if skills_ctx:
-                system_prompt += "\n" + skills_ctx
-            marketplace_suggestions = get_marketplace_skill_suggestions(prompt[:200])
-            enhanced_prompt = CHAT_STARTUP_PREFIX + fach + marketplace_suggestions + zeit + prompt
-        else:
-            memory_preload = get_memory_preload(prompt[:500])
-            approval_rules = get_approval_rules_prefix()
-            improvement_ctx = get_improvement_context()
-            system_prompt = (
-                base_system
-                + "\n\n"
-                + TOOL_USAGE_RULES
-                + approval_rules
-                + mounts_ctx
-                + memory_preload
-                + improvement_ctx
-            )
-            if skills_ctx:
-                system_prompt += "\n" + skills_ctx
-            marketplace_suggestions = get_marketplace_skill_suggestions(prompt[:200])
-            enhanced_prompt = (TASK_STARTUP_PREFIX + fach + marketplace_suggestions + zeit + prompt
-                               + SELF_IMPROVEMENT_SUFFIX)
+        system_prompt = start.system
+        enhanced_prompt = start.vor_auftrag + prompt + start.nach_auftrag
 
         messages: list[ChatMessage] = [
             ChatMessage(role="system", content=system_prompt),
