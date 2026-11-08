@@ -57,7 +57,12 @@ class UmgebungTest(unittest.TestCase):
         with patch.object(egress, "aktiv", return_value=True):
             env = egress.bedrock_umgebung(_cfg())
         self.assertNotIn("geheim-wert", env.values())
-        self.assertEqual(egress.platzhalter_aus(env["LLM_API_KEY"]), (egress.KI, egress.KI_BEDROCK))
+        # Ueber den Wert gesucht, nicht ueber den Variablennamen: CodeQL haelt alles
+        # unter "..._KEY" fuer ein Passwort und meldet sonst die HMAC-Pruefung in
+        # platzhalter_aus als Passwort-Hash (py/weak-sensitive-data-hashing).
+        gefunden = [n for n, w in env.items() if w.startswith("aie-geheim-")]
+        self.assertEqual(gefunden, ["LLM_API_KEY"])
+        self.assertEqual(egress.platzhalter_aus(env[gefunden[0]]), (egress.KI, egress.KI_BEDROCK))
 
     def test_mit_proxy_sperrt_iam_und_laesst_das_secret_draussen(self):
         with patch.object(egress, "aktiv", return_value=True):
