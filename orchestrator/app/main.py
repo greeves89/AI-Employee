@@ -2960,6 +2960,15 @@ written this way is not in the index.
     produktivitaet_task = asyncio.create_task(produktivitaet_monitor.run())
     app.state.produktivitaet_monitor = produktivitaet_monitor
 
+    # „Aus meiner Arbeit lernen“ (#1023): taegliche Auswertung des Nutzungsprotokolls,
+    # nur fuer Menschen mit eingeschaltetem Schalter.
+    from app.services.bridge_lernen_service import BridgeLernenDienst
+    from app.db.session import async_session_factory as _sf_lernen
+
+    bridge_lernen_dienst = BridgeLernenDienst(_sf_lernen, redis=app.state.redis)
+    bridge_lernen_task = asyncio.create_task(bridge_lernen_dienst.run())
+    app.state.bridge_lernen_dienst = bridge_lernen_dienst
+
     # Start license heartbeat (call2home — opt-in, no-op unless license_server_url is set)
     from app.services.license_heartbeat_service import LicenseHeartbeatService
     from app.db.session import async_session_factory as _sf_lic_hb
@@ -3034,6 +3043,8 @@ written this way is not in the index.
     disk_monitor_task.cancel()
     produktivitaet_monitor.stop()
     produktivitaet_task.cancel()
+    bridge_lernen_dienst.stop()
+    bridge_lernen_task.cancel()
     license_heartbeat.stop()
     license_heartbeat_task.cancel()
     license_ping_task.cancel()

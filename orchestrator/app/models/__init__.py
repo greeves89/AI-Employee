@@ -30,6 +30,7 @@ from app.models.projekt_nachricht import ProjektNachricht
 from app.models.erinnerung import Erinnerung
 from app.models.sekretariat_protokoll import SekretariatProtokoll
 from app.models.bridge_regel import BridgeRegel
+from app.models.bridge_lernen import BridgeLernen, BridgeNutzung, BridgeVorschlag
 from app.models.bereich_aufruf import BereichAufruf
 from app.models.test_run import TestRun
 from app.models.meeting import Meeting
@@ -75,6 +76,9 @@ __all__ = [
     "Erinnerung",
     "SekretariatProtokoll",
     "BridgeRegel",
+    "BridgeLernen",
+    "BridgeNutzung",
+    "BridgeVorschlag",
     "BereichAufruf",
     "TestRun",
     "Meeting",
