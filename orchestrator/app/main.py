@@ -3085,7 +3085,9 @@ from app.core.projekt_dateien import MAX_BYTES as _PROJEKTDATEI_MAX  # noqa: E40
 _koerper_grenze.regel("POST", r"^/api/v1/teams/[^/]+/wissen/dateien$", _PROJEKTDATEI_MAX + 1024 * 1024)
 # Öffentlicher Empfang der Graph-Benachrichtigungen (api/msgraph_benachrichtigung): Microsoft
 # schickt kleine JSON-Körper mit Längenangabe; alles darüber ist kein Microsoft.
-_koerper_grenze.regel("POST", r"^/api/v1/msgraph/", 1024 * 1024)
+# Die Adressprüfung (``?validationToken=``) kommt mit leerem Körper, womöglich ohne Längenangabe —
+# sie liest keinen Körper und darf deshalb ohne durch (sonst scheiterte jedes Abo bei Microsoft).
+_koerper_grenze.regel("POST", r"^/api/v1/msgraph/", 1024 * 1024, ohne_laenge_bei="validationToken")
 app.add_middleware(_koerper_grenze.KoerperGrenze)
 
 # API rate limiting (120 requests/minute per user or IP)

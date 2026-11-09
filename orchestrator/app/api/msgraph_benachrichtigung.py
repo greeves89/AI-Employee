@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 
 from fastapi import APIRouter, Query, Request
@@ -46,8 +47,15 @@ async def _gepruefte_meldungen(request: Request) -> list[tuple[str, dict]]:
     """``(abo_id, meldung)`` für jede Meldung mit echtem ``clientState`` — ohne Datenbank."""
     from app.core import graph_abos
 
+    # Selbst begrenzt lesen (zusätzlich zur Middleware): nie mehr als MAX_KOERPER im Speicher.
     try:
-        daten = await request.json()
+        roh = bytearray()
+        async for stueck in request.stream():
+            roh += stueck
+            if len(roh) > MAX_KOERPER:
+                logger.warning("Graph-Meldung über %d Bytes verworfen", MAX_KOERPER)
+                return []
+        daten = json.loads(bytes(roh) or b"null")
     except Exception:  # noqa: BLE001
         return []
     werte = daten.get("value") if isinstance(daten, dict) else None
