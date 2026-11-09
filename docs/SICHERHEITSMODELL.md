@@ -107,6 +107,7 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
 | Anonymisierer vor dem Modell | opt-in je Agent | erledigt in 1.444.0 |
 | Eigene Identität für Agenten (Pilot beim Kunden) | lizenzierter Microsoft-365-Nutzer je Agent | Phase 1 erledigt in 1.445.0, Phasen 2–4 nach Plan `docs/plaene/agenten-identitaet-m365.md` |
 | Eigene Microsoft-Identität je Agent: Rückruf-Adresse für Graph-Benachrichtigungen prüft heute nichts (`/teams/calling/callback` schreibt nur Protokoll, ändert nichts) | gemeinsamer, prüfender Empfang mit `clientState` | mit Phase 2 des Plans `docs/plaene/agenten-identitaet-m365.md` |
+| Eigenes Konto eines Agenten: Abgleich „eigenes Konto“ über Adresse und `sub`, ein Alias des Besitzers ohne eigene Microsoft-Verbindung fällt nicht auf | hingenommen. Folge: Der Agent arbeitet wissentlich im Postfach des Besitzers, wie ohne eigenes Konto. Härter wäre ein Vergleich der Entra-Objekt-ID (`oid`), wenn Menschen sie beim Verbinden speichern | offen, niedrig |
 | Zielliste für den Ausgang je Agent | offen | geparkt. Empfehlung: opt-in je Agent, bauen, wenn ein Kunde es braucht |
 
 ## Regeln für neue Funktionen

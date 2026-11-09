@@ -33,7 +33,9 @@ export function AgentenKonto({ agentId }: { agentId: string }) {
   // Zurück vom Microsoft-Login mit Ablehnung (z. B. das eigene Konto gewählt).
   useEffect(() => {
     const f = suchParameter.get("error");
-    if (f && suchParameter.get("provider") === "microsoft") setFehler(f);
+    if (f && suchParameter.get("provider") === "microsoft") {
+      setFehler(f === "access_denied" || f === "missing_code" ? "Anmeldung bei Microsoft abgebrochen." : f);
+    }
   }, [suchParameter]);
 
   const verbinden = async () => {

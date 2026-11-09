@@ -270,6 +270,78 @@ class RueckrufTests(_Basis):
         self.assertIn("provider=microsoft", ziel)
 
 
+class ZustandEinmalTests(_Basis):
+    """Review M1: Der Zustand wird EINMAL gelesen; ein Agenten-Zustand landet nie beim Menschen."""
+
+    class _Redis:
+        def __init__(self, wert):
+            self.wert, self.gelesen = wert, 0
+
+        async def get(self, key):
+            self.gelesen += 1
+            return self.wert if key.startswith("oauth:state:") else None
+
+        async def delete(self, key):
+            if key.startswith("oauth:state:"):
+                self.wert = None
+
+    def _http(self):
+        antwort = SimpleNamespace(status_code=200, json=lambda: {"access_token": "neu"}, text="")
+        client = SimpleNamespace(post=AsyncMock(return_value=antwort))
+
+        class _Ctx:
+            async def __aenter__(self_):
+                return client
+
+            async def __aexit__(self_, *a):
+                return False
+
+        return patch("app.services.oauth_service.httpx.AsyncClient", lambda *a, **k: _Ctx())
+
+    async def test_agentenkonto_geht_an_speichern_und_zustand_wird_einmal_gelesen(self):
+        r = self._Redis(json.dumps({"provider": "microsoft", "user_id": "u1", "agent_id": "a1"}))
+        async with self.Session() as db:
+            svc = OAuthService(db, SimpleNamespace(client=r))
+            with self._http(), patch("app.core.agenten_konto.speichern", AsyncMock(return_value="ok")) as sp, \
+                    patch.object(OAuthService, "persist_tokens", AsyncMock()) as pt:
+                await svc.exchange_code("microsoft", "code", "st")
+        self.assertEqual(r.gelesen, 1)
+        self.assertEqual(sp.await_args.args[2:4], ("u1", "a1"))
+        pt.assert_not_awaited()
+
+    async def test_unbrauchbare_agenten_kennung_wird_abgelehnt(self):
+        for wert in (123, "", ["a1"]):
+            r = self._Redis(json.dumps({"provider": "microsoft", "user_id": "u1", "agent_id": wert}))
+            async with self.Session() as db:
+                svc = OAuthService(db, SimpleNamespace(client=r))
+                with self._http(), patch.object(OAuthService, "persist_tokens", AsyncMock()) as pt, \
+                        self.assertRaises(ValueError):
+                    await svc.exchange_code("microsoft", "code", "st")
+                pt.assert_not_awaited()
+
+    async def test_reiner_codetausch_lehnt_agentenzustand_ab(self):
+        r = self._Redis(json.dumps({"provider": "microsoft", "user_id": "u1", "agent_id": "a1"}))
+        async with self.Session() as db:
+            with self._http(), self.assertRaises(ValueError):
+                await OAuthService(db, SimpleNamespace(client=r)).exchange_code_tokens("microsoft", "code", "st")
+
+    async def test_agent_ohne_besitzer_bekommt_kein_konto(self):
+        async with self.Session() as db:
+            (await db.get(Agent, "a1")).user_id = None
+            await db.commit()
+            svc = OAuthService(db, None)
+            svc.kontoname = AsyncMock(return_value="assistenz@example.com")
+            with self.assertRaises(ValueError):
+                await agenten_konto.speichern(svc, "microsoft", "adm", "a1", {"access_token": "x"})
+
+    async def test_abbruch_bei_microsoft_fuehrt_zum_agenten_zurueck(self):
+        from app.api.integrations import oauth_callback
+
+        svc = SimpleNamespace(ruecksprung_fuer=AsyncMock(return_value="/agents/a1?konnektoren=1"))
+        antwort = await oauth_callback("microsoft", code=None, state="s", error="access_denied", service=svc)
+        self.assertTrue(antwort.headers["location"].startswith("/agents/a1?konnektoren=1&error=access_denied"))
+
+
 class StandUndMeldungTests(_Basis):
     async def test_stand_meldet_abgelaufen(self):
         async with self.Session() as db:
@@ -304,6 +376,7 @@ class StandUndMeldungTests(_Basis):
                 await svc._alert_refresh_failure(zeile, "HTTP 400 – invalid_grant")
         meldung = db_add[0]
         self.assertEqual(meldung.action_url, "/agents/a1?konnektoren=1")
+        self.assertEqual(meldung.agent_id, "a1", "Meldung am Agenten, nicht als Systemmeldung bei allen Admins")
         self.assertIn("Assistenz", meldung.title)
         self.assertEqual(push.await_args.args[1], "u1")
 

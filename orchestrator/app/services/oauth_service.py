@@ -157,27 +157,18 @@ class OAuthService:
         except Exception:  # noqa: BLE001 — ohne Ziel gilt die Integrationsseite
             return None
 
-    async def _state_daten(self, state: str) -> dict:
-        try:
-            raw = await self.redis.client.get(f"oauth:state:{state}")
-            if isinstance(raw, bytes):
-                raw = raw.decode()
-            daten = json.loads(raw) if raw else {}
-            return daten if isinstance(daten, dict) else {}
-        except Exception:  # noqa: BLE001
-            return {}
-
     async def exchange_code(self, provider_name: str, code: str, state: str) -> OAuthIntegration:
         """Exchange authorization code for tokens, encrypt and store them.
 
         Trägt der Zustand eine Agenten-Kennung, ist es das eigene Konto dieses Agenten
         (``agenten_konto``): gespeichert am Agenten, geprüft gegen Besitzer bzw. Admin.
+        Der Zustand wird dafür nur EINMAL gelesen — zwei Lesungen konnten auseinanderlaufen,
+        und das Konto des Agenten wäre dann als das des Besitzers gespeichert worden.
         """
-        agent_id = (await self._state_daten(state)).get("agent_id")
-        user_id, token_data = await self.exchange_code_tokens(provider_name, code, state)
+        user_id, agent_id, token_data = await self._code_tauschen(provider_name, code, state)
         if agent_id:
             from app.core import agenten_konto
-            return await agenten_konto.speichern(self, provider_name, user_id, str(agent_id), token_data)
+            return await agenten_konto.speichern(self, provider_name, user_id, agent_id, token_data)
         return await self.persist_tokens(provider_name, user_id, token_data)
 
     async def exchange_code_tokens(
@@ -190,6 +181,16 @@ class OAuthService:
         globalen Anthropic-Integration — der Teamlizenz — und alle Agenten der
         Anlage arbeiteten danach still auf seinem privaten Abo.
         """
+        user_id, agent_id, token_data = await self._code_tauschen(provider_name, code, state)
+        if agent_id:
+            # Ein Agenten-Konto darf nie auf einem Weg landen, der es als Konto eines Menschen speichert.
+            raise ValueError("OAuth state belongs to an agent account")
+        return user_id, token_data
+
+    async def _code_tauschen(
+        self, provider_name: str, code: str, state: str
+    ) -> tuple[str | None, str | None, dict]:
+        """Zustand einmal lesen und verbrauchen, Code eintauschen — ``(user_id, agent_id, token_data)``."""
         state_key = f"oauth:state:{state}"
         raw = await self.redis.client.get(state_key)
         if not raw:
@@ -199,11 +200,16 @@ class OAuthService:
         await self.redis.client.delete(state_key)
 
         # Support both old format (plain string) and new format (JSON with user_id)
+        agent_id: str | None = None
         try:
             state_data = json.loads(raw)
             stored_provider = state_data["provider"]
             user_id: str | None = state_data.get("user_id")
-        except (json.JSONDecodeError, KeyError):
+            if "agent_id" in state_data and state_data["agent_id"] is not None:
+                agent_id = state_data["agent_id"]
+                if not isinstance(agent_id, str) or not agent_id:
+                    raise ValueError("Invalid OAuth state")   # unbrauchbar → nie als Konto eines Menschen weiter
+        except (json.JSONDecodeError, KeyError, TypeError):
             stored_provider = raw
             user_id = None
 
@@ -267,7 +273,7 @@ class OAuthService:
                 raise ValueError(f"Token exchange failed: {token_response.status_code}")
             token_data = token_response.json()
 
-        return user_id, token_data
+        return user_id, agent_id, token_data
 
     async def kontoname(self, provider_name: str, access_token: str) -> str | None:
         """Adresse des angemeldeten Kontos (``userinfo_url``) — ``None``, wenn nicht feststellbar."""
@@ -816,7 +822,9 @@ class OAuthService:
             **({"agent_id": agent_id} if agent_id else {}),
         }
         notif = Notification(
-            agent_id="system",
+            # Konto eines Agenten: Meldung am Agenten (sehen Besitzer und Freigegebene),
+            # nicht als Systemmeldung bei allen Admins.
+            agent_id=agent_id or "system",
             type="error",
             title=titel,
             message=nachricht[:2000],
@@ -848,7 +856,7 @@ class OAuthService:
                     self.db, user_id, titel, nachricht,
                     data={
                         "notification_id": str(notif.id),
-                        "agent_id": "system",
+                        "agent_id": agent_id or "system",
                         "type": "error",
                         "action_url": ziel,
                         "meta": meta,

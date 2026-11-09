@@ -55,6 +55,8 @@ async def speichern(svc, provider_name: str, user_id: str | None, agent_id: str,
     nutzer = await db.get(User, user_id) if user_id else None
     if agent is None or nutzer is None or not await darf_verbinden(db, agent, nutzer):
         raise ValueError("Nur der Besitzer des Agenten darf sein Konto verbinden")
+    if not agent.user_id:
+        raise ValueError("Der Agent hat keinen Besitzer — bitte zuerst einen Besitzer zuweisen")
     # ERST prüfen, dann speichern: Eine abgelehnte Anmeldung darf ein bestehendes,
     # funktionierendes Konto des Agenten nicht überschreiben.
     konto = await svc.kontoname(provider_name, token_data.get("access_token", ""))

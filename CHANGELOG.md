@@ -19,9 +19,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 - **Nicht das eigene Konto:** Meldet sich jemand mit dem eigenen Konto (Adresse oder `sub` des Besitzers oder Anmeldenden) oder lässt sich das Konto nicht feststellen, wird abgelehnt, und zwar VOR dem Speichern. Ein bestehendes Konto bleibt dann unverändert. Abgelehnte Rückrufe führen zurück zum Agenten.
 - Das Trennen des Agenten-Kontos lässt die MCP-Freigaben des Besitzers stehen.
 - Verbinden und Trennen stehen im Prüfprotokoll.
+- **Nach unabhängigem Sicherheitsreview** (kein kritischer oder hoher Befund):
+  - Der Anmelde-Zustand wird nur noch einmal gelesen. Zwei Lesungen konnten auseinanderlaufen, und ein Agenten-Konto wäre dann als Konto des Besitzers gespeichert worden. Eine unbrauchbare Agenten-Kennung im Zustand wird abgelehnt. Der reine Codetausch (eigener Claude-Zugang) nimmt keinen Agenten-Zustand an.
+  - Agenten ohne Besitzer bekommen kein Konto.
+  - Die Meldung bei gescheiterter Erneuerung hängt am Agenten (Besitzer und Freigegebene sehen sie), nicht als Systemmeldung bei allen Admins.
+  - Bricht man bei Microsoft ab, führt der Rückruf zurück zum Agenten. Vorher endete er mit einem rohen 422, weil `code` Pflicht war (betraf alle Integrationen).
+  - Bekannte Grenze: Der Abgleich „eigenes Konto“ vergleicht Adresse und `sub`. Ein Alias des Besitzers ohne eigene Microsoft-Verbindung fällt nicht auf. Folge wäre nur, dass der Agent wissentlich im Postfach des Besitzers arbeitet, wie ohne eigenes Konto.
 
 ### Tests
-- `test_agenten_konto.py` (28 Fälle, echte SQLite-Datenbank):
+- `test_agenten_konto.py` (33 Fälle, echte SQLite-Datenbank):
   - Trennung Mensch/Agent, kein Rückfall, Ablehnung des eigenen Kontos vor dem Speichern
   - Rechte an den Endpunkten, Rückruf und Rücksprung, Sicherheitsstatus, Meldung
   - Gegenprobe: Ohne Filter, ohne „kein Rückfall“ und ohne „fail closed“ schlagen die Tests fehl.
