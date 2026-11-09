@@ -698,6 +698,51 @@ export async function trenneAgentMicrosoftKonto(agentId: string): Promise<Pick<A
   return fetchJSON(`${getBase()}/agents/${agentId}/microsoft-konto`, { method: "DELETE" });
 }
 
+export interface TeamsKanal { team_id: string; channel_id: string; name?: string }
+
+export interface KanalStand {
+  kanal: "teams" | "slack" | "discord" | "whatsapp";
+  aktiv: boolean;
+  ziele?: string[];
+  teams_kanaele?: TeamsKanal[];
+  besprechungs_chats?: number;
+  nur_bei_erwaehnung?: boolean;
+  stichworte?: string[];
+  bot_kennung?: string;
+  telefon_id?: string;
+  absender?: string[];
+  /** Zugangsdaten kommen nie zurück — nur, ob welche gespeichert sind. */
+  token_gesetzt?: boolean;
+  /** Für Freigegebene (nicht Besitzer/Admin): nur an/aus und Anzahl. */
+  nur_zusammenfassung?: boolean;
+  anzahl_ziele?: number;
+  anzahl_absender?: number;
+}
+
+export type KanalUpdate = Partial<Omit<KanalStand, "kanal" | "token_gesetzt" | "besprechungs_chats">> & { token?: string };
+
+export interface TeamsAuswahl {
+  chats: { id: string; art: string; name: string }[];
+  kanaele: TeamsKanal[];
+}
+
+/** Kanäle eines Agenten (Teams, Slack, Discord, WhatsApp) — ohne Zugangsdaten. */
+export async function getAgentKanaele(agentId: string): Promise<{ kanaele: KanalStand[] }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/kanaele`);
+}
+
+export async function setzeAgentKanal(agentId: string, kanal: string, patch: KanalUpdate): Promise<KanalStand> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/kanaele/${kanal}`, {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
+}
+
+/** Chats und Kanäle, die der Agent in Teams sehen kann — zum Auswählen. */
+export async function getTeamsAuswahl(agentId: string): Promise<TeamsAuswahl> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/kanaele/teams/auswahl`);
+}
+
 export async function getAgentConfidence(agentId: string): Promise<ConfidenceSettings> {
   return fetchJSON(`${getBase()}/agents/${agentId}/confidence`);
 }

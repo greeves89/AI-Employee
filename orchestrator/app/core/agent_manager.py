@@ -14,6 +14,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.config import get_agent_version, settings
 from app.core import autonomy_matrix
+from app.core.kanaele import ohne_zugangsdaten
 from app.core.agent_duty import vom_nutzer_angehalten
 from app.core.egress import ANBINDUNG, aktiv as egress_aktiv, platzhalter as egress_platzhalter
 from app.core.egress import ki_ueber_proxy as egress_ki_stufe, ki_umstellen as egress_ki_umstellen, veraltet as egress_veraltet
@@ -3299,7 +3300,8 @@ class AgentManager:
             "interaction_account_id": config.get("interaction_account_id"),
             "interaction_model_id": config.get("interaction_model_id"),
             "voice_delegate_to_agent": config.get("voice_delegate_to_agent"),
-            "config": config,
+            # Ohne verschlüsselte Zugangsdaten der Kanäle (core/kanaele) — die Antwort sehen auch Freigegebene.
+            "config": ohne_zugangsdaten(config),
         }
 
         # Add live metrics from Redis

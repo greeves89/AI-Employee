@@ -177,6 +177,8 @@ class SpeichernTests(_Basis):
                                                   {"access_token": "neu", "refresh_token": "r"})
             self.assertEqual((zeile.agent_id, zeile.user_id), ("a1", "u1"))
             self.assertEqual(await self._zeilen(db), [("a1", "assistenz@example.com")])
+        # Frische Sitzung: Nur Festgeschriebenes zählt (protokolliere merkt bloß vor).
+        async with self.Session() as db:
             prot = (await db.execute(select(AuditLog))).scalars().all()
         self.assertTrue(any("verbunden" in (p.command or "") for p in prot))
 

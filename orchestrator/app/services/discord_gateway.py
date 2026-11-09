@@ -16,6 +16,7 @@ Das Token liegt verschlüsselt in der Agenten-Konfiguration, nicht im Code.
 """
 
 import logging
+from urllib.parse import quote
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -145,7 +146,7 @@ class DiscordGateway:
         delivered = 0
 
         for channel_id in cfg.get("channels") or []:
-            data = await _call(token, "GET", f"/channels/{channel_id}/messages",
+            data = await _call(token, "GET", f"/channels/{quote(str(channel_id), safe='')}/messages",
                                params={"limit": MAX_PER_POLL})
             # Discord liefert neueste zuerst — umgedreht bleibt die Reihenfolge
             # des Gespraechs erhalten.
@@ -222,7 +223,7 @@ async def send_reply(agent: Agent, context: dict, text: str) -> bool:
         return False
     try:
         for chunk in split_message(to_discord_markdown(text)):
-            await _call(token, "POST", f"/channels/{channel_id}/messages",
+            await _call(token, "POST", f"/channels/{quote(str(channel_id), safe='')}/messages",
                         json={"content": chunk})
         return True
     except Exception as e:  # noqa: BLE001

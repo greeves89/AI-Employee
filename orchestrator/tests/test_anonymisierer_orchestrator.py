@@ -129,13 +129,23 @@ class EndpunktTests(unittest.IsolatedAsyncioTestCase):
         from app.api import agents as api
         manager = SimpleNamespace(_get_agent=AsyncMock(return_value=agent), restart_agent=AsyncMock())
         self.manager = manager
-        db = SimpleNamespace(commit=AsyncMock())
+        reihenfolge = self.reihenfolge = []
+        db = SimpleNamespace(commit=AsyncMock(side_effect=lambda: reihenfolge.append("commit")))
         with patch.object(api, "_check_owner", AsyncMock()), \
-                patch("app.core.audit.protokolliere", AsyncMock()) as protokoll, \
+                patch("app.core.audit.protokolliere",
+                      AsyncMock(side_effect=lambda *a, **k: reihenfolge.append("protokoll"))) as protokoll, \
                 patch("app.core.egress.aktiv", return_value=True):
             aus = await api.update_agent_anonymisierer("a1", api.AnonymisiererUpdate(**body), user=user, db=db,
                                                        manager=manager)
         return aus, protokoll
+
+    async def test_protokolleintrag_wird_festgeschrieben(self):
+        """protokolliere merkt nur vor — bis 1.447 kam danach kein Commit, der Eintrag ging verloren."""
+        from app.models.user import UserRole
+
+        agent = SimpleNamespace(id="a1", user_id="u1", mode="claude_code", config={}, container_id=None)
+        await self._patch(agent, SimpleNamespace(id="u1", role=UserRole.MEMBER), {"aktiv": False})
+        self.assertEqual(self.reihenfolge[-2:], ["protokoll", "commit"])
 
     async def test_besitzer_schaltet_ein(self):
         from app.models.user import UserRole
