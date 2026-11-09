@@ -4982,7 +4982,8 @@ und was er sendet, kommt von dir. Bekommt er ein eigenes, lizenziertes Microsoft
 Kalender, eigener Absender. Dein Postfach sieht er dann nicht mehr.
 
 **Vorher (IT):** Ein Microsoft-365-Nutzer für den Agenten mit Lizenz (Postfach, bei Bedarf
-Teams). Die Anmeldung läuft einmal über AI Employee, danach mit einem Erneuerungs-Token.
+Teams). Die vollständige Checkliste für die IT steht in `docs/AGENTEN_KONTO_EINRICHTUNG.md`
+(Berechtigungen, MFA, Conditional Access, öffentliche Adresse, Abnahme). Die Anmeldung läuft einmal über AI Employee, danach mit einem Erneuerungs-Token.
 Eine Regel, die regelmäßig eine neue Anmeldung erzwingt, beendet den Zugang. Dann ist neu
 zu verbinden.
 
