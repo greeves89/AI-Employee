@@ -1160,6 +1160,14 @@ def _browser_geheimnisse(agent_id: str) -> dict[str, str]:
     }
 
 
+def _plattform_geheimnisse(agent_id: str) -> dict[str, str]:
+    """Schlüssel, mit dem der Agent Plattform-Hinweise (Sentinel) auf Echtheit prüft
+    (``core/plattform_hinweis``). Nur der Agenten-Server liest ihn (``serverwerte``)."""
+    from app.core import plattform_hinweis
+
+    return {plattform_hinweis.UMGEBUNG: plattform_hinweis.schluessel(agent_id)}
+
+
 async def alte_behaelter_aufraeumen(docker) -> dict:
     """Beim Start: beiseitegestellte Behälter (``update_agent``) nach einem Absturz aufräumen.
 
@@ -1867,6 +1875,7 @@ class AgentManager:
                 # setzt ein Besitzer erst danach per PATCH + Neustart.
                 "BROWSER_ALLOWED_DOMAINS": "",
                 **_browser_geheimnisse(agent_id),
+                **_plattform_geheimnisse(agent_id),
                 "AGENT_WORKSPACE_SIZE_GB": str(settings.agent_workspace_size_gb),
             })
 
@@ -2176,6 +2185,7 @@ class AgentManager:
             # werden, sonst greift eine Aenderung erst beim naechsten davon.
             "BROWSER_ALLOWED_DOMAINS": ",".join(config.get("browser_allowed_domains") or []),
             **_browser_geheimnisse(agent.id),
+            **_plattform_geheimnisse(agent.id),
             # Standard-Denktiefe aus den Agenten-Einstellungen — die Laufzeit
             # nutzt sie ueberall dort, wo am Lauf keine Stufe haengt.
             "DEFAULT_REASONING": str(config.get("default_reasoning", "") or ""),
@@ -2235,6 +2245,7 @@ class AgentManager:
         # sonst koennte ein zugewiesener Key ``BROWSER_ZUGANG`` den Browser fuer
         # einen fremden Agenten im selben Netz oeffnen (#828, Schritt 5).
         env_vars.update(_browser_geheimnisse(agent.id))
+        env_vars.update(_plattform_geheimnisse(agent.id))
         # Weg nach draussen ganz zuletzt — kein Key darf ihn umbiegen (core/egress.py).
         from app.core.egress import agent_umgebung
         env_vars.update(await agent_umgebung(agent_id, env_vars.get("CUSTOM_MCP_SERVERS")))
@@ -2767,6 +2778,7 @@ class AgentManager:
             # werden, sonst greift eine Aenderung erst beim naechsten davon.
             "BROWSER_ALLOWED_DOMAINS": ",".join(config.get("browser_allowed_domains") or []),
             **_browser_geheimnisse(agent.id),
+            **_plattform_geheimnisse(agent.id),
             # Standard-Denktiefe aus den Agenten-Einstellungen — die Laufzeit
             # nutzt sie ueberall dort, wo am Lauf keine Stufe haengt.
             "DEFAULT_REASONING": str(config.get("default_reasoning", "") or ""),
@@ -2841,6 +2853,7 @@ class AgentManager:
         # sonst koennte ein zugewiesener Key ``BROWSER_ZUGANG`` den Browser fuer
         # einen fremden Agenten im selben Netz oeffnen (#828, Schritt 5).
         env_vars.update(_browser_geheimnisse(agent.id))
+        env_vars.update(_plattform_geheimnisse(agent.id))
         # Weg nach draussen ganz zuletzt — kein Key darf ihn umbiegen (core/egress.py).
         from app.core.egress import agent_umgebung
         env_vars.update(await agent_umgebung(agent_id, env_vars.get("CUSTOM_MCP_SERVERS")))

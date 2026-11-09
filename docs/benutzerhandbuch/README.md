@@ -4839,6 +4839,13 @@ Grund im gelben Kasten statt eines roten Fehlers. **Neuer Versuch** gibt sie mit
 zur Nacharbeit zurück. Die Sperre und die Lehre gelten dabei weiter, der Agent nimmt einen
 anderen Weg.
 
+**Echtheit der Hinweise** *(seit 1.443.0)*: Ein Hinweis des Sentinels trägt einen Einmalwert,
+den nur der Server ausstellen kann. Der Agent prüft ihn, bevor sein Modell den Text sieht. Ein
+Text, der nur so aussieht (etwa aus einer Mail, einer Webseite oder von einem anderen Agenten),
+kommt beim Modell nie als Hinweis der Plattform an. Ein mitgeschnittener echter Hinweis gilt kein
+zweites Mal. Für dich ändert sich nichts. Die Prüfung gilt für einen Agenten, sobald er
+aktualisiert ist (Kap. 37.4).
+
 > Den Fund selbst zeigt der Sentinel nie wörtlich, weder dir noch dem Agenten. Schlüssel
 > erscheinen nur gekürzt (Anfang und Ende). Ist ein Schlüssel echt und war er sichtbar,
 > erneuere ihn.

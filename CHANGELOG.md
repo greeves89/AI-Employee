@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.443.0] - 2026-11-09
+
+### Sicherheit
+- **Sentinel-Hinweise mit Einmalwert** (Entscheidung vom 09.11.). Der Sentinel faltet seinen Hinweis mit der Marke `[Plattform-Sentinel]` als Chat-Nachricht in die laufende Sitzung ein. Bisher hing die Echtheit daran, dass JEDER andere Weg in die Warteschlange die Marke entschärft. Auf der Agentenseite prüfte niemand.
+  - Jetzt stellt `chat_auftrag.einreihen(..., plattform=True)` einen Beleg aus (`core/plattform_hinweis.py`): HMAC über Agent, Kennung, Zeit und Text, mit einem eigenen Schlüssel je Agent (`agent_schluessel("sentinel-hinweis", …)`). Das gilt für den Sentinel und den Knopf „Fortsetzen“. Alle anderen Wege entfernen mitgeschickte Belege.
+  - Der Agent bekommt den Schlüssel als reinen Server-Wert (`SENTINEL_HINWEIS_KEY` in `serverwerte`, Werkzeuge sehen ihn nicht).
+  - Beim Entnehmen aus der Warteschlange (`chat_consumer._entnommen`, alle drei Stellen) prüft `agent/app/plattform_hinweis.py`: Die Marke bleibt nur mit gültigem Beleg, höchstens 10 Minuten alt, jede Kennung nur einmal. Sonst wird sie entschärft, bevor das Modell den Text sieht.
+  - Nach unabhängigem Sicherheitsreview: Der Beleg gilt nur für die Gesprächssitzung, für die er ausgestellt ist. Ohne gültigen Beleg wird die Marke in der GANZEN Nachricht entschärft, auch im Telegram-Anzeigenamen. Neben einem echten Hinweis bleibt sie nur im belegten Text.
+  - Fehlt der Schlüssel (Agent noch nicht neu erstellt) oder ist der Hinweis älter als 10 Minuten, meldet der Agent das im Protokoll seines Containers. Der Text kommt weiter an, die technische Sperre wirkt unverändert.
+  - Agenten bekommen den Schlüssel mit der nächsten Neuerstellung. Das übernimmt die Aktualisierung im Leerlauf.
+- Benutzerhandbuch 37.13: Echtheit der Hinweise.
+
+### Tests
+- Agent `test_plattform_hinweis.py`: Referenzwert gleich wie im Orchestrator.
+  - Echter Hinweis behält die Marke.
+  - MC/DC: jede Bedingung allein kippt das Ergebnis (kein Schlüssel, ohne Beleg, abgelaufen, aus der Zukunft, Beleg falsch, anderer Agent, andere Sitzung), Marke in anderen Feldern (Telegram) immer entschärft.
+  - Einmalwert, verfremdete Marke, Nachricht ohne Marke unverändert, Speicher begrenzt.
+  - Alle Entnahmestellen des Chat-Verbrauchers prüfen; Schlüssel ist reiner Server-Wert.
+- Orchestrator `test_plattform_hinweis.py`: Referenzwert, Schlüssel je Agent, Plattform-Weg unterschreibt, jeder andere Weg entschärft und entfernt den Beleg, Schlüssel an jeder Stelle, an der ein Agent entsteht, Belege nur aus `einreihen`.
+- Gegenproben: ohne Entfernen 1 Fehler, ohne Einmal-Prüfung 1, ohne Altersprüfung 2, ohne Sitzung im Beleg 2, nur `text` statt ganzer Nachricht 10.
+- Agenten-Suite (1136) und 118 Orchestrator-Testdateien grün.
+
 ## [1.442.0] - 2026-11-07
 
 ### Neu
