@@ -122,6 +122,38 @@ class AddonTests(unittest.TestCase):
         self._anfrage(addon, f)
         self.assertEqual(f.response.status_code, 413)
 
+    def test_kaputte_kompression_wird_nicht_gesendet(self):
+        """Nachprüfung: kaputte zstd-/gzip-Daten warfen eine Ausnahme — mitmproxy ließ die Anfrage
+        danach ungeprüft durch. Jetzt: 415, nichts geht hinaus."""
+        for art, roh in (("zstd", b"\x28\xb5\x2f\xfd" + b"kaputt" * 10), ("gzip", b"\x1f\x8bkaputt")):
+            with self.subTest(art=art):
+                addon, f = self._flow(roh, content_encoding=art)
+                self._anfrage(addon, f)
+                self.assertIsNotNone(f.response, art)
+                self.assertEqual(f.response.status_code, 415)
+
+    def test_unerwarteter_fehler_sperrt_statt_durchzulassen(self):
+        """Jeder Hook ist fail closed: Anfrage → 502, Antwort → Abbruch."""
+        from unittest.mock import patch
+
+        import aie_egress
+
+        addon, f = self._flow(self.ANFRAGE)
+        with patch.object(aie_egress.anonym, "anfrage_anonymisieren", side_effect=RuntimeError("unerwartet")):
+            self._anfrage(addon, f)
+        self.assertIsNotNone(f.response)
+        self.assertEqual(f.response.status_code, 502)
+        addon, f = self._flow(self.ANFRAGE)
+        with patch.object(type(addon), "_anonym_einstellung", side_effect=RuntimeError("unerwartet")):
+            addon.requestheaders(f)
+        self.assertEqual(f.response.status_code, 502)
+        getoetet = []
+        f.kill = lambda: getoetet.append(True)
+        with patch.object(type(addon), "_maske", side_effect=RuntimeError("unerwartet")):
+            f.response = __import__("mitmproxy").http.Response.make(200, b"{}")
+            addon.responseheaders(f)
+        self.assertEqual(getoetet, [True])
+
     def test_tls_zum_anbieter_fragt_frisch(self):
         from types import SimpleNamespace
         addon, f = self._flow(self.ANFRAGE)

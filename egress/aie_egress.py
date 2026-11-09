@@ -88,6 +88,44 @@ def _antwort(status: int, text: str, **kopf) -> http.Response:
     return http.Response.make(status, text.encode(), {"Content-Type": "text/plain; charset=utf-8", **kopf})
 
 
+def _sicher(richtung: str):
+    """Hook fail closed: Ein unerwarteter Fehler darf nie heißen „durchlassen“.
+
+    mitmproxy protokolliert eine Ausnahme in einem Hook und lässt den Fluss danach WEITER-
+    laufen — eine Anfrage ginge dann ungeprüft (nicht anonymisiert, Platzhalter nicht geprüft)
+    zum Anbieter, eine Antwort unverdeckt zum Agenten. Hier: Anfrage → 502 statt Senden,
+    Antwort/Websocket → Verbindung abbrechen.
+    """
+    import functools
+    import inspect
+
+    def abbrechen(flow, e):
+        log.exception("Egress-Proxy: %s nicht prüfbar — %s", richtung, type(e).__name__)
+        if richtung == "anfrage":
+            flow.response = _antwort(502, "Egress-Proxy: Anfrage konnte nicht geprüft werden — nicht gesendet")
+        else:
+            flow.kill()
+
+    def huelle(fn):
+        if inspect.iscoroutinefunction(fn):
+            @functools.wraps(fn)
+            async def a(self, flow, *args):
+                try:
+                    return await fn(self, flow, *args)
+                except Exception as e:  # noqa: BLE001
+                    abbrechen(flow, e)
+            return a
+
+        @functools.wraps(fn)
+        def s(self, flow, *args):
+            try:
+                return fn(self, flow, *args)
+            except Exception as e:  # noqa: BLE001
+                abbrechen(flow, e)
+        return s
+    return huelle
+
+
 class AieEgress:
     def __init__(self):
         self.orch = logik.Orchestrator(
@@ -158,6 +196,7 @@ class AieEgress:
             data.ignore_connection = True
 
     # ── Platzhalter ersetzen ────────────────────────────────────────────
+    @_sicher("anfrage")
     async def request(self, flow: http.HTTPFlow):
         cid = flow.client_conn.id
         agent = self.agenten.get(cid)
@@ -251,6 +290,8 @@ class AieEgress:
             if e.status == 413:   # Kompressionsbombe: zu groß, nicht „unbekannte Kodierung“
                 return _antwort(413, "Anonymisierer: Anfrage entpackt zu groß zum Prüfen")
             return _antwort(415, f"Anonymisierer: Kodierung {kodierung} nicht prüfbar")
+        except Exception:  # noqa: BLE001 — kaputte Kompression (ZstdError, zlib.error …): nicht senden
+            return _antwort(415, f"Anonymisierer: Kodierung {kodierung} nicht lesbar")
         try:
             # Außerhalb der Ereignisschleife: die Erkennung über bis zu 32 MB darf den Proxy
             # für die anderen Agenten nicht anhalten.
@@ -266,6 +307,7 @@ class AieEgress:
             log.info("Anonymisierer: %d Wert(e) ersetzt (Agent %s)", len(zuordnung), agent[0])
         return None
 
+    @_sicher("anfrage")
     def requestheaders(self, flow: http.HTTPFlow):
         # Aufgebrochene Verbindung eines Agenten: Antworten unkomprimiert anfordern —
         # verdecken laesst sich nur, was lesbar ist, und Entpacken kostet Speicher.
@@ -311,6 +353,7 @@ class AieEgress:
         werte.update(flow.metadata.get("aie_werte") or {})
         return werte
 
+    @_sicher("antwort")
     def responseheaders(self, flow: http.HTTPFlow):
         """Gibt es fuer diesen Agenten etwas zu verdecken, kommt keine Antwort ungeprueft durch.
 
@@ -375,6 +418,7 @@ class AieEgress:
             return
         flow.response.stream = logik.StromMaske(werte)
 
+    @_sicher("antwort")
     def response(self, flow: http.HTTPFlow):
         if flow.response is None:
             return
@@ -414,6 +458,7 @@ class AieEgress:
             log.exception("Antwort liess sich nicht verdecken")
             flow.response = _antwort(502, "Egress-Proxy: Antwort konnte nicht geprüft werden")
 
+    @_sicher("websocket")
     def websocket_message(self, flow: http.HTTPFlow):
         # Anonymisierer: Websockets zu Modellanbietern werden nicht anonymisiert — schließen
         # statt Klartext durchlassen (Codex nutzt standardmäßig HTTP mit Ereignisstrom).
