@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.448.1] - 2026-11-09
+
+### Behoben
+- **Die Karte „Kanäle“ war für Mitglieder nicht erreichbar.** Sie stand unter Einstellungen → Verbindungen, und das zeigt nur die volle Ansicht für Administratoren. Mitglieder kommen nur über das Fenster **Konnektoren** an die Einstellungen ihres Agenten. Die Karte steht jetzt dort, neben dem Microsoft-Konto des Agenten. Aufgefallen beim Bildschirmfoto fürs Handbuch mit dem Demokonto. Handbuch Kap. 34 ist angepasst.
+
 ## [1.448.0] - 2026-11-09
 
 ### Neu

@@ -4167,10 +4167,10 @@ derselbe: Nachricht aufnehmen, ins Gedächtnis legen, Agent antworten lassen.
 
 ### Einen Kanal einschalten *(Oberfläche seit 1.448.0)*
 
-Telegram richtest du unter **Verbindungen → Telegram** ein. Teams, Slack, Discord und WhatsApp
-stehen darunter auf der Karte **Kanäle** (Besitzer des Agenten oder Administrator):
+Teams, Slack, Discord und WhatsApp stehen auf der Karte **Kanäle** (Besitzer des Agenten oder
+Administrator). Telegram richtet ein Administrator unter Einstellungen → Verbindungen ein.
 
-1. Agent öffnen → **Einstellungen** → Abschnitt **Verbindungen** aufklappen.
+1. Agent öffnen und unten auf **Konnektoren** klicken.
 2. Auf der Karte **Kanäle** den gewünschten Kanal aufklappen (Pfeil vor dem Namen).
 3. **Slack/Discord:** die **Kanal-IDs** eintragen (eine je Zeile), dazu die **Bot-Kennung** und das
    **Bot-Token**.
