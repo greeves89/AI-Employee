@@ -3846,8 +3846,13 @@ async def get_agent_kanaele(
     """Teams, Slack, Discord, WhatsApp — Einstellungen ohne Zugangsdaten (core/kanaele)."""
     from app.core import kanaele
 
+    from app.models.user import UserRole
+
     agent = await _kanal_agent(agent_id, user, db, schreiben=False)
-    return {"kanaele": [kanaele.lesen(agent.config, k) for k in kanaele.KANAELE]}
+    staende = [kanaele.lesen(agent.config, k) for k in kanaele.KANAELE]
+    if getattr(user, "role", None) != UserRole.ADMIN and agent.user_id != user.id:
+        staende = [kanaele.zusammenfassung(st) for st in staende]   # Freigegebene: keine Nummern/Kennungen
+    return {"kanaele": staende}
 
 
 @router.put("/{agent_id}/kanaele/{kanal}")
@@ -3864,16 +3869,33 @@ async def update_agent_kanal(
     from app.models.audit_log import AuditEventType
 
     agent = await _kanal_agent(agent_id, user, db, schreiben=True)
+    aenderung = body.model_dump(exclude_unset=True)
+    if kanal == "teams" and agent.user_id != user.id and aenderung != {"aktiv": False}:
+        from app.core import agenten_konto
+
+        if await agenten_konto._zeile(db, agent.id) is None:
+            # Ohne eigenes Konto liest der Agent mit dem Konto des Besitzers — wer hier Chats
+            # einträgt, ließe ihn die Chats des Besitzers lesen. Das stellt nur der Besitzer ein
+            # (wie die Auswahlliste). Ausschalten darf auch ein Admin.
+            raise HTTPException(status_code=403, detail="Teams stellt ohne eigenes Konto des Agenten nur sein "
+                                                        "Besitzer ein (es sind dessen Chats).")
     try:
-        agent.config, geaendert = kanaele.setzen(agent.config, kanal, body.model_dump(exclude_unset=True))
+        neu, geaendert = kanaele.setzen(agent.config, kanal, aenderung)
     except kanaele.UngueltigeEinstellung as e:
         raise HTTPException(status_code=422, detail=str(e))
-    await db.commit()
+    nummer = (((neu.get("channels") or {}).get("whatsapp") or {}).get("phone_number_id") or "")
+    if kanal == "whatsapp" and nummer:
+        andere = (await db.execute(select(Agent.id, Agent.config).where(Agent.id != agent.id))).all()
+        if any((((c or {}).get("channels") or {}).get("whatsapp") or {}).get("phone_number_id") == nummer
+               for _, c in andere):
+            # Eine Nummer gehört genau einem Agenten — sonst landeten Nachrichten bei einem fremden.
+            raise HTTPException(status_code=409, detail="Diese WhatsApp-Nummer ist schon einem anderen Agenten zugeordnet.")
+    agent.config = neu
     if geaendert:
         await protokolliere(db, AuditEventType.SETTINGS_CHANGED, user_id=getattr(user, "id", None),
                             agent_id=agent_id, command=f"Kanal {kanal}: {', '.join(geaendert)}",
                             meta={"aktion": "kanal", "kanal": kanal, "felder": geaendert})
-        await db.commit()
+    await db.commit()   # Änderung und Prüfprotokoll in EINER Transaktion
     return kanaele.lesen(agent.config, kanal)
 
 

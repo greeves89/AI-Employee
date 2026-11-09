@@ -181,7 +181,7 @@ class TeamsGateway:
         for chat_id in cfg.get("chat_ids") or []:
             got, newest = await self._poll_source(
                 agent, cfg, token, since, newest,
-                path=f"/chats/{chat_id}/messages",
+                path=_pfad({"chat_id": chat_id}),
                 context={"chat_id": chat_id},
             )
             delivered += got
@@ -192,7 +192,7 @@ class TeamsGateway:
                 continue
             got, newest = await self._poll_source(
                 agent, cfg, token, since, newest,
-                path=f"/teams/{team_id}/channels/{channel_id}/messages",
+                path=_pfad({"team_id": team_id, "channel_id": channel_id}),
                 context={"team_id": team_id, "channel_id": channel_id},
             )
             delivered += got

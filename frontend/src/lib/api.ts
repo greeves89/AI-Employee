@@ -713,6 +713,10 @@ export interface KanalStand {
   absender?: string[];
   /** Zugangsdaten kommen nie zurück — nur, ob welche gespeichert sind. */
   token_gesetzt?: boolean;
+  /** Für Freigegebene (nicht Besitzer/Admin): nur an/aus und Anzahl. */
+  nur_zusammenfassung?: boolean;
+  anzahl_ziele?: number;
+  anzahl_absender?: number;
 }
 
 export type KanalUpdate = Partial<Omit<KanalStand, "kanal" | "token_gesetzt" | "besprechungs_chats">> & { token?: string };

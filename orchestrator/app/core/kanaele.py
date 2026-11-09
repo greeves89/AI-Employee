@@ -24,7 +24,32 @@ HOECHSTENS_ZIELE = 50
 HOECHSTENS_STICHWORTE = 20
 
 _KENNUNG = re.compile(r"^[A-Za-z0-9:@._\-]{1,200}$")
-_NUMMER = re.compile(r"^\+?[0-9]{5,20}$")
+#: Wie whatsapp_gateway._MIN_ENTRY_DIGITS — kürzere Einträge verwirft der Kanal ohnehin.
+_NUMMER = re.compile(r"^\+?[0-9]{10,20}$")
+_ZIFFERN = re.compile(r"^[0-9]{5,30}$")
+
+
+def gueltige_kennung(wert: str) -> bool:
+    """Kennungen landen in URL-Pfaden (Graph, Discord) — nur Punkte („..“) wäre ein Pfadsprung."""
+    return bool(_KENNUNG.match(wert)) and wert.strip(".") != ""
+
+
+def ohne_zugangsdaten(config: dict | None) -> dict | None:
+    """``config`` für Antworten nach außen: verschlüsselte Zugangsdaten der Kanäle entfernt.
+    Auch der Geheimtext gehört nicht zu Freigegebenen (Schlüssel-Leck → alle Token offen)."""
+    if not isinstance(config, dict) or not isinstance(config.get("channels"), dict):
+        return config
+    kanaele = {k: ({f: w for f, w in v.items() if not str(f).endswith("_enc")} if isinstance(v, dict) else v)
+               for k, v in config["channels"].items()}
+    return {**config, "channels": kanaele}
+
+
+def zusammenfassung(stand: dict) -> dict:
+    """Für Menschen, denen der Agent nur freigegeben ist: an/aus und Anzahl — keine
+    Telefonnummern, Chat- oder Kanalkennungen."""
+    return {"kanal": stand["kanal"], "aktiv": stand["aktiv"],
+            "anzahl_ziele": len(stand.get("ziele") or []) + len(stand.get("teams_kanaele") or []),
+            "anzahl_absender": len(stand.get("absender") or []), "nur_zusammenfassung": True}
 
 
 class UngueltigeEinstellung(ValueError):
@@ -45,7 +70,7 @@ def _kennungen(werte, was: str, hoechstens: int = HOECHSTENS_ZIELE) -> list[str]
         w = str(w or "").strip()
         if not w:
             continue
-        if not _KENNUNG.match(w):
+        if not gueltige_kennung(w):
             raise UngueltigeEinstellung(f"{was}: „{w[:40]}“ ist keine gültige Kennung.")
         if w not in aus:
             aus.append(w)
@@ -151,8 +176,8 @@ def setzen(config: dict | None, kanal: str, e: dict) -> tuple[dict, list[str]]:
     elif kanal == "whatsapp":
         if "telefon_id" in e:
             t = str(e["telefon_id"] or "").strip()
-            if t and not _KENNUNG.match(t):
-                raise UngueltigeEinstellung("Telefonnummer-ID ungültig.")
+            if t and not _ZIFFERN.match(t):
+                raise UngueltigeEinstellung("Telefonnummer-ID ungültig (nur Ziffern).")
             setze("phone_number_id", t, "telefon_id")
         if "absender" in e:
             liste = e["absender"] or []

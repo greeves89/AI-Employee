@@ -4181,6 +4181,15 @@ stehen darunter auf der Karte **Kanäle** (Besitzer des Agenten oder Administrat
 4. Auf **Speichern** klicken.
 5. Mit dem Schalter rechts neben dem Namen den Kanal **einschalten**.
 
+Eine WhatsApp-Nummer gehört genau einem Agenten. Ist sie schon vergeben, lehnt die Anlage ab.
+Wem du den Agenten nur freigegeben hast, sieht je Kanal nur, ob er an ist und wie viele Ziele
+er hat. Ohne eigenes Microsoft-Konto des Agenten stellst nur du Teams ein. Ausschalten kann
+auch ein Administrator.
+
+**Bedenke beim Einschalten:** Wer in einem eingestellten Kanal schreibt, kann den Agenten
+starten. Bei „Nur antworten, wenn der Agent erwähnt … wird“ (Voreinstellung) nur mit
+Erwähnung, sonst mit jeder Nachricht. Jede Antwort ist ein Lauf des Agenten.
+
 Zugangsdaten werden verschlüsselt gespeichert und nie wieder angezeigt. Die Karte zeigt nur
 „Token gesetzt“ oder „nicht gesetzt“. Lässt du das Feld leer, bleibt das gespeicherte Token.
 **Token entfernen** löscht es. Ins Audit-Log kommt, welche Felder geändert wurden, nie ein Token.

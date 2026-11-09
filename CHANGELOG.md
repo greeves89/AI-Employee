@@ -19,15 +19,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   - Ändern dürfen nur Besitzer und Admin. Kennungen, Nummern und Längen werden serverseitig geprüft.
   - Ins Prüfprotokoll gehen die geänderten Felder, nie Werte von Zugangsdaten.
   - Die Teams-Chatliste ohne eigenes Konto des Agenten (also die Chats des Besitzers) sieht nur der Besitzer, auch kein Admin.
+- **Nach unabhängigem Sicherheitsreview** (kein kritischer Befund; ein hoher und vier mittlere behoben):
+  - **H1:** Eine WhatsApp-Nummer ließ sich mehreren Agenten zuordnen. Die Nachrichten an einen Agenten konnten so bei einem fremden landen.
+    - Jetzt lehnt die Anlage eine schon vergebene Nummer ab (409).
+    - Bei Doppelungen aus dem Altbestand verwirft der Kanal die Nachricht, statt zu raten.
+  - **M1:** Die allgemeine Agenten-Antwort (`GET /agents`) enthielt die verschlüsselten Kanal-Token, auch für Freigegebene. Jetzt ohne (`kanaele.ohne_zugangsdaten`).
+  - **M2:** Änderung und Prüfprotokoll werden in EINER Transaktion festgeschrieben.
+  - **M3:** Kennungen nur aus Punkten („..“) werden abgelehnt. Discord, WhatsApp und Teams setzen Kennungen nur noch maskiert in URL-Pfade. Die WhatsApp-Telefonnummer-ID besteht nur aus Ziffern.
+  - **M4:** Wem der Agent nur freigegeben ist, der sieht je Kanal nur „an/aus“ und die Anzahl, keine Telefonnummern oder Kennungen.
+  - **Nachprüfung des Commits:** Ohne eigenes Konto des Agenten stellt nur der Besitzer Teams ein, auch kein Admin. Sonst ließe sich der Agent die Chats des Besitzers lesen lassen. Ausschalten darf jeder, der ändern darf.
+  - **Kleinkram:** Absender-Nummern brauchen mindestens 10 Ziffern, wie der Kanal (L1). Das Token-Feld wird vom Browser nicht als Anmeldung gespeichert (L3).
 - **Prüfprotokoll-Einträge gingen verloren:**
   - `protokolliere` merkt einen Eintrag nur vor. Wurde er erst NACH dem Festschreiben vorgemerkt, kam er nie in die Datenbank.
   - Betroffen: Anonymisierer ein und aus (seit 1.444.0), Microsoft-Konto des Agenten verbinden und trennen (seit 1.445.0).
   - Die Tests hatten in derselben Sitzung gelesen und den vorgemerkten Eintrag gesehen. Jetzt wird festgeschrieben, und die Tests lesen in einer frischen Sitzung.
 
 ### Tests
-- `test_kanaele.py` (13 Fälle): Abbildung gegen die echten `channel_config`/`is_enabled` der Gateways, Zugangsdaten, Ablehnungen, Rechte, Teams-Auswahl.
+- `test_kanaele.py` (20 Fälle): Abbildung gegen die echten `channel_config`/`is_enabled` der Gateways, Zugangsdaten, Ablehnungen, Rechte, Teams-Auswahl.
 - Prüfprotokoll: Reihenfolge „vormerken, dann festschreiben“ geprüft (Anonymisierer, Agenten-Konto, Kanäle).
-- Gegenprobe: Ohne die drei Commits schlagen die Tests fehl.
+- Gegenprobe: Ohne die drei Commits, ohne die Review-Befunde H1 (API und Kanal), M1, M2, M3, M4, L1 und ohne die Teams-Besitzerregel schlagen die Tests fehl.
 
 ## [1.447.0] - 2026-11-09
 

@@ -75,10 +75,10 @@ class AbbildungTests(unittest.TestCase):
         from app.services import whatsapp_gateway
 
         cfg, _ = kanaele.setzen({}, "whatsapp", {"aktiv": True, "telefon_id": "10987654321",
-                                                 "absender": ["+49 151 2345678"], "token": "EAAB"})
+                                                 "absender": ["+49 151 23456789"], "token": "EAAB"})
         roh = whatsapp_gateway.channel_config(_agent(cfg))
         self.assertTrue(whatsapp_gateway.is_enabled(_agent(cfg)))
-        self.assertEqual(roh["allowed_senders"], ["+491512345678"])
+        self.assertEqual(roh["allowed_senders"], ["+4915123456789"])
         self.assertEqual(decrypt_token(roh["access_token_enc"]), "EAAB")
 
     def test_teams_behaelt_besprechungs_chats(self):
@@ -116,7 +116,11 @@ class AbbildungTests(unittest.TestCase):
             ("slack", {"ziele": ["C"] * 51}),
             ("discord", {"stichworte": ["x" * 61]}),
             ("whatsapp", {"absender": ["abc"]}),
+            ("whatsapp", {"absender": ["12345"]}),          # kürzer als der Kanal annimmt (L1)
             ("whatsapp", {"telefon_id": "1/2"}),
+            ("whatsapp", {"telefon_id": ".."}),
+            ("discord", {"ziele": [".."]}),                 # Pfadsprung in /channels/{id} (M3)
+            ("teams", {"teams_kanaele": [{"team_id": "..", "channel_id": "19:k"}]}),
             ("teams", {"teams_kanaele": [{"team_id": "t"}]}),
             ("slack", {"token": "x" * 1001}),
             ("telegram", {"aktiv": True}),
@@ -124,6 +128,22 @@ class AbbildungTests(unittest.TestCase):
         for kanal, e in faelle:
             with self.assertRaises(kanaele.UngueltigeEinstellung, msg=(kanal, e)):
                 kanaele.setzen({}, kanal, e)
+
+    def test_agentenantwort_ohne_geheimtext(self):
+        """Review M1: Auch der verschlüsselte Token geht nicht an Freigegebene (GET /agents)."""
+        cfg, _ = kanaele.setzen({"x": 1}, "slack", {"token": "xoxb-geheim", "ziele": ["C1"]})
+        cfg, _ = kanaele.setzen(cfg, "whatsapp", {"token": "EAAB"})
+        aus = kanaele.ohne_zugangsdaten(cfg)
+        self.assertNotIn("_enc", str(aus))
+        self.assertEqual(aus["channels"]["slack"]["channels"], ["C1"])
+        self.assertIn("bot_token_enc", cfg["channels"]["slack"], "Original bleibt unverändert")
+
+    def test_agent_manager_nutzt_die_bereinigung(self):
+        import inspect
+
+        from app.core import agent_manager
+
+        self.assertIn('"config": ohne_zugangsdaten(config)', inspect.getsource(agent_manager))
 
     def test_andere_einstellungen_bleiben(self):
         cfg, _ = kanaele.setzen({"msgraph_access": "write", "channels": {"slack": {"channels": ["C1"]}}},
@@ -177,6 +197,67 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
             await self._als("u2", api.update_agent_kanal, "a1", "slack", api.KanalUpdate(aktiv=True))
         self.assertEqual(e.exception.status_code, 403)
         await self._als("adm", api.update_agent_kanal, "a1", "slack", api.KanalUpdate(aktiv=True))
+
+    async def test_teams_ohne_eigenes_konto_stellt_nur_der_besitzer_ein(self):
+        """Nachprüfung: Sonst ließe ein Admin den Agenten die Chats des Besitzers lesen."""
+        from app.api import agents as api
+
+        with self.assertRaises(HTTPException) as e:
+            await self._als("adm", api.update_agent_kanal, "a1", "teams", api.KanalUpdate(ziele=["19:x"]))
+        self.assertEqual(e.exception.status_code, 403)
+        with self.assertRaises(HTTPException):
+            await self._als("adm", api.update_agent_kanal, "a1", "teams", api.KanalUpdate(aktiv=True))
+        await self._als("adm", api.update_agent_kanal, "a1", "teams", api.KanalUpdate(aktiv=False))
+        await self._als("u1", api.update_agent_kanal, "a1", "teams", api.KanalUpdate(aktiv=True, ziele=["19:x"]))
+        with patch("app.core.agenten_konto._zeile", AsyncMock(return_value=object())):
+            await self._als("adm", api.update_agent_kanal, "a1", "teams", api.KanalUpdate(ziele=["19:y"]))
+
+    async def test_whatsapp_nummer_gehoert_genau_einem_agenten(self):
+        """Review H1: sonst liest ein fremder Agent die Nachrichten mit."""
+        from app.api import agents as api
+
+        async with self.Session() as db:
+            db.add(Agent(id="a2", name="Fremd", state=AgentState.RUNNING, user_id="u2",
+                         config={"channels": {"whatsapp": {"enabled": True, "phone_number_id": "10987654321"}}}))
+            await db.commit()
+        with self.assertRaises(HTTPException) as e:
+            await self._als("u1", api.update_agent_kanal, "a1", "whatsapp", api.KanalUpdate(telefon_id="10987654321"))
+        self.assertEqual(e.exception.status_code, 409)
+        await self._als("u1", api.update_agent_kanal, "a1", "whatsapp", api.KanalUpdate(telefon_id="10000000002"))
+
+    async def test_gateway_raet_nicht_bei_doppelter_nummer(self):
+        from app.services import whatsapp_gateway
+
+        an = {"channels": {"whatsapp": {"enabled": True, "phone_number_id": "555"}}}
+        async with self.Session() as db:
+            db.add_all([Agent(id="a2", name="B", state=AgentState.RUNNING, user_id="u2", config=an),
+                        Agent(id="a3", name="C", state=AgentState.RUNNING, user_id="u1", config=an)])
+            await db.commit()
+        with patch.object(whatsapp_gateway, "resilient_session", self.Session):
+            self.assertIsNone(await whatsapp_gateway.agent_for_phone_number("555"))
+
+    async def test_aenderung_und_protokoll_in_einer_transaktion(self):
+        """Review M2: scheitert das Protokoll, wird auch die Änderung nicht gespeichert."""
+        from app.api import agents as api
+
+        with patch("app.core.audit.protokolliere", AsyncMock(side_effect=RuntimeError("weg"))), \
+                self.assertRaises(RuntimeError):
+            await self._als("u1", api.update_agent_kanal, "a1", "slack", api.KanalUpdate(ziele=["C9"]))
+        async with self.Session() as db:
+            self.assertNotIn("slack", ((await db.get(Agent, "a1")).config or {}).get("channels") or {})
+
+    async def test_freigegebene_sehen_nur_eine_zusammenfassung(self):
+        """Review M4: keine Telefonnummern oder Kennungen für Freigegebene."""
+        from app.api import agents as api
+
+        await self._als("u1", api.update_agent_kanal, "a1", "whatsapp",
+                        api.KanalUpdate(telefon_id="10000000003", absender=["+491511234567"]))
+        sicht = await self._als("u2", api.get_agent_kanaele, "a1")
+        self.assertNotIn("491511234567", str(sicht))
+        self.assertNotIn("10000000003", str(sicht))
+        wa = next(k for k in sicht["kanaele"] if k["kanal"] == "whatsapp")
+        self.assertEqual(wa["anzahl_absender"], 1)
+        self.assertIn("491511234567", str(await self._als("u1", api.get_agent_kanaele, "a1")))
 
     async def test_ungueltig_ist_422(self):
         from app.api import agents as api

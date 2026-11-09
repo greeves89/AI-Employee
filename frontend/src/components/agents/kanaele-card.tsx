@@ -205,7 +205,7 @@ function KanalBlock({ agentId, stand, onGespeichert }: {
             <Feld label={stand.kanal === "whatsapp" ? "Zugriffstoken" : "Bot-Token"}
               hilfe="Wird verschlüsselt gespeichert und nie wieder angezeigt. Leer lassen, um es zu behalten.">
               <div className="flex gap-2">
-                <input type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)}
+                <input type="password" autoComplete="new-password" value={token} onChange={(e) => setToken(e.target.value)}
                   placeholder={stand.token_gesetzt ? "gesetzt" : "nicht gesetzt"} className={eingabe} />
                 {stand.token_gesetzt && (
                   <button type="button" disabled={busy} onClick={() => speichern({ token: "" }, "Token entfernt")}
@@ -254,7 +254,14 @@ export function KanaeleCard({ agentId }: { agentId: string }) {
           </p>
         </div>
       </div>
-      {kanaele.map((k) => (
+      {kanaele.map((k) => k.nur_zusammenfassung ? (
+        <div key={k.kanal} className="flex items-center justify-between border-t border-foreground/[0.06] px-5 py-3 first:border-t-0">
+          <span className="text-[13px] font-medium">{NAMEN[k.kanal]}</span>
+          <span className="text-[11px] text-muted-foreground/70">
+            {k.aktiv ? "aktiv" : "aus"}{k.aktiv ? ` · ${k.anzahl_ziele || k.anzahl_absender || 0} Ziel(e)` : ""}
+          </span>
+        </div>
+      ) : (
         <KanalBlock key={k.kanal} agentId={agentId} stand={k}
           onGespeichert={(s) => setKanaele(kanaele.map((x) => (x.kanal === s.kanal ? s : x)))} />
       ))}
