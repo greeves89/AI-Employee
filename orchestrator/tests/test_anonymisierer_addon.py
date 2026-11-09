@@ -3,7 +3,7 @@
 Braucht mitmproxy — läuft in der CI nicht (dort fehlt es) und lokal nicht, aber im Abbild
 des Proxys (gleicher Digest wie in der Compose-Datei):
 
-    docker run --rm -v "$PWD":/w -w /w/orchestrator/tests mitmproxy/mitmproxy:12.3.0@sha256:… \\
+    docker run --rm -v "$PWD":/w -w /w/orchestrator/tests mitmproxy/mitmproxy:12.3.1@sha256:… \\
         python3 -m unittest test_anonymisierer_addon -v
 """
 

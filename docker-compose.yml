@@ -409,9 +409,9 @@ services:
   # gesetzt ist. TLS wird nur fuer Ziele aufgebrochen, an die ein Key des Agenten
   # darf; dort setzt der Proxy den echten Wert ein (egress/aie_egress.py). Kein
   # Port nach aussen, nur im Agentennetz. Das Abbild ist per Digest festgelegt
-  # (mitmproxy 12.3.0, amd64 + arm64; Python 3.14 — zstd aus der Standardbibliothek).
+  # (mitmproxy 12.3.1, amd64 + arm64; Python 3.14 — zstd aus der Standardbibliothek).
   egress-proxy:
-    image: mitmproxy/mitmproxy:12.3.0@sha256:c8a3753de11fd8266afeb103e163f7b7ac6a4a568a707fa2e15b23d20acf4eba
+    image: mitmproxy/mitmproxy:12.3.1@sha256:2711066c855659b5af8b1dbb84494ed3eff69b42ece439c60b4fe09a2db829d4
     container_name: ai-employee-egress-proxy
     command:
       - mitmdump
