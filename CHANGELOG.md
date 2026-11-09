@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.448.3] - 2026-11-09
+
+### Sicherheit
+- **Egress-Proxy auf mitmproxy 12.3.1** (Fehlerbehebungsstand). Wie vorgesehen erst nach den Addon-Tests im neuen Abbild auf der Testanlage aktualisiert: 13 von 13 grün, das Addon lädt fehlerfrei.
+
 ## [1.448.2] - 2026-11-09
 
 ### Sicherheit
