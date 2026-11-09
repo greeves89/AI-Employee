@@ -109,6 +109,8 @@ und Handbuch.
 
 ### Phase 4: Einführung beim Kunden
 
+> **Stand:** Die Checkliste für die IT steht in `docs/AGENTEN_KONTO_EINRICHTUNG.md`, Abnahme inklusive. Offen ist der Ende-zu-Ende-Test mit einem lizenzierten Test-Nutzer.
+
 - Handbuch: Agenten-Konto verbinden (Klick für Klick mit Bildschirmfotos), Ereignisse, Grenzen.
 - Checkliste für die IT des Kunden:
   - Lizenz je Agenten-Nutzer (Postfach und Teams)
