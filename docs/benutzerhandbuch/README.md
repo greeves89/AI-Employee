@@ -4963,8 +4963,24 @@ unverändert.
   Konto, sofern du eines verbunden hast.
 - Ins Audit-Log kommt, wer welches Konto verbunden oder getrennt hat.
 
-**Noch nicht enthalten:** Der Agent wird bei neuer Mail oder Teams-Nachricht im eigenen
-Postfach noch nicht von selbst geweckt. Das kommt in einer nächsten Stufe.
+**Bei neuer Mail wecken** *(seit 1.446.0)*: Ist das Konto verbunden, erscheint auf der Karte
+der Schalter **Bei neuer Mail wecken**. Eingeschaltet startet jede neue Mail im Posteingang des
+Agenten einen Auftrag. Der Agent liest die Mail dann mit seinem Mail-Werkzeug und bearbeitet sie
+nach seinem Auftrag. Antworten gibst du wie immer frei (Kap. 13).
+- **Kostet:** Jede Mail ist ein Lauf des Agenten. Höchstens 20 Mails je Stunde wecken ihn. Kommen
+  mehr, bekommst du eine Meldung, und die übrigen bleiben ungelesen im Postfach liegen.
+- **Weckt nicht:** Mails, die der Agent selbst geschickt hat, Entwürfe und dieselbe Mail ein zweites
+  Mal.
+- **Wie schnell:** Ist die Anlage über HTTPS aus dem Internet erreichbar, meldet Microsoft jede neue
+  Mail sofort („Microsoft meldet neue Mails sofort“). Sonst schaut die Anlage alle fünf Minuten nach
+  („alle fünf Minuten“). Das gilt auch, wenn Microsoft die Anlage nicht erreicht, etwa hinter
+  einer Firewall. Beim Einschalten werden ältere Mails nicht abgearbeitet, nur neue.
+- **Sicherheit:** Absender und Betreff kommen beim Agenten als fremder Text an, nicht als
+  Anweisung. Den Inhalt liest er selbst, aus dem eigenen Postfach.
+- Trennst du das Konto, schaltet sich das Wecken aus.
+
+**Noch nicht enthalten:** Teams-Nachrichten wecken den Agenten noch nicht. Das kommt mit der
+eigenen Teams-Identität des Agenten.
 
 ## A. Was kann ein Agent? (typische Einsätze)
 

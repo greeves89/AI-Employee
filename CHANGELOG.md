@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.446.0] - 2026-11-09
+
+### Neu
+- **Agent bei neuer Mail wecken** (Plan `docs/plaene/agenten-identitaet-m365.md`, Phase 2). Agenten mit eigenem Microsoft-Konto lassen sich per Schalter „Bei neuer Mail wecken“ (Agent → Konnektoren) bei jeder neuen Mail im eigenen Posteingang wecken. Opt-in je Agent, nur Besitzer und Admin (`PATCH /agents/{id}/microsoft-konto/mail-wecken`).
+  - **Benachrichtigung:** Ist die Anlage über HTTPS erreichbar, abonniert sie den Posteingang bei Microsoft Graph. Der Empfang läuft über `/api/v1/msgraph/benachrichtigung` und `/lebenszyklus`. Die Anlage verlängert das Abo vor Ablauf und legt es neu an, wenn Microsoft es entfernt. Nach `missed` holt sie nach.
+  - **Abfrage als Rückfall:** Ohne öffentliche Adresse, oder wenn Microsoft sie nicht erreicht, fragt die Anlage alle fünf Minuten mit `delta` nach. Den Versuch, das Abo anzulegen, wiederholt sie alle sechs Stunden.
+  - Tabelle `graph_abos` (Migration `k9l0m1n2o3p4`). Der Abgleich läuft alle fünf Minuten im Orchestrator.
+
+### Sicherheit
+- **Öffentlicher Empfang mit Prüfung:** Jede Meldung muss ein bekanntes Abo nennen und dessen `clientState` tragen. Das ist ein HMAC aus `ENCRYPTION_KEY` und der Abo-Kennung, nicht gespeichert. Verworfenes bekommt ebenfalls 202 (nichts ausforschbar). Geantwortet wird sofort, verarbeitet getrennt, höchstens 100 Meldungen je Aufruf.
+- **Nichts aus der Meldung selbst:** Die Mail wird mit dem Konto des Agenten gelesen. Der Auftrag trägt nur Absender und Betreff, gerahmt als fremder Text (`core/fremdtext`, auch gegen die Sentinel-Marke). Den Inhalt liest der Agent mit seinem Werkzeug.
+- **Kostenbremse:** höchstens 20 Läufe je Agent und Stunde, mit einer Meldung, dazu eine Doppelsperre (7 Tage). Eigene Mails und Entwürfe wecken nicht. Beim Einschalten und nach `missed` wird kein alter Posteingang abgespielt (höchstens 24 Stunden).
+- Trennen des Kontos löscht das Abo bei Microsoft und schaltet das Wecken aus. Der Sicherheitsstatus zeigt Weg und Störungen.
+
+### Tests
+- `test_graph_abos.py` (26 Fälle gegen SQLite mit nachgebautem Graph und Redis): Empfang, Prüfung, Lebenszyklus, Eingang, Abos, Abfrage, API, Sicherheitsstatus.
+- Gegenprobe: Ohne Geheimnis-Prüfung, Doppelsperre, Stundengrenze, Rahmen oder 24-Stunden-Grenze schlagen die Tests fehl.
+
 ## [1.445.0] - 2026-11-09
 
 ### Neu

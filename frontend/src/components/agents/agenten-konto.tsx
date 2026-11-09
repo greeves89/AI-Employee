@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, RefreshCw, Unplug, UserRound } from "lucide-react";
+import { AlertTriangle, BellRing, CheckCircle2, ExternalLink, Loader2, RefreshCw, Unplug, UserRound } from "lucide-react";
 import * as api from "@/lib/api";
 import { useConfirm } from "@/components/ui/dialog-provider";
 import { cn } from "@/lib/utils";
@@ -68,6 +68,18 @@ export function AgentenKonto({ agentId }: { agentId: string }) {
     }
   };
 
+  const weckenSetzen = async (aktiv: boolean) => {
+    setLaeuft(true);
+    setFehler(null);
+    try {
+      setStand({ ...(stand as api.AgentenKontoStand), ...(await api.setzeAgentMailWecken(agentId, aktiv)) });
+    } catch (e) {
+      setFehler(e instanceof Error ? e.message : "Speichern fehlgeschlagen");
+    } finally {
+      setLaeuft(false);
+    }
+  };
+
   if (!stand || (!stand.verfuegbar && !stand.verbunden)) return null;
   const neuNoetig = stand.verbunden && (stand.status === "expired" || stand.status === "refresh_failing");
   const gesund = stand.verbunden && !neuNoetig;
@@ -123,6 +135,39 @@ export function AgentenKonto({ agentId }: { agentId: string }) {
           )
         )}
       </div>
+      {gesund && (
+        <div className="flex items-start gap-3 border-t border-foreground/[0.06] px-5 py-3">
+          <BellRing className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-medium">Bei neuer Mail wecken</p>
+            <p className="text-[11px] text-muted-foreground/70">
+              {stand.mail_wecken
+                ? stand.wecken_weg === "benachrichtigung"
+                  ? "An — Microsoft meldet neue Mails sofort."
+                  : "An — die Anlage schaut alle fünf Minuten nach neuen Mails."
+                : "Jede neue Mail im Postfach des Agenten startet einen Auftrag. Höchstens 20 je Stunde."}
+            </p>
+            {stand.mail_wecken && stand.wecken_fehler && (
+              <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">{stand.wecken_fehler}</p>
+            )}
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!!stand.mail_wecken}
+            aria-label="Bei neuer Mail wecken"
+            disabled={laeuft || !stand.darf_verbinden}
+            onClick={() => weckenSetzen(!stand.mail_wecken)}
+            className={cn(
+              "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50",
+              stand.mail_wecken ? "bg-emerald-500" : "bg-foreground/15",
+            )}
+          >
+            <span className={cn("inline-block h-4 w-4 rounded-full bg-white transition-transform",
+              stand.mail_wecken ? "translate-x-6" : "translate-x-1")} />
+          </button>
+        </div>
+      )}
       {!stand.verbunden && stand.darf_verbinden && (
         <p className="px-5 pb-3 text-[11px] text-muted-foreground/60">
           Bei Microsoft mit dem Konto des Agenten anmelden, nicht mit deinem eigenen.

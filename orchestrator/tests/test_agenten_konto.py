@@ -35,6 +35,7 @@ from app.models.agent import Agent, AgentState  # noqa: E402
 from app.models.audit_log import AuditLog  # noqa: E402
 from app.models.oauth_integration import OAuthIntegration, OAuthProvider  # noqa: E402
 from app.models.platform_settings import PlatformSettings  # noqa: E402
+from app.models.graph_abo import GraphAbo  # noqa: E402
 from app.models.agent_access import AgentAccess  # noqa: E402
 from app.models.user import User, UserRole  # noqa: E402
 from app.services.oauth_service import OAuthService  # noqa: E402
@@ -56,7 +57,7 @@ class _Basis(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         async with self.engine.begin() as conn:
-            for model in (User, Agent, OAuthIntegration, AuditLog, PlatformSettings, AgentAccess):
+            for model in (User, Agent, OAuthIntegration, AuditLog, PlatformSettings, AgentAccess, GraphAbo):
                 await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
         async with self.Session() as db:

@@ -667,6 +667,11 @@ export interface AgentenKontoStand {
   status: string;
   verfuegbar: boolean;
   darf_verbinden: boolean;
+  /** Bei neuer Mail wecken (opt-in) und auf welchem Weg: Benachrichtigung von Microsoft oder Abfrage */
+  mail_wecken?: boolean;
+  wecken_weg?: "benachrichtigung" | "abfrage" | null;
+  wecken_fehler?: string | null;
+  letzte_meldung?: string | null;
 }
 
 /** Eigenes Microsoft-365-Konto des Agenten: Stand, Anmeldung starten, trennen. */
@@ -676,6 +681,15 @@ export async function getAgentMicrosoftKonto(agentId: string): Promise<AgentenKo
 
 export async function verbindeAgentMicrosoftKonto(agentId: string): Promise<{ auth_url: string }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/microsoft-konto/verbinden`, { method: "POST" });
+}
+
+export async function setzeAgentMailWecken(
+  agentId: string, aktiv: boolean,
+): Promise<Pick<AgentenKontoStand, "mail_wecken" | "wecken_weg" | "wecken_fehler" | "letzte_meldung">> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/microsoft-konto/mail-wecken`, {
+    method: "PATCH",
+    body: JSON.stringify({ aktiv }),
+  });
 }
 
 export async function trenneAgentMicrosoftKonto(agentId: string): Promise<Pick<AgentenKontoStand, "verbunden" | "konto" | "status">> {

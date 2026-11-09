@@ -503,8 +503,21 @@ async def _agenten_konten(db) -> list[dict]:
                        f"Bei {len(abgelaufen)} von {len(konten)} Agent(en) ist die Anmeldung abgelaufen ({liste}). "
                        "Diese Agenten lesen und senden keine Mails mehr.",
                        "Agent → Konnektoren → Microsoft-Konto des Agenten → Neu verbinden.")]
+    from app.models.graph_abo import GraphAbo
+
+    abos = (await db.execute(select(GraphAbo.subscription_id, GraphAbo.fehler))).all()
+    zusatz = ""
+    if abos:
+        per_meldung = sum(1 for sid, _ in abos if sid)
+        zusatz = (f" Bei neuer Mail geweckt: {len(abos)} (davon {per_meldung} per Benachrichtigung, "
+                  f"{len(abos) - per_meldung} per Abfrage alle fünf Minuten).")
+        gestoert = [f for _, f in abos if f and not f.startswith("Microsoft erreicht")]
+        if gestoert:
+            return [_punkt("agenten_konten", titel, WARNUNG,
+                           f"{len(konten)} Agent(en) mit eigenem Microsoft-Konto.{zusatz} Gestört: {gestoert[0]}",
+                           "Agent → Konnektoren → Microsoft-Konto des Agenten prüfen.")]
     return [_punkt("agenten_konten", titel, OK,
-                   f"{len(konten)} Agent(en) mit eigenem Microsoft-Konto, alle Anmeldungen gültig.")]
+                   f"{len(konten)} Agent(en) mit eigenem Microsoft-Konto, alle Anmeldungen gültig.{zusatz}")]
 
 
 async def stand(db) -> dict:

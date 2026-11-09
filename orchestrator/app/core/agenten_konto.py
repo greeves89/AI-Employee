@@ -122,6 +122,13 @@ async def trennen(db, redis, agent, user) -> bool:
 
     if await _zeile(db, agent.id) is None:
         return False
+    from app.core import graph_abos
+
+    await graph_abos.entfernen(db, agent.id)   # Abo bei Microsoft löschen, solange das Token noch gilt
+    if graph_abos.an(agent.config):
+        # Aus, nicht nur ruhend: Ein späteres Verbinden soll nicht still wieder Läufe auslösen.
+        agent.config = graph_abos.mit_einstellung(agent.config, False)
+        await db.commit()
     await OAuthService(db, redis).disconnect(ANBIETER, agent.user_id, agent_id=agent.id)
     await _protokollieren(db, user.id, agent.id, "Microsoft-Konto des Agenten getrennt")
     return True
