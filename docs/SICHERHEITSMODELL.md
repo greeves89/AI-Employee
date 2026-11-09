@@ -98,7 +98,7 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
 | Anonymisierer vor dem Modell, opt-in je Agent, im Egress-Proxy (`egress/anonym.py`) | 1.444.0 |
 | Teams-Antworten im Kanal respektieren den Nur-Lesen-Schalter für Microsoft 365 | 1.444.1 |
 | Eigenes Microsoft-365-Konto je Agent (Phase 1): ein Weg zum Token, kein Rückfall auf den Besitzer, eigenes Konto wird abgelehnt (`core/agenten_konto.py`) | 1.445.0 |
-| Wecken bei neuer Mail (Phase 2): öffentlicher Empfang prüft Abo und `clientState` (HMAC), Antwort sofort, Auftrag nur mit gerahmtem Absender/Betreff, Doppelsperre, höchstens 20 je Stunde (`core/graph_abos.py`) | 1.446.0 |
+| Wecken bei neuer Mail (Phase 2): Der öffentliche Empfang prüft `clientState` (HMAC mit Abo-Kennung) ohne Datenbank, dann das Abo. Körper höchstens 1 MB, höchstens 8 Verarbeitungen gleichzeitig. Im Auftrag stehen nur Absender und Betreff, gerahmt. Voreingestellt wecken nur interne Absender, automatische Mails nie. Höchstens 5 je Absender und 20 je Agent und Stunde (`core/graph_abos.py`) | 1.446.0 |
 
 ### Entscheidungen vom 09.11.2026
 
@@ -109,6 +109,7 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
 | Eigene Identität für Agenten (Pilot beim Kunden) | lizenzierter Microsoft-365-Nutzer je Agent | Phase 1 erledigt in 1.445.0, Phasen 2–4 nach Plan `docs/plaene/agenten-identitaet-m365.md` |
 | Eigene Microsoft-Identität je Agent: Rückruf-Adresse für Teams-Anrufe prüft nichts (`/teams/calling/callback` schreibt nur Protokoll, ändert nichts) | Graph-Benachrichtigungen haben seit 1.446.0 einen prüfenden Empfang (`/msgraph/benachrichtigung`). Anrufe sind keine Graph-Abos und tragen kein `clientState`; dort kommt eine eigene Prüfung | mit Phase 3 |
 | Eigenes Konto eines Agenten: Abgleich „eigenes Konto“ über Adresse und `sub`, ein Alias des Besitzers ohne eigene Microsoft-Verbindung fällt nicht auf | hingenommen. Folge: Der Agent arbeitet wissentlich im Postfach des Besitzers, wie ohne eigenes Konto. Härter wäre ein Vergleich der Entra-Objekt-ID (`oid`), wenn Menschen sie beim Verbinden speichern | offen, niedrig |
+| Wecken bei neuer Mail: `clientState` bleibt für die Laufzeit eines Abos gleich. Ein abgegriffenes Geheimnis erlaubt Meldungen zu echten Mails der letzten 24 Stunden (Doppelsperre 7 Tage). Die Stundengrenze zählt je Kalenderstunde, an der Grenze sind also bis zu 40 Läufe möglich | hingenommen (Review L2/L3). Wirkung nur Wecken zu echten Mails im Postfach des Agenten, kein Lesen | offen, niedrig |
 | Zielliste für den Ausgang je Agent | offen | geparkt. Empfehlung: opt-in je Agent, bauen, wenn ein Kunde es braucht |
 
 ## Regeln für neue Funktionen

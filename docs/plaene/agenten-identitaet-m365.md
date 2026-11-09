@@ -61,7 +61,11 @@ und Handbuch.
 > - Das Geheimnis für `clientState` wird aus `ENCRYPTION_KEY` abgeleitet, nicht gespeichert.
 > - Wecken ist opt-in je Agent, mit höchstens 20 Läufen je Stunde.
 > - Im Auftrag stehen nur Absender und Betreff, gerahmt als fremder Text.
-> - Die Abfrage mit `delta` läuft bei Benachrichtigung UND als Rückfall. Nachgeholt werden nur Mails der letzten 24 Stunden.
+> - Nach dem Sicherheitsreview gilt:
+>   - Nachgesehen wird nach Eingangszeit statt mit `delta`: im Abfrage-Betrieb alle fünf Minuten, bei Benachrichtigung zusätzlich stündlich, höchstens 24 Stunden zurück.
+>   - Wecken dürfen voreingestellt nur Absender der eigenen Domäne. Automatische Mails wecken nie.
+>   - Es gibt eine Grenze je Absender.
+>   - `clientState` trägt die Abo-Kennung und wird ohne Datenbank geprüft.
 > - Das Chat-Abo zieht in Phase 3 um: Ohne eigene Teams-Kennung (`own_user_id`) würde der Agent von seinen eigenen Nachrichten geweckt.
 > - Die Rückruf-Adresse für Teams-Anrufe bleibt eigenständig. Anrufe sind keine Graph-Abos und tragen kein `clientState`; sie kommen mit Phase 3.
 

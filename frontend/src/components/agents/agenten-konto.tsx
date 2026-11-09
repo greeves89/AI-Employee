@@ -68,11 +68,11 @@ export function AgentenKonto({ agentId }: { agentId: string }) {
     }
   };
 
-  const weckenSetzen = async (aktiv: boolean) => {
+  const weckenSetzen = async (patch: { aktiv?: boolean; alle_absender?: boolean }) => {
     setLaeuft(true);
     setFehler(null);
     try {
-      setStand({ ...(stand as api.AgentenKontoStand), ...(await api.setzeAgentMailWecken(agentId, aktiv)) });
+      setStand({ ...(stand as api.AgentenKontoStand), ...(await api.setzeAgentMailWecken(agentId, patch)) });
     } catch (e) {
       setFehler(e instanceof Error ? e.message : "Speichern fehlgeschlagen");
     } finally {
@@ -147,6 +147,18 @@ export function AgentenKonto({ agentId }: { agentId: string }) {
                   : "An — die Anlage schaut alle fünf Minuten nach neuen Mails."
                 : "Jede neue Mail im Postfach des Agenten startet einen Auftrag. Höchstens 20 je Stunde."}
             </p>
+            {stand.mail_wecken && (
+              <label className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={!!stand.alle_absender}
+                  disabled={laeuft || !stand.darf_verbinden}
+                  onChange={(e) => weckenSetzen({ alle_absender: e.target.checked })}
+                  className="h-3.5 w-3.5 rounded border-foreground/20"
+                />
+                Auch Absender außerhalb der eigenen Organisation
+              </label>
+            )}
             {stand.mail_wecken && stand.wecken_fehler && (
               <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">{stand.wecken_fehler}</p>
             )}
@@ -157,7 +169,7 @@ export function AgentenKonto({ agentId }: { agentId: string }) {
             aria-checked={!!stand.mail_wecken}
             aria-label="Bei neuer Mail wecken"
             disabled={laeuft || !stand.darf_verbinden}
-            onClick={() => weckenSetzen(!stand.mail_wecken)}
+            onClick={() => weckenSetzen({ aktiv: !stand.mail_wecken })}
             className={cn(
               "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50",
               stand.mail_wecken ? "bg-emerald-500" : "bg-foreground/15",

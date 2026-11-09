@@ -4967,14 +4967,20 @@ unverändert.
 der Schalter **Bei neuer Mail wecken**. Eingeschaltet startet jede neue Mail im Posteingang des
 Agenten einen Auftrag. Der Agent liest die Mail dann mit seinem Mail-Werkzeug und bearbeitet sie
 nach seinem Auftrag. Antworten gibst du wie immer frei (Kap. 13).
-- **Kostet:** Jede Mail ist ein Lauf des Agenten. Höchstens 20 Mails je Stunde wecken ihn. Kommen
-  mehr, bekommst du eine Meldung, und die übrigen bleiben ungelesen im Postfach liegen.
-- **Weckt nicht:** Mails, die der Agent selbst geschickt hat, Entwürfe und dieselbe Mail ein zweites
-  Mal.
+- **Wer weckt:** Voreingestellt nur Absender aus deiner Organisation, also mit derselben Domäne
+  wie das Konto des Agenten. Sollen auch Kunden und andere Externe den Agenten wecken, setze den
+  Haken **Auch Absender außerhalb der eigenen Organisation**. Dann kann jeder, der dem Agenten
+  schreibt, einen Lauf auslösen.
+- **Kostet:** Jede Mail ist ein Lauf des Agenten. Höchstens 20 Mails je Stunde wecken ihn,
+  höchstens 5 vom selben Absender. Kommen mehr, bekommst du eine Meldung. Die übrigen holt die
+  Anlage später nach, solange sie nicht älter als 24 Stunden sind.
+- **Weckt nicht:** Mails, die der Agent selbst geschickt hat, Entwürfe, automatische Antworten wie
+  Abwesenheitsnotizen, Massenmails, Unzustellbarkeitsberichte und dieselbe Mail ein zweites Mal.
 - **Wie schnell:** Ist die Anlage über HTTPS aus dem Internet erreichbar, meldet Microsoft jede neue
-  Mail sofort („Microsoft meldet neue Mails sofort“). Sonst schaut die Anlage alle fünf Minuten nach
-  („alle fünf Minuten“). Das gilt auch, wenn Microsoft die Anlage nicht erreicht, etwa hinter
-  einer Firewall. Beim Einschalten werden ältere Mails nicht abgearbeitet, nur neue.
+  Mail sofort („Microsoft meldet neue Mails sofort“). Zur Sicherheit schaut die Anlage zusätzlich
+  stündlich nach. Sonst schaut sie alle fünf Minuten nach („alle fünf Minuten“). Das gilt auch,
+  wenn Microsoft die Anlage nicht erreicht, etwa hinter einer Firewall. Beim Einschalten werden
+  ältere Mails nicht abgearbeitet, nur neue.
 - **Sicherheit:** Absender und Betreff kommen beim Agenten als fremder Text an, nicht als
   Anweisung. Den Inhalt liest er selbst, aus dem eigenen Postfach.
 - Trennst du das Konto, schaltet sich das Wecken aus.

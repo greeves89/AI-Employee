@@ -3755,7 +3755,9 @@ async def verbinden_agent_microsoft_konto(
 
 
 class MailWeckenUpdate(BaseModel):
-    aktiv: bool
+    aktiv: bool | None = None
+    #: Auch Absender außerhalb der eigenen Organisation (Domäne des Agenten-Kontos) wecken.
+    alle_absender: bool | None = None
 
 
 @router.patch("/{agent_id}/microsoft-konto/mail-wecken")
@@ -3776,11 +3778,13 @@ async def mail_wecken_agent_microsoft_konto(
     agent = await _microsoft_konto_agent(agent_id, user, db, schreiben=True)
     if body.aktiv and await agenten_konto._zeile(db, agent.id) is None:
         raise HTTPException(status_code=409, detail="Zuerst das Microsoft-Konto des Agenten verbinden.")
-    agent.config = graph_abos.mit_einstellung(agent.config, body.aktiv)
+    agent.config = graph_abos.mit_einstellung(agent.config, body.aktiv, body.alle_absender)
     await db.commit()
+    neu = graph_abos.einstellung(agent.config)
     await protokolliere(db, AuditEventType.SETTINGS_CHANGED, user_id=getattr(user, "id", None), agent_id=agent_id,
-                        command=f"Bei neuer Mail wecken: {'an' if body.aktiv else 'aus'}",
-                        meta={"aktion": "mail_wecken", "aktiv": body.aktiv})
+                        command=(f"Bei neuer Mail wecken: {'an' if neu['aktiv'] else 'aus'}, "
+                                 f"Absender: {'alle' if neu['alle_absender'] else 'eigene Organisation'}"),
+                        meta={"aktion": "mail_wecken", **neu})
     try:
         await graph_abos.einrichten(db, agent)
     except Exception:  # noqa: BLE001 — der Abgleich alle fünf Minuten holt es nach

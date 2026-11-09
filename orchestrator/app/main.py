@@ -3083,6 +3083,9 @@ from app.core import koerper_grenze as _koerper_grenze  # noqa: E402
 from app.core.projekt_dateien import MAX_BYTES as _PROJEKTDATEI_MAX  # noqa: E402
 
 _koerper_grenze.regel("POST", r"^/api/v1/teams/[^/]+/wissen/dateien$", _PROJEKTDATEI_MAX + 1024 * 1024)
+# Öffentlicher Empfang der Graph-Benachrichtigungen (api/msgraph_benachrichtigung): Microsoft
+# schickt kleine JSON-Körper mit Längenangabe; alles darüber ist kein Microsoft.
+_koerper_grenze.regel("POST", r"^/api/v1/msgraph/", 1024 * 1024)
 app.add_middleware(_koerper_grenze.KoerperGrenze)
 
 # API rate limiting (120 requests/minute per user or IP)

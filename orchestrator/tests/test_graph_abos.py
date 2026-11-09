@@ -9,7 +9,8 @@ Gegen eine echte Datenbank (SQLite), mit nachgebautem Microsoft Graph und Redis:
   kommen gerahmt als fremder Text an, nicht als Anweisung.
 * Abos werden angelegt, verlängert, nach Verlust neu angelegt und beim Trennen gelöscht.
   Ohne öffentliche HTTPS-Adresse oder wenn Microsoft die Anlage nicht erreicht: Abfrage
-  mit ``delta``, die keinen alten Posteingang abspielt.
+  nach Eingangszeit, die keinen alten Posteingang abspielt; stündlich auch bei Meldung.
+* Befunde des Sicherheitsreviews vom 09.11.2026 (H1, M1–M6) sind je als Test festgehalten.
 """
 
 import json
@@ -73,7 +74,7 @@ class _Graph:
         self.aufrufe = []
         self.mails = {}
         self.fehler = {}
-        self.delta_seiten = [{"value": [], "@odata.deltaLink": "https://graph.microsoft.com/v1.0/delta-1"}]
+        self.liste_seiten = []
 
     async def __call__(self, method, path, token, **kw):
         self.aufrufe.append((method, path, json.loads(kw["content"]) if kw.get("content") else None))
@@ -88,8 +89,7 @@ class _Graph:
         if method == "DELETE":
             return {}
         if method == "GET" and not path.startswith("/me/messages/"):
-            return self.delta_seiten.pop(0) if self.delta_seiten else {
-                "value": [], "@odata.deltaLink": "https://graph.microsoft.com/v1.0" + path}
+            return self.liste_seiten.pop(0) if self.liste_seiten else {"value": []}
         if method == "GET" and path.startswith("/me/messages/"):
             kennung = path.split("/me/messages/")[1].split("?")[0]
             return self.mails[kennung]
@@ -99,8 +99,8 @@ class _Graph:
         return [p for m, p, _ in self.aufrufe if m == methode]
 
 
-def _mail(adresse="kunde@example.com", betreff="Angebot", entwurf=False, name="Kunde"):
-    return {"id": "x", "subject": betreff, "isDraft": entwurf,
+def _mail(adresse="kunde@example.com", betreff="Angebot", entwurf=False, name="Kunde", koepfe=None):
+    return {"id": "x", "subject": betreff, "isDraft": entwurf, "internetMessageHeaders": koepfe or [],
             "from": {"emailAddress": {"address": adresse, "name": name}}}
 
 
@@ -160,67 +160,121 @@ class EmpfangTests(_Basis):
             self.assertEqual(antwort.body, b"Validation: Testing client application")
             self.assertTrue(antwort.media_type.startswith("text/plain"))
 
-    async def test_meldung_wird_sofort_angenommen_und_spaeter_verarbeitet(self):
+    async def test_geheimnis_wird_ohne_datenbank_geprueft_und_nur_echtes_geht_weiter(self):
+        """Review M2: Was kein echtes clientState trägt, kostet weder Datenbank noch Redis."""
         from app.api import msgraph_benachrichtigung as api
 
-        anfrage = SimpleNamespace(json=AsyncMock(return_value={"value": [{"subscriptionId": "s"}] * 150}))
+        echt = graph_abos.client_state("a" * 32)
+        werte = [{"subscriptionId": "s", "clientState": "geraten"}] * 150 + [
+            {"subscriptionId": "s", "clientState": echt}]
+        anfrage = SimpleNamespace(json=AsyncMock(return_value={"value": werte}))
         with patch.object(api, "_im_hintergrund") as hinten:
             antwort = await api.benachrichtigung(anfrage, validationToken=None)
         self.assertEqual(antwort.status_code, 202)
+        hinten.assert_not_called()   # das echte stand hinter der 100er-Grenze
+
+        anfrage = SimpleNamespace(json=AsyncMock(return_value={"value": [{"subscriptionId": "s", "clientState": echt},
+                                                                         {"clientState": "x" * 97}]}))
+        with patch.object(api, "_im_hintergrund") as hinten:
+            await api.benachrichtigung(anfrage, validationToken=None)
         meldungen = hinten.call_args.args[0].cr_frame.f_locals["meldungen"]
         hinten.call_args.args[0].close()
-        self.assertEqual(len(meldungen), api.MAX_MELDUNGEN)
+        self.assertEqual([a for a, _ in meldungen], ["a" * 32])
 
     async def test_kaputter_koerper_ist_trotzdem_202_ohne_verarbeitung(self):
         from app.api import msgraph_benachrichtigung as api
 
-        anfrage = SimpleNamespace(json=AsyncMock(side_effect=ValueError("kein JSON")))
-        with patch.object(api, "_im_hintergrund") as hinten:
-            antwort = await api.benachrichtigung(anfrage, validationToken=None)
-        self.assertEqual(antwort.status_code, 202)
-        hinten.assert_not_called()
+        for koerper in (ValueError("kein JSON"), {"value": "x"}, [1, 2], {"value": [1, "a", None]}):
+            anfrage = SimpleNamespace(json=AsyncMock(side_effect=koerper) if isinstance(koerper, Exception)
+                                      else AsyncMock(return_value=koerper))
+            with patch.object(api, "_im_hintergrund") as hinten:
+                antwort = await api.benachrichtigung(anfrage, validationToken=None)
+            self.assertEqual(antwort.status_code, 202)
+            hinten.assert_not_called()
 
-    async def _abo(self, sid="sub-echt"):
+    async def test_hoechstens_acht_verarbeitungen_gleichzeitig(self):
+        """Review M2: keine unbegrenzten Hintergrund-Läufe."""
+        import asyncio
+
+        from app.api import msgraph_benachrichtigung as api
+
+        sperre = asyncio.Event()
+
+        async def warten():
+            await sperre.wait()
+
+        angenommen = [api._im_hintergrund(warten()) for _ in range(12)]
+        self.assertEqual(angenommen.count(True), api.GLEICHZEITIG)
+        sperre.set()
+        await asyncio.gather(*list(api._laeufe))
+
+    def test_koerpergrenze_gilt_fuer_den_empfang(self):
+        """Review M1: Die Middleware-Regel greift für /msgraph (vor dem Einlesen)."""
+        import app.main  # noqa: F401 — registriert die Regeln
+        from app.core import koerper_grenze
+
+        regeln = [(m, r.pattern, n) for m, r, n in koerper_grenze.REGELN if r.match("/api/v1/msgraph/benachrichtigung")]
+        self.assertEqual(regeln, [("POST", r"^/api/v1/msgraph/", 1024 * 1024)])
+
+    async def _abo(self, sid="sub-echt", abo_id="ab" * 16):
         async with self.Session() as db:
-            db.add(GraphAbo(id="abo1", agent_id="a1", art="mail", ressource=graph_abos.RESSOURCE_MAIL,
-                            subscription_id=sid, delta_link="https://graph.microsoft.com/v1.0/delta-0"))
+            db.add(GraphAbo(id=abo_id, agent_id="a1", art="mail", ressource=graph_abos.RESSOURCE_MAIL,
+                            subscription_id=sid, stand=graph_abos._z(graph_abos.jetzt())))
             await db.commit()
+        return abo_id
 
     async def _verarbeiten(self, meldungen, lebenszyklus=False):
         from app.api import msgraph_benachrichtigung as api
 
+        gut = [(graph_abos.abo_aus_client_state(m.get("clientState")), m) for m in meldungen]
         with patch("app.db.session.async_session_factory", self.Session), \
                 patch.object(graph_abos, "_router", self._router):
-            return await api.verarbeiten(meldungen, lebenszyklus=lebenszyklus, redis=self.redis)
+            return await api.verarbeiten([(a, m) for a, m in gut if a], lebenszyklus=lebenszyklus, redis=self.redis)
 
-    async def test_nur_bekanntes_abo_mit_passendem_geheimnis_wird_verarbeitet(self):
-        await self._abo()
+    async def test_geheimnis_und_kennung_muessen_zum_selben_abo_passen(self):
+        abo_id = await self._abo()
         self.graph.mails["m1"] = _mail()
-        echt = graph_abos.client_state("abo1")
+        echt = graph_abos.client_state(abo_id)
+        fremdes_abo = graph_abos.client_state("cd" * 16)   # echt, aber zu keinem Abo hier
         erg = await self._verarbeiten([
             {"subscriptionId": "sub-fremd", "clientState": echt, "changeType": "created", "resourceData": {"id": "m1"}},
-            {"subscriptionId": "sub-echt", "clientState": "geraten", "changeType": "created", "resourceData": {"id": "m1"}},
-            {"subscriptionId": "sub-echt", "clientState": None, "changeType": "created", "resourceData": {"id": "m1"}},
+            {"subscriptionId": "sub-echt", "clientState": fremdes_abo, "changeType": "created", "resourceData": {"id": "m1"}},
             {"subscriptionId": "sub-echt", "clientState": echt, "changeType": "created", "resourceData": {"id": "m1"}},
         ])
-        self.assertEqual(erg, ["verworfen", "verworfen", "verworfen", "geweckt"])
+        self.assertEqual(erg, ["verworfen", "verworfen", "geweckt"])
         self.assertEqual(len(self.auftraege), 1)
 
-    async def test_geheimnis_ist_je_abo_verschieden(self):
-        self.assertNotEqual(graph_abos.client_state("abo1"), graph_abos.client_state("abo2"))
-        self.assertTrue(graph_abos.client_state_passt("abo1", graph_abos.client_state("abo1")))
-        self.assertFalse(graph_abos.client_state_passt("abo1", graph_abos.client_state("abo2")))
+    def test_geheimnis_ist_je_abo_verschieden_und_nicht_faelschbar(self):
+        a, b = "ab" * 16, "cd" * 16
+        self.assertNotEqual(graph_abos.client_state(a), graph_abos.client_state(b))
+        self.assertEqual(graph_abos.abo_aus_client_state(graph_abos.client_state(a)), a)
+        gefaelscht = a + "." + graph_abos.client_state(b)[33:]
+        for wert in (gefaelscht, a, a + ".", None, 5, "x" * 97, graph_abos.client_state(a).upper()):
+            self.assertIsNone(graph_abos.abo_aus_client_state(wert), repr(wert))
+        self.assertLessEqual(len(graph_abos.client_state(a)), 128, "Microsoft erlaubt höchstens 128 Zeichen")
 
     async def test_kennung_auch_aus_der_ressource(self):
-        await self._abo()
+        abo_id = await self._abo()
         self.graph.mails["m9"] = _mail()
-        erg = await self._verarbeiten([{"subscriptionId": "sub-echt", "clientState": graph_abos.client_state("abo1"),
+        erg = await self._verarbeiten([{"subscriptionId": "sub-echt", "clientState": graph_abos.client_state(abo_id),
                                         "changeType": "created", "resource": "Users/abc/Messages/m9"}])
         self.assertEqual(erg, ["geweckt"])
 
+    async def test_eine_kaputte_meldung_haelt_die_anderen_nicht_auf(self):
+        """Review M3: nach rollback keine verfallenen Objekte — der Rest läuft weiter."""
+        abo_id = await self._abo()
+        self.graph.mails["gut"] = _mail()
+        cs = graph_abos.client_state(abo_id)
+        with patch.object(graph_abos, "eingang", AsyncMock(side_effect=[RuntimeError("kaputt"), "geweckt"])):
+            erg = await self._verarbeiten([
+                {"subscriptionId": "sub-echt", "clientState": cs, "changeType": "created", "resourceData": {"id": "a"}},
+                {"subscriptionId": "sub-echt", "clientState": cs, "changeType": "created", "resourceData": {"id": "b"}},
+            ])
+        self.assertEqual(erg, ["fehler", "geweckt"])
+
     async def test_lebenszyklus_entfernt_neu_anlegen_und_verpasst_nachholen(self):
-        await self._abo()
-        cs = graph_abos.client_state("abo1")
+        abo_id = await self._abo()
+        cs = graph_abos.client_state(abo_id)
         erg = await self._verarbeiten([{"subscriptionId": "sub-echt", "clientState": cs,
                                         "lifecycleEvent": "subscriptionRemoved"}], lebenszyklus=True)
         self.assertEqual(erg, ["subscriptionRemoved"])
@@ -235,8 +289,7 @@ class EmpfangTests(_Basis):
         self.assertEqual(erg, ["reauthorizationRequired"])
         self.assertEqual(self.graph.pfade("PATCH"), [f"/subscriptions/{neu.subscription_id}"])
 
-        self.graph.delta_seiten = [{"value": [{"id": "m5", "receivedDateTime": datetime.now(timezone.utc).isoformat()}],
-                                    "@odata.deltaLink": "https://graph.microsoft.com/v1.0/delta-2"}]
+        self.graph.liste_seiten = [{"value": [{"id": "m5"}]}]
         self.graph.mails["m5"] = _mail()
         erg = await self._verarbeiten([{"subscriptionId": neu.subscription_id, "clientState": cs,
                                         "lifecycleEvent": "missed"}], lebenszyklus=True)
@@ -273,6 +326,28 @@ class EingangTests(_Basis):
         self.assertEqual(await self._eingang("m2", entwurf=True), "entwurf")
         self.assertEqual(self.auftraege, [])
 
+    async def test_automatische_mails_wecken_nie(self):
+        """Review H1: Abwesenheitsnotizen, Massenmails, Unzustellbarkeit — sonst Ping-Pong."""
+        faelle = [
+            [{"name": "Auto-Submitted", "value": "auto-replied"}],
+            [{"name": "Precedence", "value": "bulk"}],
+            [{"name": "X-Auto-Response-Suppress", "value": "All"}],
+        ]
+        for i, koepfe in enumerate(faelle):
+            self.assertEqual(await self._eingang(f"a{i}", koepfe=koepfe), "automatisch")
+        self.assertEqual(await self._eingang("b", adresse="MAILER-DAEMON@example.com"), "automatisch")
+        self.assertEqual(await self._eingang("c", koepfe=[{"name": "Auto-Submitted", "value": "no"}]), "geweckt")
+
+    async def test_voreingestellt_nur_absender_der_eigenen_organisation(self):
+        """Review H1: Fremde Absender wecken nur, wenn der Besitzer es einschaltet."""
+        self.assertEqual(await self._eingang("x1", adresse="angreifer@fremd.example"), "extern")
+        self.assertEqual(await self._eingang("x2", adresse="kollege@example.com.fremd.example"), "extern")
+        async with self.Session() as db:
+            a = await self._agent(db)
+            a.config = graph_abos.mit_einstellung(a.config, alle_absender=True)
+            await db.commit()
+        self.assertEqual(await self._eingang("x3", adresse="kunde@fremd.example"), "geweckt")
+
     async def test_ausgeschaltet_oder_ohne_konto_kein_lauf(self):
         async with self.Session() as db:
             a = await self._agent(db)
@@ -281,19 +356,45 @@ class EingangTests(_Basis):
         self.assertEqual(await self._eingang(), "aus")
         self.assertEqual(self.auftraege, [])
 
-    async def test_stundengrenze_und_eine_meldung(self):
-        with patch.object(graph_abos, "HOECHSTENS_JE_STUNDE", 2):
-            erg = [await self._eingang(f"m{i}") for i in range(5)]
+    async def test_stundengrenze_je_agent_und_eine_meldung(self):
+        with patch.object(graph_abos, "HOECHSTENS_JE_STUNDE", 2), patch.object(graph_abos, "JE_ABSENDER_STUNDE", 99):
+            erg = [await self._eingang(f"m{i}", adresse=f"k{i}@example.com") for i in range(5)]
         self.assertEqual(erg, ["geweckt", "geweckt", "gedrosselt", "gedrosselt", "gedrosselt"])
         async with self.Session() as db:
             meldungen = (await db.execute(select(Notification))).scalars().all()
         self.assertEqual(len(meldungen), 1)
         self.assertEqual(meldungen[0].agent_id, "a1")
 
-    async def test_nicht_lesbare_mail_wird_spaeter_erneut_versucht(self):
+    async def test_grenze_je_absender_vor_der_des_agenten(self):
+        """Review H1: Ein Absender allein kann die Stunde nicht aufbrauchen."""
+        with patch.object(graph_abos, "JE_ABSENDER_STUNDE", 2):
+            erg = [await self._eingang(f"s{i}", adresse="flut@example.com") for i in range(4)]
+            erg.append(await self._eingang("echt", adresse="kollegin@example.com"))
+        self.assertEqual(erg, ["geweckt", "geweckt", "gedrosselt", "gedrosselt", "geweckt"])
+
+    async def test_gedrosselte_mail_bleibt_nachholbar(self):
+        """Review H1: Die Drossel löst die Doppelsperre — später kommt die Mail noch."""
+        with patch.object(graph_abos, "JE_ABSENDER_STUNDE", 0):
+            self.assertEqual(await self._eingang("spaeter"), "gedrosselt")
+        self.assertEqual(await self._eingang("spaeter"), "geweckt")
+
+    async def test_fehler_loesen_die_sperre(self):
+        """Review M4: Kein Token, Mail nicht lesbar, Auftrag scheitert — die Mail bleibt nachholbar."""
         self.graph.fehler[("GET", "/me/messages/")] = 503
         self.assertEqual(await self._eingang(), "fehler")
         del self.graph.fehler[("GET", "/me/messages/")]
+
+        with patch("app.core.agenten_konto.token_fuer", AsyncMock(return_value=None)):
+            self.assertEqual(await self._eingang(), "fehler")
+
+        async def kaputter_router(redis):
+            sitzung, _ = await self._router(redis)
+            return sitzung, SimpleNamespace(create_and_route_task=AsyncMock(side_effect=RuntimeError("Budget")))
+
+        self.graph.mails["m1"] = _mail()
+        async with self.Session() as db:
+            with self.assertRaises(RuntimeError):
+                await graph_abos.eingang(db, self.redis, await self._agent(db), "m1", router_fabrik=kaputter_router)
         self.assertEqual(await self._eingang(), "geweckt")
 
 
@@ -301,6 +402,10 @@ class AboTests(_Basis):
     async def _einrichten(self):
         async with self.Session() as db:
             return await graph_abos.einrichten(db, await self._agent(db))
+
+    async def _stand(self):
+        async with self.Session() as db:
+            return await graph_abos.stand(db, await self._agent(db))
 
     async def test_mit_https_abo_bei_microsoft_mit_geheimnis(self):
         abo = await self._einrichten()
@@ -310,7 +415,7 @@ class AboTests(_Basis):
         self.assertEqual(post["lifecycleNotificationUrl"], "https://anlage.example.com/api/v1/msgraph/lebenszyklus")
         self.assertEqual(post["resource"], graph_abos.RESSOURCE_MAIL)
         self.assertTrue(abo.subscription_id)
-        self.assertTrue(abo.delta_link, "Stand für 'missed' auch bei Benachrichtigung")
+        self.assertTrue(abo.stand, "Stand ab jetzt — kein alter Posteingang")
 
     async def test_ohne_https_abfrage_ohne_abo_bei_microsoft(self):
         with patch("app.config.settings.oauth_redirect_base_url", "http://intern.local:8000"):
@@ -318,10 +423,6 @@ class AboTests(_Basis):
         self.assertEqual(self.graph.pfade("POST"), [])
         self.assertIsNone(abo.subscription_id)
         self.assertEqual((await self._stand())["wecken_weg"], "abfrage")
-
-    async def _stand(self):
-        async with self.Session() as db:
-            return await graph_abos.stand(db, await self._agent(db))
 
     async def test_microsoft_erreicht_die_anlage_nicht_dann_abfrage_und_spaeter_neuer_versuch(self):
         self.graph.fehler[("POST", "/subscriptions")] = 400
@@ -375,8 +476,30 @@ class AboTests(_Basis):
             self.assertEqual(erg["entfernt"], 1)
             self.assertEqual((await db.execute(select(GraphAbo))).scalars().all(), [])
 
+    async def test_abgleich_laeuft_nach_einem_kaputten_agenten_weiter(self):
+        """Review M3: Ein Fehler (rollback) darf die Runde für die anderen nicht abreißen."""
+        async with self.Session() as db:
+            db.add_all([Agent(id="a2", name="Zwei", state=AgentState.RUNNING, user_id="u1",
+                              config={"mail_wecken": {"aktiv": True}}),
+                        OAuthIntegration(provider=OAuthProvider.MICROSOFT, user_id="u1", agent_id="a2",
+                                         access_token_encrypted=encrypt_token("tok-2"),
+                                         account_label="zwei@example.com", scopes="")])
+            await db.commit()
+        echt = graph_abos.einrichten
 
-class AbfrageTests(_Basis):
+        async def mal_kaputt(db, agent):
+            if agent.id == "a1":
+                await db.execute(select(GraphAbo))
+                raise RuntimeError("kaputt")
+            return await echt(db, agent)
+
+        with patch.object(graph_abos, "einrichten", mal_kaputt):
+            async with self.Session() as db:
+                erg = await graph_abos.abgleichen(db, self.redis)
+        self.assertEqual(erg["eingerichtet"], 1)
+
+
+class NachsehenTests(_Basis):
     async def asyncSetUp(self):
         await super().asyncSetUp()
         self._p = patch("app.config.settings.oauth_redirect_base_url", "http://intern.local")
@@ -386,39 +509,47 @@ class AbfrageTests(_Basis):
         self._p.stop()
         await super().asyncTearDown()
 
-    async def test_erster_lauf_spielt_keinen_alten_posteingang_ab_dann_nur_neues(self):
-        alt = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
-        neu = datetime.now(timezone.utc).isoformat()
-        self.graph.delta_seiten = [
-            {"value": [{"id": "alt1", "receivedDateTime": alt}],
-             "@odata.nextLink": "https://graph.microsoft.com/v1.0/seite2"},
-            {"value": [{"id": "alt2", "receivedDateTime": alt}], "@odata.deltaLink": "https://graph.microsoft.com/v1.0/d1"},
-            {"value": [{"id": "neu1", "receivedDateTime": neu}, {"id": "uralt", "receivedDateTime": alt},
-                       {"id": "weg", "@removed": {"reason": "deleted"}}],
-             "@odata.deltaLink": "https://graph.microsoft.com/v1.0/d2"},
-        ]
-        for k in ("neu1", "uralt", "alt1", "alt2"):
-            self.graph.mails[k] = _mail()     # lesbar — nur das Alter darf sie aufhalten
-        with patch.object(graph_abos, "_router", self._router):
-            async with self.Session() as db:
-                erg1 = await graph_abos.abgleichen(db, self.redis)
-                erg2 = await graph_abos.abgleichen(db, self.redis)
-                abo = await graph_abos.abo_von(db, "a1")
-        # Runde 1: Stand setzen (alt1, alt2 NICHT abspielen), gleich danach nachsehen → neu1.
-        self.assertEqual(erg1["nachgeholt"], 1)
-        self.assertEqual(erg2["nachgeholt"], 0)
-        self.assertEqual([a["metadata"]["message_id"] for a in self.auftraege], ["neu1"])
-        self.assertEqual(abo.delta_link, "https://graph.microsoft.com/v1.0/d2")
-        self.assertIn("/seite2", self.graph.pfade("GET")[1], "Seiten werden relativ zu Graph abgerufen")
-
-    async def test_verfallener_stand_beginnt_neu_ohne_abspielen(self):
+    async def test_nach_eingangszeit_seit_dem_stand_hoechstens_24_stunden(self):
+        """Review M6: kein delta über den ganzen Posteingang; Filter nach Eingangszeit, mit Seiten."""
         async with self.Session() as db:
             abo = await graph_abos.einrichten(db, await self._agent(db))
-            self.graph.fehler[("GET", "/delta-1")] = 410
-            with self.assertRaises(GraphError):
-                await graph_abos.nachholen(db, self.redis, abo, router_fabrik=self._router)
-            self.assertIsNone((await graph_abos.abo_von(db, "a1")).delta_link)
-        self.assertEqual(self.auftraege, [])
+            abo.stand = graph_abos._z(datetime.now(timezone.utc) - timedelta(days=5))
+            await db.commit()
+        self.graph.liste_seiten = [
+            {"value": [{"id": "n1"}], "@odata.nextLink": "https://graph.microsoft.com/v1.0/seite2"},
+            {"value": [{"id": "n2"}]},
+        ]
+        for k in ("n1", "n2"):
+            self.graph.mails[k] = _mail()
+        async with self.Session() as db:
+            n = await graph_abos.nachholen(db, self.redis, await graph_abos.abo_von(db, "a1"), router_fabrik=self._router)
+            neuer_stand = (await graph_abos.abo_von(db, "a1")).stand
+        self.assertEqual(n, 2)
+        erster, zweiter = self.graph.pfade("GET")[0], self.graph.pfade("GET")[1]
+        self.assertIn("$filter=receivedDateTime%20ge%20", erster)
+        from urllib.parse import unquote
+
+        seit = datetime.fromisoformat(unquote(erster.split("ge%20")[1]).replace("Z", "+00:00"))
+        self.assertGreater(seit, datetime.now(timezone.utc) - timedelta(hours=24, minutes=11),
+                           "Nie weiter als 24 Stunden zurück")
+        self.assertEqual(zweiter, "/seite2", "Folgeseiten relativ zu Graph")
+        self.assertGreater(graph_abos._iso(neuer_stand), datetime.now(timezone.utc) - timedelta(minutes=1))
+
+    async def test_abfrage_betrieb_jede_runde(self):
+        with patch.object(graph_abos, "nachholen", AsyncMock(return_value=0)) as nh:
+            async with self.Session() as db:
+                await graph_abos.abgleichen(db, self.redis)
+                await graph_abos.abgleichen(db, self.redis)
+            self.assertEqual(nh.await_count, 2, "Abfrage-Betrieb: jede Runde")
+
+    async def test_bei_meldung_nur_stuendlich(self):
+        """Review M5: Auch mit Abo bei Microsoft wird nachgesehen — aber nur einmal je Stunde."""
+        with patch("app.config.settings.oauth_redirect_base_url", "https://anlage.example.com"), \
+                patch.object(graph_abos, "nachholen", AsyncMock(return_value=0)) as nh:
+            async with self.Session() as db:
+                await graph_abos.abgleichen(db, self.redis)
+                await graph_abos.abgleichen(db, self.redis)
+        self.assertEqual(nh.await_count, 1)
 
 
 class ApiTests(_Basis):

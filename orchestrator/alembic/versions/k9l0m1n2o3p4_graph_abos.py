@@ -24,7 +24,7 @@ def upgrade() -> None:
         sa.Column("ressource", sa.String(200), nullable=False),
         sa.Column("subscription_id", sa.String(64), nullable=True, unique=True),
         sa.Column("ablauf", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("delta_link", sa.Text(), nullable=True),
+        sa.Column("stand", sa.String(40), nullable=True),
         sa.Column("letzte_meldung", sa.DateTime(timezone=True), nullable=True),
         sa.Column("fehler", sa.String(300), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),

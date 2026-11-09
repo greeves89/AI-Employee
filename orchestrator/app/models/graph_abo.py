@@ -5,14 +5,14 @@ Dafür abonniert die Anlage bei Microsoft Graph den Posteingang des Agenten. Mic
 dann neue Nachrichten an ``/api/v1/msgraph/benachrichtigung`` (core/graph_abos).
 
 Ohne öffentlich erreichbare HTTPS-Adresse gibt es kein Abonnement bei Microsoft
-(``subscription_id`` leer): Dann fragt die Anlage regelmäßig mit ``delta`` nach.
+(``subscription_id`` leer): Dann fragt die Anlage regelmäßig nach (Mails seit ``stand``).
 Das Geheimnis für ``clientState`` wird nicht gespeichert, sondern aus ``ENCRYPTION_KEY``
 und der Kennung abgeleitet.
 """
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -31,7 +31,7 @@ class GraphAbo(Base, TimestampMixin):
     subscription_id: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
     #: Ablauf bei Microsoft; im Abfrage-Betrieb: nächster Versuch, das Abo anzulegen.
     ablauf: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    #: Stand der Abfrage mit ``delta`` (Rückfall und Nachholen nach ``missed``).
-    delta_link: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Bis wann nachgesehen wurde (ISO-Zeit, UTC) — Abfrage-Betrieb, stündliches Netz, ``missed``.
+    stand: Mapped[str | None] = mapped_column(String(40), nullable=True)
     letzte_meldung: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     fehler: Mapped[str | None] = mapped_column(String(300), nullable=True)

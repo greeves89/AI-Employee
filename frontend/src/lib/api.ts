@@ -669,6 +669,8 @@ export interface AgentenKontoStand {
   darf_verbinden: boolean;
   /** Bei neuer Mail wecken (opt-in) und auf welchem Weg: Benachrichtigung von Microsoft oder Abfrage */
   mail_wecken?: boolean;
+  /** Auch Absender außerhalb der eigenen Organisation wecken (Voreinstellung: nur intern) */
+  alle_absender?: boolean;
   wecken_weg?: "benachrichtigung" | "abfrage" | null;
   wecken_fehler?: string | null;
   letzte_meldung?: string | null;
@@ -684,11 +686,11 @@ export async function verbindeAgentMicrosoftKonto(agentId: string): Promise<{ au
 }
 
 export async function setzeAgentMailWecken(
-  agentId: string, aktiv: boolean,
-): Promise<Pick<AgentenKontoStand, "mail_wecken" | "wecken_weg" | "wecken_fehler" | "letzte_meldung">> {
+  agentId: string, patch: { aktiv?: boolean; alle_absender?: boolean },
+): Promise<Pick<AgentenKontoStand, "mail_wecken" | "alle_absender" | "wecken_weg" | "wecken_fehler" | "letzte_meldung">> {
   return fetchJSON(`${getBase()}/agents/${agentId}/microsoft-konto/mail-wecken`, {
     method: "PATCH",
-    body: JSON.stringify({ aktiv }),
+    body: JSON.stringify(patch),
   });
 }
 
