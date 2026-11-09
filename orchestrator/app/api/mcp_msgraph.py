@@ -42,6 +42,14 @@ async def _get_access_token(agent_id: str, db: AsyncSession) -> str | None:
     return await token_fuer(db, agent)
 
 
+_TEAMS_HINWEIS = {
+    "freigabe": ("Nicht gesendet: Die Teams-Nachricht wartet auf Freigabe durch deinen Menschen. Nach der "
+                 "Freigabe sendet die Plattform genau diesen Text — nicht noch einmal selbst versuchen."),
+    "gesendet": "Teams-Nachricht gesendet.",
+    "aus": "Nicht gesendet: Dieser Agent darf in Microsoft 365 nur lesen.",
+}
+
+
 @router.post("/msgraph/{agent_id}")
 async def mcp_msgraph_endpoint(agent_id: str, request: Request):
     """MCP Streamable HTTP endpoint for MS Graph tools (agent transport)."""
@@ -68,45 +76,37 @@ async def mcp_msgraph_endpoint(agent_id: str, request: Request):
         async with async_session_factory() as db:
             return await _get_access_token(agent_id, db)
 
-    # Determine the agent's Microsoft access mode (read-only by default). Write mode
-    # unlocks the send/create tools; outbound mail is sent for real. The platform-wide
-    # read-only switch overrides the agent's setting — see app.core.ms_access.
+    # Wie darf dieser Agent senden? EINE Entscheidung für Werkzeuge und Teams-Kanal
+    # (core/ms_access.sendemodus): Nur-Lesen-Schalter, Einstellung des Agenten, Sekretariat
+    # und Rechte-Matrix „E-Mail / M365 senden“ (stuft nur herab).
     async with async_session_factory() as db:
         agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
-    may_write = ms_access.write_enabled(agent.config if agent else None, "msgraph_access")
-    im_sekretariat = False
-    if agent is not None:
-        from app.core.sekretariat import ist_sekretariats_agent
+        modus = await ms_access.sendemodus(db, agent)
+        im_sekretariat = False
+        if agent is not None:
+            from app.core.sekretariat import ist_sekretariats_agent
 
-        async with async_session_factory() as db:
             im_sekretariat = await ist_sekretariats_agent(db, agent_id)
-    # Die Rechte-Matrix („E-Mail / M365 senden“) gilt hier wie ueberall am Server.
-    # Frueher waren das zwei Schalter: „Lesen + Schreiben“ sendete sofort, auch wenn
-    # die Matrix „Freigabe“ oder „Verboten“ sagte.
-    from app.core.faehigkeiten import zustand
-    async with async_session_factory() as db:
-        matrix_mail = await zustand(db, agent_id, "email_m365")
-    if (im_sekretariat or matrix_mail != "allow") and may_write:
-        # Fail-closed: Im Sekretariat oder ohne „Erlaubt“ in der Matrix geht keine Mail
-        # ohne Freigabe raus — auch wenn die Einstellung auf „Lesen + Schreiben“ steht.
-        may_write = False
-    entwurf = None
-    # Sekretariat und Matrix stufen nur HERAB (Schreiben → Entwurf), sie geben nie mehr
-    # Rechte als die eigene Einstellung des Agenten: „Lesen“ bleibt „Lesen“.
-    # „Verboten“ in der Matrix heisst: nur lesen, auch keine Entwuerfe.
-    if matrix_mail != "deny" and not may_write and (
-            ms_access.entwurf_enabled(agent.config if agent else None)
-            or ((im_sekretariat or matrix_mail == "ask") and not ms_access.read_only_enabled()
-                and (agent.config or {}).get("msgraph_access") in ms_access._WRITE_VALUES)):
+    may_write = modus == ms_access.SCHREIBEN
+    entwurf = teams_freigabe = None
+    if modus == ms_access.ENTWURF:
         from app.core.mail_freigabe import anfragen
 
         async def entwurf(message_id: str, betreff: str) -> str:
             return await anfragen(agent_id, message_id, betreff)
 
+        async def teams_freigabe(ziel: dict, text: str) -> str:
+            # Teams-Nachricht im Modus „Entwurf“: gebundene Freigabe, der Server sendet danach.
+            from app.services.teams_gateway import senden_nach_regeln
+
+            ergebnis = await senden_nach_regeln(agent, ziel, text, format_="text", quelle="werkzeug")
+            return _TEAMS_HINWEIS.get(ergebnis, "Die Teams-Nachricht wurde nicht gesendet.")
+
     verschieben = (im_sekretariat and body.get("method") == "tools/call"
                    and (body.get("params") or {}).get("name") == "ms_move_email")
     betreff = await _betreff_vor_dem_verschieben(body, resolve_token) if verschieben else None
-    resp, status = await handle_mcp_request(body, resolve_token, write_enabled=may_write, entwurf_freigabe=entwurf)
+    resp, status = await handle_mcp_request(body, resolve_token, write_enabled=may_write, entwurf_freigabe=entwurf,
+                                            teams_freigabe=teams_freigabe)
     if verschieben and not ((resp.get("result") or {}).get("isError")):
         await _verschieben_protokollieren(agent, body, betreff)
     return JSONResponse(resp, status_code=status)

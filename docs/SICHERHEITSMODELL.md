@@ -99,6 +99,7 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
 | Teams-Antworten im Kanal respektieren den Nur-Lesen-Schalter für Microsoft 365 | 1.444.1 |
 | Eigenes Microsoft-365-Konto je Agent (Phase 1): ein Weg zum Token, kein Rückfall auf den Besitzer, eigenes Konto wird abgelehnt (`core/agenten_konto.py`) | 1.445.0 |
 | Wecken bei neuer Mail (Phase 2): Der öffentliche Empfang prüft `clientState` (HMAC mit Abo-Kennung) ohne Datenbank, dann das Abo. Körper höchstens 1 MB, höchstens 8 Verarbeitungen gleichzeitig. Im Auftrag stehen nur Absender und Betreff, gerahmt. Voreingestellt wecken nur interne Absender (Urteil von Exchange `AuthAs: Internal`, nicht die fälschbare Absenderadresse), automatische Mails nie. Höchstens 5 je Absender und 20 je Agent und Stunde (`core/graph_abos.py`) | 1.446.0 |
+| Teams-Senden nach denselben Regeln wie Mail (Nur-Lesen, Einstellung, Sekretariat, Rechte-Matrix, Anbindung); im Modus „Entwurf“ gebundene Freigabe `teams_senden`; Schleifenschutz in zwei Halten (`services/teams_gateway.py`, `core/ms_access.sendemodus`). Vorher schrieb ein Agent auf „Lesen“ trotzdem im Teams-Kanal | 1.447.0 |
 
 ### Entscheidungen vom 09.11.2026
 

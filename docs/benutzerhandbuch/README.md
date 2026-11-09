@@ -4197,6 +4197,26 @@ jede Zeile antworten.
 Für einen Kanal, der dem Agenten allein gehört, kannst du **Erwähnung nötig**
 ausschalten; dann bearbeitet er alles, was dort geschrieben wird.
 
+### Teams: Wer darf in deinem Namen schreiben? *(seit 1.447.0)*
+
+Antworten im Teams-Kanal und Teams-Nachrichten über die Werkzeuge des Agenten folgen denselben
+Regeln wie Mails:
+- **Microsoft 365 nur lesend** (Admin) oder **Lesen** beim Agenten: Der Agent schreibt nichts in
+  Teams.
+- **Entwurf**, **Sekretariat** oder **Freigabe** in der Rechte-Matrix bei „E-Mail / M365
+  senden“: Die Nachricht landet als Freigabe bei dir („Teams-Nachricht senden“, mit Ziel und
+  vollem Text). Erst wenn du freigibst, sendet die Anlage genau diesen Text, einmal.
+- **Lesen + Schreiben** und **Erlaubt** in der Matrix: Der Agent schreibt direkt.
+- Die Microsoft-Anbindung muss dem Agenten zugewiesen sein.
+
+Hat der Agent ein eigenes Microsoft-Konto (Kap. 37.16), schreibt er als er selbst. Sonst
+schreibt er über dein Konto. Seine eigenen Nachrichten liest er in beiden Fällen nicht als neue
+Anfrage, deine schon.
+
+**Gestoppte Agenten:** Eine Nachricht in Teams, Slack, Discord, WhatsApp oder über den Webhook
+startet einen gestoppten Agenten. Hast du ihn bewusst angehalten, bleibt er aus. Die Nachricht
+wartet dann, bis du ihn startest. Das gilt auch für **Bei neuer Mail wecken**.
+
 ### Was der Filter unterwegs prüft
 
 Jede ausgehende Nachricht läuft durch den **DLP-Filter** (siehe Admin-Bereich),

@@ -91,6 +91,13 @@ und Handbuch.
 
 ### Phase 3: Teams als eigene Identität
 
+> **Stand: Sicherheitsteil umgesetzt in 1.447.0.**
+> - Es gibt einen Weg zum Senden (`teams_gateway.senden_nach_regeln`) mit derselben Entscheidung wie für Mail (`ms_access.sendemodus`). Bis 1.446 prüfte die Kanal-Antwort nur den Nur-Lesen-Schalter.
+> - Gebundene Freigabe `teams_senden` im Modus „Entwurf“, für Werkzeug und Kanal.
+> - Schleifenschutz in zwei Halten: Liste gesendeter Nachrichten, auch beim Konto des Besitzers, und bei eigenem Konto die eigene Kennung aus `/me`. Das Feld `own_user_id` setzte vorher niemand.
+> - Kanal-Nachrichten wecken gestoppte Agenten, außer bewusst angehaltene.
+> - **Offen (nächster Schritt):** die Oberfläche für die Kanal-Einstellungen. Es gibt sie nicht, das Handbuch Kap. 34 beschreibt sie aber. Außerdem das Chat-Abo statt Abfrage.
+
 - Die eigene Teams-Kennung des Agenten wird beim Verbinden aus `/me` gesetzt (`own_user_id`).
   Der Agent antwortet sich damit nie selbst. Heute setzt diesen Wert niemand.
 - Teams-Nachrichten senden die Kanal-Antwort und das Werkzeug nach denselben Regeln wie Mail:

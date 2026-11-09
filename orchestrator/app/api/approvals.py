@@ -268,7 +268,7 @@ async def _push_ios_for_agent(
 #: Arten, die nur der Server selbst anlegt — ein Agent darf sie nicht über
 #: ``/request`` vortäuschen. ``mail_senden``: beim Freigeben sendet der Server einen
 #: Entwurf aus dem Postfach des Besitzers (core/mail_freigabe.py).
-SERVER_ARTEN = {"mail_senden"}
+SERVER_ARTEN = {"mail_senden", "teams_senden"}
 
 #: Ansichten, die zusagen, dass der SERVER nach dem Freigeben genau das Gezeigte
 #: ausführt. Nur Server-Bausteine dürfen sie verwenden (mail_freigabe, gebundene_freigabe).
@@ -279,7 +279,8 @@ def ist_server_art(art: str | None) -> bool:
     """Arten, die nur der Server anlegt: Mail-Freigabe und jede gebundene Handlung
     (core/gebundene_freigabe). Ein Agent, der so eine Art selbst anlegt, könnte sonst
     eine Handlung nach seinen Wünschen zur Ausführung durch den Server stellen."""
-    from app.core.gebundene_freigabe import AUSFUEHRER
+    from app.core.gebundene_freigabe import AUSFUEHRER, anmeldungen_laden
+    anmeldungen_laden()
     return art in SERVER_ARTEN or art in AUSFUEHRER
 
 

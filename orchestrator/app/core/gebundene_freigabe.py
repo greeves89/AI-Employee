@@ -33,6 +33,19 @@ logger = logging.getLogger(__name__)
 AUSFUEHRER: dict[str, Callable[..., Awaitable[str]]] = {}
 
 
+#: Module, die Ausführungen anmelden. Beim Prüfen und Ausführen werden sie geladen — sonst
+#: hinge es vom Zufall der Importreihenfolge ab, ob eine Art bekannt ist (eine unbekannte
+#: Art würde beim Freigeben still NICHTS ausführen und die Freigabe trotzdem schließen).
+ANMELDUNGEN = ("app.api.tickets", "app.services.teams_gateway")
+
+
+def anmeldungen_laden() -> None:
+    import importlib
+
+    for modul in ANMELDUNGEN:
+        importlib.import_module(modul)
+
+
 def ausfuehrer(art: str):
     def anmelden(fn):
         AUSFUEHRER[art] = fn
@@ -75,6 +88,7 @@ async def anfragen(db, agent_id: str, art: str, daten: dict, *, titel: str,
 
 async def ausfuehren(db, approval) -> str | None:
     """Beim Freigeben: die gebundene Handlung genau einmal ausführen. None = keine solche."""
+    anmeldungen_laden()
     meta = approval.meta or {}
     art = meta.get("kind")
     fn = AUSFUEHRER.get(art)

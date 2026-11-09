@@ -357,6 +357,25 @@ class ChannelResponder:
             return None
 
 
+async def _wecken(agent_id: str) -> None:
+    """Gestoppten Agenten starten — außer, sein Mensch hat ihn bewusst angehalten."""
+    try:
+        from app.core.agent_duty import vom_nutzer_angehalten
+        from app.db.session import async_session_factory
+        from app.models.agent import Agent
+        from app.services.user_lifecycle import wake_agent
+
+        async with async_session_factory() as db:
+            agent = await db.get(Agent, agent_id)
+            if agent is None or vom_nutzer_angehalten(agent):
+                return
+            from app.services.docker_service import DockerService
+
+            await wake_agent(db, DockerService(), agent_id)
+    except Exception as e:  # noqa: BLE001 — die Nachricht liegt in der Warteschlange; Start holt sie ab
+        logger.warning("[Gateway] Agent %s nicht geweckt: %s", agent_id, e)
+
+
 async def deliver(redis, message: InboundMessage, *, capture: bool = True) -> bool:
     """Der vollständige Weg von außen zum Agenten. Gibt zurück, ob zugestellt wurde.
 
@@ -397,6 +416,11 @@ async def deliver(redis, message: InboundMessage, *, capture: bool = True) -> bo
     # mitten im Gespraech — er kennt nur Aktivitaet in der Web-Oberflaeche.
     from app.services.user_lifecycle import mark_agent_interaction
     await mark_agent_interaction(redis, message.agent_id)
+    if message.channel != CHANNEL_TELEGRAM:
+        # Telegram weckt selbst (telegram/agent_bot). Für Teams, Slack, Discord, WhatsApp und
+        # Webhook stand die Nachricht sonst in der Warteschlange eines gestoppten Agenten,
+        # bis jemand ihn von Hand startete.
+        await _wecken(message.agent_id)
     logger.info("[Gateway] %s -> Agent %s (Sitzung %s)",
                 message.channel, message.agent_id, message.session_id)
     return True

@@ -425,6 +425,28 @@ class EingangTests(_Basis):
             await db.commit()
         self.assertEqual(await self._eingang("x3", adresse="kunde@fremd.example"), "geweckt")
 
+    async def test_bewusst_angehalten_kein_lauf_aber_nachholbar(self):
+        """Phase 3: Ein vom Menschen angehaltener Agent wird auch von Mail nicht geweckt —
+        und der Stand rückt nicht weiter, damit nach dem Start nachgeholt wird."""
+        async with self.Session() as db:
+            a = await self._agent(db)
+            a.config = {**a.config, "angehalten_vom_nutzer": True}
+            await db.commit()
+            abo = GraphAbo(id="ef" * 16, agent_id="a1", art="mail", ressource=graph_abos.RESSOURCE_MAIL, stand="2026-01-01T00:00:00Z")
+            db.add(abo)
+            await db.commit()
+        self.assertEqual(await self._eingang(), "angehalten")
+        async with self.Session() as db:
+            self.assertEqual(await graph_abos.nachholen(db, self.redis, await graph_abos.abo_von(db, "a1")), 0)
+            self.assertEqual((await graph_abos.abo_von(db, "a1")).stand, "2026-01-01T00:00:00Z")
+        self.assertEqual(self.auftraege, [])
+        self.assertEqual(self.graph.pfade("GET"), [], "Angehalten: nicht einmal nachsehen")
+        async with self.Session() as db:
+            a = await self._agent(db)
+            a.config = {k: v for k, v in a.config.items() if k != "angehalten_vom_nutzer"}
+            await db.commit()
+        self.assertEqual(await self._eingang(), "geweckt", "Keine Sperre gesetzt — nach dem Start geht es")
+
     async def test_ausgeschaltet_oder_ohne_konto_kein_lauf(self):
         async with self.Session() as db:
             a = await self._agent(db)
