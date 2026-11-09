@@ -86,7 +86,8 @@ async def _mail_kalender(db: AsyncSession, uid: str) -> bool:
     """Eigene oder von der Verwaltung geteilte Anbindung (Microsoft 365, Google, Exchange, GitHub)."""
     return bool(await db.scalar(select(exists().where(
         OAuthIntegration.provider.in_(_WERKZEUGE),
-        or_(OAuthIntegration.user_id == uid, OAuthIntegration.user_id.is_(None))))))
+        or_(OAuthIntegration.user_id == uid, OAuthIntegration.user_id.is_(None)),
+        OAuthIntegration.agent_id.is_(None)))))
 
 
 async def _iphone(db: AsyncSession, uid: str) -> bool:

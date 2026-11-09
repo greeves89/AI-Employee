@@ -37,6 +37,13 @@ class OAuthIntegration(Base, TimestampMixin):
     user_id: Mapped[str | None] = mapped_column(
         String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    # Eigenes Konto eines Agenten (Plan docs/plaene/agenten-identitaet-m365.md, Phase 1):
+    # NULL = Konto eines Menschen bzw. global. Gesetzt = das Microsoft-Konto des Agenten
+    # selbst; ``user_id`` ist dann sein Besitzer (Spur, Meldungen). Wird mit dem Agenten
+    # gelöscht. Das SSO-Login schreibt nur Zeilen OHNE agent_id.
+    agent_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("agents.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     # Encrypted with Fernet (ENCRYPTION_KEY)
     access_token_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     refresh_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)

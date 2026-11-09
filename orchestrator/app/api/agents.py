@@ -3698,6 +3698,76 @@ async def update_agent_anonymisierer(
     return stand
 
 
+async def _microsoft_konto_agent(agent_id: str, user, db: AsyncSession, schreiben: bool):
+    """Agent laden und Rechte prüfen. Lesen: wer den Agenten sieht. Ändern: Besitzer oder Admin."""
+    from app.core import agenten_konto
+
+    await _check_owner(agent_id, user, db)
+    agent = await db.get(Agent, agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
+    if schreiben and not await agenten_konto.darf_verbinden(db, agent, user):
+        raise HTTPException(status_code=403, detail="Das Konto des Agenten verbindet nur sein Besitzer.")
+    return agent
+
+
+@router.get("/{agent_id}/microsoft-konto")
+async def get_agent_microsoft_konto(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    redis: RedisService = Depends(get_redis_service),
+):
+    """Eigenes Microsoft-365-Konto des Agenten (core/agenten_konto): verbunden? als wer?"""
+    from app.core import agenten_konto
+    from app.core.oauth_providers import get_provider, get_provider_client_id
+
+    agent = await _microsoft_konto_agent(agent_id, user, db, schreiben=False)
+    stand = await agenten_konto.stand(db, agent, redis)
+    return {**stand,
+            "verfuegbar": bool(get_provider_client_id(get_provider(agenten_konto.ANBIETER))),
+            "darf_verbinden": await agenten_konto.darf_verbinden(db, agent, user)}
+
+
+@router.post("/{agent_id}/microsoft-konto/verbinden")
+async def verbinden_agent_microsoft_konto(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    redis: RedisService = Depends(get_redis_service),
+):
+    """Anmelde-Adresse für das Konto des Agenten. Microsoft fragt immer nach dem Konto
+    (``prompt=select_account``), damit nicht still das eigene angemeldete genommen wird;
+    der Rückruf prüft Besitz und eigenes Konto erneut (agenten_konto.speichern)."""
+    from app.core import agenten_konto
+    from app.services.oauth_service import OAuthService
+
+    agent = await _microsoft_konto_agent(agent_id, user, db, schreiben=True)
+    try:
+        url = await OAuthService(db, redis).generate_auth_url(
+            agenten_konto.ANBIETER, user_id=user.id,
+            ruecksprung=f"/agents/{agent.id}?konnektoren=1", agent_id=agent.id)
+    except (KeyError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"auth_url": url}
+
+
+@router.delete("/{agent_id}/microsoft-konto")
+async def trennen_agent_microsoft_konto(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    redis: RedisService = Depends(get_redis_service),
+):
+    """Konto des Agenten trennen. Danach arbeitet er wieder mit dem Konto seines Besitzers."""
+    from app.core import agenten_konto
+
+    agent = await _microsoft_konto_agent(agent_id, user, db, schreiben=True)
+    if not await agenten_konto.trennen(db, redis, agent, user):
+        raise HTTPException(status_code=404, detail="Der Agent hat kein eigenes Microsoft-Konto.")
+    return await agenten_konto.stand(db, agent, redis)
+
+
 @router.get("/{agent_id}/browser/audit")
 async def get_agent_browser_audit(
     agent_id: str,

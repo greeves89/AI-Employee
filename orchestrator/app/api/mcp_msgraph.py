@@ -19,7 +19,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import async_session_factory
 from app.dependencies import agent_zugang_pruefen
 from app.models.agent import Agent
-from app.services.oauth_service import OAuthService
 from app.core import ms_access
 from app.core.msgraph_mcp import handle_mcp_request, mcp_error
 
@@ -37,14 +36,10 @@ async def _get_access_token(agent_id: str, db: AsyncSession) -> str | None:
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if not agent or not agent.user_id:
         return None
-    try:
-        # OAuthService needs (db, redis); get_valid_token doesn't use redis → None ok.
-        return await OAuthService(db, None).get_valid_token("microsoft", agent.user_id)
-    except Exception as e:
-        # Not connected / no refresh token (ValueError) OR a transient Microsoft
-        # outage during refresh — both surface to the model as "not connected".
-        logger.warning("MS Graph token unavailable for agent %s: %s", agent_id, e)
-        return None
+    # EINE Stelle entscheidet: eigenes Konto des Agenten, sonst das des Besitzers
+    # (core/agenten_konto.token_fuer — ohne stillen Rückfall, wenn das eigene scheitert).
+    from app.core.agenten_konto import token_fuer
+    return await token_fuer(db, agent)
 
 
 @router.post("/msgraph/{agent_id}")
