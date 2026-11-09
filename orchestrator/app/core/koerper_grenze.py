@@ -18,8 +18,26 @@ import re
 REGELN: list[tuple[str, re.Pattern, int]] = []
 
 
-def regel(methode: str, muster: str, max_bytes: int) -> None:
+#: Pfad-Muster → Query-Parameter, bei dem eine Anfrage OHNE Längenangabe durchgeht.
+#: Für Anfragen, deren Körper der Endpunkt dann gar nicht liest — etwa die Adressprüfung
+#: von Microsoft Graph (``?validationToken=…``, leerer Körper, Längenangabe nicht zugesichert).
+OHNE_LAENGE: dict[str, str] = {}
+
+
+def regel(methode: str, muster: str, max_bytes: int, ohne_laenge_bei: str | None = None) -> None:
     REGELN.append((methode.upper(), re.compile(muster), max_bytes))
+    if ohne_laenge_bei:
+        OHNE_LAENGE[muster] = ohne_laenge_bei
+
+
+def _ohne_laenge_erlaubt(muster: re.Pattern, scope) -> bool:
+    from urllib.parse import parse_qs
+
+    param = OHNE_LAENGE.get(muster.pattern)
+    if not param:
+        return False
+    werte = parse_qs((scope.get("query_string") or b"").decode("latin-1")).get(param) or []
+    return any(w.strip() for w in werte)
 
 
 async def _antwort(send, status: int, text: str) -> None:
@@ -40,6 +58,8 @@ class KoerperGrenze:
                 if methode != r_methode or not muster.match(pfad):
                     continue
                 laenge = dict(scope.get("headers") or []).get(b"content-length")
+                if laenge is None and _ohne_laenge_erlaubt(muster, scope):
+                    break
                 if laenge is None or not laenge.isdigit():
                     await _antwort(send, 411, "Für Uploads bitte die Länge (Content-Length) mitsenden.")
                     return

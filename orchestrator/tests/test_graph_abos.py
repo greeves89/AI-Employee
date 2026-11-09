@@ -221,6 +221,33 @@ class EmpfangTests(_Basis):
         regeln = [(m, r.pattern, n) for m, r, n in koerper_grenze.REGELN if r.match("/api/v1/msgraph/benachrichtigung")]
         self.assertEqual(regeln, [("POST", r"^/api/v1/msgraph/", 1024 * 1024)])
 
+    async def test_adresspruefung_ohne_laenge_meldung_nicht(self):
+        """Live gefunden (1.446.0): Microsofts Prüfanfrage hat leeren Körper, womöglich ohne
+        Content-Length — die Grenze antwortete 411, und kein Abo ließe sich anlegen. Nur die
+        Prüfung (validationToken) darf ohne Länge durch; echte Meldungen weiter nicht."""
+        import app.main  # noqa: F401
+        from app.core.koerper_grenze import KoerperGrenze
+
+        async def antwort(query: bytes, headers):
+            gesendet, weiter = [], []
+
+            async def app_(scope, receive, send):
+                weiter.append(True)
+
+            async def send(m):
+                gesendet.append(m)
+
+            await KoerperGrenze(app_)({"type": "http", "method": "POST", "path": "/api/v1/msgraph/benachrichtigung",
+                                       "query_string": query, "headers": headers}, None, send)
+            return "weiter" if weiter else gesendet[0]["status"]
+
+        self.assertEqual(await antwort(b"validationToken=Validation%3A%20x", []), "weiter")
+        self.assertEqual(await antwort(b"", []), 411)
+        self.assertEqual(await antwort(b"validationToken=", []), 411)
+        self.assertEqual(await antwort(b"", [(b"content-length", b"2000000")]), 413)
+        self.assertEqual(await antwort(b"validationToken=x", [(b"content-length", b"2000000")]), 413)
+        self.assertEqual(await antwort(b"", [(b"content-length", b"500")]), "weiter")
+
     async def _abo(self, sid="sub-echt", abo_id="ab" * 16):
         async with self.Session() as db:
             db.add(GraphAbo(id=abo_id, agent_id="a1", art="mail", ressource=graph_abos.RESSOURCE_MAIL,

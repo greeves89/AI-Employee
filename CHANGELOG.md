@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.446.1] - 2026-11-09
+
+### Behoben
+- **Die Adressprüfung von Microsoft Graph scheiterte an der Größengrenze.**
+  - Fundort: live auf der Testanlage, Prüfanfrage von außen.
+  - Microsoft prüft die Empfangsadresse mit einem POST mit leerem Körper (`?validationToken=…`). Eine Längenangabe ist dabei nicht zugesichert.
+  - Die neue Grenze für `/api/v1/msgraph/` verlangte sie und antwortete 411. Kein Abo hätte sich anlegen lassen, und die Anlage wäre still auf Abfrage zurückgefallen.
+  - Jetzt darf nur die Prüfanfrage ohne Länge durch (`koerper_grenze.regel(..., ohne_laenge_bei="validationToken")`). Der Endpunkt liest dann keinen Körper. Echte Meldungen brauchen weiter Länge und höchstens 1 MB.
+
 ## [1.446.0] - 2026-11-09
 
 ### Neu
