@@ -97,6 +97,7 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
 | Sentinel-Hinweise mit Einmalwert, beim Agenten vor dem Modell geprüft (`plattform_hinweis`) | 1.443.0 |
 | Anonymisierer vor dem Modell, opt-in je Agent, im Egress-Proxy (`egress/anonym.py`) | 1.444.0 |
 | Teams-Antworten im Kanal respektieren den Nur-Lesen-Schalter für Microsoft 365 | 1.444.1 |
+| Eigenes Microsoft-365-Konto je Agent (Phase 1): ein Weg zum Token, kein Rückfall auf den Besitzer, eigenes Konto wird abgelehnt (`core/agenten_konto.py`) | 1.445.0 |
 
 ### Entscheidungen vom 09.11.2026
 
@@ -104,7 +105,7 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
 |---|---|---|
 | Strengere Sentinel-Bindung | Einmalwert (HMAC) je Hinweis | erledigt in 1.443.0 |
 | Anonymisierer vor dem Modell | opt-in je Agent | erledigt in 1.444.0 |
-| Eigene Identität für Agenten (Pilot beim Kunden) | lizenzierter Microsoft-365-Nutzer je Agent | eigener Planungsschritt |
+| Eigene Identität für Agenten (Pilot beim Kunden) | lizenzierter Microsoft-365-Nutzer je Agent | Phase 1 erledigt in 1.445.0, Phasen 2–4 nach Plan `docs/plaene/agenten-identitaet-m365.md` |
 | Eigene Microsoft-Identität je Agent: Rückruf-Adresse für Graph-Benachrichtigungen prüft heute nichts (`/teams/calling/callback` schreibt nur Protokoll, ändert nichts) | gemeinsamer, prüfender Empfang mit `clientState` | mit Phase 2 des Plans `docs/plaene/agenten-identitaet-m365.md` |
 | Zielliste für den Ausgang je Agent | offen | geparkt. Empfehlung: opt-in je Agent, bauen, wenn ein Kunde es braucht |
 

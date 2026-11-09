@@ -111,6 +111,7 @@ _SPALTEN_NACH_DER_MARKE = (
     ("teams", "rueckkanal"),
     ("teams", "repo_oeffentlich"),
     ("teams", "blinder_pruefer"),
+    ("oauth_integrations", "agent_id"),
     ("kosten_historie", "team_id"),
     ("teams", "art"),
     ("meeting_rooms", "team_id"),

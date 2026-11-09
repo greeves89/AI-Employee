@@ -93,14 +93,15 @@ def _sender(message: dict) -> tuple[str, str]:
     return user.get("id") or "", user.get("displayName") or ""
 
 
-async def _graph_token(user_id: str) -> str | None:
+async def _agenten_token(agent) -> str | None:
+    """Token des Agenten: eigenes Microsoft-Konto, sonst das des Besitzers (core/agenten_konto)."""
     try:
-        from app.services.oauth_service import OAuthService
+        from app.core.agenten_konto import token_fuer
 
         async with resilient_session() as db:
-            return await OAuthService(db).get_valid_token("microsoft", user_id)
-    except Exception as e:  # noqa: BLE001 — ohne Token ist Teams fuer diesen Nutzer aus
-        logger.debug("[Teams] kein Graph-Token fuer %s: %s", user_id, e)
+            return await token_fuer(db, agent)
+    except Exception as e:  # noqa: BLE001 — ohne Token ist Teams fuer diesen Agenten aus
+        logger.debug("[Teams] kein Graph-Token fuer Agent %s: %s", getattr(agent, "id", "?"), e)
         return None
 
 
@@ -144,7 +145,7 @@ class TeamsGateway:
 
     async def _poll_agent(self, agent: Agent) -> int:
         cfg = channel_config(agent)
-        token = await _graph_token(agent.user_id)
+        token = await _agenten_token(agent)
         if not token:
             return 0
 
@@ -268,7 +269,7 @@ async def send_reply(agent: Agent, context: dict, text: str) -> bool:
                        "(Admin → Integrationen)")
         return False
 
-    token = await _graph_token(agent.user_id)
+    token = await _agenten_token(agent)
     if not token:
         logger.warning("[Teams] Antwort nicht moeglich — kein Graph-Token")
         return False

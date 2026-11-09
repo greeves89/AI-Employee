@@ -4928,6 +4928,42 @@ dort nie, es sind Namen.
   Werkzeugaufruf. Dagegen wirken der Sentinel und die Freigaben (Kap. 37.13, Kap. 13).
 - Das „Denken“ des Modells (Zusammenfassung) zeigt Platzhalter statt der echten Werte.
 
+### 37.16 Eigenes Microsoft-Konto für einen Agenten *(seit 1.445.0)*
+
+Ohne eigenes Konto arbeitet ein Agent mit **deinem** Microsoft-Konto: Er liest dein Postfach,
+und was er sendet, kommt von dir. Bekommt er ein eigenes, lizenziertes Microsoft-365-Konto
+(z. B. `assistenz@deine-firma.de`), arbeitet er als er selbst: eigenes Postfach, eigener
+Kalender, eigener Absender. Dein Postfach sieht er dann nicht mehr.
+
+**Vorher (IT):** Ein Microsoft-365-Nutzer für den Agenten mit Lizenz (Postfach, bei Bedarf
+Teams). Die Anmeldung läuft einmal über AI Employee, danach mit einem Erneuerungs-Token.
+Eine Regel, die regelmäßig eine neue Anmeldung erzwingt, beendet den Zugang. Dann ist neu
+zu verbinden.
+
+**So verbindest du das Konto** (Besitzer des Agenten oder Administrator):
+1. Agent öffnen und unten auf **Konnektoren** klicken.
+2. Bei **Microsoft-Konto des Agenten** auf **Konto verbinden** klicken.
+3. Microsoft fragt nach dem Konto: **mit dem Konto des Agenten** anmelden, nicht mit deinem.
+4. Danach bist du zurück beim Agenten. Die Karte zeigt das Konto und „Verbunden“.
+
+Wählst du versehentlich dein eigenes Konto, lehnt die Anlage ab. Die Karte zeigt dann
+„Das ist dein eigenes Microsoft-Konto“, und ein schon verbundenes Konto des Agenten bleibt
+unverändert.
+
+**Was sich ändert:**
+- Mail, Kalender und Dateien über die Microsoft-Werkzeuge des Agenten, Teams-Antworten und
+  Mail-Entwürfe zur Freigabe laufen über das Konto des Agenten. Freigeben (Kap. 13) musst du
+  sie weiterhin. Auch das Bearbeiten eines Entwurfs unter **Heute** geht in dessen Postfach.
+- Läuft die Anmeldung des Agenten ab, liest und sendet er **nichts mehr**. Er weicht bewusst
+  nicht auf dein Konto aus. Du bekommst eine Meldung, die Karte wird gelb (**Neu verbinden**),
+  und der Sicherheitsstatus (Kap. 19) warnt unter „Microsoft-Konten der Agenten“.
+- **Trennen** auf der Karte entfernt das Konto. Danach arbeitet der Agent wieder mit deinem
+  Konto, sofern du eines verbunden hast.
+- Ins Audit-Log kommt, wer welches Konto verbunden oder getrennt hat.
+
+**Noch nicht enthalten:** Der Agent wird bei neuer Mail oder Teams-Nachricht im eigenen
+Postfach noch nicht von selbst geweckt. Das kommt in einer nächsten Stufe.
+
 ## A. Was kann ein Agent? (typische Einsätze)
 
 Damit klar wird, **wofür** du Agenten nutzt — ein paar Beispiele, die du einfach im

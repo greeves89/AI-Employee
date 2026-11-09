@@ -30,6 +30,12 @@ und Handbuch.
 
 ### Phase 1: Konto des Agenten (eigene Anmeldung)
 
+> **Stand: umgesetzt in 1.445.0.** Abweichungen vom Plan: Die eine Stelle heißt
+> `core/agenten_konto.token_fuer`. Die Seite „Heute“ im Sekretariat zeigt bewusst weiter das
+> Postfach des Menschen; nur das Bearbeiten eines Agenten-Entwurfs dort nutzt das Postfach des
+> Agenten. Der Abgleich „eigenes Konto“ läuft VOR dem Speichern und lehnt ab, wenn das Konto nicht
+> feststellbar ist. Offen bis zum Test-Nutzer: der Ende-zu-Ende-Test mit echter Anmeldung.
+
 - **Daten:** `oauth_integrations` bekommt eine Spalte `agent_id` (leer = Konto eines Menschen).
   Eindeutig je (Anbieter, Nutzer) für Menschen, je (Anbieter, Agent) für Agenten. Löscht man den
   Agenten, wird auch das Konto gelöscht. Migration mit Eintrag in der Liste der Migrations-Tests.

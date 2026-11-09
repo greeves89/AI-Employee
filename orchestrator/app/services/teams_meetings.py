@@ -158,10 +158,10 @@ class TeamsMeetingService:
                 "dabei": joined, "mitgeschrieben": scribed}
 
     async def _handle_agent(self, agent: Agent) -> tuple[int, int, int]:
-        from app.services.teams_gateway import _graph_token
+        from app.services.teams_gateway import _agenten_token
         from app.core.msgraph_mcp import _graph
 
-        token = await _graph_token(agent.user_id)
+        token = await _agenten_token(agent)       # eigenes Konto des Agenten, sonst Besitzer
         if not token:
             return 0, 0, 0
 

@@ -660,6 +660,28 @@ export async function updateAgentAnonymisierer(
   });
 }
 
+export interface AgentenKontoStand {
+  verbunden: boolean;
+  konto: string | null;
+  /** connected | refresh_failing | expired | disconnected (wie bei den Integrationen) */
+  status: string;
+  verfuegbar: boolean;
+  darf_verbinden: boolean;
+}
+
+/** Eigenes Microsoft-365-Konto des Agenten: Stand, Anmeldung starten, trennen. */
+export async function getAgentMicrosoftKonto(agentId: string): Promise<AgentenKontoStand> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/microsoft-konto`);
+}
+
+export async function verbindeAgentMicrosoftKonto(agentId: string): Promise<{ auth_url: string }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/microsoft-konto/verbinden`, { method: "POST" });
+}
+
+export async function trenneAgentMicrosoftKonto(agentId: string): Promise<Pick<AgentenKontoStand, "verbunden" | "konto" | "status">> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/microsoft-konto`, { method: "DELETE" });
+}
+
 export async function getAgentConfidence(agentId: string): Promise<ConfidenceSettings> {
   return fetchJSON(`${getBase()}/agents/${agentId}/confidence`);
 }

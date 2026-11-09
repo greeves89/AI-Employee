@@ -95,6 +95,7 @@ async def oauth_callback(
             url="/integrations?" + urlencode({"error": error, "provider": provider})
         )
 
+    ziel = None
     try:
         ziel = await service.ruecksprung_fuer(state)
         await service.exchange_code(provider, code, state)
@@ -104,9 +105,10 @@ async def oauth_callback(
             return RedirectResponse(url=f"{ziel}{trenner}" + urlencode({"connected": provider}))
         return RedirectResponse(url="/integrations?" + urlencode({"connected": provider}))
     except ValueError as e:
-        return RedirectResponse(
-            url="/integrations?" + urlencode({"error": str(e), "provider": provider})
-        )
+        # Abgelehnt (z. B. beim Konto eines Agenten das eigene Konto gewählt): dorthin zurück,
+        # wo verbunden wurde, damit die Meldung dort steht und nicht auf einer fremden Seite.
+        basis, trenner = (ziel, "&" if "?" in ziel else "?") if ziel else ("/integrations", "?")
+        return RedirectResponse(url=f"{basis}{trenner}" + urlencode({"error": str(e), "provider": provider}))
 
 
 @router.delete("/{provider}")

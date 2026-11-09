@@ -17,7 +17,7 @@ class NurLesenTests(unittest.IsolatedAsyncioTestCase):
     async def _senden(self, nur_lesen: bool):
         graph = AsyncMock()
         with patch("app.core.ms_access.read_only_enabled", return_value=nur_lesen), \
-                patch.object(teams_gateway, "_graph_token", AsyncMock(return_value="tok")), \
+                patch.object(teams_gateway, "_agenten_token", AsyncMock(return_value="tok")), \
                 patch("app.core.msgraph_mcp._graph", graph):
             ok = await teams_gateway.send_reply(SimpleNamespace(user_id="u1", id="a1"),
                                                 {"chat_id": "19:abc"}, "Hallo")

@@ -477,6 +477,36 @@ async def _zugaenge(db) -> list[dict]:
     return punkte
 
 
+async def _agenten_konten(db) -> list[dict]:
+    """Eigene Microsoft-Konten der Agenten (core/agenten_konto).
+
+    Läuft die Anmeldung eines Agenten ab, liest und sendet er nichts mehr — er weicht
+    bewusst nicht auf das Konto des Besitzers aus. Das soll hier auffallen, nicht erst,
+    wenn jemand fragt, warum keine Antwort kam.
+    """
+    from app.core import agenten_konto, integration_health
+
+    titel = "Microsoft-Konten der Agenten"
+    try:
+        konten = await agenten_konto.uebersicht(db)
+    except Exception as e:  # noqa: BLE001 — eine Prüfung darf die Seite nicht kippen
+        logger.warning("Agenten-Konten nicht lesbar: %s", e)
+        return [_punkt("agenten_konten", titel, WARNUNG, "Nicht prüfbar (Datenbank).")]
+    if not konten:
+        return [_punkt("agenten_konten", titel, INFO,
+                       "Kein Agent hat ein eigenes Microsoft-Konto. Agenten mit Microsoft-Zugang arbeiten "
+                       "mit dem Konto ihres Besitzers.")]
+    abgelaufen = [k for k in konten if k["status"] == integration_health.STATUS_EXPIRED]
+    if abgelaufen:
+        liste = ", ".join(k["name"] or k["agent_id"] for k in abgelaufen[:5]) + (" …" if len(abgelaufen) > 5 else "")
+        return [_punkt("agenten_konten", titel, WARNUNG,
+                       f"Bei {len(abgelaufen)} von {len(konten)} Agent(en) ist die Anmeldung abgelaufen ({liste}). "
+                       "Diese Agenten lesen und senden keine Mails mehr.",
+                       "Agent → Konnektoren → Microsoft-Konto des Agenten → Neu verbinden.")]
+    return [_punkt("agenten_konten", titel, OK,
+                   f"{len(konten)} Agent(en) mit eigenem Microsoft-Konto, alle Anmeldungen gültig.")]
+
+
 async def stand(db) -> dict:
     """Alle Punkte, kritischste zuerst, plus eine Zusammenfassung."""
     import asyncio
@@ -486,7 +516,7 @@ async def stand(db) -> dict:
     ids = [c for (c,) in (await db.execute(
         select(Agent.container_id).where(Agent.container_id.is_not(None)))).all()]
     punkte = (_einstellungen() + await _agenten(db) + await _schluessel(db) + await _zugaenge(db) + await _dlp(db)
-              + await _agenten_token(db) + _absender() + await _anonymisierer(db)
+              + await _agenten_token(db) + _absender() + await _anonymisierer(db) + await _agenten_konten(db)
               + _abbild_signaturen()
               + await asyncio.to_thread(_docker, ids))
     rang = {KRITISCH: 0, WARNUNG: 1, INFO: 2, OK: 3}

@@ -5,6 +5,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.445.0] - 2026-11-09
+
+### Neu
+- **Eigenes Microsoft-365-Konto je Agent** (Plan `docs/plaene/agenten-identitaet-m365.md`, Phase 1). Ein Agent kann ein eigenes, lizenziertes Konto bekommen und arbeitet dann als er selbst: eigenes Postfach, eigener Absender. Das Postfach des Besitzers sieht er nicht mehr.
+  - **Verbinden:** Agent → Konnektoren → „Microsoft-Konto des Agenten“ (`GET/DELETE /agents/{id}/microsoft-konto`, `POST …/verbinden`). Nur Besitzer und Admin dürfen das. Microsoft fragt immer nach dem Konto (`prompt=select_account`), und der Zustand der Anmeldung trägt die Agenten-Kennung.
+  - **Daten:** `oauth_integrations.agent_id` (Migration `j8k9l0m1n2o3`, offline-fähig). Eindeutig je (Anbieter, Agent), die bisherigen Teil-Eindeutigkeiten gelten nur noch für Zeilen ohne Agent.
+  - **Ein Weg zum Token:** `core/agenten_konto.token_fuer` nutzen die Microsoft-Werkzeuge, der Teams-Kanal, Teams-Besprechungen und die Mail-Freigabe, auch das Bearbeiten eines Entwurfs unter „Heute“.
+
+### Sicherheit
+- **Getrennte Konten:** Jede Abfrage für Menschen (Integrationsseite, SSO, Sekretariat, Erste Schritte) schließt Agenten-Konten aus und umgekehrt, obwohl beide unter dem Besitzer liegen.
+- **Kein stiller Rückfall:** Scheitert das Konto des Agenten (Erneuerung, MFA, Kennwort), arbeitet er nicht mit dem Konto des Besitzers weiter. Die Meldung nennt den Agenten und führt zu ihm. Der Sicherheitsstatus hat den neuen Punkt „Microsoft-Konten der Agenten“.
+- **Nicht das eigene Konto:** Meldet sich jemand mit dem eigenen Konto (Adresse oder `sub` des Besitzers oder Anmeldenden) oder lässt sich das Konto nicht feststellen, wird abgelehnt, und zwar VOR dem Speichern. Ein bestehendes Konto bleibt dann unverändert. Abgelehnte Rückrufe führen zurück zum Agenten.
+- Das Trennen des Agenten-Kontos lässt die MCP-Freigaben des Besitzers stehen.
+- Verbinden und Trennen stehen im Prüfprotokoll.
+
+### Tests
+- `test_agenten_konto.py` (28 Fälle, echte SQLite-Datenbank):
+  - Trennung Mensch/Agent, kein Rückfall, Ablehnung des eigenen Kontos vor dem Speichern
+  - Rechte an den Endpunkten, Rückruf und Rücksprung, Sicherheitsstatus, Meldung
+  - Gegenprobe: Ohne Filter, ohne „kein Rückfall“ und ohne „fail closed“ schlagen die Tests fehl.
+
 ## [1.444.1] - 2026-11-09
 
 ### Sicherheit
