@@ -4946,6 +4946,8 @@ zu verbinden.
 3. Microsoft fragt nach dem Konto: **mit dem Konto des Agenten** anmelden, nicht mit deinem.
 4. Danach bist du zurück beim Agenten. Die Karte zeigt das Konto und „Verbunden“.
 
+![Karte „Microsoft-Konto des Agenten“ unter Konnektoren, Knopf „Konto verbinden“](screenshots/f27-agenten-konto.png)
+
 Wählst du versehentlich dein eigenes Konto, lehnt die Anlage ab. Die Karte zeigt dann
 „Das ist dein eigenes Microsoft-Konto“, und ein schon verbundenes Konto des Agenten bleibt
 unverändert.
