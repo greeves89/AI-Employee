@@ -247,7 +247,9 @@ class AieEgress:
             return _antwort(413, "Anonymisierer: Anfrage zu groß zum Prüfen")
         try:
             klar = _entpacken(roh, kodierung)
-        except logik.Abgelehnt:
+        except logik.Abgelehnt as e:
+            if e.status == 413:   # Kompressionsbombe: zu groß, nicht „unbekannte Kodierung“
+                return _antwort(413, "Anonymisierer: Anfrage entpackt zu groß zum Prüfen")
             return _antwort(415, f"Anonymisierer: Kodierung {kodierung} nicht prüfbar")
         try:
             # Außerhalb der Ereignisschleife: die Erkennung über bis zu 32 MB darf den Proxy
