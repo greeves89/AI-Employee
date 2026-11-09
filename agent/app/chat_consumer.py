@@ -549,6 +549,14 @@ class ChatConsumer:
     # Message preparation                                                  #
     # ------------------------------------------------------------------ #
 
+    def _entnommen(self, roh) -> dict:
+        """Eine Nachricht beim Entnehmen aus der Warteschlange — Plattform-Hinweise geprüft
+        (``plattform_hinweis``): Die Sentinel-Marke sieht das Modell nur mit gültigem Beleg.
+        Jede Nachricht geht genau einmal hier durch."""
+        from app.plattform_hinweis import pruefen
+
+        return pruefen(json.loads(roh), self.agent_id)
+
     async def _drain_pending(self, source_key: str) -> list[str]:
         """Pop queued messages for this channel; re-queue messages from other channels."""
         texts: list[str] = []
@@ -587,8 +595,9 @@ class ChatConsumer:
                 qmsg.get("telegram"),
             )
             if qkey != source_key:
-                requeue.append(raw)
+                requeue.append(raw)   # ungeprüft zurück: geprüft wird beim eigenen Entnehmen
                 continue
+            qmsg = self._entnommen(raw)
             if qmsg.get("text", "").strip() == "/reset":
                 await self._reset_handler(source_key)
                 texts.clear()
@@ -795,7 +804,7 @@ class ChatConsumer:
                 _, msg_json = result
                 await self.redis.lpush(self.inflight_key, msg_json)
                 try:
-                    await self._process_one(json.loads(msg_json), log_publisher)
+                    await self._process_one(self._entnommen(msg_json), log_publisher)
                 finally:
                     await self.redis.lrem(self.inflight_key, 1, msg_json)
             except aioredis.TimeoutError:
@@ -818,7 +827,7 @@ class ChatConsumer:
                     continue
                 _, msg_json = result
                 await self.redis.lpush(self.inflight_key, msg_json)
-                msg = json.loads(msg_json)
+                msg = self._entnommen(msg_json)
                 sk = self._source_key(
                     msg.get("source", "telegram" if msg.get("telegram") else "webapp"),
                     msg.get("chat_session_id"),

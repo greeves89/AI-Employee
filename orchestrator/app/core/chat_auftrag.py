@@ -135,9 +135,16 @@ async def einreihen(redis_client, agent_id: str, payload: dict | str, *,
     if isinstance(payload, str):
         payload = json.loads(payload)
     payload = dict(payload)
-    if not plattform:
-        # Nur der Sentinel selbst (``plattform=True``) darf mit der Marke sprechen.
+    from app.core import plattform_hinweis
+
+    if plattform:
+        # Nur der Orchestrator (Sentinel, „Fortsetzen“) stellt Plattform-Hinweise aus — mit
+        # einem Beleg, den der Agent prüft, bevor das Modell die Marke sieht.
+        plattform_hinweis.unterschreiben(agent_id, payload)
+    else:
+        # Alle anderen: Marke entschärfen und keinen mitgeschickten Beleg durchreichen.
         _ohne_marke(payload, "text")
+        plattform_hinweis.entfernen(payload)
 
     from app.core import budget
 

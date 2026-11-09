@@ -1,6 +1,6 @@
 # Sicherheitsmodell von AI Employee
 
-Stand: 07.11.2026 (Version 1.442.0). Dieses Dokument ist die eine Übersicht, an der sich jede
+Stand: 09.11.2026 (Version 1.443.0). Dieses Dokument ist die eine Übersicht, an der sich jede
 Sicherheitsänderung ausrichtet: welche Schichten es gibt, wo jede durchgesetzt wird, wo man sie
 sieht und was noch offen ist. Betriebsanleitungen stehen im [Security Guide](SECURITY.md) und im
 [Benutzerhandbuch](benutzerhandbuch/README.md).
@@ -21,7 +21,7 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
 |---|---|---|---|
 | Anmeldung und Nutzertrennung | fremde Konten, fremde Agenten sehen, Anmelde-Bremse umgehen | `dependencies.get_current_user`, `require_agent_access`, Zwei-Faktor, Absenderadresse nur vom Eingang (`core/vertraute_proxys`) | `api_secret`, `cors`, `kiosk`, `absender` |
 | Identität der Agenten | ausgelaufenes Agenten- oder Sentinel-Token von außen benutzen, fremde Redis-Postfächer | `dependencies.agent_zugang_pruefen` (einzige Prüfung, auch in `require_sentinel`), Redis-ACL je Agent | `agenten_token`, `redis_acl`, `redis_passwort` |
-| Fremdtext | Anweisungen aus Mails, Webseiten, Prüfberichten ausführen | `core/fremdtext.rahmen`, Sentinel | `sentinel` |
+| Fremdtext | Anweisungen aus Mails, Webseiten, Prüfberichten ausführen; Plattform-Hinweise vortäuschen | `core/fremdtext.rahmen`, Sentinel, Einmalwert für Plattform-Hinweise (`core/plattform_hinweis`, `agent/app/plattform_hinweis.py`) | `sentinel` |
 | Handlungen | gefährliche Befehle, Löschen, Senden ohne Freigabe | Autonomie-Matrix, Freigaben, Sentinel-Sperre (`CommandPolicy`), verwalteter PreToolUse-Hook (`agent/richtlinie`) | `sentinel` |
 | Zugänge | Schlüssel im Agenten, Schlüssel im Klartext in der Datenbank, Server-Zugänge in Werkzeug-Ausgaben | Schlüsselverwaltung (Fernet, `ENCRYPTION_KEY`), Egress-Platzhalter, Server-Werte nicht in der Umgebung (`agent/app/serverwerte.py`) | `encryption_key`, Schlüssel, Zugänge (Claude/Codex) |
 | Ausgang | Schlüssel an falsche Ziele, Zugriff aufs Heimnetz | Egress-Proxy (Schlüssel nur an ihre freigegebenen Ziele), Netzwächter (`scripts/netzwaechter.py`), DLP-Filter | `dlp`, Zugänge |
@@ -83,7 +83,7 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
 |---|---|---|---|---|
 | 1 | Codex-Zugang auf der Testanlage nur für einen Agenten hinter dem Proxy | Zugänge | Betreiberentscheidung, der Sicherheitsstatus zeigt es. | Information |
 
-### Erledigt am 07.11.2026
+### Erledigt (07.–09.11.2026)
 
 | Punkt | Version |
 |---|---|
@@ -94,19 +94,16 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
 | Absenderadresse: Warnung bei Override im laufenden Server | 1.440.1 |
 | Release-Läufer mit Probelauf und harten Prüfungen (`scripts/release.py`) | 1.441.0 |
 | Kontingent-Bremse: Zeitpläne pausieren bei erschöpftem Abo, höchstens 5 h (`core/kontingent.py`) | 1.442.0 |
+| Sentinel-Hinweise mit Einmalwert, beim Agenten vor dem Modell geprüft (`plattform_hinweis`) | 1.443.0 |
 
-### Braucht eine Entscheidung
+### Entscheidungen vom 09.11.2026
 
-- **Zielliste für den Ausgang je Agent** (Befund 2). Etwa: Agenten eines Fachbereichs dürfen nur
-  die freigegebenen Dienste erreichen, Recherche-Agenten das offene Web. Umsetzung im
-  Netzwächter (alle Ports durch den Proxy) und im Proxy (Ziel prüfen auch ohne Schlüssel).
-  Das ändert, was Agenten können, und braucht eine Voreinstellung je Anlage.
-- **Anonymisierer vor dem Modell.** Der DLP-Filter prüft nur, was hinausgeht. Personendaten
-  in Aufträgen gehen heute ungefiltert an den Modellanbieter.
-- **Strengere Sentinel-Bindung.** Ein Einmalwert je Sperre statt der heutigen Bindung an den
-  offenen Chat-Zug.
-- **Eigene Identität für Agenten** (Postfach, Microsoft-365-Konto) und Ereignisse bei neuen
-  Mails. Das berührt Lizenzen und Rechte beim Kunden.
+| Punkt | Entscheidung | Stand |
+|---|---|---|
+| Strengere Sentinel-Bindung | Einmalwert (HMAC) je Hinweis | erledigt in 1.443.0 |
+| Anonymisierer vor dem Modell | opt-in je Agent | nächster Schritt |
+| Eigene Identität für Agenten (Pilot beim Kunden) | lizenzierter Microsoft-365-Nutzer je Agent | eigener Planungsschritt |
+| Zielliste für den Ausgang je Agent | offen | geparkt. Empfehlung: opt-in je Agent, bauen, wenn ein Kunde es braucht |
 
 ## Regeln für neue Funktionen
 
