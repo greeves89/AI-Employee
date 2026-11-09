@@ -807,6 +807,9 @@ function Schnellzugriff({ agent, setAgent }: { agent: Agent; setAgent: (a: Agent
             <div className="space-y-4">
               <AgentenKonto agentId={agent.id} />
               <KontoVerbindungen agentId={agent.id} />
+              {/* Teams, Slack, Discord, WhatsApp (core/kanaele) — hier, weil Mitglieder nur über
+                  dieses Fenster an die Einstellungen ihres Agenten kommen. */}
+              <KanaeleCard agentId={agent.id} />
               <BridgeDownload />
               <IntegrationSelector agentId={agent.id} />
             </div>
@@ -2756,8 +2759,6 @@ function AgentSettings({
       {/* Telegram Bot */}
       <TelegramAgentSection agentId={agentId} />
 
-      {/* Teams, Slack, Discord, WhatsApp (core/kanaele) */}
-      <KanaeleCard agentId={agentId} />
 
       {/* Meeting-Room shared pool (admin only) */}
       {isRoomAdmin && (
