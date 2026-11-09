@@ -30,6 +30,22 @@ def regel(methode: str, muster: str, max_bytes: int, ohne_laenge_bei: str | None
         OHNE_LAENGE[muster] = ohne_laenge_bei
 
 
+def _gezaehlt(receive, max_bytes: int):
+    """``receive`` mit Zähler: über ``max_bytes`` sieht die Anwendung nur noch einen Abbruch."""
+    gelesen = 0
+
+    async def lesen():
+        nonlocal gelesen
+        nachricht = await receive()
+        if nachricht.get("type") == "http.request":
+            gelesen += len(nachricht.get("body") or b"")
+            if gelesen > max_bytes:
+                return {"type": "http.disconnect"}
+        return nachricht
+
+    return lesen
+
+
 def _ohne_laenge_erlaubt(muster: re.Pattern, scope) -> bool:
     from urllib.parse import parse_qs
 
@@ -59,6 +75,10 @@ class KoerperGrenze:
                     continue
                 laenge = dict(scope.get("headers") or []).get(b"content-length")
                 if laenge is None and _ohne_laenge_erlaubt(muster, scope):
+                    # Die Ausnahme hängt an der Query — die liest der Endpunkt womöglich anders
+                    # (doppelte Parameter, leere Werte). Deshalb hier NICHT vertrauen, sondern
+                    # mitzählen: Mehr als ``max_bytes`` Körper gibt es auch so nicht.
+                    receive = _gezaehlt(receive, max_bytes)
                     break
                 if laenge is None or not laenge.isdigit():
                     await _antwort(send, 411, "Für Uploads bitte die Länge (Content-Length) mitsenden.")

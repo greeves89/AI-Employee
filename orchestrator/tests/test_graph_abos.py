@@ -109,6 +109,16 @@ def _mail(adresse="kunde@example.com", betreff="Angebot", entwurf=False, name="K
             "from": {"emailAddress": {"address": adresse, "name": name}}}
 
 
+def _anfrage(koerper, stueck=64 * 1024):
+    roh = koerper if isinstance(koerper, bytes) else json.dumps(koerper).encode()
+
+    async def stream():
+        for i in range(0, len(roh), stueck):
+            yield roh[i:i + stueck]
+
+    return SimpleNamespace(stream=stream)
+
+
 class _Basis(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
@@ -172,14 +182,13 @@ class EmpfangTests(_Basis):
         echt = graph_abos.client_state("a" * 32)
         werte = [{"subscriptionId": "s", "clientState": "geraten"}] * 150 + [
             {"subscriptionId": "s", "clientState": echt}]
-        anfrage = SimpleNamespace(json=AsyncMock(return_value={"value": werte}))
+        anfrage = _anfrage({"value": werte})
         with patch.object(api, "_im_hintergrund") as hinten:
             antwort = await api.benachrichtigung(anfrage, validationToken=None)
         self.assertEqual(antwort.status_code, 202)
         hinten.assert_not_called()   # das echte stand hinter der 100er-Grenze
 
-        anfrage = SimpleNamespace(json=AsyncMock(return_value={"value": [{"subscriptionId": "s", "clientState": echt},
-                                                                         {"clientState": "x" * 97}]}))
+        anfrage = _anfrage({"value": [{"subscriptionId": "s", "clientState": echt}, {"clientState": "x" * 97}]})
         with patch.object(api, "_im_hintergrund") as hinten:
             await api.benachrichtigung(anfrage, validationToken=None)
         meldungen = hinten.call_args.args[0].cr_frame.f_locals["meldungen"]
@@ -189,9 +198,9 @@ class EmpfangTests(_Basis):
     async def test_kaputter_koerper_ist_trotzdem_202_ohne_verarbeitung(self):
         from app.api import msgraph_benachrichtigung as api
 
-        for koerper in (ValueError("kein JSON"), {"value": "x"}, [1, 2], {"value": [1, "a", None]}):
-            anfrage = SimpleNamespace(json=AsyncMock(side_effect=koerper) if isinstance(koerper, Exception)
-                                      else AsyncMock(return_value=koerper))
+        for koerper in (b"kein JSON", {"value": "x"}, [1, 2], {"value": [1, "a", None]}, b"",
+                        b"[" * (2 * 1024 * 1024)):
+            anfrage = _anfrage(koerper)
             with patch.object(api, "_im_hintergrund") as hinten:
                 antwort = await api.benachrichtigung(anfrage, validationToken=None)
             self.assertEqual(antwort.status_code, 202)
@@ -247,6 +256,31 @@ class EmpfangTests(_Basis):
         self.assertEqual(await antwort(b"", [(b"content-length", b"2000000")]), 413)
         self.assertEqual(await antwort(b"validationToken=x", [(b"content-length", b"2000000")]), 413)
         self.assertEqual(await antwort(b"", [(b"content-length", b"500")]), "weiter")
+
+    async def test_ausnahme_ohne_laenge_ist_trotzdem_begrenzt(self):
+        """Nachprüfung: Middleware und Endpunkt lesen die Query womöglich verschieden
+        (``validationToken=x&validationToken=``). Deshalb zählt die Middleware bei der Ausnahme
+        mit — über 1 MB sieht die Anwendung nur einen Abbruch, egal was die Query sagt."""
+        import app.main  # noqa: F401
+        from app.core.koerper_grenze import KoerperGrenze
+
+        stuecke = [{"type": "http.request", "body": b"a" * 600_000, "more_body": True}] * 3
+        gesehen = []
+
+        async def receive():
+            return stuecke.pop(0)
+
+        async def app_(scope, rec, send):
+            while True:
+                m = await rec()
+                gesehen.append(m["type"])
+                if m["type"] == "http.disconnect" or not m.get("more_body"):
+                    break
+
+        await KoerperGrenze(app_)({"type": "http", "method": "POST", "path": "/api/v1/msgraph/benachrichtigung",
+                                   "query_string": b"validationToken=x&validationToken=", "headers": []},
+                                  receive, AsyncMock())
+        self.assertEqual(gesehen, ["http.request", "http.disconnect"])
 
     async def _abo(self, sid="sub-echt", abo_id="ab" * 16):
         async with self.Session() as db:

@@ -12,7 +12,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   - Fundort: live auf der Testanlage, Prüfanfrage von außen.
   - Microsoft prüft die Empfangsadresse mit einem POST mit leerem Körper (`?validationToken=…`). Eine Längenangabe ist dabei nicht zugesichert.
   - Die neue Grenze für `/api/v1/msgraph/` verlangte sie und antwortete 411. Kein Abo hätte sich anlegen lassen, und die Anlage wäre still auf Abfrage zurückgefallen.
-  - Jetzt darf nur die Prüfanfrage ohne Länge durch (`koerper_grenze.regel(..., ohne_laenge_bei="validationToken")`). Der Endpunkt liest dann keinen Körper. Echte Meldungen brauchen weiter Länge und höchstens 1 MB.
+  - Jetzt darf nur die Prüfanfrage ohne Länge durch (`koerper_grenze.regel(..., ohne_laenge_bei="validationToken")`). Echte Meldungen brauchen weiter Länge und höchstens 1 MB.
+  - Die Ausnahme vertraut der Query nicht. Middleware und Endpunkt könnten `validationToken=x&validationToken=` verschieden lesen. Deshalb zählt die Middleware bei der Ausnahme die Bytes mit, und über 1 MB sieht die Anwendung nur einen Abbruch. Der Endpunkt liest den Körper zusätzlich selbst begrenzt (Stream statt `request.json()`). Gefunden von der automatischen Nachprüfung des Commits.
 
 ## [1.446.0] - 2026-11-09
 
