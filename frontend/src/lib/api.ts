@@ -635,6 +635,31 @@ export interface ConfidenceSettings {
   customized: boolean;
 }
 
+export interface AnonymisiererStand {
+  aktiv: boolean;
+  begriffe: string[];
+  unterstuetzt: boolean;
+  proxy_an: boolean;
+  wirksam: boolean;
+  hinweis: string;
+  neu_gestartet?: boolean;
+}
+
+/** Anonymisierer vor dem Modell (je Agent, opt-in): Personendaten gehen nur als Platzhalter an den Anbieter. */
+export async function getAgentAnonymisierer(agentId: string): Promise<AnonymisiererStand> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/anonymisierer`);
+}
+
+export async function updateAgentAnonymisierer(
+  agentId: string,
+  patch: { aktiv?: boolean; begriffe?: string[] },
+): Promise<AnonymisiererStand> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/anonymisierer`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
 export async function getAgentConfidence(agentId: string): Promise<ConfidenceSettings> {
   return fetchJSON(`${getBase()}/agents/${agentId}/confidence`);
 }

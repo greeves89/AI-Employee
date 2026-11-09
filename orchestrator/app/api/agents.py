@@ -3600,6 +3600,104 @@ async def update_agent_browser_domains(
         raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
+class AnonymisiererUpdate(BaseModel):
+    aktiv: bool | None = None
+    begriffe: list[str] | None = None
+
+
+async def _anonymisierer_stand(agent) -> dict:
+    from app.core import anonymisierer, egress
+
+    e = anonymisierer.einstellung(agent.config)
+    unterstuetzt = anonymisierer.unterstuetzt(agent.mode)
+    proxy = egress.aktiv()
+    wirksam = e["aktiv"] and unterstuetzt and proxy
+    hinweis = ""
+    if e["aktiv"] and not proxy:
+        hinweis = ("Wirkt nicht: Der Egress-Proxy ist aus. Admin → Betrieb → Egress-Proxy einschalten, "
+                   "sonst gehen die Anfragen nicht über ihn.")
+    elif not unterstuetzt:
+        hinweis = "Nur für Agenten mit Claude Code oder Codex verfügbar, nicht für eigene Modelle."
+    return {**e, "unterstuetzt": unterstuetzt, "proxy_an": proxy, "wirksam": wirksam, "hinweis": hinweis}
+
+
+@router.get("/{agent_id}/anonymisierer")
+async def get_agent_anonymisierer(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Anonymisierer vor dem Modell (core/anonymisierer) — Stand für die Einstellungen."""
+    await _check_owner(agent_id, user, db)
+    try:
+        return await _anonymisierer_stand(await manager._get_agent(agent_id))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
+
+
+@router.patch("/{agent_id}/anonymisierer")
+async def update_agent_anonymisierer(
+    agent_id: str,
+    body: AnonymisiererUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Anonymisierer ein-/ausschalten und Namen/Begriffe pflegen.
+
+    Nur Besitzer und Admin — wie die Browser-Freigabeliste. Wirkt im Proxy innerhalb einer
+    Minute; der Hinweis an das Modell kommt mit dem nächsten Neustart des Agenten.
+    Ins Prüfprotokoll gehen nur Schalter und Anzahl der Begriffe, nie die Begriffe selbst
+    (es sind Namen).
+    """
+    await _check_owner(agent_id, user, db)
+    from app.core import anonymisierer
+    from app.models.user import UserRole
+
+    try:
+        agent = await manager._get_agent(agent_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
+    if getattr(user, "role", None) != UserRole.ADMIN and agent.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Den Anonymisierer darf nur der Besitzer des Agenten ändern.")
+    if body.aktiv and not anonymisierer.unterstuetzt(agent.mode):
+        raise HTTPException(status_code=422, detail="Nur für Agenten mit Claude Code oder Codex verfügbar.")
+    try:
+        begriffe = anonymisierer.bereinigen(body.begriffe) if body.begriffe is not None else None
+    except anonymisierer.UngueltigeBegriffe as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    alt = anonymisierer.einstellung(agent.config)
+    neu = {"aktiv": alt["aktiv"] if body.aktiv is None else bool(body.aktiv),
+           "begriffe": alt["begriffe"] if begriffe is None else begriffe}
+    config = dict(agent.config or {})
+    config[anonymisierer.SCHLUESSEL] = neu
+    agent.config = config          # neues Dict: SQLAlchemy erkennt die Änderung an der Zuweisung
+    await db.commit()
+
+    from app.core.audit import protokolliere
+    from app.models.audit_log import AuditEventType
+    await protokolliere(
+        db, AuditEventType.SETTINGS_CHANGED, user_id=getattr(user, "id", None), agent_id=agent_id,
+        command=f"Anonymisierer {'an' if neu['aktiv'] else 'aus'}, {len(neu['begriffe'])} Begriff(e)",
+        meta={"aktion": "anonymisierer", "aktiv": neu["aktiv"], "begriffe_anzahl": len(neu["begriffe"])},
+    )
+    stand = await _anonymisierer_stand(agent)
+    # Eingeschaltet: Agenten neu erstellen. Offene Verbindungen zum Modellanbieter liefen
+    # sonst ungeprüft weiter (der Proxy bricht nur NEUE auf), und den Hinweis auf die
+    # Platzhalter sowie die abgeschaltete Telemetrie bekommt er nur beim Erstellen.
+    if neu["aktiv"] and not alt["aktiv"] and agent.container_id:
+        try:
+            await manager.restart_agent(agent_id)
+            stand["neu_gestartet"] = True
+        except Exception:  # noqa: BLE001 — Einstellung gilt; der Hinweis sagt, was fehlt
+            logger.exception("Agent %s nach dem Einschalten des Anonymisierers nicht neu gestartet", agent_id)
+            stand["hinweis"] = ("Eingeschaltet, aber der Agent ließ sich nicht neu starten. Bitte oben rechts "
+                                "auf „Neu starten“ klicken — erst dann gilt es auch für bestehende Verbindungen.")
+    return stand
+
+
 @router.get("/{agent_id}/browser/audit")
 async def get_agent_browser_audit(
     agent_id: str,

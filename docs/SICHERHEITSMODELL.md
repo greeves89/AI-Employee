@@ -1,6 +1,6 @@
 # Sicherheitsmodell von AI Employee
 
-Stand: 09.11.2026 (Version 1.443.0). Dieses Dokument ist die eine Übersicht, an der sich jede
+Stand: 09.11.2026 (Version 1.444.0). Dieses Dokument ist die eine Übersicht, an der sich jede
 Sicherheitsänderung ausrichtet: welche Schichten es gibt, wo jede durchgesetzt wird, wo man sie
 sieht und was noch offen ist. Betriebsanleitungen stehen im [Security Guide](SECURITY.md) und im
 [Benutzerhandbuch](benutzerhandbuch/README.md).
@@ -24,7 +24,7 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
 | Fremdtext | Anweisungen aus Mails, Webseiten, Prüfberichten ausführen; Plattform-Hinweise vortäuschen | `core/fremdtext.rahmen`, Sentinel, Einmalwert für Plattform-Hinweise (`core/plattform_hinweis`, `agent/app/plattform_hinweis.py`) | `sentinel` |
 | Handlungen | gefährliche Befehle, Löschen, Senden ohne Freigabe | Autonomie-Matrix, Freigaben, Sentinel-Sperre (`CommandPolicy`), verwalteter PreToolUse-Hook (`agent/richtlinie`) | `sentinel` |
 | Zugänge | Schlüssel im Agenten, Schlüssel im Klartext in der Datenbank, Server-Zugänge in Werkzeug-Ausgaben | Schlüsselverwaltung (Fernet, `ENCRYPTION_KEY`), Egress-Platzhalter, Server-Werte nicht in der Umgebung (`agent/app/serverwerte.py`) | `encryption_key`, Schlüssel, Zugänge (Claude/Codex) |
-| Ausgang | Schlüssel an falsche Ziele, Zugriff aufs Heimnetz | Egress-Proxy (Schlüssel nur an ihre freigegebenen Ziele), Netzwächter (`scripts/netzwaechter.py`), DLP-Filter | `dlp`, Zugänge |
+| Ausgang | Schlüssel an falsche Ziele, Zugriff aufs Heimnetz, Personendaten an den Modellanbieter | Egress-Proxy (Schlüssel nur an ihre freigegebenen Ziele; Anonymisierer opt-in je Agent, `egress/anonym.py`), Netzwächter (`scripts/netzwaechter.py`), DLP-Filter | `dlp`, Zugänge, `anonymisierer` |
 | Container und Host | Ausbruch, Docker-Steuerung, Heimnetz, Host | Docker-Wächter (`docker_waechter/regeln.py`), Seccomp, Netzwächter, signierte Abbilder | Docker-Punkte, Abbild-Signaturen |
 | Betrieb | veraltete Agenten, Datenverlust, fehlende Spur | Agenten-Aktualisierung im Leerlauf, Sicherung, Prüfprotokoll, Aufbewahrung | Agenten-Punkte |
 | Vertrauen in Ergebnisse | „erledigt“ ohne Prüfung | Beleg-Regel (`core/beleg.py`), blinder Prüfer (`core/pruefung.py`) | Board-Karte |
@@ -95,13 +95,14 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
 | Release-Läufer mit Probelauf und harten Prüfungen (`scripts/release.py`) | 1.441.0 |
 | Kontingent-Bremse: Zeitpläne pausieren bei erschöpftem Abo, höchstens 5 h (`core/kontingent.py`) | 1.442.0 |
 | Sentinel-Hinweise mit Einmalwert, beim Agenten vor dem Modell geprüft (`plattform_hinweis`) | 1.443.0 |
+| Anonymisierer vor dem Modell, opt-in je Agent, im Egress-Proxy (`egress/anonym.py`) | 1.444.0 |
 
 ### Entscheidungen vom 09.11.2026
 
 | Punkt | Entscheidung | Stand |
 |---|---|---|
 | Strengere Sentinel-Bindung | Einmalwert (HMAC) je Hinweis | erledigt in 1.443.0 |
-| Anonymisierer vor dem Modell | opt-in je Agent | nächster Schritt |
+| Anonymisierer vor dem Modell | opt-in je Agent | erledigt in 1.444.0 |
 | Eigene Identität für Agenten (Pilot beim Kunden) | lizenzierter Microsoft-365-Nutzer je Agent | eigener Planungsschritt |
 | Zielliste für den Ausgang je Agent | offen | geparkt. Empfehlung: opt-in je Agent, bauen, wenn ein Kunde es braucht |
 
@@ -115,5 +116,8 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
   nur über `serverwerte.get` gelesen (`agent/tests/test_serverwerte.py` schlägt sonst an).
 - Proxy-Kopfzeilen wertet nur `core/vertraute_proxys` aus, nie ein Endpunkt selbst.
 - Text aus fremden Quellen geht nur gerahmt (`fremdtext.rahmen`) an ein Modell.
+- Der Anonymisierer schützt Personendaten vor dem Modellanbieter, nicht vor Prompt-Injektion:
+  Ein Platzhalter in einem Werkzeugaufruf wird mit dem echten Wert ausgeführt. Dagegen wirken
+  Sentinel und Freigaben.
 - Eine neue Schutzschicht ist erst fertig mit Statuspunkt, Test in beide Richtungen und
   Eintrag in diesem Dokument.

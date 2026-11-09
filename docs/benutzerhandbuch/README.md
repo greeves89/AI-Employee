@@ -2607,6 +2607,7 @@ Geprüft werden unter anderem:
 - ob der DLP-Filter an ist und Schlüssel sperrt oder schwärzt, bevor eine Antwort die Anlage
   über Telegram, Slack/Teams/Discord oder Projekt-Git verlässt *(seit 1.434.0)*. Er ist bei jeder
   neuen Anlage zunächst aus; einschalten unter **Admin → DLP**.
+- bei welchen Agenten der **Anonymisierer** an ist und ob er wirkt *(seit 1.444.0, Kap. 37.15)*
 - ob ein **Agenten-Token von außen** benutzt wurde *(seit 1.439.0, Kap. 37.14)*. Ein Agent meldet sich mit
   einem Token beim Server an. Das gilt nur direkt aus dem Netz der Agenten, über die öffentliche
   Adresse wird es abgewiesen. Kam in den letzten 7 Tagen trotzdem ein gültiges Token von außen,
@@ -4884,6 +4885,48 @@ TRUSTED_PROXY_HOSTS=ai-employee-caddy,mein-proxy
 Ein nginx **vor** Caddy (der übliche Fall) braucht keinen Eintrag. Ohne passenden Eintrag
 sieht der Server als Absender nur den Proxy. Die Anmelde-Bremse je Adresse ruht dann, die je
 Konto wirkt weiter.
+
+### 37.15 Anonymisierer: Personendaten vor dem Modell verbergen *(seit 1.444.0)*
+
+Ein Agent schickt alles, was er bearbeitet, an den Modellanbieter (Anthropic bzw. OpenAI): deine
+Nachrichten, Aufträge und auch, was er liest, also Dateien, Mails und Webseiten. Mit dem
+Anonymisierer gehen Personendaten dort nur als Platzhalter hin, etwa `[EMAIL-3f9a1c2b]`. In der
+Antwort und in den Werkzeugaufrufen setzt die Anlage die echten Werte wieder ein. Der Agent
+schreibt also weiter an die richtige Adresse, der Anbieter sieht sie nie.
+
+Ersetzt werden:
+- E-Mail-Adressen, Telefonnummern, IBAN (mit gültiger Prüfziffer) und Kartennummern
+  (mit gültiger Prüfsumme). Das erkennt die Anlage selbst.
+- **Namen und Begriffe aus deiner Liste**, etwa Kunden, Personen oder Projekte. Namen erkennt
+  keine Regel verlässlich. Was nicht auf der Liste steht, geht im Klartext.
+
+**So schaltest du ihn ein** (Besitzer des Agenten oder Administrator):
+1. Agent öffnen → **Einstellungen → Allgemein** → Abschnitt **Zugriff & Rechte** aufklappen.
+2. Bei **Personendaten vor dem Modell verbergen** den Schalter einschalten.
+3. Darunter die Namen und Begriffe eintragen, einen je Zeile, und auf **Liste speichern** klicken.
+
+![Karte „Personendaten vor dem Modell verbergen“ unter Zugriff & Rechte](screenshots/f26-anonymisierer.png)
+
+Beim Einschalten startet die Anlage einen laufenden Agenten neu. Erst dann gehen auch seine
+schon offenen Verbindungen zum Anbieter über den Anonymisierer, und das Modell bekommt den
+Hinweis auf die Platzhalter. Ein laufender Zug wird dabei abgebrochen. Für Agenten mit
+Anonymisierer sind außerdem die Nutzungsdaten und Fehlerberichte von Claude Code an den
+Hersteller abgeschaltet. Ins Audit-Log kommt nur, dass er ein- oder
+ausgeschaltet wurde, und wie viele Begriffe auf der Liste stehen. Die Begriffe selbst stehen
+dort nie, es sind Namen.
+
+**Voraussetzungen und Grenzen:**
+- Der **Egress-Proxy muss an sein** (Kap. 37.10). Sonst steht auf der Karte ein gelber Hinweis,
+  und der Sicherheitsstatus warnt.
+- Verfügbar für Agenten mit **Claude Code** oder **Codex**. Für Agenten mit eigenem Modell
+  (eigene Adresse, Bedrock, Vertex) lässt er sich nicht einschalten.
+- Eine Anfrage, die die Anlage nicht prüfen kann (größer als 32 MB, kein JSON, unbekannte
+  Kompression), geht nicht hinaus. Der Agent bekommt dann eine Fehlermeldung.
+- Der Anonymisierer schützt vor dem **Anbieter**, nicht vor einer Umlenk-Anweisung
+  (Prompt-Injektion). Bringt ein fremder Text das Modell dazu, einen Platzhalter in einen
+  Werkzeugaufruf zu schreiben, setzt die Anlage den echten Wert ein, wie bei jedem
+  Werkzeugaufruf. Dagegen wirken der Sentinel und die Freigaben (Kap. 37.13, Kap. 13).
+- Das „Denken“ des Modells (Zusammenfassung) zeigt Platzhalter statt der echten Werte.
 
 ## A. Was kann ein Agent? (typische Einsätze)
 
