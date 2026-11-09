@@ -4204,8 +4204,11 @@ Regeln wie Mails:
 - **Microsoft 365 nur lesend** (Admin) oder **Lesen** beim Agenten: Der Agent schreibt nichts in
   Teams.
 - **Entwurf**, **Sekretariat** oder **Freigabe** in der Rechte-Matrix bei „E-Mail / M365
-  senden“: Die Nachricht landet als Freigabe bei dir („Teams-Nachricht senden“, mit Ziel und
-  vollem Text). Erst wenn du freigibst, sendet die Anlage genau diesen Text, einmal.
+  senden“: Die Nachricht landet als Freigabe bei dir („Teams-Nachricht senden“). Darin stehen
+  das Ziel (Chat mit Thema und Mitgliedern bzw. Team und Kanal, dazu die volle Kennung) und der
+  ganze Text. Erst wenn du freigibst, sendet die Anlage genau diesen Text, einmal. Schreibt der
+  Agent über dein Konto, kannst nur du selbst freigeben, nicht jemand, dem du den Agenten
+  freigegeben hast. Es warten höchstens 20 Teams-Nachrichten je Agent auf Freigabe.
 - **Lesen + Schreiben** und **Erlaubt** in der Matrix: Der Agent schreibt direkt.
 - Die Microsoft-Anbindung muss dem Agenten zugewiesen sein.
 

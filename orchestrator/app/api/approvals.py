@@ -943,7 +943,7 @@ async def approve_request(
         # Gebundene Handlung (Ticket anlegen …): genau DIESE, genau einmal — die
         # Zeilensperre oben verhindert eine zweite Ausführung bei Doppelklick.
         from app.core.gebundene_freigabe import ausfuehren as _gebunden
-        applied = await _gebunden(db, approval)
+        applied = await _gebunden(db, approval, user)
     if (approval.meta or {}).get("kind") == "reflection":
         from app.services.reflection_service import apply_reflection_approval
         try:

@@ -42,11 +42,39 @@ async def _get_access_token(agent_id: str, db: AsyncSession) -> str | None:
     return await token_fuer(db, agent)
 
 
+async def _teams_gesendet_merken(agent_id: str, body: dict, resp: dict, modus: str) -> None:
+    """Im Modus „Schreiben“ direkt gesendete Teams-Nachrichten merken (Schleifenschutz,
+    services/teams_gateway) — sonst läse der Agent seine eigene Nachricht als neue Anfrage."""
+    import re as _re
+
+    from app.core.msgraph_mcp import TEAMS_SENDE_TOOLS
+
+    params = (body.get("params") or {}) if body.get("method") == "tools/call" else {}
+    if modus != ms_access.SCHREIBEN or params.get("name") not in TEAMS_SENDE_TOOLS:
+        return
+    ergebnis = resp.get("result") or {}
+    if ergebnis.get("isError"):
+        return
+    text = " ".join(str(c.get("text") or "") for c in ergebnis.get("content") or [] if isinstance(c, dict))
+    treffer = _re.search(r"ID: (\S+)", text)
+    args = params.get("arguments") or {}
+    ziel = {"chat_id": str(args.get("chat_id"))} if params.get("name") == "ms_send_chat_message" else {
+        "team_id": str(args.get("team_id")), "channel_id": str(args.get("channel_id"))}
+    if treffer:
+        from app.services.teams_gateway import als_eigen_merken
+
+        await als_eigen_merken(agent_id, ziel, treffer.group(1))
+
+
 _TEAMS_HINWEIS = {
     "freigabe": ("Nicht gesendet: Die Teams-Nachricht wartet auf Freigabe durch deinen Menschen. Nach der "
                  "Freigabe sendet die Plattform genau diesen Text — nicht noch einmal selbst versuchen."),
     "gesendet": "Teams-Nachricht gesendet.",
     "aus": "Nicht gesendet: Dieser Agent darf in Microsoft 365 nur lesen.",
+    "zu_viele": ("Nicht gesendet: Es warten schon 20 Teams-Nachrichten auf Freigabe. Erst wenn dein Mensch "
+                 "sie bearbeitet hat, kommen weitere dazu."),
+    "zu_lang": ("Nicht gesendet: Zu lang für eine Freigabe — dein Mensch muss den ganzen Text sehen. "
+                "Bitte kürzen."),
 }
 
 
@@ -109,6 +137,7 @@ async def mcp_msgraph_endpoint(agent_id: str, request: Request):
                                             teams_freigabe=teams_freigabe)
     if verschieben and not ((resp.get("result") or {}).get("isError")):
         await _verschieben_protokollieren(agent, body, betreff)
+    await _teams_gesendet_merken(agent_id, body, resp, modus)
     return JSONResponse(resp, status_code=status)
 
 

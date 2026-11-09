@@ -34,6 +34,7 @@ from app.models.agent_access import AgentAccess  # noqa: E402
 from app.models.audit_log import AuditLog  # noqa: E402
 from app.models.command_approval import CommandApproval  # noqa: E402
 from app.models.notification import Notification  # noqa: E402
+from app.models.oauth_integration import OAuthIntegration  # noqa: E402
 from app.models.team import Team  # noqa: E402
 from app.models.user import User, UserRole  # noqa: E402
 from app.services import teams_gateway  # noqa: E402
@@ -78,7 +79,7 @@ class _Basis(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         async with self.engine.begin() as conn:
-            for model in (User, Agent, AgentAccess, AuditLog, CommandApproval, Notification, Team):
+            for model in (User, Agent, AgentAccess, AuditLog, CommandApproval, Notification, Team, OAuthIntegration):
                 await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
         async with self.Session() as db:
@@ -98,6 +99,10 @@ class _Basis(unittest.IsolatedAsyncioTestCase):
                 return {"id": f"msg-{len(self.gesendet)}"}
             if path.startswith("/me"):
                 return {"id": "agent-oid"}
+            if path.endswith("/members?$select=displayName"):
+                return {"value": [{"displayName": "Kundin A"}, {"displayName": "Besitzer"}]}
+            if path.startswith("/chats/"):
+                return {"topic": "Projekt Nord", "chatType": "group"}
             raise AssertionError(path)
 
         self._p = [
@@ -177,7 +182,9 @@ class SendenTests(_Basis):
         self.assertEqual(await self._senden(), "gesendet")
         self.assertEqual(self.gesendet[0][0], "/chats/19%3Aabc%40thread.v2/messages")
         self.assertIn("<b>Team</b>", self.gesendet[0][1])
-        self.assertTrue(await teams_gateway._ist_eigen("a1", "msg-1"))
+        self.assertTrue(await teams_gateway._ist_eigen("a1", self.ZIEL, "msg-1"))
+        self.assertFalse(await teams_gateway._ist_eigen("a1", {"chat_id": "anderer"}, "msg-1"),
+                         "Kennungen sind nur je Chat eindeutig")
 
     async def test_nur_lesen_lesen_oder_ohne_anbindung_sendet_nichts(self):
         with patch("app.config.settings.msgraph_read_only", True):
@@ -224,6 +231,83 @@ class SendenTests(_Basis):
                 await approvals.approve_request(str(f.id), None, user=await db.get(User, "u1"), db=db)
         self.assertEqual(e.exception.status_code, 409)
         self.assertEqual(self.gesendet, [])
+
+    async def test_freigabe_nach_entzug_der_anbindung_sendet_nicht(self):
+        """Nachprüfung: auch die entzogene Anbindung zählt beim Ausführen der Freigabe."""
+        from app.api import approvals
+
+        await self._setzen(email="ask")
+        await self._senden()
+        await self._setzen(integrations=[])
+        f = (await self._freigaben())[0]
+        async with self.Session() as db:
+            with patch.object(approvals, "_darf_entscheiden", AsyncMock()), self.assertRaises(HTTPException) as e:
+                await approvals.approve_request(str(f.id), None, user=await db.get(User, "u1"), db=db)
+        self.assertEqual(e.exception.status_code, 409)
+        self.assertEqual(self.gesendet, [])
+
+    async def _freigeben(self, user_id="u1"):
+        from app.api import approvals
+
+        f = (await self._freigaben())[0]
+        async with self.Session() as db:
+            with patch.object(approvals, "_darf_entscheiden", AsyncMock()):
+                return await approvals.approve_request(str(f.id), None, user=await db.get(User, user_id), db=db)
+
+    async def test_ohne_eigenes_konto_gibt_nur_der_besitzer_frei(self):
+        """Review H1: Wem der Agent nur freigegeben ist, der lässt nicht im Namen des Besitzers schreiben."""
+        async with self.Session() as db:
+            db.add(User(id="u2", email="kollege@example.com", name="Kollege", role=UserRole.MEMBER))
+            await db.commit()
+        await self._setzen(email="ask")
+        await self._senden("Hallo")
+        with patch("app.core.agenten_konto._zeile", AsyncMock(return_value=None)), \
+                self.assertRaises(HTTPException) as e:
+            await self._freigeben("u2")
+        self.assertEqual(e.exception.status_code, 403)
+        self.assertEqual(self.gesendet, [])
+        with patch("app.core.agenten_konto._zeile", AsyncMock(return_value=object())):
+            await self._freigeben("u2")   # mit eigenem Konto schreibt der Agent als er selbst
+        self.assertEqual(len(self.gesendet), 1)
+
+    async def test_ausgefuehrt_wird_nur_einmal_auch_wenn_das_schliessen_scheitert(self):
+        """Review M3: Nach dem Senden ist das festgehalten — ein zweiter Klick sendet nicht erneut."""
+        from app.core import freigabe_benachrichtigung
+
+        await self._setzen(email="ask")
+        await self._senden("Einmal")
+        with patch.object(freigabe_benachrichtigung, "benachrichtigungen_abschliessen",
+                          AsyncMock(side_effect=RuntimeError("weg"))), self.assertRaises(RuntimeError):
+            await self._freigeben()
+        self.assertEqual(len(self.gesendet), 1)
+        await self._freigeben()
+        self.assertEqual(len(self.gesendet), 1, "Kein zweites Senden")
+
+    async def test_freigabe_zeigt_ziel_mit_namen_und_voller_kennung(self):
+        """Review M1: Der Mensch prüft das Ziel, nicht nur den Text."""
+        lang = {"chat_id": "19:8b5c2e1a-0f4d-4c3b-9a7e-1d2c3b4a5f60_3f2e1d0c-b9a8-4776-8655-443322110000"
+                            "@unq.gbl.spaces"}     # echte Einzelchat-Kennungen sind so lang
+        await self._setzen(email="ask")
+        await teams_gateway.senden_nach_regeln(await self._agent(), lang, "Hallo")
+        felder = {f["name"]: f["wert"] for f in (await self._freigaben())[0].meta["view"]["data"]["felder"]}
+        self.assertEqual(felder["An"], "Gruppenchat „Projekt Nord“")
+        self.assertIn("Kundin A", felder["Mitglieder"])
+        self.assertEqual(felder["Kennung"], lang["chat_id"], "Kennung nie gekürzt")
+
+    async def test_dublette_deckel_und_plattform_hinweise(self):
+        """Review M2: keine Flut von Freigaben."""
+        await self._setzen(email="ask")
+        self.assertEqual(await self._senden("gleich"), "freigabe")
+        self.assertEqual(await self._senden("gleich"), "freigabe")
+        self.assertEqual(len(await self._freigaben()), 1, "Dieselbe Nachricht wartet nur einmal")
+        self.assertEqual(await self._senden("Budget aufgebraucht", system=True), "aus")
+        with patch.object(teams_gateway, "HOECHSTENS_OFFEN", 3):
+            erg = [await self._senden(f"n{i}") for i in range(4)]
+        self.assertEqual(erg, ["freigabe", "freigabe", "zu_viele", "zu_viele"])
+
+    async def test_zu_lang_wird_gemeldet(self):
+        await self._setzen(email="ask")
+        self.assertEqual(await self._senden("x" * 50_000), "zu_lang")
 
     def test_agent_kann_teams_freigabe_nicht_selbst_anlegen(self):
         from app.api import approvals
@@ -287,6 +371,20 @@ class WerkzeugTests(_Basis):
         self.assertNotIn("ms_send_chat_message", namen)
 
 
+class WerkzeugMerkenTests(_Basis):
+    async def test_im_schreib_modus_gesendete_werkzeug_nachricht_wird_gemerkt(self):
+        """Review M4: auch Werkzeug-Nachrichten fallen unter den Schleifenschutz."""
+        from app.api import mcp_msgraph
+
+        body = {"method": "tools/call", "params": {"name": "ms_send_chat_message",
+                                                   "arguments": {"chat_id": "19:x", "message": "Hi"}}}
+        resp = {"result": {"content": [{"type": "text", "text": "Chat message sent. ID: 1700000000123"}]}}
+        await mcp_msgraph._teams_gesendet_merken("a1", body, resp, ms_access.SCHREIBEN)
+        self.assertTrue(await teams_gateway._ist_eigen("a1", {"chat_id": "19:x"}, "1700000000123"))
+        await mcp_msgraph._teams_gesendet_merken("a1", body, {"result": {"isError": True, "content": []}},
+                                                 ms_access.SCHREIBEN)
+
+
 class SchleifenschutzTests(_Basis):
     def _nachricht(self, mid, absender, text="Assistenz bitte"):
         return {"id": mid, "createdDateTime": "2099-01-01T00:00:00Z", "messageType": "message",
@@ -313,7 +411,7 @@ class SchleifenschutzTests(_Basis):
         return zugestellt
 
     async def test_eigene_gesendete_nachricht_kommt_nicht_zurueck(self):
-        await teams_gateway._als_eigen_merken("a1", "m-eigen")
+        await teams_gateway.als_eigen_merken("a1", {"chat_id": "x"}, "m-eigen")
         erg = await self._abfragen([self._nachricht("m-eigen", "besitzer-oid"),
                                     self._nachricht("m-mensch", "besitzer-oid")], eigenes_konto=False)
         self.assertEqual(erg, ["m-mensch"], "Der Besitzer bleibt ansprechbar, nur die eigene Antwort fällt weg")
@@ -329,10 +427,13 @@ class SchleifenschutzTests(_Basis):
 
 
 class WeckenTests(unittest.IsolatedAsyncioTestCase):
-    async def _zustellen(self, kanal, angehalten=False):
+    async def _wecken(self, kanal, angehalten=False, zustand=AgentState.STOPPED, redis=None):
+        import asyncio
+
         from app.core import channel_gateway as gw
 
-        agent = SimpleNamespace(id="a1", config={"angehalten_vom_nutzer": True} if angehalten else {})
+        agent = SimpleNamespace(id="a1", state=zustand, container_id="c1",
+                                config={"angehalten_vom_nutzer": True} if angehalten else {})
         sitzung = MagicMock()
         sitzung.__aenter__ = AsyncMock(return_value=SimpleNamespace(get=AsyncMock(return_value=agent)))
         sitzung.__aexit__ = AsyncMock(return_value=False)
@@ -342,25 +443,35 @@ class WeckenTests(unittest.IsolatedAsyncioTestCase):
                 patch.object(gw, "persist_message", AsyncMock()), \
                 patch.object(gw, "capture_if_worthwhile", AsyncMock()), \
                 patch.object(gw, "enqueue", AsyncMock(return_value=SimpleNamespace(eingereiht=True))), \
+                patch.object(gw, "_docker", MagicMock()), \
                 patch("app.services.user_lifecycle.mark_agent_interaction", AsyncMock()), \
                 patch("app.db.session.async_session_factory", return_value=sitzung), \
-                patch("app.core.agent_duty.vom_nutzer_angehalten", return_value=angehalten), \
-                patch("app.services.docker_service.DockerService", MagicMock()), \
                 patch("app.services.user_lifecycle.wake_agent", AsyncMock()) as wecken:
-            self.assertTrue(await gw.deliver(None, nachricht))
+            self.assertTrue(await gw.deliver(redis, nachricht))
+            await asyncio.gather(*list(gw._weckend))
         return wecken
 
     async def test_kanal_nachricht_weckt_gestoppten_agenten(self):
         from app.core import channel_gateway as gw
 
         for kanal in (gw.CHANNEL_TEAMS, gw.CHANNEL_SLACK, gw.CHANNEL_DISCORD):
-            (await self._zustellen(kanal)).assert_awaited_once()
+            (await self._wecken(kanal)).assert_awaited_once()
 
-    async def test_bewusst_angehalten_oder_telegram_kein_wecken(self):
+    async def test_bewusst_angehalten_laufend_oder_telegram_kein_wecken(self):
         from app.core import channel_gateway as gw
 
-        (await self._zustellen(gw.CHANNEL_TEAMS, angehalten=True)).assert_not_awaited()
-        (await self._zustellen(gw.CHANNEL_TELEGRAM)).assert_not_awaited()
+        (await self._wecken(gw.CHANNEL_TEAMS, angehalten=True)).assert_not_awaited()
+        (await self._wecken(gw.CHANNEL_TEAMS, zustand=AgentState.RUNNING)).assert_not_awaited()
+        (await self._wecken(gw.CHANNEL_TELEGRAM)).assert_not_awaited()
+
+    async def test_hoechstens_ein_start_auf_einmal(self):
+        """Review M5: eine Flut löst nicht viele Starts aus."""
+        from app.core import channel_gateway as gw
+
+        redis = SimpleNamespace(client=_Redis())
+        redis.client.set = AsyncMock(side_effect=[True, None])
+        (await self._wecken(gw.CHANNEL_SLACK, redis=redis)).assert_awaited_once()
+        (await self._wecken(gw.CHANNEL_SLACK, redis=redis)).assert_not_awaited()
 
 
 if __name__ == "__main__":

@@ -20,13 +20,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   - Mit eigenem Konto wird zusätzlich alles von der eigenen Kennung (`/me`) übersprungen.
   - Bisher hing der Schutz an `own_user_id`, das niemand setzte.
 
+- **Nach unabhängigem Sicherheitsreview** (kein kritischer Befund; ein hoher und fünf mittlere behoben):
+  - **H1:** Ohne eigenes Konto schreibt der Agent als sein Besitzer. Eine solche Teams-Nachricht gibt jetzt nur der Besitzer frei, wie bei Mail. Vorher reichte eine Freigabe des Agenten an andere. Dafür bekommt die gebundene Freigabe den Freigebenden mit.
+  - **M1:** Die Freigabe zeigt das Ziel mit Namen (Chat-Art, Thema, Mitglieder bzw. Team und Kanal) und die Kennung ungekürzt.
+  - **M2:**
+    - Höchstens 20 offene Teams-Freigaben je Agent.
+    - Dieselbe Nachricht wartet nur einmal.
+    - Plattform-Hinweise (Budget, Filter) werden nie zur Freigabe.
+  - **M3:** Eine ausgeführte gebundene Freigabe ist sofort als ausgeführt vermerkt. Scheitert danach das Schließen, sendet ein zweiter Klick nicht noch einmal. Das gilt auch für Tickets.
+  - **M4:** Auch Teams-Nachrichten, die Werkzeuge im Modus „Schreiben“ senden, fallen unter den Schleifenschutz.
+  - **M5:** Geweckt wird im Hintergrund, mit geteilter Docker-Verbindung, nur wenn der Agent laut Datenbank nicht läuft, und höchstens ein Start je Agent auf einmal.
+  - Außerdem:
+    - Der Schleifenschutz-Schlüssel gilt je Chat (L1).
+    - Die Ausführung prüft auch die Anbindung (L2, auch von der automatischen Nachprüfung gemeldet).
+    - Ladefehler der Freigabe-Ausführungen werden protokolliert (L4).
+    - „Zu lang“ wird dem Agenten gemeldet (L6).
+
 ### Neu
 - **Kanal-Nachrichten wecken gestoppte Agenten:** Teams, Slack, Discord, WhatsApp und Webhook. Bisher wartete die Nachricht in der Warteschlange, bis jemand den Agenten von Hand startete. Bewusst vom Menschen angehaltene Agenten bleiben aus.
 - **Bei neuer Mail wecken** weckt bewusst angehaltene Agenten nicht. Der Stand rückt dann nicht weiter, nach dem Start wird nachgeholt (höchstens 24 Stunden).
 
 ### Tests
-- `test_teams_identitaet.py` (17 Fälle, SQLite): Sendemodus über alle Eingänge, Senden und Freigabe bis zum Versand, Neuprüfung beim Freigeben, Werkzeuge, Schleifenschutz, Wecken. `test_graph_abos.py` um „angehalten“ ergänzt.
-- Gegenprobe mit 13 Schutzregeln: Jede entfernte Regel lässt die Tests fehlschlagen.
+- `test_teams_identitaet.py` (25 Fälle, SQLite): Sendemodus über alle Eingänge, Senden und Freigabe bis zum Versand, Neuprüfung beim Freigeben, Werkzeuge, Schleifenschutz, Wecken. `test_graph_abos.py` um „angehalten“ ergänzt.
+- Gegenprobe mit 24 Schutzregeln, darunter die Review-Befunde: Jede entfernte Regel lässt die Tests fehlschlagen.
 - `test_teams_antwort_nur_lesen.py` ist in `test_teams_identitaet.py` aufgegangen.
 
 ## [1.446.1] - 2026-11-09
