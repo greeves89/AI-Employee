@@ -36,7 +36,7 @@ class DlpCoversEveryChannelTests(unittest.IsolatedAsyncioTestCase):
             if mod is not None:
                 monkey.append((mod, mod.send_reply))
 
-                async def _capture(agent, context, text, _n=name):
+                async def _capture(agent, context, text, _n=name, **_kw):
                     self.sent.append((_n, text))
                     return True
 

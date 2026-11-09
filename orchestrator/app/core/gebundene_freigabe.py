@@ -33,6 +33,22 @@ logger = logging.getLogger(__name__)
 AUSFUEHRER: dict[str, Callable[..., Awaitable[str]]] = {}
 
 
+#: Module, die Ausführungen anmelden. Beim Prüfen und Ausführen werden sie geladen — sonst
+#: hinge es vom Zufall der Importreihenfolge ab, ob eine Art bekannt ist (eine unbekannte
+#: Art würde beim Freigeben still NICHTS ausführen und die Freigabe trotzdem schließen).
+ANMELDUNGEN = ("app.api.tickets", "app.services.teams_gateway")
+
+
+def anmeldungen_laden() -> None:
+    import importlib
+
+    for modul in ANMELDUNGEN:
+        try:
+            importlib.import_module(modul)
+        except Exception:  # noqa: BLE001 — Arten dieses Moduls bleiben unbekannt → nie ausgeführt
+            logger.exception("Gebundene Freigaben: Modul %s nicht geladen", modul)
+
+
 def ausfuehrer(art: str):
     def anmelden(fn):
         AUSFUEHRER[art] = fn
@@ -73,22 +89,41 @@ async def anfragen(db, agent_id: str, art: str, daten: dict, *, titel: str,
     }
 
 
-async def ausfuehren(db, approval) -> str | None:
-    """Beim Freigeben: die gebundene Handlung genau einmal ausführen. None = keine solche."""
+async def ausfuehren(db, approval, user=None) -> str | None:
+    """Beim Freigeben: die gebundene Handlung genau einmal ausführen. None = keine solche.
+
+    ``user`` ist, wer freigibt — manche Handlungen dürfen nur bestimmte Menschen freigeben
+    (Teams im Namen des Besitzers: nur der Besitzer). Ist die Handlung schon ausgeführt
+    (Abbruch nach dem Senden, vor dem Schließen der Freigabe), wird sie NICHT wiederholt.
+    """
+    import inspect
+
+    from sqlalchemy.orm.attributes import flag_modified
+
+    anmeldungen_laden()
     meta = approval.meta or {}
     art = meta.get("kind")
     fn = AUSFUEHRER.get(art)
     if fn is None:
         return None
+    if meta.get("ausgefuehrt"):
+        return str(meta.get("ausgefuehrt_bericht") or "Bereits ausgeführt.")
     eingabe = meta.get("input") or {}
     daten = eingabe.get("daten") or {}
     if eingabe.get("fingerabdruck") != fingerabdruck(art, daten):
         # Die Zeile wurde nach dem Anlegen verändert — nichts ausführen.
         raise HTTPException(status_code=409, detail="Die Handlung wurde nach der Anfrage verändert — nicht ausgeführt.")
     try:
-        return await fn(db, daten, approval.agent_id)
+        mit_user = "user" in inspect.signature(fn).parameters
+        bericht = await (fn(db, daten, approval.agent_id, user=user) if mit_user else fn(db, daten, approval.agent_id))
     except HTTPException:
         raise
     except Exception as e:  # noqa: BLE001 — die Freigabe bleibt dann offen, der Mensch kann es erneut versuchen
         logger.exception("Gebundene Handlung %s (Freigabe %s) gescheitert", art, approval.id)
         raise HTTPException(status_code=502, detail=f"Ausführung gescheitert: {e}") from None
+    # Sofort festhalten: Scheitert danach das Schließen der Freigabe, darf ein zweiter Klick
+    # nicht ein zweites Mal senden.
+    approval.meta = {**meta, "ausgefuehrt": True, "ausgefuehrt_bericht": str(bericht)[:500]}
+    flag_modified(approval, "meta")
+    await db.commit()
+    return bericht

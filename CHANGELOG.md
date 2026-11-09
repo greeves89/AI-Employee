@@ -5,6 +5,46 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.447.0] - 2026-11-09
+
+### Sicherheit
+- **Teams-Senden folgt denselben Regeln wie Mail** (Plan `docs/plaene/agenten-identitaet-m365.md`, Phase 3).
+  - Bis 1.446 prüfte die Antwort im Teams-Kanal nur den plattformweiten Nur-Lesen-Schalter. Ein Agent auf „Lesen“, im Sekretariat oder mit „Freigabe“ in der Rechte-Matrix schrieb trotzdem direkt unter dem Namen seines Besitzers in Teams.
+  - Jetzt gibt es EINE Entscheidung, `core/ms_access.sendemodus`: Nur-Lesen-Schalter, Einstellung des Agenten, Sekretariat und Rechte-Matrix „E-Mail / M365 senden“. Sie gilt für Werkzeuge (`api/mcp_msgraph`) und Kanal (`services/teams_gateway.senden_nach_regeln`). Die Microsoft-Anbindung muss zugewiesen sein.
+- **Teams im Modus „Entwurf“:**
+  - Statt zu senden entsteht eine gebundene Freigabe `teams_senden` (`core/gebundene_freigabe`). Sie zeigt Ziel und vollen Text. Nach dem Freigeben sendet der Server genau diesen Text, einmal, und prüft vorher erneut, ob noch gesendet werden darf.
+  - Die Teams-Werkzeuge sind in diesem Modus sichtbar und gehen über die Freigabe. Ohne Freigabe-Weg senden sie nicht (fail closed).
+  - Agenten können die Art nicht selbst anlegen (`SERVER_ARTEN`). Die Ausführungen werden vor dem Prüfen und Ausführen geladen, damit eine Freigabe nie still ohne Wirkung schließt.
+- **Schleifenschutz in Teams:**
+  - Gesendete Nachrichten werden gemerkt und nicht als neue Anfrage gelesen. Das gilt auch, wenn der Agent über das Konto des Besitzers schreibt; dessen eigene Nachrichten bleiben sichtbar.
+  - Mit eigenem Konto wird zusätzlich alles von der eigenen Kennung (`/me`) übersprungen.
+  - Bisher hing der Schutz an `own_user_id`, das niemand setzte.
+
+- **Nach unabhängigem Sicherheitsreview** (kein kritischer Befund; ein hoher und fünf mittlere behoben):
+  - **H1:** Ohne eigenes Konto schreibt der Agent als sein Besitzer. Eine solche Teams-Nachricht gibt jetzt nur der Besitzer frei, wie bei Mail. Vorher reichte eine Freigabe des Agenten an andere. Dafür bekommt die gebundene Freigabe den Freigebenden mit.
+  - **M1:** Die Freigabe zeigt das Ziel mit Namen (Chat-Art, Thema, Mitglieder bzw. Team und Kanal) und die Kennung ungekürzt.
+  - **M2:**
+    - Höchstens 20 offene Teams-Freigaben je Agent.
+    - Dieselbe Nachricht wartet nur einmal.
+    - Plattform-Hinweise (Budget, Filter) werden nie zur Freigabe.
+  - **M3:** Eine ausgeführte gebundene Freigabe ist sofort als ausgeführt vermerkt. Scheitert danach das Schließen, sendet ein zweiter Klick nicht noch einmal. Das gilt auch für Tickets.
+  - **M4:** Auch Teams-Nachrichten, die Werkzeuge im Modus „Schreiben“ senden, fallen unter den Schleifenschutz.
+  - **M5:** Geweckt wird im Hintergrund, mit geteilter Docker-Verbindung, nur wenn der Agent laut Datenbank nicht läuft, und höchstens ein Start je Agent auf einmal.
+  - Außerdem:
+    - Der Schleifenschutz-Schlüssel gilt je Chat (L1).
+    - Die Ausführung prüft auch die Anbindung (L2, auch von der automatischen Nachprüfung gemeldet).
+    - Ladefehler der Freigabe-Ausführungen werden protokolliert (L4).
+    - „Zu lang“ wird dem Agenten gemeldet (L6).
+
+### Neu
+- **Kanal-Nachrichten wecken gestoppte Agenten:** Teams, Slack, Discord, WhatsApp und Webhook. Bisher wartete die Nachricht in der Warteschlange, bis jemand den Agenten von Hand startete. Bewusst vom Menschen angehaltene Agenten bleiben aus.
+- **Bei neuer Mail wecken** weckt bewusst angehaltene Agenten nicht. Der Stand rückt dann nicht weiter, nach dem Start wird nachgeholt (höchstens 24 Stunden).
+
+### Tests
+- `test_teams_identitaet.py` (25 Fälle, SQLite): Sendemodus über alle Eingänge, Senden und Freigabe bis zum Versand, Neuprüfung beim Freigeben, Werkzeuge, Schleifenschutz, Wecken. `test_graph_abos.py` um „angehalten“ ergänzt.
+- Gegenprobe mit 24 Schutzregeln, darunter die Review-Befunde: Jede entfernte Regel lässt die Tests fehlschlagen.
+- `test_teams_antwort_nur_lesen.py` ist in `test_teams_identitaet.py` aufgegangen.
+
 ## [1.446.1] - 2026-11-09
 
 ### Behoben

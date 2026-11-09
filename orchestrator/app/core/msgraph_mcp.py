@@ -869,7 +869,14 @@ ENTWURF_TOOLS = {
     "ms_move_email",
     "ms_mark_email_read",
     "ms_create_mail_folder",
+    # Teams im Modus „Entwurf“: gebundene Freigabe, der Server sendet danach genau diesen
+    # Text (services/teams_gateway.senden_nach_regeln, Art ``teams_senden``).
+    "ms_send_teams_message",
+    "ms_send_chat_message",
 }
+
+#: Teams-Werkzeuge, die im Modus „Entwurf“ zur Freigabe gehen statt zu senden.
+TEAMS_SENDE_TOOLS = {"ms_send_teams_message", "ms_send_chat_message"}
 
 # Tools that CREATE/SEND/MODIFY Microsoft data. Everything else in MSGRAPH_TOOLS
 # is read-only. Agents in read-only mode (and the external per-user transport)
@@ -2346,6 +2353,7 @@ async def handle_mcp_request(
     *,
     write_enabled: bool = False,
     entwurf_freigabe: Callable[[str, str], Awaitable[str]] | None = None,
+    teams_freigabe: Callable[[dict, str], Awaitable[str]] | None = None,
 ) -> tuple[dict, int]:
     """Handle one MCP JSON-RPC message; ``resolve_token`` yields the caller's
     Microsoft access token (or None if not connected). Returns ``(json, status)``.
@@ -2404,6 +2412,15 @@ async def handle_mcp_request(
                 f"Error: missing required argument(s): {', '.join(missing)}.",
                 is_error=True,
             )), 200
+        if entwurf_modus and tool_name in TEAMS_SENDE_TOOLS:
+            # Nie direkt senden — und ohne den Freigabe-Weg gar nicht (fail closed).
+            if teams_freigabe is None:
+                return mcp_result(id_, tool_result(
+                    "Teams-Nachrichten gehen in diesem Modus nur über eine Freigabe, und die ist hier "
+                    "nicht verfügbar. Nicht gesendet.", is_error=True)), 200
+            ziel = ({"chat_id": str(args["chat_id"])} if tool_name == "ms_send_chat_message"
+                    else {"team_id": str(args["team_id"]), "channel_id": str(args["channel_id"])})
+            return mcp_result(id_, tool_result(await teams_freigabe(ziel, str(args.get("message") or "")))), 200
         try:
             token = await resolve_token()
         except Exception as e:  # token refresh can fail on a Microsoft/network outage

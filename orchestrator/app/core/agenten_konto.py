@@ -125,6 +125,11 @@ async def trennen(db, redis, agent, user) -> bool:
     from app.core import graph_abos
 
     await graph_abos.entfernen(db, agent.id)   # Abo bei Microsoft löschen, solange das Token noch gilt
+    try:   # gemerkte Teams-Kennung des alten Kontos vergessen (services/teams_gateway)
+        if redis is not None and getattr(redis, "client", None) is not None:
+            await redis.client.delete(f"teams:ich:{agent.id}")
+    except Exception:  # noqa: BLE001
+        pass
     if graph_abos.an(agent.config):
         # Aus, nicht nur ruhend: Ein späteres Verbinden soll nicht still wieder Läufe auslösen.
         agent.config = graph_abos.mit_einstellung(agent.config, False)

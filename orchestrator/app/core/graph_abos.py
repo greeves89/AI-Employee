@@ -288,8 +288,12 @@ async def nachholen(db, redis, abo, router_fabrik=None) -> int:
     from app.core.msgraph_mcp import _graph
     from app.models.agent import Agent
 
+    from app.core.agent_duty import vom_nutzer_angehalten
+
     agent_id = abo.agent_id
     agent = await db.get(Agent, agent_id)
+    if agent is None or vom_nutzer_angehalten(agent):
+        return 0      # Stand NICHT weiterrücken: nach dem Start wird nachgeholt (höchstens 24 h)
     token = await token_fuer(db, agent)
     if not token:
         return 0
@@ -412,6 +416,12 @@ async def eingang(db, redis, agent, message_id: str, router_fabrik=None) -> str:
 
     if agent is None or not await _gewollt(db, agent):
         return "aus"
+    from app.core.agent_duty import vom_nutzer_angehalten
+
+    if vom_nutzer_angehalten(agent):
+        # Bewusst angehalten: nicht wecken. Keine Sperre gesetzt — nach dem Start holt das
+        # Nachsehen Mails der letzten 24 Stunden nach.
+        return "angehalten"
     if not message_id or not isinstance(message_id, str) or len(message_id) > 400:
         return "fehler"
     agent_id, agent_name = agent.id, agent.name

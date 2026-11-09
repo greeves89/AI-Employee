@@ -29,6 +29,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
 from app.core import channel_gateway as gw
+from app.core import gebundene_freigabe
 from app.db.session import resilient_session
 from app.models.agent import Agent
 
@@ -102,6 +103,30 @@ async def _agenten_token(agent) -> str | None:
             return await token_fuer(db, agent)
     except Exception as e:  # noqa: BLE001 — ohne Token ist Teams fuer diesen Agenten aus
         logger.debug("[Teams] kein Graph-Token fuer Agent %s: %s", getattr(agent, "id", "?"), e)
+        return None
+
+
+async def _eigene_kennung(agent: Agent, token: str) -> str | None:
+    """Die Microsoft-Kennung des Agenten — nur mit eigenem Konto (sonst wäre es die des
+    Besitzers, und dessen Nachrichten an den Agenten würden verschluckt)."""
+    from app.core import agenten_konto
+    from app.core.msgraph_mcp import _graph
+
+    schluessel = f"{KEY_PREFIX}:ich:{agent.id}"
+    try:
+        client = (await _redis()).client
+        gemerkt = await client.get(schluessel)
+        if gemerkt:
+            return gemerkt.decode() if isinstance(gemerkt, bytes) else str(gemerkt)
+        async with resilient_session() as db:
+            if await agenten_konto._zeile(db, agent.id) is None:
+                return None
+        kennung = str((await _graph("GET", "/me?$select=id", token)).get("id") or "")
+        if kennung:
+            await client.set(schluessel, kennung, ex=24 * 3600)
+        return kennung or None
+    except Exception as e:  # noqa: BLE001 — Halt (1) greift weiter
+        logger.debug("[Teams] eigene Kennung von Agent %s nicht ermittelt: %s", agent.id, e)
         return None
 
 
@@ -195,10 +220,14 @@ class TeamsGateway:
             newest = max(newest, stamp)
 
             sender_id, sender_name = _sender(message)
-            # Eigene Nachrichten NIE zurueckverarbeiten: der Agent schreibt ueber
-            # dasselbe Konto, und ohne diese Sperre antwortet er auf sich selbst —
-            # eine Schleife, die erst das Token-Budget beendet.
-            if sender_id and sender_id == cfg.get("own_user_id"):
+            # Eigene Nachrichten NIE zurueckverarbeiten — sonst antwortet der Agent auf sich
+            # selbst, bis das Budget leer ist. Zwei Halte, unabhängig voneinander:
+            # (1) was er gesendet hat, steht in seiner Liste (gilt auch, wenn er über das Konto
+            #     seines Besitzers schreibt — dessen eigene Nachrichten bleiben dann sichtbar);
+            # (2) mit eigenem Microsoft-Konto: alles von seiner eigenen Kennung (/me).
+            if await _ist_eigen(agent.id, context, str(message.get("id") or "")):
+                continue
+            if sender_id and sender_id in {cfg.get("own_user_id"), await _eigene_kennung(agent, token)} - {None, ""}:
                 continue
             if (message.get("messageType") or "message") != "message":
                 continue
@@ -252,42 +281,230 @@ class TeamsGateway:
                            KEY_PREFIX)
 
 
-async def send_reply(agent: Agent, context: dict, text: str) -> bool:
-    """Eine Antwort zurück nach Teams schicken.
+# ─── Senden nach Regeln (Plan agenten-identitaet-m365, Phase 3) ────────────
 
-    Nutzt denselben Graph-Weg wie die Werkzeuge des Agenten — es gibt keinen zweiten
-    Sendepfad, der andere Rechte oder anderes Verhalten hätte.
-    """
-    from app.core import ms_access
+#: Gebundene Freigabe für Teams im Modus „Entwurf“ (core/gebundene_freigabe).
+ART_SENDEN = "teams_senden"
+#: Wie lange gesendete Nachrichten als eigene erkannt werden (Schleifenschutz).
+EIGENE_TTL_S = 3 * 24 * 3600
+_redis_dienst = None
+
+
+async def _redis():
+    """Geteilte Redis-Verbindung für den Schleifenschutz (Senden kennt keinen Request)."""
+    global _redis_dienst
+    if _redis_dienst is None:
+        from app.config import settings
+        from app.services.redis_service import RedisService
+
+        dienst = RedisService(settings.redis_url)
+        await dienst.connect()
+        _redis_dienst = dienst
+    return _redis_dienst
+
+
+def _pfad(ziel: dict) -> str | None:
+    from app.core.msgraph_mcp import _gid
+
+    if ziel.get("chat_id"):
+        return f"/chats/{_gid(ziel['chat_id'])}/messages"
+    if ziel.get("team_id") and ziel.get("channel_id"):
+        return f"/teams/{_gid(ziel['team_id'])}/channels/{_gid(ziel['channel_id'])}/messages"
+    return None
+
+
+def _ziel(context: dict) -> dict:
+    if context.get("chat_id"):
+        return {"chat_id": str(context["chat_id"])}
+    if context.get("team_id") and context.get("channel_id"):
+        return {"team_id": str(context["team_id"]), "channel_id": str(context["channel_id"])}
+    return {}
+
+
+def _bereich(ziel: dict) -> str:
+    """Wo eine Nachricht steht — Teams-Kennungen sind nur je Chat/Kanal eindeutig."""
+    return str(ziel.get("chat_id") or ziel.get("channel_id") or "")
+
+
+async def als_eigen_merken(agent_id: str, ziel: dict, message_id: str | None) -> None:
+    """Gesendete Nachricht merken — der Agent soll sie beim Abfragen nicht als Anfrage lesen.
+    Auch für Werkzeuge im Modus „Schreiben“ (api/mcp_msgraph)."""
+    if not message_id:
+        return
+    try:
+        client = (await _redis()).client
+        await client.sadd(f"{KEY_PREFIX}:eigene:{agent_id}", f"{_bereich(ziel)}:{message_id}")
+        await client.expire(f"{KEY_PREFIX}:eigene:{agent_id}", EIGENE_TTL_S)
+    except Exception:  # noqa: BLE001 — der Schleifenschutz hat einen zweiten Halt (eigene Kennung)
+        logger.warning("[Teams] Gesendete Nachricht von Agent %s nicht als eigene gemerkt — "
+                       "Schleifenschutz nur über die eigene Kennung", agent_id)
+
+
+async def _ist_eigen(agent_id: str, ziel: dict, message_id: str) -> bool:
+    try:
+        return bool(await (await _redis()).client.sismember(
+            f"{KEY_PREFIX}:eigene:{agent_id}", f"{_bereich(ziel)}:{message_id}"))
+    except Exception:  # noqa: BLE001
+        logger.warning("[Teams] Schleifenschutz für Agent %s nicht prüfbar (Redis)", agent_id)
+        return False
+
+
+async def _posten(agent: Agent, ziel: dict, text: str, format_: str) -> str:
+    """Wirklich senden — nur über :func:`senden_nach_regeln` oder die freigegebene Handlung."""
     from app.core.msgraph_mcp import _graph
 
-    # Der plattformweite Nur-Lesen-Schalter für Microsoft 365 (Voreinstellung: an) gilt auch
-    # hier. Bis 1.444 ging die Antwort im Kanal daran vorbei — ein Admin, der „nur lesend“
-    # eingestellt hatte, sah trotzdem Nachrichten unter dem Namen des Besitzers in Teams.
-    if ms_access.read_only_enabled():
-        logger.warning("[Teams] Antwort nicht gesendet — Microsoft 365 ist plattformweit nur lesend "
-                       "(Admin → Integrationen)")
-        return False
-
+    pfad = _pfad(ziel)
     token = await _agenten_token(agent)
-    if not token:
-        logger.warning("[Teams] Antwort nicht moeglich — kein Graph-Token")
-        return False
+    if not pfad or not token:
+        raise RuntimeError("Kein Ziel oder kein Microsoft-Zugang")
+    inhalt = _to_html(text) if format_ == "html" else text
+    antwort = await _graph("POST", pfad, token, content=json.dumps(
+        {"body": {"contentType": "html" if format_ == "html" else "text", "content": inhalt}}))
+    await als_eigen_merken(agent.id, ziel, (antwort or {}).get("id"))
+    return str((antwort or {}).get("id") or "")
 
-    if context.get("chat_id"):
-        path = f"/chats/{context['chat_id']}/messages"
-    elif context.get("team_id") and context.get("channel_id"):
-        path = f"/teams/{context['team_id']}/channels/{context['channel_id']}/messages"
-    else:
-        return False
 
+async def _ziel_felder(agent: Agent, ziel: dict) -> list[tuple[str, str]]:
+    """Wohin die Nachricht geht — mit Namen, damit der Mensch das Ziel prüfen kann, nicht nur
+    den Text. Die Kennung steht immer vollständig dabei; fehlen die Namen, steht das da."""
+    from app.core.msgraph_mcp import _gid, _graph
+
+    felder: list[tuple[str, str]] = []
     try:
-        await _graph("POST", path, token,
-                     json={"body": {"contentType": "html", "content": _to_html(text)}})
-        return True
+        token = await _agenten_token(agent)
+        if ziel.get("chat_id"):
+            chat = await _graph("GET", f"/chats/{_gid(ziel['chat_id'])}?$select=topic,chatType", token)
+            leute = await _graph("GET", f"/chats/{_gid(ziel['chat_id'])}/members?$select=displayName", token)
+            namen = [str(m.get("displayName") or "") for m in (leute.get("value") or [])][:12]
+            art = {"oneOnOne": "Einzelchat", "group": "Gruppenchat", "meeting": "Besprechungschat"}.get(
+                str(chat.get("chatType") or ""), "Chat")
+            felder.append(("An", f"{art}{' „' + str(chat['topic']) + '“' if chat.get('topic') else ''}"))
+            felder.append(("Mitglieder", ", ".join(n for n in namen if n) or "—"))
+        else:
+            team = await _graph("GET", f"/teams/{_gid(ziel['team_id'])}?$select=displayName", token)
+            kanal = await _graph("GET", f"/teams/{_gid(ziel['team_id'])}/channels/{_gid(ziel['channel_id'])}"
+                                        "?$select=displayName", token)
+            felder.append(("An", f"Kanal „{kanal.get('displayName', '?')}“ im Team „{team.get('displayName', '?')}“"))
+    except Exception as e:  # noqa: BLE001
+        logger.info("[Teams] Ziel für Freigabe nicht aufgelöst: %s", e)
+        felder.append(("An", "Name nicht ermittelbar — bitte die Kennung prüfen"))
+    felder.append(("Kennung", ziel.get("chat_id") or f"{ziel.get('team_id')} / {ziel.get('channel_id')}"))
+    return felder
+
+
+#: Höchstens so viele offene Teams-Freigaben je Agent — ein Gast, der einen überwachten Chat
+#: zuschreibt, soll seinen Menschen nicht mit Freigaben (und Mitteilungen) überschwemmen.
+HOECHSTENS_OFFEN = 20
+
+
+async def _offene_freigaben(db, agent_id: str) -> list:
+    from app.models.command_approval import ApprovalStatus, CommandApproval
+
+    zeilen = (await db.execute(select(CommandApproval).where(
+        CommandApproval.agent_id == agent_id, CommandApproval.status == ApprovalStatus.PENDING))).scalars().all()
+    return [z for z in zeilen if (z.meta or {}).get("kind") == ART_SENDEN]
+
+
+async def _sendemodus(db, agent: Agent) -> str:
+    """Modus für Teams: ``ms_access.sendemodus`` — und ohne zugewiesene Microsoft-Anbindung
+    immer ``lesen``. EINE Prüfung für Senden UND für das Ausführen einer Freigabe (zwischen
+    Anfrage und Freigabe kann die Anbindung entzogen oder der Modus geändert worden sein)."""
+    from app.core import ms_access
+    from app.core.faehigkeiten import anbindung_zugewiesen
+
+    if agent is None or not await anbindung_zugewiesen(db, agent.id, "microsoft"):
+        return ms_access.LESEN
+    return await ms_access.sendemodus(db, agent)
+
+
+async def senden_nach_regeln(agent: Agent, ziel: dict, text: str, *, format_: str = "html",
+                             quelle: str = "kanal", system: bool = False) -> str:
+    """DER Weg, auf dem ein Agent in Teams schreibt — Kanal-Antwort und Werkzeug.
+
+    Dieselben Regeln wie Mail (core/ms_access.sendemodus): Nur-Lesen-Schalter, Einstellung des
+    Agenten, Sekretariat, Rechte-Matrix „E-Mail / M365 senden“; außerdem muss die
+    Microsoft-Anbindung dem Agenten zugewiesen sein. Im Modus „Entwurf“ wird nicht gesendet,
+    sondern eine gebundene Freigabe angelegt (Art ``teams_senden``): Nach dem Freigeben sendet
+    der Server genau diesen Text, einmal.
+
+    ``system``: Hinweis der Plattform (Budget erschöpft, vom Filter zurückgehalten) — der wird
+    nie zur Freigabe, sondern im Modus „Entwurf“ nur protokolliert.
+
+    Liefert ``gesendet``, ``freigabe``, ``aus``, ``zu_viele``, ``zu_lang`` oder ``fehler``.
+    """
+    from app.core import ms_access
+
+    if not _pfad(ziel) or not (text or "").strip():
+        return "fehler"
+    async with resilient_session() as db:
+        modus = await _sendemodus(db, agent)
+        if modus == ms_access.LESEN:
+            logger.warning("[Teams] Agent %s darf in Microsoft 365 nur lesen — %s nicht gesendet", agent.id, quelle)
+            return "aus"
+        if modus == ms_access.ENTWURF:
+            if system:
+                logger.info("[Teams] Plattform-Hinweis für Agent %s nicht gesendet (Modus Entwurf)", agent.id)
+                return "aus"
+            daten = {"ziel": ziel, "text": text, "format": format_}
+            offen = await _offene_freigaben(db, agent.id)
+            abdruck = gebundene_freigabe.fingerabdruck(ART_SENDEN, daten)
+            if any(((z.meta or {}).get("input") or {}).get("fingerabdruck") == abdruck for z in offen):
+                return "freigabe"           # genau diese Nachricht wartet schon
+            if len(offen) >= HOECHSTENS_OFFEN:
+                logger.warning("[Teams] Agent %s: schon %d offene Teams-Freigaben — keine weitere", agent.id, len(offen))
+                return "zu_viele"
+            try:
+                await gebundene_freigabe.anfragen(
+                    db, agent.id, ART_SENDEN, daten, titel="Teams-Nachricht senden",
+                    felder=[*await _ziel_felder(agent, ziel), ("Text", text)], werkzeug="teams_senden")
+                await db.commit()
+                return "freigabe"
+            except Exception as e:  # noqa: BLE001
+                if getattr(e, "status_code", None) == 413:
+                    return "zu_lang"
+                logger.warning("[Teams] Freigabe für Agent %s nicht angelegt: %s", agent.id, e)
+                return "fehler"
+    try:
+        await _posten(agent, ziel, text, format_)
+        return "gesendet"
     except Exception as e:  # noqa: BLE001
         logger.warning("[Teams] Senden fehlgeschlagen: %s", e)
-        return False
+        return "fehler"
+
+
+@gebundene_freigabe.ausfuehrer(ART_SENDEN)
+async def _freigegeben_senden(db, daten: dict, agent_id: str, user=None) -> str:
+    """Freigegeben: genau diesen Text senden — wenn der Agent jetzt noch senden darf.
+
+    Ohne eigenes Konto schreibt der Agent als sein Besitzer. Das gibt dann nur der Besitzer
+    frei — wie bei Mail (core/mail_freigabe): Wem der Agent nur freigegeben ist, der darf
+    nicht im Namen eines anderen in Teams schreiben lassen.
+    """
+    from fastapi import HTTPException
+
+    from app.core import agenten_konto, ms_access
+
+    agent = await db.get(Agent, agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
+    if await agenten_konto._zeile(db, agent.id) is None and (
+            user is None or str(getattr(user, "id", "")) != str(agent.user_id or "")):
+        raise HTTPException(status_code=403, detail="Diese Teams-Nachricht geht in deinem Namen nur, wenn du "
+                                                    "sie selbst freigibst — der Agent schreibt als sein Besitzer.")
+    # Zwischen Anfrage und Freigabe kann der Admin auf Nur-Lesen gestellt oder die Anbindung
+    # entzogen worden sein — dieselbe Prüfung wie beim Senden.
+    if await _sendemodus(db, agent) == ms_access.LESEN:
+        raise HTTPException(status_code=409, detail="Der Agent darf in Microsoft 365 inzwischen nur lesen "
+                                                    "oder hat die Anbindung nicht mehr — nicht gesendet.")
+    await _posten(agent, dict(daten.get("ziel") or {}), str(daten.get("text") or ""),
+                  "text" if daten.get("format") == "text" else "html")
+    return "In Teams gesendet."
+
+
+async def send_reply(agent: Agent, context: dict, text: str, system: bool = False) -> bool:
+    """Eine Antwort zurück nach Teams — nach denselben Regeln wie jedes Senden."""
+    ergebnis = await senden_nach_regeln(agent, _ziel(context), text, quelle="kanal", system=system)
+    return ergebnis in ("gesendet", "freigabe")
 
 
 def _to_html(text: str) -> str:
