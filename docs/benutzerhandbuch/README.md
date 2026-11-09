@@ -4181,6 +4181,8 @@ Administrator). Telegram richtet ein Administrator unter Einstellungen → Verbi
 4. Auf **Speichern** klicken.
 5. Mit dem Schalter rechts neben dem Namen den Kanal **einschalten**.
 
+![Karte „Kanäle“ im Fenster Konnektoren, Discord aufgeklappt, Knopf „Speichern“](screenshots/f28-kanaele.png)
+
 Eine WhatsApp-Nummer gehört genau einem Agenten. Ist sie schon vergeben, lehnt die Anlage ab.
 Wem du den Agenten nur freigegeben hast, sieht je Kanal nur, ob er an ist und wie viele Ziele
 er hat. Ohne eigenes Microsoft-Konto des Agenten stellst nur du Teams ein. Ausschalten kann
