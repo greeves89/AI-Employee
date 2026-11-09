@@ -129,13 +129,15 @@ class AbbildungTests(unittest.TestCase):
             with self.assertRaises(kanaele.UngueltigeEinstellung, msg=(kanal, e)):
                 kanaele.setzen({}, kanal, e)
 
-    def test_agentenantwort_ohne_geheimtext(self):
-        """Review M1: Auch der verschlüsselte Token geht nicht an Freigegebene (GET /agents)."""
+    def test_agentenantwort_ohne_kanaele(self):
+        """Review M1 + Nachprüfung: GET /agents sehen auch Freigegebene — weder Geheimtext noch
+        Telefonnummern oder Kennungen. Kanäle gibt es nur über /kanaele (dort zusammengefasst)."""
         cfg, _ = kanaele.setzen({"x": 1}, "slack", {"token": "xoxb-geheim", "ziele": ["C1"]})
-        cfg, _ = kanaele.setzen(cfg, "whatsapp", {"token": "EAAB"})
+        cfg, _ = kanaele.setzen(cfg, "whatsapp", {"token": "EAAB", "absender": ["+491511234567"]})
         aus = kanaele.ohne_zugangsdaten(cfg)
-        self.assertNotIn("_enc", str(aus))
-        self.assertEqual(aus["channels"]["slack"]["channels"], ["C1"])
+        self.assertNotIn("channels", aus)
+        self.assertNotIn("491511234567", str(aus))
+        self.assertEqual(aus["x"], 1)
         self.assertIn("bot_token_enc", cfg["channels"]["slack"], "Original bleibt unverändert")
 
     def test_agent_manager_nutzt_die_bereinigung(self):

@@ -23,7 +23,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   - **H1:** Eine WhatsApp-Nummer ließ sich mehreren Agenten zuordnen. Die Nachrichten an einen Agenten konnten so bei einem fremden landen.
     - Jetzt lehnt die Anlage eine schon vergebene Nummer ab (409).
     - Bei Doppelungen aus dem Altbestand verwirft der Kanal die Nachricht, statt zu raten.
-  - **M1:** Die allgemeine Agenten-Antwort (`GET /agents`) enthielt die verschlüsselten Kanal-Token, auch für Freigegebene. Jetzt ohne (`kanaele.ohne_zugangsdaten`).
+  - **M1:** Die allgemeine Agenten-Antwort (`GET /agents`) enthielt die verschlüsselten Kanal-Token, auch für Freigegebene. Jetzt enthält sie die Kanal-Einstellungen gar nicht mehr (`kanaele.ohne_zugangsdaten`). Die Nachprüfung des Commits fand, dass sonst Telefonnummern und Kennungen an der Zusammenfassung vorbei sichtbar blieben. Kanäle gibt es nur über `/kanaele`.
   - **M2:** Änderung und Prüfprotokoll werden in EINER Transaktion festgeschrieben.
   - **M3:** Kennungen nur aus Punkten („..“) werden abgelehnt. Discord, WhatsApp und Teams setzen Kennungen nur noch maskiert in URL-Pfade. Die WhatsApp-Telefonnummer-ID besteht nur aus Ziffern.
   - **M4:** Wem der Agent nur freigegeben ist, der sieht je Kanal nur „an/aus“ und die Anzahl, keine Telefonnummern oder Kennungen.

@@ -35,13 +35,14 @@ def gueltige_kennung(wert: str) -> bool:
 
 
 def ohne_zugangsdaten(config: dict | None) -> dict | None:
-    """``config`` für Antworten nach außen: verschlüsselte Zugangsdaten der Kanäle entfernt.
-    Auch der Geheimtext gehört nicht zu Freigegebenen (Schlüssel-Leck → alle Token offen)."""
-    if not isinstance(config, dict) or not isinstance(config.get("channels"), dict):
+    """``config`` für die allgemeine Agenten-Antwort (``GET /agents``): ohne ``channels``.
+
+    Die sehen auch Menschen, denen der Agent nur freigegeben ist. Kanal-Einstellungen enthalten
+    verschlüsselte Zugangsdaten, Telefonnummern und Chat-Kennungen — die gibt es nur über
+    ``GET /agents/{id}/kanaele``, und dort für Freigegebene nur als Zusammenfassung."""
+    if not isinstance(config, dict) or "channels" not in config:
         return config
-    kanaele = {k: ({f: w for f, w in v.items() if not str(f).endswith("_enc")} if isinstance(v, dict) else v)
-               for k, v in config["channels"].items()}
-    return {**config, "channels": kanaele}
+    return {k: v for k, v in config.items() if k != "channels"}
 
 
 def zusammenfassung(stand: dict) -> dict:
