@@ -3683,6 +3683,7 @@ async def update_agent_anonymisierer(
         command=f"Anonymisierer {'an' if neu['aktiv'] else 'aus'}, {len(neu['begriffe'])} Begriff(e)",
         meta={"aktion": "anonymisierer", "aktiv": neu["aktiv"], "begriffe_anzahl": len(neu["begriffe"])},
     )
+    await db.commit()   # protokolliere merkt nur vor — ohne Commit ginge der Eintrag verloren
     stand = await _anonymisierer_stand(agent)
     # Eingeschaltet: Agenten neu erstellen. Offene Verbindungen zum Modellanbieter liefen
     # sonst ungeprüft weiter (der Proxy bricht nur NEUE auf), und den Hinweis auf die
@@ -3785,6 +3786,7 @@ async def mail_wecken_agent_microsoft_konto(
                         command=(f"Bei neuer Mail wecken: {'an' if neu['aktiv'] else 'aus'}, "
                                  f"Absender: {'alle' if neu['alle_absender'] else 'eigene Organisation'}"),
                         meta={"aktion": "mail_wecken", **neu})
+    await db.commit()
     try:
         await graph_abos.einrichten(db, agent)
     except Exception:  # noqa: BLE001 — der Abgleich alle fünf Minuten holt es nach
@@ -3807,6 +3809,117 @@ async def trennen_agent_microsoft_konto(
     if not await agenten_konto.trennen(db, redis, agent, user):
         raise HTTPException(status_code=404, detail="Der Agent hat kein eigenes Microsoft-Konto.")
     return await agenten_konto.stand(db, agent, redis)
+
+
+class KanalUpdate(BaseModel):
+    """Felder, die fehlen, bleiben unverändert. ``token``: neu setzen; leer = entfernen."""
+    aktiv: bool | None = None
+    ziele: list[str] | None = None
+    teams_kanaele: list[dict] | None = None
+    nur_bei_erwaehnung: bool | None = None
+    stichworte: list[str] | None = None
+    bot_kennung: str | None = None
+    telefon_id: str | None = None
+    absender: list[str] | None = None
+    token: str | None = Field(default=None, max_length=1000)
+
+
+async def _kanal_agent(agent_id: str, user, db: AsyncSession, schreiben: bool):
+    """Lesen: wer den Agenten sieht. Ändern: Besitzer oder Admin (Zugangsdaten, Außenwirkung)."""
+    from app.models.user import UserRole
+
+    await _check_owner(agent_id, user, db)
+    agent = await db.get(Agent, agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
+    if schreiben and getattr(user, "role", None) != UserRole.ADMIN and agent.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Kanäle des Agenten stellt nur sein Besitzer ein.")
+    return agent
+
+
+@router.get("/{agent_id}/kanaele")
+async def get_agent_kanaele(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Teams, Slack, Discord, WhatsApp — Einstellungen ohne Zugangsdaten (core/kanaele)."""
+    from app.core import kanaele
+
+    agent = await _kanal_agent(agent_id, user, db, schreiben=False)
+    return {"kanaele": [kanaele.lesen(agent.config, k) for k in kanaele.KANAELE]}
+
+
+@router.put("/{agent_id}/kanaele/{kanal}")
+async def update_agent_kanal(
+    agent_id: str,
+    kanal: str,
+    body: KanalUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Einen Kanal einstellen. Ins Prüfprotokoll gehen die geänderten Felder, nie ein Token."""
+    from app.core import kanaele
+    from app.core.audit import protokolliere
+    from app.models.audit_log import AuditEventType
+
+    agent = await _kanal_agent(agent_id, user, db, schreiben=True)
+    try:
+        agent.config, geaendert = kanaele.setzen(agent.config, kanal, body.model_dump(exclude_unset=True))
+    except kanaele.UngueltigeEinstellung as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    await db.commit()
+    if geaendert:
+        await protokolliere(db, AuditEventType.SETTINGS_CHANGED, user_id=getattr(user, "id", None),
+                            agent_id=agent_id, command=f"Kanal {kanal}: {', '.join(geaendert)}",
+                            meta={"aktion": "kanal", "kanal": kanal, "felder": geaendert})
+        await db.commit()
+    return kanaele.lesen(agent.config, kanal)
+
+
+@router.get("/{agent_id}/kanaele/teams/auswahl")
+async def get_agent_teams_auswahl(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Chats und Kanäle, die der Agent in Teams sehen kann — zum Auswählen statt Kennungen abtippen.
+
+    Mit dem Microsoft-Zugang des Agenten (core/agenten_konto.token_fuer), nur lesend, nur für
+    Besitzer und Admin, nur mit zugewiesener Microsoft-Anbindung."""
+    from app.core.agenten_konto import token_fuer
+    from app.core.faehigkeiten import anbindung_zugewiesen
+    from app.core.msgraph_mcp import _gid, _graph
+
+    from app.core import agenten_konto
+
+    agent = await _kanal_agent(agent_id, user, db, schreiben=True)
+    if await agenten_konto._zeile(db, agent.id) is None and agent.user_id != user.id:
+        # Ohne eigenes Konto wären es die Chats des Besitzers — die sieht auch ein Admin nicht.
+        raise HTTPException(status_code=403, detail="Ohne eigenes Konto des Agenten wählt nur sein Besitzer "
+                                                    "die Chats aus (es sind dessen Chats).")
+    if not await anbindung_zugewiesen(db, agent.id, "microsoft"):
+        raise HTTPException(status_code=409, detail="Die Microsoft-Anbindung ist diesem Agenten nicht zugewiesen.")
+    token = await token_fuer(db, agent)
+    if not token:
+        raise HTTPException(status_code=409, detail="Kein Microsoft-Zugang — bitte unter Konnektoren verbinden.")
+    chats, kanaele_ = [], []
+    try:
+        daten = await _graph("GET", "/me/chats?$top=50&$select=id,topic,chatType"
+                                    "&$expand=members($select=displayName)", token)
+        for c in daten.get("value") or []:
+            namen = [str(m.get("displayName") or "") for m in (c.get("members") or [])][:6]
+            chats.append({"id": c.get("id"), "art": c.get("chatType"),
+                          "name": c.get("topic") or ", ".join(n for n in namen if n) or "(ohne Namen)"})
+        teams = (await _graph("GET", "/me/joinedTeams?$select=id,displayName", token)).get("value") or []
+        for t in teams[:15]:
+            for k in (await _graph("GET", f"/teams/{_gid(t['id'])}/channels?$select=id,displayName",
+                                   token)).get("value") or []:
+                kanaele_.append({"team_id": t["id"], "channel_id": k.get("id"),
+                                 "name": f"{t.get('displayName', '?')} › {k.get('displayName', '?')}"})
+    except Exception as e:  # noqa: BLE001 — Liste unvollständig ist besser als keine
+        logger.warning("Teams-Auswahl für Agent %s unvollständig: %s", agent_id, e)
+    return {"chats": chats, "kanaele": kanaele_}
 
 
 @router.get("/{agent_id}/browser/audit")

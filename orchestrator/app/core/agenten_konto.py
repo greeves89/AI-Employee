@@ -200,5 +200,6 @@ async def _protokollieren(db, user_id: str, agent_id: str, text: str) -> None:
 
         await protokolliere(db, AuditEventType.SETTINGS_CHANGED, user_id=user_id, agent_id=agent_id,
                             command=text, meta={"aktion": "agenten_konto"})
+        await db.commit()   # protokolliere merkt nur vor
     except Exception:  # noqa: BLE001 — das Protokoll darf das Verbinden nicht verhindern
         logger.warning("Agenten-Konto: Prüfprotokoll nicht geschrieben", exc_info=True)

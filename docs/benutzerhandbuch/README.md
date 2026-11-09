@@ -4165,14 +4165,28 @@ geteilte) — Administratoren sehen alle Agenten.
 Ein Agent ist über **fünf Kanäle** erreichbar. Egal welcher — der Ablauf dahinter ist
 derselbe: Nachricht aufnehmen, ins Gedächtnis legen, Agent antworten lassen.
 
-### Einen Kanal einschalten
+### Einen Kanal einschalten *(Oberfläche seit 1.448.0)*
 
-1. **Agenten** öffnen → gewünschter Agent → Reiter **Settings**.
-2. Abschnitt **Kanäle** aufklappen.
-3. Kanal wählen und **Aktiv** setzen.
-4. **Bot-Token** eintragen (wird verschlüsselt gespeichert, nie im Klartext angezeigt).
-5. **Kanal-IDs** eintragen — welche Chats/Channels der Agent mitliest.
-6. **Speichern**.
+Telegram richtest du unter **Verbindungen → Telegram** ein. Teams, Slack, Discord und WhatsApp
+stehen darunter auf der Karte **Kanäle** (Besitzer des Agenten oder Administrator):
+
+1. Agent öffnen → **Einstellungen** → Abschnitt **Verbindungen** aufklappen.
+2. Auf der Karte **Kanäle** den gewünschten Kanal aufklappen (Pfeil vor dem Namen).
+3. **Slack/Discord:** die **Kanal-IDs** eintragen (eine je Zeile), dazu die **Bot-Kennung** und das
+   **Bot-Token**.
+   **WhatsApp:** **Telefonnummer-ID**, **erlaubte Absender** und **Zugriffstoken**.
+   **Teams:** auf **Chats und Kanäle aus Teams auswählen** klicken und die gewünschten ankreuzen.
+   Die Liste kommt aus dem Microsoft-Konto, das der Agent nutzt. Ohne eigenes Konto des Agenten
+   sind es deine Chats, und nur du kannst sie auswählen.
+4. Auf **Speichern** klicken.
+5. Mit dem Schalter rechts neben dem Namen den Kanal **einschalten**.
+
+Zugangsdaten werden verschlüsselt gespeichert und nie wieder angezeigt. Die Karte zeigt nur
+„Token gesetzt“ oder „nicht gesetzt“. Lässt du das Feld leer, bleibt das gespeicherte Token.
+**Token entfernen** löscht es. Ins Audit-Log kommt, welche Felder geändert wurden, nie ein Token.
+
+Für Teams gilt außerdem, was der Agent in Microsoft 365 darf (siehe unten). Chats aus
+Besprechungen, an denen der Agent teilnimmt, kommen von selbst dazu.
 
 ### Discord einrichten
 
@@ -4230,8 +4244,6 @@ Antwort wartet, die nie kommt.
 
 > Lange Antworten werden bei Discord an Absätzen **geteilt**, nicht abgeschnitten —
 > eine halbe Antwort sieht sonst aus wie eine ganze.
->
-> _[Screenshot folgt: Kanäle-Abschnitt in den Agent-Settings mit aktivem Discord]_
 
 ---
 

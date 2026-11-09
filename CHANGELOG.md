@@ -5,6 +5,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.448.0] - 2026-11-09
+
+### Neu
+- **Kanäle in der Oberfläche einstellen:** Teams, Slack, Discord und WhatsApp (Agent → Einstellungen → Verbindungen → Karte „Kanäle“).
+  - Bisher ging das nur direkt in der Datenbank. Handbuch Kap. 34 beschrieb eine Oberfläche, die es nicht gab; es ist jetzt neu geschrieben.
+  - Zur API: `core/kanaele.py` beschreibt die Felder neutral und bildet sie auf die Schlüssel ab, die die Gateways lesen. Endpunkte: `GET /agents/{id}/kanaele`, `PUT /agents/{id}/kanaele/{kanal}`, `GET /agents/{id}/kanaele/teams/auswahl`.
+  - Teams: Chats und Kanäle werden aus Teams ausgewählt (Graph, nur lesend), Kennungen muss niemand abtippen. Chats aus Besprechungen bleiben erhalten.
+
+### Sicherheit
+- **Kanal-Einstellungen:**
+  - Zugangsdaten (Bot-Token, Zugriffstoken) werden verschlüsselt gespeichert und nie zurückgegeben (`token_gesetzt`). Leer lässt sie stehen, „Token entfernen“ löscht sie.
+  - Ändern dürfen nur Besitzer und Admin. Kennungen, Nummern und Längen werden serverseitig geprüft.
+  - Ins Prüfprotokoll gehen die geänderten Felder, nie Werte von Zugangsdaten.
+  - Die Teams-Chatliste ohne eigenes Konto des Agenten (also die Chats des Besitzers) sieht nur der Besitzer, auch kein Admin.
+- **Prüfprotokoll-Einträge gingen verloren:**
+  - `protokolliere` merkt einen Eintrag nur vor. Wurde er erst NACH dem Festschreiben vorgemerkt, kam er nie in die Datenbank.
+  - Betroffen: Anonymisierer ein und aus (seit 1.444.0), Microsoft-Konto des Agenten verbinden und trennen (seit 1.445.0).
+  - Die Tests hatten in derselben Sitzung gelesen und den vorgemerkten Eintrag gesehen. Jetzt wird festgeschrieben, und die Tests lesen in einer frischen Sitzung.
+
+### Tests
+- `test_kanaele.py` (13 Fälle): Abbildung gegen die echten `channel_config`/`is_enabled` der Gateways, Zugangsdaten, Ablehnungen, Rechte, Teams-Auswahl.
+- Prüfprotokoll: Reihenfolge „vormerken, dann festschreiben“ geprüft (Anonymisierer, Agenten-Konto, Kanäle).
+- Gegenprobe: Ohne die drei Commits schlagen die Tests fehl.
+
 ## [1.447.0] - 2026-11-09
 
 ### Sicherheit

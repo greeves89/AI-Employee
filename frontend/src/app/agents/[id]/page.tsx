@@ -22,6 +22,7 @@ import { ActivityTimeline } from "@/components/activity/activity-timeline";
 import { AgentAppearanceInline } from "@/components/agents/agent-appearance-inline";
 import { SelfHealingCard } from "@/components/agents/self-healing-card";
 import { AnonymisiererCard } from "@/components/agents/anonymisierer-card";
+import { KanaeleCard } from "@/components/agents/kanaele-card";
 import {
   FilePreview, FilePreviewEmpty,
   getFileColor, formatModified, formatModifiedFull,
@@ -2754,6 +2755,9 @@ function AgentSettings({
       <SettingsAccordionSection title="Verbindungen" icon={Plug} secretsWarning>
       {/* Telegram Bot */}
       <TelegramAgentSection agentId={agentId} />
+
+      {/* Teams, Slack, Discord, WhatsApp (core/kanaele) */}
+      <KanaeleCard agentId={agentId} />
 
       {/* Meeting-Room shared pool (admin only) */}
       {isRoomAdmin && (

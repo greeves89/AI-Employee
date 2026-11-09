@@ -96,7 +96,8 @@ und Handbuch.
 > - Gebundene Freigabe `teams_senden` im Modus „Entwurf“, für Werkzeug und Kanal.
 > - Schleifenschutz in zwei Halten: Liste gesendeter Nachrichten, auch beim Konto des Besitzers, und bei eigenem Konto die eigene Kennung aus `/me`. Das Feld `own_user_id` setzte vorher niemand.
 > - Kanal-Nachrichten wecken gestoppte Agenten, außer bewusst angehaltene.
-> - **Offen (nächster Schritt):** die Oberfläche für die Kanal-Einstellungen. Es gibt sie nicht, das Handbuch Kap. 34 beschreibt sie aber. Außerdem das Chat-Abo statt Abfrage.
+> - **1.448.0:** Oberfläche und API für die Kanal-Einstellungen (`core/kanaele.py`, Karte „Kanäle“). Bei Teams werden Chats und Kanäle aus Teams ausgewählt. Das Handbuch Kap. 34 entspricht jetzt der Oberfläche.
+> - **Offen:** Teams-Chats per Graph-Abo statt Abfrage (Benachrichtigung für Chats). Die Abfrage im Scheduler-Takt funktioniert, ist aber langsamer.
 
 - Die eigene Teams-Kennung des Agenten wird beim Verbinden aus `/me` gesetzt (`own_user_id`).
   Der Agent antwortet sich damit nie selbst. Heute setzt diesen Wert niemand.
