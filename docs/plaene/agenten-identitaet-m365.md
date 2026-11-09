@@ -66,6 +66,7 @@ und Handbuch.
 >   - Wecken dürfen voreingestellt nur Absender der eigenen Domäne. Automatische Mails wecken nie.
 >   - Es gibt eine Grenze je Absender.
 >   - `clientState` trägt die Abo-Kennung und wird ohne Datenbank geprüft.
+>   - „Intern“ heißt: Urteil von Exchange `X-MS-Exchange-Organization-AuthAs: Internal`. **Im Ende-zu-Ende-Test mit dem Test-Nutzer prüfen, ob Graph diesen Kopf in `internetMessageHeaders` liefert.** Sonst gelten alle Mails als extern (fail closed), und nur der Haken „Auch Absender außerhalb“ hilft.
 > - Das Chat-Abo zieht in Phase 3 um: Ohne eigene Teams-Kennung (`own_user_id`) würde der Agent von seinen eigenen Nachrichten geweckt.
 > - Die Rückruf-Adresse für Teams-Anrufe bleibt eigenständig. Anrufe sind keine Graph-Abos und tragen kein `clientState`; sie kommen mit Phase 3.
 

@@ -4967,8 +4967,9 @@ unverändert.
 der Schalter **Bei neuer Mail wecken**. Eingeschaltet startet jede neue Mail im Posteingang des
 Agenten einen Auftrag. Der Agent liest die Mail dann mit seinem Mail-Werkzeug und bearbeitet sie
 nach seinem Auftrag. Antworten gibst du wie immer frei (Kap. 13).
-- **Wer weckt:** Voreingestellt nur Absender aus deiner Organisation, also mit derselben Domäne
-  wie das Konto des Agenten. Sollen auch Kunden und andere Externe den Agenten wecken, setze den
+- **Wer weckt:** Voreingestellt nur Absender aus deiner Organisation: dieselbe Domäne wie das
+  Konto des Agenten UND von Microsoft als intern angemeldet. Eine Mail von außen, die nur
+  vorgibt, von einem Kollegen zu kommen, weckt den Agenten nicht. Sollen auch Kunden und andere Externe den Agenten wecken, setze den
   Haken **Auch Absender außerhalb der eigenen Organisation**. Dann kann jeder, der dem Agenten
   schreibt, einen Lauf auslösen.
 - **Kostet:** Jede Mail ist ein Lauf des Agenten. Höchstens 20 Mails je Stunde wecken ihn,

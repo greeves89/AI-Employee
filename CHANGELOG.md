@@ -21,7 +21,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 - **Nach unabhängigem Sicherheitsreview** (kein kritischer Befund; ein hoher und sechs mittlere behoben):
   - **H1:** Wer dem Agenten schreibt, konnte bis zu 20 bezahlte Läufe je Stunde auslösen, und echte Mails gingen hinter einer Flut verloren.
-    - Jetzt wecken voreingestellt nur Absender der eigenen Domäne (Haken „Auch Absender außerhalb der eigenen Organisation“).
+    - Jetzt wecken voreingestellt nur Absender der eigenen Organisation (Haken „Auch Absender außerhalb der eigenen Organisation“).
+    - Maßgeblich ist das Urteil von Exchange (`X-MS-Exchange-Organization-AuthAs: Internal`), nicht die Absenderadresse, die jeder fälschen kann. Fehlt das Urteil, gilt die Mail als extern. Gefunden von der automatischen Nachprüfung des Commits.
     - Automatische Antworten, Massenmails und Unzustellbarkeitsberichte wecken nie.
     - Höchstens 5 Läufe je Absender und Stunde.
     - Gedrosselte Mails werden nachgeholt.

@@ -23,8 +23,8 @@ Sicherheit (Sicherheitsreview vom 09.11.2026 eingearbeitet):
 * Die Meldung enthält nur Kennungen. Was in der Mail steht, holt die Anlage mit dem Konto
   des Agenten (``token_fuer``) — nie aus einem fremden Postfach.
 * Der Auftrag trägt nur Absender und Betreff, gerahmt als fremder Text (core/fremdtext).
-* Wer weckt: voreingestellt nur Absender aus der eigenen Organisation (Domäne des
-  Agenten-Kontos). Automatische Antworten, Massenmails und Unzustellbarkeitsberichte nie
+* Wer weckt: voreingestellt nur Absender aus der eigenen Organisation — nach dem Urteil von
+  Exchange (``AuthAs: Internal``), nicht nach der Absenderadresse, die jeder fälschen kann. Automatische Antworten, Massenmails und Unzustellbarkeitsberichte nie
   (zwei Agenten schickten sich sonst endlos Abwesenheitsnotizen).
 * Kostenbremse: höchstens ``JE_ABSENDER_STUNDE`` je Absender und ``HOECHSTENS_JE_STUNDE``
   je Agent und Stunde. Gedrosselte Mails werden später nachgeholt, solange sie jünger als
@@ -383,6 +383,20 @@ def _domaene(adresse: str) -> str:
     return adresse.rsplit("@", 1)[-1] if "@" in adresse else ""
 
 
+def _intern(m: dict, adresse: str, konto: str) -> bool:
+    """Wirklich aus der eigenen Organisation — nicht nur eine Absenderadresse, die das behauptet.
+
+    ``From`` setzt der Absender selbst. Erst das Urteil von Exchange zählt:
+    ``X-MS-Exchange-Organization-AuthAs: Internal`` setzt Exchange nur für Mails, die im
+    eigenen Mandanten angemeldet eingeliefert wurden. Von außen kommende Mails tragen
+    ``Anonymous``; mitgeschickte ``X-MS-Exchange-Organization-*``-Köpfe entfernt Exchange beim
+    Eingang (Header-Firewall). Fehlt das Urteil, gilt die Mail als extern (fail closed).
+    Zusätzlich muss die Domäne zum Konto des Agenten passen.
+    """
+    return bool(konto) and _domaene(adresse) == _domaene(konto) and \
+        _kopf(m, "x-ms-exchange-organization-authas") == "internal"
+
+
 async def eingang(db, redis, agent, message_id: str, router_fabrik=None) -> str:
     """Eine neue Mail im Postfach des Agenten — Agent wecken (oder begründet nicht).
 
@@ -427,7 +441,7 @@ async def eingang(db, redis, agent, message_id: str, router_fabrik=None) -> str:
         if _automatisch(m, adresse):
             ergebnis = "automatisch"
             return ergebnis
-        if not einstellung(agent.config)["alle_absender"] and (not konto or _domaene(adresse) != _domaene(konto)):
+        if not einstellung(agent.config)["alle_absender"] and not _intern(m, adresse, konto):
             ergebnis = "extern"
             return ergebnis
         stunde = jetzt().strftime("%Y%m%d%H")

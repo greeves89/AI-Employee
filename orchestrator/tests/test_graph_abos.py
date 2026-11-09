@@ -99,8 +99,13 @@ class _Graph:
         return [p for m, p, _ in self.aufrufe if m == methode]
 
 
+INTERN = [{"name": "X-MS-Exchange-Organization-AuthAs", "value": "Internal"}]
+
+
 def _mail(adresse="kunde@example.com", betreff="Angebot", entwurf=False, name="Kunde", koepfe=None):
-    return {"id": "x", "subject": betreff, "isDraft": entwurf, "internetMessageHeaders": koepfe or [],
+    """Voreingestellt: eine von Exchange als intern angemeldete Mail."""
+    return {"id": "x", "subject": betreff, "isDraft": entwurf,
+            "internetMessageHeaders": INTERN if koepfe is None else koepfe,
             "from": {"emailAddress": {"address": adresse, "name": name}}}
 
 
@@ -334,14 +339,25 @@ class EingangTests(_Basis):
             [{"name": "X-Auto-Response-Suppress", "value": "All"}],
         ]
         for i, koepfe in enumerate(faelle):
-            self.assertEqual(await self._eingang(f"a{i}", koepfe=koepfe), "automatisch")
+            self.assertEqual(await self._eingang(f"a{i}", koepfe=INTERN + koepfe), "automatisch")
         self.assertEqual(await self._eingang("b", adresse="MAILER-DAEMON@example.com"), "automatisch")
-        self.assertEqual(await self._eingang("c", koepfe=[{"name": "Auto-Submitted", "value": "no"}]), "geweckt")
+        self.assertEqual(await self._eingang("c", koepfe=INTERN + [{"name": "Auto-Submitted", "value": "no"}]),
+                         "geweckt")
 
     async def test_voreingestellt_nur_absender_der_eigenen_organisation(self):
         """Review H1: Fremde Absender wecken nur, wenn der Besitzer es einschaltet."""
         self.assertEqual(await self._eingang("x1", adresse="angreifer@fremd.example"), "extern")
         self.assertEqual(await self._eingang("x2", adresse="kollege@example.com.fremd.example"), "extern")
+
+    async def test_gefaelschte_interne_absenderadresse_weckt_nicht(self):
+        """Nachprüfung: From fälscht jeder — es zählt das Urteil von Exchange (AuthAs)."""
+        anonym = [{"name": "X-MS-Exchange-Organization-AuthAs", "value": "Anonymous"}]
+        self.assertEqual(await self._eingang("f1", adresse="chef@example.com", koepfe=anonym), "extern")
+        self.assertEqual(await self._eingang("f2", adresse="chef@example.com", koepfe=[]), "extern",
+                         "Ohne Urteil: extern (fail closed)")
+        self.assertEqual(await self._eingang("f3", adresse="chef@example.com"), "geweckt")
+        self.assertEqual(await self._eingang("f4", adresse="kunde@fremd.example"), "extern",
+                         "Intern angemeldet, aber fremde Domäne: extern")
         async with self.Session() as db:
             a = await self._agent(db)
             a.config = graph_abos.mit_einstellung(a.config, alle_absender=True)
