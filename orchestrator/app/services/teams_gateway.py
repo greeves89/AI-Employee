@@ -257,7 +257,16 @@ async def send_reply(agent: Agent, context: dict, text: str) -> bool:
     Nutzt denselben Graph-Weg wie die Werkzeuge des Agenten — es gibt keinen zweiten
     Sendepfad, der andere Rechte oder anderes Verhalten hätte.
     """
+    from app.core import ms_access
     from app.core.msgraph_mcp import _graph
+
+    # Der plattformweite Nur-Lesen-Schalter für Microsoft 365 (Voreinstellung: an) gilt auch
+    # hier. Bis 1.444 ging die Antwort im Kanal daran vorbei — ein Admin, der „nur lesend“
+    # eingestellt hatte, sah trotzdem Nachrichten unter dem Namen des Besitzers in Teams.
+    if ms_access.read_only_enabled():
+        logger.warning("[Teams] Antwort nicht gesendet — Microsoft 365 ist plattformweit nur lesend "
+                       "(Admin → Integrationen)")
+        return False
 
     token = await _graph_token(agent.user_id)
     if not token:

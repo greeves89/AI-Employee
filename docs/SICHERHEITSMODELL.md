@@ -1,6 +1,6 @@
 # Sicherheitsmodell von AI Employee
 
-Stand: 09.11.2026 (Version 1.444.0). Dieses Dokument ist die eine Übersicht, an der sich jede
+Stand: 09.11.2026 (Version 1.444.1). Dieses Dokument ist die eine Übersicht, an der sich jede
 Sicherheitsänderung ausrichtet: welche Schichten es gibt, wo jede durchgesetzt wird, wo man sie
 sieht und was noch offen ist. Betriebsanleitungen stehen im [Security Guide](SECURITY.md) und im
 [Benutzerhandbuch](benutzerhandbuch/README.md).
@@ -96,6 +96,7 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
 | Kontingent-Bremse: Zeitpläne pausieren bei erschöpftem Abo, höchstens 5 h (`core/kontingent.py`) | 1.442.0 |
 | Sentinel-Hinweise mit Einmalwert, beim Agenten vor dem Modell geprüft (`plattform_hinweis`) | 1.443.0 |
 | Anonymisierer vor dem Modell, opt-in je Agent, im Egress-Proxy (`egress/anonym.py`) | 1.444.0 |
+| Teams-Antworten im Kanal respektieren den Nur-Lesen-Schalter für Microsoft 365 | 1.444.1 |
 
 ### Entscheidungen vom 09.11.2026
 
@@ -104,6 +105,7 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
 | Strengere Sentinel-Bindung | Einmalwert (HMAC) je Hinweis | erledigt in 1.443.0 |
 | Anonymisierer vor dem Modell | opt-in je Agent | erledigt in 1.444.0 |
 | Eigene Identität für Agenten (Pilot beim Kunden) | lizenzierter Microsoft-365-Nutzer je Agent | eigener Planungsschritt |
+| Eigene Microsoft-Identität je Agent: Rückruf-Adresse für Graph-Benachrichtigungen prüft heute nichts (`/teams/calling/callback` schreibt nur Protokoll, ändert nichts) | gemeinsamer, prüfender Empfang mit `clientState` | mit Phase 2 des Plans `docs/plaene/agenten-identitaet-m365.md` |
 | Zielliste für den Ausgang je Agent | offen | geparkt. Empfehlung: opt-in je Agent, bauen, wenn ein Kunde es braucht |
 
 ## Regeln für neue Funktionen

@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.444.1] - 2026-11-09
+
+### Sicherheit
+- **Teams-Antworten im Kanal respektieren den Nur-Lesen-Schalter für Microsoft 365.** `teams_gateway.send_reply` ging am plattformweiten Schalter vorbei (Voreinstellung: an): Ein Admin, der „nur lesend“ eingestellt hatte, sah trotzdem Nachrichten unter dem Namen des Agenten-Besitzers in Teams. Gefunden bei der Bestandsaufnahme für eigene Microsoft-Identitäten der Agenten. Jetzt wird bei „nur lesend“ nicht gesendet, und das Protokoll sagt, warum.
+
+### Tests
+- `test_teams_antwort_nur_lesen.py`: Bei „nur lesend“ kein Graph-Aufruf, bei erlaubtem Schreiben wie bisher.
+
 ## [1.444.0] - 2026-11-09
 
 ### Sicherheit
