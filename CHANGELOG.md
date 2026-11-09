@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.448.2] - 2026-11-09
+
+### Sicherheit
+- **Egress-Proxy auf mitmproxy 12.3.0.** Ersetzt den Dependabot-PR #1230. Der wäre ungeprüft durchgegangen, denn die Addon-Tests laufen nur im Proxy-Abbild, nicht in der CI.
+  - mitmproxy 12.3.0 läuft auf Python 3.14 und bringt das Paket `zstandard` nicht mehr mit.
+  - Das Addon (`egress/aie_egress.py`) entpackte zstd-komprimierte Anfragen damit. Unter 12.3.0 wäre jede solche Anfrage an einen Modellanbieter gescheitert, abgewiesen statt ungeprüft, aber kaputt.
+  - Jetzt nimmt es zstd aus der Standardbibliothek (`compression.zstd`), mit `zstandard` als Rückfall. Beide Wege sind gegen Kompressionsbomben begrenzt.
+- Eine Kompressionsbombe meldet der Anonymisierer jetzt als 413 (zu groß) statt 415 (Kodierung unbekannt).
+
+### Tests
+- `test_anonymisierer_addon.py`: zstd-Bombe wird abgelehnt (neu). Alle 11 Tests sind in beiden Abbildern grün (12.2.3 und 12.3.0, auf der Testanlage).
+
 ## [1.448.1] - 2026-11-09
 
 ### Behoben
