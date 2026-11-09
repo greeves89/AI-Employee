@@ -13,6 +13,7 @@ Die Logik steht in egress_logik.py (ohne mitmproxy, testbar).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from pathlib import Path
@@ -23,12 +24,52 @@ from mitmproxy.proxy import server_hooks
 import importlib
 
 import egress_logik as logik
+import anonym
 
 # mitmproxy laedt dieses Skript bei Aenderung neu, das importierte Modul aber nicht —
 # ohne das liefe nach einem Update neue Addon-Logik mit alter Pruefung.
 logik = importlib.reload(logik)
+anonym = importlib.reload(anonym)
 
 log = logging.getLogger("aie_egress")
+
+#: Ab dieser Größe wird in einem eigenen Prozess erkannt: Pythons ``re`` gibt den GIL nicht
+#: frei — ein Thread hielte bei 1 MB Ziffernfolgen (Pi: ~1 s) den Proxy für ALLE Agenten an.
+_PROZESS_AB = 64 * 1024
+_pool = None
+
+
+def _prozesse():
+    global _pool
+    if _pool is None:
+        import concurrent.futures
+        import multiprocessing
+
+        _pool = concurrent.futures.ProcessPoolExecutor(
+            max_workers=2, mp_context=multiprocessing.get_context("spawn"))
+    return _pool
+
+
+async def _erkennen(klar: bytes, schluessel: str, begriffe: list[str]):
+    if len(klar) < _PROZESS_AB:
+        return anonym.anfrage_anonymisieren(klar, schluessel, begriffe)
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_prozesse(), anonym.anfrage_anonymisieren, klar, schluessel, begriffe)
+
+
+def _entpacken(roh: bytes, kodierung: str) -> bytes:
+    """Anfragekörper entpacken, nie über ``MAX_ANTWORT`` hinaus (Kompressionsbombe)."""
+    if kodierung == "zstd":
+        import io
+
+        import zstandard  # mitmproxy bringt es mit
+        with zstandard.ZstdDecompressor().stream_reader(io.BytesIO(roh)) as r:
+            daten = r.read(logik.MAX_ANTWORT + 1)
+        if len(daten) > logik.MAX_ANTWORT:
+            raise logik.Abgelehnt(413, "zu groß")
+        return daten
+    return logik.entpacken_begrenzt(roh, kodierung)
+
 
 def _antwort(status: int, text: str, **kopf) -> http.Response:
     return http.Response.make(status, text.encode(), {"Content-Type": "text/plain; charset=utf-8", **kopf})
@@ -91,7 +132,13 @@ class AieEgress:
         aufbrechen = False
         if agent and ziel and sni == ziel and port == logik.KEY_PORT:
             try:
-                aufbrechen = logik.host_passt(ziel, await self._hosts(agent) or [])
+                # Zu einem Modellanbieter immer mit frischer Einstellung: Wurde gerade der
+                # Anonymisierer eingeschaltet, darf keine neue Verbindung im Klartext bleiben,
+                # nur weil die Anmeldung noch eine Minute zwischengespeichert ist.
+                frisch = sni in logik.MODELL_ANBIETER
+                hosts = (await asyncio.to_thread(self.orch.hosts, agent, frisch) if frisch
+                         else await self._hosts(agent))
+                aufbrechen = logik.host_passt(ziel, hosts or [])
             except logik.OrchestratorFehler:
                 aufbrechen = False
         if not aufbrechen:
@@ -103,6 +150,10 @@ class AieEgress:
         agent = self.agenten.get(cid)
         if agent is None:
             await self._ohne_tunnel(flow)
+            return
+        abgelehnt = await self._anonymisieren(flow, agent)
+        if abgelehnt is not None:
+            flow.response = abgelehnt
             return
         gefunden: set[str] = set()
         for name, wert in flow.request.headers.items(multi=True):
@@ -153,11 +204,69 @@ class AieEgress:
         flow.metadata["aie_werte"] = werte
         self.maske.merken(agent[0], werte)
 
+    # ── Anonymisierer (egress/anonym.py) ───────────────────────────────
+    def _anonym_einstellung(self, flow: http.HTTPFlow) -> dict | None:
+        """Einstellung, wenn diese Verbindung zu einem Modellanbieter eines Agenten mit
+        eingeschaltetem Anonymisierer geht — sonst None."""
+        agent = self.agenten.get(flow.client_conn.id)
+        cfg = self.orch.anonym(agent) if agent else None
+        if not cfg:
+            return None
+        ziel = self.ziele.get(flow.client_conn.id, ("", 0))[0]
+        return cfg if logik.host_passt(ziel, cfg.get("ziele") or []) else None
+
+    async def _anonymisieren(self, flow: http.HTTPFlow, agent) -> http.Response | None:
+        """Personendaten in der Anfrage durch Platzhalter ersetzen. Geht das nicht sicher,
+        wird die Anfrage abgewiesen — lieber keine als eine mit Klartext."""
+        cfg = self._anonym_einstellung(flow)
+        if cfg is None:
+            return None
+        roh = flow.request.raw_content
+        if roh is None:
+            # Gestreamter Körper (nicht gepuffert): ungeprüft nicht hinaus.
+            if flow.request.headers.get("content-length", "0") != "0" or flow.request.headers.get("transfer-encoding"):
+                return _antwort(413, "Anonymisierer: Anfrage nicht prüfbar")
+            return None
+        if not roh:
+            return None
+        kodierung = flow.request.headers.get("content-encoding", "identity").strip().lower()
+        if len(roh) > logik.MAX_ANTWORT:
+            return _antwort(413, "Anonymisierer: Anfrage zu groß zum Prüfen")
+        try:
+            klar = _entpacken(roh, kodierung)
+        except logik.Abgelehnt:
+            return _antwort(415, f"Anonymisierer: Kodierung {kodierung} nicht prüfbar")
+        try:
+            # Außerhalb der Ereignisschleife: die Erkennung über bis zu 32 MB darf den Proxy
+            # für die anderen Agenten nicht anhalten.
+            neu, zuordnung = await _erkennen(klar, cfg["schluessel"], cfg.get("begriffe") or [])
+        except (ValueError, UnicodeDecodeError):
+            return _antwort(400, "Anonymisierer: Anfrage ist kein JSON und wird nicht unbesehen gesendet")
+        if zuordnung or klar is not roh:
+            # Unkomprimiert weiter: sonst müsste neu verpackt werden, und der Anbieter nimmt beides.
+            flow.request.headers.pop("content-encoding", None)
+            flow.request.set_content(neu)
+        if zuordnung:
+            flow.metadata["aie_anonym"] = zuordnung
+            log.info("Anonymisierer: %d Wert(e) ersetzt (Agent %s)", len(zuordnung), agent[0])
+        return None
+
     def requestheaders(self, flow: http.HTTPFlow):
         # Aufgebrochene Verbindung eines Agenten: Antworten unkomprimiert anfordern —
         # verdecken laesst sich nur, was lesbar ist, und Entpacken kostet Speicher.
         if flow.client_conn.id in self.agenten:
             flow.request.headers["accept-encoding"] = "identity"
+        # Anonymisierer: den Körper IMMER puffern. ``stream_large_bodies`` (Compose: 5m)
+        # reichte große Anfragen sonst ungesehen durch — ein langer Verlauf hat schnell 5 MB.
+        if self._anonym_einstellung(flow) is not None:
+            try:
+                zu_gross = int(flow.request.headers.get("content-length") or 0) > logik.MAX_ANTWORT
+            except ValueError:
+                zu_gross = True
+            if zu_gross:
+                flow.response = _antwort(413, "Anonymisierer: Anfrage zu groß zum Prüfen")
+                return
+            flow.request.stream = False
 
     async def _ohne_tunnel(self, flow: http.HTTPFlow):
         """Klartext-HTTP direkt an den Proxy: CA-Zertifikat holen oder weiterleiten."""
@@ -201,6 +310,29 @@ class AieEgress:
             return
         art = (flow.response.headers.get("content-type") or "").lower()
         werte = self._maske(flow)
+        zuordnung = flow.metadata.get("aie_anonym")
+        if zuordnung:
+            # Anonymisierer: Platzhalter in der Antwort wieder einsetzen. Ereignisströme
+            # verstehen (zerteilte Platzhalter über Ereignisgrenzen), sonst ganz puffern.
+            if werte:
+                flow.response.headers.fields = tuple(
+                    (k, logik.zurueck_maskieren(v.decode("latin-1"), werte).encode("latin-1"))
+                    for k, v in flow.response.headers.fields
+                )
+            if art.startswith("text/event-stream"):
+                einsetzer = anonym.SseEinsetzer(zuordnung)
+                maske = logik.StromMaske(werte) if werte else None
+                flow.response.stream = (lambda b: einsetzer(maske(b))) if maske else einsetzer
+                return
+            try:
+                zu_gross = int(flow.response.headers.get("content-length") or 0) > logik.MAX_ANTWORT
+            except ValueError:
+                zu_gross = True
+            if zu_gross:
+                flow.kill()
+                return
+            flow.response.stream = False
+            return
         if not werte:
             if art.startswith("text/event-stream"):
                 flow.response.stream = True     # sofort durchreichen, nicht sammeln
@@ -231,6 +363,21 @@ class AieEgress:
     def response(self, flow: http.HTTPFlow):
         if flow.response is None:
             return
+        zuordnung = flow.metadata.get("aie_anonym")
+        if zuordnung and flow.response.stream is False and flow.response.raw_content:
+            try:
+                inhalt = logik.entpacken_begrenzt(flow.response.raw_content,
+                                                  flow.response.headers.get("content-encoding", ""))
+                text = inhalt.decode("utf-8")
+                try:
+                    neu = json.dumps(anonym.einsetzen_json(json.loads(text), zuordnung),
+                                     ensure_ascii=False).encode("utf-8")
+                except ValueError:
+                    neu = anonym.einsetzen(text, zuordnung).encode("utf-8")
+                flow.response.headers.pop("content-encoding", None)
+                flow.response.set_content(neu)
+            except Exception:  # noqa: BLE001
+                log.exception("Anonymisierer: Antwort liess sich nicht zurückübersetzen")
         werte = self._maske(flow)
         if not werte:
             return
@@ -253,6 +400,12 @@ class AieEgress:
             flow.response = _antwort(502, "Egress-Proxy: Antwort konnte nicht geprüft werden")
 
     def websocket_message(self, flow: http.HTTPFlow):
+        # Anonymisierer: Websockets zu Modellanbietern werden nicht anonymisiert — schließen
+        # statt Klartext durchlassen (Codex nutzt standardmäßig HTTP mit Ereignisstrom).
+        if self._anonym_einstellung(flow) is not None:
+            log.warning("Anonymisierer: Websocket zu einem Modellanbieter geschlossen")
+            flow.kill()
+            return
         werte = self._maske(flow)
         if not werte or not flow.websocket or not flow.websocket.messages:
             return

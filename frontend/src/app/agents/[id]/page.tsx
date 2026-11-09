@@ -21,6 +21,7 @@ import { Header } from "@/components/layout/header";
 import { ActivityTimeline } from "@/components/activity/activity-timeline";
 import { AgentAppearanceInline } from "@/components/agents/agent-appearance-inline";
 import { SelfHealingCard } from "@/components/agents/self-healing-card";
+import { AnonymisiererCard } from "@/components/agents/anonymisierer-card";
 import {
   FilePreview, FilePreviewEmpty,
   getFileColor, formatModified, formatModifiedFull,
@@ -2972,6 +2973,9 @@ function AgentSettings({
       </SettingsAccordionSection>
 
       <SettingsAccordionSection title="Zugriff & Rechte" icon={ShieldCheck}>
+      {/* Anonymisierer vor dem Modell (opt-in je Agent) */}
+      <AnonymisiererCard agentId={agentId} />
+
       {/* Autonomy Level */}
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
         <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">

@@ -5,6 +5,40 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.444.0] - 2026-11-09
+
+### Sicherheit
+- **Anonymisierer vor dem Modell, opt-in je Agent** (Entscheidung vom 09.11.). Personendaten gehen nur als Platzhalter an den Modellanbieter (`[EMAIL-3f9a1c2b]`, `[NAME-0a1b2c3d]` …). In der Antwort und in Werkzeugaufrufen setzt die Anlage die echten Werte wieder ein.
+  - **Wo:** im Egress-Proxy (`egress/anonym.py`, eingehängt in `aie_egress.py`). Er ist die eine Stelle, die alles sieht, was an den Anbieter geht: Chat, Aufträge, gelesene Dateien, Mails, Werkzeug-Ergebnisse. Gleiche Mechanik wie die Schlüssel-Platzhalter, in umgekehrter Richtung.
+  - **Erkannt:** E-Mail, Telefon, IBAN (Prüfziffer), Kartennummer (Luhn) und Namen und Begriffe aus einer Liste je Agent.
+  - **Platzhalter:** nur ASCII, Werte nur aus sicheren Zeichen. So sieht ein Wert in jeder JSON-Ebene gleich aus, auch in `partial_json` von Werkzeugaufrufen. Die Platzhalter sind deterministisch (HMAC je Agent), der Prompt-Cache bleibt wirksam. Es gibt keine Ablage, die Zuordnung entsteht je Anfrage aus dem mitgesendeten Verlauf.
+  - **Rückweg im Strom:** Das Modell schreibt tokenweise, ein Platzhalter kommt über mehrere Ereignisse zerteilt an. `SseEinsetzer` versteht die Ereignisströme von Anthropic (`text_delta`, `input_json_delta`, `thinking_delta`) und OpenAI/Codex (`*.delta`, `*.done`). Je Block hält er einen möglichen Platzhalter-Anfang zurück und gibt ihn am Blockende aus.
+  - **Fail closed:** Komprimierte, zu große (über 32 MB) oder nicht-JSON-Anfragen an einen Anbieter gehen nicht hinaus. Große Körper werden gepuffert statt gestreamt (`stream_large_bodies` reichte sie sonst ungesehen durch). Websockets zu Anbietern werden geschlossen. Fällt der Orchestrator kurz aus, gilt die letzte Einstellung weiter.
+  - **Einstellung:** Agent → Einstellungen → Zugriff & Rechte (`GET/PATCH /agents/{id}/anonymisierer`, nur Besitzer und Admin). Begriffe werden serverseitig geprüft. Ins Prüfprotokoll gehen nur Schalter und Anzahl der Begriffe, nie die Begriffe selbst. Bei eigenen Modellen lässt er sich nicht einschalten.
+  - **Hinweis an das Modell:** In der Agenten-Anleitung steht, dass Platzhalter unverändert zu verwenden sind.
+  - **Sicherheitsstatus:** neuer Punkt „Anonymisierer“. Warnung, wenn er eingeschaltet ist, aber nicht wirkt (Egress-Proxy aus).
+  - **Nach unabhängigem Sicherheitsreview:**
+    - Alle Erkennungsmuster sind begrenzt. Das E-Mail-Muster war quadratisch: 40 000 `%` brauchten 1,7 s, 1 MB Minuten, und das hätte den Proxy für alle Agenten angehalten. Jetzt ist der Aufwand linear.
+    - Große Anfragen (über 64 KB) werden in einem eigenen Prozess geprüft, weil Pythons `re` den GIL nicht freigibt.
+    - Kartennummern werden auch hinter anderen Zifferngruppen erkannt.
+    - Platzhalter haben 8 Hexstellen, bei einer Kollision 12, statt still zwei Werte zu vertauschen.
+    - Signierte Denk-Blöcke bleiben in beide Richtungen bytegleich, sonst lehnt der Anbieter sie im nächsten Zug ab.
+    - Komprimierte Anfragen (gzip, zstd) werden begrenzt entpackt statt abgewiesen.
+    - Beim Einschalten wird ein laufender Agent neu gestartet. Neue Verbindungen zu Modellanbietern fragen die Einstellung frisch ab, damit keine offene Verbindung im Klartext weiterläuft.
+    - Claude-Code-Telemetrie und -Fehlerberichte sind für diese Agenten aus.
+    - `body_size_limit` begrenzt gepufferte Körper.
+    - Grenze dokumentiert: Der Anonymisierer schützt vor dem Anbieter, nicht vor Prompt-Injektion.
+- Benutzerhandbuch 37.15.
+
+### Tests
+- `test_anonymisierer.py` (23 Tests: dazu Linearität bei 1 MB bösartiger Eingabe je Muster, Karte hinter Bestellnummer, Kollision, Denk-Blöcke unangetastet, stabiler Rundlauf; bisher 18 Tests, 114 Teilfälle):
+  - Erkennung je Art (IBAN nur mit Prüfziffer, Karte nur mit Luhn, Telefon gegen Versions- und Raumnummern, Namen mit Wortgrenzen).
+  - Unsichere Zeichen und Datei-Blobs bleiben, deterministisch je Agent, Rundlauf einer echten Anthropic-Anfrage.
+  - Zerteilte Platzhalter im Textstrom.
+  - Anthropic- und OpenAI-Ereignisströme in 100 zufälligen Zerlegungen mit leeren Stücken: Text und Werkzeug-Argumente vollständig zurückübersetzt, jede Ausgabe vor dem Blockende.
+- `test_anonymisierer_addon.py`: das echte mitmproxy-Addon im Abbild des Proxys (12.2.3), auf der Testanlage ausgeführt (33 Tests mit den reinen Funktionen grün). Dazu: gzip/zstd entpackt, Brotli abgewiesen, TLS zum Anbieter fragt frisch, große Anfrage im eigenen Prozess. Anfrage anonymisiert und gepuffert, andere Hosts und „aus“ unverändert, nicht prüfbare Anfragen abgewiesen, gestreamter Körper abgewiesen, Antwortstrom und Antwort am Stück zurückübersetzt, Websocket zum Anbieter geschlossen.
+- `test_anonymisierer_orchestrator.py`: Begriffe prüfen, Proxy-Einstellung, `/egress/verbindung`, Endpunkte (Besitzer, Admin, fremd 403, eigenes Modell und ungültige Begriffe 422, Prüfprotokoll ohne Namen), Hinweis in der Anleitung, Sicherheitsstatus in drei Zuständen, letzte Einstellung bei Orchestrator-Ausfall.
+
 ## [1.443.0] - 2026-11-09
 
 ### Sicherheit

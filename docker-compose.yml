@@ -424,6 +424,9 @@ services:
       # Grosse Downloads nicht im Speicher puffern (Pi). Darin ersetzt der
       # Proxy nichts — Keys stehen in Koepfen, Adressen und kleinen Koerpern.
       - --set=stream_large_bodies=5m
+      # Obergrenze für GEPUFFERTE Körper (der Anonymisierer puffert Anfragen an
+      # Modellanbieter immer, egal wie groß) — sonst könnte ein Agent den Proxy füllen.
+      - --set=body_size_limit=64m
     environment:
       ORCHESTRATOR_URL: http://ai-employee-orchestrator:8000
       EGRESS_PROXY_TOKEN: ${EGRESS_PROXY_TOKEN:-}
