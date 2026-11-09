@@ -3940,7 +3940,7 @@ async def get_agent_teams_auswahl(
                 kanaele_.append({"team_id": t["id"], "channel_id": k.get("id"),
                                  "name": f"{t.get('displayName', '?')} › {k.get('displayName', '?')}"})
     except Exception as e:  # noqa: BLE001 — Liste unvollständig ist besser als keine
-        logger.warning("Teams-Auswahl für Agent %s unvollständig: %s", agent_id, e)
+        logger.warning("Teams-Auswahl für Agent %s unvollständig: %s", scrub_log(agent.id), scrub_log(e))
     return {"chats": chats, "kanaele": kanaele_}
 
 

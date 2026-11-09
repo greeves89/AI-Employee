@@ -160,8 +160,9 @@ async def agent_for_phone_number(phone_number_id: str) -> Agent | None:
     if len(treffer) > 1:
         # Nie raten: sonst landeten Nachrichten an einen Agenten bei einem fremden (core/kanaele
         # verhindert doppelte Nummern; das hier fängt Altbestand und Wettläufe ab).
-        logger.warning("[WhatsApp] Nummer %s ist %d Agenten zugeordnet — Nachricht verworfen",
-                       phone_number_id, len(treffer))
+        # Ohne die Nummer selbst (Telefonnummer-ID ist personenbezogen) — die Agenten genügen zum Finden.
+        logger.warning("[WhatsApp] Eine Nummer ist %d Agenten zugeordnet (%s) — Nachricht verworfen",
+                       len(treffer), ", ".join(a.id for a in treffer))
         return None
     return treffer[0] if treffer else None
 
