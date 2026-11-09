@@ -3,7 +3,7 @@
 Braucht mitmproxy — läuft in der CI nicht (dort fehlt es) und lokal nicht, aber im Abbild
 des Proxys (gleicher Digest wie in der Compose-Datei):
 
-    docker run --rm -v "$PWD":/w -w /w/orchestrator/tests mitmproxy/mitmproxy:12.2.3@sha256:… \\
+    docker run --rm -v "$PWD":/w -w /w/orchestrator/tests mitmproxy/mitmproxy:12.3.0@sha256:… \\
         python3 -m unittest test_anonymisierer_addon -v
 """
 
@@ -92,11 +92,19 @@ class AddonTests(unittest.TestCase):
         self._anfrage(addon, f)
         self.assertEqual(f.response.status_code, 400)
 
+    @staticmethod
+    def _zstd(roh: bytes) -> bytes:
+        try:
+            from compression import zstd   # mitmproxy ≥ 12.3 (Python 3.14)
+            return zstd.compress(roh)
+        except ImportError:
+            import zstandard               # mitmproxy ≤ 12.2
+            return zstandard.ZstdCompressor().compress(roh)
+
     def test_komprimierte_anfrage_wird_entpackt_und_anonymisiert(self):
         import gzip
-        import zstandard
         roh = json.dumps(self.ANFRAGE).encode()
-        for art, gepackt in (("gzip", gzip.compress(roh)), ("zstd", zstandard.ZstdCompressor().compress(roh))):
+        for art, gepackt in (("gzip", gzip.compress(roh)), ("zstd", self._zstd(roh))):
             with self.subTest(art=art):
                 addon, f = self._flow(gepackt, content_encoding=art)
                 self._anfrage(addon, f)
@@ -106,6 +114,45 @@ class AddonTests(unittest.TestCase):
         addon, f = self._flow(b"\x00\x01", content_encoding="br")
         self._anfrage(addon, f)
         self.assertEqual(f.response.status_code, 415)
+
+    def test_zstd_bombe_wird_abgelehnt(self):
+        """Begrenzt auf beiden Wegen (stdlib-zstd ab 12.3, zstandard davor)."""
+        bombe = self._zstd(b"0" * (40 * 1024 * 1024))
+        addon, f = self._flow(bombe, content_encoding="zstd")
+        self._anfrage(addon, f)
+        self.assertEqual(f.response.status_code, 413)
+
+    def test_kaputte_kompression_wird_nicht_gesendet(self):
+        """Nachprüfung: kaputte zstd-/gzip-Daten warfen eine Ausnahme — mitmproxy ließ die Anfrage
+        danach ungeprüft durch. Jetzt: 415, nichts geht hinaus."""
+        for art, roh in (("zstd", b"\x28\xb5\x2f\xfd" + b"kaputt" * 10), ("gzip", b"\x1f\x8bkaputt")):
+            with self.subTest(art=art):
+                addon, f = self._flow(roh, content_encoding=art)
+                self._anfrage(addon, f)
+                self.assertIsNotNone(f.response, art)
+                self.assertEqual(f.response.status_code, 415)
+
+    def test_unerwarteter_fehler_sperrt_statt_durchzulassen(self):
+        """Jeder Hook ist fail closed: Anfrage → 502, Antwort → Abbruch."""
+        from unittest.mock import patch
+
+        import aie_egress
+
+        addon, f = self._flow(self.ANFRAGE)
+        with patch.object(aie_egress.anonym, "anfrage_anonymisieren", side_effect=RuntimeError("unerwartet")):
+            self._anfrage(addon, f)
+        self.assertIsNotNone(f.response)
+        self.assertEqual(f.response.status_code, 502)
+        addon, f = self._flow(self.ANFRAGE)
+        with patch.object(type(addon), "_anonym_einstellung", side_effect=RuntimeError("unerwartet")):
+            addon.requestheaders(f)
+        self.assertEqual(f.response.status_code, 502)
+        getoetet = []
+        f.kill = lambda: getoetet.append(True)
+        with patch.object(type(addon), "_maske", side_effect=RuntimeError("unerwartet")):
+            f.response = __import__("mitmproxy").http.Response.make(200, b"{}")
+            addon.responseheaders(f)
+        self.assertEqual(getoetet, [True])
 
     def test_tls_zum_anbieter_fragt_frisch(self):
         from types import SimpleNamespace

@@ -57,14 +57,27 @@ async def _erkennen(klar: bytes, schluessel: str, begriffe: list[str]):
     return await loop.run_in_executor(_prozesse(), anonym.anfrage_anonymisieren, klar, schluessel, begriffe)
 
 
+def _zstd_begrenzt(roh: bytes, hoechstens: int) -> bytes:
+    """zstd entpacken, höchstens ``hoechstens`` Bytes.
+
+    mitmproxy bis 12.2 (Python 3.13) brachte das Paket ``zstandard`` mit; ab 12.3 läuft es auf
+    Python 3.14, das zstd selbst kann (``compression.zstd``) — ``zstandard`` fehlt dort. Beide
+    Wege begrenzen die Ausgabe (Kompressionsbombe)."""
+    try:
+        from compression import zstd   # Python ≥ 3.14
+    except ImportError:
+        import io
+
+        import zstandard
+        with zstandard.ZstdDecompressor().stream_reader(io.BytesIO(roh)) as r:
+            return r.read(hoechstens)
+    return zstd.ZstdDecompressor().decompress(roh, max_length=hoechstens)
+
+
 def _entpacken(roh: bytes, kodierung: str) -> bytes:
     """Anfragekörper entpacken, nie über ``MAX_ANTWORT`` hinaus (Kompressionsbombe)."""
     if kodierung == "zstd":
-        import io
-
-        import zstandard  # mitmproxy bringt es mit
-        with zstandard.ZstdDecompressor().stream_reader(io.BytesIO(roh)) as r:
-            daten = r.read(logik.MAX_ANTWORT + 1)
+        daten = _zstd_begrenzt(roh, logik.MAX_ANTWORT + 1)
         if len(daten) > logik.MAX_ANTWORT:
             raise logik.Abgelehnt(413, "zu groß")
         return daten
@@ -73,6 +86,44 @@ def _entpacken(roh: bytes, kodierung: str) -> bytes:
 
 def _antwort(status: int, text: str, **kopf) -> http.Response:
     return http.Response.make(status, text.encode(), {"Content-Type": "text/plain; charset=utf-8", **kopf})
+
+
+def _sicher(richtung: str):
+    """Hook fail closed: Ein unerwarteter Fehler darf nie heißen „durchlassen“.
+
+    mitmproxy protokolliert eine Ausnahme in einem Hook und lässt den Fluss danach WEITER-
+    laufen — eine Anfrage ginge dann ungeprüft (nicht anonymisiert, Platzhalter nicht geprüft)
+    zum Anbieter, eine Antwort unverdeckt zum Agenten. Hier: Anfrage → 502 statt Senden,
+    Antwort/Websocket → Verbindung abbrechen.
+    """
+    import functools
+    import inspect
+
+    def abbrechen(flow, e):
+        log.exception("Egress-Proxy: %s nicht prüfbar — %s", richtung, type(e).__name__)
+        if richtung == "anfrage":
+            flow.response = _antwort(502, "Egress-Proxy: Anfrage konnte nicht geprüft werden — nicht gesendet")
+        else:
+            flow.kill()
+
+    def huelle(fn):
+        if inspect.iscoroutinefunction(fn):
+            @functools.wraps(fn)
+            async def a(self, flow, *args):
+                try:
+                    return await fn(self, flow, *args)
+                except Exception as e:  # noqa: BLE001
+                    abbrechen(flow, e)
+            return a
+
+        @functools.wraps(fn)
+        def s(self, flow, *args):
+            try:
+                return fn(self, flow, *args)
+            except Exception as e:  # noqa: BLE001
+                abbrechen(flow, e)
+        return s
+    return huelle
 
 
 class AieEgress:
@@ -145,6 +196,7 @@ class AieEgress:
             data.ignore_connection = True
 
     # ── Platzhalter ersetzen ────────────────────────────────────────────
+    @_sicher("anfrage")
     async def request(self, flow: http.HTTPFlow):
         cid = flow.client_conn.id
         agent = self.agenten.get(cid)
@@ -234,8 +286,12 @@ class AieEgress:
             return _antwort(413, "Anonymisierer: Anfrage zu groß zum Prüfen")
         try:
             klar = _entpacken(roh, kodierung)
-        except logik.Abgelehnt:
+        except logik.Abgelehnt as e:
+            if e.status == 413:   # Kompressionsbombe: zu groß, nicht „unbekannte Kodierung“
+                return _antwort(413, "Anonymisierer: Anfrage entpackt zu groß zum Prüfen")
             return _antwort(415, f"Anonymisierer: Kodierung {kodierung} nicht prüfbar")
+        except Exception:  # noqa: BLE001 — kaputte Kompression (ZstdError, zlib.error …): nicht senden
+            return _antwort(415, f"Anonymisierer: Kodierung {kodierung} nicht lesbar")
         try:
             # Außerhalb der Ereignisschleife: die Erkennung über bis zu 32 MB darf den Proxy
             # für die anderen Agenten nicht anhalten.
@@ -251,6 +307,7 @@ class AieEgress:
             log.info("Anonymisierer: %d Wert(e) ersetzt (Agent %s)", len(zuordnung), agent[0])
         return None
 
+    @_sicher("anfrage")
     def requestheaders(self, flow: http.HTTPFlow):
         # Aufgebrochene Verbindung eines Agenten: Antworten unkomprimiert anfordern —
         # verdecken laesst sich nur, was lesbar ist, und Entpacken kostet Speicher.
@@ -296,6 +353,7 @@ class AieEgress:
         werte.update(flow.metadata.get("aie_werte") or {})
         return werte
 
+    @_sicher("antwort")
     def responseheaders(self, flow: http.HTTPFlow):
         """Gibt es fuer diesen Agenten etwas zu verdecken, kommt keine Antwort ungeprueft durch.
 
@@ -360,6 +418,7 @@ class AieEgress:
             return
         flow.response.stream = logik.StromMaske(werte)
 
+    @_sicher("antwort")
     def response(self, flow: http.HTTPFlow):
         if flow.response is None:
             return
@@ -399,6 +458,7 @@ class AieEgress:
             log.exception("Antwort liess sich nicht verdecken")
             flow.response = _antwort(502, "Egress-Proxy: Antwort konnte nicht geprüft werden")
 
+    @_sicher("websocket")
     def websocket_message(self, flow: http.HTTPFlow):
         # Anonymisierer: Websockets zu Modellanbietern werden nicht anonymisiert — schließen
         # statt Klartext durchlassen (Codex nutzt standardmäßig HTTP mit Ereignisstrom).
