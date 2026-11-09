@@ -57,14 +57,27 @@ async def _erkennen(klar: bytes, schluessel: str, begriffe: list[str]):
     return await loop.run_in_executor(_prozesse(), anonym.anfrage_anonymisieren, klar, schluessel, begriffe)
 
 
+def _zstd_begrenzt(roh: bytes, hoechstens: int) -> bytes:
+    """zstd entpacken, höchstens ``hoechstens`` Bytes.
+
+    mitmproxy bis 12.2 (Python 3.13) brachte das Paket ``zstandard`` mit; ab 12.3 läuft es auf
+    Python 3.14, das zstd selbst kann (``compression.zstd``) — ``zstandard`` fehlt dort. Beide
+    Wege begrenzen die Ausgabe (Kompressionsbombe)."""
+    try:
+        from compression import zstd   # Python ≥ 3.14
+    except ImportError:
+        import io
+
+        import zstandard
+        with zstandard.ZstdDecompressor().stream_reader(io.BytesIO(roh)) as r:
+            return r.read(hoechstens)
+    return zstd.ZstdDecompressor().decompress(roh, max_length=hoechstens)
+
+
 def _entpacken(roh: bytes, kodierung: str) -> bytes:
     """Anfragekörper entpacken, nie über ``MAX_ANTWORT`` hinaus (Kompressionsbombe)."""
     if kodierung == "zstd":
-        import io
-
-        import zstandard  # mitmproxy bringt es mit
-        with zstandard.ZstdDecompressor().stream_reader(io.BytesIO(roh)) as r:
-            daten = r.read(logik.MAX_ANTWORT + 1)
+        daten = _zstd_begrenzt(roh, logik.MAX_ANTWORT + 1)
         if len(daten) > logik.MAX_ANTWORT:
             raise logik.Abgelehnt(413, "zu groß")
         return daten
