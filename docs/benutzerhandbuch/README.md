@@ -4963,8 +4963,31 @@ unverändert.
   Konto, sofern du eines verbunden hast.
 - Ins Audit-Log kommt, wer welches Konto verbunden oder getrennt hat.
 
-**Noch nicht enthalten:** Der Agent wird bei neuer Mail oder Teams-Nachricht im eigenen
-Postfach noch nicht von selbst geweckt. Das kommt in einer nächsten Stufe.
+**Bei neuer Mail wecken** *(seit 1.446.0)*: Ist das Konto verbunden, erscheint auf der Karte
+der Schalter **Bei neuer Mail wecken**. Eingeschaltet startet jede neue Mail im Posteingang des
+Agenten einen Auftrag. Der Agent liest die Mail dann mit seinem Mail-Werkzeug und bearbeitet sie
+nach seinem Auftrag. Antworten gibst du wie immer frei (Kap. 13).
+- **Wer weckt:** Voreingestellt nur Absender aus deiner Organisation: dieselbe Domäne wie das
+  Konto des Agenten UND von Microsoft als intern angemeldet. Eine Mail von außen, die nur
+  vorgibt, von einem Kollegen zu kommen, weckt den Agenten nicht. Sollen auch Kunden und andere Externe den Agenten wecken, setze den
+  Haken **Auch Absender außerhalb der eigenen Organisation**. Dann kann jeder, der dem Agenten
+  schreibt, einen Lauf auslösen.
+- **Kostet:** Jede Mail ist ein Lauf des Agenten. Höchstens 20 Mails je Stunde wecken ihn,
+  höchstens 5 vom selben Absender. Kommen mehr, bekommst du eine Meldung. Die übrigen holt die
+  Anlage später nach, solange sie nicht älter als 24 Stunden sind.
+- **Weckt nicht:** Mails, die der Agent selbst geschickt hat, Entwürfe, automatische Antworten wie
+  Abwesenheitsnotizen, Massenmails, Unzustellbarkeitsberichte und dieselbe Mail ein zweites Mal.
+- **Wie schnell:** Ist die Anlage über HTTPS aus dem Internet erreichbar, meldet Microsoft jede neue
+  Mail sofort („Microsoft meldet neue Mails sofort“). Zur Sicherheit schaut die Anlage zusätzlich
+  stündlich nach. Sonst schaut sie alle fünf Minuten nach („alle fünf Minuten“). Das gilt auch,
+  wenn Microsoft die Anlage nicht erreicht, etwa hinter einer Firewall. Beim Einschalten werden
+  ältere Mails nicht abgearbeitet, nur neue.
+- **Sicherheit:** Absender und Betreff kommen beim Agenten als fremder Text an, nicht als
+  Anweisung. Den Inhalt liest er selbst, aus dem eigenen Postfach.
+- Trennst du das Konto, schaltet sich das Wecken aus.
+
+**Noch nicht enthalten:** Teams-Nachrichten wecken den Agenten noch nicht. Das kommt mit der
+eigenen Teams-Identität des Agenten.
 
 ## A. Was kann ein Agent? (typische Einsätze)
 

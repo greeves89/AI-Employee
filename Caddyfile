@@ -97,6 +97,17 @@ import conf.d/*.caddy
 		}
 	}
 
+	# Graph-Benachrichtigungen (öffentlich, Microsoft ruft ohne Anmeldung an): kleine Körper.
+	# Der Orchestrator prüft zusätzlich (core/koerper_grenze.py).
+	handle /api/v1/msgraph/* {
+		request_body {
+			max_size 1MB
+		}
+		reverse_proxy ai-employee-orchestrator:8000 {
+			import forwarded_https
+		}
+	}
+
 	# API + health endpoints → orchestrator
 	handle /api/* {
 		reverse_proxy ai-employee-orchestrator:8000 {

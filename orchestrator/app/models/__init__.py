@@ -6,6 +6,7 @@ from app.models.schedule import Schedule
 from app.models.chat_message import ChatMessage
 from app.models.chat_session import ChatSession
 from app.models.oauth_integration import OAuthIntegration, OAuthProvider
+from app.models.graph_abo import GraphAbo
 from app.models.memory import AgentMemory, AgentMemoryTag, AgentMemoryLink
 from app.models.notification import Notification
 from app.models.webhook import WebhookEvent
@@ -58,7 +59,7 @@ from app.models.sso_observed_group import SsoObservedGroup
 __all__ = [
     "AppShare", "APP_SHARE_SCOPES",
     "Base", "Agent", "AgentState", "Task", "TaskStatus", "TaskPriority",
-    "TaskStep", "Schedule", "ChatMessage", "OAuthIntegration", "OAuthProvider",
+    "TaskStep", "Schedule", "ChatMessage", "OAuthIntegration", "OAuthProvider", "GraphAbo",
     "AgentMemory", "AgentMemoryTag", "AgentMemoryLink", "Notification", "WebhookEvent", "McpServer",
     "User", "UserRole", "AgentTemplate", "PlatformSettings", "AgentAccess",
     "AgentPlanItem",

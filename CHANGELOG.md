@@ -5,6 +5,38 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.446.0] - 2026-11-09
+
+### Neu
+- **Agent bei neuer Mail wecken** (Plan `docs/plaene/agenten-identitaet-m365.md`, Phase 2). Agenten mit eigenem Microsoft-Konto lassen sich per Schalter „Bei neuer Mail wecken“ (Agent → Konnektoren) bei jeder neuen Mail im eigenen Posteingang wecken. Opt-in je Agent, nur Besitzer und Admin (`PATCH /agents/{id}/microsoft-konto/mail-wecken`).
+  - **Benachrichtigung:** Ist die Anlage über HTTPS erreichbar, abonniert sie den Posteingang bei Microsoft Graph. Der Empfang läuft über `/api/v1/msgraph/benachrichtigung` und `/lebenszyklus`. Die Anlage verlängert das Abo vor Ablauf und legt es neu an, wenn Microsoft es entfernt. Nach `missed` holt sie nach.
+  - **Abfrage als Rückfall:** Ohne öffentliche Adresse, oder wenn Microsoft sie nicht erreicht, fragt die Anlage alle fünf Minuten nach Mails seit dem letzten Stand (Filter nach Eingangszeit, höchstens 24 Stunden zurück). Den Versuch, das Abo anzulegen, wiederholt sie alle sechs Stunden. Bei Benachrichtigung sieht sie zusätzlich stündlich nach, weil Microsoft unzustellbare Meldungen nach einigen Stunden verwirft.
+  - Tabelle `graph_abos` (Migration `k9l0m1n2o3p4`). Der Abgleich läuft alle fünf Minuten im Orchestrator.
+
+### Sicherheit
+- **Öffentlicher Empfang mit Prüfung:** Jede Meldung muss ein bekanntes Abo nennen und dessen `clientState` tragen. Das ist ein HMAC aus `ENCRYPTION_KEY` und der Abo-Kennung, nicht gespeichert. Verworfenes bekommt ebenfalls 202 (nichts ausforschbar). Geantwortet wird sofort, verarbeitet getrennt, höchstens 100 Meldungen je Aufruf.
+- **Nichts aus der Meldung selbst:** Die Mail wird mit dem Konto des Agenten gelesen. Der Auftrag trägt nur Absender und Betreff, gerahmt als fremder Text (`core/fremdtext`, auch gegen die Sentinel-Marke). Den Inhalt liest der Agent mit seinem Werkzeug.
+- **Kostenbremse:** höchstens 20 Läufe je Agent und Stunde, mit einer Meldung, dazu eine Doppelsperre (7 Tage). Eigene Mails und Entwürfe wecken nicht. Beim Einschalten und nach `missed` wird kein alter Posteingang abgespielt (höchstens 24 Stunden).
+- Trennen des Kontos löscht das Abo bei Microsoft und schaltet das Wecken aus. Der Sicherheitsstatus zeigt Weg und Störungen.
+
+- **Nach unabhängigem Sicherheitsreview** (kein kritischer Befund; ein hoher und sechs mittlere behoben):
+  - **H1:** Wer dem Agenten schreibt, konnte bis zu 20 bezahlte Läufe je Stunde auslösen, und echte Mails gingen hinter einer Flut verloren.
+    - Jetzt wecken voreingestellt nur Absender der eigenen Organisation (Haken „Auch Absender außerhalb der eigenen Organisation“).
+    - Maßgeblich ist das Urteil von Exchange (`X-MS-Exchange-Organization-AuthAs: Internal`), nicht die Absenderadresse, die jeder fälschen kann. Fehlt das Urteil, gilt die Mail als extern. Gefunden von der automatischen Nachprüfung des Commits.
+    - Automatische Antworten, Massenmails und Unzustellbarkeitsberichte wecken nie.
+    - Höchstens 5 Läufe je Absender und Stunde.
+    - Gedrosselte Mails werden nachgeholt.
+  - **M1:** Körper höchstens 1 MB (Orchestrator vor dem Einlesen und Caddy).
+  - **M2:** `clientState` trägt die Abo-Kennung und wird ohne Datenbank und Redis geprüft. Höchstens 8 Verarbeitungen gleichzeitig.
+  - **M3:** Ein Fehler (rollback) reißt die Runde für die anderen Agenten nicht mehr ab.
+  - **M4:** Nach einem Fehler bleibt eine Mail nachholbar (Doppelsperre wird gelöst).
+  - **M5:** Stündliches Nachsehen auch bei Benachrichtigung.
+  - **M6:** Filter nach Eingangszeit statt `delta` über den ganzen Posteingang. Große Postfächer brachen den Abfrage-Betrieb.
+
+### Tests
+- `test_graph_abos.py` (35 Fälle gegen SQLite mit nachgebautem Graph und Redis): Empfang, Prüfung, Lebenszyklus, Eingang, Absender-Filter, Grenzen, Abos, Nachsehen, API, Sicherheitsstatus.
+- Gegenprobe mit 14 Schutzregeln, darunter Geheimnis, Abo-Kennung, Gleichzeitigkeit, automatische Mails, Absender-Domäne, Grenze je Absender, Lösen der Sperre, 24 Stunden und stündliches Nachsehen. Jede entfernte Regel lässt die Tests fehlschlagen.
+
 ## [1.445.0] - 2026-11-09
 
 ### Neu

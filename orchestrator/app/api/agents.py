@@ -3722,9 +3722,11 @@ async def get_agent_microsoft_konto(
     from app.core import agenten_konto
     from app.core.oauth_providers import get_provider, get_provider_client_id
 
+    from app.core import graph_abos
+
     agent = await _microsoft_konto_agent(agent_id, user, db, schreiben=False)
     stand = await agenten_konto.stand(db, agent, redis)
-    return {**stand,
+    return {**stand, **await graph_abos.stand(db, agent),
             "verfuegbar": bool(get_provider_client_id(get_provider(agenten_konto.ANBIETER))),
             "darf_verbinden": await agenten_konto.darf_verbinden(db, agent, user)}
 
@@ -3750,6 +3752,45 @@ async def verbinden_agent_microsoft_konto(
     except (KeyError, ValueError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"auth_url": url}
+
+
+class MailWeckenUpdate(BaseModel):
+    aktiv: bool | None = None
+    #: Auch Absender außerhalb der eigenen Organisation (Domäne des Agenten-Kontos) wecken.
+    alle_absender: bool | None = None
+
+
+@router.patch("/{agent_id}/microsoft-konto/mail-wecken")
+async def mail_wecken_agent_microsoft_konto(
+    agent_id: str,
+    body: MailWeckenUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Agent bei neuer Mail im eigenen Postfach wecken (core/graph_abos), opt-in je Agent.
+
+    Nur Besitzer und Admin, nur mit eigenem Konto: Jede Mail ist ein Lauf und kostet.
+    Richtet das Abo sofort ein bzw. räumt es weg."""
+    from app.core import agenten_konto, graph_abos
+    from app.core.audit import protokolliere
+    from app.models.audit_log import AuditEventType
+
+    agent = await _microsoft_konto_agent(agent_id, user, db, schreiben=True)
+    if body.aktiv and await agenten_konto._zeile(db, agent.id) is None:
+        raise HTTPException(status_code=409, detail="Zuerst das Microsoft-Konto des Agenten verbinden.")
+    agent.config = graph_abos.mit_einstellung(agent.config, body.aktiv, body.alle_absender)
+    await db.commit()
+    neu = graph_abos.einstellung(agent.config)
+    await protokolliere(db, AuditEventType.SETTINGS_CHANGED, user_id=getattr(user, "id", None), agent_id=agent_id,
+                        command=(f"Bei neuer Mail wecken: {'an' if neu['aktiv'] else 'aus'}, "
+                                 f"Absender: {'alle' if neu['alle_absender'] else 'eigene Organisation'}"),
+                        meta={"aktion": "mail_wecken", **neu})
+    try:
+        await graph_abos.einrichten(db, agent)
+    except Exception:  # noqa: BLE001 — der Abgleich alle fünf Minuten holt es nach
+        await db.rollback()
+        logger.exception("Graph-Abo für Agent %s nicht sofort eingerichtet", agent_id)
+    return await graph_abos.stand(db, await db.get(Agent, agent_id))
 
 
 @router.delete("/{agent_id}/microsoft-konto")

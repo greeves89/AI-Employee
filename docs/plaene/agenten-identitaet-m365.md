@@ -56,6 +56,20 @@ und Handbuch.
 
 ### Phase 2: Ereignisse statt Abfragen (Graph-Benachrichtigungen)
 
+> **Stand: Mail umgesetzt in 1.446.0** (`core/graph_abos.py`, `api/msgraph_benachrichtigung.py`,
+> Tabelle `graph_abos`). Abweichungen vom Plan:
+> - Das Geheimnis für `clientState` wird aus `ENCRYPTION_KEY` abgeleitet, nicht gespeichert.
+> - Wecken ist opt-in je Agent, mit höchstens 20 Läufen je Stunde.
+> - Im Auftrag stehen nur Absender und Betreff, gerahmt als fremder Text.
+> - Nach dem Sicherheitsreview gilt:
+>   - Nachgesehen wird nach Eingangszeit statt mit `delta`: im Abfrage-Betrieb alle fünf Minuten, bei Benachrichtigung zusätzlich stündlich, höchstens 24 Stunden zurück.
+>   - Wecken dürfen voreingestellt nur Absender der eigenen Domäne. Automatische Mails wecken nie.
+>   - Es gibt eine Grenze je Absender.
+>   - `clientState` trägt die Abo-Kennung und wird ohne Datenbank geprüft.
+>   - „Intern“ heißt: Urteil von Exchange `X-MS-Exchange-Organization-AuthAs: Internal`. **Im Ende-zu-Ende-Test mit dem Test-Nutzer prüfen, ob Graph diesen Kopf in `internetMessageHeaders` liefert.** Sonst gelten alle Mails als extern (fail closed), und nur der Haken „Auch Absender außerhalb“ hilft.
+> - Das Chat-Abo zieht in Phase 3 um: Ohne eigene Teams-Kennung (`own_user_id`) würde der Agent von seinen eigenen Nachrichten geweckt.
+> - Die Rückruf-Adresse für Teams-Anrufe bleibt eigenständig. Anrufe sind keine Graph-Abos und tragen kein `clientState`; sie kommen mit Phase 3.
+
 - **Ein prüfender Empfang:** `POST /api/v1/msgraph/benachrichtigung`.
   - Er beantwortet `validationToken` als reinen Text.
   - Er prüft `clientState` gegen ein Geheimnis je Abonnement (HMAC).
