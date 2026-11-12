@@ -509,7 +509,12 @@ async def _kosten_ohne_verlauf(redis: RedisService, db, agent_id: str, message_i
 
     from app.services.chat_persistence import betrag_pruefen
 
-    betrag = betrag_pruefen((event_data or {}).get("cost_usd"))
+    from app.core import modellpreise
+
+    daten = event_data or {}
+    betrag = modellpreise.betrag(
+        betrag_pruefen(daten.get("cost_usd")), daten.get("input_tokens"), daten.get("output_tokens"),
+        await modellpreise.preis_fuer_agent(agent_id, db=db))
     if not betrag:
         return
     try:

@@ -2238,7 +2238,8 @@ export interface AIAccountPayload {
   provider_type: string;
   api_endpoint?: string | null;
   api_key?: string | null;
-  models: { name: string; provider_type: string; api_endpoint: string }[];
+  models: { name: string; provider_type: string; api_endpoint: string; enabled?: boolean;
+    preis_eingabe_usd_1m?: number | null; preis_ausgabe_usd_1m?: number | null }[];
   extra?: Record<string, unknown>;
   is_active?: boolean;
 }

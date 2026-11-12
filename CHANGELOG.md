@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.449.0] - 2026-11-12
+
+### Neu
+- **Preis je Modell im KI-Konto** (`core/modellpreise.py`). In der Modellzeile eines KI-Kontos stehen zwei Felder: USD je 1 Mio. Eingabe- und Ausgabe-Token.
+  - Anlass: Ein Lauf auf einer Kundenanlage mit gpt-6.1-sol über Azure meldete 1,7 Mio. Eingabe-Token und 0 USD. Der Agent kennt den Preis der gpt-6-Familie nicht (`model_registry`: bewusst „unbekannt"). Dashboard und Monatsbudget sahen nichts, ein Budget hätte nie gegriffen.
+  - Meldet ein Lauf 0 USD, aber Token, rechnet der Orchestrator aus dem Kontopreis nach. EINE Stelle für alle Wege: Aufgabenabschluss (`task_router`), Chat mit Verlaufszeile (`upsert_chat_message`, beide Schreiber) und Chat ohne Verlaufszeile (`main._kosten_ohne_verlauf`).
+  - Ein vom Agenten gemeldeter Betrag > 0 bleibt unverändert. Ohne Kontopreis wird nichts nachgerechnet — auch nicht aus der eingebauten Tabelle, denn Abo-Läufe (Claude, Codex) kosten zu Recht 0 USD.
+  - Preise werden serverseitig geprüft (0 bis 1000 USD je 1 Mio. Token), nach dem Speichern greift die Änderung sofort.
+
+### Tests
+- `test_modellpreise.py`, neu: Preisprüfung, Kontopreis, Nachrechnung, kein Rückfall auf die Tabelle, Fehler stören nicht, Ende-zu-Ende gegen SQLite (Chat-Zeile bekommt den Betrag in Spalte und `meta`).
+
 ## [1.448.3] - 2026-11-09
 
 ### Sicherheit
