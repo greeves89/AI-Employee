@@ -115,7 +115,8 @@ async def _run_sweep(svc, agent, user, timeout=30):
     db = _FakeDb([agent], [user])
     with patch("app.db.session.resilient_session", lambda **_kw: db), \
          patch.object(ul, "_get_timeout_minutes", AsyncMock(return_value=timeout)), \
-         patch.object(ul, "_has_imminent_schedule", AsyncMock(return_value=False)):
+         patch.object(ul, "_has_imminent_schedule", AsyncMock(return_value=False)), \
+         patch.object(ul, "_has_open_task", AsyncMock(return_value=False)):
         await svc._sweep()
 
 

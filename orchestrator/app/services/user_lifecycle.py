@@ -66,6 +66,29 @@ async def _has_imminent_schedule(db: AsyncSession, agent_id: str, now: datetime,
         return True
 
 
+async def _has_open_task(db: AsyncSession, agent_id: str) -> bool:
+    """Hat der Agent laut Datenbank eine nicht beendete Aufgabe?
+
+    Der Redis-Status allein reicht nicht: Meldet ein delegierter Agent sein
+    Ergebnis zurueck, steht der Status des Delegierenden kurz nicht auf
+    "working", obwohl seine Aufgabe weiterlaeuft. Der Sweep stoppte ihn dann
+    mitten im Lauf; die Aufgabe endete als "Agent-Container laeuft nicht mehr".
+    Die Aufgabentabelle ist die Quelle der Wahrheit.
+    """
+    try:
+        from app.models.task import TERMINAL_TASK_STATUSES, Task
+        hit = await db.scalar(
+            select(Task.id).where(
+                Task.agent_id == agent_id,
+                Task.status.notin_(TERMINAL_TASK_STATUSES),
+            ).limit(1)
+        )
+        return hit is not None
+    except Exception:  # noqa: BLE001 — im Zweifel lieber wach lassen
+        logger.debug("[UserLifecycle] Aufgaben-Pruefung fehlgeschlagen", exc_info=True)
+        return True
+
+
 # Letzte Nachricht, die ueber einen Kanal (Telegram, Teams, Slack) an einen
 # Agenten ging. Der Sweep misst Aktivitaet sonst nur an ``user.last_active_at``
 # — und das setzt ausschliesslich die Web-Oberflaeche. Wer nur per Telegram
@@ -338,6 +361,8 @@ class UserLifecycleService:
                 status = await self.redis.get_agent_status(agent.id)
                 if queue_depth > 0 or status.get("state") == "working":
                     continue
+                if await _has_open_task(db, agent.id):
+                    continue
 
                 # Steht in Kuerze ein Zeitplan oder Kalender-Block an, lohnt das
                 # Schlafenlegen nicht — der Scheduler muesste den Agenten sofort
@@ -378,6 +403,8 @@ class UserLifecycleService:
             queue_depth = await self.redis.get_queue_depth(agent.id)
             status = await self.redis.get_agent_status(agent.id)
             if queue_depth > 0 or status.get("state") == "working":
+                continue
+            if await _has_open_task(db, agent.id):
                 continue
             try:
                 if agent.container_id:

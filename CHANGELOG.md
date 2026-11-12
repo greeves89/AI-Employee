@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.449.1] - 2026-11-12
+
+### Behoben
+- **Leerlauf-Abschaltung stoppte Agenten mitten in einer Aufgabe** (`services/user_lifecycle.py`).
+  - Anlass: Auf einer Kundenanlage delegierte ein Agent an einen Prüf-Agenten. Als dessen Ergebnis zurückkam, stand der Redis-Status des Agenten kurz nicht auf „working". 90 Sekunden später stoppte die Abschaltung den Container nach 30 Minuten ohne Nutzeraktivität, die Aufgabe endete als „Agent-Container läuft nicht mehr".
+  - Die Abschaltung fragt jetzt zusätzlich die Aufgabentabelle: Hat der Agent eine nicht beendete Aufgabe (`TERMINAL_TASK_STATUSES`), bleibt er wach. Gilt für den Sweep und für `_stop_user_agents`. Bei einem Datenbankfehler bleibt der Agent ebenfalls wach.
+
+### Tests
+- `test_lifecycle_laufende_aufgabe.py`: offene Aufgabe hält den Agenten wach, ohne offene Aufgabe wird weiter gestoppt, Abfrage filtert auf Agent und Endzustände, Datenbankfehler hält wach.
+
 ## [1.449.0] - 2026-11-12
 
 ### Neu
