@@ -980,6 +980,15 @@ class TaskRouter:
         task.cost_usd = data.get("cost_usd")
         task.input_tokens = data.get("input_tokens")
         task.output_tokens = data.get("output_tokens")
+        # Kein Betrag gemeldet (Preis des Modells dem Agenten unbekannt), aber Token:
+        # aus dem Preis im KI-Konto nachrechnen (core/modellpreise), sonst greift kein Budget.
+        if not task.cost_usd and (task.input_tokens or task.output_tokens):
+            from app.core import modellpreise
+
+            task.cost_usd = modellpreise.betrag(
+                task.cost_usd, task.input_tokens, task.output_tokens,
+                await modellpreise.preis_fuer_agent(
+                    task.agent_id or agent_id, data.get("model") or task.model, db=self.db))
         task.duration_ms = data.get("duration_ms")
         task.num_turns = data.get("num_turns")
         task.completed_at = datetime.now(timezone.utc)

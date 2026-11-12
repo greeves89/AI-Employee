@@ -2392,6 +2392,13 @@ Agenten nutzen — statt dass jeder User eigene Schlüssel pflegt. Verwaltung in
   - **Endpoint für dieses Modell** (z. B. `https://…services.ai.azure.com/anthropic/v1`).
   - Über **+ Modell hinzufügen** weitere Modelle ergänzen. So deckt **ein** Account mehrere
     Azure-Oberflächen ab (Chat, Responses/Codex, Anthropic/Claude).
+  - **Preis je Modell** *(seit 1.449.0)* — zwei Felder in der Modellzeile: **Ein $/1M** und
+    **Aus $/1M**, also USD je 1 Million Eingabe- bzw. Ausgabe-Token, wie sie der Anbieter
+    berechnet (bei Azure den Preis eurer Bereitstellungsart, z. B. *Data Zone Standard*).
+    Wozu: Kennt ein Agent den Preis eines neuen Modells nicht, meldet er 0 USD — dann zeigen
+    Dashboard und Budget nichts, und ein **Monatsbudget greift nie**. Steht hier ein Preis,
+    rechnet die Plattform die Kosten jedes Laufs aus den Token nach (Aufgaben und Chat).
+    Leer lassen heißt „unbekannt"; Abo-Zugänge (Claude, Codex) brauchen keinen Preis.
 - **API Key** — der geheime Schlüssel (`sk-…` bzw. Azure-Key) — wird **verschlüsselt**
   gespeichert.
 - **Azure api-version** — die API-Version (z. B. `2024-08-01-preview`).

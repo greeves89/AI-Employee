@@ -9,7 +9,7 @@ from typing import Literal
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,6 +42,11 @@ class AIModelEntry(BaseModel):
     # sind bei der Agenten-Erstellung waehlbar. Fehlt das Feld (Bestand), gilt
     # freigegeben — nichts bricht nach dem Update.
     enabled: bool = True
+    # Preis je Modell (USD je 1 Mio. Token). Fehlt er, rechnet der Agent mit seiner
+    # eingebauten Tabelle; meldet der Lauf 0 USD, rechnet der Orchestrator damit nach
+    # (core/modellpreise). Leer = unbekannt.
+    preis_eingabe_usd_1m: float | None = Field(default=None, ge=0, le=1000)
+    preis_ausgabe_usd_1m: float | None = Field(default=None, ge=0, le=1000)
 
 
 def _normalize_models(raw: list, default_provider: str, default_endpoint: str | None) -> list[dict]:
@@ -57,8 +62,21 @@ def _normalize_models(raw: list, default_provider: str, default_endpoint: str | 
                 "provider_type": m.get("provider_type") or default_provider,
                 "api_endpoint": m.get("api_endpoint") or default_endpoint or "",
                 "enabled": m.get("enabled", True) is not False,
+                **_preise(m),
             })
     return out
+
+
+def _preise(m: dict) -> dict:
+    """Nur gültige Preisangaben übernehmen (core/modellpreise.preis_pruefen)."""
+    from app.core.modellpreise import preis_pruefen
+
+    aus = {}
+    for feld in ("preis_eingabe_usd_1m", "preis_ausgabe_usd_1m"):
+        wert = preis_pruefen(m.get(feld))
+        if wert is not None:
+            aus[feld] = wert
+    return aus
 
 
 def enabled_model_names(models: list) -> list[str]:
@@ -367,6 +385,9 @@ async def update_ai_account(
         await db.rollback()
         raise HTTPException(status_code=409, detail="An account with this name already exists")
     await db.refresh(account)
+    # Geänderte Preise sofort für die Kostenberechnung (core/modellpreise).
+    from app.core.modellpreise import cache_leeren
+    cache_leeren()
     return _to_response(account)
 
 

@@ -264,6 +264,17 @@ async def upsert_chat_message(
     """
     if not (agent_id and session_id and message_id):
         return False
+    # Kein Betrag gemeldet, aber Token: aus dem Preis im KI-Konto nachrechnen
+    # (core/modellpreise) — sonst zählt der Chat für Dashboard und Budget 0.
+    if role == "assistant" and not cost_usd and (input_tokens or output_tokens):
+        from app.core import modellpreise
+
+        nachgerechnet = modellpreise.betrag(
+            cost_usd, input_tokens, output_tokens, await modellpreise.preis_fuer_agent(agent_id))
+        if nachgerechnet:
+            cost_usd = nachgerechnet
+            if meta is not None and "cost_usd" in meta:
+                meta = {**meta, "cost_usd": nachgerechnet}
     tool_calls = _werkzeuge_bereinigen(tool_calls)
     # /goal (#906): Die Schlusszeile ist ein Signal an den Server, kein Text fuer
     # den Menschen. Bewertet hat ``ziel.nach_zug`` den Rohtext; hier wird ohne
