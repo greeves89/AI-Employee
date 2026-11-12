@@ -94,7 +94,12 @@ jobs:
   #    ein Netz oder fremde Module brauchen, schliessen sich selbst aus. ──
   agent-tests:
     name: Agent pytest
-    runs-on: ubuntu-latest
+    # Fest auf 24.04: ubuntu-latest ist seit November 2026 26.04 mit Rust-coreutils.
+    # Dessen ``timeout`` beendet bei Fristablauf nur den direkten Prozess, nicht die
+    # Prozessgruppe — ein haengender npm-Kindprozess haelt dann die Ausgabe offen
+    # (test_cli_update_zerstoert_nichts lief 60 s statt 3 s). Das Agenten-Abbild laeuft
+    # auf python:3.12-slim (Debian, GNU coreutils) — der Test soll genau das abbilden.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

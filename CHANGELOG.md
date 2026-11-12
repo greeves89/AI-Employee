@@ -14,6 +14,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   - Ein vom Agenten gemeldeter Betrag > 0 bleibt unverändert. Ohne Kontopreis wird nichts nachgerechnet — auch nicht aus der eingebauten Tabelle, denn Abo-Läufe (Claude, Codex) kosten zu Recht 0 USD.
   - Preise werden serverseitig geprüft (0 bis 1000 USD je 1 Mio. Token), nach dem Speichern greift die Änderung sofort.
 
+### CI
+- Agenten-Tests laufen fest auf Ubuntu 24.04. `ubuntu-latest` ist inzwischen 26.04 mit Rust-coreutils, dessen `timeout` bei Fristablauf nur den direkten Prozess beendet. Zwei Tests zur CLI-Aktualisierung warteten dadurch 60 s auf einen hängenden Kindprozess. Das Agenten-Abbild selbst läuft auf Debian (GNU coreutils) und ist nicht betroffen.
+
 ### Tests
 - `test_modellpreise.py`, neu: Preisprüfung, Kontopreis, Nachrechnung, kein Rückfall auf die Tabelle, Fehler stören nicht, Ende-zu-Ende gegen SQLite (Chat-Zeile bekommt den Betrag in Spalte und `meta`).
 
