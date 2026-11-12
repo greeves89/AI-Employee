@@ -1,6 +1,6 @@
 """Preis je Modell aus dem KI-Konto und die Nachrechnung von Kosten (core/modellpreise).
 
-Anlass (SKBS, 12.11.2026): Ein Kodierlauf mit gpt-6.1-sol über Azure meldete 1,7 Mio.
+Anlass (Kundenanlage, 12.11.2026): Ein Lauf mit gpt-6.1-sol über Azure meldete 1,7 Mio.
 Eingabe-Token und 0 USD — der Agent kennt den Preis der gpt-6-Familie nicht. Dashboard
 und Monatsbudget sahen dadurch nichts. Jetzt trägt die Administration den Preis je Modell
 im KI-Konto ein, und der Orchestrator rechnet nach, wenn ein Lauf keinen Betrag meldet.
