@@ -28,6 +28,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 ### Tests
 - `test_zielliste.py`: Matrix der Muster (auch `evilexample.com`, `example.com.evil.org`), Netzwächter samt Apps desselben Besitzers, Übergabe an den Proxy, Umgebung und fail closed, Freigabeliste, Schnittstelle (Besitzer, Freigegebene, ohne Proxy), Sicherheitsstatus.
 - `test_anonymisierer_addon.py` (im Proxy-Abbild): CONNECT und HTTP gesperrt bzw. erlaubt, TLS aufgebrochen mit festem Servernamen, Host-Kopf je Anfrage geprüft.
+- `test_secrets_gehoeren_ihrem_ersteller.py`: Patches werden in umgekehrter Reihenfolge gestoppt. Ein doppelt gepatchtes `visible_agent_ids` blieb sonst für alle folgenden Tests stehen.
 
 ## [1.449.1] - 2026-11-12
 
