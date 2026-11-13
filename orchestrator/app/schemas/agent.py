@@ -135,6 +135,9 @@ class AgentResponse(BaseModel):
     # Vom Menschen angehalten (Halt-Flag aus core/agent_duty) — unterscheidet in der
     # Liste „Gestoppt“ vom Leerlauf-Stopp („Schläft“). Keine eigene Speicherung.
     stopped_by_user: bool = False
+    # Dem Aufrufer nur zum Nutzen freigegeben (AgentAccess.rolle == "nutzen"):
+    # die Oberflaeche zeigt dann nur Chat und Sprache, keine Einstellungen.
+    nur_nutzen: bool = False
 
     # Per-agent resource overrides (from agent.config JSON)
     config: dict | None = None

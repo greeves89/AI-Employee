@@ -1749,6 +1749,11 @@ async def lifespan(app: FastAPI):
             await conn.execute(_txt_cs(
                 "ALTER TABLE IF EXISTS notifications ADD COLUMN IF NOT EXISTS empfaenger_id varchar"
             ))
+            # 1.457: Freigabe nur zum Nutzen. Jede Zugriffspruefung liest diese
+            # Spalte — fehlt sie, kaeme niemand mehr an einen freigegebenen Agenten.
+            await conn.execute(_txt_cs(
+                "ALTER TABLE IF EXISTS agent_access ADD COLUMN IF NOT EXISTS rolle varchar(16)"
+            ))
         logger.info("chat_sessions table ensured")
     except Exception as e:
         logger.warning(f"Could not ensure chat_sessions table: {e}")

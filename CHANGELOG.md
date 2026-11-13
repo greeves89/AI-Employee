@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.457.0] - 2026-11-13
+
+### Neu
+- **Agent freigeben, nur zum Nutzen.** In den Agenten-Einstellungen unter **Zugriff & Rechte → Freigeben für** wählt der Besitzer oder ein Admin Kollegen aus. Damit lässt sich ein Agent für viele Menschen nutzen:
+  - Freigegebene dürfen chatten, sprechen und Dateien schicken und abholen. Jeder sieht nur seine eigenen Gespräche (1.455.0).
+  - Einstellungen, Gedächtnis, Zeitpläne, Auswertungen, Protokolle, Apps, Freigabe-Anfragen und Löschen bleiben beim Besitzer und beim Admin.
+  - Freigegebene sehen die einfache Ansicht mit Chat und Sprache. Die Agentendaten kommen gekürzt an, ohne Webhook-Token, Konfiguration, Konten und Kosten.
+  - Meldungen eines freigegebenen Agenten bekommen sie nur, wenn sie an sie gerichtet sind (Antworten in ihren Gesprächen).
+
+### Sicherheit
+- **Standard jeder Agenten-Zugriffsprüfung ist jetzt „verwalten“.** `require_agent_access` lässt eine Freigabe nur zum Nutzen nur dort durch, wo die Schnittstelle sich ausdrücklich als Nutzen ausweist (`nutzen=True`): Chat, Sprache, Dateien senden und abholen, Agent ansehen. Neue Schnittstellen sind für Nur-Nutzer also zu, bis jemand es anders entscheidet.
+- Auch Stellen, die Freigaben direkt abfragen (Aufgaben, Zeitpläne, Freigabe-Anfragen, Finanzen, Sichtbarkeit in rund 25 Bereichen über `core/ownership`), zählen eine Freigabe nur zum Nutzen nicht.
+- Ältere Freigaben ohne Rolle (Zuweisen, Verteilen) behalten ihre Wirkung.
+- **Sprache für Nur-Nutzer:** nur Gesprächswerkzeuge (an den Agenten weitergeben, Websuche, Anzeigen, Umbenennen). Nicht dabei sind Mail, Kalender, MCP, Dateien, Gedächtnis, Zeitpläne, Apps und Einstellungen. Das Gedächtnis kommt nicht in den Prompt. Zweite Sperre beim Ausführen.
+- **Dateien für Nur-Nutzer:** Hochladen nur in `/workspace/geteilt/<Person>`. Abholen nur von dort oder Dateien, die der Agent in einem eigenen Gespräch vorgelegt hat.
+- **Stopp je Gespräch:** „Stopp“ im Chat hält nur den Zug dieses Gesprächs an, nicht die Antworten anderer. Der Agent versteht das ab diesem Abbild, ältere halten weiter alles an.
+- **Chat:** Ein Fenster kann sich nicht als Zeitplan oder Kanal ausgeben (`source`). Nur-Nutzer wählen weder Modell noch Denktiefe. Beim Entziehen der Freigabe werden offene Chat-Fenster geschlossen.
+- **Gekürzte Agentendaten** ohne laufende Aufgabe, fremde Gesprächskennungen und Besitzer.
+
+### Betrieb
+- Spalte `agent_access.rolle`, Migration `n2o3p4q5r6s7` (idempotent). Die Spalte legt zusätzlich der Start an.
+
 
 ## [1.456.0] - 2026-11-13
 

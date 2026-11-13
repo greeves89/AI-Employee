@@ -1438,6 +1438,17 @@ def _bildschirm_hinweis(result: dict) -> str:
     return "".join(teile)
 
 
+#: Werkzeuge der Sprachfront fuer Menschen, die den Agenten nur NUTZEN duerfen:
+#: Gespraech fuehren, an den Agenten weitergeben, im Netz suchen, etwas zeigen.
+#: Bewusst NICHT: Mail/Kalender/Teams (handeln im Namen des Besitzers), Dateien,
+#: Gedaechtnis, Brain, Apps, Zeitplaene, Einstellungen, Geheimnisse, MCP, Desktop.
+NUR_NUTZER_WERKZEUGE = frozenset({
+    "ask_agent", "refine_task", "get_delegated_tasks", "escalate_if_unsure",
+    "web_search", "web_picture_search", "voice_help", "show_on_screen",
+    "rename_conversation",
+})
+
+
 def besprechungs_regeln(agent_name: str, titel: str) -> str:
     """Zusatz für die Teams-Besprechung: zuhören, nur auf Ansprache antworten."""
     import re
@@ -1800,6 +1811,11 @@ class RealtimeVoiceSession:
     #: (agent/app/teams_teilnehmer). Dann: kein Gruß, nur sprechen, wenn er beim Namen
     #: genannt wird, Gesagtes ist fremder Text.
     besprechung: str = ""
+    #: Der Mensch darf diesen Agenten nur NUTZEN (AgentAccess.rolle == "nutzen"):
+    #: nur Gespraechswerkzeuge, nichts, was im Namen des Besitzers handelt (Mail,
+    #: Kalender, MCP, Dateien, Gedaechtnis, Apps, Einstellungen). Siehe
+    #: ``NUR_NUTZER_WERKZEUGE``.
+    nur_nutzen: bool = False
     _needs_briefing: bool = False  # kein Auftrag → das gehoert in den ERSTEN Satz
     _agent_config: dict | None = None  # fuer Zeitzone und Co. waehrend des Gespraechs
     _tool_calls: dict = field(default_factory=dict)  # tool_use_id → (Name, Argumente)
@@ -1906,7 +1922,11 @@ class RealtimeVoiceSession:
         try:
             from app.core import voice_inhaltsfilter as _vf
             from app.core.memory_preload import as_prompt_block
-            if await _vf.ohne_gedaechtnis(self.redis.client, self.agent_id, self.user_id):
+            if self.nur_nutzen:
+                # Das Gedaechtnis des Agenten traegt Wissen aus allen Gespraechen und
+                # vom Besitzer — fuer einen Nur-Nutzer nicht vorlesbar.
+                self._memory_context = ""
+            elif await _vf.ohne_gedaechtnis(self.redis.client, self.agent_id, self.user_id):
                 # Der Anbieter hat den Aufbau zuletzt blockiert und die Ursache steht
                 # noch nicht fest: lieber ohne Vorwissen sprechen als gar nicht.
                 self._schlank = True
@@ -2710,9 +2730,30 @@ class RealtimeVoiceSession:
                 "In einer Besprechung hast du keine Werkzeuge. Sag kurz, dass du das nach "
                 "der Besprechung erledigen kannst, wenn dein Besitzer es dir aufträgt."))
 
+    async def _werkzeug_gesperrt(self, tool_use_id: str, name: str) -> bool:
+        """Zweite Sperre beim Ausfuehren (die erste: nicht angeboten). In einer
+        Besprechung gar nichts, fuer Nur-Nutzer nur ``NUR_NUTZER_WERKZEUGE``."""
+        if self.besprechung:
+            await self._in_besprechung_ablehnen(tool_use_id, name)
+            return True
+        if self.nur_nutzen and name not in NUR_NUTZER_WERKZEUGE:
+            logger.warning("[Sprache] Nur-Nutzer: Werkzeug %r abgelehnt (Agent %s)", name, self.agent_id)
+            if self._nova is not None:
+                await self._nova.send_tool_result(tool_use_id, self._engine_safe(
+                    "Das darfst du für diese Person nicht. Biete an, die Frage an den Agenten "
+                    "weiterzugeben."))
+            return True
+        return False
+
     def _werkzeuge_begrenzen(self, werkzeuge: list) -> list:
-        """In einer Besprechung: keine Werkzeuge (siehe ``besprechung``)."""
-        return [] if self.besprechung else werkzeuge
+        """In einer Besprechung: keine Werkzeuge (siehe ``besprechung``). Fuer
+        Nur-Nutzer: nur die Gespraechswerkzeuge (``NUR_NUTZER_WERKZEUGE``)."""
+        if self.besprechung:
+            return []
+        if self.nur_nutzen:
+            return [w for w in werkzeuge
+                    if str(((w or {}).get("toolSpec") or {}).get("name") or "") in NUR_NUTZER_WERKZEUGE]
+        return werkzeuge
 
     async def _handle_tool_use(self, data: dict) -> None:
         tool_use_id = data.get("tool_use_id", "")
@@ -2725,8 +2766,8 @@ class RealtimeVoiceSession:
         except (json.JSONDecodeError, TypeError):
             args = {}
 
-        if self.besprechung:   # zweite Sperre: in einer Besprechung nichts ausführen
-            return await self._in_besprechung_ablehnen(tool_use_id, name)
+        if await self._werkzeug_gesperrt(tool_use_id, name):   # zweite Sperre
+            return
 
         # Fuer die Anzeige merken: der Nutzer soll SEHEN, was gerade benutzt wird.
         # Vorher lief alles unsichtbar, und es sah aus, als haette der Agent nichts

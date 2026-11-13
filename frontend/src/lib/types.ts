@@ -134,6 +134,8 @@ export interface Agent {
   last_active_at: string | null;
   /** Vom Menschen angehalten — „Gestoppt“ statt „Schläft“ (Leerlauf-Stopp). */
   stopped_by_user: boolean;
+  /** Dem Aufrufer nur zum Nutzen freigegeben: nur Chat und Sprache, keine Einstellungen. */
+  nur_nutzen?: boolean;
   current_task: string | null;
   active_sessions?: string[];  // all "chat:<session>" the agent is processing now
   cpu_percent: number | null;

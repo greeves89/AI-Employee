@@ -2978,6 +2978,20 @@ rechts zwei Buttons:
 
 ![Zuweisungen](screenshots/21-admin-zuweisungen.png)
 
+#### Einen Agenten für Kollegen freigeben (nur nutzen)
+
+So arbeiten viele Menschen mit einem Agenten, ohne dass jeder einen eigenen braucht:
+
+1. Agent öffnen und auf **Einstellungen** klicken.
+2. Den Abschnitt **Zugriff & Rechte** aufklappen.
+3. Unter **Freigeben für** die Kollegen anhaken. Ab acht Personen erscheint ein Suchfeld.
+4. Auf **Speichern** klicken.
+
+Freigegebene sehen den Agenten in ihrer Liste und bekommen die einfache Ansicht mit Chat und
+Sprache. Sie dürfen chatten, sprechen und Dateien schicken und abholen. Einstellungen,
+Gedächtnis, Zeitpläne, Auswertungen und Löschen bleiben beim Besitzer und beim Admin. Um eine
+Freigabe zu entfernen, nimmst du den Haken heraus und speicherst.
+
 > **Ein Agent, mehrere Menschen: Jeder sieht nur seine Gespräche.** Arbeiten mehrere
 > Personen mit demselben Agenten, sieht jede nur die Gespräche, die sie selbst begonnen hat.
 > Das gilt für die Liste, den Verlauf, die Sprache und die Benachrichtigungen. Der Besitzer
