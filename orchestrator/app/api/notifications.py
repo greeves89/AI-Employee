@@ -321,6 +321,12 @@ async def _visible_agent_ids(user, db: AsyncSession) -> list[str]:
     return list(sichtbar)
 
 
+def _fuer(user):
+    """Meldungen fuer alle, die den Agenten sehen — oder ausdruecklich fuer ``user``
+    (Antworten in einem eigenen Gespraech, core/chat_besitz)."""
+    return Notification.empfaenger_id.is_(None) | (Notification.empfaenger_id == user.id)
+
+
 @router.get("/")
 async def list_notifications(
     unread_only: bool = Query(False),
@@ -330,7 +336,7 @@ async def list_notifications(
 ):
     """List notifications for the UI notification center (scoped to the user's agents)."""
     visible = await _visible_agent_ids(user, db)
-    query = select(Notification).where(Notification.agent_id.in_(visible))
+    query = select(Notification).where(Notification.agent_id.in_(visible), _fuer(user))
     if unread_only:
         query = query.where(Notification.read == False)  # noqa: E712
     query = query.order_by(Notification.created_at.desc()).limit(limit)
@@ -347,6 +353,7 @@ async def unread_count(user=Depends(require_auth), db: AsyncSession = Depends(ge
         select(func.count(Notification.id)).where(
             Notification.read == False,  # noqa: E712
             Notification.agent_id.in_(visible),
+            _fuer(user),
         )
     )
     count = result.scalar() or 0
@@ -496,6 +503,7 @@ async def mark_all_read(user=Depends(require_auth), db: AsyncSession = Depends(g
         .where(
             Notification.read == False,  # noqa: E712
             Notification.agent_id.in_(visible),
+            _fuer(user),
         )
         .values(read=True)
     )
@@ -590,6 +598,7 @@ def _to_response(n: Notification) -> dict:
         "read": n.read,
         "action_url": n.action_url,
         "meta": n.meta,
+        "empfaenger_id": n.empfaenger_id,
         "created_at": n.created_at.isoformat() if n.created_at else "",
     }
 

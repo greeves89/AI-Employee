@@ -28,6 +28,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.chat_besitz import besitzer_von
 from app.core.log_redaction import scrub_log
 from app.models.chat_message import ChatMessage
 from app.models.chat_session import ChatSession
@@ -313,6 +314,8 @@ async def fork(db: AsyncSession, agent_id: str, session_id: str,
     db.add(ChatSession(
         agent_id=agent_id, session_id=target,
         title=f"Abzweig: {source_title}"[:TITLE_MAX] if source_title else "Abzweig",
+        # Die Kopie gehoert, wem das Original gehoert (core/chat_besitz).
+        user_id=await besitzer_von(db, agent_id, session_id),
         # Wer im Original gruendlich denken liess, will das im Abzweig nicht neu waehlen.
         reasoning_level=await _reasoning_of(db, agent_id, session_id),
     ))
@@ -357,6 +360,7 @@ async def rewind(db: AsyncSession, agent_id: str, session_id: str,
     db.add(ChatSession(
         agent_id=agent_id, session_id=backup,
         title=f"Verworfen: {source_title}"[:TITLE_MAX] if source_title else "Verworfen",
+        user_id=await besitzer_von(db, agent_id, session_id),
     ))
     await db.flush()
     logger.info("[Chat] %s auf %s zurueckgespult (%d verworfen, Sicherung %s)",
@@ -506,6 +510,7 @@ async def summarize_to_new_session(db: AsyncSession, agent_id: str,
     db.add(ChatSession(
         agent_id=agent_id, session_id=target,
         title=f"Fortsetzung: {source_title}"[:TITLE_MAX] if source_title else "Fortsetzung",
+        user_id=await besitzer_von(db, agent_id, session_id),
         # Die Fortsetzung ist dasselbe Gespraech in kurz — gleiche Denktiefe.
         reasoning_level=await _reasoning_of(db, agent_id, session_id),
     ))

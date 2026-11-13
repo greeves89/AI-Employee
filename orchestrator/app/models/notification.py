@@ -20,6 +20,9 @@ class Notification(Base):
     read: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     action_url: Mapped[str | None] = mapped_column(String, nullable=True)  # optional link to navigate to
     meta: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # extra data (approval options, etc.)
+    #: Nur fuer diesen Menschen (z. B. Antwort in SEINEM Gespraech, core/chat_besitz).
+    #: None → fuer alle, die den Agenten sehen.
+    empfaenger_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
