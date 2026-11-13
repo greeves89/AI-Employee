@@ -1115,3 +1115,66 @@ async def set_datenschutz(
     await _einstellungen_protokollieren(db, user, geaendert)
     await db.commit()
     return await _datenschutz_stand(svc)
+
+
+# ── Eigene Git-Server (#1194): Zertifizierungsstelle der Firma, Server im Firmennetz ──
+
+class GitServerEinstellung(BaseModel):
+    # PEM, eine oder mehrere Stellen; leer entfernt sie. Geprüft in projekt_git.ca_pruefen.
+    ca_zertifikate: str | None = Field(default=None, max_length=70_000)
+    # Servernamen, durch Komma oder Zeilen getrennt; leer entfernt die Freigabe.
+    interne_server: str | None = Field(default=None, max_length=6_000)
+
+
+def _git_server_stand() -> dict:
+    from cryptography import x509
+
+    pem = str(getattr(settings, "git_ca_zertifikate", "") or "")
+    stellen = []
+    if pem:
+        try:
+            for z in x509.load_pem_x509_certificates(pem.encode()):
+                stellen.append({"name": z.subject.rfc4514_string()[:200],
+                                "gueltig_bis": z.not_valid_after_utc.date().isoformat()})
+        except ValueError:
+            stellen = []
+    server = str(getattr(settings, "git_interne_server", "") or "")
+    return {"ca_zertifikate": pem, "stellen": stellen,
+            "interne_server": [s for s in server.split(",") if s]}
+
+
+@router.get("/git-server")
+async def get_git_server(user=Depends(require_admin)):
+    """Admin: Zertifizierungsstelle der Firma und freigegebene interne Git-Server."""
+    return _git_server_stand()
+
+
+@router.put("/git-server")
+async def set_git_server(body: GitServerEinstellung, user=Depends(require_admin),
+                         db: AsyncSession = Depends(get_db)):
+    """Admin: beides setzen — sofort wirksam für die Plattform; Proxy und Agenten ziehen nach.
+
+    Eine Zertifizierungsstelle ist ein Vertrauensanker für ALLE eigenen Git-Server der
+    Anlage (auch im Egress-Proxy) — darum nur durch Administratoren, mit Prüfprotokoll.
+    """
+    from app.core import projekt_git
+
+    try:
+        neu = {}
+        if body.ca_zertifikate is not None:
+            neu["git_ca_zertifikate"] = projekt_git.ca_pruefen(body.ca_zertifikate)
+        if body.interne_server is not None:
+            neu["git_interne_server"] = projekt_git.interne_server_pruefen(body.interne_server)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    svc = SettingsService(db)
+    geaendert = []
+    for schluessel, wert in neu.items():
+        if wert != str(getattr(settings, schluessel, "") or ""):
+            await svc.set(schluessel, wert)
+            geaendert.append(schluessel)
+    await _einstellungen_protokollieren(db, user, geaendert)
+    await db.commit()
+    for schluessel in geaendert:
+        setattr(settings, schluessel, neu[schluessel])
+    return _git_server_stand()

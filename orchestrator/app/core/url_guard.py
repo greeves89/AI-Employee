@@ -87,6 +87,75 @@ def _is_internal(host: str) -> bool:
     return False
 
 
+def firmennetz(host: str, aufloesen=socket.getaddrinfo) -> bool:
+    """Zeigt ``host`` ausschließlich ins Firmennetz (private Netze, CGNAT)?
+
+    Für Server, die ein Administrator ausdrücklich freigegeben hat (z. B. ein
+    selbst betriebenes GitLab im eigenen Netz). Auch dann nie: die Anlage selbst
+    (Loopback), Link-Local samt Metadatendiensten, unbestimmte, Multicast- oder
+    reservierte Adressen. Nicht auflösbar: nein.
+    """
+    if not host or host.lower() in _METADATA_HOSTS:
+        return False
+    try:
+        infos = aufloesen(host, None)
+    except OSError:
+        return False
+    if not infos:
+        return False
+    for info in infos:
+        try:
+            addr = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            return False
+        if not adresse_im_firmennetz(addr):
+            return False
+    return True
+
+
+def adresse_im_firmennetz(addr) -> bool:
+    """Private Adresse oder CGNAT — nie Loopback, Link-Local (Metadaten), Multicast, reserviert."""
+    if (addr.is_loopback or addr.is_link_local or addr.is_multicast or addr.is_unspecified
+            or addr.is_reserved or str(addr) in _METADATA_HOSTS):
+        return False
+    return addr.is_private or addr in _CGNAT
+
+
+def adresse_oeffentlich(addr) -> bool:
+    """Öffentliche Adresse — dieselbe Regel wie ``_is_internal``, nur für eine schon aufgelöste."""
+    return not (addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved
+                or addr.is_multicast or addr.is_unspecified or addr in _CGNAT
+                or str(addr) in _METADATA_HOSTS)
+
+
+def feste_adresse(host: str, port: int, firmennetz_frei: bool = False, aufloesen=socket.getaddrinfo) -> str:
+    """``host`` EINMAL auflösen, jede Adresse prüfen, eine davon zurückgeben — oder ValueError.
+
+    Gegen DNS-Rebinding: Wer danach mit genau dieser Adresse verbindet, erreicht das
+    geprüfte Ziel, nicht das einer zweiten Auflösung. ``firmennetz_frei``: der
+    Administrator hat den Server freigegeben — dann auch private Adressen (nie
+    Loopback, Link-Local oder Metadaten)."""
+    if not host or host.lower() in _METADATA_HOSTS:
+        raise ValueError("Ziel nicht erlaubt")
+    try:
+        infos = aufloesen(host, port, type=socket.SOCK_STREAM)
+    except OSError as e:
+        raise ValueError("Ziel nicht auflösbar") from e
+    adressen = []
+    for info in infos:
+        try:
+            addr = ipaddress.ip_address(info[4][0])
+        except ValueError as e:
+            raise ValueError("Ziel nicht erlaubt") from e
+        if not (adresse_oeffentlich(addr) or (firmennetz_frei and adresse_im_firmennetz(addr))):
+            raise ValueError("Ziel nicht erlaubt")
+        adressen.append(str(addr))
+    if not adressen:
+        raise ValueError("Ziel nicht auflösbar")
+    adressen.sort(key=lambda a: ":" in a)   # IPv4 zuerst
+    return adressen[0]
+
+
 def check_outbound_url(url: str) -> tuple[bool, str]:
     """``(erlaubt, Begruendung)`` für eine ausgehende Adresse."""
     if not url or len(url) > 2000:

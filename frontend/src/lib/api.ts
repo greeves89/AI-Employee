@@ -2203,6 +2203,24 @@ export async function setEgressStufe(
   });
 }
 
+/** Eigene Git-Server (Admin → Betrieb): Zertifizierungsstelle der Firma, Server im Firmennetz. */
+export interface GitServerStand {
+  ca_zertifikate: string;
+  stellen: { name: string; gueltig_bis: string }[];
+  interne_server: string[];
+}
+
+export async function getGitServer(): Promise<GitServerStand> {
+  return fetchJSON(`${getBase()}/settings/git-server`);
+}
+
+export async function setGitServer(body: { ca_zertifikate?: string; interne_server?: string }): Promise<GitServerStand> {
+  return fetchJSON(`${getBase()}/settings/git-server`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
 /** Agenten im Leerlauf selbst aktualisieren (Admin → Betrieb). */
 export interface AgentenUpdatesStand {
   modus: "leerlauf" | "aus";
@@ -4996,8 +5014,10 @@ export interface Team {
   geteilt_mit?: string[];
   /** Ob der angemeldete Nutzer das Projekt angelegt hat (nur er verwaltet es). */
   darf_verwalten?: boolean;
-  /** Git-Repo: GitHub als owner/name, Forgejo/Gitea als https://server/owner/name. Issues und PRs kommen aufs Board. */
+  /** Git-Repo: GitHub als owner/name, Forgejo/Gitea und GitLab als https://server/owner/name. Issues und PRs kommen aufs Board. */
   repo?: string | null;
+  /** Anbieter des Repos (vom Server bestimmt): github, forgejo (auch Gitea) oder gitlab. */
+  repo_anbieter?: RepoAnbieter | null;
   repo_abgleich_at?: string | null;
   repo_fehler?: string | null;
   /** Schlüssel aus der Schlüsselverwaltung für private Repos. */
@@ -5312,6 +5332,9 @@ export async function listTeams(): Promise<{ teams: Team[] }> {
   return fetchJSON(`${getBase()}/teams/`);
 }
 
+/** Wo das Repo eines Projekts liegt. */
+export type RepoAnbieter = "github" | "forgejo" | "gitlab";
+
 export async function createTeam(body: {
   name: string;
   description?: string;
@@ -5321,6 +5344,7 @@ export async function createTeam(body: {
   takt_minuten?: number | null;
   geteilt_mit?: string[];
   repo?: string;
+  repo_anbieter?: RepoAnbieter;
   repo_secret_id?: number;
   angebundene_brains?: string[];
 }): Promise<Team> {
@@ -5345,6 +5369,7 @@ export async function updateTeam(
     takt_minuten?: number | null;
     geteilt_mit?: string[];
     repo?: string;
+    repo_anbieter?: RepoAnbieter;
     repo_secret_id?: number;
     angebundene_brains?: string[];
     uebernahme_stunden?: number;

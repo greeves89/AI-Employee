@@ -267,7 +267,21 @@ export const WOCHENTAGE: { key: string; label: string }[] = [
 ];
 
 
-/** GitHub-Repo (owner/name oder github.com-Adresse)? Sonst Forgejo/Gitea mit eigener Adresse. */
+/** Anbieter eines Projekt-Repos — Auswahl im Projekt-Fenster. */
+export const REPO_ANBIETER: { key: "github" | "forgejo" | "gitlab"; label: string; beispiel: string }[] = [
+  { key: "github", label: "GitHub", beispiel: "owner/name, z. B. beispiel-org/beispiel-repo" },
+  { key: "gitlab", label: "GitLab", beispiel: "https://gitlab.example.com/gruppe/repo" },
+  { key: "forgejo", label: "Forgejo/Gitea", beispiel: "https://git.example.com/team/repo" },
+];
+
+/** Anbieter aus der Repo-Angabe, wenn der Server noch keinen genannt hat. */
+export function anbieterAusRepo(repo: string): "github" | "forgejo" | "gitlab" {
+  const r = repo.trim().toLowerCase();
+  if (/^https:\/\/(www\.)?gitlab\.com\//.test(r)) return "gitlab";
+  return istGithubRepo(r) ? "github" : "forgejo";
+}
+
+/** GitHub-Repo (owner/name oder github.com-Adresse)? Sonst Forgejo/Gitea oder GitLab mit eigener Adresse. */
 export function istGithubRepo(repo: string): boolean {
   const r = repo.trim().toLowerCase();
   return !r.startsWith("https://") || r.startsWith("https://github.com/");
