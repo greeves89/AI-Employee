@@ -1287,8 +1287,12 @@ async def ws_teams_stimme(websocket: WebSocket, agent_id: str, meeting_id: str =
         ende = seite.ende if seite else None
         if ende is not None and ende.tzinfo is None:
             ende = ende.replace(tzinfo=timezone.utc)
+        beginn = seite.beginn if seite else None
+        if beginn is not None and beginn.tzinfo is None:
+            beginn = beginn.replace(tzinfo=timezone.utc)
         if (agent is None or seite is None or seite.agent_id != agent_id or seite.quelle != QUELLE_TEAMS
-                or ende is None or jetzt > ende + timedelta(minutes=30)):
+                or ende is None or beginn is None or jetzt > ende + timedelta(minutes=30)
+                or jetzt < beginn - timedelta(minutes=10)):
             await websocket.close(code=4004, reason="Kein laufender Termin")
             return
         interaction_model = ((agent.config or {}).get("interaction_model") or "").strip() or None
