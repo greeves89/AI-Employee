@@ -37,7 +37,10 @@ CONFIG_KEY = "meetings"
 
 ROLE_SCRIBE = "mitschreiber"
 ROLE_PARTICIPANT = "beisitzer"
-ROLES = (ROLE_SCRIBE, ROLE_PARTICIPANT)
+#: Tritt dem Termin wirklich bei (Browser im eigenen Behälter, docs/plaene/teams-teilnehmer.md):
+#: hört zu und schreibt mit; dazu alles, was der Beisitzer im Chat tut.
+ROLE_ATTENDEE = "teilnehmer"
+ROLES = (ROLE_SCRIBE, ROLE_PARTICIPANT, ROLE_ATTENDEE)
 
 # So lange vor Beginn haengt sich der Agent an den Termin-Chat. Frueher waere
 # unnoetig (im leeren Chat passiert nichts), spaeter verpasst er den Anfang.
@@ -309,8 +312,10 @@ class TeamsMeetingService:
                     active_chats.append(chat_id)
                     joined += 1
                     await self._hinweis(agent, seite, chat_id)
+                if mit and role_of(agent) == ROLE_ATTENDEE:
+                    await self._teilnehmen(agent, seite, event)
             elif is_finished(event, now):
-                if role_of(agent) == ROLE_SCRIBE and mit:
+                if role_of(agent) in (ROLE_SCRIBE, ROLE_ATTENDEE) and mit:
                     if await self._ingest_transcript(agent, token, event, seite):
                         scribed += 1
                     await self._protokoll(agent, seite)
@@ -413,6 +418,25 @@ class TeamsMeetingService:
                 frisch.hinweis = ergebnis
                 await db.commit()
         seite.hinweis = ergebnis
+
+    async def _teilnehmen(self, agent: Agent, seite: Meeting, event: dict) -> None:
+        """Einmal je Termin den Teilnehmer im Behälter des Agenten starten
+        (agent/app/teams_teilnehmer.py). Er tritt über den Link der Einladung bei,
+        hört zu und liefert den Ton an ``/meetings/{id}/teilnehmer-ton``."""
+        join_url = ((event.get("onlineMeeting") or {}).get("joinUrl") or "").strip()
+        if not join_url.startswith("https://teams.microsoft.com/") or self.redis is None:
+            return
+        client = getattr(self.redis, "client", self.redis)
+        _start, ende = _window(event)
+        if not await client.set(f"teams-teilnahme:{seite.id}", "1", nx=True, ex=12 * 3600):
+            return   # läuft schon bzw. wurde schon gestartet
+        from app.core.chat_auftrag import nachricht_einreihen
+
+        await nachricht_einreihen(client, agent.id, {
+            "type": "teilnehmen", "meeting_id": seite.id, "join_url": join_url,
+            "name": f"{agent.name} (KI)", "ende": (ende or datetime.now(timezone.utc)).isoformat(),
+        }, vorne=True)
+        logger.info("[Termine] %s tritt %s bei", agent.id, seite.id)
 
     async def _protokoll(self, agent: Agent, seite: Meeting) -> None:
         """Protokoll mit Aufgaben vom Agenten — über denselben Weg wie die Besprechungsräume

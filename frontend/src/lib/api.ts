@@ -705,7 +705,7 @@ export interface TeamsKanal { team_id: string; channel_id: string; name?: string
 /** Teams-Termine eines Agenten (core/kanaele, ``channels.meetings``). */
 export interface BesprechungsEinstellung {
   aktiv: boolean;
-  rolle: "mitschreiber" | "beisitzer";
+  rolle: "mitschreiber" | "beisitzer" | "teilnehmer";
   automatisch_annehmen: boolean;
   annehmen_von: string[];
   mit_gaesten: boolean;

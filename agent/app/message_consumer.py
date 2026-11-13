@@ -458,6 +458,12 @@ class MessageConsumer:
                 if msg.get("type") == "meeting":
                     await self._besprechungs_zug(msg, log_publisher)
                     continue
+                if msg.get("type") == "teilnehmen":
+                    # Teams-Termin beitreten und zuhören (app/teams_teilnehmer) — läuft
+                    # nebenher, der Verbraucher nimmt weiter Nachrichten an.
+                    from app import teams_teilnehmer
+                    teams_teilnehmer.starten(msg)
+                    continue
                 # ────────────────────────────────────────────────────────────
 
                 from_agent_id = msg.get("from_agent_id", "unknown")

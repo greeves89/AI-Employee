@@ -29,7 +29,7 @@ def _termin(start_min=-10, dauer_min=60, gaeste=("kollegin@firma.de",), eid="evt
     return {
         "id": eid, "subject": "Wochenabstimmung", "isOnlineMeeting": True,
         "start": {"dateTime": start.isoformat()}, "end": {"dateTime": ende.isoformat()},
-        "onlineMeeting": {"joinUrl": "https://teams.example.com/l/x"},
+        "onlineMeeting": {"joinUrl": "https://teams.microsoft.com/l/meetup-join/19%3atest/0"},
         "organizer": {"emailAddress": {"address": "chef@firma.de"}},
         "attendees": [{"emailAddress": {"address": a}} for a in gaeste],
         "responseStatus": {"response": "accepted"},
@@ -317,6 +317,86 @@ class DienstNachReviewTests(DienstTests):
         with patch.object(tm.TeamsMeetingService, "_accept", AsyncMock(return_value=True)) as zusage:
             await self.dienst._handle_agent(_agent(auto_accept=True))
         zusage.assert_not_called()
+
+
+class TeilnehmerTests(DienstTests):
+    """Rolle „teilnehmer“: tritt dem Termin bei (docs/plaene/teams-teilnehmer.md)."""
+
+    async def test_startet_einmal_je_termin(self):
+        self.termine = [_termin()]
+        for _ in range(3):
+            await self.dienst._handle_agent(_agent(role="teilnehmer"))
+        starts = [p for p in self.eingereiht if p.get("type") == "teilnehmen"]
+        self.assertEqual(len(starts), 1)
+        s = (await self._seiten())[0]
+        self.assertEqual(starts[0]["meeting_id"], s.id)
+        self.assertEqual(starts[0]["name"], "Assistenz (KI)")
+        self.assertEqual(len(self.gesendet), 1, "Hinweis im Chat wie beim Beisitzer")
+
+    async def test_nicht_bei_gaesten_und_nur_mit_teams_link(self):
+        self.termine = [_termin(gaeste=("kunde@extern.example",))]
+        await self.dienst._handle_agent(_agent(role="teilnehmer"))
+        e = _termin(eid="evt9")
+        e["onlineMeeting"] = {"joinUrl": "https://evil.example/l/meetup-join/x"}
+        self.termine = [e]
+        await self.dienst._handle_agent(_agent(role="teilnehmer"))
+        self.assertEqual([p for p in self.eingereiht if p.get("type") == "teilnehmen"], [])
+
+    async def test_nach_dem_termin_protokoll_wie_mitschreiber(self):
+        self.termine = [_termin(start_min=-120)]
+        await self.dienst._handle_agent(_agent(role="teilnehmer"))
+        self.assertEqual([p["type"] for p in self.eingereiht], ["meeting"])
+
+
+class TeilnehmerTonTests(unittest.IsolatedAsyncioTestCase):
+    """``POST /meetings/{id}/teilnehmer-ton`` — nur der eigene Agent, nur im Zeitfenster."""
+
+    async def asyncSetUp(self):
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Meeting.metadata.create_all, tables=[Meeting.__table__])
+        self.db = async_sessionmaker(self.engine, expire_on_commit=False)()
+        jetzt = datetime.now(timezone.utc)
+        self.db.add_all([
+            Meeting(id="m1", user_id="u1", title="Laufend", transcript="", participants=[], quelle="teams",
+                    agent_id="a1", teams_event_id="e1", beginn=jetzt - timedelta(minutes=10), ende=jetzt + timedelta(minutes=50)),
+            Meeting(id="m2", user_id="u1", title="Vorbei", transcript="", participants=[], quelle="teams",
+                    agent_id="a1", teams_event_id="e2", beginn=jetzt - timedelta(hours=5), ende=jetzt - timedelta(hours=4)),
+            Meeting(id="m3", user_id="u1", title="Mitschnitt", transcript="", participants=[], quelle="aufnahme"),
+        ])
+        await self.db.commit()
+
+    async def asyncTearDown(self):
+        await self.db.close()
+        await self.engine.dispose()
+
+    async def _ton(self, meeting_id, agent_id="a1", zugang=True, body=b"RIFFwav"):
+        from app.api import meetings as api
+
+        anfrage = SimpleNamespace(headers={"X-Agent-Token": "t"}, body=AsyncMock(return_value=body))
+        with patch("app.dependencies.agent_zugang_pruefen", return_value=zugang), \
+                patch.object(api, "transkribieren", AsyncMock(return_value="Wir liefern Freitag.")):
+            return await api.teilnehmer_ton(meeting_id, anfrage, agent_id, db=self.db)
+
+    async def _status(self, coro):
+        with self.assertRaises(HTTPException) as e:
+            await coro
+        return e.exception.status_code
+
+    async def test_haengt_text_an_das_transkript(self):
+        r = await self._ton("m1")
+        self.assertEqual(r["text"], "Wir liefern Freitag.")
+        await self._ton("m1")
+        s = await self.db.get(Meeting, "m1")
+        self.assertEqual(s.transcript.count("Wir liefern Freitag."), 2)
+
+    async def test_schutz(self):
+        self.assertEqual(await self._status(self._ton("m1", zugang=False)), 403)
+        self.assertEqual(await self._status(self._ton("m1", agent_id="a2")), 404, "fremder Agent")
+        self.assertEqual(await self._status(self._ton("m3")), 404, "kein Teams-Termin")
+        self.assertEqual(await self._status(self._ton("m2")), 409, "Termin vorbei")
+        from app.api import meetings as api
+        self.assertEqual(await self._status(self._ton("m1", body=b"x" * (api.TEILNEHMER_MAX_BYTES + 1))), 413)
 
 
 class EinstellungTests(unittest.TestCase):

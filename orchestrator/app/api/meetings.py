@@ -21,16 +21,17 @@ already-transcribed part (it is appended live to the transcript).
 """
 import logging
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import httpx
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db.session import get_db
 from app.dependencies import require_auth
-from app.models.meeting import Meeting
+from app.models.meeting import QUELLE_TEAMS, Meeting
 from app.schemas.meeting import MeetingCreate, MeetingListResponse, MeetingResponse, MeetingUpdate
 from app.services.settings_service import SettingsService
 
@@ -72,26 +73,16 @@ async def _transcribe_openai(raw: bytes, filename: str, content_type: str, api_k
     return (resp.json().get("text") or "").strip()
 
 
-@router.post("/transcribe")
-async def transcribe_chunk(
-    file: UploadFile = File(...),
-    user=Depends(require_auth),
-    db: AsyncSession = Depends(get_db),
-):
-    """Transcribe one recorded audio segment.
+async def transkribieren(raw: bytes, filename: str, content_type: str, db: AsyncSession) -> str:
+    """EIN Weg zur Transkription — Mitschnitt im Browser und Teams-Teilnehmer.
 
-    Tries the local STT service first; if it is not configured/reachable, falls
-    back to OpenAI Whisper. Returns ``{"text": "..."}``; empty audio yields an
-    empty string."""
-    raw = await file.read()
+    Erst der lokale STT-Dienst, sonst OpenAI Whisper (Schlüssel aus der Einstellung
+    ``voice_openai_api_key``). Leerer Ton → leerer Text."""
     if not raw:
-        return {"text": ""}
-    filename = file.filename or "chunk.webm"
-    content_type = file.content_type or "audio/webm"
-
+        return ""
     # 1) Local STT service (any host that runs faster-whisper).
     try:
-        return {"text": await _transcribe_local(raw, filename, content_type)}
+        return await _transcribe_local(raw, filename, content_type)
     except httpx.HTTPError as e:
         logger.info("Local STT unavailable, trying OpenAI fallback: %s", e)
 
@@ -104,7 +95,7 @@ async def transcribe_chunk(
                    "OpenAI-Key für den Fallback konfiguriert (Admin-Konsole → Sprache (Voice)).",
         )
     try:
-        return {"text": await _transcribe_openai(raw, filename, content_type, api_key)}
+        return await _transcribe_openai(raw, filename, content_type, api_key)
     except HTTPException:
         raise
     except httpx.HTTPStatusError as e:
@@ -113,6 +104,62 @@ async def transcribe_chunk(
     except Exception as e:  # noqa: BLE001 — surface a clean error, log the detail
         logger.warning("Meeting transcribe error (fallback): %s", e)
         raise HTTPException(status_code=500, detail="Transkription fehlgeschlagen.")
+
+
+@router.post("/transcribe")
+async def transcribe_chunk(
+    file: UploadFile = File(...),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Transcribe one recorded audio segment (browser recorder)."""
+    raw = await file.read()
+    return {"text": await transkribieren(raw, file.filename or "chunk.webm", file.content_type or "audio/webm", db)}
+
+
+#: Größtes Tonstück vom Teams-Teilnehmer (30 s WAV 16 kHz mono ≈ 1 MB).
+TEILNEHMER_MAX_BYTES = 4 * 1024 * 1024
+#: So lange nach dem Termin nimmt die Seite noch Ton an (Nachlauf, Verzögerung).
+TEILNEHMER_NACHLAUF = timedelta(minutes=30)
+TRANSKRIPT_MAX = 200_000
+
+
+@router.post("/{meeting_id}/teilnehmer-ton")
+async def teilnehmer_ton(
+    meeting_id: str,
+    request: Request,
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Der Teams-Teilnehmer eines Agenten liefert ein Tonstück (WAV) aus einem laufenden
+    Termin. Es wird transkribiert und an das Transkript der Besprechungsseite gehängt.
+
+    Nur der Agent, dem die Seite gehört, und nur im Zeitfenster des Termins — ein Token
+    allein reicht nicht, um fremde Besprechungen zu beschreiben."""
+    from app.dependencies import agent_zugang_pruefen
+
+    if not agent_zugang_pruefen(request, agent_id, request.headers.get("X-Agent-Token", "")):
+        raise HTTPException(status_code=403, detail="Kein Zugang")
+    seite = await db.get(Meeting, meeting_id)
+    if seite is None or seite.agent_id != agent_id or seite.quelle != QUELLE_TEAMS:
+        raise HTTPException(status_code=404, detail="Besprechung nicht gefunden")
+    jetzt = datetime.now(timezone.utc)
+    beginn, ende = seite.beginn, seite.ende
+    if beginn and beginn.tzinfo is None:
+        beginn = beginn.replace(tzinfo=timezone.utc)
+    if ende and ende.tzinfo is None:
+        ende = ende.replace(tzinfo=timezone.utc)
+    if not ende or jetzt > ende + TEILNEHMER_NACHLAUF or (beginn and jetzt < beginn - timedelta(minutes=10)):
+        raise HTTPException(status_code=409, detail="Termin läuft nicht")
+    raw = await request.body()
+    if len(raw) > TEILNEHMER_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Tonstück zu groß")
+    text = (await transkribieren(raw, "teilnehmer.wav", "audio/wav", db)).strip()
+    if text:
+        zeile = f"[{jetzt.astimezone().strftime('%H:%M')}] {text}"
+        seite.transcript = (((seite.transcript or "") + "\n" + zeile).strip())[-TRANSKRIPT_MAX:]
+        await db.commit()
+    return {"text": text}
 
 
 # ── Saved meetings ────────────────────────────────────────────────────────────
