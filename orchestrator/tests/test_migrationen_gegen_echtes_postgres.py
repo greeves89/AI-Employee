@@ -91,7 +91,7 @@ _SPALTEN_NACH_DER_MARKE = (
     ("meetings", "beginn"), ("meetings", "ende"), ("meetings", "status"),
     ("meetings", "gaeste_extern"), ("meetings", "hinweis"), ("meetings", "protokoll"),
     ("schedules", "chat_session_id"),
-    # MCP per OAuth über den Firmen-IdP (m1n2o3p4q5r6, #1195)
+    # MCP per OAuth über den Firmen-IdP (o3p4q5r6s7t8, #1195)
     ("users", "idp_object_id"),
     ("agent_secrets", "owner_id"),
     ("agent_secrets", "erlaubte_hosts"),

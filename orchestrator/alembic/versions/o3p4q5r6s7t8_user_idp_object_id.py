@@ -1,13 +1,13 @@
 """Objekt-ID der Person im Firmen-IdP am Konto (MCP per OAuth, #1195).
 
-Revision ID: m1n2o3p4q5r6
+Revision ID: o3p4q5r6s7t8
 Revises: l0m1n2o3p4q5
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "m1n2o3p4q5r6"
+revision = "o3p4q5r6s7t8"
 down_revision = "l0m1n2o3p4q5"
 branch_labels = None
 depends_on = None
