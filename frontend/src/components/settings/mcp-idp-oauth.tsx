@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, Copy, Loader2, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Copy, Loader2, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type { McpIdpOAuthConfig } from "@/lib/types";
@@ -25,11 +25,16 @@ const FIELDS = [
   {
     key: "audience",
     label: "Empfänger (Audience)",
-    hint: "Kennung dieser Anwendung im Anbieter, steht im Token als aud. Bei Entra: die Anwendungs-ID (Client-ID) der App-Registrierung, mehrere mit Komma.",
+    hint: "Kennung der eigenen API-Registrierung, steht im Token als aud. Bei Entra: deren Anwendungs-ID, nicht die Client-ID des SSO-Logins. Mehrere mit Komma.",
+  },
+  {
+    key: "allowed_clients",
+    label: "Erlaubte Anwendungen",
+    hint: "Client-IDs der MCP-Clients (im Token azp bzw. appid), mehrere mit Komma. Diese Liste oder die Berechtigung ist Pflicht.",
   },
   {
     key: "required_scope",
-    label: "Erforderliche Berechtigung (optional)",
+    label: "Erforderliche Berechtigung",
     hint: "Z. B. api://<Anwendungs-ID>/mcp.access. Fehlt sie im Token, wird abgewiesen.",
   },
   {
@@ -44,7 +49,7 @@ type FieldKey = (typeof FIELDS)[number]["key"];
 export function McpIdpOAuthConfigPanel() {
   const [config, setConfig] = useState<McpIdpOAuthConfig | null>(null);
   const [values, setValues] = useState<Record<FieldKey, string>>({
-    issuer: "", audience: "", required_scope: "", jwks_uri: "",
+    issuer: "", audience: "", allowed_clients: "", required_scope: "", jwks_uri: "",
   });
   const [enabled, setEnabled] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -53,7 +58,10 @@ export function McpIdpOAuthConfigPanel() {
   const uebernehmen = (c: McpIdpOAuthConfig) => {
     setConfig(c);
     setEnabled(c.enabled);
-    setValues({ issuer: c.issuer, audience: c.audience, required_scope: c.required_scope, jwks_uri: c.jwks_uri });
+    setValues({
+      issuer: c.issuer, audience: c.audience, allowed_clients: c.allowed_clients,
+      required_scope: c.required_scope, jwks_uri: c.jwks_uri,
+    });
   };
 
   useEffect(() => {
@@ -126,6 +134,13 @@ export function McpIdpOAuthConfigPanel() {
           ))}
         </div>
 
+        {config.issuer && values.issuer.trim() !== config.issuer && (
+          <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            Der Aussteller ändert sich. Danach gelten nur noch Tokens dieses Anbieters; alle bisher verbundenen MCP-Clients müssen sich neu anmelden. Nur ändern, wenn du dem neuen Aussteller vertraust.
+          </p>
+        )}
+
         {config.active && (
           <div className="space-y-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
             <p className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
@@ -149,7 +164,7 @@ export function McpIdpOAuthConfigPanel() {
         )}
         {enabled && !config.active && (
           <p className="text-[11px] text-amber-700 dark:text-amber-400/80">
-            Eingeschaltet, aber noch nicht wirksam: Aussteller und Empfänger fehlen.
+            Eingeschaltet, aber noch nicht wirksam: Aussteller, Empfänger und erlaubte Anwendungen oder Berechtigung fehlen.
           </p>
         )}
 

@@ -144,6 +144,7 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "mcp_idp_audience",
     "mcp_idp_jwks_uri",
     "mcp_idp_required_scope",
+    "mcp_idp_allowed_clients",
     # Platform-wide read-only enforcement for M365/Graph AND on-prem Exchange
     "msgraph_read_only",
     # Improvement engine thresholds

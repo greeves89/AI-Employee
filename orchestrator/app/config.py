@@ -409,6 +409,9 @@ class Settings(BaseSettings):
     mcp_idp_audience: str = ""  # Kennung dieser Ressource im IdP, mehrere mit Komma
     mcp_idp_jwks_uri: str = ""
     mcp_idp_required_scope: str = ""
+    # Erlaubte aufrufende Anwendungen (Client-IDs, ``azp``/``appid``), mehrere mit
+    # Komma. Einschalten nur mit dieser Liste ODER mit Pflicht-Berechtigung.
+    mcp_idp_allowed_clients: str = ""
 
     # GitHub Webhook
     github_webhook_secret: str = ""  # Set to verify GitHub webhook signatures

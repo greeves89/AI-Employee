@@ -842,6 +842,8 @@ export interface McpIdpOAuthConfig {
   audience: string;
   jwks_uri: string;
   required_scope: string;
+  /** Erlaubte aufrufende Anwendungen (Client-IDs), mit Komma getrennt. */
+  allowed_clients: string;
   /** Aus der Microsoft-Verzeichnis-ID abgeleiteter Aussteller, leer wenn keiner ableitbar. */
   derived_issuer: string;
   /** Eingeschaltet UND vollständig eingerichtet. */

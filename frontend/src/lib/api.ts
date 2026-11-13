@@ -540,6 +540,7 @@ export async function setMcpIdpOAuth(body: {
   issuer: string;
   audience: string;
   required_scope: string;
+  allowed_clients: string;
   jwks_uri: string;
 }): Promise<McpIdpOAuthConfig> {
   return fetchJSON(`${getBase()}/settings/mcp-idp-oauth`, {
