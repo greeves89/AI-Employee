@@ -139,6 +139,13 @@ class KioskZugang(unittest.IsolatedAsyncioTestCase):
         offen = {r.path for r in kiosk.anmelde_router.routes}
         self.assertEqual(offen, {"/kiosk/anmelden"})
 
+    def test_link_traegt_den_zugang_im_fragment(self):
+        from app.api import kiosk
+
+        quelle = inspect.getsource(kiosk.kiosk_zugang_erzeugen)
+        self.assertIn('f"/kiosk#zugang={zugang}"', quelle)
+        self.assertNotIn("?zugang=", quelle)
+
     async def test_verwaltung_nur_admin(self):
         from app.api import kiosk
         from app.dependencies import require_admin

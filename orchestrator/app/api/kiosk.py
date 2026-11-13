@@ -88,7 +88,9 @@ async def kiosk_zugang_erzeugen(user=Depends(require_admin), db: AsyncSession = 
     await protokolliere(db, AuditEventType.SETTINGS_CHANGED, user_id=getattr(user, "id", None),
                         command="Kiosk-Zugang neu erzeugt")
     await db.commit()
-    return {"link": f"/kiosk?zugang={zugang}"}
+    # Im Fragment (#), nicht in der Abfrage (?): das Fragment schickt der Browser nie
+    # an den Server — der Zugang landet so in keinem Zugriffsprotokoll.
+    return {"link": f"/kiosk#zugang={zugang}"}
 
 
 @verwaltung_router.delete("")

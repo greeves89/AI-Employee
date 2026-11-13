@@ -7,7 +7,8 @@ direkt erreichen, war er offen (Sicherheitsreview 1.461).
 
 Jetzt braucht jedes Kiosk-Gerät einen Zugang:
 * Ein Admin erzeugt ihn (``erzeugen``) und bekommt einmal einen Link
-  ``/kiosk?zugang=<…>``. Gespeichert wird nur der SHA-256-Wert.
+  ``/kiosk#zugang=<…>`` (Fragment: geht nie an den Server, steht in keinem
+  Protokoll). Gespeichert wird nur der SHA-256-Wert.
 * Die Kiosk-Seite tauscht den Link einmal gegen ein Cookie (``COOKIE``, HttpOnly,
   SameSite=Strict, nur für ``/api/v1/kiosk``). Danach schickt der Browser es mit.
 * Ohne gültigen Zugang antwortet jeder Kiosk-Endpunkt 404 — wie ein Pfad, den es

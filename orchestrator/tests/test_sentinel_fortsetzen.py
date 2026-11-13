@@ -293,7 +293,7 @@ class KnopfFortsetzen(unittest.IsolatedAsyncioTestCase):
         zeile = SimpleNamespace(meta={"source": "sentinel", "gestoppt": True, "fortsetzen": "[Plattform-Sentinel] weiter"})
         antwort, manager, einreihen = await self._rufen(zeile)
         self.assertEqual(antwort, {"status": "fortgesetzt"})
-        manager.start_agent.assert_awaited_once_with("a1")
+        manager.start_agent.assert_awaited_once_with("a1", durch_mensch=True)
         nutzlast = einreihen.await_args.args[2]
         self.assertEqual((nutzlast["chat_session_id"], nutzlast["text"]), ("s1", "[Plattform-Sentinel] weiter"))
         self.assertTrue(zeile.meta["fortgesetzt"])

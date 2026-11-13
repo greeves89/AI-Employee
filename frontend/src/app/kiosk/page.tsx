@@ -86,10 +86,11 @@ function KioskContent() {
   const [online, setOnline] = useState(false);
   // Ohne Zugang des Geraets antwortet der Kiosk mit 404 (core/kiosk_zugang).
   const [ohneZugang, setOhneZugang] = useState(false);
-  // Link /kiosk?zugang=… einmal gegen ein Cookie tauschen, dann aus der Adresse nehmen.
+  // Link /kiosk#zugang=… einmal gegen ein Cookie tauschen, dann aus der Adresse nehmen.
+  // Im Fragment, damit der Zugang nie in einem Zugriffsprotokoll steht.
   const [angemeldet, setAngemeldet] = useState(false);
   useEffect(() => {
-    const zugang = new URLSearchParams(window.location.search).get("zugang");
+    const zugang = new URLSearchParams(window.location.hash.slice(1)).get("zugang");
     if (!zugang) { setAngemeldet(true); return; }
     fetch("/api/v1/kiosk/anmelden", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ zugang }),

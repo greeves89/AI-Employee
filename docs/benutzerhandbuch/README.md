@@ -4683,6 +4683,14 @@ Installationsordners in Kleinbuchstaben (z. B. `ai-employee`).
    ohne root und ist dieser Ordner nicht beschreibbar (etwa weil ein früheres `sudo update.sh`
    ihn angelegt hat), sichert sie nach `~/ai-employee-sicherungen` und nennt das in der Ausgabe.
    Dauerhaft beheben: `sudo chown -R <nutzer> /var/backups/ai-employee`.
+
+**Kiosk-Anzeige anmelden** *(seit 1.461.0, nur mit `KIOSK_ENABLED`)*: Der Kiosk antwortet nur
+Geräten mit Zugang.
+1. **Admin-Bereich → Betrieb** öffnen.
+2. In der Karte **Kiosk-Anzeige** auf **Link erzeugen** klicken.
+3. Den Link einmal auf dem Kiosk-Gerät öffnen. Er wird nur einmal angezeigt.
+
+Ein neuer Link macht den alten ungültig. **Zugang entfernen** sperrt den Kiosk.
 2. Täglich einplanen: `sudo ./scripts/install-backup-cron.sh` (Cron, 02:00 Uhr) oder
    `sudo ./scripts/install-backup-cron.sh --systemd` (systemd-Timer).
 3. Kontrolle: **Admin-Bereich → Betrieb → Health**. Oben steht die Karte
