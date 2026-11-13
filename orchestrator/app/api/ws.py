@@ -405,7 +405,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             if _user is None:
                 await websocket.close(code=4001, reason="Unauthorized")
                 return
-            await require_agent_access(agent_id, _user, db)
+            await require_agent_access(agent_id, _user, db, nutzen=True)
     except _HTTPException:
         await websocket.close(code=4003, reason="Access denied to this agent")
         return
@@ -1237,7 +1237,7 @@ async def ws_agent_voice(
             if _user is None:
                 await websocket.close(code=4001, reason="Unauthorized")
                 return
-            await require_agent_access(agent_id, _user, db)
+            await require_agent_access(agent_id, _user, db, nutzen=True)
             # Ein bestehendes Gespraech per Sprache fortsetzen: nur ein eigenes
             # (core/chat_besitz) — sonst laese die Sitzung fremden Verlauf vor.
             if chat_session:
@@ -1531,6 +1531,18 @@ async def _notif_visible_agent_ids(user_id: str | None) -> set[str]:
     return set(owned) | set(shared)
 
 
+async def _notif_nur_nutzbar(user_id: str | None) -> set[str]:
+    """Agenten, die dieser Mensch nur NUTZEN darf (core/ownership)."""
+    if not user_id:
+        return set()
+    from types import SimpleNamespace
+
+    from app.core.ownership import nur_nutzbare_agent_ids
+
+    async with async_session_factory() as db:
+        return await nur_nutzbare_agent_ids(SimpleNamespace(id=user_id), db)
+
+
 @router.websocket("/notifications")
 async def ws_notifications(websocket: WebSocket, token: str | None = Query(None), ticket: str | None = Query(None)):
     """WebSocket for live notification push to the frontend. Requires ?ticket=<ticket> or ?token=<jwt> (legacy)."""
@@ -1544,6 +1556,7 @@ async def ws_notifications(websocket: WebSocket, token: str | None = Query(None)
     await websocket.accept()
     user_id = getattr(websocket.state, "user_id", None)
     visible = await _notif_visible_agent_ids(user_id)
+    nur = await _notif_nur_nutzbar(user_id)
     pubsub = await _redis.subscribe("notifications:live")
 
     try:
@@ -1552,6 +1565,7 @@ async def ws_notifications(websocket: WebSocket, token: str | None = Query(None)
             ticks += 1
             if ticks % 60 == 0:  # refresh visibility (~30s) to pick up new agents/access
                 visible = await _notif_visible_agent_ids(user_id)
+                nur = await _notif_nur_nutzbar(user_id)
             if ticks % 50 == 0:  # keepalive (~27s) so Cloudflare/Caddy doesn't drop the idle WS
                 try:
                     await websocket.send_text('{"type":"ping"}')
@@ -1575,6 +1589,9 @@ async def ws_notifications(websocket: WebSocket, token: str | None = Query(None)
                     continue
                 # Antworten in einem fremden Gespraech (core/chat_besitz)
                 if empfaenger and empfaenger != user_id:
+                    continue
+                # Agent nur zum Nutzen freigegeben: nur Meldungen an diesen Menschen
+                if aid in nur and empfaenger != user_id:
                     continue
                 await websocket.send_text(data)
             await asyncio.sleep(0.05)

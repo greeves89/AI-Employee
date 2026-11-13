@@ -253,11 +253,19 @@ async def require_agent_access(
     agent_id: str,
     user,
     db: AsyncSession,
+    *,
+    nutzen: bool = False,
 ) -> None:
     """Verify user has access to a specific agent.
 
     - Admin/Manager: always allowed
     - Member/Viewer: only if they own the agent or have AgentAccess entry
+
+    Eine Freigabe nur zum NUTZEN (``AgentAccess.rolle == "nutzen"``) gilt nur, wo
+    der Aufrufer ``nutzen=True`` sagt: Chat, Sprache, Dateien schicken/abholen.
+    Ueberall sonst (Einstellungen, Gedaechtnis, Loeschen …) ist sie kein Zugang.
+    Standard ist also VERWALTEN — eine neue Schnittstelle ist fuer Nur-Nutzer zu,
+    bis sie sich ausdruecklich als Nutzen ausweist.
     """
     from app.models.agent import Agent
     from app.models.agent_access import AgentAccess
@@ -282,6 +290,12 @@ async def require_agent_access(
         )
     )
     if access:
+        from app.models.agent_access import ROLLE_NUTZEN
+
+        if access.rolle == ROLLE_NUTZEN and not nutzen:
+            raise HTTPException(
+                status_code=403,
+                detail="Dieser Agent ist dir nur zum Nutzen freigegeben.")
         return
 
     raise HTTPException(status_code=403, detail="Access denied to this agent")

@@ -5475,6 +5475,21 @@ export async function projektWissenAufbauen(id: string): Promise<ProjektKarte> {
   return fetchJSON(`${getBase()}/teams/${id}/wissen/aufbauen`, { method: "POST" });
 }
 
+/** Wer einen Agenten nur NUTZEN darf (Chat, Sprache, Dateien) — PUT ersetzt die Liste. */
+export async function getAgentFreigaben(agentId: string): Promise<{ nutzer: { id: string; name: string }[] }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/freigaben`);
+}
+
+export async function setAgentFreigaben(
+  agentId: string,
+  nutzerIds: string[],
+): Promise<{ nutzer: { id: string; name: string }[]; neu: number; entfernt: number }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/freigaben`, {
+    method: "PUT",
+    body: JSON.stringify({ nutzer_ids: nutzerIds }),
+  });
+}
+
 export async function getProjektVerzeichnis(): Promise<{ users: { id: string; name: string; email?: string }[] }> {
   return fetchJSON(`${getBase()}/teams/verzeichnis`);
 }

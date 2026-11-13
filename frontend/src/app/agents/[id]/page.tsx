@@ -22,6 +22,7 @@ import { ActivityTimeline } from "@/components/activity/activity-timeline";
 import { AgentAppearanceInline } from "@/components/agents/agent-appearance-inline";
 import { SelfHealingCard } from "@/components/agents/self-healing-card";
 import { AnonymisiererCard } from "@/components/agents/anonymisierer-card";
+import { FreigebenCard } from "@/components/agents/freigeben-card";
 import { KanaeleCard } from "@/components/agents/kanaele-card";
 import {
   FilePreview, FilePreviewEmpty,
@@ -198,6 +199,9 @@ export default function AgentDetailPage() {
   const [aufgabenFenster, setAufgabenFenster] = useState(false);
   const { simpleMode } = useSimpleMode();
   const isAdminUser = useAuthStore((s) => s.user?.role) === "admin";
+  // Nur zum Nutzen freigegeben: wie die einfache Ansicht — Chat und Sprache, keine
+  // Einstellungen (der Server lehnt sie für diese Person ohnehin ab).
+  const nurNutzen = !!agent?.nur_nutzen;
 
   // Die Mitglieder-Ansicht zeigt nur den Chat (samt Mikrofon fuer die
   // Sprachsitzung) und rechts die Aufgaben — Reiter gibt es dort keine.
@@ -206,10 +210,10 @@ export default function AgentDetailPage() {
       tabGroups
         .map((g) => ({
           ...g,
-          subs: simpleMode ? g.subs.filter((s) => s.key === "chat") : g.subs,
+          subs: simpleMode || nurNutzen ? g.subs.filter((s) => s.key === "chat") : g.subs,
         }))
         .filter((g) => g.subs.length > 0),
-    [simpleMode],
+    [simpleMode, nurNutzen],
   );
 
   const activeGroup =
@@ -2980,6 +2984,9 @@ function AgentSettings({
       </SettingsAccordionSection>
 
       <SettingsAccordionSection title="Zugriff & Rechte" icon={ShieldCheck}>
+      {/* Anderen zum Nutzen freigeben (nur Chat und Sprache, eigene Gespräche) */}
+      <FreigebenCard agentId={agentId} />
+
       {/* Anonymisierer vor dem Modell (opt-in je Agent) */}
       <AnonymisiererCard agentId={agentId} />
 

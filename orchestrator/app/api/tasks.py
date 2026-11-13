@@ -86,9 +86,8 @@ async def _get_user_agent_ids(user, db: AsyncSession) -> list[str] | None:
             (Agent.user_id == user.id) | (Agent.is_platform_agent.is_(True))
         )
     )
-    shared = await db.execute(
-        select(AgentAccess.agent_id).where(AgentAccess.user_id == user.id)
-    )
+    from app.core.ownership import verwaltende_freigaben
+    shared = await db.execute(verwaltende_freigaben(user.id))
     return list({row[0] for row in owned.all()} | {row[0] for row in shared.all()})
 
 
@@ -111,7 +110,8 @@ async def _erreichbare_agenten(user, db: AsyncSession) -> set[str] | None:
             eigene = await db.execute(
                 select(Agent.id).where((Agent.user_id == besitzer) | (Agent.is_platform_agent.is_(True)))
             )
-            geteilt = await db.execute(select(AgentAccess.agent_id).where(AgentAccess.user_id == besitzer))
+            from app.core.ownership import verwaltende_freigaben
+            geteilt = await db.execute(verwaltende_freigaben(besitzer))
             ids |= {r[0] for r in eigene.all()} | {r[0] for r in geteilt.all()}
         # Team-Kollegen zaehlen mit, auch wenn sie einem anderen Nutzer gehoeren:
         # ein gemischtes Team kann nur ein Administrator anlegen, es ist also

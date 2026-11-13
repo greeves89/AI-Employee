@@ -321,15 +321,30 @@ async def _visible_agent_ids(user, db: AsyncSession) -> list[str]:
     return list(sichtbar)
 
 
-def _ist_fuer(notif: Notification, user) -> bool:
+def _ist_fuer(notif: Notification, user, nur: set[str] = frozenset()) -> bool:
     """Wie ``_fuer`` fuer eine einzelne, schon geladene Meldung."""
-    return not notif.empfaenger_id or notif.empfaenger_id == getattr(user, "id", None)
+    uid = getattr(user, "id", None)
+    if notif.agent_id in nur:
+        return notif.empfaenger_id == uid
+    return not notif.empfaenger_id or notif.empfaenger_id == uid
 
 
-def _fuer(user):
+def _fuer(user, nur: set[str] = frozenset()):
     """Meldungen fuer alle, die den Agenten sehen — oder ausdruecklich fuer ``user``
-    (Antworten in einem eigenen Gespraech, core/chat_besitz)."""
-    return Notification.empfaenger_id.is_(None) | (Notification.empfaenger_id == user.id)
+    (Antworten in einem eigenen Gespraech, core/chat_besitz). Von Agenten, die
+    ``user`` nur NUTZEN darf (``nur``), ausschliesslich die an ihn gerichteten:
+    Aufgaben-, Budget- und Systemmeldungen des Agenten gehen den Besitzer an."""
+    allgemein = Notification.empfaenger_id.is_(None) | (Notification.empfaenger_id == user.id)
+    if not nur:
+        return allgemein
+    return ((Notification.agent_id.notin_(nur) & allgemein)
+            | (Notification.agent_id.in_(nur) & (Notification.empfaenger_id == user.id)))
+
+
+async def _nur(user, db: AsyncSession) -> set[str]:
+    from app.core.ownership import nur_nutzbare_agent_ids
+
+    return await nur_nutzbare_agent_ids(user, db)
 
 
 @router.get("/")
@@ -341,7 +356,7 @@ async def list_notifications(
 ):
     """List notifications for the UI notification center (scoped to the user's agents)."""
     visible = await _visible_agent_ids(user, db)
-    query = select(Notification).where(Notification.agent_id.in_(visible), _fuer(user))
+    query = select(Notification).where(Notification.agent_id.in_(visible), _fuer(user, await _nur(user, db)))
     if unread_only:
         query = query.where(Notification.read == False)  # noqa: E712
     query = query.order_by(Notification.created_at.desc()).limit(limit)
@@ -358,7 +373,7 @@ async def unread_count(user=Depends(require_auth), db: AsyncSession = Depends(ge
         select(func.count(Notification.id)).where(
             Notification.read == False,  # noqa: E712
             Notification.agent_id.in_(visible),
-            _fuer(user),
+            _fuer(user, await _nur(user, db)),
         )
     )
     count = result.scalar() or 0
@@ -382,7 +397,7 @@ async def respond_to_approval(
     notif = result.scalar_one_or_none()
     if not notif:
         raise HTTPException(status_code=404, detail="Notification not found")
-    if notif.agent_id not in await _visible_agent_ids(user, db) or not _ist_fuer(notif, user):
+    if notif.agent_id not in await _visible_agent_ids(user, db) or not _ist_fuer(notif, user, await _nur(user, db)):
         raise HTTPException(status_code=404, detail="Notification not found")
     if notif.type != "approval":
         raise HTTPException(status_code=400, detail="Not an approval notification")
@@ -492,7 +507,7 @@ async def mark_read(notification_id: int, user=Depends(require_auth), db: AsyncS
     notif = result.scalar_one_or_none()
     if not notif:
         raise HTTPException(status_code=404, detail="Notification not found")
-    if notif.agent_id not in await _visible_agent_ids(user, db) or not _ist_fuer(notif, user):
+    if notif.agent_id not in await _visible_agent_ids(user, db) or not _ist_fuer(notif, user, await _nur(user, db)):
         raise HTTPException(status_code=404, detail="Notification not found")
     notif.read = True
     await db.commit()
@@ -508,7 +523,7 @@ async def mark_all_read(user=Depends(require_auth), db: AsyncSession = Depends(g
         .where(
             Notification.read == False,  # noqa: E712
             Notification.agent_id.in_(visible),
-            _fuer(user),
+            _fuer(user, await _nur(user, db)),
         )
         .values(read=True)
     )
@@ -525,7 +540,7 @@ async def delete_notification(notification_id: int, user=Depends(require_auth), 
     notif = result.scalar_one_or_none()
     if not notif:
         raise HTTPException(status_code=404, detail="Notification not found")
-    if notif.agent_id not in await _visible_agent_ids(user, db) or not _ist_fuer(notif, user):
+    if notif.agent_id not in await _visible_agent_ids(user, db) or not _ist_fuer(notif, user, await _nur(user, db)):
         raise HTTPException(status_code=404, detail="Notification not found")
     await db.delete(notif)
     await db.commit()

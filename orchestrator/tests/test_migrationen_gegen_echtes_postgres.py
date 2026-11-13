@@ -84,6 +84,8 @@ _TABELLEN_NACH_DER_MARKE = ("app_favorites", "projekt_karten", "projekt_nachrich
 _SPALTEN_NACH_DER_MARKE = (
     # Chats je Nutzer (m1n2o3p4q5r6)
     ("chat_sessions", "user_id"), ("notifications", "empfaenger_id"),
+    # Freigabe nur zum Nutzen (n2o3p4q5r6s7)
+    ("agent_access", "rolle"),
     # Teams-Besprechungen (l0m1n2o3p4q5)
     ("meetings", "quelle"), ("meetings", "agent_id"), ("meetings", "teams_event_id"),
     ("meetings", "beginn"), ("meetings", "ende"), ("meetings", "status"),
