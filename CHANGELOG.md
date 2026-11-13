@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.460.0] - 2026-11-14
+
+### Neu
+- **GitLab für Projekte (#1194).** Projekte können ein GitLab-Repo haben, auf gitlab.com oder einem eigenen GitLab-Server, auch mit Untergruppen.
+  - Issues kommen aufs Board, Merge Requests mit Pipeline-Stand ins Review.
+  - Übernahme, Rückfragen in der Triage und Antworten per `@ai-employee` im Issue laufen wie bei GitHub. Als vertraut gilt ein Kommentar ab der Rolle Developer.
+  - Die Agenten stellen Merge Requests, nie direkt auf main.
+  - GitHub, GitLab und Forgejo laufen über denselben Code (`core/githost`).
+- **Eigene Git-Server** (Admin → Betrieb): die Zertifizierungsstelle der Firma (nur CA:TRUE und gültig) und namentlich freigegebene Server im Firmennetz.
+  - Die CA gilt nur für die freigegebenen Git-Server, nicht für den übrigen Verkehr. Das gilt für die Plattform, den Egress-Proxy und die Agenten.
+  - Ein freigegebener interner Server ist für alle Nutzer und Agenten über Port 443 erreichbar.
+
+### Sicherheit
+- Der Token liegt in der Schlüsselverwaltung. Mit Egress-Proxy sehen Agenten nur den Platzhalter, der Proxy setzt den echten Token nur am freigegebenen Host ein. Das ist live mit mitmproxy geprüft.
+- Eigene Server werden genau einmal aufgelöst und dann per geprüfter IP verbunden (Schutz vor DNS-Rebinding). Andere Ports gelten nur mit ausdrücklichem `name:port`.
+- Fehlermeldungen sind einheitlich, damit sie nicht als Portscan taugen.
+- Das Konto des Projektschlüssels wird über die numerische ID erkannt, nicht über den Namen.
+
+### Betrieb
+- Spalte `teams.repo_anbieter`, Migration `m2gitlab1194`.
 ## [1.459.0] - 2026-11-14
 
 ### Neu
