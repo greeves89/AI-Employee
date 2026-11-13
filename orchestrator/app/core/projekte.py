@@ -555,7 +555,8 @@ GITLAB_HINWEIS = (
     "(`Closes #<nr>` in der Beschreibung schließt das Issue beim Merge). Nie direkt auf den Standard-Branch "
     "pushen. Anlegen mit `glab mr create`, falls vorhanden, sonst über die API: "
     "`curl -X POST -H \"PRIVATE-TOKEN: $GITLAB_TOKEN\" <server>/api/v4/projects/<gruppe%2Fname>/merge_requests` "
-    "mit `source_branch`, `target_branch`, `title`, `description`. `gh` funktioniert hier nicht. Fehlt dir ein "
+    "mit `source_branch`, `target_branch`, `title`, `description` (bei eigener Zertifizierungsstelle der Firma "
+    "zusätzlich `--cacert /etc/aie-git-ca/buendel.crt`). `gh` funktioniert hier nicht. Fehlt dir ein "
     "GitLab-Zugang (kein `GITLAB_TOKEN`), sag das im Ergebnis, statt es anders zu versuchen.\n"
 )
 

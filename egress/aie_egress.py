@@ -7,8 +7,8 @@
   ersetzt — nur, wenn der Orchestrator es fuer genau dieses Ziel erlaubt.
 * Ziele mit interner Adresse sind gesperrt; verbunden wird mit der geprueften IP.
   Ausnahme: Git-Server im Firmennetz, die der Administrator freigegeben hat.
-* Eine Zertifizierungsstelle der Firma (eigene Git-Server) gilt zusaetzlich, wenn
-  der Proxy die Gegenseite prueft (``_upstream_ca``).
+* Eine Zertifizierungsstelle der Firma gilt nur fuer freigegebene Git-Server, wenn
+  der Proxy deren Gegenseite prueft (``tls_start_server``) — sonst nirgends.
 
 Die Logik steht in egress_logik.py (ohne mitmproxy, testbar).
 """
@@ -138,30 +138,57 @@ class AieEgress:
         self.agenten: dict[str, tuple[str, str]] = {}   # client_conn.id → Agent
         self.ziele: dict[str, tuple[str, int]] = {}     # client_conn.id → CONNECT-Ziel (Host, Port)
         self.maske = logik.Maske()
-        self._ca_stand: str | None = None   # zuletzt gesetzte Stelle der Firma
 
-    def _upstream_ca(self) -> None:
-        """Stelle der Firma (vom Orchestrator) in die Prüfung der Gegenseite übernehmen.
+    # ── Stelle der Firma nur für freigegebene Git-Server (#1194) ─────────
+    def _buendel(self, pem: str) -> str:
+        """Datei mit den üblichen Stellen (certifi) plus der Stelle der Firma — je Inhalt eine."""
+        import certifi
+        import hashlib
+        import tempfile
 
-        mitmproxy kennt nur EINE Datei; darin stehen die üblichen Stellen (certifi) und
-        die der Firma. Ohne eigene Stelle gilt wieder der Standard."""
-        pem = self.orch.git_ca or ""
-        if pem == self._ca_stand:
-            return
+        pfad = Path(tempfile.gettempdir(), f"aie-git-ca-{hashlib.sha256(pem.encode()).hexdigest()[:16]}.pem")
+        if not pfad.exists():
+            pfad.write_text(logik.ca_buendel(Path(certifi.where()).read_text(), pem))
+        return str(pfad)
+
+    def tls_start_server(self, data: tls.TlsData):
+        """Gegenseite eines freigegebenen Git-Servers auch mit der Stelle der Firma prüfen.
+
+        Nur für genau diese Ziele (CONNECT-Ziel auf Port 443, in der Freigabe): Alle
+        anderen Verbindungen — auch zu Modellanbietern — prüft mitmproxy weiter nur mit
+        den üblichen Stellen. Die Verbindung baut mitmproxys eigenes TLS-Addon (SNI,
+        Hostnamen-Prüfung, ALPN); hier wird nur der SSL-Kontext gegen einen mit der
+        zusätzlichen Stelle getauscht. Scheitert das, bleibt der übliche Kontext — dann
+        scheitert die Prüfung des Firmen-Zertifikats (sicher geschlossen).
+        """
         try:
-            if not pem:
-                ctx.options.update(ssl_verify_upstream_trusted_ca=None)
-            else:
-                import certifi
-                import hashlib
-                import tempfile
+            ziel, port = self.ziele.get(data.context.client.id, ("", 0))
+            pem = self.orch.git_ca
+            if not pem or not logik.git_ca_gilt(ziel, port, self.orch.interne):
+                return
+            from mitmproxy.addons import tlsconfig as tlsmod
+            from mitmproxy.net import tls as net_tls
 
-                pfad = Path(tempfile.gettempdir(), f"aie-upstream-{hashlib.sha256(pem.encode()).hexdigest()[:16]}.pem")
-                pfad.write_text(logik.ca_buendel(Path(certifi.where()).read_text(), pem))
-                ctx.options.update(ssl_verify_upstream_trusted_ca=str(pfad))
-            self._ca_stand = pem
-        except Exception:  # noqa: BLE001 — dann gilt die bisherige Prüfung, nie gar keine
-            log.exception("Egress-Proxy: Stelle der Firma nicht übernommen")
+            if data.ssl_conn is None:
+                ctx.master.addons.get("tlsconfig").tls_start_server(data)
+            o = ctx.options
+            kontext = net_tls.create_proxy_server_context(
+                method=net_tls.Method.TLS_CLIENT_METHOD,
+                min_version=net_tls.Version[o.tls_version_server_min],
+                max_version=net_tls.Version[o.tls_version_server_max],
+                cipher_list=tuple(data.conn.cipher_list
+                                  or tlsmod._default_ciphers(net_tls.Version[o.tls_version_server_min])),
+                ecdh_curve=o.tls_ecdh_curve_server,
+                verify=net_tls.Verify.VERIFY_PEER,
+                ca_path=None,
+                ca_pemfile=self._buendel(pem),
+                client_cert=None,
+                legacy_server_connect=False,
+            )
+            data.ssl_conn.set_context(kontext)
+        except Exception:  # noqa: BLE001 — übliche Prüfung bleibt (sicher geschlossen)
+            log.exception("Egress-Proxy: Stelle der Firma für %s nicht gesetzt", self.ziele.get(
+                data.context.client.id, ("?", 0))[0])
 
     async def _hosts(self, agent):
         return await asyncio.to_thread(self.orch.hosts, agent)
@@ -204,7 +231,6 @@ class AieEgress:
             return
         self.agenten[flow.client_conn.id] = agent
         self.ziele[flow.client_conn.id] = (flow.request.host.lower().rstrip("."), flow.request.port)
-        self._upstream_ca()
 
     def tcp_start(self, flow):
         """Kein HTTP im Tunnel (rohes TCP, auch nach dem Aufbrechen): Für Agenten mit Zielliste

@@ -83,7 +83,7 @@ class GitLab:
         params = request.url.params
         daten = json.loads(request.content) if request.content else {}
         if pfad == "/api/v4/user":
-            return httpx.Response(200, json={"username": "board-bot"})
+            return httpx.Response(200, json={"id": 99, "username": "board-bot"})
         if not pfad.startswith(p):
             return httpx.Response(404, json={"message": "404 Project Not Found"})
         rest = pfad[len(p):]
@@ -306,8 +306,21 @@ class Anbieter(unittest.IsolatedAsyncioTestCase):
     async def test_sichtbarkeit_und_konto(self):
         async with _client(self.gl) as c:
             self.assertIs(await self.a.repo_oeffentlich(c, TOKEN, REPO), False)
-            self.assertEqual(await self.a.eigenes_konto(c, TOKEN), "board-bot")
+            self.assertEqual(await self.a.eigenes_konto(c, TOKEN), "#99")
             self.assertIsNone(await self.a.eigenes_konto(c, ""))
+
+    async def test_konto_des_schluessels_ueber_die_nutzer_id_nicht_den_namen(self):
+        """Umbenannt bleibt erkannt; ein anderes Konto mit dem alten Namen nicht."""
+        projekt_git._KONTEN.clear()
+        self.gl.issue(9)
+        self.gl.note(9, "vom Board, Konto umbenannt", autor_id=99, autor="neuer-name")
+        self.gl.note(9, "fremd, hat sich den alten Namen geholt", autor_id=1234, autor="board-bot")
+        async with _client(self.gl) as c:
+            k = await projekt_git.kommentare_holen(self.a, c, TOKEN, REPO, 9)
+        self.assertEqual([(x["autor"], x["konto"], x["vertraut"]) for x in k],
+                         [("neuer-name", "#99", True), ("board-bot", "#1234", False)])
+        uebernahme = u.lesen({**k[0], "body": u.kopfzeile("claim", wer="extern")})
+        self.assertEqual(uebernahme.autor, "#99")
 
     async def test_weiterleitung_wird_nicht_verfolgt_der_token_bleibt_beim_server(self):
         gesehen = []
@@ -567,7 +580,9 @@ class Zugang(Basis):
                     patch("app.core.url_guard.firmennetz", return_value=True), \
                     self.assertRaises(projekt_git.GitFehler) as e:
                 await projekt_git.zugang(db, None, team)
-            self.assertIn("internes Ziel", str(e.exception))
+            # Einheitliche Meldung — kein Orakel, ob der Name intern auflöst.
+            self.assertIn("nicht erreichbar oder nicht freigegeben", str(e.exception))
+            self.assertNotIn("internes Ziel", str(e.exception))
             with patch("app.core.url_guard.check_outbound_url", return_value=intern), \
                     patch("app.core.url_guard.firmennetz", return_value=True), \
                     patch("app.config.settings.git_interne_server", "gitlab.intern.example", create=True):
@@ -580,7 +595,7 @@ class Adresspruefung(unittest.TestCase):
 
     @staticmethod
     def _aufloesen(*ips):
-        return lambda host, port: [(0, 0, 0, "", (ip, 0)) for ip in ips]
+        return lambda host, port, **kw: [(0, 0, 0, "", (ip, 0)) for ip in ips]
 
     def test_firmennetz_nur_private_netze(self):
         from app.core.url_guard import firmennetz
@@ -593,30 +608,100 @@ class Adresspruefung(unittest.TestCase):
         self.assertFalse(firmennetz("g.example", self._aufloesen("10.0.0.1", "127.0.0.1")))  # eine reicht
         self.assertFalse(firmennetz("metadata.google.internal", self._aufloesen("10.0.0.1")))
 
-    def test_server_pruefen(self):
+    def test_server_pruefen_nur_port_443_ausser_name_mit_port(self):
         intern = (False, "zeigt auf ein internes Ziel")
-        with patch("app.config.settings.git_interne_server", "gitlab.intern.example", create=True), \
+        with patch("app.config.settings.git_interne_server", "gitlab.intern.example,git2.intern.example:8443",
+                   create=True), \
                 patch("app.core.url_guard.check_outbound_url", return_value=intern):
             with patch("app.core.url_guard.firmennetz", return_value=True):
                 self.assertTrue(projekt_git.server_pruefen("https://gitlab.intern.example")[0])
+                self.assertTrue(projekt_git.server_pruefen("https://gitlab.intern.example:443")[0])
+                # Ein Name ohne Port gibt nur 443 frei — :8443 bleibt gesperrt (wie im Proxy).
+                self.assertFalse(projekt_git.server_pruefen("https://gitlab.intern.example:8443")[0])
+                self.assertFalse(projekt_git.server_pruefen("https://gitlab.intern.example:22")[0])
+                # Mit ausdrücklichem name:port nur dieser Port.
+                self.assertTrue(projekt_git.server_pruefen("https://git2.intern.example:8443")[0])
+                self.assertFalse(projekt_git.server_pruefen("https://git2.intern.example")[0])
                 self.assertFalse(projekt_git.server_pruefen("https://andere.intern.example")[0])
                 self.assertFalse(projekt_git.server_pruefen("http://gitlab.intern.example")[0])
                 self.assertFalse(projekt_git.server_pruefen("https://u:p@gitlab.intern.example")[0])
             with patch("app.core.url_guard.firmennetz", return_value=False):   # zeigt auf Loopback o. Ä.
-                self.assertFalse(projekt_git.server_pruefen("https://gitlab.intern.example")[0])
+                erlaubt, grund = projekt_git.server_pruefen("https://gitlab.intern.example")
+        self.assertFalse(erlaubt)
+        self.assertEqual(grund, projekt_git.NICHT_ERREICHBAR)
 
-    def test_freigabeliste_nur_servernamen(self):
-        self.assertEqual(projekt_git.interne_server_pruefen("GitLab.Intern.Example.\n git2.example.com, "),
-                         "gitlab.intern.example,git2.example.com")
+    def test_freigabeliste_namen_mit_port(self):
+        self.assertEqual(projekt_git.interne_server_pruefen("GitLab.Intern.Example.\n git2.example.com:8443, "
+                                                            "g3.example.com:443"),
+                         "gitlab.intern.example,git2.example.com:8443,g3.example.com")
         for falsch in ("https://gitlab.intern.example", "*.intern.example", "10.0.0.0/8", "localhost",
-                       "gitlab.intern.example/pfad"):
+                       "gitlab.intern.example/pfad", "g.example.com:0", "g.example.com:99999", "g.example.com:x"):
             with self.subTest(falsch=falsch), self.assertRaises(ValueError):
                 projekt_git.interne_server_pruefen(falsch)
 
 
+class FesteAdresse(unittest.IsolatedAsyncioTestCase):
+    """DNS-Rebinding: einmal auflösen, prüfen, per IP verbinden — Name bleibt für SNI und Host."""
+
+    def setUp(self):
+        self.gesehen: list[httpx.Request] = []
+
+        def innen(request):
+            self.gesehen.append(request)
+            return httpx.Response(200, json=[])
+        self.innen = httpx.MockTransport(innen)
+
+    def _client(self, *ips, zaehler=None):
+        def aufloesen(host, port, **kw):
+            if zaehler is not None:
+                zaehler.append(host)
+            return [(0, 0, 0, "", (ip, port)) for ip in ips]
+        return httpx.AsyncClient(transport=projekt_git._FesteAdresse(True, innen=self.innen, aufloesen=aufloesen))
+
+    async def test_verbindet_mit_der_gepruefen_adresse(self):
+        zaehler: list[str] = []
+        async with self._client("93.184.216.34", zaehler=zaehler) as c:
+            await c.get(f"{BASIS}/api/v4/projects/{ROH}/issues", headers={"PRIVATE-TOKEN": TOKEN})
+        r = self.gesehen[0]
+        self.assertEqual((r.url.host, r.headers["host"], r.extensions["sni_hostname"]),
+                         ("93.184.216.34", "gitlab.example.com", "gitlab.example.com"))
+        self.assertEqual(zaehler, ["gitlab.example.com"])   # genau eine Auflösung je Anfrage
+
+    async def test_rebinding_auf_interne_adresse_wird_nicht_verbunden(self):
+        for ip in ("127.0.0.1", "10.0.0.5", "169.254.169.254", "::1"):
+            with self.subTest(ip=ip):
+                async with self._client(ip) as c:
+                    with self.assertRaises(httpx.ConnectError) as e:
+                        await c.get(f"{BASIS}/api/v4/user")
+                self.assertEqual(str(e.exception), "Server nicht erreichbar")
+        self.assertEqual(self.gesehen, [])
+
+    async def test_freigegebener_server_darf_ins_firmennetz_aber_nie_auf_loopback(self):
+        with patch("app.config.settings.git_interne_server", "gitlab.example.com", create=True):
+            async with self._client("10.0.0.5") as c:
+                await c.get(f"{BASIS}/api/v4/user")
+            async with self._client("127.0.0.1") as c:
+                with self.assertRaises(httpx.ConnectError):
+                    await c.get(f"{BASIS}/api/v4/user")
+            async with self._client("10.0.0.5") as c:     # anderer Port: nicht freigegeben
+                with self.assertRaises(httpx.ConnectError):
+                    await c.get("https://gitlab.example.com:8443/api/v4/user")
+        self.assertEqual(len(self.gesehen), 1)
+
+    async def test_meldung_im_projekt_verraet_keinen_grund(self):
+        async def kaputt(request):
+            raise httpx.ConnectError("[Errno 111] Connection refused")
+        anbieter = GitLabHostProvider(BASIS)
+        team = Team(id="p1", repo=f"{BASIS}/{REPO}", repo_anbieter="gitlab")
+        async with httpx.AsyncClient(transport=httpx.MockTransport(kaputt)) as c:
+            with self.assertRaises(projekt_git.GitFehler) as e:
+                await projekt_git.abgleichen(None, team, TOKEN, anbieter, c)
+        self.assertEqual(str(e.exception), f"gitlab.example.com antwortet nicht für {REPO}.")
+
+
 # ── Zertifizierungsstelle der Firma ─────────────────────────────────────────
 
-def _ca() -> tuple[str, str]:
+def _ca(ca: bool = True, tage: int = 30, mit_erweiterung: bool = True) -> tuple[str, str]:
     """(Zertifikat, privater Schlüssel) einer frischen Test-Stelle als PEM."""
     from cryptography import x509
     from cryptography.hazmat.primitives import hashes, serialization
@@ -626,17 +711,19 @@ def _ca() -> tuple[str, str]:
     schluessel = ec.generate_private_key(ec.SECP256R1())
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Test-CA example.com")])
     jetzt = datetime.now(timezone.utc)
-    zert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(schluessel.public_key())
-            .serial_number(1).not_valid_before(jetzt - timedelta(days=1)).not_valid_after(jetzt + timedelta(days=30))
-            .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
-            .sign(schluessel, hashes.SHA256()))
+    bau = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(schluessel.public_key())
+           .serial_number(1).not_valid_before(jetzt - timedelta(days=60))
+           .not_valid_after(jetzt + timedelta(days=tage)))
+    if mit_erweiterung:
+        bau = bau.add_extension(x509.BasicConstraints(ca=ca, path_length=None), critical=True)
+    zert = bau.sign(schluessel, hashes.SHA256())
     return (zert.public_bytes(serialization.Encoding.PEM).decode(),
             schluessel.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
                                      serialization.NoEncryption()).decode())
 
 
 class EigeneZertifizierungsstelle(unittest.TestCase):
-    def test_nur_oeffentliche_zertifikate(self):
+    def test_nur_gueltige_ca_zertifikate(self):
         zert, schluessel = _ca()
         self.assertIn("BEGIN CERTIFICATE", projekt_git.ca_pruefen(zert))
         self.assertEqual(projekt_git.ca_pruefen("  "), "")
@@ -644,7 +731,17 @@ class EigeneZertifizierungsstelle(unittest.TestCase):
             with self.subTest(falsch=falsch[:30]), self.assertRaises(ValueError):
                 projekt_git.ca_pruefen(falsch)
 
-    def test_client_eigener_server_prueft_mit_der_stelle_github_unveraendert(self):
+    def test_blatt_und_abgelaufene_werden_abgelehnt(self):
+        for name, (zert, _) in {"Blatt (CA:FALSE)": _ca(ca=False), "ohne BasicConstraints": _ca(mit_erweiterung=False),
+                                "abgelaufen": _ca(tage=-1)}.items():
+            with self.subTest(name), self.assertRaises(ValueError) as e:
+                projekt_git.ca_pruefen(zert)
+            self.assertIn("Test-CA", str(e.exception))
+        gut, _ = _ca()
+        with self.assertRaises(ValueError):          # eine schlechte in der Liste reicht
+            projekt_git.ca_pruefen(gut + "\n" + _ca(ca=False)[0])
+
+    def test_stelle_nur_fuer_freigegebene_server_github_unveraendert(self):
         zert, _ = _ca()
         kontext = projekt_git.ssl_kontext(zert)
         self.assertIsInstance(kontext, ssl.SSLContext)
@@ -652,20 +749,31 @@ class EigeneZertifizierungsstelle(unittest.TestCase):
         self.assertTrue(any("Test-CA" in str(c.get("subject")) for c in kontext.get_ca_certs()))
         self.assertIs(projekt_git.ssl_kontext(""), True)
         with patch("app.config.settings.git_ca_zertifikate", zert, create=True), \
+                patch("app.config.settings.git_interne_server", "gitlab.example.com", create=True), \
+                patch.object(projekt_git, "_FesteAdresse") as fest, \
                 patch.object(projekt_git.httpx, "AsyncClient") as client:
             projekt_git.git_client(5.0, GitLabHostProvider(BASIS))
-            self.assertIsInstance(client.call_args.kwargs["verify"], ssl.SSLContext)
+            self.assertIsInstance(fest.call_args.args[0], ssl.SSLContext)
+            self.assertIs(client.call_args.kwargs["transport"], fest.return_value)
             self.assertFalse(client.call_args.kwargs["follow_redirects"])
-            projekt_git.git_client(5.0, object())
-            self.assertIs(client.call_args.kwargs["verify"], True)
+            projekt_git.git_client(5.0, GitLabHostProvider("https://anderer.example.com"))
+            self.assertIs(fest.call_args.args[0], True)       # nicht freigegeben: übliche Stellen
+            projekt_git.git_client(5.0, object())            # GitHub
+            self.assertNotIn("transport", client.call_args.kwargs)
 
-    def test_agent_und_proxy_bekommen_nur_das_zertifikat(self):
+    def test_agent_und_proxy_bekommen_stelle_nur_mit_den_servern(self):
         zert, _ = _ca()
         with patch("app.config.settings.git_ca_zertifikate", zert, create=True), \
-                patch("app.config.settings.git_interne_server", "gitlab.intern.example", create=True):
-            self.assertEqual(egress.git_ca_umgebung(), {"AIE_GIT_CA": zert.strip()})
+                patch("app.config.settings.git_interne_server", "gitlab.intern.example,g2.example.com:8443",
+                      create=True):
+            self.assertEqual(egress.git_ca_umgebung(),
+                             {"AIE_GIT_CA": zert.strip(), "AIE_GIT_CA_HOSTS": "g2.example.com:8443,gitlab.intern.example"})
+            # Der Proxy setzt Keys nur auf 443 ein: name:port gilt nur für die Plattform.
             self.assertEqual(egress.git_server_fuer_proxy(),
                              {"git_ca": zert.strip(), "interne_ziele": ["gitlab.intern.example"]})
+        with patch("app.config.settings.git_ca_zertifikate", zert, create=True), \
+                patch("app.config.settings.git_interne_server", "", create=True):
+            self.assertEqual((egress.git_ca_umgebung(), egress.git_server_fuer_proxy()), ({}, {}))
         with patch("app.config.settings.git_ca_zertifikate", "", create=True), \
                 patch("app.config.settings.git_interne_server", "", create=True):
             self.assertEqual((egress.git_ca_umgebung(), egress.git_server_fuer_proxy()), ({}, {}))
@@ -717,6 +825,24 @@ class EgressProxy(unittest.TestCase):
         self.assertIn("BEGIN CERTIFICATE", buendel)
         self.assertNotIn("PRIVATE KEY", buendel)
         self.assertEqual(L.ca_buendel("STANDARD\n", "kaputt"), "STANDARD\n")
+
+    def test_stelle_gilt_nur_fuer_freigegebene_git_server(self):
+        """Im Proxy nicht global: Modellanbieter und alle anderen Ziele prüft er wie bisher."""
+        L = self.logik
+        frei = frozenset({"gitlab.intern.example"})
+        self.assertTrue(L.git_ca_gilt("gitlab.intern.example", 443, frei))
+        for ziel, port in (("api.anthropic.com", 443), ("chatgpt.com", 443), ("gitlab.intern.example", 8443),
+                           ("", 443), ("andere.example", 443)):
+            with self.subTest(ziel=ziel, port=port):
+                self.assertFalse(L.git_ca_gilt(ziel, port, frei))
+        self.assertFalse(L.git_ca_gilt("gitlab.intern.example", 443, frozenset()))
+
+    def test_addon_setzt_die_stelle_nicht_mehr_global(self):
+        from pathlib import Path
+
+        quelle = (Path(__file__).resolve().parents[2] / "egress" / "aie_egress.py").read_text()
+        self.assertNotIn("ssl_verify_upstream_trusted_ca=", quelle)
+        self.assertIn("git_ca_gilt", quelle)
 
 
 if __name__ == "__main__":

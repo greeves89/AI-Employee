@@ -496,28 +496,38 @@ async def _zielliste_umgebung(agent_id: str) -> dict[str, str]:
 
 
 def git_ca_umgebung() -> dict[str, str]:
-    """Zertifizierungsstelle der Firma für eigene Git-Server (#1194) — auch ohne Proxy.
+    """Zertifizierungsstelle der Firma für freigegebene Git-Server (#1194) — auch ohne Proxy.
 
-    Das Startskript (agent/entrypoint.sh) legt sie in den Systemspeicher; so traut
-    ``git`` einem GitLab mit firmeneigenem Zertifikat. Nur öffentliche Zertifikate
-    (geprüft in ``projekt_git.ca_pruefen``)."""
+    Das Startskript (agent/entrypoint.sh) trägt sie NUR für diese Server in die
+    git-Einstellungen ein (``http.<url>.sslCAInfo``), nicht in den Systemspeicher —
+    sonst gälte sie für jeden Verkehr des Agenten, auch zu den Modellanbietern. Nur
+    CA-Zertifikate (geprüft in ``projekt_git.ca_pruefen``). Ohne freigegebenen Server
+    nichts."""
+    from app.core.projekt_git import git_server_freigaben
+
     pem = str(getattr(settings, "git_ca_zertifikate", "") or "").strip()
-    return {"AIE_GIT_CA": pem} if pem.startswith("-----BEGIN CERTIFICATE-----") else {}
+    server = sorted(git_server_freigaben())
+    if not pem.startswith("-----BEGIN CERTIFICATE-----") or not server:
+        return {}
+    return {"AIE_GIT_CA": pem, "AIE_GIT_CA_HOSTS": ",".join(server)}
 
 
 def git_server_fuer_proxy() -> dict:
-    """Was der Proxy für eigene Git-Server wissen muss: die Stelle der Firma (er prüft
-    die Gegenseite, wenn er für einen Key TLS aufbricht) und die freigegebenen Server
-    im Firmennetz (sonst sperrt er sie als intern). Leer, wenn nichts eingestellt ist."""
-    from app.core.projekt_git import interne_git_server
+    """Was der Proxy für freigegebene Git-Server wissen muss: die Stelle der Firma (er
+    prüft damit NUR die Gegenseite dieser Server, wenn er für einen Key TLS aufbricht)
+    und die Server selbst (im Firmennetz sperrt er sie sonst als intern). Nur Einträge
+    ohne Port: Keys setzt der Proxy ausschließlich auf Port 443 ein; ``name:port`` gilt
+    nur für die Plattform. Leer, wenn nichts eingestellt ist."""
+    from app.core.projekt_git import git_server_freigaben
 
     antwort: dict = {}
-    pem = git_ca_umgebung().get("AIE_GIT_CA")
-    if pem:
+    server = sorted(s for s in git_server_freigaben() if ":" not in s)
+    if not server:
+        return antwort
+    antwort["interne_ziele"] = server
+    pem = str(getattr(settings, "git_ca_zertifikate", "") or "").strip()
+    if pem.startswith("-----BEGIN CERTIFICATE-----"):
         antwort["git_ca"] = pem
-    interne = sorted(interne_git_server())
-    if interne:
-        antwort["interne_ziele"] = interne
     return antwort
 
 

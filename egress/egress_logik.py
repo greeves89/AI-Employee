@@ -165,6 +165,12 @@ def ziel_adresse(host: str, port: int, aufloesen=socket.getaddrinfo, interne: fr
     return adressen[0]
 
 
+def git_ca_gilt(ziel: str, port: int, interne: frozenset | set) -> bool:
+    """Gilt die Stelle der Firma für diese Verbindung? Nur für freigegebene Git-Server auf
+    Port 443 — nie für andere Ziele (etwa Modellanbieter)."""
+    return port == KEY_PORT and bool(ziel) and (ziel or "").lower().rstrip(".") in interne
+
+
 def ca_buendel(standard: str, eigene: str) -> str:
     """Vertrauensliste für die Gegenseite: die üblichen Stellen plus die der Firma.
 

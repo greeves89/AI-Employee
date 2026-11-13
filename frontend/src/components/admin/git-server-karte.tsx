@@ -3,15 +3,16 @@
 /** Karte „Eigene Git-Server“ unter Admin → Betrieb (#1194).
  *
  * Für Projekte mit selbst betriebenem GitLab, Forgejo oder Gitea:
- * - Zertifizierungsstelle der Firma (PEM). Gilt für Abfragen der Plattform, im
- *   Egress-Proxy und in den Agenten (nach dem Aktualisieren).
- * - Server im Firmennetz, die trotz interner Adresse abgefragt werden dürfen.
+ * - Freigegebene Git-Server (name oder name:port). Liegen sie im Firmennetz, sind sie
+ *   danach für alle Nutzer und Agenten erreichbar (Agenten nur auf Port 443).
+ * - Zertifizierungsstelle der Firma (PEM, nur CA:TRUE). Gilt NUR für die freigegebenen
+ *   Server — in der Plattform, im Egress-Proxy und in git der Agenten (nach dem Aktualisieren).
  *
  * Serverseitig nur für Administratoren (GET/PUT /settings/git-server), mit Prüfprotokoll.
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, ShieldCheck } from "lucide-react";
+import { Loader2, ShieldCheck, TriangleAlert } from "lucide-react";
 import * as api from "@/lib/api";
 import type { GitServerStand } from "@/lib/api";
 import { apiFehlertext } from "@/lib/api-fehler";
@@ -46,7 +47,7 @@ export function GitServerKarte() {
     setSpeichert(true);
     try {
       uebernehmen(await api.setGitServer({ ca_zertifikate: ca, interne_server: server }));
-      toast.success("Gespeichert", "Agenten übernehmen die Zertifizierungsstelle nach dem nächsten Aktualisieren.");
+      toast.success("Gespeichert", "Plattform und Proxy sofort, Agenten nach dem nächsten Aktualisieren.");
     } catch (e) {
       toast.error("Nicht gespeichert", apiFehlertext(e));
     } finally {
@@ -78,8 +79,30 @@ export function GitServerKarte() {
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-semibold">Eigene Git-Server</h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            Für Projekte auf einem selbst betriebenen GitLab, Forgejo oder Gitea. Die Zertifizierungsstelle
-            der Firma gilt für die Plattform, den Egress-Proxy und die Agenten.
+            Für Projekte auf einem selbst betriebenen GitLab, Forgejo oder Gitea.
+          </p>
+
+          <label className="mt-3 block text-xs font-medium text-muted-foreground" htmlFor="git-intern">
+            Freigegebene Git-Server
+          </label>
+          <textarea
+            id="git-intern"
+            value={server}
+            onChange={(e) => setServer(e.target.value)}
+            rows={2}
+            spellCheck={false}
+            placeholder="gitlab.intern.example.com"
+            className="mt-1 w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-xs outline-none focus:border-primary/50"
+          />
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Ein Servername je Zeile. Nur für diese Server gilt die Zertifizierungsstelle unten. Ein Name gilt für
+            Port 443; ein anderer Port nur mit Angabe (gitlab.intern.example.com:8443) und dann nur für die
+            Plattform, nicht für Agenten.
+          </p>
+          <p className="mt-1 flex gap-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+            <TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0" />
+            Liegt ein Server im Firmennetz, erreichen ihn danach alle Nutzer und alle Agenten der Anlage über
+            Port 443 — nicht nur die Projekte, die ihn brauchen.
           </p>
 
           <label className="mt-3 block text-xs font-medium text-muted-foreground" htmlFor="git-ca">
@@ -101,22 +124,15 @@ export function GitServerKarte() {
               ))}
             </ul>
           )}
-
-          <label className="mt-3 block text-xs font-medium text-muted-foreground" htmlFor="git-intern">
-            Server im Firmennetz
-          </label>
-          <textarea
-            id="git-intern"
-            value={server}
-            onChange={(e) => setServer(e.target.value)}
-            rows={2}
-            spellCheck={false}
-            placeholder="gitlab.intern.example.com"
-            className="mt-1 w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-xs outline-none focus:border-primary/50"
-          />
+          <p className="mt-1 flex gap-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+            <TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0" />
+            Nur das Zertifikat der Firmen-CA (CA:TRUE, gültig), kein Server-Zertifikat. Wer den Schlüssel dieser CA
+            hat, kann sich gegenüber Plattform, Egress-Proxy und Agenten als einer der freigegebenen Server
+            ausgeben. Für andere Ziele, auch Modellanbieter, gilt sie nicht.
+          </p>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            Ein Servername je Zeile. Sonst fragt die Plattform keine Adressen im eigenen Netz ab. Über den
-            Egress-Proxy nur auf Port 443.
+            Plattform und Proxy übernehmen Änderungen sofort, die Agenten erst, wenn sie aktualisiert (neu
+            erstellt) werden. Das gilt auch für das Entfernen der CA.
           </p>
 
           <div className="mt-3 flex justify-end">

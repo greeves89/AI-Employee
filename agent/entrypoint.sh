@@ -223,10 +223,38 @@ egress_ca_fuer_browser() {
 }
 
 # Eigene Git-Server (#1194): Zertifizierungsstelle der Firma (z. B. fuer ein selbst
-# betriebenes GitLab) kommt als AIE_GIT_CA (nur oeffentliche Zertifikate, geprueft
-# im Orchestrator) und geht in den Systemspeicher -- git und curl trauen dem Server
-# dann auch ohne Egress-Proxy. Gleiche Regeln wie oben: Scheitern haelt nichts auf.
+# betriebenes GitLab) kommt als AIE_GIT_CA (nur CA-Zertifikate, geprueft im
+# Orchestrator), die freigegebenen Server als AIE_GIT_CA_HOSTS (name oder name:port).
+# Sie gilt NUR fuer diese Server: git bekommt je Server http.<url>.sslCAInfo mit einer
+# Datei aus Systemspeicher (samt CA des Egress-Proxys) plus Stelle der Firma. In den
+# Systemspeicher kommt sie bewusst nicht -- sonst gaelte sie fuer jeden Verkehr des
+# Agenten, auch zu den Modellanbietern. curl: --cacert $GIT_CA_DIR/buendel.crt.
+# Ohne AIE_GIT_CA (entzogen) raeumt das Skript alles Eigene wieder weg.
+GIT_CA_DIR=/etc/aie-git-ca
+GIT_SYSTEM=/etc/gitconfig
+SYSTEM_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+if [ "${ENTRYPOINT_NUR_DEFINIEREN:-}" = "1" ]; then
+  GIT_CA_DIR="${ENTRYPOINT_GIT_CA_DIR:-$GIT_CA_DIR}"
+  GIT_SYSTEM="${ENTRYPOINT_GIT_SYSTEM:-$GIT_SYSTEM}"
+  SYSTEM_BUNDLE="${ENTRYPOINT_SYSTEM_BUNDLE:-$SYSTEM_BUNDLE}"
+fi
+git_ca_entfernen() {
+  # Fruehere Fassung legte die Stelle in den Systemspeicher -- dort entfernen.
+  if [ -f "$CA_DIR/aie-git-ca.crt" ]; then
+    rm -f "$CA_DIR/aie-git-ca.crt"
+    update-ca-certificates --fresh >/dev/null 2>&1 || echo "[entrypoint] WARNUNG: Systemspeicher nicht erneuert"
+  fi
+  if [ -f "$GIT_SYSTEM" ]; then
+    git config --file "$GIT_SYSTEM" --get-regexp '^http\..*\.sslcainfo$' 2>/dev/null | while read -r schluessel wert; do
+      if [ "$wert" = "$GIT_CA_DIR/buendel.crt" ]; then
+        git config --file "$GIT_SYSTEM" --unset-all "$schluessel" || true
+      fi
+    done || true
+  fi
+  rm -f "$GIT_CA_DIR/buendel.crt"
+}
 git_ca_einspielen() {
+  git_ca_entfernen
   [ -n "${AIE_GIT_CA:-}" ] || return 0
   case "$AIE_GIT_CA" in
     "-----BEGIN CERTIFICATE-----"*) ;;
@@ -235,13 +263,19 @@ git_ca_einspielen() {
   case "$AIE_GIT_CA" in
     *"PRIVATE KEY"*) echo "[entrypoint] WARNUNG: AIE_GIT_CA enthaelt einen Schluessel -- nicht eingespielt"; return 0 ;;
   esac
-  if ! { mkdir -p "$CA_DIR" && printf '%s\n' "$AIE_GIT_CA" > "$CA_DIR/aie-git-ca.crt"; }; then
+  [ -n "${AIE_GIT_CA_HOSTS:-}" ] || { echo "[entrypoint] WARNUNG: Stelle der Firma ohne freigegebene Server -- nicht eingespielt"; return 0; }
+  if ! { mkdir -p "$GIT_CA_DIR" && { cat "$SYSTEM_BUNDLE" 2>/dev/null; printf '\n%s\n' "$AIE_GIT_CA"; } > "$GIT_CA_DIR/buendel.crt"; }; then
     echo "[entrypoint] WARNUNG: Stelle der Firma nicht geschrieben"
     return 0
   fi
-  if ! update-ca-certificates >/dev/null 2>&1; then
-    echo "[entrypoint] WARNUNG: Stelle der Firma nicht im Systemspeicher"
-  fi
+  chmod 644 "$GIT_CA_DIR/buendel.crt" 2>/dev/null || true
+  for eintrag in $(printf '%s' "$AIE_GIT_CA_HOSTS" | tr ',' ' '); do
+    case "$eintrag" in
+      *[!a-z0-9.:-]*) echo "[entrypoint] WARNUNG: Servername nicht verwendbar -- uebersprungen"; continue ;;
+    esac
+    git config --file "$GIT_SYSTEM" "http.https://$eintrag/.sslCAInfo" "$GIT_CA_DIR/buendel.crt" \
+      || echo "[entrypoint] WARNUNG: git-Einstellung fuer $eintrag nicht gesetzt"
+  done
 }
 
 

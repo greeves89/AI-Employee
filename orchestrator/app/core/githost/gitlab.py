@@ -311,9 +311,12 @@ class GitLabHostProvider(GitHostProvider):
                                 "created_at": r.get("created_at"), "updated_at": r.get("updated_at")})
             if not k:
                 continue
+            aid = _ganzzahl(autor.get("id"))
+            # Stabile Kennung des Kontos (überlebt Umbenennen; ein neues Konto mit dem alten
+            # Namen ist ein anderes) — damit erkennt das Board die eigenen Kommentare.
+            k["konto"] = f"#{aid}" if aid is not None else None
             # Vertraut ist, wer im Projekt mindestens Developer ist — je Autor eine
             # Abfrage, höchstens zehn je Issue.
-            aid = _ganzzahl(autor.get("id"))
             if aid is not None and token:
                 if aid not in geprueft:
                     geprueft[aid] = len(geprueft) < 10 and await self._schreibrecht(client, token, repo, aid)
@@ -328,10 +331,13 @@ class GitLabHostProvider(GitHostProvider):
         return daten.get("visibility") == "public"
 
     async def eigenes_konto(self, client, token) -> str | None:
+        """Kennung des Kontos hinter dem Token als ``#<Nutzer-ID>`` — nicht der Name:
+        ein umbenanntes Konto bleibt erkannt, ein neues mit dem alten Namen nicht."""
         if not token:
             return None
         status, daten = await self._eins(client, token, f"{self.api_base}/user")
-        return str(daten.get("username") or "") or None if status == 200 and daten else None
+        aid = _ganzzahl(daten.get("id")) if status == 200 and daten else None
+        return f"#{aid}" if aid is not None else None
 
     # ── Abschnitt für die AGENTS.md als Merge Request (core/projekt_git.agents_md_pr) ──
 

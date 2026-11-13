@@ -1540,14 +1540,28 @@ So läuft ein Ticket:
 **Eigener Server im Firmennetz oder mit eigenem Zertifikat** (nur Administratoren):
 
 1. **Admin → Betrieb** öffnen, Karte **Eigene Git-Server**.
-2. Unter **Zertifizierungsstelle der Firma (PEM)** das öffentliche Zertifikat der Firmen-CA
-   einfügen (`-----BEGIN CERTIFICATE-----` …). Private Schlüssel lehnt die Plattform ab.
-3. Liegt der GitLab-Server im eigenen Netz, unter **Server im Firmennetz** seinen Namen eintragen,
-   z. B. `gitlab.intern.example.com` (ein Name je Zeile). Ohne diesen Eintrag fragt die Plattform
-   keine internen Adressen ab. Auch mit Eintrag nie: die Anlage selbst, Link-Local- oder
-   Metadaten-Adressen. Über den Egress-Proxy geht ein interner Server nur über Port 443.
-4. **Speichern**. Die Plattform nutzt beides sofort; der Egress-Proxy bei der nächsten Anmeldung
-   eines Agenten; die Agenten nach dem nächsten **Aktualisieren**.
+2. Unter **Freigegebene Git-Server** den Namen des Servers eintragen, z. B.
+   `gitlab.intern.example.com` (ein Name je Zeile). Ein Name gilt für Port 443. Läuft der Server
+   auf einem anderen Port, `name:port` eintragen (z. B. `gitlab.intern.example.com:8443`) — das gilt
+   dann nur für die Plattform; Agenten erreichen über den Egress-Proxy nur Port 443.
+   - **Achtung:** Liegt der Server im Firmennetz, erreichen ihn danach **alle Nutzer und alle
+     Agenten** der Anlage über Port 443, nicht nur das Projekt, das ihn braucht.
+   - Ohne Eintrag fragt die Plattform keine internen Adressen ab. Auch mit Eintrag nie: die Anlage
+     selbst, Link-Local- oder Metadaten-Adressen. Verbunden wird nur mit einer Adresse, die bei
+     derselben Abfrage geprüft wurde (Schutz gegen umgebogene DNS-Antworten).
+3. Hat der Server ein Zertifikat der Firmen-CA: unter **Zertifizierungsstelle der Firma (PEM)** das
+   Zertifikat der CA einfügen (`-----BEGIN CERTIFICATE-----` …). Die Plattform nimmt nur gültige
+   CA-Zertifikate (CA:TRUE) — kein Server-Zertifikat, kein abgelaufenes, keinen privaten Schlüssel.
+   Die CA gilt **nur für die freigegebenen Server** aus Schritt 2: in der Plattform, im Egress-Proxy
+   und in `git` der Agenten. Für andere Ziele, auch die Modellanbieter, gilt sie nicht. Wer den
+   Schlüssel dieser CA besitzt, kann sich als einer der freigegebenen Server ausgeben.
+4. **Speichern**. Plattform und Egress-Proxy nutzen die Änderung sofort, die Agenten erst, wenn sie
+   aktualisiert (neu erstellt) werden. Das gilt auch, wenn du die CA wieder entfernst: Erst nach dem
+   Aktualisieren ist sie aus den Agenten verschwunden.
+
+Fehlermeldungen am Projekt nennen bei eigenen Servern bewusst keinen Grund („nicht erreichbar oder
+nicht freigegeben“, „antwortet nicht“) — sonst ließe sich damit das Firmennetz abtasten. Die
+Einzelheiten stehen im Protokoll der Anlage.
 
 Grenzen: Kommentare in Merge Requests liest der Rückkanal nicht — Fragen und Antworten laufen über
 das Issue. `gh` funktioniert auf GitLab nicht; Agenten legen Merge Requests mit `glab` (falls im
@@ -4958,7 +4972,7 @@ eingeschaltet, gehen Agenten für HTTPS über ihn hinaus:
 | Zugang zu externen MCP-Servern (Token und eigene Kopfzeilen, Kap. 14) | ebenso: Platzhalter, eingesetzt nur am Host des Servers; ein erneuertes OAuth-Token gilt sofort *(seit 1.417.0)* |
 | Claude-Zugang (Abo-Token oder API-Schlüssel, Anthropic direkt) | Platzhalter, eingesetzt nur an `api.anthropic.com` — stufenweise, siehe unten *(seit 1.418.0)*; eingesetzt wird immer das aktuelle, erneuerte Token, und die Token-Datei der Teamlizenz bekommt ein solcher Agent nicht mehr *(seit 1.421.0)* |
 | Codex-Zugang (ChatGPT-Anmeldung) | Zugangs-Token als Platzhalter, eingesetzt nur an `chatgpt.com` (immer das aktuelle, zentral erneuerte); das Erneuerungs-Token erreicht den Agenten gar nicht mehr — stufenweise, siehe unten *(seit 1.428.0, in Erprobung)* |
-| Eigener Git-Server mit Zertifikat der Firmen-CA (z. B. GitLab) | der Proxy prüft die Gegenseite zusätzlich mit der Stelle aus **Admin → Betrieb → Eigene Git-Server**; dort freigegebene Server im Firmennetz erreicht er über Port 443 (Kap. 6a.9a) |
+| Freigegebener Git-Server (z. B. GitLab, **Admin → Betrieb → Eigene Git-Server**) | nur für diese Server prüft der Proxy die Gegenseite zusätzlich mit der Firmen-CA; liegen sie im Firmennetz, erreicht er sie über Port 443 — für alle Agenten (Kap. 6a.9a) |
 | Alle anderen HTTPS-Ziele | laufen unverändert als Tunnel durch, der Proxy sieht keine Inhalte |
 | Klartext-HTTP (z. B. eigene Apps des Agenten) | geht wie bisher direkt |
 | Adressen im Firmen- oder Docker-Netz | über den Proxy gesperrt |

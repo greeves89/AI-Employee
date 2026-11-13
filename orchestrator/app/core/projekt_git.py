@@ -195,21 +195,49 @@ def anbieter_fuer(repo: str | None, anbieter: str | None) -> str | None:
     return "gitlab" if repo_ziel(repo, anbieter).art == "gitlab" else None
 
 
-def interne_git_server() -> set[str]:
-    """Server im Firmennetz, die der Administrator für Git-Projekte freigegeben hat
-    (``settings.git_interne_server``: Namen, durch Komma oder Zeilen getrennt)."""
+def git_server_freigaben() -> set[str]:
+    """Vom Administrator freigegebene Git-Server (``settings.git_interne_server``):
+    ``name`` (Port 443) oder ``name:port`` — durch Komma oder Zeilen getrennt.
+
+    Für sie gilt die Zertifizierungsstelle der Firma; liegen sie im Firmennetz, darf
+    die Plattform sie trotzdem abfragen (``server_pruefen``)."""
     from app.config import settings
 
     roh = str(getattr(settings, "git_interne_server", "") or "")
     return {t.strip().lower().rstrip(".") for t in re.split(r"[,\s]+", roh) if t.strip()}
 
 
+#: Alter Name — dieselbe Liste.
+interne_git_server = git_server_freigaben
+
+
+def freigegeben(host: str | None, port: int | None) -> bool:
+    """Steht ``host`` (auf diesem Port) in der Freigabe? Ein Name ohne Port gilt nur für
+    Port 443 — wie im Egress-Proxy. Andere Ports nur, wenn ``name:port`` eingetragen ist."""
+    h = (host or "").lower().rstrip(".")
+    if not h:
+        return False
+    liste = git_server_freigaben()
+    if port in (None, 443) and h in liste:
+        return True
+    return port is not None and f"{h}:{port}" in liste
+
+
+#: Einheitliche Meldung, wenn ein eigener Server nicht abgefragt wird — sie sagt nicht,
+#: ob der Name intern auflöst, gar nicht auflöst oder der Port zu ist (kein Orakel für
+#: Namen oder Ports im Firmennetz). Die Einzelheiten stehen im Protokoll der Anlage.
+NICHT_ERREICHBAR = ("nicht erreichbar oder nicht freigegeben (nur https, im Firmennetz nur nach Freigabe "
+                    "durch den Administrator)")
+
+
 def server_pruefen(basis: str) -> tuple[bool, str]:
     """Darf die Plattform diesen eigenen Git-Server abfragen? ``(erlaubt, Grund)``.
 
     Nur https, nie ein internes Ziel (``url_guard.check_outbound_url``) — außer der
-    Name steht in ``interne_git_server`` UND zeigt ins Firmennetz, nicht auf die
-    Anlage selbst (Loopback), Link-Local oder Metadaten-Dienste.
+    Server ist freigegeben (``freigegeben``: Name für Port 443, sonst ``name:port``)
+    UND zeigt ins Firmennetz, nicht auf die Anlage selbst (Loopback), Link-Local oder
+    Metadaten-Dienste. Verbunden wird danach nur mit einer geprüften Adresse
+    (``_FesteAdresse``). Der Grund ist bewusst einheitlich (``NICHT_ERREICHBAR``).
     """
     from app.core import url_guard
 
@@ -219,12 +247,14 @@ def server_pruefen(basis: str) -> tuple[bool, str]:
     try:
         teile = urlsplit(basis)
         host = (teile.hostname or "").lower()
+        port = teile.port
     except ValueError:
-        return False, grund
-    if (teile.scheme == "https" and host and host in interne_git_server()
+        return False, NICHT_ERREICHBAR
+    if (teile.scheme == "https" and host and freigegeben(host, port)
             and not teile.username and not teile.password and url_guard.firmennetz(host)):
         return True, ""
-    return False, grund
+    log.info("[Projekt] Server %s nicht abgefragt: %s", host[:100], grund)
+    return False, NICHT_ERREICHBAR
 
 
 MAX_CA_ZERTIFIKATE = 10
@@ -237,8 +267,12 @@ _HOSTNAME_RE = re.compile(rf"^(?=.{{1,253}}$){_HOST_TEIL}(?:\.{_HOST_TEIL})*$")
 def ca_pruefen(pem: str | None) -> str:
     """Zertifizierungsstelle(n) der Firma prüfen → gespeicherte Form (leer = keine).
 
-    Nur öffentliche Zertifikate im PEM-Format, höchstens zehn; ein privater
-    Schlüssel wird abgewiesen (er gehört nie in die Plattform)."""
+    Nur öffentliche Zertifikate im PEM-Format, höchstens zehn. Jedes muss eine
+    Zertifizierungsstelle sein (``BasicConstraints CA:TRUE``) und gerade gültig —
+    ein Server-Zertifikat (Blatt) oder ein abgelaufenes wird abgewiesen, ebenso ein
+    privater Schlüssel (er gehört nie in die Plattform)."""
+    from datetime import datetime, timezone
+
     roh = (pem or "").strip()
     if not roh:
         return ""
@@ -254,6 +288,18 @@ def ca_pruefen(pem: str | None) -> str:
         raise ValueError("Kein lesbares Zertifikat im PEM-Format (-----BEGIN CERTIFICATE-----).") from e
     if len(zertifikate) > MAX_CA_ZERTIFIKATE:
         raise ValueError(f"Höchstens {MAX_CA_ZERTIFIKATE} Zertifikate.")
+    jetzt = datetime.now(timezone.utc)
+    for z in zertifikate:
+        name = z.subject.rfc4514_string()[:120]
+        try:
+            ca = z.extensions.get_extension_for_class(x509.BasicConstraints).value.ca
+        except x509.ExtensionNotFound:
+            ca = False
+        if not ca:
+            raise ValueError(f"„{name}“ ist keine Zertifizierungsstelle (CA:TRUE fehlt) — bitte das Zertifikat "
+                             "der Firmen-CA einfügen, nicht das des Servers.")
+        if z.not_valid_after_utc <= jetzt or z.not_valid_before_utc > jetzt:
+            raise ValueError(f"„{name}“ ist abgelaufen oder noch nicht gültig.")
     try:
         ssl.create_default_context(cadata=roh)
     except (ssl.SSLError, ValueError) as e:
@@ -268,19 +314,25 @@ def _pem_kodierung():
 
 
 def interne_server_pruefen(text: str | None) -> str:
-    """Freigegebene Server im Firmennetz prüfen → gespeicherte Form (Komma-getrennt).
+    """Freigegebene Git-Server prüfen → gespeicherte Form (Komma-getrennt).
 
-    Nur Servernamen, keine Adressen mit Schema, Pfad oder Muster — freigegeben wird
-    genau dieser Name, nicht ein ganzes Netz."""
+    Nur Servernamen, optional mit Port (``name:8443``) — keine Adressen mit Schema,
+    Pfad oder Muster: freigegeben wird genau dieser Name, nicht ein ganzes Netz.
+    ``name:443`` wird zu ``name``."""
     namen: list[str] = []
     for teil in re.split(r"[,\s]+", (text or "").strip().lower()):
         teil = teil.rstrip(".")
         if not teil:
             continue
-        if not _HOSTNAME_RE.match(teil) or "." not in teil:
-            raise ValueError(f"„{teil[:80]}“ ist kein Servername (z. B. gitlab.intern.example.com).")
-        if teil not in namen:
-            namen.append(teil)
+        name, _, port = teil.partition(":")
+        name = name.rstrip(".")
+        if (not _HOSTNAME_RE.match(name) or "." not in name
+                or (port and (not port.isdigit() or not 0 < int(port) < 65536))):
+            raise ValueError(f"„{teil[:80]}“ ist kein Servername (z. B. gitlab.intern.example.com "
+                             "oder gitlab.intern.example.com:8443).")
+        eintrag = name if not port or int(port) == 443 else f"{name}:{int(port)}"
+        if eintrag not in namen:
+            namen.append(eintrag)
     if len(namen) > MAX_INTERNE_SERVER:
         raise ValueError(f"Höchstens {MAX_INTERNE_SERVER} Server.")
     return ",".join(namen)
@@ -314,11 +366,49 @@ def ssl_kontext(pem: str | None = None) -> ssl.SSLContext | bool:
     return _SSL[schluessel]
 
 
+class _FesteAdresse(httpx.AsyncBaseTransport):
+    """Verbindet mit EINER geprüften Adresse statt den Namen neu aufzulösen (DNS-Rebinding).
+
+    Je Anfrage: Name einmal auflösen, jede Adresse prüfen (öffentlich, oder im
+    Firmennetz bei freigegebenem Server), dann per IP verbinden. Zertifikat und SNI
+    gelten weiter für den Namen (``sni_hostname``), der Host-Kopf bleibt der Name.
+    Scheitert die Prüfung, kommt ein einheitlicher Verbindungsfehler — ohne Grund.
+    """
+
+    def __init__(self, verify, innen: httpx.AsyncBaseTransport | None = None, aufloesen=None):
+        self._innen = innen or httpx.AsyncHTTPTransport(verify=verify)
+        self._aufloesen = aufloesen
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        from app.core import url_guard
+
+        host, port = request.url.host, request.url.port or 443
+        kw = {"aufloesen": self._aufloesen} if self._aufloesen else {}
+        try:
+            ip = await asyncio.to_thread(url_guard.feste_adresse, host, port, freigegeben(host, port), **kw)
+        except ValueError as e:
+            log.info("[Projekt] Verbindung zu %s:%s abgelehnt: %s", host[:100], port, e)
+            raise httpx.ConnectError("Server nicht erreichbar", request=request) from None
+        request.url = request.url.copy_with(host=ip)
+        request.extensions = {**request.extensions, "sni_hostname": host}
+        return await self._innen.handle_async_request(request)
+
+    async def aclose(self) -> None:
+        await self._innen.aclose()
+
+
 def git_client(timeout: float, anbieter=None) -> httpx.AsyncClient:
     """HTTP-Client für Abfragen des Git-Servers: ohne Weiterleitungen (der Token ginge
-    sonst an ein ungeprüftes Ziel), bei eigenen Servern mit der Stelle der Firma."""
-    verify = ssl_kontext() if getattr(anbieter, "base_url", None) else True
-    return httpx.AsyncClient(timeout=httpx.Timeout(timeout), follow_redirects=False, verify=verify)
+    sonst an ein ungeprüftes Ziel). Bei eigenen Servern verbunden über eine einmal
+    geprüfte Adresse (``_FesteAdresse``) und — nur für freigegebene Server — mit der
+    Stelle der Firma. GitHub bleibt beim Standard."""
+    basis = getattr(anbieter, "base_url", None)
+    if not basis:
+        return httpx.AsyncClient(timeout=httpx.Timeout(timeout), follow_redirects=False)
+    teile = urlsplit(basis)
+    verify = ssl_kontext() if freigegeben(teile.hostname, teile.port) else True
+    return httpx.AsyncClient(timeout=httpx.Timeout(timeout), follow_redirects=False,
+                             transport=_FesteAdresse(verify))
 
 
 async def _ersteller(db: AsyncSession, team: Team):
@@ -744,7 +834,7 @@ async def kommentare_holen(anbieter, client, token: str, repo: str, nummer: int)
     konto = (await schluessel_konto(anbieter, client, token) or "").lower()
     if konto:
         for k in kommentare:
-            if isinstance(k, dict) and (k.get("autor") or "").lower() == konto:
+            if isinstance(k, dict) and (k.get("konto") or k.get("autor") or "").lower() == konto:
                 k["vertraut"] = True
     return kommentare
 
@@ -1015,7 +1105,10 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
         raise GitFehler(f"Repo {repo} nicht gefunden. Ist es privat, braucht das Projekt einen Schlüssel "
                         "(Bearbeiten → Schlüssel für das Repo).") from e
     except httpx.HTTPError as e:
-        raise GitFehler(f"{server} antwortet nicht für {repo}: {e}") from e
+        # Ohne Einzelheiten (abgelehnt, Zeitüberschreitung, Port zu): die Meldung sehen
+        # alle im Projekt — sie soll kein Werkzeug zum Abtasten des Netzes sein.
+        log.info("[Projekt] %s antwortet nicht für %s: %s", server, repo, e)
+        raise GitFehler(f"{server} antwortet nicht für {repo}.") from e
     except RuntimeError as e:
         # Der Server hat geantwortet, aber abgelehnt oder Unbrauchbares geliefert —
         # die Meldung des Anbieters sagt, was fehlt.
@@ -2082,8 +2175,8 @@ async def agents_md_pr(db: AsyncSession, redis, team: Team) -> dict:
     except RuntimeError as e:
         raise GitFehler(f"Kein {_pr_wort(anbieter)} angelegt: {e}") from e
     except httpx.HTTPError as e:
-        raise GitFehler(f"Kein {_pr_wort(anbieter)} angelegt: der Server antwortet nicht "
-                        f"({type(e).__name__}).") from e
+        log.info("[Projekt] AGENTS.md: Server antwortet nicht: %s", e)
+        raise GitFehler(f"Kein {_pr_wort(anbieter)} angelegt: der Server antwortet nicht.") from e
     return {"url": _sichere_url(url, anbieter), "aktuell": False}
 
 
