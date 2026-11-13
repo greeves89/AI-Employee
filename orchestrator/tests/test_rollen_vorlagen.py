@@ -33,6 +33,27 @@ class VorlagenTests(unittest.TestCase):
             for pfad in v["rechte"].get("menu_paths") or []:
                 self.assertIn(pfad.strip("/").split("/")[0], nutzung.BEREICHE, (schluessel, pfad))
 
+    def test_nie_unbeabsichtigt_weiter_als_die_grundrolle(self):
+        """Was eine Vorlage NICHT ausdrücklich setzt, ist genau der Wert ihrer Grundrolle —
+        ein fehlender Schlüssel hieße in einer eigenen Rolle „ohne Grenze“. Ausdrücklich
+        gesetzte Werte sind die bewusste Aussage der Vorlage (z. B. Entwickler: L4, 10 Agenten)."""
+        from app.core.permissions import DEFAULT_PERMISSIONS_BY_ROLE
+
+        for schluessel, v in rollen_vorlagen.VORLAGEN.items():
+            basis = DEFAULT_PERMISSIONS_BY_ROLE[UserRole(v["grundrolle"])]
+            rechte = rollen_vorlagen.rechte_fuer(schluessel)
+            self.assertEqual(set(rechte), set(basis), schluessel)
+            for k in set(basis) - set(v["rechte"]):
+                self.assertEqual(rechte[k], basis[k], (schluessel, k))
+        # Für Betrachter und Gast: keine Liste der Grundrolle wird zu „alle“.
+        for schluessel in ("betrachter", "gast"):
+            rechte = rollen_vorlagen.rechte_fuer(schluessel)
+            for k in ("template_ids", "models", "llm_providers", "url_host_patterns", "search_indexes",
+                      "integration_providers", "mcp_server_ids", "secret_ids", "ai_account_ids"):
+                if DEFAULT_PERMISSIONS_BY_ROLE[UserRole(rollen_vorlagen.VORLAGEN[schluessel]["grundrolle"])][k] is not None \
+                        or schluessel == "gast" and k in rollen_vorlagen.VORLAGEN["gast"]["rechte"]:
+                    self.assertIsNotNone(rechte[k], (schluessel, k))
+
     def test_liste_erklaert_plattform_admin(self):
         namen = [v["name"] for v in rollen_vorlagen.liste()]
         self.assertEqual(namen[0], "Plattform-Admin")

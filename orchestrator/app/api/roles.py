@@ -128,7 +128,7 @@ async def gruppe_aus_vorlage(schluessel: str, body: dict | None = None, user=Dep
     name = ((body or {}).get("name") or vorlage["name"]).strip()[:100]
     if (await db.execute(select(CustomRole).where(CustomRole.name == name))).scalar_one_or_none():
         raise HTTPException(status_code=409, detail=f"Gruppe „{name}“ gibt es schon — anderen Namen wählen.")
-    rechte = {k: (list(v) if isinstance(v, list) else v) for k, v in vorlage["rechte"].items()}
+    rechte = rollen_vorlagen.rechte_fuer(schluessel)
     _grenze_pruefen(rechte)
     r = CustomRole(name=name, description=vorlage["beschreibung"], permissions=rechte, is_system=False)
     db.add(r)

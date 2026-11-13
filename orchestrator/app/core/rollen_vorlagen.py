@@ -70,11 +70,26 @@ PLATTFORM_ADMIN = {
 }
 
 
+def rechte_fuer(schluessel: str) -> dict[str, Any]:
+    """Vollständiges Rechtebündel einer Vorlage: die Standardwerte ihrer Grundrolle, darüber die
+    Vorlage. In einer eigenen Rolle heißt ein FEHLENDER Schlüssel „ohne Grenze“ — ohne diese
+    Grundlage wäre ein „Betrachter“ bei Modellen, Vorlagen und Adressen weiter gefasst als die
+    Grundrolle Betrachter (Review 13.11.2026)."""
+    from app.core.permissions import DEFAULT_PERMISSIONS_BY_ROLE
+    from app.models.user import UserRole
+
+    vorlage = VORLAGEN[schluessel]
+    basis = DEFAULT_PERMISSIONS_BY_ROLE[UserRole(vorlage["grundrolle"])]
+    rechte = {k: (list(v) if isinstance(v, list) else v) for k, v in basis.items()}
+    rechte.update({k: (list(v) if isinstance(v, list) else v) for k, v in vorlage["rechte"].items()})
+    return rechte
+
+
 def liste() -> list[dict]:
     """Für die Oberfläche: alle Vorlagen samt Plattform-Admin (nur zur Erklärung)."""
     return [PLATTFORM_ADMIN] + [
         {"schluessel": k, "name": v["name"], "grundrolle": v["grundrolle"],
-         "beschreibung": v["beschreibung"], "rechte": dict(v["rechte"])}
+         "beschreibung": v["beschreibung"], "rechte": rechte_fuer(k)}
         for k, v in VORLAGEN.items()
     ]
 
