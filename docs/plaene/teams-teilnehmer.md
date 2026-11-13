@@ -61,7 +61,26 @@ Mensch lässt ihn aus dem Wartebereich herein.
 5. Nutzungsbedingungen von Microsoft für automatisierte Teilnehmer: vor dem Einsatz beim
    Kunden prüfen.
 
+## Recherche 13.11.2026
+
+- **Weg B ist erprobte Praxis:** Selbst gehostete Open-Source-Projekte wie Vexa (Apache 2.0)
+  treten Teams-Terminen mit einem gesteuerten Browser bei. Anbieter beschreiben das offen
+  (Selenium bzw. Puppeteer mit Chrome), weil es für externe Entwickler kein öffentliches
+  Bot-SDK für Teams gibt.
+- **Gegenwind von Microsoft:** Teams blockt inzwischen erkannte externe Besprechungs-Bots
+  automatisch bzw. verlangt eine Zulassung. Mandanten können anonyme Teilnehmer abschalten.
+  Ein **anonymer Gast-Bot ist deshalb nicht verlässlich.**
+- **Folge für den Entwurf:** Der Teilnehmer meldet sich mit dem **eigenen Microsoft-365-Konto
+  des Agenten** an (Kap. 37.16, seit 1.445.0). Damit ist er ein interner, lizenzierter
+  Teilnehmer der eigenen Organisation, kein externer Bot. Der Gastbeitritt bleibt nur Notlösung
+  für Termine anderer Organisationen (und wird dort von der Gäste-Regel ohnehin ausgeschlossen).
+- **Offen:** Microsofts Nutzungsbedingungen zu automatisierten Teilnehmern. Die Recherche fand
+  keine ausdrückliche Regel. Vor dem Einsatz beim Kunden mit dessen IT klären und im Handbuch
+  nennen (Einverständnis, Hinweis an alle Teilnehmenden).
+
 ## Was dafür gebraucht wird
 
 - Daniels Okay für diesen Weg.
 - Ein Test-Termin in Daniels eigener Umgebung (Beitrittslink), kein Kundentermin.
+- Für die Anmeldung als interner Teilnehmer: ein lizenzierter Microsoft-365-Testnutzer für den
+  Agenten (derselbe, der auch Stufe 1 live prüfen würde).
