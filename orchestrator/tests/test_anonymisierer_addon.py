@@ -238,7 +238,7 @@ class AddonTests(unittest.TestCase):
                                             path=b"", scheme=b"", authority=b""))
             f.request.headers["Proxy-Authorization"] = "Basic " + base64.b64encode(b"zl.a1:tok").decode()
             asyncio.run(addon.http_connect(f))
-            self.assertTrue(addon.orch.frisch, "mit Kennung immer frisch, solange nichts gemerkt ist")
+            self.assertEqual(addon.orch.frisch, ziele is None, "mit Kennung frisch, solange keine Liste gemerkt ist")
             self.assertEqual(f.response is not None and f.response.status_code == 403, gesperrt, ziele)
             if not gesperrt:
                 self.assertEqual(addon.agenten[f.client_conn.id], ("a1", "tok"), "Kennung abgestreift")
