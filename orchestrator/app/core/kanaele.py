@@ -131,7 +131,8 @@ def _besprechungen(alt: dict, e) -> dict:
                 continue
             if not re.fullmatch(r"[a-z0-9._%+\-]*@?[a-z0-9.\-]+\.[a-z]{2,}", a):
                 raise UngueltigeEinstellung(f"„{a[:40]}“ ist keine Adresse oder Domäne.")
-            sauber.append(a)
+            # Domäne immer mit „@“ speichern: eindeutig eine Domäne, keine Adresse.
+            sauber.append(a if "@" in a else "@" + a)
         b["accept_from"] = sauber
     if "mit_gaesten" in e:
         b["mit_gaesten"] = bool(e["mit_gaesten"])

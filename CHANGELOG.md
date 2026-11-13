@@ -15,6 +15,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   - **Protokoll nach dem Termin:** Der Agent bekommt das Transkript über denselben Weg wie die Besprechungsräume (`type=meeting`), nicht blockierend. Die Antwort wird geprüft (`_looks_like_todo`). Die Aufgaben sind die `- [ ]`-Zeilen (`projekt_termine.aktionspunkte`, gemeinsam mit den Projekt-Besprechungen).
   - **Einstellungen** (an, Rolle, Einladungen annehmen, nur von, mit Gästen) sind Teil des Teams-Kanals (`core/kanaele`). Es gelten dieselben Rechte und dasselbe Prüfprotokoll. Bisher gab es dafür weder Schnittstelle noch Oberfläche.
 
+### Sicherheit (Review vor dem Merge)
+- **Protokoll-Auftrag:** höchstens 2 Läufe je Termin. Ein Protokoll ohne Aufgaben („keine“) gilt als brauchbar. Vorher hätte jede solche Antwort einen neuen bezahlten Lauf ausgelöst, eine Woche lang.
+- **Fremder Text:**
+  - Transkript zwischen Markierungen, eingeschleuste Markierungen entschärft.
+  - Betreff ohne Umbrüche und Anführungszeichen.
+  - Hinweis davor und danach: keine Anweisungen.
+  - Restrisiko (Zug mit Werkzeugen) steht in `docs/SICHERHEITSMODELL.md`.
+- **Gäste-Regel:**
+  - Öffentliche Mail-Domänen des Besitzers (gmail.com u. a.) zählen nicht als eigene.
+  - Eingeladene ohne Adresse gelten als Gast.
+  - Keine automatische Zusage mehr für Termine, aus denen sich der Agent heraushält.
+- **Einladungen „nur von“:** Domänen werden als `@domäne` gespeichert und genau verglichen. Vorher passte `evilexample.com` auf `example.com`.
+
 ### Behoben
 - `fetchJSON` scheiterte an leeren Antworten (204, z. B. beim Löschen).
 
