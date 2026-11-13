@@ -81,14 +81,19 @@ def wav(pcm: bytes, rate: int = RATE) -> bytes:
     return puffer.getvalue()
 
 
-def ist_stille(pcm: bytes, schwelle: int = 300) -> bool:
-    """Nur Stille? Dann nicht transkribieren (kostet sonst je Stück einen Aufruf)."""
+def ist_stille(pcm: bytes, schwelle: int = 150) -> bool:
+    """Kaum Ton? Dann nicht transkribieren. Gemessen am mittleren Pegel (RMS), nicht am
+    Spitzenwert: Ein einzelnes Knacken machte ein fast stilles Stück zu „Ton“, und Whisper
+    erfand dazu Sätze („Thank you for joining us …“, live gesehen 13.11.2026)."""
     if not pcm:
         return True
     import array
+    import math
 
     werte = array.array("h", pcm[: len(pcm) - len(pcm) % 2])
-    return max((abs(v) for v in werte), default=0) < schwelle
+    if not werte:
+        return True
+    return math.sqrt(sum(v * v for v in werte) / len(werte)) < schwelle
 
 
 class Tonsammler:

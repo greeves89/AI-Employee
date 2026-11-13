@@ -67,6 +67,12 @@ class TonTests(unittest.TestCase):
         self.assertTrue(tt.ist_stille(self._ton(0.2, 50)))
         self.assertFalse(tt.ist_stille(self._ton(0.2, 4000)))
 
+    def test_einzelnes_knacken_ist_stille(self):
+        """Live: ein Stück mit RMS 19 galt als Ton — Whisper erfand dazu „Bye-bye“."""
+        pcm = bytearray(self._ton(1, 5))
+        pcm[100:102] = struct.pack("<h", 8000)
+        self.assertTrue(tt.ist_stille(bytes(pcm)))
+
     def test_sammler_gibt_volle_stuecke(self):
         s = tt.Tonsammler(sekunden=1)
         haeppchen = self._ton(0.2, 3000)

@@ -54,7 +54,8 @@ async def _transcribe_local(raw: bytes, filename: str, content_type: str) -> str
     return (resp.json().get("text") or "").strip()
 
 
-async def _transcribe_openai(raw: bytes, filename: str, content_type: str, api_key: str) -> str:
+async def _transcribe_openai(raw: bytes, filename: str, content_type: str, api_key: str,
+                             sprache: str | None = None) -> str:
     """Transcribe via OpenAI Whisper. Raises on failure."""
     if len(raw) > _OPENAI_MAX_BYTES:
         raise HTTPException(
@@ -67,13 +68,14 @@ async def _transcribe_openai(raw: bytes, filename: str, content_type: str, api_k
             "https://api.openai.com/v1/audio/transcriptions",
             headers={"Authorization": f"Bearer {api_key}"},
             files={"file": (filename, raw, content_type)},
-            data={"model": "whisper-1", "response_format": "json"},
+            data={"model": "whisper-1", "response_format": "json", **({"language": sprache} if sprache else {})},
         )
     resp.raise_for_status()
     return (resp.json().get("text") or "").strip()
 
 
-async def transkribieren(raw: bytes, filename: str, content_type: str, db: AsyncSession) -> str:
+async def transkribieren(raw: bytes, filename: str, content_type: str, db: AsyncSession,
+                         sprache: str | None = None) -> str:
     """EIN Weg zur Transkription — Mitschnitt im Browser und Teams-Teilnehmer.
 
     Erst der lokale STT-Dienst, sonst OpenAI Whisper (Schlüssel aus der Einstellung
@@ -95,7 +97,7 @@ async def transkribieren(raw: bytes, filename: str, content_type: str, db: Async
                    "OpenAI-Key für den Fallback konfiguriert (Admin-Konsole → Sprache (Voice)).",
         )
     try:
-        return await _transcribe_openai(raw, filename, content_type, api_key)
+        return await _transcribe_openai(raw, filename, content_type, api_key, sprache)
     except HTTPException:
         raise
     except httpx.HTTPStatusError as e:
@@ -154,7 +156,8 @@ async def teilnehmer_ton(
     raw = await request.body()
     if len(raw) > TEILNEHMER_MAX_BYTES:
         raise HTTPException(status_code=413, detail="Tonstück zu groß")
-    text = (await transkribieren(raw, "teilnehmer.wav", "audio/wav", db)).strip()
+    # Sprache vorgeben: Ohne sie rät Whisper bei leisen Stücken eine Sprache und erfindet dazu.
+    text = (await transkribieren(raw, "teilnehmer.wav", "audio/wav", db, sprache="de")).strip()
     if text:
         zeile = f"[{jetzt.astimezone().strftime('%H:%M')}] {text}"
         seite.transcript = (((seite.transcript or "") + "\n" + zeile).strip())[-TRANSKRIPT_MAX:]
