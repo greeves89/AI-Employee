@@ -200,7 +200,9 @@ class VerlaufFuersModellTests(unittest.IsolatedAsyncioTestCase):
     async def _verlauf(self, als_agent: bool) -> str:
         from unittest.mock import AsyncMock, patch
         from app.api import agents as agents_api
+        # Zugriff und Gespraechsbesitz pruefen eigene Tests (test_chats_je_nutzer).
         with patch.object(agents_api, "_check_owner_or_self", AsyncMock()), \
+                patch("app.core.chat_besitz.pruefen", AsyncMock()), \
                 patch("app.dependencies.is_agent_principal", return_value=als_agent):
             async with self.Session() as db:
                 antwort = await agents_api.get_chat_history(
