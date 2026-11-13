@@ -743,6 +743,27 @@ export async function getTeamsAuswahl(agentId: string): Promise<TeamsAuswahl> {
   return fetchJSON(`${getBase()}/agents/${agentId}/kanaele/teams/auswahl`);
 }
 
+export interface ZiellisteStand {
+  aktiv: boolean;
+  wirksam: boolean;
+  proxy_an: boolean;
+  eintraege: number;
+  hinweis: string;
+  neu_gestartet?: boolean;
+}
+
+/** Zielliste am Ausgang: erlaubte Adressen verbindlich (Proxy + Netzwächter), opt-in je Agent. */
+export async function getAgentZielliste(agentId: string): Promise<ZiellisteStand> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/zielliste`);
+}
+
+export async function setzeAgentZielliste(agentId: string, aktiv: boolean): Promise<ZiellisteStand> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/zielliste`, {
+    method: "PATCH",
+    body: JSON.stringify({ aktiv }),
+  });
+}
+
 export async function getAgentConfidence(agentId: string): Promise<ConfidenceSettings> {
   return fetchJSON(`${getBase()}/agents/${agentId}/confidence`);
 }

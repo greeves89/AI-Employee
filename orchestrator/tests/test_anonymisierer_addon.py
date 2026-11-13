@@ -27,16 +27,23 @@ AGENT = ("a1", "tok")
 class _Orch:
     def __init__(self, cfg=CFG):
         self.cfg = cfg
+        self.frisch = False  # einmal frisch gefragt?
 
     def anonym(self, agent):
         return self.cfg
 
     def hosts(self, agent, frisch=False):
-        self.frisch = frisch
+        self.frisch = self.frisch or frisch
         return list(self.cfg["ziele"]) if self.cfg else []
 
     def werte(self, *a):
         raise AssertionError("keine Schlüssel-Platzhalter im Test")
+
+    #: Zielliste am Ausgang (orchestrator/app/core/zielliste) — None = aus.
+    ziele = None
+
+    def zielliste(self, agent):
+        return self.ziele
 
 
 @unittest.skipIf(aie_egress is None, "mitmproxy fehlt")
@@ -55,7 +62,7 @@ class AddonTests(unittest.TestCase):
         return addon, f
 
     def _anfrage(self, addon, f):
-        addon.requestheaders(f)
+        asyncio.run(addon.requestheaders(f))
         if f.response is None:
             asyncio.run(addon.request(f))
 
@@ -145,7 +152,7 @@ class AddonTests(unittest.TestCase):
         self.assertEqual(f.response.status_code, 502)
         addon, f = self._flow(self.ANFRAGE)
         with patch.object(type(addon), "_anonym_einstellung", side_effect=RuntimeError("unerwartet")):
-            addon.requestheaders(f)
+            asyncio.run(addon.requestheaders(f))
         self.assertEqual(f.response.status_code, 502)
         getoetet = []
         f.kill = lambda: getoetet.append(True)
@@ -153,6 +160,99 @@ class AddonTests(unittest.TestCase):
             f.response = __import__("mitmproxy").http.Response.make(200, b"{}")
             addon.responseheaders(f)
         self.assertEqual(getoetet, [True])
+
+    def _connect(self, host: str, ziele, port=443):
+        import base64
+
+        addon = aie_egress.AieEgress()
+        addon.orch = _Orch(None)
+        addon.orch.ziele = ziele
+        f = tflow.tflow(req=tutils.treq(method=b"CONNECT", host=host, port=port, path=b"", scheme=b"", authority=b""))
+        f.request.headers["Proxy-Authorization"] = "Basic " + base64.b64encode(b"a1:tok").decode()
+        asyncio.run(addon.http_connect(f))
+        return f
+
+    def test_zielliste_sperrt_was_nicht_auf_der_liste_steht(self):
+        """Zielliste am Ausgang: CONNECT nur zu erlaubten Zielen, Modellanbieter immer."""
+        ziele = {"muster": ["*.example.com"], "rolle": None, "immer": ["api.anthropic.com"]}
+        self.assertEqual(self._connect("wikipedia.org", ziele).response.status_code, 403)
+        self.assertIsNone(self._connect("api.example.com", ziele).response)
+        self.assertIsNone(self._connect("api.anthropic.com", ziele).response)
+        self.assertIsNone(self._connect("wikipedia.org", None).response, "Zielliste aus: wie bisher")
+
+    def test_zielliste_gilt_auch_fuer_klartext_http(self):
+        import base64
+
+        addon = aie_egress.AieEgress()
+        addon.orch = _Orch(None)
+        addon.orch.ziele = {"muster": ["erlaubt.example.com"], "rolle": None, "immer": []}
+        for host, gesperrt in (("anders.example.org", True), ("erlaubt.example.com", False)):
+            f = tflow.tflow(req=tutils.treq(method=b"GET", host=host, port=80, scheme=b"http", path=b"/"))
+            f.request.headers["Proxy-Authorization"] = "Basic " + base64.b64encode(b"a1:tok").decode()
+            asyncio.run(addon._ohne_tunnel(f))
+            self.assertEqual(f.response is not None and f.response.status_code == 403, gesperrt, host)
+
+    def test_zielliste_bricht_tls_auf_und_haelt_den_servernamen_fest(self):
+        """Domain-Fronting: anderer SNI im Tunnel zum erlaubten Ziel geht nach außen nicht mit."""
+        from types import SimpleNamespace
+        addon, f = self._flow(self.ANFRAGE, host="erlaubt.example.com", cfg=None)
+        addon.orch.ziele = {"muster": ["erlaubt.example.com"], "rolle": None, "immer": []}
+        server = SimpleNamespace(sni=None)
+        data = SimpleNamespace(context=SimpleNamespace(client=SimpleNamespace(id=f.client_conn.id), server=server),
+                               client_hello=SimpleNamespace(sni="fremd.example.org"), ignore_connection=False)
+        asyncio.run(addon.tls_clienthello(data))
+        self.assertFalse(data.ignore_connection, "mit Zielliste immer aufbrechen")
+        self.assertEqual(server.sni, "erlaubt.example.com")
+
+    def test_zielliste_prueft_den_host_kopf_jeder_anfrage(self):
+        ziele = {"muster": ["erlaubt.example.com"], "rolle": None, "immer": []}
+        for host_kopf, gesperrt in (("fremd.example.org", True), ("erlaubt.example.com", False)):
+            addon, f = self._flow({"x": 1}, host="erlaubt.example.com", cfg=None)
+            addon.orch.ziele = ziele
+            f.request.headers["host"] = host_kopf
+            asyncio.run(addon.requestheaders(f))  # vor dem Senden, auch bei gestreamtem Körper
+            self.assertEqual(f.response is not None and f.response.status_code == 421, gesperrt, host_kopf)
+
+    def test_zielliste_klartext_host_kopf_muss_passen(self):
+        import base64
+
+        addon = aie_egress.AieEgress()
+        addon.orch = _Orch(None)
+        addon.orch.ziele = {"muster": ["erlaubt.example.com"], "rolle": None, "immer": []}
+        f = tflow.tflow(req=tutils.treq(method=b"GET", host="erlaubt.example.com", port=80, scheme=b"http", path=b"/"))
+        f.request.headers["Proxy-Authorization"] = "Basic " + base64.b64encode(b"a1:tok").decode()
+        f.request.headers["host"] = "fremd.example.org"
+        asyncio.run(addon._ohne_tunnel(f))
+        self.assertEqual(f.response.status_code, 421)
+
+    def test_kennung_erzwingt_frische_liste_und_sperrt_ohne(self):
+        """``zl.<id>``: Der Proxy verlässt sich nicht auf einen gemerkten Stand „aus“."""
+        import base64
+
+        for ziele, gesperrt in ((None, True),
+                                ({"muster": ["erlaubt.example.com"], "rolle": None, "immer": []}, False)):
+            addon = aie_egress.AieEgress()
+            addon.orch = _Orch(None)
+            addon.orch.ziele = ziele
+            f = tflow.tflow(req=tutils.treq(method=b"CONNECT", host="erlaubt.example.com", port=443,
+                                            path=b"", scheme=b"", authority=b""))
+            f.request.headers["Proxy-Authorization"] = "Basic " + base64.b64encode(b"zl.a1:tok").decode()
+            asyncio.run(addon.http_connect(f))
+            self.assertEqual(addon.orch.frisch, ziele is None, "mit Kennung frisch, solange keine Liste gemerkt ist")
+            self.assertEqual(f.response is not None and f.response.status_code == 403, gesperrt, ziele)
+            if not gesperrt:
+                self.assertEqual(addon.agenten[f.client_conn.id], ("a1", "tok"), "Kennung abgestreift")
+
+    def test_rohes_tcp_mit_zielliste_beendet(self):
+        from types import SimpleNamespace
+        addon, f = self._flow(self.ANFRAGE, cfg=None)
+        beendet = []
+        tcp = SimpleNamespace(client_conn=f.client_conn, kill=lambda: beendet.append(True))
+        addon.tcp_start(tcp)
+        self.assertEqual(beendet, [], "ohne Zielliste unberührt")
+        addon.orch.ziele = {"muster": [], "rolle": None, "immer": []}
+        addon.tcp_start(tcp)
+        self.assertEqual(beendet, [True])
 
     def test_tls_zum_anbieter_fragt_frisch(self):
         from types import SimpleNamespace

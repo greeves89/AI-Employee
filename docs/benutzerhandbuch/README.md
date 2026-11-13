@@ -2615,6 +2615,7 @@ Geprüft werden unter anderem:
   über Telegram, Slack/Teams/Discord oder Projekt-Git verlässt *(seit 1.434.0)*. Er ist bei jeder
   neuen Anlage zunächst aus; einschalten unter **Admin → DLP**.
 - bei welchen Agenten der **Anonymisierer** an ist und ob er wirkt *(seit 1.444.0, Kap. 37.15)*
+- bei welchen Agenten die **Erlaubten Adressen am Ausgang** erzwungen werden *(seit 1.450.0, Kap. 37.17)*
 - ob ein **Agenten-Token von außen** benutzt wurde *(seit 1.439.0, Kap. 37.14)*. Ein Agent meldet sich mit
   einem Token beim Server an. Das gilt nur direkt aus dem Netz der Agenten, über die öffentliche
   Adresse wird es abgewiesen. Kam in den letzten 7 Tagen trotzdem ein gültiges Token von außen,
@@ -5042,6 +5043,55 @@ nach seinem Auftrag. Antworten gibst du wie immer frei (Kap. 13).
 
 **Noch nicht enthalten:** Teams-Nachrichten wecken den Agenten noch nicht. Das kommt mit der
 eigenen Teams-Identität des Agenten.
+
+### 37.17 Erlaubte Adressen am Ausgang erzwingen *(seit 1.450.0)*
+
+Ein Agent erreicht normalerweise das ganze Internet. Die Liste **Erlaubte Adressen** galt bis
+1.449 nur für die Werkzeuge der Plattform. Claude Code und Codex kamen mit ihren eigenen
+Werkzeugen (Webabruf, `curl` in der Shell) daran vorbei. Mit **Am Ausgang erzwingen** wird die
+Liste verbindlich: Der Agent erreicht dann nur noch
+
+- die Adressen auf seiner Liste,
+- seinen Modellanbieter (Anthropic, OpenAI) und den Endpunkt seines KI-Kontos,
+- die Ziele, für die die Anlage Zugänge einsetzt (Schlüssel, Git, MCP-Server).
+
+Hat die Rolle des Besitzers eine eigene Adressliste, muss eine Adresse auf beiden Listen stehen.
+
+**So schaltest du es ein** (Besitzer des Agenten oder Administrator):
+1. Agent öffnen → **Einstellungen → Verbindungen**. In der einfachen Ansicht: Symbol
+   **Konnektoren** neben dem Chat.
+2. Bei **Erlaubte Adressen** die Adressen eintragen, etwa `api.example.com` oder
+   `*.github.com`. `*.github.com` gilt auch für `github.com` selbst.
+3. Den Schalter **Am Ausgang erzwingen** einschalten.
+
+Die Anlage startet den Agenten dann neu. Ein laufender Zug wird dabei abgebrochen. Das Ein- und
+Ausschalten steht im Audit-Log.
+
+**Was dabei passiert:**
+- Der Egress-Proxy lässt nur Verbindungen zu erlaubten Zielen durch, HTTPS und HTTP. Er prüft
+  jede einzelne Anfrage. Eine Anfrage, die über ein erlaubtes Ziel eine andere Adresse erreichen
+  soll (anderer Host-Kopf, Domain-Fronting), weist er ab.
+- Der Netzwächter (Kap. 37.9) sperrt für den Agenten alles, was nicht über den Proxy geht, auf
+  jedem Port.
+- Das gilt auch für **Apps, die der Agent selbst startet**. Sie haben dann keinen Zugang zum
+  Internet mehr, nur zur Plattform und zum Agenten.
+
+**Voraussetzungen und Grenzen:**
+- Der **Egress-Proxy muss an sein** (Kap. 37.10) und der Netzwächter eingerichtet. Ohne Proxy
+  lässt sich der Schalter nicht einschalten, der Sicherheitsstatus warnt.
+- Nur HTTP und HTTPS. Andere Protokolle im Tunnel (etwa SSH) beendet der Proxy.
+- Programme, die einem eigenen Zertifikat nicht vertrauen (fest eingebautes Zertifikat), kommen
+  nicht hinaus. Der Proxy muss die Verbindungen öffnen, um sie zu prüfen.
+- Neue oder gelöschte Einträge gelten nach spätestens einer Minute, ohne Neustart.
+- **Namensauflösung (DNS)** prüft die Liste nicht. Über DNS-Anfragen lassen sich kleine
+  Datenmengen nach außen geben.
+- Modellanbieter und die Ziele der Zugänge bleiben immer erreichbar, auch für Anfragen mit
+  fremden Zugangsdaten.
+- Ziele in den Ausnahmen des Netzwächters (`/etc/ai-employee/netz-ausnahmen`, Kap. 37.9) gelten
+  zusätzlich zur Liste.
+- Was die **Plattform** für den Agenten erledigt (Mail senden, Teams, Websuche über die
+  Plattform), läuft nicht über diese Liste. Dafür gelten die Rechte des Agenten und die
+  Freigaben (Kap. 13).
 
 ## A. Was kann ein Agent? (typische Einsätze)
 

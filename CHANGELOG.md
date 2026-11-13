@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.450.0] - 2026-11-13
+
+### Neu
+- **Erlaubte Adressen am Ausgang erzwingen** (`core/zielliste.py`, opt-in je Agent, Handbuch Kap. 37.17).
+  - Anlass: Die Liste „Erlaubte Adressen“ prüfte nur der Werkzeug-Ausführer im Agenten. Claude Code und Codex erreichten mit ihren eigenen Werkzeugen (Webabruf, Shell) jedes Ziel.
+  - Eingeschaltet lässt der Egress-Proxy nur Ziele der Liste zu, HTTPS und HTTP. Immer erlaubt: Modellanbieter, Endpunkt des KI-Kontos (vom Admin angelegt), Ziele der Zugänge. Hat die Rolle des Besitzers Host-Muster, gelten beide Listen.
+  - Gegen Domain-Fronting bricht der Proxy für diese Agenten TLS immer auf, setzt den Servernamen nach außen auf das geprüfte Ziel und prüft den Host-Kopf jeder Anfrage (421 bei Abweichung).
+  - Der Netzwächter sperrt für den Agenten alles außer dem Proxy, auf jedem Port. Das gilt für alle Behälter desselben Besitzers, also auch für die Apps des Agenten.
+  - Schalter auf der Karte „Erlaubte Adressen“ (`GET`/`PATCH /agents/{id}/zielliste`): nur Besitzer und Admin, nur mit Egress-Proxy, Neustart des Agenten, Eintrag im Audit-Log. Neuer Punkt im Sicherheitsstatus.
+  - Mit Liste meldet sich der Agent mit Kennung am Proxy an (`zl.<id>`). Der Proxy fragt dann frisch nach und sperrt, solange die Liste nicht bestätigt ist. Ein gemerkter Stand „Liste aus“ gilt nur noch 5 s statt 60 s. Ein neu gestarteter Agent kommt so nicht mit dem Stand seines Vorgängers durch.
+  - Prüfung vor dem Senden (`requestheaders`), auch bei gestreamtem Körper. Rohes TCP im Tunnel (kein HTTP) beendet der Proxy für diese Agenten. Gestoppte Agenten zählen für den Netzwächter weiter, ihre Apps bleiben gesperrt.
+  - Fail closed: Lässt sich die Einstellung beim Start nicht lesen, startet der Agent nicht.
+
+### Behoben
+- **Freigabeliste:** `*.` als Muster galt als „alles erlaubt“. Muster werden jetzt einheitlich auf den Host gekürzt (`host_muster`, URL-Form, Pfad und Port fallen weg) und beim Anlegen geprüft (422).
+- **Freigabeliste:** Einträge anlegen, löschen, leeren und Vorlagen anwenden durfte jeder, dem der Agent freigegeben war. Jetzt nur Besitzer und Admin (403).
+
+### Bekannte Grenzen
+- DNS prüft die Liste nicht (kleine Datenmengen über Namensanfragen). Was die Plattform für den Agenten tut (Mail, Teams), läuft nicht über die Liste.
+
+### Tests
+- `test_zielliste.py`: Matrix der Muster (auch `evilexample.com`, `example.com.evil.org`), Netzwächter samt Apps desselben Besitzers, Übergabe an den Proxy, Umgebung und fail closed, Freigabeliste, Schnittstelle (Besitzer, Freigegebene, ohne Proxy), Sicherheitsstatus.
+- `test_anonymisierer_addon.py` (im Proxy-Abbild): CONNECT und HTTP gesperrt bzw. erlaubt, TLS aufgebrochen mit festem Servernamen, Host-Kopf je Anfrage geprüft.
+- `test_secrets_gehoeren_ihrem_ersteller.py`: Patches werden in umgekehrter Reihenfolge gestoppt. Ein doppelt gepatchtes `visible_agent_ids` blieb sonst für alle folgenden Tests stehen.
+
 ## [1.449.1] - 2026-11-12
 
 ### Behoben

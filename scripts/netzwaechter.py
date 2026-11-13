@@ -75,6 +75,9 @@ def regeln(container: list[dict], subnetze: dict[str, str], ausnahmen: list[str]
     vorwaerts = ["-A AIE-NETZ -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN"]
     host = ["-A AIE-NETZ-HOST -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN"]
     eingeschraenkt = [c for c in container if c["besitzer"]]
+    # Zielliste gilt für den ganzen Besitzer: Die eigenen Apps des Agenten erreicht er über
+    # Regel 4. Hätten sie freien Ausgang, liefe alles über sie am Proxy vorbei.
+    mit_liste = {c["besitzer"] for c in eingeschraenkt if c.get("zielliste")}
     for c in eingeschraenkt:
         for ip in sorted(set(c["ips"].values())):
             # 2. Andere Besitzer im selben Netz
@@ -100,6 +103,13 @@ def regeln(container: list[dict], subnetze: dict[str, str], ausnahmen: list[str]
             if c.get("nur_proxy"):
                 vorwaerts.append(f"-A AIE-NETZ -s {ip}/32 -p tcp --dport 443 -j REJECT --reject-with tcp-reset")
                 vorwaerts.append(f"-A AIE-NETZ -s {ip}/32 -p udp --dport 443 -j DROP")
+            # 5c. Zielliste: alles Übrige hinaus gesperrt — auch Port 80, 8080, QUIC, ICMP.
+            # Gilt auch für die Apps desselben Besitzers (ohne Proxy: kein Internet). Die
+            # eigenen Docker-Netze (Proxy, Orchestrator, eigene Apps) sind in Regel 4
+            # schon durchgelassen; DNS fragt der Container bei Docker selbst (127.0.0.11).
+            if c["besitzer"] in mit_liste:
+                vorwaerts.append(f"-A AIE-NETZ -s {ip}/32 -p tcp -j REJECT --reject-with tcp-reset")
+                vorwaerts.append(f"-A AIE-NETZ -s {ip}/32 -j DROP")
             # 6. Host
             host.append(f"-A AIE-NETZ-HOST -s {ip}/32 -j DROP")
     if standard:
@@ -172,8 +182,24 @@ def nur_ueber_proxy(labels: dict, umgebung: list[str]) -> bool:
             and any(e.startswith("HTTPS_PROXY=") and len(e) > len("HTTPS_PROXY=") for e in umgebung))
 
 
+def mit_zielliste(labels: dict, umgebung: list[str]) -> bool:
+    """Agent mit Zielliste am Ausgang (``AIE_ZIELLISTE=1``, orchestrator/app/core/zielliste).
+
+    Für ihn geht GAR NICHTS direkt hinaus, auf keinem Port und keinem Protokoll, nur über den
+    Egress-Proxy (eigenes Docker-Netz, Regel 4), der die Liste durchsetzt. Die Umgebung ist die
+    vom Anlegen des Behälters; der Agent kann sie nicht nachträglich ändern. Nur zusammen mit
+    dem Proxy (``nur_ueber_proxy``) — ohne ihn hätte der Agent sonst gar keinen Weg hinaus.
+    """
+    return nur_ueber_proxy(labels, umgebung) and "AIE_ZIELLISTE=1" in umgebung
+
+
 def zustand() -> tuple[list[dict], dict[str, str]]:
     ids = subprocess.run(["docker", "ps", "-q"], check=True, capture_output=True, text=True).stdout.split()
+    # Auch gestoppte Agenten: Ihre Zielliste gilt weiter für ihre Apps (Regel 5c). Ohne IP
+    # bekommen sie selbst keine Regeln.
+    gestoppt = subprocess.run(["docker", "ps", "-aq", "--filter", "label=ai-employee.type=agent"],
+                              check=True, capture_output=True, text=True).stdout.split()
+    ids += [i for i in gestoppt if i not in ids]
     container = []
     netznamen: set[str] = {"bridge"}
     gesehen = []
@@ -186,7 +212,8 @@ def zustand() -> tuple[list[dict], dict[str, str]]:
             continue
     for c in gesehen:
         netze = (c.get("NetworkSettings") or {}).get("Networks") or {}
-        ips = {n: v["IPAddress"] for n, v in netze.items() if v.get("IPAddress")}
+        laeuft = bool((c.get("State") or {}).get("Running"))
+        ips = {n: v["IPAddress"] for n, v in netze.items() if v.get("IPAddress")} if laeuft else {}
         netznamen |= set(ips)
         labels = (c.get("Config") or {}).get("Labels") or {}
         umgebung = (c.get("Config") or {}).get("Env") or []
@@ -195,6 +222,7 @@ def zustand() -> tuple[list[dict], dict[str, str]]:
             "besitzer": besitzer(labels, umgebung),
             "ips": ips,
             "nur_proxy": nur_ueber_proxy(labels, umgebung),
+            "zielliste": mit_zielliste(labels, umgebung),
         })
     subnetze = {}
     netze = []

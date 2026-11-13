@@ -49,8 +49,39 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
    Netzwächter zwingt nur Port 443 durch den Proxy, andere Ports (80, 8080, 8443 …) gehen
    direkt hinaus. Schlüssel sind dadurch nicht gefährdet (im Agenten liegen nur Platzhalter),
    Arbeitsdaten könnten aber an jedes Ziel abfließen, ob durch den Proxy oder an ihm vorbei.
-   Alle Ports durch den Proxy zu zwingen, änderte daran wenig. Wirksam wäre nur eine Zielliste
-   je Agent → Entscheidung, siehe unten.
+   Alle Ports durch den Proxy zu zwingen, änderte daran wenig. Wirksam ist nur eine Zielliste
+   je Agent.
+   **Seit 1.450.0 opt-in je Agent** (`core/zielliste.py`, Handbuch Kap. 37.17): Der Proxy lässt
+   nur Ziele der Liste zu (dazu Modellanbieter, Endpunkt des KI-Kontos, Ziele der Zugänge),
+   bricht für diese Agenten TLS immer auf, hält den Servernamen nach außen auf dem geprüften
+   Ziel und prüft den Host-Kopf jeder Anfrage (kein Domain-Fronting). Der Netzwächter sperrt
+   alles außer dem Proxy, auf jedem Port, für alle Behälter desselben Besitzers (sonst ginge es
+   über die eigenen Apps hinaus). Er erkennt das an `AIE_ZIELLISTE=1` in der Umgebung, mit der
+   der Behälter entstand. Fail closed: Lässt sich die Einstellung beim Start nicht lesen,
+   startet der Agent nicht.
+   Mit Liste meldet sich der Agent mit Kennung am Proxy an (`zl.<id>`); dann fragt der Proxy
+   frisch nach und sperrt ohne bestätigte Liste. Ein gemerkter Stand „aus“ gilt 5 s. Entfernt
+   ein Agent die Kennung selbst, bleibt ihm höchstens dieses Fenster nach dem letzten Abruf
+   seines Vorgängers; ein Neustart dauert länger. Geprüft wird vor dem Senden, rohes TCP im
+   Tunnel wird beendet, gestoppte Agenten zählen für den Netzwächter weiter.
+   **Bleibt offen (Review 13.11.2026):**
+   - **DNS.** Der Agent fragt den Resolver von Docker. Darüber lassen sich kleine Datenmengen
+     nach außen geben. Schließen ließe sich das nur mit einem filternden Resolver.
+   - **Immer erlaubte Ziele als Kanal.** Modellanbieter und die Ziele der Zugänge (etwa
+     `github.com`) bleiben erreichbar. Fremder Code mit einem eigenen Schlüssel für diese Dienste
+     könnte Daten in ein fremdes Konto schicken. Härter wäre: Auf diesen Zielen nur Anfragen
+     mit den Platzhaltern der Plattform zulassen, für Git nur die eingetragene Organisation.
+   - **Netzwächter-Takt.** Er setzt Regeln nach dem Docker-Ereignis „Start“ (Rückfall alle
+     5 Minuten). Zwischen dem Start eines Behälters und seinen Regeln liegt ein kurzes Fenster.
+     Der Agent selbst geht in diesem Fenster über den Proxy (Umgebung), seine Apps nicht.
+   - **Ausnahmen** in `/etc/ai-employee/netz-ausnahmen` (Regel 3) gelten vor der Zielliste.
+   - **Nur IPv4.** Der Netzwächter schreibt keine ip6tables-Regeln. Docker-Netze der Anlage
+     haben kein IPv6. Wer es einschaltet, umgeht Regel 5c.
+   - **Besitzer-Schlüssel aus Labels.** Ein Behälter mit dem Compose-Projekt eines anderen
+     Agenten und der Marke könnte dessen Apps sperren (nicht freischalten). Apps legt nur der
+     Orchestrator an, mit dem eigenen Projekt des Agenten.
+   - Was die Plattform für den Agenten tut (Mail, Teams, Websuche der Plattform), deckt die
+     Liste nicht ab. Dort gelten Rechte-Matrix und Freigaben.
 3. **Uvicorn vertraute `X-Forwarded-For` von jedem Absender** (`--forwarded-allow-ips "*"`).
    Ein Agent im Docker-Netz, bei der Community-Variante sogar ein Angreifer aus dem Internet,
    konnte eine beliebige Absenderadresse vorgeben (Anmelde-Bremse, Rate-Limit, Protokoll).
@@ -115,7 +146,7 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
 | Wecken bei neuer Mail: `clientState` bleibt für die Laufzeit eines Abos gleich. Ein abgegriffenes Geheimnis erlaubt Meldungen zu echten Mails der letzten 24 Stunden (Doppelsperre 7 Tage). Die Stundengrenze zählt je Kalenderstunde, an der Grenze sind also bis zu 40 Läufe möglich | hingenommen (Review L2/L3). Wirkung nur Wecken zu echten Mails im Postfach des Agenten, kein Lesen | offen, niedrig |
 | Teams: Werkzeug-Nachrichten im Modus „Schreiben“ laufen nicht durch den DLP-Filter, nur Kanal-Antworten. Slack, Discord und WhatsApp folgen nicht `sendemodus`, sondern nur ihrem Kanal-Schalter. Der Fingerabdruck gebundener Freigaben ist ein SHA-256 ohne Geheimnis (schützt vor versehentlicher Änderung, nicht vor jemandem mit Datenbank-Schreibrecht) | hingenommen (Review L3/L5/L7), bekannt | offen, niedrig |
 | Eingeschalteter Kanal: Wer im Kanal schreibt, kann den Agenten starten (Kosten, Prompt-Injektion). Voreinstellung ist „nur bei Erwähnung“. Abwägung von Besitzer bzw. Admin, im Handbuch Kap. 34 benannt. `agent.config` wird als Ganzes zurückgeschrieben; ein gleichzeitiger Schreiber auf einen anderen Schlüssel kann überschrieben werden (Review L2) | bewusst bzw. hingenommen | offen, niedrig |
-| Zielliste für den Ausgang je Agent | offen | geparkt. Empfehlung: opt-in je Agent, bauen, wenn ein Kunde es braucht |
+| Zielliste für den Ausgang je Agent | opt-in je Agent, verbindlich an Proxy und Netzwächter | erledigt in 1.450.0. Offen: DNS als Kanal (filternder Resolver) |
 
 ## Regeln für neue Funktionen
 

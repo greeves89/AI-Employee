@@ -72,7 +72,9 @@ class SecretsTestBasis(unittest.IsolatedAsyncioTestCase):
         self.freigaben["m1"] = [self.firma["id"]]
 
     async def asyncTearDown(self):
-        for p in self.patches:
+        # Umgekehrt: Wer dasselbe Ziel zweimal patcht (GeteilterAgentTests), stellte sonst
+        # den Mock des ersten Patches wieder her — er blieb für alle folgenden Tests stehen.
+        for p in reversed(self.patches):
             p.stop()
         await self.db.close()
         await self.engine.dispose()
