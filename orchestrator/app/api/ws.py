@@ -1256,6 +1256,79 @@ async def ws_agent_voice(
         await websocket.close(code=1011, reason="voice init failed")
         return
 
+    await _sprachsitzung_betreiben(websocket, session, agent_id, interaction_model)
+
+
+@router.websocket("/agents/{agent_id}/teams-stimme")
+async def ws_teams_stimme(websocket: WebSocket, agent_id: str, meeting_id: str = Query(...)):
+    """Stimme des Agenten in einer Teams-Besprechung (agent/app/teams_teilnehmer).
+
+    Gegenstelle ist der Agent selbst, nicht ein Mensch: Anmeldung mit dem Agenten-Token
+    (``X-Agent-Token``, nur aus dem Agenten-Netz, ``agent_zugang_pruefen``). Nur für einen
+    eigenen, gerade laufenden Teams-Termin. Die Sitzung gehört dem Besitzer des Agenten
+    (dessen Rechte, dessen Freigaben) — wie wenn er selbst mit dem Agenten spräche.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from app.dependencies import agent_zugang_pruefen
+    from app.models.agent import Agent
+    from app.models.meeting import QUELLE_TEAMS, Meeting
+
+    if not _redis or not _redis.client:
+        await websocket.close(code=1011, reason="Redis not initialized")
+        return
+    if not agent_zugang_pruefen(websocket, agent_id, websocket.headers.get("x-agent-token", "")):
+        await websocket.close(code=4003, reason="Kein Zugang")
+        return
+    async with async_session_factory() as db:
+        seite = await db.get(Meeting, meeting_id)
+        agent = await db.get(Agent, agent_id)
+        jetzt = datetime.now(timezone.utc)
+        ende = seite.ende if seite else None
+        if ende is not None and ende.tzinfo is None:
+            ende = ende.replace(tzinfo=timezone.utc)
+        beginn = seite.beginn if seite else None
+        if beginn is not None and beginn.tzinfo is None:
+            beginn = beginn.replace(tzinfo=timezone.utc)
+        if (agent is None or seite is None or seite.agent_id != agent_id or seite.quelle != QUELLE_TEAMS
+                or ende is None or beginn is None or jetzt > ende + timedelta(minutes=30)
+                or jetzt < beginn - timedelta(minutes=10)):
+            await websocket.close(code=4004, reason="Kein laufender Termin")
+            return
+        interaction_model = ((agent.config or {}).get("interaction_model") or "").strip() or None
+        if not interaction_model:
+            from app.services.settings_service import SettingsService
+            interaction_model = ((await SettingsService(db).get("voice_interaction_model")) or "").strip() or None
+        titel, besitzer = seite.title, agent.user_id
+    if interaction_model not in ("nova_sonic", "azure_realtime"):
+        # Sprechen in einer Besprechung braucht die Echtzeit-Sprachfront (durchgehender Ton).
+        await websocket.close(code=4009, reason="Echtzeit-Sprache nicht eingerichtet")
+        return
+    await websocket.accept()
+    from app.services.realtime_voice_session import RealtimeVoiceSession
+
+    session = RealtimeVoiceSession(agent_id=agent_id, user_id=besitzer or "unknown", redis=_redis,
+                                   neues_gespraech=True, besprechung=titel)
+    try:
+        async with async_session_factory() as db:
+            await session.init(db)
+    except Exception:  # noqa: BLE001
+        logger.exception("teams-stimme: Start fehlgeschlagen agent=%s", scrub_log(agent_id))
+        try:
+            await session.close()
+        except Exception:  # noqa: BLE001
+            pass
+        await websocket.close(code=1011, reason="voice init failed")
+        return
+    await _sprachsitzung_betreiben(websocket, session, agent_id, interaction_model)
+
+
+async def _sprachsitzung_betreiben(websocket: WebSocket, session, agent_id: str,
+                                  interaction_model: str | None) -> None:
+    """Eine angenommene Sprachsitzung betreiben — Browser bzw. App UND Teams-Teilnehmer
+    (``/agents/{id}/teams-stimme``) laufen über diese eine Schleife."""
+    import base64
+
     # Ab hier läuft ein Gespräch: kein automatisches Neuerstellen des Agenten
     # (core/agenten_aktualisieren.beschaeftigt). Abmelden im finally unten.
     from app.core import sprachsitzungen

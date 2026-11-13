@@ -705,7 +705,7 @@ export interface TeamsKanal { team_id: string; channel_id: string; name?: string
 /** Teams-Termine eines Agenten (core/kanaele, ``channels.meetings``). */
 export interface BesprechungsEinstellung {
   aktiv: boolean;
-  rolle: "mitschreiber" | "beisitzer";
+  rolle: "mitschreiber" | "beisitzer" | "teilnehmer";
   automatisch_annehmen: boolean;
   annehmen_von: string[];
   mit_gaesten: boolean;
@@ -1359,6 +1359,14 @@ export interface Besprechung {
 
 export async function getBesprechungen(): Promise<{ meetings: Besprechung[]; total: number }> {
   return fetchJSON(`${getBase()}/meetings`);
+}
+
+/** Agenten per Teams-Link in eine laufende Besprechung schicken (Weg B, ohne Einladung). */
+export async function agentInBesprechungSchicken(agentId: string, joinUrl: string, titel: string): Promise<Besprechung> {
+  return fetchJSON(`${getBase()}/meetings/teilnehmen`, {
+    method: "POST",
+    body: JSON.stringify({ agent_id: agentId, join_url: joinUrl, titel: titel || "Teams-Besprechung" }),
+  });
 }
 
 export async function loescheBesprechung(id: string): Promise<void> {

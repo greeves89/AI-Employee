@@ -97,7 +97,7 @@ def _stichworte(werte) -> list[str]:
 
 #: Teams-Termine (services/teams_meetings, ``channels.meetings``) — Teil des Teams-Kanals.
 BESPRECHUNGEN = "meetings"
-ROLLEN = ("mitschreiber", "beisitzer")
+ROLLEN = ("mitschreiber", "beisitzer", "teilnehmer")
 
 
 def besprechungen_lesen(config: dict | None) -> dict:
@@ -116,7 +116,7 @@ def _besprechungen(alt: dict, e) -> dict:
         b["enabled"] = bool(e["aktiv"])
     if "rolle" in e:
         if e["rolle"] not in ROLLEN:
-            raise UngueltigeEinstellung("Besprechungen: Rolle ist „mitschreiber“ oder „beisitzer“.")
+            raise UngueltigeEinstellung("Besprechungen: Rolle ist „mitschreiber“, „beisitzer“ oder „teilnehmer“.")
         b["role"] = e["rolle"]
     if "automatisch_annehmen" in e:
         b["auto_accept"] = bool(e["automatisch_annehmen"])

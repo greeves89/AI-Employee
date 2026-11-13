@@ -1,0 +1,24 @@
+<!doctype html><meta charset="utf-8"><title>WebRTC-Schleife</title>
+<script>
+// "Besprechung": A sendet einen 440-Hz-Ton an B (die Seite des Teilnehmers).
+// B schickt sein "Mikrofon" (getUserMedia → ersetzt) zurück an A; A misst, was ankommt.
+window.start = async () => {
+  const a = new RTCPeerConnection(), b = new RTCPeerConnection();
+  a.onicecandidate = e => e.candidate && b.addIceCandidate(e.candidate);
+  b.onicecandidate = e => e.candidate && a.addIceCandidate(e.candidate);
+  const actx = new AudioContext(); const osz = actx.createOscillator(); osz.frequency.value = 440;
+  const dest = actx.createMediaStreamDestination(); osz.connect(dest); osz.start();
+  a.addTrack(dest.stream.getAudioTracks()[0], dest.stream);
+  const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+  b.addTrack(mic.getAudioTracks()[0], mic);
+  window.__rueck = 0;
+  a.ontrack = (ev) => {
+    const el = new Audio(); el.muted = true; el.srcObject = new MediaStream([ev.track]); el.play().catch(() => {});
+    const an = actx.createAnalyser(); an.fftSize = 2048; actx.createMediaStreamSource(new MediaStream([ev.track])).connect(an);
+    const d = new Float32Array(an.fftSize);
+    setInterval(() => { an.getFloatTimeDomainData(d); window.__rueck = Math.max(window.__rueck, Math.sqrt(d.reduce((s, v) => s + v * v, 0) / d.length)); }, 100);
+  };
+  const o = await a.createOffer(); await a.setLocalDescription(o); await b.setRemoteDescription(o);
+  const an = await b.createAnswer(); await b.setLocalDescription(an); await a.setRemoteDescription(an);
+};
+</script>

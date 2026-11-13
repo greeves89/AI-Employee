@@ -4250,7 +4250,25 @@ heraus: kein Chat, kein Hinweis, kein Protokoll. Die Seite zeigt „Gäste von a
   `OnlineMeetingTranscript.Read.All`, dazu `Calendars.ReadWrite` (Annehmen) und
   `Chat.ReadWrite` (Hinweis, Beisitzer).
 
-Der Agent hört noch nicht zu und spricht nicht. Er arbeitet über Chat und Transkript.
+**Welche Termine der Agent sieht:**
+- Hat er ein **eigenes Microsoft-Konto** (Kap. 37.16), sind es die Termine, zu denen du ihn einlädst.
+- Arbeitet er mit **deinem Konto**, sieht er deinen ganzen Kalender. Dann geht er nur in Termine,
+  die du für ihn markierst: in Outlook oder Teams die **Kategorie mit seinem Namen** vergeben
+  (z. B. „Marketing“) oder „KI-Agent“ für alle Agenten. Ohne Markierung bleibt er weg.
+
+**Agent per Link schicken (ohne Einladung):** Seite **Besprechungen** → oben bei „Agent in eine
+Teams-Besprechung schicken“ den Agenten wählen, den Link aus Teams („Jetzt an der Besprechung
+teilnehmen“) einfügen, **Schicken**. Er tritt kurz darauf als Gast bei; lass ihn in Teams aus dem
+Wartebereich herein. Der Agent muss dafür laufen.
+
+**Rolle „Teilnehmer“ (Vorschau, seit 1.453.0):** Der Agent tritt dem Termin selbst bei und steht
+als „<Name> - KI“ in der Teilnehmerliste. Wer den Termin leitet, lässt ihn aus dem Wartebereich
+herein. Er hört zu: Was gesagt wird, landet als Transkript auf der Besprechungsseite, daraus
+entsteht das Protokoll. Ist die Echtzeit-Sprache eingerichtet (Admin → Sprache), antwortet er
+auch mit Stimme, aber nur, wenn man ihn beim Namen anspricht. In der Besprechung hat er dabei
+keine Werkzeuge: Er schickt nichts, ändert nichts und gibt nichts an den Agenten weiter, denn
+mitsprechen kann jeder Teilnehmer. Aufträge nimmt er danach von seinem Besitzer entgegen. Dafür braucht er Zugang zu
+Teams im Netz (bei eingeschalteter Zielliste `*.teams.microsoft.com` und `*.microsoft.com`).
 
 ### Discord einrichten
 

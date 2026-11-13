@@ -264,6 +264,7 @@ function BesprechungenBlock({ wert, busy, speichern }: {
               onChange={(e) => speichern({ rolle: e.target.value as api.BesprechungsEinstellung["rolle"] })}>
               <option value="mitschreiber">Mitschreiber: Protokoll und Aufgaben nach dem Termin</option>
               <option value="beisitzer">Beisitzer: im Chat dabei, antwortet, wenn man ihn nennt</option>
+              <option value="teilnehmer">Teilnehmer (Vorschau): tritt dem Termin bei und hört zu</option>
             </select>
           </Feld>
           <label className="flex items-start gap-2 text-xs">

@@ -37,7 +37,10 @@ CONFIG_KEY = "meetings"
 
 ROLE_SCRIBE = "mitschreiber"
 ROLE_PARTICIPANT = "beisitzer"
-ROLES = (ROLE_SCRIBE, ROLE_PARTICIPANT)
+#: Tritt dem Termin wirklich bei (Browser im eigenen Behälter, docs/plaene/teams-teilnehmer.md):
+#: hört zu und schreibt mit; dazu alles, was der Beisitzer im Chat tut.
+ROLE_ATTENDEE = "teilnehmer"
+ROLES = (ROLE_SCRIBE, ROLE_PARTICIPANT, ROLE_ATTENDEE)
 
 # So lange vor Beginn haengt sich der Agent an den Termin-Chat. Frueher waere
 # unnoetig (im leeren Chat passiert nichts), spaeter verpasst er den Anfang.
@@ -165,6 +168,19 @@ def gaeste_extern(event: dict, eigene: set[str]) -> bool:
     return any(domaene(a) not in eigene for a in teilnehmer_adressen(event))
 
 
+#: Kategorien in Outlook/Teams, mit denen ein Termin für ALLE Agenten markiert ist.
+KATEGORIEN_ALLE = ("ki-agent", "ai employee")
+
+
+def fuer_agent_markiert(event: dict, agent_name: str) -> bool:
+    """Arbeitet der Agent mit dem Konto seines Besitzers, sieht er dessen ganzen Kalender.
+    Dann nur Termine, die der Besitzer für ihn markiert hat: Kategorie = Name des Agenten
+    (oder „KI-Agent“ / „AI Employee“). Sonst säße er in jedem Termin des Besitzers."""
+    name = (agent_name or "").strip().casefold()
+    kategorien = {str(k).strip().casefold() for k in (event.get("categories") or [])}
+    return bool(name and name in kategorien) or any(k in kategorien for k in KATEGORIEN_ALLE)
+
+
 def darf_mitmachen(agent: Agent, extern: bool) -> bool:
     """Gäste von außen: Voreinstellung ist NEIN (wie bei „Claude Meetings“). Der Besitzer
     kann es je Agent erlauben (``meetings.mit_gaesten``)."""
@@ -214,6 +230,20 @@ def protokoll_brauchbar(text: str | None) -> bool:
     if any(s in low for s in ("api error", "connectionrefused", "unable to connect", "rate limit")):
         return False
     return "## zusammenfassung" in low or "- [ ]" in text
+
+
+def teams_link_erlaubt(url: str) -> bool:
+    """Nur echte Teams-Beitrittslinks (gleiche Regel wie agent/app/teams_teilnehmer.link_erlaubt).
+    Kein Backslash, keine Anmeldedaten oder Ports in der Adresse, keine Steuerzeichen —
+    ``https://evil.example\\@teams.microsoft.com/…`` liest Python anders als Chromium."""
+    from urllib.parse import urlsplit
+
+    if not url or "\\" in url or "@" in url or any(ord(c) < 33 for c in url):
+        return False
+    teile = urlsplit(url)
+    return (teile.scheme == "https" and teile.hostname in ("teams.microsoft.com", "teams.live.com")
+            and teile.port is None and teile.username is None
+            and teile.path.startswith(("/l/meetup-join/", "/meet/")))
 
 
 def protokoll_schluessel(meeting_id: str, agent_id: str) -> str:
@@ -281,11 +311,14 @@ class TeamsMeetingService:
                 "startDateTime": window_start,
                 "endDateTime": window_end,
                 "$select": "id,subject,start,end,isOnlineMeeting,onlineMeeting,"
-                           "organizer,attendees,responseStatus",
+                           "organizer,attendees,responseStatus,categories",
                 "$top": "25",
             },
         )
         events = [e for e in data.get("value", []) if e.get("isOnlineMeeting")]
+        if not await self._eigenes_konto(agent):
+            # Kalender des Besitzers: nur die Termine, die er für den Agenten markiert hat.
+            events = [e for e in events if fuer_agent_markiert(e, agent.name)]
 
         accepted = joined = scribed = 0
         active_chats: list[str] = []
@@ -309,8 +342,10 @@ class TeamsMeetingService:
                     active_chats.append(chat_id)
                     joined += 1
                     await self._hinweis(agent, seite, chat_id)
+                if mit and role_of(agent) == ROLE_ATTENDEE:
+                    await self._teilnehmen(agent, seite, event)
             elif is_finished(event, now):
-                if role_of(agent) == ROLE_SCRIBE and mit:
+                if role_of(agent) in (ROLE_SCRIBE, ROLE_ATTENDEE) and mit:
                     if await self._ingest_transcript(agent, token, event, seite):
                         scribed += 1
                     await self._protokoll(agent, seite)
@@ -333,6 +368,18 @@ class TeamsMeetingService:
         for seite in offen:
             if seite.teams_event_id not in gesehen:
                 await self._protokoll(agent, seite)
+
+    @staticmethod
+    async def _eigenes_konto(agent: Agent) -> bool:
+        """Hat der Agent ein eigenes Microsoft-Konto (core/agenten_konto)? Im Zweifel nein —
+        dann gilt die strengere Regel (nur markierte Termine)."""
+        try:
+            from app.core.agenten_konto import _zeile
+
+            async with resilient_session() as db:
+                return await _zeile(db, agent.id) is not None
+        except Exception:  # noqa: BLE001
+            return False
 
     # ── Besprechungsseite ─────────────────────────────────────────────────
     @staticmethod
@@ -413,6 +460,25 @@ class TeamsMeetingService:
                 frisch.hinweis = ergebnis
                 await db.commit()
         seite.hinweis = ergebnis
+
+    async def _teilnehmen(self, agent: Agent, seite: Meeting, event: dict) -> None:
+        """Einmal je Termin den Teilnehmer im Behälter des Agenten starten
+        (agent/app/teams_teilnehmer.py). Er tritt über den Link der Einladung bei,
+        hört zu und liefert den Ton an ``/meetings/{id}/teilnehmer-ton``."""
+        join_url = ((event.get("onlineMeeting") or {}).get("joinUrl") or "").strip()
+        if not teams_link_erlaubt(join_url) or self.redis is None:
+            return
+        client = getattr(self.redis, "client", self.redis)
+        _start, ende = _window(event)
+        if not await client.set(f"teams-teilnahme:{seite.id}", "1", nx=True, ex=12 * 3600):
+            return   # läuft schon bzw. wurde schon gestartet
+        from app.core.chat_auftrag import nachricht_einreihen
+
+        await nachricht_einreihen(client, agent.id, {
+            "type": "teilnehmen", "meeting_id": seite.id, "join_url": join_url,
+            "name": f"{agent.name} - KI", "ende": (ende or datetime.now(timezone.utc)).isoformat(),
+        }, vorne=True)
+        logger.info("[Termine] %s tritt %s bei", agent.id, seite.id)
 
     async def _protokoll(self, agent: Agent, seite: Meeting) -> None:
         """Protokoll mit Aufgaben vom Agenten — über denselben Weg wie die Besprechungsräume

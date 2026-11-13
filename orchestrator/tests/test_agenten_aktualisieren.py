@@ -357,7 +357,13 @@ class SprachsitzungTests(Basis):
         import ast
         from pathlib import Path
         baum = ast.parse((Path(__file__).resolve().parents[1] / "app" / "api" / "ws.py").read_text())
-        fn = next(n for n in ast.walk(baum) if isinstance(n, ast.AsyncFunctionDef) and n.name == "ws_agent_voice")
+        # Seit 1.453.0 liegt die Gesprächsschleife in ``_sprachsitzung_betreiben`` — App und
+        # Teams-Teilnehmer (``ws_teams_stimme``) laufen beide hindurch.
+        fn = next(n for n in ast.walk(baum) if isinstance(n, ast.AsyncFunctionDef) and n.name == "_sprachsitzung_betreiben")
+        for endpunkt in ("ws_agent_voice", "ws_teams_stimme"):
+            ep = next(n for n in ast.walk(baum) if isinstance(n, ast.AsyncFunctionDef) and n.name == endpunkt)
+            self.assertTrue(any(isinstance(c, ast.Call) and getattr(c.func, "id", "") == "_sprachsitzung_betreiben"
+                                for c in ast.walk(ep)), endpunkt)
 
         def ruft(knoten, name):
             return any(isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
