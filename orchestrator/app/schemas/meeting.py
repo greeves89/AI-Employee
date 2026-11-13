@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, computed_field, field_validator
 
 
 class MeetingCreate(BaseModel):
@@ -39,6 +39,22 @@ class MeetingResponse(BaseModel):
     duration_seconds: int
     created_at: datetime
     updated_at: datetime
+    # Teams-Termin eines Agenten (services/teams_meetings) — bei Mitschnitten leer.
+    quelle: str = "aufnahme"
+    agent_id: str | None = None
+    beginn: datetime | None = None
+    ende: datetime | None = None
+    status: str | None = None
+    gaeste_extern: bool = False
+    hinweis: str | None = None
+    protokoll: str = ""
+
+    @computed_field
+    @property
+    def aufgaben(self) -> list[str]:
+        from app.core.projekt_termine import aktionspunkte
+
+        return aktionspunkte(self.protokoll)
 
     model_config = {"from_attributes": True}
 

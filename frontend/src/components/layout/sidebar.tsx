@@ -6,6 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   Activity,
+  CalendarClock,
   LayoutDashboard,
   Cpu,
   ListTodo,
@@ -159,6 +160,7 @@ const navGroups: NavGroup[] = [
     items: [
       { href: "/files", label: "Dateien", icon: FolderOpen, simpleVisible: true },
       { href: "/knowledge", label: "Wissen", icon: BookOpen, simpleVisible: false },
+      { href: "/besprechungen", label: "Besprechungen", icon: CalendarClock, simpleVisible: true, tooltip: "Teams-Termine deiner Agenten und Mitschnitte: Protokoll, Aufgaben, Transkript." },
       { href: "/integrations", label: "Verbindungen", icon: Plug, simpleVisible: false, weitere: true },
     ],
   },

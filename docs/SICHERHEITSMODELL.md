@@ -147,6 +147,7 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
 | Teams: Werkzeug-Nachrichten im Modus „Schreiben“ laufen nicht durch den DLP-Filter, nur Kanal-Antworten. Slack, Discord und WhatsApp folgen nicht `sendemodus`, sondern nur ihrem Kanal-Schalter. Der Fingerabdruck gebundener Freigaben ist ein SHA-256 ohne Geheimnis (schützt vor versehentlicher Änderung, nicht vor jemandem mit Datenbank-Schreibrecht) | hingenommen (Review L3/L5/L7), bekannt | offen, niedrig |
 | Eingeschalteter Kanal: Wer im Kanal schreibt, kann den Agenten starten (Kosten, Prompt-Injektion). Voreinstellung ist „nur bei Erwähnung“. Abwägung von Besitzer bzw. Admin, im Handbuch Kap. 34 benannt. `agent.config` wird als Ganzes zurückgeschrieben; ein gleichzeitiger Schreiber auf einen anderen Schlüssel kann überschrieben werden (Review L2) | bewusst bzw. hingenommen | offen, niedrig |
 | Zielliste für den Ausgang je Agent | opt-in je Agent, verbindlich an Proxy und Netzwächter | erledigt in 1.450.0. Offen: DNS als Kanal (filternder Resolver) |
+| Teams-Besprechungen: Das Protokoll schreibt der Agent in einem normalen Zug mit Werkzeugen. Ein Teilnehmer kann im Transkript Anweisungen unterbringen | abgegrenzt und als fremder Text benannt, Gäste von außen standardmäßig ausgeschlossen, Senden nur nach Sendemodus und Freigaben. Härter: ein Zug ohne Werkzeuge für alle Laufzeiten | offen, mittel |
 
 ## Regeln für neue Funktionen
 

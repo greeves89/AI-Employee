@@ -82,6 +82,10 @@ _TABELLEN_NACH_DER_MARKE = ("app_favorites", "projekt_karten", "projekt_nachrich
 #: ``DROP COLUMN`` nimmt seine Indizes mit, das ``CREATE INDEX`` der Migration
 #: laeuft danach wirklich.)
 _SPALTEN_NACH_DER_MARKE = (
+    # Teams-Besprechungen (l0m1n2o3p4q5)
+    ("meetings", "quelle"), ("meetings", "agent_id"), ("meetings", "teams_event_id"),
+    ("meetings", "beginn"), ("meetings", "ende"), ("meetings", "status"),
+    ("meetings", "gaeste_extern"), ("meetings", "hinweis"), ("meetings", "protokoll"),
     ("schedules", "chat_session_id"),
     ("agent_secrets", "owner_id"),
     ("agent_secrets", "erlaubte_hosts"),
