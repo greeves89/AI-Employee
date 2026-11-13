@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+
+## [1.456.0] - 2026-11-13
+
+### Neu
+- **Rollen-Vorlagen (Enterprise-Rollenmodell)** (`core/rollen_vorlagen.py`, Handbuch Kap. 22.4).
+  - Fertige Rechtebündel: Teamleitung, Mitarbeiter, Entwickler, Betrachter, Gast. Dazu der Hinweis, dass Plattform-Admin die Grundrolle ist.
+  - **Gruppe anlegen** (`POST /roles/vorlagen/{schlüssel}`, nur Admins) legt daraus eine normale Gruppe an. Prüfung der Autonomie-Grenze und Prüfprotokoll wie beim Anlegen von Hand.
+  - Die Vorlagen nutzen nur Rechte, die `core/permissions` schon durchsetzt. Es gibt kein zweites Rechtesystem.
+- **Rechte-Übersicht „Wer darf was“** (`GET /roles/uebersicht`, nur Admins): je Person Grundrolle, Gruppe, Anmeldung (lokal oder SSO) und die wirksamen Rechte aus derselben Auswertung wie überall.
+- Rollen-Bearbeitung: Die Menüpfade kennen jetzt auch Besprechungen, Chat, Apps, Abläufe und Hilfe.
+
+### Tests
+- `test_rollen_vorlagen.py`:
+  - Vorlagen nur mit bekannten Rechten und gültigen Werten bzw. Menüpunkten.
+  - Eine Gruppe aus der Vorlage wirkt am Nutzer.
+  - Prüfprotokoll, doppelter Name, unbekannte Vorlage, nur Admins.
+  - Übersicht.
 ## [1.455.0] - 2026-11-13
 
 ### Sicherheit

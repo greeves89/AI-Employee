@@ -3045,6 +3045,23 @@ das ganze Bündel. Tab **Rollen**:
 
 ![Rollen](screenshots/23-admin-rollen.png)
 
+**Rollen-Vorlagen und „Wer darf was“** *(seit 1.454.0)*: Oben im Tab **Rollen** stehen fertige
+Vorlagen für typische Aufgaben. **Gruppe anlegen** legt daraus eine normale Rolle an, die du
+danach anpasst und unter **SSO-Gruppen** einer Entra-Gruppe zuordnest.
+
+| Vorlage | Empfohlene Grundrolle | Kern |
+|---|---|---|
+| **Plattform-Admin** | Admin | alles; keine Gruppe, sondern die Grundrolle „Admin“ |
+| **Teamleitung** | Manager | bis 20 Agenten, Agenten fragen vor Wirkung nach außen (L3) |
+| **Mitarbeiter** | Mitglied | bis 3 Agenten, L3, nur Arbeitsbereiche im Menü |
+| **Entwickler** | Mitglied | bis 10 Agenten, Agenten dürfen selbst handeln (L4), dazu Apps, Skills, Abläufe |
+| **Betrachter** | Betrachter | nur lesen, keine Agenten, keine Integrationen, MCP-Server, Secrets oder KI-Konten |
+| **Gast** | Mitglied | keine eigenen Agenten und Zugänge, arbeitet nur mit freigegebenen Agenten (L1) |
+
+Darunter zeigt **Wer darf was** je Person die Grundrolle, die Gruppe, die Anmeldung (lokal oder
+SSO) und die wirksamen Rechte: Anzahl Agenten, Autonomie, Modelle, MCP-Server, KI-Konten und
+Secrets. So, wie der Server sie prüft.
+
 **Links**: Liste der Rollen + **+ Neue Rolle**. **Rechts**: oben Name, Max Agents und
 Beschreibung, darunter die Rechte in vier Gruppen *(seit 1.358.3)*:
 

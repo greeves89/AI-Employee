@@ -988,6 +988,39 @@ export async function deleteRole(id: number): Promise<{ deleted: number }> {
   return fetchJSON(`${getBase()}/roles/${id}`, { method: "DELETE" });
 }
 
+export interface RollenVorlage {
+  schluessel: string;
+  name: string;
+  grundrolle: "admin" | "manager" | "member" | "viewer";
+  beschreibung: string;
+  rechte?: RolePermissions;
+}
+
+export async function getRollenVorlagen(): Promise<{ vorlagen: RollenVorlage[] }> {
+  return fetchJSON(`${getBase()}/roles/vorlagen`);
+}
+
+export async function gruppeAusVorlage(schluessel: string, name?: string): Promise<CustomRole & { grundrolle: string }> {
+  return fetchJSON(`${getBase()}/roles/vorlagen/${schluessel}`, {
+    method: "POST",
+    body: JSON.stringify(name ? { name } : {}),
+  });
+}
+
+export interface RechteZeile {
+  id: string;
+  name: string;
+  email: string;
+  grundrolle: string;
+  gruppe: string | null;
+  anmeldung: string;
+  rechte: { alles: true } | Record<string, string | number>;
+}
+
+export async function getRechteUebersicht(): Promise<{ nutzer: RechteZeile[] }> {
+  return fetchJSON(`${getBase()}/roles/uebersicht`);
+}
+
 export async function assignUserRole(userId: string, custom_role_id: number | null): Promise<{ user_id: string; custom_role_id: number | null }> {
   return fetchJSON(`${getBase()}/roles/users/${userId}/assign`, {
     method: "PUT",
