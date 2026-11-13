@@ -55,11 +55,13 @@ def _done(mid, betrag, **mehr):
 class LauscherSchreibtKosten(KostenBasis):
     async def asyncSetUp(self):
         await super().asyncSetUp()
+        from app.models.chat_session import ChatSession
         from app.models.notification import Notification
 
         async with self.engine.begin() as conn:
+            # chat_sessions: Empfaenger der Antwort-Meldung (core/chat_besitz.besitzer_von)
             await conn.run_sync(Notification.metadata.create_all,
-                                tables=[Notification.__table__])
+                                tables=[Notification.__table__, ChatSession.__table__])
         self.redis = _Redis()
         for p in (
             patch("app.db.session.async_session_factory", self.Session),

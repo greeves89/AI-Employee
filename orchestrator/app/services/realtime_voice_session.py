@@ -1867,13 +1867,19 @@ class RealtimeVoiceSession:
                 .order_by(ChatMessage.id.desc()).limit(12)
             )).scalars().all()
             if not rows and not self.neues_gespraech:
+                # Nur Gespraeche, die dieser Mensch sehen darf: an einem
+                # freigegebenen Agenten ist das letzte Gespraech oft das eines
+                # Kollegen (core/chat_besitz).
+                eigene = await self._eigene_gespraeche(db)
+                letzte = (select(ChatMessage.session_id)
+                          .where(ChatMessage.agent_id == self.agent_id,
+                                 ChatMessage.session_id != self.session_id,
+                                 ChatMessage.role.in_(("user", "assistant"))))
+                if eigene is not None:
+                    letzte = letzte.where(ChatMessage.session_id.in_(eigene))
                 last_session = (await db.execute(
-                    select(ChatMessage.session_id)
-                    .where(ChatMessage.agent_id == self.agent_id,
-                           ChatMessage.session_id != self.session_id,
-                           ChatMessage.role.in_(("user", "assistant")))
-                    .order_by(ChatMessage.id.desc()).limit(1)
-                )).scalar_one_or_none()
+                    letzte.order_by(ChatMessage.id.desc()).limit(1)
+                )).scalar_one_or_none() if eigene is None or eigene else None
                 if last_session:
                     rows = (await db.execute(
                         select(ChatMessage)
@@ -2298,6 +2304,21 @@ class RealtimeVoiceSession:
                 )
         except Exception:  # noqa: BLE001
             logger.debug("greeting injection failed agent=%s", self.agent_id, exc_info=True)
+
+    async def _eigene_gespraeche(self, db) -> set[str] | None:
+        """Gespraeche dieses Agenten, die der Mensch am Telefon sehen darf —
+        ``None`` heisst alle (core/chat_besitz)."""
+        from app.core import chat_besitz
+        from app.models.user import User
+
+        nutzer = await db.get(User, self.user_id) if self.user_id and self.user_id != "unknown" else None
+        if nutzer is None:
+            return set()
+        return await chat_besitz.eigene_sitzungen(db, self.agent_id, nutzer)
+
+    def _besitzer_id(self) -> str | None:
+        """Wem ein NEU angelegtes Sprach-Gespraech gehoert (core/chat_besitz)."""
+        return self.user_id if self.user_id and self.user_id != "unknown" else None
 
     async def notify_files_uploaded(self, files: list[str]) -> None:
         """Tell the agent that the user just dropped file(s) into its workspace.
@@ -3967,7 +3988,8 @@ class RealtimeVoiceSession:
                 if row:
                     row.title = t
                 else:
-                    db.add(ChatSession(agent_id=self.agent_id, session_id=self.session_id, title=t))
+                    db.add(ChatSession(agent_id=self.agent_id, session_id=self.session_id, title=t,
+                                       user_id=self._besitzer_id()))
                 await db.commit()
         except Exception as e:  # noqa: BLE001 — a title is cosmetic, never break the call
             logger.warning("rename_conversation failed agent=%s: %s", self.agent_id, e)
@@ -4119,7 +4141,7 @@ class RealtimeVoiceSession:
                 if titled is None:
                     db.add(ChatSession(
                         agent_id=self.agent_id, session_id=self.session_id,
-                        title="Sprach-Gespräch",
+                        title="Sprach-Gespräch", user_id=self._besitzer_id(),
                     ))
                     await db.commit()
                 # Same turn continues → update its message; else start a new one.
@@ -4181,7 +4203,7 @@ class RealtimeVoiceSession:
                 if titled is None:
                     db.add(ChatSession(
                         agent_id=self.agent_id, session_id=self.session_id,
-                        title="Sprach-Gespräch",
+                        title="Sprach-Gespräch", user_id=self._besitzer_id(),
                     ))
                     await db.commit()
                 # An assistant turn is already being coalesced (_persist_turn) →

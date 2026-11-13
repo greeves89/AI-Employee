@@ -2978,6 +2978,14 @@ rechts zwei Buttons:
 
 ![Zuweisungen](screenshots/21-admin-zuweisungen.png)
 
+> **Ein Agent, mehrere Menschen: Jeder sieht nur seine Gespräche.** Arbeiten mehrere
+> Personen mit demselben Agenten, sieht jede nur die Gespräche, die sie selbst begonnen hat.
+> Das gilt für die Liste, den Verlauf, die Sprache und die Benachrichtigungen. Der Besitzer
+> des Agenten und Admins sehen alle Gespräche. Ältere Gespräche sowie solche aus Zeitplänen
+> und Telegram gehören dem Besitzer. Wichtig: Der Agent selbst kennt alles, was er in seinem
+> Gedächtnis und seinen Dateien abgelegt hat. Getrennt sind die Gespräche, nicht sein Wissen.
+> Für vertrauliche Themen bekommt deshalb jeder eine eigene Kopie (Variante B).
+
 #### Variante A — Agent aus einer Vorlage zuweisen
 Erzeugt für **einen** User einen Agenten aus einem **Template** (Blueprint):
 1. **Agent zuweisen** klicken.

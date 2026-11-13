@@ -5,6 +5,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.455.0] - 2026-11-13
+
+### Sicherheit
+- **Chats je Nutzer an freigegebenen Agenten.** Ist ein Agent mehreren Menschen freigegeben, sieht jeder nur seine eigenen Gespräche. Eine Regel an einer Stelle (`core/chat_besitz`):
+  - Ein Gespräch gehört dem, der darin zuerst schreibt (`chat_sessions.user_id`).
+  - Gespräche ohne eingetragenen Besitzer gehören dem Besitzer des Agenten: ältere Gespräche, Zeitpläne, Telegram, Bridge.
+  - Besitzer des Agenten und Admins sehen alle Gespräche, der Agent selbst ebenfalls. Freigegebene Nutzer und Manager sehen nur ihre eigenen.
+  - Fremde Gespräche liefern 404. Das gilt für Liste, Verlauf, Löschen, „Alle löschen“, Umbenennen, Abzweig, Zurückspulen, Fortsetzung, Verdichten, Kontext und Ziel.
+  - Im Live-Chat lassen sich fremde Gespräche weder anhängen noch fortsetzen.
+  - Abzweig, Sicherung und Fortsetzung gehören dem Besitzer des Originals.
+  - Sprache: Ein fremdes Gespräch lässt sich nicht fortsetzen, und beim Anruf wird kein fremdes „letztes Gespräch“ mehr vorgelesen.
+- **Chat-Benachrichtigungen nur an den Besitzer des Gesprächs.** Sie zeigen den Antworttext und gingen bisher an alle, die den Agenten sehen. Die Push-Nachricht ging an den Besitzer des Agenten. Neue Spalte `notifications.empfaenger_id`. Liste, Zähler, „alle gelesen“ und der Live-Kanal filtern danach.
+
+- **Live-Chat:** Aufgaben-Kacheln, Ziele, Stillstands- und Sentinel-Hinweise ohne Nachrichtenkennung gingen an jedes offene Fenster des Agenten. Jetzt gehen sie nur an Fenster, die das Gespräch sehen dürfen.
+- **Aufgaben:** Eine Aufgabe liefert ihre Kachel nur in ein Gespräch, das der Anleger sehen darf (`chat_session_id` wird geprüft).
+- **Meldungen per Nummer** (beantworten, gelesen, löschen) nur für ihren Empfänger.
+- **Systemgespräche** (Zeitplan, Meldungen, Bridge, Kanäle wie Telegram) gehören immer dem Besitzer des Agenten und lassen sich nicht vorab beanspruchen. Eine Gesprächszeile ohne Besitzer gilt nicht als frei.
+- **Kiosk:** Lesen und Schreiben nur noch in eigenen Kiosk-Gesprächen (`kiosk-…`). Vorher ging das ohne Anmeldung in jedes Gespräch, dessen Kennung bekannt war.
+
+### Betrieb
+- Migration `m1n2o3p4q5r6` (idempotent). Die Spalten legt zusätzlich der Start an.
 ## [1.453.0] - 2026-11-13
 
 ### Neu (Vorschau)

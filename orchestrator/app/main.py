@@ -660,6 +660,10 @@ async def _persist_chat_completion(redis: RedisService, data: dict, *,
             return
         agent = await db.scalar(sel(Agent).where(Agent.id == agent_id))
         title = agent.name if agent else "AI Employee"
+        # Die Meldung zeigt den Antworttext — sie geht nur an den, dem das
+        # Gespraech gehoert (core/chat_besitz), nicht an alle, die den Agenten sehen.
+        from app.core.chat_besitz import besitzer_von as _besitzer_von
+        empfaenger = await _besitzer_von(db, agent_id, session_id) or (agent.user_id if agent else None)
         from app.core.ziel import ohne_marke as _ohne_marke
         body = _chat_notification_body(_ohne_marke(content)[0], meta)
         notif = Notification(
@@ -669,6 +673,7 @@ async def _persist_chat_completion(redis: RedisService, data: dict, *,
             message=body,
             priority="normal",
             action_url=f"/agents/{agent_id}",
+            empfaenger_id=empfaenger,
             meta={
                 "type": "chat_message",
                 "agent_id": agent_id,
@@ -690,10 +695,10 @@ async def _persist_chat_completion(redis: RedisService, data: dict, *,
                 "data": _notification_response(notif),
             }),
         )
-        if agent and agent.user_id:
+        if empfaenger:
             await push_to_user(
                 db,
-                agent.user_id,
+                empfaenger,
                 title,
                 body,
                 data=_notification_push_payload(notif),
@@ -738,6 +743,7 @@ def _notification_response(notif) -> dict:
         "read": notif.read,
         "action_url": notif.action_url,
         "meta": notif.meta,
+        "empfaenger_id": getattr(notif, "empfaenger_id", None),
         "created_at": notif.created_at.isoformat() if notif.created_at else "",
     }
 
@@ -1729,10 +1735,20 @@ async def lifespan(app: FastAPI):
                 "goal_rounds integer NOT NULL DEFAULT 0", "goal_last_mid varchar",
                 # v1.362: Grund einer Pause, die nicht der Agent ausgeloest hat (Budget)
                 "goal_reason varchar",
+                # 1.455: Besitzer des Gespraechs (core/chat_besitz)
+                "user_id varchar",
             ):
                 await conn.execute(_txt_cs(
                     f"ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS {_spalte}"
                 ))
+            await conn.execute(_txt_cs(
+                "CREATE INDEX IF NOT EXISTS ix_chat_sessions_user_id ON chat_sessions (user_id)"
+            ))
+            # 1.455: Empfaenger einer Meldung (Antwort im eigenen Gespraech). Auch
+            # hier, weil ohne die Spalte jede Abfrage der Meldungen scheitert.
+            await conn.execute(_txt_cs(
+                "ALTER TABLE IF EXISTS notifications ADD COLUMN IF NOT EXISTS empfaenger_id varchar"
+            ))
         logger.info("chat_sessions table ensured")
     except Exception as e:
         logger.warning(f"Could not ensure chat_sessions table: {e}")

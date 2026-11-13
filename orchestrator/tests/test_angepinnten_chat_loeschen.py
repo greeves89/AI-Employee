@@ -40,7 +40,10 @@ class AngepinntLoeschenTests(unittest.IsolatedAsyncioTestCase):
             await db.commit()
 
     async def _loeschen(self, force: bool):
-        with patch.object(agents_api, "_check_owner", AsyncMock()):
+        # Zugriff und Gesprächsbesitz prüfen eigene Tests (test_chats_je_nutzer) —
+        # hier geht es nur um den Pin-Schutz.
+        with patch.object(agents_api, "_check_owner", AsyncMock()), \
+                patch("app.core.chat_besitz.pruefen", AsyncMock()):
             async with self.Session() as db:
                 return await agents_api.delete_chat_session("a1", "s1", force=force, user=NUTZER, db=db)
 

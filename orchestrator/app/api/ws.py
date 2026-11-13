@@ -317,6 +317,56 @@ def _sitzungskennung(wert) -> str | None:
     return wert if 0 < len(wert) <= 128 else None
 
 
+async def _chat_sitzung_erlaubt(agent_id: str, user, sitzung: str, *,
+                                beanspruchen: bool = False) -> bool:
+    """Darf ``user`` dieses Gespraech sehen bzw. darin schreiben (core/chat_besitz)?
+    Mit ``beanspruchen`` wird ein neues Gespraech ihm zugeschrieben."""
+    from app.core import chat_besitz
+
+    async with async_session_factory() as db:
+        if not await chat_besitz.darf(db, agent_id, user, sitzung):
+            return False
+        if beanspruchen:
+            await chat_besitz.beanspruchen(db, agent_id, sitzung, getattr(user, "id", None))
+    return True
+
+
+#: Ereignisse ohne Gespraech, die Inhalte eines Gespraechs tragen — an freigegebene
+#: Nutzer nur mit Gespraechskennung (sonst wuesste niemand, wessen es ist).
+_INHALT_OHNE_GESPRAECH = frozenset({"task_card", "sentinel", "goal", "ankuendigung", "stillstand"})
+
+
+async def _ereignis_fuer_verbindung(ereignis: dict, agent_id: str, user, cache: dict) -> bool:
+    """Darf ein Live-Ereignis OHNE Nachrichtenkennung an diese Verbindung?
+
+    Ereignisse MIT Kennung ordnet ``_sitzung_fuer_ereignis`` zu. Die ohne — Aufgaben-
+    Kacheln, Ziele, Stillstands-Hinweise — gingen bisher an jedes offene Fenster des
+    Agenten; an einem freigegebenen Agenten also auch an Kollegen (Sicherheitsreview
+    1.455). Besitzer und Admins bekommen weiter alles, ihr Browser sortiert selbst."""
+    sitzung = ereignis.get("session_id")
+    if sitzung is None and ereignis.get("type") not in _INHALT_OHNE_GESPRAECH:
+        return True  # Steuerereignisse (ready, cancelled, approval_request …)
+    schluessel = sitzung if isinstance(sitzung, str) else ""
+    if schluessel not in cache:
+        from app.core import chat_besitz
+
+        async with async_session_factory() as db:
+            if await chat_besitz.sieht_alle(db, agent_id, user):
+                cache.update({"*": True})
+                cache[schluessel] = True
+            else:
+                cache[schluessel] = bool(schluessel) and await chat_besitz.darf(db, agent_id, user, schluessel)
+    return cache.get("*", False) or cache[schluessel]
+
+
+def _gespraech_fremd() -> dict:
+    return {
+        "type": "error",
+        "data": {"message": "Dieses Gespräch gehört einer anderen Person. Bitte ein neues beginnen."},
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 _chat_wake_locks: dict[str, asyncio.Lock] = {}
 
 
@@ -439,6 +489,9 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
     # ``_sitzung_fuer_ereignis``.
     _nachgeschlagen: dict[str, str] = {}
     _db_gefragt: set[str] = set()
+    # Ereignisse ohne Nachrichtenkennung (Kacheln, Ziele, Hinweise): je Gespraech
+    # einmal nachgeschlagen, ob dieser Mensch es sehen darf (core/chat_besitz).
+    _darf_cache: dict[str, bool] = {}
     # Session tracking - defer session creation until first message
     # so the client can provide an existing session_id
     _session: dict[str, str | None] = {"id": None}
@@ -764,7 +817,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                                     except Exception:
                                         _ws_connected = False
                                 # else: foreign message_id → drop (isolation)
-                            else:
+                            elif await _ereignis_fuer_verbindung(_fwd, agent_id, _user, _darf_cache):
                                 try:
                                     await websocket.send_text(data)
                                 except Exception:
@@ -879,6 +932,9 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             # ins Leere.
             if action == "attach":
                 sitzung = _sitzungskennung(msg.get("session_id"))
+                if sitzung and not await _chat_sitzung_erlaubt(agent_id, _user, sitzung):
+                    await websocket.send_text(json.dumps(_gespraech_fremd()))
+                    continue
                 if sitzung:
                     _session["id"] = sitzung
                     await websocket.send_text(json.dumps({
@@ -956,6 +1012,14 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             if not _session["id"]:
                 _session["id"] = uuid.uuid4().hex[:12]
                 is_new_session = True
+
+            # Chats je Nutzer (core/chat_besitz): in fremde Gespraeche eines
+            # freigegebenen Agenten wird nicht geschrieben; ein neues gehoert ab
+            # hier dem, der es beginnt.
+            if not await _chat_sitzung_erlaubt(agent_id, _user, _session["id"], beanspruchen=True):
+                _session["id"] = None
+                await websocket.send_text(json.dumps(_gespraech_fremd()))
+                continue
 
             # /goal — Ziel fuer dieses Gespraech (app.core.ziel). Gesetzt wird es
             # hier, weitergearbeitet nach jeder fertigen Antwort (main.py). Der
@@ -1174,6 +1238,13 @@ async def ws_agent_voice(
                 await websocket.close(code=4001, reason="Unauthorized")
                 return
             await require_agent_access(agent_id, _user, db)
+            # Ein bestehendes Gespraech per Sprache fortsetzen: nur ein eigenes
+            # (core/chat_besitz) — sonst laese die Sitzung fremden Verlauf vor.
+            if chat_session:
+                from app.core import chat_besitz
+                if not await chat_besitz.darf(db, agent_id, _user, chat_session):
+                    await websocket.close(code=4003, reason="Gespräch gehört einer anderen Person")
+                    return
     except _HTTPException:
         await websocket.close(code=4003, reason="Access denied to this agent")
         return
@@ -1495,10 +1566,15 @@ async def ws_notifications(websocket: WebSocket, token: str | None = Query(None)
                     data = data.decode("utf-8")
                 # Scope: only forward notifications for agents this user may see.
                 try:
-                    aid = (json.loads(data).get("data") or {}).get("agent_id")
+                    _inhalt = json.loads(data).get("data") or {}
+                    aid = _inhalt.get("agent_id")
+                    empfaenger = _inhalt.get("empfaenger_id")
                 except Exception:
-                    aid = None
+                    aid, empfaenger = None, None
                 if aid not in visible:
+                    continue
+                # Antworten in einem fremden Gespraech (core/chat_besitz)
+                if empfaenger and empfaenger != user_id:
                     continue
                 await websocket.send_text(data)
             await asyncio.sleep(0.05)

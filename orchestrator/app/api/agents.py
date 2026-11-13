@@ -2782,6 +2782,9 @@ async def send_message_to_agent(
                         json.dumps({
                             "type": "task_card",
                             "agent_id": agent_id,
+                            # Gespraech der Frage: nur dessen Fenster zeigt die Kachel
+                            # (core/chat_besitz, Weiterleiter in ws.py).
+                            "session_id": _origin,
                             "data": {
                                 "task_id": f"msg-{body.reply_to}",
                                 "phase": "done",
@@ -2842,9 +2845,16 @@ async def get_chat_sessions(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all chat sessions for an agent."""
+    """List all chat sessions for an agent.
+
+    An freigegebenen Agenten sieht jeder Nutzer nur seine eigenen Gespräche
+    (core/chat_besitz); Besitzer und Admins sehen alle."""
     await _check_owner(agent_id, user, db)
     from sqlalchemy import func
+    from app.core import chat_besitz
+    erlaubt = await chat_besitz.eigene_sitzungen(db, agent_id, user)
+    if erlaubt is not None and not erlaubt:
+        return {"sessions": []}
     query = (
         select(
             ChatMessage.session_id,
@@ -2856,6 +2866,8 @@ async def get_chat_sessions(
         .group_by(ChatMessage.session_id)
         .order_by(func.max(ChatMessage.timestamp).desc())
     )
+    if erlaubt is not None:
+        query = query.where(ChatMessage.session_id.in_(erlaubt))
     result = await db.execute(query)
     sessions = result.all()
 
@@ -2990,9 +3002,15 @@ async def get_chat_history(
 
     await _check_owner_or_self(agent_id, user, db)
     for_model = is_agent_principal(user)
+    from app.core import chat_besitz
     query = select(ChatMessage).where(ChatMessage.agent_id == agent_id)
     if session_id is not None:
+        await chat_besitz.pruefen(db, agent_id, user, session_id)
         query = query.where(ChatMessage.session_id == session_id)
+    else:
+        erlaubt = await chat_besitz.eigene_sitzungen(db, agent_id, user)
+        if erlaubt is not None:
+            query = query.where(ChatMessage.session_id.in_(erlaubt))
     if before_id is not None:
         query = query.where(ChatMessage.id < before_id)
     query = query.order_by(ChatMessage.id.desc()).limit(limit + 1)
@@ -3100,6 +3118,8 @@ async def delete_chat_session(
     schickt ``force=true`` — vorher scheiterte das stumm mit 409.
     """
     await _check_owner(agent_id, user, db)
+    from app.core import chat_besitz
+    await chat_besitz.pruefen(db, agent_id, user, session_id)
     from sqlalchemy import delete as sql_delete, select
     from app.models.chat_session import ChatSession
     cs = (await db.execute(
@@ -3156,6 +3176,8 @@ async def stop_chat_goal(
 ):
     """Ziel eines Gespraechs beenden (/goal stop) — der Agent macht keine weitere Runde."""
     await _check_owner(agent_id, user, db)
+    from app.core import chat_besitz
+    await chat_besitz.pruefen(db, agent_id, user, session_id)
     from app.core import ziel
     if not await ziel.beenden(db, agent_id, session_id):
         raise HTTPException(status_code=404, detail="Kein Ziel in diesem Gespräch")
@@ -3168,15 +3190,24 @@ async def delete_all_chat_sessions(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete ALL chat sessions (messages + metadata) for an agent — EXCEPT pinned ones."""
+    """Delete ALL chat sessions (messages + metadata) for an agent — EXCEPT pinned ones.
+
+    Ein freigegebener Nutzer löscht nur SEINE Gespräche (core/chat_besitz)."""
     await _check_owner(agent_id, user, db)
     from sqlalchemy import delete as sql_delete, select
+    from app.core import chat_besitz
     from app.models.chat_session import ChatSession
-    pinned_ids = list((await db.execute(
-        select(ChatSession.session_id)
-        .where(ChatSession.agent_id == agent_id, ChatSession.pinned.is_(True))
-    )).scalars().all())
+    erlaubt = await chat_besitz.eigene_sitzungen(db, agent_id, user)
+    if erlaubt is not None and not erlaubt:
+        return {"deleted": 0, "kept_pinned": 0}
+    pinned_query = select(ChatSession.session_id).where(
+        ChatSession.agent_id == agent_id, ChatSession.pinned.is_(True))
+    if erlaubt is not None:
+        pinned_query = pinned_query.where(ChatSession.session_id.in_(erlaubt))
+    pinned_ids = list((await db.execute(pinned_query)).scalars().all())
     bedingung = ChatMessage.agent_id == agent_id
+    if erlaubt is not None:
+        bedingung = bedingung & ChatMessage.session_id.in_(erlaubt)
     if pinned_ids:
         bedingung = bedingung & ChatMessage.session_id.notin_(pinned_ids)
     # Die Kosten bleiben (#896): erst verdichten, dann loeschen — ein Commit.
@@ -3184,10 +3215,11 @@ async def delete_all_chat_sessions(
     await verdichten(db, QUELLE_CHAT, bedingung)
     result = await db.execute(sql_delete(ChatMessage).where(bedingung))
     # Keep pinned session rows; drop the rest.
-    await db.execute(
-        sql_delete(ChatSession)
-        .where(ChatSession.agent_id == agent_id, ChatSession.pinned.is_(False))
-    )
+    sitzungen_weg = (sql_delete(ChatSession)
+                     .where(ChatSession.agent_id == agent_id, ChatSession.pinned.is_(False)))
+    if erlaubt is not None:
+        sitzungen_weg = sitzungen_weg.where(ChatSession.session_id.in_(erlaubt))
+    await db.execute(sitzungen_weg)
     await db.commit()
     return {"deleted": result.rowcount, "kept_pinned": len(pinned_ids)}
 
@@ -3220,6 +3252,8 @@ async def fork_chat_session(
     Kopiert, verschiebt nicht — das Original bleibt vollstaendig.
     """
     await _check_owner(agent_id, user, db)
+    from app.core import chat_besitz
+    await chat_besitz.pruefen(db, agent_id, user, session_id)
     from app.core.chat_history import fork
 
     result = await fork(db, agent_id, session_id, body.message_id)
@@ -3243,6 +3277,8 @@ async def rewind_chat_session(
     Nachrichtenliste ist zu leicht passiert, um ihn unumkehrbar zu machen.
     """
     await _check_owner(agent_id, user, db)
+    from app.core import chat_besitz
+    await chat_besitz.pruefen(db, agent_id, user, session_id)
     from app.core.chat_history import rewind
 
     result = await rewind(db, agent_id, session_id, body.message_id)
@@ -3264,6 +3300,8 @@ async def summarize_chat_session(
     Der Verlauf bleibt, wo er ist — es wird nichts geloescht und nichts verschoben.
     """
     await _check_owner(agent_id, user, db)
+    from app.core import chat_besitz
+    await chat_besitz.pruefen(db, agent_id, user, session_id)
     from app.core.chat_history import summarize_to_new_session
 
     result = await summarize_to_new_session(db, agent_id, session_id)
@@ -3289,6 +3327,8 @@ async def set_message_context_exclusion(
     sichtbar, geht nur nicht mehr ans Modell. Jederzeit umkehrbar.
     """
     await _check_owner(agent_id, user, db)
+    from app.core import chat_besitz
+    await chat_besitz.pruefen(db, agent_id, user, session_id)
     from app.core.chat_history import set_context_exclusion
 
     result = await set_context_exclusion(
@@ -3322,6 +3362,8 @@ async def chat_session_context(
     )
 
     await _check_owner(agent_id, user, db)
+    from app.core import chat_besitz
+    await chat_besitz.pruefen(db, agent_id, user, session_id)
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if agent is None:
         raise HTTPException(status_code=404, detail="Agent nicht gefunden")
@@ -3371,6 +3413,8 @@ async def compact_chat_session(
     from app.core.chat_history import compact_session
 
     await _check_owner(agent_id, user, db)
+    from app.core import chat_besitz
+    await chat_besitz.pruefen(db, agent_id, user, session_id)
     result = await compact_session(db, agent_id, session_id)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("reason", "Nicht moeglich"))
@@ -3438,7 +3482,10 @@ async def update_chat_session(
 
     Upserts the metadata row lazily."""
     await _check_owner(agent_id, user, db)
+    from app.core import chat_besitz
     from app.models.chat_session import ChatSession
+    await chat_besitz.pruefen(db, agent_id, user, session_id)
+    await chat_besitz.beanspruchen(db, agent_id, session_id, user.id)
     row = (await db.execute(
         select(ChatSession).where(
             ChatSession.agent_id == agent_id,
