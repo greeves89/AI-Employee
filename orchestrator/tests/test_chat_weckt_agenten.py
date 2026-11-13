@@ -12,7 +12,7 @@ nur die Aussenwelt (Datenbank, Docker, Redis, Anmeldung).
 import asyncio
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi import FastAPI
 from starlette.testclient import TestClient
@@ -68,7 +68,7 @@ async def _angemeldet(websocket, token=None, ticket=None):
     return True
 
 
-async def _zugriff_ok(agent_id, user, db):
+async def _zugriff_ok(agent_id, user, db, **_):
     return None
 
 
@@ -82,6 +82,7 @@ class ChatWecktTests(unittest.TestCase):
              patch.object(ws, "_authenticate_ws", _angemeldet), \
              patch.object(ws, "async_session_factory", lambda: _Db(agent)), \
              patch("app.dependencies.require_agent_access", _zugriff_ok), \
+             patch("app.core.ownership.nur_nutzbare_agent_ids", AsyncMock(return_value=set())), \
              patch("app.services.user_lifecycle.wake_agent", wecken):
             with TestClient(app) as client:
                 try:

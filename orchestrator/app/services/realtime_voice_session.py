@@ -2730,6 +2730,21 @@ class RealtimeVoiceSession:
                 "In einer Besprechung hast du keine Werkzeuge. Sag kurz, dass du das nach "
                 "der Besprechung erledigen kannst, wenn dein Besitzer es dir aufträgt."))
 
+    async def _werkzeug_gesperrt(self, tool_use_id: str, name: str) -> bool:
+        """Zweite Sperre beim Ausfuehren (die erste: nicht angeboten). In einer
+        Besprechung gar nichts, fuer Nur-Nutzer nur ``NUR_NUTZER_WERKZEUGE``."""
+        if self.besprechung:
+            await self._in_besprechung_ablehnen(tool_use_id, name)
+            return True
+        if self.nur_nutzen and name not in NUR_NUTZER_WERKZEUGE:
+            logger.warning("[Sprache] Nur-Nutzer: Werkzeug %r abgelehnt (Agent %s)", name, self.agent_id)
+            if self._nova is not None:
+                await self._nova.send_tool_result(tool_use_id, self._engine_safe(
+                    "Das darfst du für diese Person nicht. Biete an, die Frage an den Agenten "
+                    "weiterzugeben."))
+            return True
+        return False
+
     def _werkzeuge_begrenzen(self, werkzeuge: list) -> list:
         """In einer Besprechung: keine Werkzeuge (siehe ``besprechung``). Fuer
         Nur-Nutzer: nur die Gespraechswerkzeuge (``NUR_NUTZER_WERKZEUGE``)."""
@@ -2751,14 +2766,7 @@ class RealtimeVoiceSession:
         except (json.JSONDecodeError, TypeError):
             args = {}
 
-        if self.besprechung:   # zweite Sperre: in einer Besprechung nichts ausführen
-            return await self._in_besprechung_ablehnen(tool_use_id, name)
-        if self.nur_nutzen and name not in NUR_NUTZER_WERKZEUGE:   # zweite Sperre
-            logger.warning("[Sprache] Nur-Nutzer: Werkzeug %r abgelehnt (Agent %s)", name, self.agent_id)
-            if self._nova is not None:
-                await self._nova.send_tool_result(tool_use_id, self._engine_safe(
-                    "Das darfst du für diese Person nicht. Biete an, die Frage an den Agenten "
-                    "weiterzugeben."))
+        if await self._werkzeug_gesperrt(tool_use_id, name):   # zweite Sperre
             return
 
         # Fuer die Anzeige merken: der Nutzer soll SEHEN, was gerade benutzt wird.
