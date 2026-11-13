@@ -458,9 +458,9 @@ def _abweisung_merken(agent_id: str, request: Request) -> None:
         return
     _abgewiesen_zuletzt[agent_id] = jetzt
     # Ohne Zeilenumbrüche und Steuerzeichen: Pfad und Agent-ID kommen von außen (Log-Injection).
-    pfad = "".join(c for c in request.url.path[:200] if c.isprintable())
-    logger.warning("Agenten-Token über einen Eingang abgewiesen (Agent %s, Pfad %r)",
-                   "".join(c for c in str(agent_id)[:64] if c.isprintable()), pfad)
+    pfad = request.url.path[:200].replace("\r", "").replace("\n", "")
+    kennung = str(agent_id)[:64].replace("\r", "").replace("\n", "")
+    logger.warning("Agenten-Token über einen Eingang abgewiesen (Agent %s, Pfad %r)", kennung, pfad)
     try:
         aufgabe = asyncio.get_running_loop().create_task(_abweisung_protokollieren(agent_id, pfad))
     except RuntimeError:
