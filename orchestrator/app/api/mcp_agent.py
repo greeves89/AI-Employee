@@ -5,6 +5,8 @@ other MCP clients can connect to via the 2025-06-18 Streamable HTTP transport.
 
 Endpoint: POST /mcp/agents/{agent_id}
 Auth:      Authorization: Bearer <webhook_token>  (same token as webhook)
+           or an access token of the corporate IdP (OAuth 2.1, #1195) when the
+           admin enabled it — see core/mcp_idp_auth.py.
 
 Supported MCP methods:
   initialize       → server capabilities + agent info
@@ -207,8 +209,26 @@ def _tool_result(content: str, is_error: bool = False) -> dict:
     }
 
 
+def _unauthorized(agent_id: str, fehler: str = "") -> HTTPException:
+    from app.core import mcp_idp_auth
+
+    return HTTPException(
+        status_code=401, detail="Invalid or missing Bearer token",
+        headers={"WWW-Authenticate": mcp_idp_auth.www_authenticate(f"agents/{agent_id}", fehler)},
+    )
+
+
 async def _auth_agent(agent_id: str, request: Request, db: AsyncSession) -> Agent:
-    """Verify agent exists and Bearer token matches webhook_token."""
+    """Agent + Zugang pruefen. Zwei Wege:
+
+    * ``Authorization: Bearer <webhook_token>`` — Dienstkonten, Clients ohne OAuth;
+    * ``Authorization: Bearer <Zugriffstoken des Firmen-IdP>`` (#1195), wenn in den
+      Einstellungen eingeschaltet. Dann gilt dieselbe Agenten-Rechtepruefung wie in
+      der Oberflaeche (``require_agent_access``).
+    """
+    from app.core import mcp_idp_auth
+    from app.dependencies import require_agent_access
+
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent nicht gefunden")
@@ -216,16 +236,34 @@ async def _auth_agent(agent_id: str, request: Request, db: AsyncSession) -> Agen
     if not agent.webhook_enabled:
         raise HTTPException(status_code=403, detail="MCP access is not enabled for this agent. Enable via Settings → Externer Zugriff.")
 
+    idp = mcp_idp_auth.aktiv()
     # Ohne hinterlegten Token gibt es keinen Zugang. Bisher wurde die Pruefung
     # dann einfach uebersprungen: eingeschaltet, aber Token leer hiess offen.
-    if not agent.webhook_token:
+    if not agent.webhook_token and not idp:
         raise HTTPException(status_code=403, detail="MCP access has no token configured. Rotate the token in Settings → Externer Zugriff.")
     auth_header = request.headers.get("Authorization", "")
     provided = auth_header.removeprefix("Bearer ").strip()
-    if not provided or not hmac.compare_digest(provided, agent.webhook_token):
-        raise HTTPException(status_code=401, detail="Invalid or missing Bearer token")
+    if not provided:
+        raise _unauthorized(agent_id)
+    if agent.webhook_token and hmac.compare_digest(provided, agent.webhook_token):
+        return agent
 
-    return agent
+    if idp and mcp_idp_auth.sieht_wie_jwt_aus(provided):
+        try:
+            user = await mcp_idp_auth.nutzer_aus_bearer(db, provided)
+        except mcp_idp_auth.IdpTokenFehler as e:
+            logger.info("MCP-Agent %s: IdP-Token abgewiesen (%s)", agent_id, e.grund)
+            if e.status == 401:
+                raise _unauthorized(agent_id, "invalid_token")
+            raise HTTPException(status_code=403, detail="Kein Zugang für diese Person.")
+        try:
+            await require_agent_access(agent_id, user, db)
+        except HTTPException:
+            # 404 statt 403: bestaetigt fremde Agenten nicht.
+            raise HTTPException(status_code=404, detail="Agent nicht gefunden")
+        return agent
+
+    raise _unauthorized(agent_id, "invalid_token")
 
 
 @router.post("/agents/{agent_id}")

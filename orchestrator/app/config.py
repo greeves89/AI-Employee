@@ -400,6 +400,15 @@ class Settings(BaseSettings):
     # Optional independent signing key for MCP access tokens. Empty = derive from
     # api_secret_key (domain-separated). Set for full key isolation from sessions.
     mcp_signing_key: str = ""
+    # Eigene MCP-Endpunkte (Second Brains, Agenten) nehmen Zugriffstokens des
+    # Firmen-IdP an (#1195, core/mcp_idp_auth.py). Aus, solange Schalter, Aussteller
+    # und Empfänger fehlen. Leerer Aussteller = aus der Microsoft-Verzeichnis-ID
+    # abgeleitet; leere JWKS-Adresse = aus der OpenID-Konfiguration des Ausstellers.
+    mcp_idp_oauth_enabled: bool = False
+    mcp_idp_issuer: str = ""
+    mcp_idp_audience: str = ""  # Kennung dieser Ressource im IdP, mehrere mit Komma
+    mcp_idp_jwks_uri: str = ""
+    mcp_idp_required_scope: str = ""
 
     # GitHub Webhook
     github_webhook_secret: str = ""  # Set to verify GitHub webhook signatures
