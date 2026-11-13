@@ -105,6 +105,65 @@ async def create_role(body: dict, user=Depends(require_auth), db: AsyncSession =
     return {"id": r.id, "name": r.name, "description": r.description, "permissions": r.permissions}
 
 
+@router.get("/vorlagen")
+async def rollen_vorlagen(user=Depends(require_auth)):
+    """Fertige Rollen-Vorlagen (core/rollen_vorlagen) — auswählen, anpassen, Entra-Gruppe zuordnen."""
+    _require_admin(user)
+    from app.core import rollen_vorlagen
+
+    return {"vorlagen": rollen_vorlagen.liste()}
+
+
+@router.post("/vorlagen/{schluessel}", status_code=201)
+async def gruppe_aus_vorlage(schluessel: str, body: dict | None = None, user=Depends(require_auth),
+                             db: AsyncSession = Depends(get_db)):
+    """Aus einer Vorlage eine Gruppe anlegen. Danach eine ganz normale Gruppe (anpassbar,
+    löschbar). Name optional (Standard: Name der Vorlage)."""
+    _require_admin(user)
+    from app.core import rollen_vorlagen
+
+    vorlage = rollen_vorlagen.VORLAGEN.get(schluessel)
+    if vorlage is None:
+        raise HTTPException(status_code=404, detail="Vorlage nicht gefunden")
+    name = ((body or {}).get("name") or vorlage["name"]).strip()[:100]
+    if (await db.execute(select(CustomRole).where(CustomRole.name == name))).scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"Gruppe „{name}“ gibt es schon — anderen Namen wählen.")
+    rechte = {k: (list(v) if isinstance(v, list) else v) for k, v in vorlage["rechte"].items()}
+    _grenze_pruefen(rechte)
+    r = CustomRole(name=name, description=vorlage["beschreibung"], permissions=rechte, is_system=False)
+    db.add(r)
+    await _rolle_protokollieren(db, user, f"Gruppe aus Vorlage „{vorlage['name']}“ angelegt: {name}",
+                                aktion="angelegt", gruppe=name, vorlage=schluessel)
+    await _grenze_protokollieren(db, user, name, {}, rechte)
+    await db.commit()
+    await db.refresh(r)
+    return {"id": r.id, "name": r.name, "description": r.description, "permissions": r.permissions,
+            "grundrolle": vorlage["grundrolle"]}
+
+
+@router.get("/uebersicht")
+async def rechte_uebersicht(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Wer darf was — je Nutzer Grundrolle, Gruppe, Herkunft der Anmeldung und die wirksamen
+    Rechte (core/permissions, dieselbe Auswertung wie überall). Nur Admins."""
+    _require_admin(user)
+    from app.core import rollen_vorlagen
+
+    gruppen = {r.id: r.name for r in (await db.execute(select(CustomRole))).scalars().all()}
+    nutzer = (await db.execute(select(User).order_by(User.email))).scalars().all()
+    zeilen = []
+    for n in nutzer:
+        rolle = n.role.value if hasattr(n.role, "value") else str(n.role)
+        rechte = await get_effective_permissions(n, db)
+        zeilen.append({
+            "id": n.id, "name": getattr(n, "name", None) or "", "email": n.email,
+            "grundrolle": rolle,
+            "gruppe": gruppen.get(n.custom_role_id) if n.custom_role_id else None,
+            "anmeldung": n.sso_provider or "lokal",
+            "rechte": ({"alles": True} if n.role == UserRole.ADMIN else rollen_vorlagen.rechte_kurz(rechte)),
+        })
+    return {"nutzer": zeilen}
+
+
 @router.put("/users/{user_id}/assign")
 async def assign_user_role(user_id: str, body: dict, user=Depends(require_auth), db: AsyncSession = Depends(get_db),
                            manager=Depends(_get_agent_manager)):
