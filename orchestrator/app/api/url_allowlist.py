@@ -5,6 +5,8 @@ Non-matching URLs trigger an approval request to the user.
 If an agent has NO allowlist entries, all URLs are permitted (fail-open).
 """
 
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import delete, select
@@ -26,6 +28,28 @@ async def _assert_agent_owned(agent_id: str, user, db) -> None:
     vids = await visible_agent_ids(user, db)
     if vids is not None and agent_id not in vids:
         raise HTTPException(status_code=404, detail="Not found")
+
+
+async def _assert_agent_besitzer(agent_id: str, user, db) -> None:
+    """Ändern nur Besitzer und Admin. Seit 1.449.0 kann die Liste am Ausgang verbindlich sein
+    (core/zielliste) — wem der Agent nur freigegeben ist, der soll sie nicht aufweiten."""
+    from app.core.ownership import is_admin
+    from app.models.agent import Agent
+
+    await _assert_agent_owned(agent_id, user, db)
+    if is_admin(user):
+        return
+    agent = await db.get(Agent, agent_id)
+    if agent is None or str(agent.user_id or "") != str(getattr(user, "id", "")):
+        raise HTTPException(status_code=403, detail="Die erlaubten Adressen ändert nur der Besitzer des Agenten.")
+
+
+def _muster_oder_422(pattern: str) -> str:
+    m = host_muster(pattern)
+    if m is None:
+        raise HTTPException(status_code=422, detail="Bitte eine Adresse wie „github.com“, „*.github.com“ "
+                                                    "oder „https://api.example.com“ angeben.")
+    return m
 
 
 async def _assert_template_owned(template, user, db) -> None:
@@ -145,30 +169,46 @@ async def seed_url_allowlist_templates(db: AsyncSession) -> None:
 
 # ── URL matching helper ──────────────────────────────────────────────────────
 
-def url_matches_pattern(url: str, pattern: str) -> bool:
-    """Check if a URL's host matches a pattern.
+_HOST_MUSTER = re.compile(r"^(\*|(\*\.)?[a-z0-9-]+(\.[a-z0-9-]+)*)$")
 
-    Patterns:
-      - "github.com" → exact match
-      - "*.github.com" → matches any subdomain of github.com
-      - "*" → matches everything
+
+def host_muster(pattern: str | None) -> str | None:
+    """Ein Eintrag als Host-Muster: ``github.com``, ``*.github.com`` oder ``*`` — sonst None.
+
+    Die Oberfläche schlug Einträge wie ``https://api.example.com/*`` vor; geprüft wurde aber
+    nur der Host, und so ein Eintrag passte nie (er sperrte also, statt freizugeben). Jetzt
+    zählt der Host-Teil — beim Speichern und beim Ausliefern an Agent und Egress-Proxy, damit
+    alle drei Prüfstellen dasselbe sehen. Pfade lassen sich am Ausgang ohnehin nicht prüfen
+    (TLS wird für fremde Ziele nicht aufgebrochen).
     """
+    from urllib.parse import urlsplit
+
+    p = (pattern or "").strip().lower()
+    if "://" in p:
+        p = urlsplit(p).hostname or ""
+    else:
+        p = p.split("/", 1)[0].split(":", 1)[0]
+    p = p.strip(".")
+    return p if p and _HOST_MUSTER.match(p) else None
+
+
+def url_matches_pattern(url: str, pattern: str) -> bool:
+    """Passt der Host der URL zum Muster? ``github.com`` genau, ``*.github.com`` mit
+    Unterdomänen, ``*`` alles. Muster in URL-Form zählen mit ihrem Host (``host_muster``)."""
     from app.core.url_guard import eindeutiger_host
 
-    if pattern == "*":
+    muster = host_muster(pattern)
+    if muster is None:
+        return False
+    if muster == "*":
         return True
-
     host = eindeutiger_host(url)
     if host is None:
         return False
-
-    pattern = pattern.lower().strip(".")
-
-    if pattern.startswith("*."):
-        suffix = pattern[2:]
+    if muster.startswith("*."):
+        suffix = muster[2:]
         return host == suffix or host.endswith("." + suffix)
-
-    return host == pattern
+    return host == muster
 
 
 # ── Pydantic Schemas ─────────────────────────────────────────────────────────
@@ -224,7 +264,7 @@ def _agent_entry_to_dict(e: AgentUrlAllowlist) -> dict:
     return {
         "id": e.id,
         "agent_id": e.agent_id,
-        "url_pattern": e.url_pattern,
+        "url_pattern": host_muster(e.url_pattern) or e.url_pattern,
         "description": e.description,
         "is_active": e.is_active,
         "created_by": e.created_by,
@@ -306,7 +346,7 @@ async def add_template_entry(
     await _assert_template_owned(template, user, db)
     entry = UrlAllowlistTemplateEntry(
         template_id=template_id,
-        url_pattern=body.url_pattern,
+        url_pattern=_muster_oder_422(body.url_pattern),
         description=body.description,
         sort_order=body.sort_order,
     )
@@ -397,7 +437,7 @@ async def apply_template_to_agent(
     """
     from app.models.audit_log import AuditLog, AuditEventType
 
-    await _assert_agent_owned(agent_id, user, db)
+    await _assert_agent_besitzer(agent_id, user, db)
     template = await db.scalar(
         select(UrlAllowlistTemplate).where(UrlAllowlistTemplate.id == body.template_id)
     )
@@ -417,7 +457,7 @@ async def apply_template_to_agent(
     for te in sorted(template.entries, key=lambda x: x.sort_order):
         entry = AgentUrlAllowlist(
             agent_id=agent_id,
-            url_pattern=te.url_pattern,
+            url_pattern=host_muster(te.url_pattern) or te.url_pattern,
             description=te.description,
             is_active=True,
             created_by=created_by,
@@ -450,10 +490,11 @@ async def add_agent_url(
     db: AsyncSession = Depends(get_db),
 ):
     """Manually add a URL pattern to an agent's allowlist."""
-    await _assert_agent_owned(agent_id, user, db)
+    await _assert_agent_besitzer(agent_id, user, db)
+    muster = _muster_oder_422(body.url_pattern)
     entry = AgentUrlAllowlist(
         agent_id=agent_id,
-        url_pattern=body.url_pattern,
+        url_pattern=muster,
         description=body.description,
         is_active=True,
         created_by=str(user.id) if user.id != "__anonymous__" else "manual",
@@ -472,7 +513,7 @@ async def delete_agent_url(
     db: AsyncSession = Depends(get_db),
 ):
     """Remove a URL pattern from an agent's allowlist."""
-    await _assert_agent_owned(agent_id, user, db)
+    await _assert_agent_besitzer(agent_id, user, db)
     entry = await db.scalar(
         select(AgentUrlAllowlist).where(
             AgentUrlAllowlist.id == entry_id,
@@ -493,7 +534,7 @@ async def clear_agent_allowlist(
     db: AsyncSession = Depends(get_db),
 ):
     """Remove all URL allowlist entries for an agent (unrestrict)."""
-    await _assert_agent_owned(agent_id, user, db)
+    await _assert_agent_besitzer(agent_id, user, db)
     await db.execute(
         delete(AgentUrlAllowlist).where(AgentUrlAllowlist.agent_id == agent_id)
     )

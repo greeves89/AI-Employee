@@ -478,6 +478,25 @@ def interne_hosts(mcp_server_json: str | None) -> list[str]:
     return gefunden
 
 
+async def _zielliste_umgebung(agent_id: str, proxy: str) -> dict[str, str]:
+    """Zielliste am Ausgang (core/zielliste): dann auch Klartext-HTTP über den Proxy, und die
+    Marke ``AIE_ZIELLISTE=1`` für den Netzwächter (sperrt alle Ports außer zum Proxy)."""
+    from app.core import zielliste
+    from app.db.session import async_session_factory
+    from app.models.agent import Agent
+
+    try:
+        async with async_session_factory() as db:
+            agent = await db.get(Agent, agent_id)
+        extra = zielliste.umgebung(agent.config if agent else None)
+    except Exception:  # noqa: BLE001 — lieber ohne Zielliste starten als gar nicht? Nein:
+        logger.exception("Zielliste für Agent %s nicht lesbar", agent_id)
+        raise
+    if extra:
+        extra.update({"HTTP_PROXY": proxy, "http_proxy": proxy})
+    return extra
+
+
 async def agent_umgebung(agent_id: str, mcp_server_json: str | None = None) -> dict[str, str]:
     """Umgebung, mit der ein Agent ueber den Proxy geht. Leer, wenn der Proxy aus ist.
 
@@ -493,7 +512,9 @@ async def agent_umgebung(agent_id: str, mcp_server_json: str | None = None) -> d
     teile = urlsplit(settings.egress_proxy_url)
     proxy = f"{teile.scheme}://{agent_id}:{make_agent_token(agent_id)}@{teile.netloc}"
     no_proxy = ",".join(NO_PROXY + tuple(interne_hosts(mcp_server_json)))
+    zielliste = await _zielliste_umgebung(agent_id, proxy)
     return {
+        **zielliste,
         "HTTPS_PROXY": proxy, "https_proxy": proxy,
         "NO_PROXY": no_proxy, "no_proxy": no_proxy,
         # Node (fetch/undici) folgt der Umgebung nur damit.

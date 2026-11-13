@@ -180,6 +180,13 @@ async def verbindung(body: Verbindung, request: Request, db: AsyncSession = Depe
     antwort: dict = {"hosts": sorted(hosts)}
     if anonym:
         antwort["anonym"] = anonym
+    # Zielliste am Ausgang (core/zielliste): Ziele, für die die Plattform Zugänge einsetzt,
+    # sind immer erlaubt — sonst bräche der Agent an seinen eigenen Schlüsseln.
+    from app.core import zielliste
+
+    ziele = await zielliste.fuer_proxy(db, agent, hosts) if agent is not None else None
+    if ziele is not None:
+        antwort["zielliste"] = ziele
     return antwort
 
 
