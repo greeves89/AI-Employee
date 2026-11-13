@@ -330,7 +330,7 @@ class TeilnehmerTests(DienstTests):
         self.assertEqual(len(starts), 1)
         s = (await self._seiten())[0]
         self.assertEqual(starts[0]["meeting_id"], s.id)
-        self.assertEqual(starts[0]["name"], "Assistenz (KI)")
+        self.assertEqual(starts[0]["name"], "Assistenz - KI")
         self.assertEqual(len(self.gesendet), 1, "Hinweis im Chat wie beim Beisitzer")
 
     async def test_nicht_bei_gaesten_und_nur_mit_teams_link(self):

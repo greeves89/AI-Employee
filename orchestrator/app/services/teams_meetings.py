@@ -434,7 +434,7 @@ class TeamsMeetingService:
 
         await nachricht_einreihen(client, agent.id, {
             "type": "teilnehmen", "meeting_id": seite.id, "join_url": join_url,
-            "name": f"{agent.name} (KI)", "ende": (ende or datetime.now(timezone.utc)).isoformat(),
+            "name": f"{agent.name} - KI", "ende": (ende or datetime.now(timezone.utc)).isoformat(),
         }, vorne=True)
         logger.info("[Termine] %s tritt %s bei", agent.id, seite.id)
 

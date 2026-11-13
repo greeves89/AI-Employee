@@ -35,7 +35,8 @@ BEITRITT_WARTEN = timedelta(minutes=10)
 #: Nach dem geplanten Ende höchstens so lange bleiben.
 NACHLAUF = timedelta(minutes=15)
 _BRUECKE = Path(__file__).with_name("teams_bruecke.js")
-BROWSER_ARGS = ["--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"]
+BROWSER_ARGS = ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream",
+                "--autoplay-policy=no-user-gesture-required"]
 _laufend: dict[str, asyncio.Task] = {}
 
 
@@ -50,6 +51,16 @@ def chromium_pfad() -> str | None:
     treffer = sorted(glob.glob(f"{basis}/chromium-*/chrome-linux*/chrome"),
                      key=lambda p: int("".join(c for c in p.split("chromium-")[1].split("/")[0] if c.isdigit()) or 0))
     return treffer[-1] if treffer else None
+
+
+def teams_name(name: str) -> str:
+    """Teams erlaubt im Namen nur Buchstaben, Zahlen, Leerzeichen und ``- ' . _ @`` —
+    „Marketing (KI)“ ließe „Jetzt teilnehmen“ gesperrt (live gesehen 13.11.2026)."""
+    import re
+
+    sauber = re.sub(r"[^\w\s\-'.@]", " ", name or "", flags=re.UNICODE).replace("_", " ")
+    sauber = re.sub(r"\s+", " ", sauber).strip()
+    return (sauber or "KI-Agent")[:60]
 
 
 def link_erlaubt(url: str) -> bool:
@@ -138,7 +149,7 @@ async def _beitreten(page, name: str) -> None:
                 "Stattdessen im Web teilnehmen", zeit=20000)
     try:
         feld = page.get_by_placeholder("Type your name").or_(page.get_by_placeholder("Geben Sie Ihren Namen ein"))
-        await feld.first.fill(name, timeout=30000)
+        await feld.first.fill(teams_name(name), timeout=30000)
     except Exception:  # noqa: BLE001
         logger.info("[Teilnehmer] Kein Namensfeld (angemeldet oder andere Fassung)")
     await klick("Join now", "Jetzt teilnehmen", zeit=30000)

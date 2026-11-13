@@ -123,6 +123,31 @@ Gefunden und behoben:
 
 Sprechen (Sprachfront) folgt nach dem ersten Live-Test.
 
+## Live-Test mit echtem Teams-Termin (13.11.2026, 18:18–18:55)
+
+Daniels Termin in seinem Teams, der Teilnehmer lief im Wegwerf-Behälter aus dem Agenten-Abbild
+1.452.0 auf dem Pi, ohne Agent.
+
+**Klappt:**
+- Teams im Browser laden, „In diesem Browser fortfahren“, Name eintragen
+- Mikrofon und Kamera werden erkannt („Fake Default Audio Input/Output“)
+- Ankunft im Wartebereich („Hallo, Marketing - KI. Jemand wird Sie in Kürze einlassen.“)
+- Daniel konnte ihn hereinlassen
+
+**Gefunden und behoben:**
+1. **Name:** Teams erlaubt nur Buchstaben, Zahlen, Leerzeichen und `- ' . _ @`. Mit
+   „Marketing (KI)“ blieb „Jetzt teilnehmen“ gesperrt. Jetzt heißt er „<Agent> - KI“, und
+   `teams_name()` bereinigt den Namen.
+2. **Kamera:** Teams fragt Mikrofon und Kamera zusammen ab. Eine Ablehnung der Kamera hielt
+   Teams für „kein Audio“. Jetzt gibt es eine schwarze Ersatzkamera und
+   `--use-fake-device-for-media-stream` für die Geräteliste.
+3. **Tonspuren:** Teams legt die Empfänger schon im Wartebereich an. Ein `track`-Ereignis kommt
+   danach nicht. Messung: 1 Verbindung, 0 Spuren. Jetzt fragt die Brücke zusätzlich alle 2 s
+   `getReceivers()` ab. Danach: 1 Tonspur, laufend gelesen.
+
+**Noch offen:** Ein Lauf, bei dem der Bot hereingelassen ist **und** jemand spricht. Beim
+letzten Versuch war die Besprechung schon leer („… einlassen, wenn die Besprechung beginnt“).
+
 ## Recherche 13.11.2026
 
 - **Weg B ist erprobte Praxis:** Selbst gehostete Open-Source-Projekte wie Vexa (Apache 2.0)

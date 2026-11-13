@@ -41,6 +41,16 @@ class ChromiumTests(unittest.TestCase):
                 self.assertIsNone(tt.chromium_pfad())
 
 
+class NameTests(unittest.TestCase):
+    def test_teams_erlaubt_keine_klammern(self):
+        """Live 13.11.2026: „Marketing (KI)“ ließ „Jetzt teilnehmen“ gesperrt."""
+        self.assertEqual(tt.teams_name("Marketing (KI)"), "Marketing KI")
+        self.assertEqual(tt.teams_name("Marketing - KI"), "Marketing - KI")
+        self.assertEqual(tt.teams_name("Anna's Bot @ Büro"), "Anna's Bot @ Büro")
+        self.assertEqual(tt.teams_name("<script>"), "script")
+        self.assertEqual(tt.teams_name("()"), "KI-Agent")
+
+
 class TonTests(unittest.TestCase):
     def _ton(self, sekunden: float, pegel: int) -> bytes:
         n = int(sekunden * tt.RATE)

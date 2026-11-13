@@ -30,8 +30,24 @@
   const Original = window.RTCPeerConnection;
   window.RTCPeerConnection = function (...a) {
     const pc = new Original(...a);
-    pc.addEventListener("track", (ev) => {
-      if (ev.track.kind !== "audio") return;
+    // Teams legt Empfänger oft schon im Wartebereich an; ein „track“-Ereignis kommt dann
+    // nicht mehr (live gesehen 13.11.2026: 1 Verbindung, 0 Spuren). Deshalb zusätzlich die
+    // Empfänger regelmäßig abfragen.
+    const abfragen = setInterval(() => {
+      if (pc.connectionState === "closed") return clearInterval(abfragen);
+      for (const r of pc.getReceivers()) if (r.track) anhaengen(r.track);
+    }, 2000);
+    pc.addEventListener("track", (ev) => anhaengen(ev.track));
+    return pc;
+  };
+  window.RTCPeerConnection.prototype = Original.prototype;
+  const gesehen = new WeakSet();
+  function anhaengen(track) {
+    if (!track || track.kind !== "audio" || gesehen.has(track)) return;
+    gesehen.add(track);
+    window.__aieSpuren = (window.__aieSpuren || 0) + 1;
+    const ev = { track };
+    {
       // Bevorzugt: Audiodaten direkt aus der Spur (Insertable Streams). Braucht weder ein
       // Ausgabegerät (Behälter ohne Soundkarte: WebAudio bekäme dort nur Stille) noch ein
       // nachgeladenes Modul (CSP).
@@ -60,10 +76,8 @@
       bereit.then(() => {
         ctx.createMediaStreamSource(new MediaStream([ev.track])).connect(mix);
       });
-    });
-    return pc;
-  };
-  window.RTCPeerConnection.prototype = Original.prototype;
+    }
+  }
   // Sprechen
   const ziel = ctx.createMediaStreamDestination();
   let naechsterStart = 0;
@@ -74,6 +88,15 @@
     naechsterStart = Math.max(naechsterStart, ctx.currentTime); q.start(naechsterStart); naechsterStart += buf.duration;
   };
   const md = navigator.mediaDevices;
-  md.getUserMedia = async (c) => (c && c.video ? Promise.reject(new DOMException("Keine Kamera", "NotFoundError")) : ziel.stream);
+  // Teams fragt Mikrofon und Kamera oft zusammen ab. Eine Ablehnung der Kamera hält es für
+  // „kein Audio“ — deshalb eine schwarze Ersatzkamera statt einer Ablehnung.
+  const leinwand = Object.assign(document.createElement("canvas"), { width: 320, height: 180 });
+  const malen = () => { const g = leinwand.getContext("2d"); g.fillStyle = "#000"; g.fillRect(0, 0, 320, 180); };
+  md.getUserMedia = async (c) => {
+    const spuren = [];
+    if (!c || c.audio) spuren.push(...ziel.stream.getAudioTracks());
+    if (c && c.video) { malen(); spuren.push(...leinwand.captureStream(1).getVideoTracks()); }
+    return new MediaStream(spuren);
+  };
   window.__aieKontext = ctx;
 })();
