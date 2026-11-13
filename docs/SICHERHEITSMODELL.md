@@ -64,10 +64,24 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
    ein Agent die Kennung selbst, bleibt ihm höchstens dieses Fenster nach dem letzten Abruf
    seines Vorgängers; ein Neustart dauert länger. Geprüft wird vor dem Senden, rohes TCP im
    Tunnel wird beendet, gestoppte Agenten zählen für den Netzwächter weiter.
-   **Bleibt offen:** DNS. Der Agent fragt den Resolver von Docker, und darüber lassen sich
-   kleine Datenmengen nach außen geben. Schließen ließe sich das nur mit einem filternden
-   Resolver. Was die Plattform für den Agenten tut (Mail, Teams, Websuche der Plattform),
-   deckt die Liste nicht ab. Dort gelten Rechte-Matrix und Freigaben.
+   **Bleibt offen (Review 13.11.2026):**
+   - **DNS.** Der Agent fragt den Resolver von Docker. Darüber lassen sich kleine Datenmengen
+     nach außen geben. Schließen ließe sich das nur mit einem filternden Resolver.
+   - **Immer erlaubte Ziele als Kanal.** Modellanbieter und die Ziele der Zugänge (etwa
+     `github.com`) bleiben erreichbar. Fremder Code mit einem eigenen Schlüssel für diese Dienste
+     könnte Daten in ein fremdes Konto schicken. Härter wäre: Auf diesen Zielen nur Anfragen
+     mit den Platzhaltern der Plattform zulassen, für Git nur die eingetragene Organisation.
+   - **Netzwächter-Takt.** Er setzt Regeln nach dem Docker-Ereignis „Start“ (Rückfall alle
+     5 Minuten). Zwischen dem Start eines Behälters und seinen Regeln liegt ein kurzes Fenster.
+     Der Agent selbst geht in diesem Fenster über den Proxy (Umgebung), seine Apps nicht.
+   - **Ausnahmen** in `/etc/ai-employee/netz-ausnahmen` (Regel 3) gelten vor der Zielliste.
+   - **Nur IPv4.** Der Netzwächter schreibt keine ip6tables-Regeln. Docker-Netze der Anlage
+     haben kein IPv6. Wer es einschaltet, umgeht Regel 5c.
+   - **Besitzer-Schlüssel aus Labels.** Ein Behälter mit dem Compose-Projekt eines anderen
+     Agenten und der Marke könnte dessen Apps sperren (nicht freischalten). Apps legt nur der
+     Orchestrator an, mit dem eigenen Projekt des Agenten.
+   - Was die Plattform für den Agenten tut (Mail, Teams, Websuche der Plattform), deckt die
+     Liste nicht ab. Dort gelten Rechte-Matrix und Freigaben.
 3. **Uvicorn vertraute `X-Forwarded-For` von jedem Absender** (`--forwarded-allow-ips "*"`).
    Ein Agent im Docker-Netz, bei der Community-Variante sogar ein Angreifer aus dem Internet,
    konnte eine beliebige Absenderadresse vorgeben (Anmelde-Bremse, Rate-Limit, Protokoll).

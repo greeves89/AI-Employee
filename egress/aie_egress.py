@@ -180,10 +180,15 @@ class AieEgress:
 
     def tcp_start(self, flow):
         """Kein HTTP im Tunnel (rohes TCP, auch nach dem Aufbrechen): Für Agenten mit Zielliste
-        beenden. Der Proxy prüft nur, was er als HTTP lesen kann."""
-        agent = self.agenten.get(flow.client_conn.id)
-        if agent and self.orch.zielliste(agent) is not None:
-            log.info("Zielliste: rohe TCP-Verbindung beendet (Agent %s)", agent[0])
+        beenden. Der Proxy prüft nur, was er als HTTP lesen kann. Im Fehlerfall ebenso beenden
+        (mitmproxy ließe die Verbindung sonst weiterlaufen)."""
+        try:
+            agent = self.agenten.get(flow.client_conn.id)
+            if agent and self.orch.zielliste(agent) is not None:
+                log.info("Zielliste: rohe TCP-Verbindung beendet (Agent %s)", agent[0])
+                flow.kill()
+        except Exception:  # noqa: BLE001
+            log.exception("Egress-Proxy: TCP-Verbindung nicht prüfbar — beendet")
             flow.kill()
 
     def client_disconnected(self, client):

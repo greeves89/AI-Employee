@@ -5085,6 +5085,10 @@ Ausschalten steht im Audit-Log.
 - Neue oder gelöschte Einträge gelten nach spätestens einer Minute, ohne Neustart.
 - **Namensauflösung (DNS)** prüft die Liste nicht. Über DNS-Anfragen lassen sich kleine
   Datenmengen nach außen geben.
+- Modellanbieter und die Ziele der Zugänge bleiben immer erreichbar, auch für Anfragen mit
+  fremden Zugangsdaten.
+- Ziele in den Ausnahmen des Netzwächters (`/etc/ai-employee/netz-ausnahmen`, Kap. 37.9) gelten
+  zusätzlich zur Liste.
 - Was die **Plattform** für den Agenten erledigt (Mail senden, Teams, Websuche über die
   Plattform), läuft nicht über diese Liste. Dafür gelten die Rechte des Agenten und die
   Freigaben (Kap. 13).
