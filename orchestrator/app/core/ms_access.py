@@ -50,3 +50,40 @@ def write_enabled(agent_config: dict | None, access_key: str) -> bool:
     if read_only_enabled():
         return False
     return (agent_config or {}).get(access_key, "read") in _WRITE_VALUES
+
+
+#: Ergebnis von :func:`sendemodus` — wie ein Agent nach außen in Microsoft 365 schreibt.
+SCHREIBEN, LESEN = "schreiben", "lesen"
+
+
+async def sendemodus(db, agent) -> str:
+    """Darf dieser Agent in Microsoft 365 senden — direkt, nur mit Freigabe, oder gar nicht?
+
+    DIE eine Entscheidung für alle Wege nach außen: Werkzeuge (api/mcp_msgraph), Antworten im
+    Teams-Kanal (services/teams_gateway). Eingänge:
+
+    * plattformweiter Nur-Lesen-Schalter (gewinnt immer),
+    * Einstellung des Agenten (``msgraph_access``: read / entwurf / write),
+    * Sekretariat (sendet nie direkt) und Rechte-Matrix „E-Mail / M365 senden“
+      (``allow`` / ``ask`` / ``deny``). Beide stufen nur HERAB, geben nie mehr Rechte als
+      die eigene Einstellung: „Lesen“ bleibt „Lesen“, „Verboten“ heißt auch keine Entwürfe.
+
+    Liefert ``schreiben``, ``entwurf`` (Freigabe durch den Menschen, der Server sendet) oder ``lesen``.
+    """
+    if agent is None or read_only_enabled():
+        return LESEN
+    from app.core.faehigkeiten import zustand
+    from app.core.sekretariat import ist_sekretariats_agent
+
+    cfg = agent.config or {}
+    darf_schreiben = write_enabled(cfg, "msgraph_access")
+    im_sekretariat = await ist_sekretariats_agent(db, agent.id)
+    matrix = await zustand(db, agent.id, "email_m365")
+    if (im_sekretariat or matrix != "allow") and darf_schreiben:
+        darf_schreiben = False      # fail-closed: nur mit Freigabe
+    if darf_schreiben:
+        return SCHREIBEN
+    if matrix != "deny" and (entwurf_enabled(cfg) or (
+            (im_sekretariat or matrix == "ask") and cfg.get("msgraph_access") in _WRITE_VALUES)):
+        return ENTWURF
+    return LESEN

@@ -38,6 +38,8 @@ async function fetchJSON<T>(url: string, options?: RequestInit, _isRetry = false
     const error = await res.text();
     throw new Error(`API Error ${res.status}: ${error}`);
   }
+  // 204 (Löschen) hat keinen Körper — res.json() würde werfen.
+  if (res.status === 204) return undefined as T;
   return res.json();
 }
 
@@ -635,6 +637,148 @@ export interface ConfidenceSettings {
   customized: boolean;
 }
 
+export interface AnonymisiererStand {
+  aktiv: boolean;
+  begriffe: string[];
+  unterstuetzt: boolean;
+  proxy_an: boolean;
+  wirksam: boolean;
+  hinweis: string;
+  neu_gestartet?: boolean;
+}
+
+/** Anonymisierer vor dem Modell (je Agent, opt-in): Personendaten gehen nur als Platzhalter an den Anbieter. */
+export async function getAgentAnonymisierer(agentId: string): Promise<AnonymisiererStand> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/anonymisierer`);
+}
+
+export async function updateAgentAnonymisierer(
+  agentId: string,
+  patch: { aktiv?: boolean; begriffe?: string[] },
+): Promise<AnonymisiererStand> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/anonymisierer`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+export interface AgentenKontoStand {
+  verbunden: boolean;
+  konto: string | null;
+  /** connected | refresh_failing | expired | disconnected (wie bei den Integrationen) */
+  status: string;
+  verfuegbar: boolean;
+  darf_verbinden: boolean;
+  /** Bei neuer Mail wecken (opt-in) und auf welchem Weg: Benachrichtigung von Microsoft oder Abfrage */
+  mail_wecken?: boolean;
+  /** Auch Absender außerhalb der eigenen Organisation wecken (Voreinstellung: nur intern) */
+  alle_absender?: boolean;
+  wecken_weg?: "benachrichtigung" | "abfrage" | null;
+  wecken_fehler?: string | null;
+  letzte_meldung?: string | null;
+}
+
+/** Eigenes Microsoft-365-Konto des Agenten: Stand, Anmeldung starten, trennen. */
+export async function getAgentMicrosoftKonto(agentId: string): Promise<AgentenKontoStand> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/microsoft-konto`);
+}
+
+export async function verbindeAgentMicrosoftKonto(agentId: string): Promise<{ auth_url: string }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/microsoft-konto/verbinden`, { method: "POST" });
+}
+
+export async function setzeAgentMailWecken(
+  agentId: string, patch: { aktiv?: boolean; alle_absender?: boolean },
+): Promise<Pick<AgentenKontoStand, "mail_wecken" | "alle_absender" | "wecken_weg" | "wecken_fehler" | "letzte_meldung">> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/microsoft-konto/mail-wecken`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function trenneAgentMicrosoftKonto(agentId: string): Promise<Pick<AgentenKontoStand, "verbunden" | "konto" | "status">> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/microsoft-konto`, { method: "DELETE" });
+}
+
+export interface TeamsKanal { team_id: string; channel_id: string; name?: string }
+
+/** Teams-Termine eines Agenten (core/kanaele, ``channels.meetings``). */
+export interface BesprechungsEinstellung {
+  aktiv: boolean;
+  rolle: "mitschreiber" | "beisitzer";
+  automatisch_annehmen: boolean;
+  annehmen_von: string[];
+  mit_gaesten: boolean;
+}
+
+export interface KanalStand {
+  kanal: "teams" | "slack" | "discord" | "whatsapp";
+  besprechungen?: BesprechungsEinstellung;
+  aktiv: boolean;
+  ziele?: string[];
+  teams_kanaele?: TeamsKanal[];
+  besprechungs_chats?: number;
+  nur_bei_erwaehnung?: boolean;
+  stichworte?: string[];
+  bot_kennung?: string;
+  telefon_id?: string;
+  absender?: string[];
+  /** Zugangsdaten kommen nie zurück — nur, ob welche gespeichert sind. */
+  token_gesetzt?: boolean;
+  /** Für Freigegebene (nicht Besitzer/Admin): nur an/aus und Anzahl. */
+  nur_zusammenfassung?: boolean;
+  anzahl_ziele?: number;
+  anzahl_absender?: number;
+}
+
+export type KanalUpdate = Partial<Omit<KanalStand, "kanal" | "token_gesetzt" | "besprechungs_chats" | "besprechungen">> & {
+  token?: string;
+  besprechungen?: Partial<BesprechungsEinstellung>;
+};
+
+export interface TeamsAuswahl {
+  chats: { id: string; art: string; name: string }[];
+  kanaele: TeamsKanal[];
+}
+
+/** Kanäle eines Agenten (Teams, Slack, Discord, WhatsApp) — ohne Zugangsdaten. */
+export async function getAgentKanaele(agentId: string): Promise<{ kanaele: KanalStand[] }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/kanaele`);
+}
+
+export async function setzeAgentKanal(agentId: string, kanal: string, patch: KanalUpdate): Promise<KanalStand> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/kanaele/${kanal}`, {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
+}
+
+/** Chats und Kanäle, die der Agent in Teams sehen kann — zum Auswählen. */
+export async function getTeamsAuswahl(agentId: string): Promise<TeamsAuswahl> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/kanaele/teams/auswahl`);
+}
+
+export interface ZiellisteStand {
+  aktiv: boolean;
+  wirksam: boolean;
+  proxy_an: boolean;
+  eintraege: number;
+  hinweis: string;
+  neu_gestartet?: boolean;
+}
+
+/** Zielliste am Ausgang: erlaubte Adressen verbindlich (Proxy + Netzwächter), opt-in je Agent. */
+export async function getAgentZielliste(agentId: string): Promise<ZiellisteStand> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/zielliste`);
+}
+
+export async function setzeAgentZielliste(agentId: string, aktiv: boolean): Promise<ZiellisteStand> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/zielliste`, {
+    method: "PATCH",
+    body: JSON.stringify({ aktiv }),
+  });
+}
+
 export async function getAgentConfidence(agentId: string): Promise<ConfidenceSettings> {
   return fetchJSON(`${getBase()}/agents/${agentId}/confidence`);
 }
@@ -1192,6 +1336,35 @@ export async function deleteFile(agentId: string, path: string): Promise<void> {
 }
 
 // Meeting recording: transcribe one recorded audio chunk via the STT service.
+/** Gespeicherte Besprechung: Mitschnitt im Browser oder Teams-Termin eines Agenten (/meetings). */
+export interface Besprechung {
+  id: string;
+  title: string;
+  transcript: string;
+  participants: string[];
+  duration_seconds: number;
+  created_at: string;
+  updated_at: string;
+  quelle: "aufnahme" | "teams";
+  agent_id: string | null;
+  beginn: string | null;
+  ende: string | null;
+  status: "geplant" | "laeuft" | "beendet" | "protokoll" | null;
+  gaeste_extern: boolean;
+  /** Hinweis „Ich schreibe mit“: gesendet, freigabe (wartet auf dich), aus (nur lesen), fehler … */
+  hinweis: string | null;
+  protokoll: string;
+  aufgaben: string[];
+}
+
+export async function getBesprechungen(): Promise<{ meetings: Besprechung[]; total: number }> {
+  return fetchJSON(`${getBase()}/meetings`);
+}
+
+export async function loescheBesprechung(id: string): Promise<void> {
+  await fetchJSON(`${getBase()}/meetings/${id}`, { method: "DELETE" });
+}
+
 export async function transcribeMeetingChunk(blob: Blob): Promise<string> {
   const fd = new FormData();
   fd.append("file", blob, "chunk.webm");
@@ -2130,7 +2303,8 @@ export interface AIAccountPayload {
   provider_type: string;
   api_endpoint?: string | null;
   api_key?: string | null;
-  models: { name: string; provider_type: string; api_endpoint: string }[];
+  models: { name: string; provider_type: string; api_endpoint: string; enabled?: boolean;
+    preis_eingabe_usd_1m?: number | null; preis_ausgabe_usd_1m?: number | null }[];
   extra?: Record<string, unknown>;
   is_active?: boolean;
 }

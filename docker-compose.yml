@@ -409,9 +409,9 @@ services:
   # gesetzt ist. TLS wird nur fuer Ziele aufgebrochen, an die ein Key des Agenten
   # darf; dort setzt der Proxy den echten Wert ein (egress/aie_egress.py). Kein
   # Port nach aussen, nur im Agentennetz. Das Abbild ist per Digest festgelegt
-  # (mitmproxy 12.2.3, amd64 + arm64).
+  # (mitmproxy 12.3.1, amd64 + arm64; Python 3.14 — zstd aus der Standardbibliothek).
   egress-proxy:
-    image: mitmproxy/mitmproxy:12.2.3@sha256:00b77b5d8804c8ad18cb6caefbf9d5849e895e8986c5ce011f4ae30f4385962f
+    image: mitmproxy/mitmproxy:12.3.1@sha256:2711066c855659b5af8b1dbb84494ed3eff69b42ece439c60b4fe09a2db829d4
     container_name: ai-employee-egress-proxy
     command:
       - mitmdump
@@ -424,6 +424,9 @@ services:
       # Grosse Downloads nicht im Speicher puffern (Pi). Darin ersetzt der
       # Proxy nichts — Keys stehen in Koepfen, Adressen und kleinen Koerpern.
       - --set=stream_large_bodies=5m
+      # Obergrenze für GEPUFFERTE Körper (der Anonymisierer puffert Anfragen an
+      # Modellanbieter immer, egal wie groß) — sonst könnte ein Agent den Proxy füllen.
+      - --set=body_size_limit=64m
     environment:
       ORCHESTRATOR_URL: http://ai-employee-orchestrator:8000
       EGRESS_PROXY_TOKEN: ${EGRESS_PROXY_TOKEN:-}

@@ -130,7 +130,9 @@ async def _collect_attention(
                 ("abgelaufen — Aufrufe darüber scheitern still"
                  if state == attention.BROKEN
                  else "läuft in den nächsten Tagen ab"),
-                link="/integrations",
+                # Konto eines Agenten (core/agenten_konto): neu verbunden wird am Agenten.
+                link=(f"/agents/{row.agent_id}?konnektoren=1" if getattr(row, "agent_id", None)
+                      else "/integrations"),
             ))
     except Exception:  # noqa: BLE001
         logger.debug("Zugaenge nicht pruefbar", exc_info=True)

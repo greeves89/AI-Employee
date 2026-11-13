@@ -63,7 +63,7 @@ _APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #: **Wer eine Migration ergaenzt, die eine Tabelle anlegt, traegt sie hier
 #: ein** -- sonst faellt dieser Test mit einer irrefuehrenden Meldung um.
 _TABELLEN_NACH_DER_MARKE = ("app_favorites", "projekt_karten", "projekt_nachrichten", "erinnerungen",
-                            "bridge_regeln", "bereich_aufrufe", "sekretariat_protokoll")
+                            "bridge_regeln", "bereich_aufrufe", "sekretariat_protokoll", "graph_abos")
 
 #: Spalten, die eine Migration NACH ``_REVISION_DAVOR`` an einer schon
 #: BESTEHENDEN Tabelle erst anlegt (Paare aus Tabelle, Spalte).
@@ -82,6 +82,10 @@ _TABELLEN_NACH_DER_MARKE = ("app_favorites", "projekt_karten", "projekt_nachrich
 #: ``DROP COLUMN`` nimmt seine Indizes mit, das ``CREATE INDEX`` der Migration
 #: laeuft danach wirklich.)
 _SPALTEN_NACH_DER_MARKE = (
+    # Teams-Besprechungen (l0m1n2o3p4q5)
+    ("meetings", "quelle"), ("meetings", "agent_id"), ("meetings", "teams_event_id"),
+    ("meetings", "beginn"), ("meetings", "ende"), ("meetings", "status"),
+    ("meetings", "gaeste_extern"), ("meetings", "hinweis"), ("meetings", "protokoll"),
     ("schedules", "chat_session_id"),
     ("agent_secrets", "owner_id"),
     ("agent_secrets", "erlaubte_hosts"),
@@ -111,6 +115,7 @@ _SPALTEN_NACH_DER_MARKE = (
     ("teams", "rueckkanal"),
     ("teams", "repo_oeffentlich"),
     ("teams", "blinder_pruefer"),
+    ("oauth_integrations", "agent_id"),
     ("kosten_historie", "team_id"),
     ("teams", "art"),
     ("meeting_rooms", "team_id"),

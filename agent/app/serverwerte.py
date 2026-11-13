@@ -39,6 +39,7 @@ NUR_SERVER = (
     "CUSTOM_MCP_HEADERS",
     "CODEX_AUTH_JSON",
     "BROWSER_ZUGANG",      # Ausweis des Orchestrators am Bildstrom (browser_stream)
+    "SENTINEL_HINWEIS_KEY",  # prüft Plattform-Hinweise (plattform_hinweis)
 )
 
 _werte: dict[str, str] = {}

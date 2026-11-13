@@ -14,6 +14,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.config import get_agent_version, settings
 from app.core import autonomy_matrix
+from app.core.kanaele import ohne_zugangsdaten
 from app.core.agent_duty import vom_nutzer_angehalten
 from app.core.egress import ANBINDUNG, aktiv as egress_aktiv, platzhalter as egress_platzhalter
 from app.core.egress import ki_ueber_proxy as egress_ki_stufe, ki_umstellen as egress_ki_umstellen, veraltet as egress_veraltet
@@ -1101,11 +1102,25 @@ def _beleg_hinweis() -> str:
     return "## Fertig nur mit Beleg\n- " + REGEL + "\n- " + BEFUND_REGEL + "\n\n"
 
 
+def _anonym_umgebung(agent) -> dict[str, str]:
+    from app.core import anonymisierer
+
+    return anonymisierer.umgebung(agent)
+
+
+def _anonym_aktiv(agent) -> bool:
+    """Anonymisierer an (core/anonymisierer)? Dann bekommt das Modell den Hinweis auf Platzhalter."""
+    from app.core import anonymisierer
+
+    return anonymisierer.einstellung(getattr(agent, "config", None))["aktiv"] and anonymisierer.unterstuetzt(
+        getattr(agent, "mode", None))
+
+
 def _render_claude_md(agent_mounts: list[str], catalog: dict | None = None,
                       workspace_size_gb: float | None = None,
                       agent_name: str = "", agent_role: str = "",
                       master_rules: str = "", mode: str | None = None,
-                      build_tools: bool = False) -> str:
+                      build_tools: bool = False, anonym: bool = False) -> str:
     """Render the agent CLAUDE.md from its template — the SINGLE place that fills
     its placeholders (identity, workspace soft-quota, host-mounts section). Used by
     the create / update / restart paths, so the substitution lives in exactly one spot.
@@ -1121,7 +1136,9 @@ def _render_claude_md(agent_mounts: list[str], catalog: dict | None = None,
     # Erstes weg.
     # Der Build-Abschnitt steht vorn aus demselben Grund: er ist kurz, und ein
     # Agent, der ihn nicht kennt, baut die .exe gar nicht erst.
-    return master_rules + _laufzeit_hinweis(mode) + _SENTINEL_HINWEIS + _beleg_hinweis() + (_BUILD_TOOLS_HINWEIS if build_tools else "") + (
+    from app.core.anonymisierer import modell_hinweis as _anonym_hinweis
+
+    return master_rules + _laufzeit_hinweis(mode) + _SENTINEL_HINWEIS + _beleg_hinweis() + (_BUILD_TOOLS_HINWEIS if build_tools else "") + (_anonym_hinweis() if anonym else "") + (
         DEFAULT_CLAUDE_MD
         .replace("$AGENT_IDENTITY", _identity_line(agent_name, agent_role))
         .replace("$AGENT_WORKSPACE_SIZE_GB", str(size))
@@ -1158,6 +1175,14 @@ def _browser_geheimnisse(agent_id: str) -> dict[str, str]:
         "BROWSER_PROFIL_KEY": agent_schluessel("browser-profil", agent_id),
         "BROWSER_ZUGANG": agent_schluessel("browser-zugang", agent_id),
     }
+
+
+def _plattform_geheimnisse(agent_id: str) -> dict[str, str]:
+    """Schlüssel, mit dem der Agent Plattform-Hinweise (Sentinel) auf Echtheit prüft
+    (``core/plattform_hinweis``). Nur der Agenten-Server liest ihn (``serverwerte``)."""
+    from app.core import plattform_hinweis
+
+    return {plattform_hinweis.UMGEBUNG: plattform_hinweis.schluessel(agent_id)}
 
 
 async def alte_behaelter_aufraeumen(docker) -> dict:
@@ -1867,6 +1892,7 @@ class AgentManager:
                 # setzt ein Besitzer erst danach per PATCH + Neustart.
                 "BROWSER_ALLOWED_DOMAINS": "",
                 **_browser_geheimnisse(agent_id),
+                **_plattform_geheimnisse(agent_id),
                 "AGENT_WORKSPACE_SIZE_GB": str(settings.agent_workspace_size_gb),
             })
 
@@ -2176,6 +2202,8 @@ class AgentManager:
             # werden, sonst greift eine Aenderung erst beim naechsten davon.
             "BROWSER_ALLOWED_DOMAINS": ",".join(config.get("browser_allowed_domains") or []),
             **_browser_geheimnisse(agent.id),
+            **_plattform_geheimnisse(agent.id),
+            **_anonym_umgebung(agent),
             # Standard-Denktiefe aus den Agenten-Einstellungen — die Laufzeit
             # nutzt sie ueberall dort, wo am Lauf keine Stufe haengt.
             "DEFAULT_REASONING": str(config.get("default_reasoning", "") or ""),
@@ -2235,6 +2263,7 @@ class AgentManager:
         # sonst koennte ein zugewiesener Key ``BROWSER_ZUGANG`` den Browser fuer
         # einen fremden Agenten im selben Netz oeffnen (#828, Schritt 5).
         env_vars.update(_browser_geheimnisse(agent.id))
+        env_vars.update(_plattform_geheimnisse(agent.id))
         # Weg nach draussen ganz zuletzt — kein Key darf ihn umbiegen (core/egress.py).
         from app.core.egress import agent_umgebung
         env_vars.update(await agent_umgebung(agent_id, env_vars.get("CUSTOM_MCP_SERVERS")))
@@ -2303,7 +2332,7 @@ class AgentManager:
             fresh_claude_md = _render_claude_md(
                 agent_mounts, catalog, agent_name=agent.name, agent_role=role or "",
                 master_rules=await _mr.load(self.db), mode=mode,
-                build_tools=build_tools,
+                build_tools=build_tools, anonym=_anonym_aktiv(agent),
             )
             for target_file in instructions_paths(mode):
                 self.docker.write_file_in_container(container.id, target_file, fresh_claude_md)
@@ -2495,7 +2524,7 @@ class AgentManager:
                 await mounts_des_agenten(self.db, agent), catalog,
                 agent_name=agent.name, agent_role=(agent.config or {}).get("role", ""),
                 master_rules=await _mr.load(self.db), mode=mode,
-                build_tools=build_tools,
+                build_tools=build_tools, anonym=_anonym_aktiv(agent),
             )
             for path in instructions_paths(mode):
                 self.docker.write_file_in_container(agent.container_id, path, rendered)
@@ -2767,6 +2796,8 @@ class AgentManager:
             # werden, sonst greift eine Aenderung erst beim naechsten davon.
             "BROWSER_ALLOWED_DOMAINS": ",".join(config.get("browser_allowed_domains") or []),
             **_browser_geheimnisse(agent.id),
+            **_plattform_geheimnisse(agent.id),
+            **_anonym_umgebung(agent),
             # Standard-Denktiefe aus den Agenten-Einstellungen — die Laufzeit
             # nutzt sie ueberall dort, wo am Lauf keine Stufe haengt.
             "DEFAULT_REASONING": str(config.get("default_reasoning", "") or ""),
@@ -2841,6 +2872,7 @@ class AgentManager:
         # sonst koennte ein zugewiesener Key ``BROWSER_ZUGANG`` den Browser fuer
         # einen fremden Agenten im selben Netz oeffnen (#828, Schritt 5).
         env_vars.update(_browser_geheimnisse(agent.id))
+        env_vars.update(_plattform_geheimnisse(agent.id))
         # Weg nach draussen ganz zuletzt — kein Key darf ihn umbiegen (core/egress.py).
         from app.core.egress import agent_umgebung
         env_vars.update(await agent_umgebung(agent_id, env_vars.get("CUSTOM_MCP_SERVERS")))
@@ -2916,7 +2948,7 @@ class AgentManager:
                 _agent_mounts, catalog,
                 agent_name=agent.name, agent_role=(agent.config or {}).get("role", ""),
                 master_rules=await _mr.load(self.db), mode=mode,
-                build_tools=build_tools,
+                build_tools=build_tools, anonym=_anonym_aktiv(agent),
             )
             for _path in _instructions_files:
                 self.docker.write_file_in_container(container.id, _path, _rendered)
@@ -3268,7 +3300,8 @@ class AgentManager:
             "interaction_account_id": config.get("interaction_account_id"),
             "interaction_model_id": config.get("interaction_model_id"),
             "voice_delegate_to_agent": config.get("voice_delegate_to_agent"),
-            "config": config,
+            # Ohne verschlüsselte Zugangsdaten der Kanäle (core/kanaele) — die Antwort sehen auch Freigegebene.
+            "config": ohne_zugangsdaten(config),
         }
 
         # Add live metrics from Redis

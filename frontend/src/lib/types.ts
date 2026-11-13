@@ -47,6 +47,8 @@ export interface AIModel {
   provider_type: AIAccountProviderType; // which API the model speaks
   api_endpoint: string;               // the endpoint/surface for this model
   enabled?: boolean;                  // Freigabe für Agenten (fehlt = freigegeben)
+  preis_eingabe_usd_1m?: number | null; // USD je 1 Mio. Eingabe-Token (fehlt = unbekannt)
+  preis_ausgabe_usd_1m?: number | null; // USD je 1 Mio. Ausgabe-Token
 }
 
 export interface AIAccount {

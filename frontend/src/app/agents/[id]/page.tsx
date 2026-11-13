@@ -21,6 +21,8 @@ import { Header } from "@/components/layout/header";
 import { ActivityTimeline } from "@/components/activity/activity-timeline";
 import { AgentAppearanceInline } from "@/components/agents/agent-appearance-inline";
 import { SelfHealingCard } from "@/components/agents/self-healing-card";
+import { AnonymisiererCard } from "@/components/agents/anonymisierer-card";
+import { KanaeleCard } from "@/components/agents/kanaele-card";
 import {
   FilePreview, FilePreviewEmpty,
   getFileColor, formatModified, formatModifiedFull,
@@ -37,6 +39,7 @@ import { InteractionModelCard } from "@/components/agents/interaction-model-card
 import { AgentSpeechTab } from "@/components/agents/agent-speech-tab";
 import { IntegrationSelector } from "@/components/agents/integration-selector";
 import { KontoVerbindungen } from "@/components/agents/konto-verbindungen";
+import { AgentenKonto } from "@/components/agents/agenten-konto";
 import { BridgeDownload } from "@/components/agents/bridge-download";
 import { InfoHint } from "@/components/ui/info-hint";
 import { MemoryTab } from "@/components/agents/memory-tab";
@@ -802,7 +805,11 @@ function Schnellzugriff({ agent, setAgent }: { agent: Agent; setAgent: (a: Agent
         <div className="p-5">
           {offen === "konnektoren" && (
             <div className="space-y-4">
+              <AgentenKonto agentId={agent.id} />
               <KontoVerbindungen agentId={agent.id} />
+              {/* Teams, Slack, Discord, WhatsApp (core/kanaele) — hier, weil Mitglieder nur über
+                  dieses Fenster an die Einstellungen ihres Agenten kommen. */}
+              <KanaeleCard agentId={agent.id} />
               <BridgeDownload />
               <IntegrationSelector agentId={agent.id} />
             </div>
@@ -2752,6 +2759,7 @@ function AgentSettings({
       {/* Telegram Bot */}
       <TelegramAgentSection agentId={agentId} />
 
+
       {/* Meeting-Room shared pool (admin only) */}
       {isRoomAdmin && (
         <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
@@ -2972,6 +2980,9 @@ function AgentSettings({
       </SettingsAccordionSection>
 
       <SettingsAccordionSection title="Zugriff & Rechte" icon={ShieldCheck}>
+      {/* Anonymisierer vor dem Modell (opt-in je Agent) */}
+      <AnonymisiererCard agentId={agentId} />
+
       {/* Autonomy Level */}
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
         <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">

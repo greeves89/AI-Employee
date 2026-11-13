@@ -82,7 +82,7 @@ class _Db:
     async def __aexit__(self, *a): return False
 
 
-async def _sweep(gestartet_vor_min: float):
+async def _sweep(gestartet_vor_min: float, offene_aufgabe: bool = False):
     agent = SimpleNamespace(id="2ad91565", name="Agent", user_id="u1", container_id="c1",
                             config={}, state=lifecycle.AgentState.RUNNING)
     user = SimpleNamespace(id="u1", email="nutzer@example.invalid", last_active_at=JETZT - timedelta(hours=3))
@@ -100,6 +100,7 @@ async def _sweep(gestartet_vor_min: float):
     with patch("app.db.session.resilient_session", lambda session_factory: _Db(agent, user)), \
          patch.object(lifecycle, "_get_timeout_minutes", AsyncMock(return_value=15)), \
          patch.object(lifecycle, "_has_imminent_schedule", AsyncMock(return_value=False)), \
+         patch.object(lifecycle, "_has_open_task", AsyncMock(return_value=offene_aufgabe)), \
          patch.object(lifecycle, "datetime", _Zeit):
         await svc._sweep()
     return svc.docker, agent

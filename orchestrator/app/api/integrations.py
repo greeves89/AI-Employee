@@ -83,18 +83,23 @@ async def get_auth_url(
 @router.get("/{provider}/callback")
 async def oauth_callback(
     provider: str,
-    code: str = Query(...),
+    code: str | None = Query(None),
     state: str = Query(...),
     error: str | None = Query(None),
     service: OAuthService = Depends(_get_oauth_service),
 ):
-    """OAuth callback endpoint - exchanges code for tokens and redirects to frontend."""
-    if error:
-        # Redirect to frontend with error
-        return RedirectResponse(
-            url="/integrations?" + urlencode({"error": error, "provider": provider})
-        )
+    """OAuth callback endpoint - exchanges code for tokens and redirects to frontend.
 
+    ``code`` ist optional: Bricht jemand bei Microsoft ab, kommt nur ``error`` (und ``state``)
+    zurück — mit Pflicht-``code`` hätte FastAPI dann ein rohes 422 gezeigt."""
+    if error or not code:
+        error = error or "missing_code"
+        # Abgebrochen oder abgelehnt bei Microsoft & Co.: zurück dorthin, wo verbunden wurde.
+        ziel = await service.ruecksprung_fuer(state) if service is not None else None
+        basis, trenner = (ziel, "&" if "?" in ziel else "?") if ziel else ("/integrations", "?")
+        return RedirectResponse(url=f"{basis}{trenner}" + urlencode({"error": error, "provider": provider}))
+
+    ziel = None
     try:
         ziel = await service.ruecksprung_fuer(state)
         await service.exchange_code(provider, code, state)
@@ -104,9 +109,10 @@ async def oauth_callback(
             return RedirectResponse(url=f"{ziel}{trenner}" + urlencode({"connected": provider}))
         return RedirectResponse(url="/integrations?" + urlencode({"connected": provider}))
     except ValueError as e:
-        return RedirectResponse(
-            url="/integrations?" + urlencode({"error": str(e), "provider": provider})
-        )
+        # Abgelehnt (z. B. beim Konto eines Agenten das eigene Konto gewählt): dorthin zurück,
+        # wo verbunden wurde, damit die Meldung dort steht und nicht auf einer fremden Seite.
+        basis, trenner = (ziel, "&" if "?" in ziel else "?") if ziel else ("/integrations", "?")
+        return RedirectResponse(url=f"{basis}{trenner}" + urlencode({"error": str(e), "provider": provider}))
 
 
 @router.delete("/{provider}")

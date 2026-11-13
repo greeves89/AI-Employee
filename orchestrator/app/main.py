@@ -254,6 +254,23 @@ async def _refresh_oauth_tokens(redis: RedisService) -> None:
         await asyncio.sleep(300)  # Check every 5 minutes
 
 
+async def _graph_abos_abgleichen(redis: RedisService) -> None:
+    """Wecken bei neuer Mail (core/graph_abos): Abos anlegen/verlängern, im Abfrage-Betrieb nachholen."""
+    await asyncio.sleep(60)   # nach dem Start erst die Token-Erneuerung laufen lassen
+    while True:
+        try:
+            from app.core import graph_abos
+            from app.db.session import async_session_factory
+
+            async with async_session_factory() as db:
+                erg = await graph_abos.abgleichen(db, redis)
+            if any(erg.values()):
+                logger.info("[Graph-Abos] %s", erg)
+        except Exception:  # noqa: BLE001 — nächste Runde in fünf Minuten
+            logger.exception("[Graph-Abos] Abgleich gescheitert")
+        await asyncio.sleep(300)
+
+
 async def _refresh_mcp_oauth_tokens() -> None:
     """Keep OAuth-protected MCP server tokens fresh on a timer (#488).
 
@@ -492,7 +509,12 @@ async def _kosten_ohne_verlauf(redis: RedisService, db, agent_id: str, message_i
 
     from app.services.chat_persistence import betrag_pruefen
 
-    betrag = betrag_pruefen((event_data or {}).get("cost_usd"))
+    from app.core import modellpreise
+
+    daten = event_data or {}
+    betrag = modellpreise.betrag(
+        betrag_pruefen(daten.get("cost_usd")), daten.get("input_tokens"), daten.get("output_tokens"),
+        await modellpreise.preis_fuer_agent(agent_id, db=db))
     if not betrag:
         return
     try:
@@ -2850,6 +2872,7 @@ written this way is not in the index.
 
     # Start third-party OAuth token refresh background task
     oauth_refresh_task = asyncio.create_task(_refresh_oauth_tokens(app.state.redis))
+    graph_abos_task = asyncio.create_task(_graph_abos_abgleichen(app.state.redis))
 
     # Start OAuth-protected MCP server token refresh background task (#488)
     mcp_oauth_refresh_task = asyncio.create_task(_refresh_mcp_oauth_tokens())
@@ -3017,6 +3040,7 @@ written this way is not in the index.
     chat_drain_task.cancel()
     step_persist_task.cancel()
     oauth_refresh_task.cancel()
+    graph_abos_task.cancel()
     mcp_oauth_refresh_task.cancel()
     claude_token_task.cancel()
     scheduler_task.cancel()
@@ -3064,6 +3088,11 @@ from app.core import koerper_grenze as _koerper_grenze  # noqa: E402
 from app.core.projekt_dateien import MAX_BYTES as _PROJEKTDATEI_MAX  # noqa: E402
 
 _koerper_grenze.regel("POST", r"^/api/v1/teams/[^/]+/wissen/dateien$", _PROJEKTDATEI_MAX + 1024 * 1024)
+# Öffentlicher Empfang der Graph-Benachrichtigungen (api/msgraph_benachrichtigung): Microsoft
+# schickt kleine JSON-Körper mit Längenangabe; alles darüber ist kein Microsoft.
+# Die Adressprüfung (``?validationToken=``) kommt mit leerem Körper, womöglich ohne Längenangabe —
+# sie liest keinen Körper und darf deshalb ohne durch (sonst scheiterte jedes Abo bei Microsoft).
+_koerper_grenze.regel("POST", r"^/api/v1/msgraph/", 1024 * 1024, ohne_laenge_bei="validationToken")
 app.add_middleware(_koerper_grenze.KoerperGrenze)
 
 # API rate limiting (120 requests/minute per user or IP)

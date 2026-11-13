@@ -2392,6 +2392,13 @@ Agenten nutzen — statt dass jeder User eigene Schlüssel pflegt. Verwaltung in
   - **Endpoint für dieses Modell** (z. B. `https://…services.ai.azure.com/anthropic/v1`).
   - Über **+ Modell hinzufügen** weitere Modelle ergänzen. So deckt **ein** Account mehrere
     Azure-Oberflächen ab (Chat, Responses/Codex, Anthropic/Claude).
+  - **Preis je Modell** *(seit 1.449.0)* — zwei Felder in der Modellzeile: **Ein $/1M** und
+    **Aus $/1M**, also USD je 1 Million Eingabe- bzw. Ausgabe-Token, wie sie der Anbieter
+    berechnet (bei Azure den Preis eurer Bereitstellungsart, z. B. *Data Zone Standard*).
+    Wozu: Kennt ein Agent den Preis eines neuen Modells nicht, meldet er 0 USD — dann zeigen
+    Dashboard und Budget nichts, und ein **Monatsbudget greift nie**. Steht hier ein Preis,
+    rechnet die Plattform die Kosten jedes Laufs aus den Token nach (Aufgaben und Chat).
+    Leer lassen heißt „unbekannt"; Abo-Zugänge (Claude, Codex) brauchen keinen Preis.
 - **API Key** — der geheime Schlüssel (`sk-…` bzw. Azure-Key) — wird **verschlüsselt**
   gespeichert.
 - **Azure api-version** — die API-Version (z. B. `2024-08-01-preview`).
@@ -2607,6 +2614,8 @@ Geprüft werden unter anderem:
 - ob der DLP-Filter an ist und Schlüssel sperrt oder schwärzt, bevor eine Antwort die Anlage
   über Telegram, Slack/Teams/Discord oder Projekt-Git verlässt *(seit 1.434.0)*. Er ist bei jeder
   neuen Anlage zunächst aus; einschalten unter **Admin → DLP**.
+- bei welchen Agenten der **Anonymisierer** an ist und ob er wirkt *(seit 1.444.0, Kap. 37.15)*
+- bei welchen Agenten die **Erlaubten Adressen am Ausgang** erzwungen werden *(seit 1.450.0, Kap. 37.17)*
 - ob ein **Agenten-Token von außen** benutzt wurde *(seit 1.439.0, Kap. 37.14)*. Ein Agent meldet sich mit
   einem Token beim Server an. Das gilt nur direkt aus dem Netz der Agenten, über die öffentliche
   Adresse wird es abgewiesen. Kam in den letzten 7 Tagen trotzdem ein gültiges Token von außen,
@@ -4164,14 +4173,79 @@ geteilte) — Administratoren sehen alle Agenten.
 Ein Agent ist über **fünf Kanäle** erreichbar. Egal welcher — der Ablauf dahinter ist
 derselbe: Nachricht aufnehmen, ins Gedächtnis legen, Agent antworten lassen.
 
-### Einen Kanal einschalten
+### Einen Kanal einschalten *(Oberfläche seit 1.448.0)*
 
-1. **Agenten** öffnen → gewünschter Agent → Reiter **Settings**.
-2. Abschnitt **Kanäle** aufklappen.
-3. Kanal wählen und **Aktiv** setzen.
-4. **Bot-Token** eintragen (wird verschlüsselt gespeichert, nie im Klartext angezeigt).
-5. **Kanal-IDs** eintragen — welche Chats/Channels der Agent mitliest.
-6. **Speichern**.
+Teams, Slack, Discord und WhatsApp stehen auf der Karte **Kanäle** (Besitzer des Agenten oder
+Administrator). Telegram richtet ein Administrator unter Einstellungen → Verbindungen ein.
+
+1. Agent öffnen und unten auf **Konnektoren** klicken.
+2. Auf der Karte **Kanäle** den gewünschten Kanal aufklappen (Pfeil vor dem Namen).
+3. **Slack/Discord:** die **Kanal-IDs** eintragen (eine je Zeile), dazu die **Bot-Kennung** und das
+   **Bot-Token**.
+   **WhatsApp:** **Telefonnummer-ID**, **erlaubte Absender** und **Zugriffstoken**.
+   **Teams:** auf **Chats und Kanäle aus Teams auswählen** klicken und die gewünschten ankreuzen.
+   Die Liste kommt aus dem Microsoft-Konto, das der Agent nutzt. Ohne eigenes Konto des Agenten
+   sind es deine Chats, und nur du kannst sie auswählen.
+4. Auf **Speichern** klicken.
+5. Mit dem Schalter rechts neben dem Namen den Kanal **einschalten**.
+
+![Karte „Kanäle“ im Fenster Konnektoren, Discord aufgeklappt, Knopf „Speichern“](screenshots/f28-kanaele.png)
+
+Eine WhatsApp-Nummer gehört genau einem Agenten. Ist sie schon vergeben, lehnt die Anlage ab.
+Wem du den Agenten nur freigegeben hast, sieht je Kanal nur, ob er an ist und wie viele Ziele
+er hat. Ohne eigenes Microsoft-Konto des Agenten stellst nur du Teams ein. Ausschalten kann
+auch ein Administrator.
+
+**Bedenke beim Einschalten:** Wer in einem eingestellten Kanal schreibt, kann den Agenten
+starten. Bei „Nur antworten, wenn der Agent erwähnt … wird“ (Voreinstellung) nur mit
+Erwähnung, sonst mit jeder Nachricht. Jede Antwort ist ein Lauf des Agenten.
+
+Zugangsdaten werden verschlüsselt gespeichert und nie wieder angezeigt. Die Karte zeigt nur
+„Token gesetzt“ oder „nicht gesetzt“. Lässt du das Feld leer, bleibt das gespeicherte Token.
+**Token entfernen** löscht es. Ins Audit-Log kommt, welche Felder geändert wurden, nie ein Token.
+
+Für Teams gilt außerdem, was der Agent in Microsoft 365 darf (siehe unten). Chats aus
+Besprechungen, an denen der Agent teilnimmt, kommen von selbst dazu.
+
+### Teams-Besprechungen: Agent schreibt mit *(seit 1.451.0)*
+
+Ein Agent kann in Teams-Terminen dabei sein, zu denen er eingeladen ist. Nach dem Termin steht
+unter **Besprechungen** (Seitenleiste) ein Protokoll mit Aufgaben und dem Transkript.
+
+**So schaltest du es ein** (Besitzer des Agenten oder Administrator):
+1. Agent öffnen → **Konnektoren** → **Microsoft Teams** aufklappen.
+2. Bei **Teams-Besprechungen** den Schalter einschalten.
+3. Die **Rolle** wählen:
+   - **Mitschreiber:** Nach dem Termin holt der Agent das Teams-Transkript und schreibt Protokoll
+     und Aufgaben.
+   - **Beisitzer:** Während des Termins liest er im Chat der Besprechung mit und antwortet, wenn
+     man ihn beim Namen nennt.
+4. Optional **Einladungen selbst annehmen**, auf Wunsch nur von bestimmten Adressen oder
+   Domänen (z. B. `@example.com`).
+5. Den Agenten wie eine Kollegin in Outlook oder Teams zum Termin einladen.
+
+Was dann passiert:
+- Zu jedem Termin legt die Anlage eine Seite unter **Besprechungen** an. Sie zeigt Zeit, Stand
+  und Teilnehmende.
+- Zu Beginn schreibt der Agent einmal in den Chat der Besprechung, dass er mitschreibt. Das gilt
+  für jede Teams-Nachricht des Agenten: Im Modus **Entwurf** wartet der Hinweis auf deine
+  Freigabe. Im Modus **Lesen** schreibt er nichts, die Seite zeigt das an.
+- Nach dem Termin (sobald Teams das Transkript bereitstellt) schreibt der Agent das Protokoll:
+  Zusammenfassung, Entscheidungen, Aufgaben mit Verantwortlichen. Das Transkript liegt
+  zusätzlich im Wissen.
+
+**Gäste von außen:** Ist jemand außerhalb deiner Organisation eingeladen, hält sich der Agent
+heraus: kein Chat, kein Hinweis, kein Protokoll. Die Seite zeigt „Gäste von außen“. Mit dem Haken
+**Auch in Terminen mit Gästen von außen** erlaubst du es für diesen Agenten.
+
+**Voraussetzungen:**
+- Ein Microsoft-Konto für den Agenten, am besten ein eigenes (Kap. 37.16), sonst deins.
+- Ein Transkript gibt es nur, wenn im Termin die Aufzeichnung mit Transkription lief.
+- Berechtigungen der App-Registrierung: `OnlineMeetings.Read` und
+  `OnlineMeetingTranscript.Read.All`, dazu `Calendars.ReadWrite` (Annehmen) und
+  `Chat.ReadWrite` (Hinweis, Beisitzer).
+
+Der Agent hört noch nicht zu und spricht nicht. Er arbeitet über Chat und Transkript.
 
 ### Discord einrichten
 
@@ -4196,6 +4270,29 @@ jede Zeile antworten.
 Für einen Kanal, der dem Agenten allein gehört, kannst du **Erwähnung nötig**
 ausschalten; dann bearbeitet er alles, was dort geschrieben wird.
 
+### Teams: Wer darf in deinem Namen schreiben? *(seit 1.447.0)*
+
+Antworten im Teams-Kanal und Teams-Nachrichten über die Werkzeuge des Agenten folgen denselben
+Regeln wie Mails:
+- **Microsoft 365 nur lesend** (Admin) oder **Lesen** beim Agenten: Der Agent schreibt nichts in
+  Teams.
+- **Entwurf**, **Sekretariat** oder **Freigabe** in der Rechte-Matrix bei „E-Mail / M365
+  senden“: Die Nachricht landet als Freigabe bei dir („Teams-Nachricht senden“). Darin stehen
+  das Ziel (Chat mit Thema und Mitgliedern bzw. Team und Kanal, dazu die volle Kennung) und der
+  ganze Text. Erst wenn du freigibst, sendet die Anlage genau diesen Text, einmal. Schreibt der
+  Agent über dein Konto, kannst nur du selbst freigeben, nicht jemand, dem du den Agenten
+  freigegeben hast. Es warten höchstens 20 Teams-Nachrichten je Agent auf Freigabe.
+- **Lesen + Schreiben** und **Erlaubt** in der Matrix: Der Agent schreibt direkt.
+- Die Microsoft-Anbindung muss dem Agenten zugewiesen sein.
+
+Hat der Agent ein eigenes Microsoft-Konto (Kap. 37.16), schreibt er als er selbst. Sonst
+schreibt er über dein Konto. Seine eigenen Nachrichten liest er in beiden Fällen nicht als neue
+Anfrage, deine schon.
+
+**Gestoppte Agenten:** Eine Nachricht in Teams, Slack, Discord, WhatsApp oder über den Webhook
+startet einen gestoppten Agenten. Hast du ihn bewusst angehalten, bleibt er aus. Die Nachricht
+wartet dann, bis du ihn startest. Das gilt auch für **Bei neuer Mail wecken**.
+
 ### Was der Filter unterwegs prüft
 
 Jede ausgehende Nachricht läuft durch den **DLP-Filter** (siehe Admin-Bereich),
@@ -4206,8 +4303,6 @@ Antwort wartet, die nie kommt.
 
 > Lange Antworten werden bei Discord an Absätzen **geteilt**, nicht abgeschnitten —
 > eine halbe Antwort sieht sonst aus wie eine ganze.
->
-> _[Screenshot folgt: Kanäle-Abschnitt in den Agent-Settings mit aktivem Discord]_
 
 ---
 
@@ -4839,6 +4934,13 @@ Grund im gelben Kasten statt eines roten Fehlers. **Neuer Versuch** gibt sie mit
 zur Nacharbeit zurück. Die Sperre und die Lehre gelten dabei weiter, der Agent nimmt einen
 anderen Weg.
 
+**Echtheit der Hinweise** *(seit 1.443.0)*: Ein Hinweis des Sentinels trägt einen Einmalwert,
+den nur der Server ausstellen kann. Der Agent prüft ihn, bevor sein Modell den Text sieht. Ein
+Text, der nur so aussieht (etwa aus einer Mail, einer Webseite oder von einem anderen Agenten),
+kommt beim Modell nie als Hinweis der Plattform an. Ein mitgeschnittener echter Hinweis gilt kein
+zweites Mal. Für dich ändert sich nichts. Die Prüfung gilt für einen Agenten, sobald er
+aktualisiert ist (Kap. 37.4).
+
 > Den Fund selbst zeigt der Sentinel nie wörtlich, weder dir noch dem Agenten. Schlüssel
 > erscheinen nur gekürzt (Anfang und Ende). Ist ein Schlüssel echt und war er sichtbar,
 > erneuere ihn.
@@ -4877,6 +4979,159 @@ TRUSTED_PROXY_HOSTS=ai-employee-caddy,mein-proxy
 Ein nginx **vor** Caddy (der übliche Fall) braucht keinen Eintrag. Ohne passenden Eintrag
 sieht der Server als Absender nur den Proxy. Die Anmelde-Bremse je Adresse ruht dann, die je
 Konto wirkt weiter.
+
+### 37.15 Anonymisierer: Personendaten vor dem Modell verbergen *(seit 1.444.0)*
+
+Ein Agent schickt alles, was er bearbeitet, an den Modellanbieter (Anthropic bzw. OpenAI): deine
+Nachrichten, Aufträge und auch, was er liest, also Dateien, Mails und Webseiten. Mit dem
+Anonymisierer gehen Personendaten dort nur als Platzhalter hin, etwa `[EMAIL-3f9a1c2b]`. In der
+Antwort und in den Werkzeugaufrufen setzt die Anlage die echten Werte wieder ein. Der Agent
+schreibt also weiter an die richtige Adresse, der Anbieter sieht sie nie.
+
+Ersetzt werden:
+- E-Mail-Adressen, Telefonnummern, IBAN (mit gültiger Prüfziffer) und Kartennummern
+  (mit gültiger Prüfsumme). Das erkennt die Anlage selbst.
+- **Namen und Begriffe aus deiner Liste**, etwa Kunden, Personen oder Projekte. Namen erkennt
+  keine Regel verlässlich. Was nicht auf der Liste steht, geht im Klartext.
+
+**So schaltest du ihn ein** (Besitzer des Agenten oder Administrator):
+1. Agent öffnen → **Einstellungen → Allgemein** → Abschnitt **Zugriff & Rechte** aufklappen.
+2. Bei **Personendaten vor dem Modell verbergen** den Schalter einschalten.
+3. Darunter die Namen und Begriffe eintragen, einen je Zeile, und auf **Liste speichern** klicken.
+
+![Karte „Personendaten vor dem Modell verbergen“ unter Zugriff & Rechte](screenshots/f26-anonymisierer.png)
+
+Beim Einschalten startet die Anlage einen laufenden Agenten neu. Erst dann gehen auch seine
+schon offenen Verbindungen zum Anbieter über den Anonymisierer, und das Modell bekommt den
+Hinweis auf die Platzhalter. Ein laufender Zug wird dabei abgebrochen. Für Agenten mit
+Anonymisierer sind außerdem die Nutzungsdaten und Fehlerberichte von Claude Code an den
+Hersteller abgeschaltet. Ins Audit-Log kommt nur, dass er ein- oder
+ausgeschaltet wurde, und wie viele Begriffe auf der Liste stehen. Die Begriffe selbst stehen
+dort nie, es sind Namen.
+
+**Voraussetzungen und Grenzen:**
+- Der **Egress-Proxy muss an sein** (Kap. 37.10). Sonst steht auf der Karte ein gelber Hinweis,
+  und der Sicherheitsstatus warnt.
+- Verfügbar für Agenten mit **Claude Code** oder **Codex**. Für Agenten mit eigenem Modell
+  (eigene Adresse, Bedrock, Vertex) lässt er sich nicht einschalten.
+- Eine Anfrage, die die Anlage nicht prüfen kann (größer als 32 MB, kein JSON, unbekannte
+  Kompression), geht nicht hinaus. Der Agent bekommt dann eine Fehlermeldung.
+- Der Anonymisierer schützt vor dem **Anbieter**, nicht vor einer Umlenk-Anweisung
+  (Prompt-Injektion). Bringt ein fremder Text das Modell dazu, einen Platzhalter in einen
+  Werkzeugaufruf zu schreiben, setzt die Anlage den echten Wert ein, wie bei jedem
+  Werkzeugaufruf. Dagegen wirken der Sentinel und die Freigaben (Kap. 37.13, Kap. 13).
+- Das „Denken“ des Modells (Zusammenfassung) zeigt Platzhalter statt der echten Werte.
+
+### 37.16 Eigenes Microsoft-Konto für einen Agenten *(seit 1.445.0)*
+
+Ohne eigenes Konto arbeitet ein Agent mit **deinem** Microsoft-Konto: Er liest dein Postfach,
+und was er sendet, kommt von dir. Bekommt er ein eigenes, lizenziertes Microsoft-365-Konto
+(z. B. `assistenz@deine-firma.de`), arbeitet er als er selbst: eigenes Postfach, eigener
+Kalender, eigener Absender. Dein Postfach sieht er dann nicht mehr.
+
+**Vorher (IT):** Ein Microsoft-365-Nutzer für den Agenten mit Lizenz (Postfach, bei Bedarf
+Teams). Die vollständige Checkliste für die IT steht in `docs/AGENTEN_KONTO_EINRICHTUNG.md`
+(Berechtigungen, MFA, Conditional Access, öffentliche Adresse, Abnahme). Die Anmeldung läuft einmal über AI Employee, danach mit einem Erneuerungs-Token.
+Eine Regel, die regelmäßig eine neue Anmeldung erzwingt, beendet den Zugang. Dann ist neu
+zu verbinden.
+
+**So verbindest du das Konto** (Besitzer des Agenten oder Administrator):
+1. Agent öffnen und unten auf **Konnektoren** klicken.
+2. Bei **Microsoft-Konto des Agenten** auf **Konto verbinden** klicken.
+3. Microsoft fragt nach dem Konto: **mit dem Konto des Agenten** anmelden, nicht mit deinem.
+4. Danach bist du zurück beim Agenten. Die Karte zeigt das Konto und „Verbunden“.
+
+![Karte „Microsoft-Konto des Agenten“ unter Konnektoren, Knopf „Konto verbinden“](screenshots/f27-agenten-konto.png)
+
+Wählst du versehentlich dein eigenes Konto, lehnt die Anlage ab. Die Karte zeigt dann
+„Das ist dein eigenes Microsoft-Konto“, und ein schon verbundenes Konto des Agenten bleibt
+unverändert.
+
+**Was sich ändert:**
+- Mail, Kalender und Dateien über die Microsoft-Werkzeuge des Agenten, Teams-Antworten und
+  Mail-Entwürfe zur Freigabe laufen über das Konto des Agenten. Freigeben (Kap. 13) musst du
+  sie weiterhin. Auch das Bearbeiten eines Entwurfs unter **Heute** geht in dessen Postfach.
+- Läuft die Anmeldung des Agenten ab, liest und sendet er **nichts mehr**. Er weicht bewusst
+  nicht auf dein Konto aus. Du bekommst eine Meldung, die Karte wird gelb (**Neu verbinden**),
+  und der Sicherheitsstatus (Kap. 19) warnt unter „Microsoft-Konten der Agenten“.
+- **Trennen** auf der Karte entfernt das Konto. Danach arbeitet der Agent wieder mit deinem
+  Konto, sofern du eines verbunden hast.
+- Ins Audit-Log kommt, wer welches Konto verbunden oder getrennt hat.
+
+**Bei neuer Mail wecken** *(seit 1.446.0)*: Ist das Konto verbunden, erscheint auf der Karte
+der Schalter **Bei neuer Mail wecken**. Eingeschaltet startet jede neue Mail im Posteingang des
+Agenten einen Auftrag. Der Agent liest die Mail dann mit seinem Mail-Werkzeug und bearbeitet sie
+nach seinem Auftrag. Antworten gibst du wie immer frei (Kap. 13).
+- **Wer weckt:** Voreingestellt nur Absender aus deiner Organisation: dieselbe Domäne wie das
+  Konto des Agenten UND von Microsoft als intern angemeldet. Eine Mail von außen, die nur
+  vorgibt, von einem Kollegen zu kommen, weckt den Agenten nicht. Sollen auch Kunden und andere Externe den Agenten wecken, setze den
+  Haken **Auch Absender außerhalb der eigenen Organisation**. Dann kann jeder, der dem Agenten
+  schreibt, einen Lauf auslösen.
+- **Kostet:** Jede Mail ist ein Lauf des Agenten. Höchstens 20 Mails je Stunde wecken ihn,
+  höchstens 5 vom selben Absender. Kommen mehr, bekommst du eine Meldung. Die übrigen holt die
+  Anlage später nach, solange sie nicht älter als 24 Stunden sind.
+- **Weckt nicht:** Mails, die der Agent selbst geschickt hat, Entwürfe, automatische Antworten wie
+  Abwesenheitsnotizen, Massenmails, Unzustellbarkeitsberichte und dieselbe Mail ein zweites Mal.
+- **Wie schnell:** Ist die Anlage über HTTPS aus dem Internet erreichbar, meldet Microsoft jede neue
+  Mail sofort („Microsoft meldet neue Mails sofort“). Zur Sicherheit schaut die Anlage zusätzlich
+  stündlich nach. Sonst schaut sie alle fünf Minuten nach („alle fünf Minuten“). Das gilt auch,
+  wenn Microsoft die Anlage nicht erreicht, etwa hinter einer Firewall. Beim Einschalten werden
+  ältere Mails nicht abgearbeitet, nur neue.
+- **Sicherheit:** Absender und Betreff kommen beim Agenten als fremder Text an, nicht als
+  Anweisung. Den Inhalt liest er selbst, aus dem eigenen Postfach.
+- Trennst du das Konto, schaltet sich das Wecken aus.
+
+**Noch nicht enthalten:** Teams-Nachrichten wecken den Agenten noch nicht. Das kommt mit der
+eigenen Teams-Identität des Agenten.
+
+### 37.17 Erlaubte Adressen am Ausgang erzwingen *(seit 1.450.0)*
+
+Ein Agent erreicht normalerweise das ganze Internet. Die Liste **Erlaubte Adressen** galt bis
+1.449 nur für die Werkzeuge der Plattform. Claude Code und Codex kamen mit ihren eigenen
+Werkzeugen (Webabruf, `curl` in der Shell) daran vorbei. Mit **Am Ausgang erzwingen** wird die
+Liste verbindlich: Der Agent erreicht dann nur noch
+
+- die Adressen auf seiner Liste,
+- seinen Modellanbieter (Anthropic, OpenAI) und den Endpunkt seines KI-Kontos,
+- die Ziele, für die die Anlage Zugänge einsetzt (Schlüssel, Git, MCP-Server).
+
+Hat die Rolle des Besitzers eine eigene Adressliste, muss eine Adresse auf beiden Listen stehen.
+
+**So schaltest du es ein** (Besitzer des Agenten oder Administrator):
+1. Agent öffnen → **Einstellungen → Verbindungen**. In der einfachen Ansicht: Symbol
+   **Konnektoren** neben dem Chat.
+2. Bei **Erlaubte Adressen** die Adressen eintragen, etwa `api.example.com` oder
+   `*.github.com`. `*.github.com` gilt auch für `github.com` selbst.
+3. Den Schalter **Am Ausgang erzwingen** einschalten.
+
+Die Anlage startet den Agenten dann neu. Ein laufender Zug wird dabei abgebrochen. Das Ein- und
+Ausschalten steht im Audit-Log.
+
+**Was dabei passiert:**
+- Der Egress-Proxy lässt nur Verbindungen zu erlaubten Zielen durch, HTTPS und HTTP. Er prüft
+  jede einzelne Anfrage. Eine Anfrage, die über ein erlaubtes Ziel eine andere Adresse erreichen
+  soll (anderer Host-Kopf, Domain-Fronting), weist er ab.
+- Der Netzwächter (Kap. 37.9) sperrt für den Agenten alles, was nicht über den Proxy geht, auf
+  jedem Port.
+- Das gilt auch für **Apps, die der Agent selbst startet**. Sie haben dann keinen Zugang zum
+  Internet mehr, nur zur Plattform und zum Agenten.
+
+**Voraussetzungen und Grenzen:**
+- Der **Egress-Proxy muss an sein** (Kap. 37.10) und der Netzwächter eingerichtet. Ohne Proxy
+  lässt sich der Schalter nicht einschalten, der Sicherheitsstatus warnt.
+- Nur HTTP und HTTPS. Andere Protokolle im Tunnel (etwa SSH) beendet der Proxy.
+- Programme, die einem eigenen Zertifikat nicht vertrauen (fest eingebautes Zertifikat), kommen
+  nicht hinaus. Der Proxy muss die Verbindungen öffnen, um sie zu prüfen.
+- Neue oder gelöschte Einträge gelten nach spätestens einer Minute, ohne Neustart.
+- **Namensauflösung (DNS)** prüft die Liste nicht. Über DNS-Anfragen lassen sich kleine
+  Datenmengen nach außen geben.
+- Modellanbieter und die Ziele der Zugänge bleiben immer erreichbar, auch für Anfragen mit
+  fremden Zugangsdaten.
+- Ziele in den Ausnahmen des Netzwächters (`/etc/ai-employee/netz-ausnahmen`, Kap. 37.9) gelten
+  zusätzlich zur Liste.
+- Was die **Plattform** für den Agenten erledigt (Mail senden, Teams, Websuche über die
+  Plattform), läuft nicht über diese Liste. Dafür gelten die Rechte des Agenten und die
+  Freigaben (Kap. 13).
 
 ## A. Was kann ein Agent? (typische Einsätze)
 

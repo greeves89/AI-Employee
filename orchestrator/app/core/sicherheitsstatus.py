@@ -310,6 +310,34 @@ async def _dlp(db) -> list[dict]:
         "dafür sorgen Egress-Proxy und Sentinel.")]
 
 
+async def _anonymisierer(db) -> list[dict]:
+    """Anonymisierer vor dem Modell (core/anonymisierer, opt-in je Agent).
+
+    Eingeschaltet, aber ohne Wirkung wäre das gefährlichste Bild: Der Besitzer glaubt, die
+    Personendaten gingen nicht hinaus. Deshalb Warnung, wenn der Egress-Proxy aus ist.
+    """
+    from app.core import anonymisierer, egress
+    from app.models.agent import Agent
+
+    titel = "Anonymisierer vor dem Modell"
+    zeilen = (await db.execute(select(Agent.id, Agent.name, Agent.mode, Agent.config))).all()
+    an = [(aid, name) for aid, name, mode, cfg in zeilen
+          if anonymisierer.einstellung(cfg)["aktiv"] and anonymisierer.unterstuetzt(mode)]
+    if not an:
+        return [_punkt("anonymisierer", titel, INFO,
+                       "Bei keinem Agenten eingeschaltet. Personendaten in Aufträgen gehen an den "
+                       "Modellanbieter. Einschalten je Agent: Agent → Einstellungen → Zugriff & Rechte.")]
+    liste = ", ".join(n or a for a, n in an[:5]) + (" …" if len(an) > 5 else "")
+    if not egress.aktiv():
+        return [_punkt("anonymisierer", titel, WARNUNG,
+                       f"Bei {len(an)} Agent(en) eingeschaltet ({liste}), aber der Egress-Proxy ist aus — "
+                       "der Anonymisierer wirkt dann nicht.",
+                       "Admin → Betrieb → Egress-Proxy einschalten.")]
+    return [_punkt("anonymisierer", titel, OK,
+                   f"Bei {len(an)} Agent(en) an ({liste}): E-Mail, Telefon, IBAN, Karten und gelistete "
+                   "Namen gehen nur als Platzhalter an den Modellanbieter.")]
+
+
 def _uvicorn_argumente(dateien=("/proc/1/cmdline", "/proc/self/cmdline")) -> list[str]:
     """Die Startargumente des Servers — so, wie er WIRKLICH läuft (Override-Dateien inklusive)."""
     for datei in dateien:
@@ -449,6 +477,77 @@ async def _zugaenge(db) -> list[dict]:
     return punkte
 
 
+async def _agenten_konten(db) -> list[dict]:
+    """Eigene Microsoft-Konten der Agenten (core/agenten_konto).
+
+    Läuft die Anmeldung eines Agenten ab, liest und sendet er nichts mehr — er weicht
+    bewusst nicht auf das Konto des Besitzers aus. Das soll hier auffallen, nicht erst,
+    wenn jemand fragt, warum keine Antwort kam.
+    """
+    from app.core import agenten_konto, integration_health
+
+    titel = "Microsoft-Konten der Agenten"
+    try:
+        konten = await agenten_konto.uebersicht(db)
+    except Exception as e:  # noqa: BLE001 — eine Prüfung darf die Seite nicht kippen
+        logger.warning("Agenten-Konten nicht lesbar: %s", e)
+        return [_punkt("agenten_konten", titel, WARNUNG, "Nicht prüfbar (Datenbank).")]
+    if not konten:
+        return [_punkt("agenten_konten", titel, INFO,
+                       "Kein Agent hat ein eigenes Microsoft-Konto. Agenten mit Microsoft-Zugang arbeiten "
+                       "mit dem Konto ihres Besitzers.")]
+    abgelaufen = [k for k in konten if k["status"] == integration_health.STATUS_EXPIRED]
+    if abgelaufen:
+        liste = ", ".join(k["name"] or k["agent_id"] for k in abgelaufen[:5]) + (" …" if len(abgelaufen) > 5 else "")
+        return [_punkt("agenten_konten", titel, WARNUNG,
+                       f"Bei {len(abgelaufen)} von {len(konten)} Agent(en) ist die Anmeldung abgelaufen ({liste}). "
+                       "Diese Agenten lesen und senden keine Mails mehr.",
+                       "Agent → Konnektoren → Microsoft-Konto des Agenten → Neu verbinden.")]
+    from app.models.graph_abo import GraphAbo
+
+    abos = (await db.execute(select(GraphAbo.subscription_id, GraphAbo.fehler))).all()
+    zusatz = ""
+    if abos:
+        per_meldung = sum(1 for sid, _ in abos if sid)
+        zusatz = (f" Bei neuer Mail geweckt: {len(abos)} (davon {per_meldung} per Benachrichtigung, "
+                  f"{len(abos) - per_meldung} per Abfrage alle fünf Minuten).")
+        gestoert = [f for _, f in abos if f and not f.startswith("Microsoft erreicht")]
+        if gestoert:
+            return [_punkt("agenten_konten", titel, WARNUNG,
+                           f"{len(konten)} Agent(en) mit eigenem Microsoft-Konto.{zusatz} Gestört: {gestoert[0]}",
+                           "Agent → Konnektoren → Microsoft-Konto des Agenten prüfen.")]
+    return [_punkt("agenten_konten", titel, OK,
+                   f"{len(konten)} Agent(en) mit eigenem Microsoft-Konto, alle Anmeldungen gültig.{zusatz}")]
+
+
+async def _zielliste(db) -> list[dict]:
+    """Zielliste am Ausgang (core/zielliste, opt-in je Agent).
+
+    Eingeschaltet, aber ohne Egress-Proxy wäre das falsche Sicherheit: Der Besitzer glaubt, der
+    Agent erreiche nur seine Liste. Dass der Netzwächter auf dem Host läuft, sieht der
+    Orchestrator nicht; ohne ihn gelten die Sperren nur für Verbindungen über den Proxy.
+    """
+    from app.core import egress, zielliste
+    from app.models.agent import Agent
+
+    titel = "Zielliste am Ausgang"
+    an = [(aid, name) for aid, name, cfg in (await db.execute(select(Agent.id, Agent.name, Agent.config))).all()
+          if zielliste.an(cfg)]
+    if not an:
+        return [_punkt("zielliste", titel, INFO,
+                       "Bei keinem Agenten eingeschaltet. Die erlaubten Adressen gelten nur für die Werkzeuge "
+                       "der Plattform; Claude Code und Codex erreichen mit eigenen Werkzeugen jedes Ziel. "
+                       "Einschalten je Agent: Agent → Konnektoren → Erlaubte Adressen.")]
+    liste = ", ".join(n or a for a, n in an[:5]) + (" …" if len(an) > 5 else "")
+    if not egress.aktiv():
+        return [_punkt("zielliste", titel, WARNUNG,
+                       f"Bei {len(an)} Agent(en) eingeschaltet ({liste}), aber der Egress-Proxy ist aus — "
+                       "die Zielliste wirkt dann nicht.", "Admin → Betrieb → Egress-Proxy einschalten.")]
+    return [_punkt("zielliste", titel, OK,
+                   f"Bei {len(an)} Agent(en) verbindlich ({liste}): Proxy und Netzwächter lassen nur die "
+                   "erlaubten Adressen, die Modellanbieter und die Ziele der Zugänge durch.")]
+
+
 async def stand(db) -> dict:
     """Alle Punkte, kritischste zuerst, plus eine Zusammenfassung."""
     import asyncio
@@ -458,7 +557,7 @@ async def stand(db) -> dict:
     ids = [c for (c,) in (await db.execute(
         select(Agent.container_id).where(Agent.container_id.is_not(None)))).all()]
     punkte = (_einstellungen() + await _agenten(db) + await _schluessel(db) + await _zugaenge(db) + await _dlp(db)
-              + await _agenten_token(db) + _absender()
+              + await _agenten_token(db) + _absender() + await _anonymisierer(db) + await _agenten_konten(db) + await _zielliste(db)
               + _abbild_signaturen()
               + await asyncio.to_thread(_docker, ids))
     rang = {KRITISCH: 0, WARNUNG: 1, INFO: 2, OK: 3}

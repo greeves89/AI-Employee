@@ -197,7 +197,8 @@ class UmgebungTests(unittest.IsolatedAsyncioTestCase):
         from app.dependencies import make_agent_token
         with patch.object(settings, "egress_proxy_enabled", True), \
                 patch.object(settings, "egress_proxy_token", TOKEN), \
-                patch.object(egress, "ca_zertifikat", AsyncMock(return_value="-----BEGIN CERTIFICATE-----\nX\n")):
+                patch.object(egress, "ca_zertifikat", AsyncMock(return_value="-----BEGIN CERTIFICATE-----\nX\n")), \
+                patch.object(egress, "_zielliste_umgebung", AsyncMock(return_value={})):
             env = await egress.agent_umgebung("a1")
         self.assertEqual(env["HTTPS_PROXY"],
                          f"http://a1:{make_agent_token('a1')}@ai-employee-egress-proxy:8080")
@@ -215,7 +216,8 @@ class UmgebungTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(egress.interne_hosts(None), [])
         with patch.object(settings, "egress_proxy_enabled", True), \
                 patch.object(settings, "egress_proxy_token", TOKEN), \
-                patch.object(egress, "ca_zertifikat", AsyncMock(return_value="-----BEGIN CERTIFICATE-----\nX\n")):
+                patch.object(egress, "ca_zertifikat", AsyncMock(return_value="-----BEGIN CERTIFICATE-----\nX\n")), \
+                patch.object(egress, "_zielliste_umgebung", AsyncMock(return_value={})):
             env = await egress.agent_umgebung("a1", mcp)
         self.assertIn("test-mcp-server", env["NO_PROXY"].split(","))
         self.assertNotIn("mcp.example.com", env["NO_PROXY"], "Externe MCPs bleiben am Proxy")
@@ -806,9 +808,18 @@ class OrchestratorKlientTests(unittest.TestCase):
     def test_anmeldung_zwischengespeichert_und_notbetrieb(self):
         self.antworten = [(200, {"hosts": ["api.github.com"]})]
         self.assertEqual(self.o.hosts(("a1", "t")), ["api.github.com"])
-        self.uhr[0] += 30
+        self.uhr[0] += logik.ZIELLISTE_AUS_FRISCH - 1
         self.assertEqual(self.o.hosts(("a1", "t")), ["api.github.com"])
         self.assertEqual(len(self.aufrufe), 1)
+        # Ohne Zielliste gilt der Stand nur kurz (neu gestarteter Agent mit Liste)
+        self.uhr[0] += 2
+        self.antworten = [(200, {"hosts": ["api.github.com"], "zielliste": {"muster": []}})]
+        self.o.hosts(("a1", "t"))
+        self.assertEqual(len(self.aufrufe), 2)
+        # Mit Zielliste: 60 s
+        self.uhr[0] += logik.ANMELDUNG_FRISCH - 1
+        self.o.hosts(("a1", "t"))
+        self.assertEqual(len(self.aufrufe), 2)
         # Orchestrator startet neu: die bestaetigte Anmeldung gilt weiter
         self.uhr[0] += 300
         self.antworten = [logik.OrchestratorFehler("weg")]

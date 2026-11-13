@@ -3600,6 +3600,429 @@ async def update_agent_browser_domains(
         raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
+class AnonymisiererUpdate(BaseModel):
+    aktiv: bool | None = None
+    begriffe: list[str] | None = None
+
+
+async def _anonymisierer_stand(agent) -> dict:
+    from app.core import anonymisierer, egress
+
+    e = anonymisierer.einstellung(agent.config)
+    unterstuetzt = anonymisierer.unterstuetzt(agent.mode)
+    proxy = egress.aktiv()
+    wirksam = e["aktiv"] and unterstuetzt and proxy
+    hinweis = ""
+    if e["aktiv"] and not proxy:
+        hinweis = ("Wirkt nicht: Der Egress-Proxy ist aus. Admin → Betrieb → Egress-Proxy einschalten, "
+                   "sonst gehen die Anfragen nicht über ihn.")
+    elif not unterstuetzt:
+        hinweis = "Nur für Agenten mit Claude Code oder Codex verfügbar, nicht für eigene Modelle."
+    return {**e, "unterstuetzt": unterstuetzt, "proxy_an": proxy, "wirksam": wirksam, "hinweis": hinweis}
+
+
+@router.get("/{agent_id}/anonymisierer")
+async def get_agent_anonymisierer(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Anonymisierer vor dem Modell (core/anonymisierer) — Stand für die Einstellungen."""
+    await _check_owner(agent_id, user, db)
+    try:
+        return await _anonymisierer_stand(await manager._get_agent(agent_id))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
+
+
+@router.patch("/{agent_id}/anonymisierer")
+async def update_agent_anonymisierer(
+    agent_id: str,
+    body: AnonymisiererUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Anonymisierer ein-/ausschalten und Namen/Begriffe pflegen.
+
+    Nur Besitzer und Admin — wie die Browser-Freigabeliste. Wirkt im Proxy innerhalb einer
+    Minute; der Hinweis an das Modell kommt mit dem nächsten Neustart des Agenten.
+    Ins Prüfprotokoll gehen nur Schalter und Anzahl der Begriffe, nie die Begriffe selbst
+    (es sind Namen).
+    """
+    await _check_owner(agent_id, user, db)
+    from app.core import anonymisierer
+    from app.models.user import UserRole
+
+    try:
+        agent = await manager._get_agent(agent_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
+    if getattr(user, "role", None) != UserRole.ADMIN and agent.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Den Anonymisierer darf nur der Besitzer des Agenten ändern.")
+    if body.aktiv and not anonymisierer.unterstuetzt(agent.mode):
+        raise HTTPException(status_code=422, detail="Nur für Agenten mit Claude Code oder Codex verfügbar.")
+    try:
+        begriffe = anonymisierer.bereinigen(body.begriffe) if body.begriffe is not None else None
+    except anonymisierer.UngueltigeBegriffe as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    alt = anonymisierer.einstellung(agent.config)
+    neu = {"aktiv": alt["aktiv"] if body.aktiv is None else bool(body.aktiv),
+           "begriffe": alt["begriffe"] if begriffe is None else begriffe}
+    config = dict(agent.config or {})
+    config[anonymisierer.SCHLUESSEL] = neu
+    agent.config = config          # neues Dict: SQLAlchemy erkennt die Änderung an der Zuweisung
+    await db.commit()
+
+    from app.core.audit import protokolliere
+    from app.models.audit_log import AuditEventType
+    await protokolliere(
+        db, AuditEventType.SETTINGS_CHANGED, user_id=getattr(user, "id", None), agent_id=agent_id,
+        command=f"Anonymisierer {'an' if neu['aktiv'] else 'aus'}, {len(neu['begriffe'])} Begriff(e)",
+        meta={"aktion": "anonymisierer", "aktiv": neu["aktiv"], "begriffe_anzahl": len(neu["begriffe"])},
+    )
+    await db.commit()   # protokolliere merkt nur vor — ohne Commit ginge der Eintrag verloren
+    stand = await _anonymisierer_stand(agent)
+    # Eingeschaltet: Agenten neu erstellen. Offene Verbindungen zum Modellanbieter liefen
+    # sonst ungeprüft weiter (der Proxy bricht nur NEUE auf), und den Hinweis auf die
+    # Platzhalter sowie die abgeschaltete Telemetrie bekommt er nur beim Erstellen.
+    if neu["aktiv"] and not alt["aktiv"] and agent.container_id:
+        try:
+            await manager.restart_agent(agent_id)
+            stand["neu_gestartet"] = True
+        except Exception:  # noqa: BLE001 — Einstellung gilt; der Hinweis sagt, was fehlt
+            logger.exception("Agent %s nach dem Einschalten des Anonymisierers nicht neu gestartet", agent_id)
+            stand["hinweis"] = ("Eingeschaltet, aber der Agent ließ sich nicht neu starten. Bitte oben rechts "
+                                "auf „Neu starten“ klicken — erst dann gilt es auch für bestehende Verbindungen.")
+    return stand
+
+
+async def _microsoft_konto_agent(agent_id: str, user, db: AsyncSession, schreiben: bool):
+    """Agent laden und Rechte prüfen. Lesen: wer den Agenten sieht. Ändern: Besitzer oder Admin."""
+    from app.core import agenten_konto
+
+    await _check_owner(agent_id, user, db)
+    agent = await db.get(Agent, agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
+    if schreiben and not await agenten_konto.darf_verbinden(db, agent, user):
+        raise HTTPException(status_code=403, detail="Das Konto des Agenten verbindet nur sein Besitzer.")
+    return agent
+
+
+@router.get("/{agent_id}/microsoft-konto")
+async def get_agent_microsoft_konto(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    redis: RedisService = Depends(get_redis_service),
+):
+    """Eigenes Microsoft-365-Konto des Agenten (core/agenten_konto): verbunden? als wer?"""
+    from app.core import agenten_konto
+    from app.core.oauth_providers import get_provider, get_provider_client_id
+
+    from app.core import graph_abos
+
+    agent = await _microsoft_konto_agent(agent_id, user, db, schreiben=False)
+    stand = await agenten_konto.stand(db, agent, redis)
+    return {**stand, **await graph_abos.stand(db, agent),
+            "verfuegbar": bool(get_provider_client_id(get_provider(agenten_konto.ANBIETER))),
+            "darf_verbinden": await agenten_konto.darf_verbinden(db, agent, user)}
+
+
+@router.post("/{agent_id}/microsoft-konto/verbinden")
+async def verbinden_agent_microsoft_konto(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    redis: RedisService = Depends(get_redis_service),
+):
+    """Anmelde-Adresse für das Konto des Agenten. Microsoft fragt immer nach dem Konto
+    (``prompt=select_account``), damit nicht still das eigene angemeldete genommen wird;
+    der Rückruf prüft Besitz und eigenes Konto erneut (agenten_konto.speichern)."""
+    from app.core import agenten_konto
+    from app.services.oauth_service import OAuthService
+
+    agent = await _microsoft_konto_agent(agent_id, user, db, schreiben=True)
+    try:
+        url = await OAuthService(db, redis).generate_auth_url(
+            agenten_konto.ANBIETER, user_id=user.id,
+            ruecksprung=f"/agents/{agent.id}?konnektoren=1", agent_id=agent.id)
+    except (KeyError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"auth_url": url}
+
+
+class MailWeckenUpdate(BaseModel):
+    aktiv: bool | None = None
+    #: Auch Absender außerhalb der eigenen Organisation (Domäne des Agenten-Kontos) wecken.
+    alle_absender: bool | None = None
+
+
+@router.patch("/{agent_id}/microsoft-konto/mail-wecken")
+async def mail_wecken_agent_microsoft_konto(
+    agent_id: str,
+    body: MailWeckenUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Agent bei neuer Mail im eigenen Postfach wecken (core/graph_abos), opt-in je Agent.
+
+    Nur Besitzer und Admin, nur mit eigenem Konto: Jede Mail ist ein Lauf und kostet.
+    Richtet das Abo sofort ein bzw. räumt es weg."""
+    from app.core import agenten_konto, graph_abos
+    from app.core.audit import protokolliere
+    from app.models.audit_log import AuditEventType
+
+    agent = await _microsoft_konto_agent(agent_id, user, db, schreiben=True)
+    if body.aktiv and await agenten_konto._zeile(db, agent.id) is None:
+        raise HTTPException(status_code=409, detail="Zuerst das Microsoft-Konto des Agenten verbinden.")
+    agent.config = graph_abos.mit_einstellung(agent.config, body.aktiv, body.alle_absender)
+    await db.commit()
+    neu = graph_abos.einstellung(agent.config)
+    await protokolliere(db, AuditEventType.SETTINGS_CHANGED, user_id=getattr(user, "id", None), agent_id=agent_id,
+                        command=(f"Bei neuer Mail wecken: {'an' if neu['aktiv'] else 'aus'}, "
+                                 f"Absender: {'alle' if neu['alle_absender'] else 'eigene Organisation'}"),
+                        meta={"aktion": "mail_wecken", **neu})
+    await db.commit()
+    try:
+        await graph_abos.einrichten(db, agent)
+    except Exception:  # noqa: BLE001 — der Abgleich alle fünf Minuten holt es nach
+        await db.rollback()
+        logger.exception("Graph-Abo für Agent %s nicht sofort eingerichtet", agent_id)
+    return await graph_abos.stand(db, await db.get(Agent, agent_id))
+
+
+@router.delete("/{agent_id}/microsoft-konto")
+async def trennen_agent_microsoft_konto(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    redis: RedisService = Depends(get_redis_service),
+):
+    """Konto des Agenten trennen. Danach arbeitet er wieder mit dem Konto seines Besitzers."""
+    from app.core import agenten_konto
+
+    agent = await _microsoft_konto_agent(agent_id, user, db, schreiben=True)
+    if not await agenten_konto.trennen(db, redis, agent, user):
+        raise HTTPException(status_code=404, detail="Der Agent hat kein eigenes Microsoft-Konto.")
+    return await agenten_konto.stand(db, agent, redis)
+
+
+class KanalUpdate(BaseModel):
+    """Felder, die fehlen, bleiben unverändert. ``token``: neu setzen; leer = entfernen."""
+    aktiv: bool | None = None
+    ziele: list[str] | None = None
+    teams_kanaele: list[dict] | None = None
+    nur_bei_erwaehnung: bool | None = None
+    stichworte: list[str] | None = None
+    bot_kennung: str | None = None
+    telefon_id: str | None = None
+    absender: list[str] | None = None
+    #: Teams-Termine: aktiv, rolle, automatisch_annehmen, annehmen_von, mit_gaesten (core/kanaele).
+    besprechungen: dict | None = None
+    token: str | None = Field(default=None, max_length=1000)
+
+
+async def _kanal_agent(agent_id: str, user, db: AsyncSession, schreiben: bool):
+    """Lesen: wer den Agenten sieht. Ändern: Besitzer oder Admin (Zugangsdaten, Außenwirkung)."""
+    from app.models.user import UserRole
+
+    await _check_owner(agent_id, user, db)
+    agent = await db.get(Agent, agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
+    if schreiben and getattr(user, "role", None) != UserRole.ADMIN and agent.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Kanäle des Agenten stellt nur sein Besitzer ein.")
+    return agent
+
+
+@router.get("/{agent_id}/kanaele")
+async def get_agent_kanaele(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Teams, Slack, Discord, WhatsApp — Einstellungen ohne Zugangsdaten (core/kanaele)."""
+    from app.core import kanaele
+
+    from app.models.user import UserRole
+
+    agent = await _kanal_agent(agent_id, user, db, schreiben=False)
+    staende = [kanaele.lesen(agent.config, k) for k in kanaele.KANAELE]
+    if getattr(user, "role", None) != UserRole.ADMIN and agent.user_id != user.id:
+        staende = [kanaele.zusammenfassung(st) for st in staende]   # Freigegebene: keine Nummern/Kennungen
+    return {"kanaele": staende}
+
+
+@router.put("/{agent_id}/kanaele/{kanal}")
+async def update_agent_kanal(
+    agent_id: str,
+    kanal: str,
+    body: KanalUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Einen Kanal einstellen. Ins Prüfprotokoll gehen die geänderten Felder, nie ein Token."""
+    from app.core import kanaele
+    from app.core.audit import protokolliere
+    from app.models.audit_log import AuditEventType
+
+    agent = await _kanal_agent(agent_id, user, db, schreiben=True)
+    aenderung = body.model_dump(exclude_unset=True)
+    if kanal == "teams" and agent.user_id != user.id and aenderung != {"aktiv": False}:
+        from app.core import agenten_konto
+
+        if await agenten_konto._zeile(db, agent.id) is None:
+            # Ohne eigenes Konto liest der Agent mit dem Konto des Besitzers — wer hier Chats
+            # einträgt, ließe ihn die Chats des Besitzers lesen. Das stellt nur der Besitzer ein
+            # (wie die Auswahlliste). Ausschalten darf auch ein Admin.
+            raise HTTPException(status_code=403, detail="Teams stellt ohne eigenes Konto des Agenten nur sein "
+                                                        "Besitzer ein (es sind dessen Chats).")
+    try:
+        neu, geaendert = kanaele.setzen(agent.config, kanal, aenderung)
+    except kanaele.UngueltigeEinstellung as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    nummer = (((neu.get("channels") or {}).get("whatsapp") or {}).get("phone_number_id") or "")
+    if kanal == "whatsapp" and nummer:
+        andere = (await db.execute(select(Agent.id, Agent.config).where(Agent.id != agent.id))).all()
+        if any((((c or {}).get("channels") or {}).get("whatsapp") or {}).get("phone_number_id") == nummer
+               for _, c in andere):
+            # Eine Nummer gehört genau einem Agenten — sonst landeten Nachrichten bei einem fremden.
+            raise HTTPException(status_code=409, detail="Diese WhatsApp-Nummer ist schon einem anderen Agenten zugeordnet.")
+    agent.config = neu
+    if geaendert:
+        await protokolliere(db, AuditEventType.SETTINGS_CHANGED, user_id=getattr(user, "id", None),
+                            agent_id=agent_id, command=f"Kanal {kanal}: {', '.join(geaendert)}",
+                            meta={"aktion": "kanal", "kanal": kanal, "felder": geaendert})
+    await db.commit()   # Änderung und Prüfprotokoll in EINER Transaktion
+    return kanaele.lesen(agent.config, kanal)
+
+
+@router.get("/{agent_id}/kanaele/teams/auswahl")
+async def get_agent_teams_auswahl(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Chats und Kanäle, die der Agent in Teams sehen kann — zum Auswählen statt Kennungen abtippen.
+
+    Mit dem Microsoft-Zugang des Agenten (core/agenten_konto.token_fuer), nur lesend, nur für
+    Besitzer und Admin, nur mit zugewiesener Microsoft-Anbindung."""
+    from app.core.agenten_konto import token_fuer
+    from app.core.faehigkeiten import anbindung_zugewiesen
+    from app.core.msgraph_mcp import _gid, _graph
+
+    from app.core import agenten_konto
+
+    agent = await _kanal_agent(agent_id, user, db, schreiben=True)
+    if await agenten_konto._zeile(db, agent.id) is None and agent.user_id != user.id:
+        # Ohne eigenes Konto wären es die Chats des Besitzers — die sieht auch ein Admin nicht.
+        raise HTTPException(status_code=403, detail="Ohne eigenes Konto des Agenten wählt nur sein Besitzer "
+                                                    "die Chats aus (es sind dessen Chats).")
+    if not await anbindung_zugewiesen(db, agent.id, "microsoft"):
+        raise HTTPException(status_code=409, detail="Die Microsoft-Anbindung ist diesem Agenten nicht zugewiesen.")
+    token = await token_fuer(db, agent)
+    if not token:
+        raise HTTPException(status_code=409, detail="Kein Microsoft-Zugang — bitte unter Konnektoren verbinden.")
+    chats, kanaele_ = [], []
+    try:
+        daten = await _graph("GET", "/me/chats?$top=50&$select=id,topic,chatType"
+                                    "&$expand=members($select=displayName)", token)
+        for c in daten.get("value") or []:
+            namen = [str(m.get("displayName") or "") for m in (c.get("members") or [])][:6]
+            chats.append({"id": c.get("id"), "art": c.get("chatType"),
+                          "name": c.get("topic") or ", ".join(n for n in namen if n) or "(ohne Namen)"})
+        teams = (await _graph("GET", "/me/joinedTeams?$select=id,displayName", token)).get("value") or []
+        for t in teams[:15]:
+            for k in (await _graph("GET", f"/teams/{_gid(t['id'])}/channels?$select=id,displayName",
+                                   token)).get("value") or []:
+                kanaele_.append({"team_id": t["id"], "channel_id": k.get("id"),
+                                 "name": f"{t.get('displayName', '?')} › {k.get('displayName', '?')}"})
+    except Exception as e:  # noqa: BLE001 — Liste unvollständig ist besser als keine
+        logger.warning("Teams-Auswahl für Agent %s unvollständig: %s", scrub_log(agent.id), scrub_log(e))
+    return {"chats": chats, "kanaele": kanaele_}
+
+
+class ZiellisteUpdate(BaseModel):
+    aktiv: bool
+
+
+async def _zielliste_stand(db: AsyncSession, agent) -> dict:
+    from app.core import egress, zielliste
+
+    eintraege = await zielliste.eintraege(db, agent.id)
+    proxy = egress.aktiv()
+    hinweis = ""
+    if zielliste.an(agent.config) and not proxy:
+        hinweis = ("Wirkt nicht: Der Egress-Proxy ist aus. Admin → Betrieb → Egress-Proxy einschalten, "
+                   "sonst gehen die Verbindungen nicht über ihn.")
+    elif zielliste.an(agent.config) and not eintraege:
+        hinweis = ("Die Liste ist leer: Der Agent erreicht nur seine Modellanbieter und die Ziele seiner "
+                   "Zugänge, sonst nichts.")
+    return {"aktiv": zielliste.an(agent.config), "wirksam": zielliste.wirksam(agent.config),
+            "proxy_an": proxy, "eintraege": len(eintraege), "hinweis": hinweis}
+
+
+@router.get("/{agent_id}/zielliste")
+async def get_agent_zielliste(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Zielliste am Ausgang (core/zielliste): erlaubte Adressen verbindlich, ja oder nein."""
+    await _check_owner(agent_id, user, db)
+    agent = await db.get(Agent, agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
+    return await _zielliste_stand(db, agent)
+
+
+@router.patch("/{agent_id}/zielliste")
+async def update_agent_zielliste(
+    agent_id: str,
+    body: ZiellisteUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Zielliste ein- oder ausschalten. Nur Besitzer und Admin.
+
+    Der Agent wird danach neu erstellt: Ob alle Ports gesperrt sind (Netzwächter) und Klartext-HTTP
+    über den Proxy geht, hängt an der Umgebung, mit der sein Behälter entsteht."""
+    from app.core import egress, zielliste
+    from app.core.audit import protokolliere
+    from app.models.audit_log import AuditEventType
+    from app.models.user import UserRole
+
+    await _check_owner(agent_id, user, db)
+    agent = await db.get(Agent, agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
+    if getattr(user, "role", None) != UserRole.ADMIN and agent.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Die Zielliste stellt nur der Besitzer des Agenten ein.")
+    if body.aktiv and not egress.aktiv():
+        raise HTTPException(status_code=409, detail="Zuerst den Egress-Proxy einschalten (Admin → Betrieb).")
+    alt = zielliste.an(agent.config)
+    agent.config = zielliste.mit(agent.config, body.aktiv)
+    await protokolliere(db, AuditEventType.SETTINGS_CHANGED, user_id=getattr(user, "id", None), agent_id=agent_id,
+                        command=f"Zielliste am Ausgang: {'an' if body.aktiv else 'aus'}",
+                        meta={"aktion": "zielliste", "aktiv": body.aktiv})
+    await db.commit()
+    stand = await _zielliste_stand(db, agent)
+    if alt != body.aktiv and agent.container_id:
+        try:
+            await manager.restart_agent(agent_id)
+            stand["neu_gestartet"] = True
+        except Exception:  # noqa: BLE001 — Einstellung gilt; der Hinweis sagt, was fehlt
+            logger.exception("Agent %s nach Umschalten der Zielliste nicht neu gestartet", agent_id)
+            stand["hinweis"] = ("Gespeichert, aber der Agent ließ sich nicht neu starten. Bitte „Neu starten“ "
+                                "klicken: Erst dann gilt die Einstellung.")
+    return stand
+
+
 @router.get("/{agent_id}/browser/audit")
 async def get_agent_browser_audit(
     agent_id: str,

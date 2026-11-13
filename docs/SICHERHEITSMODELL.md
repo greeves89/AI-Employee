@@ -1,6 +1,6 @@
 # Sicherheitsmodell von AI Employee
 
-Stand: 07.11.2026 (Version 1.442.0). Dieses Dokument ist die eine Übersicht, an der sich jede
+Stand: 09.11.2026 (Version 1.444.1). Dieses Dokument ist die eine Übersicht, an der sich jede
 Sicherheitsänderung ausrichtet: welche Schichten es gibt, wo jede durchgesetzt wird, wo man sie
 sieht und was noch offen ist. Betriebsanleitungen stehen im [Security Guide](SECURITY.md) und im
 [Benutzerhandbuch](benutzerhandbuch/README.md).
@@ -21,10 +21,10 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
 |---|---|---|---|
 | Anmeldung und Nutzertrennung | fremde Konten, fremde Agenten sehen, Anmelde-Bremse umgehen | `dependencies.get_current_user`, `require_agent_access`, Zwei-Faktor, Absenderadresse nur vom Eingang (`core/vertraute_proxys`) | `api_secret`, `cors`, `kiosk`, `absender` |
 | Identität der Agenten | ausgelaufenes Agenten- oder Sentinel-Token von außen benutzen, fremde Redis-Postfächer | `dependencies.agent_zugang_pruefen` (einzige Prüfung, auch in `require_sentinel`), Redis-ACL je Agent | `agenten_token`, `redis_acl`, `redis_passwort` |
-| Fremdtext | Anweisungen aus Mails, Webseiten, Prüfberichten ausführen | `core/fremdtext.rahmen`, Sentinel | `sentinel` |
+| Fremdtext | Anweisungen aus Mails, Webseiten, Prüfberichten ausführen; Plattform-Hinweise vortäuschen | `core/fremdtext.rahmen`, Sentinel, Einmalwert für Plattform-Hinweise (`core/plattform_hinweis`, `agent/app/plattform_hinweis.py`) | `sentinel` |
 | Handlungen | gefährliche Befehle, Löschen, Senden ohne Freigabe | Autonomie-Matrix, Freigaben, Sentinel-Sperre (`CommandPolicy`), verwalteter PreToolUse-Hook (`agent/richtlinie`) | `sentinel` |
 | Zugänge | Schlüssel im Agenten, Schlüssel im Klartext in der Datenbank, Server-Zugänge in Werkzeug-Ausgaben | Schlüsselverwaltung (Fernet, `ENCRYPTION_KEY`), Egress-Platzhalter, Server-Werte nicht in der Umgebung (`agent/app/serverwerte.py`) | `encryption_key`, Schlüssel, Zugänge (Claude/Codex) |
-| Ausgang | Schlüssel an falsche Ziele, Zugriff aufs Heimnetz | Egress-Proxy (Schlüssel nur an ihre freigegebenen Ziele), Netzwächter (`scripts/netzwaechter.py`), DLP-Filter | `dlp`, Zugänge |
+| Ausgang | Schlüssel an falsche Ziele, Zugriff aufs Heimnetz, Personendaten an den Modellanbieter | Egress-Proxy (Schlüssel nur an ihre freigegebenen Ziele; Anonymisierer opt-in je Agent, `egress/anonym.py`), Netzwächter (`scripts/netzwaechter.py`), DLP-Filter | `dlp`, Zugänge, `anonymisierer` |
 | Container und Host | Ausbruch, Docker-Steuerung, Heimnetz, Host | Docker-Wächter (`docker_waechter/regeln.py`), Seccomp, Netzwächter, signierte Abbilder | Docker-Punkte, Abbild-Signaturen |
 | Betrieb | veraltete Agenten, Datenverlust, fehlende Spur | Agenten-Aktualisierung im Leerlauf, Sicherung, Prüfprotokoll, Aufbewahrung | Agenten-Punkte |
 | Vertrauen in Ergebnisse | „erledigt“ ohne Prüfung | Beleg-Regel (`core/beleg.py`), blinder Prüfer (`core/pruefung.py`) | Board-Karte |
@@ -49,8 +49,39 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
    Netzwächter zwingt nur Port 443 durch den Proxy, andere Ports (80, 8080, 8443 …) gehen
    direkt hinaus. Schlüssel sind dadurch nicht gefährdet (im Agenten liegen nur Platzhalter),
    Arbeitsdaten könnten aber an jedes Ziel abfließen, ob durch den Proxy oder an ihm vorbei.
-   Alle Ports durch den Proxy zu zwingen, änderte daran wenig. Wirksam wäre nur eine Zielliste
-   je Agent → Entscheidung, siehe unten.
+   Alle Ports durch den Proxy zu zwingen, änderte daran wenig. Wirksam ist nur eine Zielliste
+   je Agent.
+   **Seit 1.450.0 opt-in je Agent** (`core/zielliste.py`, Handbuch Kap. 37.17): Der Proxy lässt
+   nur Ziele der Liste zu (dazu Modellanbieter, Endpunkt des KI-Kontos, Ziele der Zugänge),
+   bricht für diese Agenten TLS immer auf, hält den Servernamen nach außen auf dem geprüften
+   Ziel und prüft den Host-Kopf jeder Anfrage (kein Domain-Fronting). Der Netzwächter sperrt
+   alles außer dem Proxy, auf jedem Port, für alle Behälter desselben Besitzers (sonst ginge es
+   über die eigenen Apps hinaus). Er erkennt das an `AIE_ZIELLISTE=1` in der Umgebung, mit der
+   der Behälter entstand. Fail closed: Lässt sich die Einstellung beim Start nicht lesen,
+   startet der Agent nicht.
+   Mit Liste meldet sich der Agent mit Kennung am Proxy an (`zl.<id>`); dann fragt der Proxy
+   frisch nach und sperrt ohne bestätigte Liste. Ein gemerkter Stand „aus“ gilt 5 s. Entfernt
+   ein Agent die Kennung selbst, bleibt ihm höchstens dieses Fenster nach dem letzten Abruf
+   seines Vorgängers; ein Neustart dauert länger. Geprüft wird vor dem Senden, rohes TCP im
+   Tunnel wird beendet, gestoppte Agenten zählen für den Netzwächter weiter.
+   **Bleibt offen (Review 13.11.2026):**
+   - **DNS.** Der Agent fragt den Resolver von Docker. Darüber lassen sich kleine Datenmengen
+     nach außen geben. Schließen ließe sich das nur mit einem filternden Resolver.
+   - **Immer erlaubte Ziele als Kanal.** Modellanbieter und die Ziele der Zugänge (etwa
+     `github.com`) bleiben erreichbar. Fremder Code mit einem eigenen Schlüssel für diese Dienste
+     könnte Daten in ein fremdes Konto schicken. Härter wäre: Auf diesen Zielen nur Anfragen
+     mit den Platzhaltern der Plattform zulassen, für Git nur die eingetragene Organisation.
+   - **Netzwächter-Takt.** Er setzt Regeln nach dem Docker-Ereignis „Start“ (Rückfall alle
+     5 Minuten). Zwischen dem Start eines Behälters und seinen Regeln liegt ein kurzes Fenster.
+     Der Agent selbst geht in diesem Fenster über den Proxy (Umgebung), seine Apps nicht.
+   - **Ausnahmen** in `/etc/ai-employee/netz-ausnahmen` (Regel 3) gelten vor der Zielliste.
+   - **Nur IPv4.** Der Netzwächter schreibt keine ip6tables-Regeln. Docker-Netze der Anlage
+     haben kein IPv6. Wer es einschaltet, umgeht Regel 5c.
+   - **Besitzer-Schlüssel aus Labels.** Ein Behälter mit dem Compose-Projekt eines anderen
+     Agenten und der Marke könnte dessen Apps sperren (nicht freischalten). Apps legt nur der
+     Orchestrator an, mit dem eigenen Projekt des Agenten.
+   - Was die Plattform für den Agenten tut (Mail, Teams, Websuche der Plattform), deckt die
+     Liste nicht ab. Dort gelten Rechte-Matrix und Freigaben.
 3. **Uvicorn vertraute `X-Forwarded-For` von jedem Absender** (`--forwarded-allow-ips "*"`).
    Ein Agent im Docker-Netz, bei der Community-Variante sogar ein Angreifer aus dem Internet,
    konnte eine beliebige Absenderadresse vorgeben (Anmelde-Bremse, Rate-Limit, Protokoll).
@@ -83,7 +114,7 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
 |---|---|---|---|---|
 | 1 | Codex-Zugang auf der Testanlage nur für einen Agenten hinter dem Proxy | Zugänge | Betreiberentscheidung, der Sicherheitsstatus zeigt es. | Information |
 
-### Erledigt am 07.11.2026
+### Erledigt (07.–09.11.2026)
 
 | Punkt | Version |
 |---|---|
@@ -94,19 +125,29 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
 | Absenderadresse: Warnung bei Override im laufenden Server | 1.440.1 |
 | Release-Läufer mit Probelauf und harten Prüfungen (`scripts/release.py`) | 1.441.0 |
 | Kontingent-Bremse: Zeitpläne pausieren bei erschöpftem Abo, höchstens 5 h (`core/kontingent.py`) | 1.442.0 |
+| Sentinel-Hinweise mit Einmalwert, beim Agenten vor dem Modell geprüft (`plattform_hinweis`) | 1.443.0 |
+| Anonymisierer vor dem Modell, opt-in je Agent, im Egress-Proxy (`egress/anonym.py`) | 1.444.0 |
+| Teams-Antworten im Kanal respektieren den Nur-Lesen-Schalter für Microsoft 365 | 1.444.1 |
+| Eigenes Microsoft-365-Konto je Agent (Phase 1): ein Weg zum Token, kein Rückfall auf den Besitzer, eigenes Konto wird abgelehnt (`core/agenten_konto.py`) | 1.445.0 |
+| Wecken bei neuer Mail (Phase 2): Der öffentliche Empfang prüft `clientState` (HMAC mit Abo-Kennung) ohne Datenbank, dann das Abo. Körper höchstens 1 MB, höchstens 8 Verarbeitungen gleichzeitig. Im Auftrag stehen nur Absender und Betreff, gerahmt. Voreingestellt wecken nur interne Absender (Urteil von Exchange `AuthAs: Internal`, nicht die fälschbare Absenderadresse), automatische Mails nie. Höchstens 5 je Absender und 20 je Agent und Stunde (`core/graph_abos.py`) | 1.446.0 |
+| Teams-Senden nach denselben Regeln wie Mail (Nur-Lesen, Einstellung, Sekretariat, Rechte-Matrix, Anbindung); im Modus „Entwurf“ gebundene Freigabe `teams_senden`; Schleifenschutz in zwei Halten (`services/teams_gateway.py`, `core/ms_access.sendemodus`). Vorher schrieb ein Agent auf „Lesen“ trotzdem im Teams-Kanal | 1.447.0 |
+| Kanal-Einstellungen über die Oberfläche: Zugangsdaten verschlüsselt und nie zurückgegeben, auch nicht als Geheimtext in `GET /agents`. Ändern dürfen nur Besitzer und Admin, Teams ohne eigenes Konto nur der Besitzer. Freigegebene sehen nur eine Zusammenfassung. Eine WhatsApp-Nummer gehört genau einem Agenten (`core/kanaele.py`). Prüfprotokoll-Einträge, die nach dem Festschreiben vorgemerkt wurden, gingen verloren (Anonymisierer, Agenten-Konto) — jetzt festgeschrieben | 1.448.0 |
+| Egress-Proxy fail closed in jedem Hook (`egress/aie_egress._sicher`): ein unerwarteter Fehler sperrt, statt die Anfrage ungeprüft zum Anbieter zu lassen (mitmproxy lässt nach einer Hook-Ausnahme weiterlaufen); kaputte Kompression → 415; mitmproxy 12.3.0 mit zstd aus der Standardbibliothek | 1.448.2 |
 
-### Braucht eine Entscheidung
+### Entscheidungen vom 09.11.2026
 
-- **Zielliste für den Ausgang je Agent** (Befund 2). Etwa: Agenten eines Fachbereichs dürfen nur
-  die freigegebenen Dienste erreichen, Recherche-Agenten das offene Web. Umsetzung im
-  Netzwächter (alle Ports durch den Proxy) und im Proxy (Ziel prüfen auch ohne Schlüssel).
-  Das ändert, was Agenten können, und braucht eine Voreinstellung je Anlage.
-- **Anonymisierer vor dem Modell.** Der DLP-Filter prüft nur, was hinausgeht. Personendaten
-  in Aufträgen gehen heute ungefiltert an den Modellanbieter.
-- **Strengere Sentinel-Bindung.** Ein Einmalwert je Sperre statt der heutigen Bindung an den
-  offenen Chat-Zug.
-- **Eigene Identität für Agenten** (Postfach, Microsoft-365-Konto) und Ereignisse bei neuen
-  Mails. Das berührt Lizenzen und Rechte beim Kunden.
+| Punkt | Entscheidung | Stand |
+|---|---|---|
+| Strengere Sentinel-Bindung | Einmalwert (HMAC) je Hinweis | erledigt in 1.443.0 |
+| Anonymisierer vor dem Modell | opt-in je Agent | erledigt in 1.444.0 |
+| Eigene Identität für Agenten (Pilot beim Kunden) | lizenzierter Microsoft-365-Nutzer je Agent | Phase 1 erledigt in 1.445.0, Phasen 2–4 nach Plan `docs/plaene/agenten-identitaet-m365.md` |
+| Eigene Microsoft-Identität je Agent: Rückruf-Adresse für Teams-Anrufe prüft nichts (`/teams/calling/callback` schreibt nur Protokoll, ändert nichts) | Graph-Benachrichtigungen haben seit 1.446.0 einen prüfenden Empfang (`/msgraph/benachrichtigung`). Anrufe sind keine Graph-Abos und tragen kein `clientState`; dort kommt eine eigene Prüfung | mit Phase 3 |
+| Eigenes Konto eines Agenten: Abgleich „eigenes Konto“ über Adresse und `sub`, ein Alias des Besitzers ohne eigene Microsoft-Verbindung fällt nicht auf | hingenommen. Folge: Der Agent arbeitet wissentlich im Postfach des Besitzers, wie ohne eigenes Konto. Härter wäre ein Vergleich der Entra-Objekt-ID (`oid`), wenn Menschen sie beim Verbinden speichern | offen, niedrig |
+| Wecken bei neuer Mail: `clientState` bleibt für die Laufzeit eines Abos gleich. Ein abgegriffenes Geheimnis erlaubt Meldungen zu echten Mails der letzten 24 Stunden (Doppelsperre 7 Tage). Die Stundengrenze zählt je Kalenderstunde, an der Grenze sind also bis zu 40 Läufe möglich | hingenommen (Review L2/L3). Wirkung nur Wecken zu echten Mails im Postfach des Agenten, kein Lesen | offen, niedrig |
+| Teams: Werkzeug-Nachrichten im Modus „Schreiben“ laufen nicht durch den DLP-Filter, nur Kanal-Antworten. Slack, Discord und WhatsApp folgen nicht `sendemodus`, sondern nur ihrem Kanal-Schalter. Der Fingerabdruck gebundener Freigaben ist ein SHA-256 ohne Geheimnis (schützt vor versehentlicher Änderung, nicht vor jemandem mit Datenbank-Schreibrecht) | hingenommen (Review L3/L5/L7), bekannt | offen, niedrig |
+| Eingeschalteter Kanal: Wer im Kanal schreibt, kann den Agenten starten (Kosten, Prompt-Injektion). Voreinstellung ist „nur bei Erwähnung“. Abwägung von Besitzer bzw. Admin, im Handbuch Kap. 34 benannt. `agent.config` wird als Ganzes zurückgeschrieben; ein gleichzeitiger Schreiber auf einen anderen Schlüssel kann überschrieben werden (Review L2) | bewusst bzw. hingenommen | offen, niedrig |
+| Zielliste für den Ausgang je Agent | opt-in je Agent, verbindlich an Proxy und Netzwächter | erledigt in 1.450.0. Offen: DNS als Kanal (filternder Resolver) |
+| Teams-Besprechungen: Das Protokoll schreibt der Agent in einem normalen Zug mit Werkzeugen. Ein Teilnehmer kann im Transkript Anweisungen unterbringen | abgegrenzt und als fremder Text benannt, Gäste von außen standardmäßig ausgeschlossen, Senden nur nach Sendemodus und Freigaben. Härter: ein Zug ohne Werkzeuge für alle Laufzeiten | offen, mittel |
 
 ## Regeln für neue Funktionen
 
@@ -118,5 +159,8 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
   nur über `serverwerte.get` gelesen (`agent/tests/test_serverwerte.py` schlägt sonst an).
 - Proxy-Kopfzeilen wertet nur `core/vertraute_proxys` aus, nie ein Endpunkt selbst.
 - Text aus fremden Quellen geht nur gerahmt (`fremdtext.rahmen`) an ein Modell.
+- Der Anonymisierer schützt Personendaten vor dem Modellanbieter, nicht vor Prompt-Injektion:
+  Ein Platzhalter in einem Werkzeugaufruf wird mit dem echten Wert ausgeführt. Dagegen wirken
+  Sentinel und Freigaben.
 - Eine neue Schutzschicht ist erst fertig mit Statuspunkt, Test in beide Richtungen und
   Eintrag in diesem Dokument.

@@ -31,7 +31,9 @@ const PROVIDER_COLORS: Record<string, string> = {
   "brave-search": "bg-orange-500/10 text-orange-400 border-orange-500/20",
 };
 
-type ModelRow ={ name: string; provider_type: string; api_endpoint: string; enabled: boolean };
+type ModelRow ={ name: string; provider_type: string; api_endpoint: string; enabled: boolean;
+  // Preis je 1 Mio. Token in USD (leer = unbekannt). Damit rechnet die Plattform Kosten und Budget.
+  preis_eingabe_usd_1m?: string; preis_ausgabe_usd_1m?: string };
 
 type FormState = {
   name: string;
@@ -51,6 +53,14 @@ const EMPTY_FORM: FormState = {
 };
 
 const EMPTY_MODEL: ModelRow = { name: "", provider_type: "azure-openai", api_endpoint: "", enabled: true };
+
+/** Preisfeld → Zahl für die API (Komma erlaubt), leer oder ungültig → null. */
+function preisZahl(wert?: string): number | null {
+  const t = (wert ?? "").trim().replace(",", ".");
+  if (!t) return null;
+  const z = Number(t);
+  return Number.isFinite(z) && z >= 0 && z <= 1000 ? z : null;
+}
 
 // Connection state from the last model-discovery check (#435).
 function accountHealthBadge(a: AIAccount): { label: string; className: string } | null {
@@ -122,6 +132,8 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
       models: (a.models || []).map((m) => ({
         name: m.name, provider_type: m.provider_type, api_endpoint: m.api_endpoint || "",
         enabled: m.enabled !== false,
+        preis_eingabe_usd_1m: m.preis_eingabe_usd_1m != null ? String(m.preis_eingabe_usd_1m) : "",
+        preis_ausgabe_usd_1m: m.preis_ausgabe_usd_1m != null ? String(m.preis_ausgabe_usd_1m) : "",
       })),
       api_version: String(extra.api_version || ""),
       aws_access_key_id: String(extra.aws_access_key_id || ""),
@@ -234,6 +246,8 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
           provider_type: m.provider_type || form.provider_type,
           api_endpoint: (m.api_endpoint || form.api_endpoint).trim(),
           enabled: m.enabled !== false,
+          preis_eingabe_usd_1m: preisZahl(m.preis_eingabe_usd_1m),
+          preis_ausgabe_usd_1m: preisZahl(m.preis_ausgabe_usd_1m),
         })),
         extra,
         ...(form.api_key ? { api_key: form.api_key } : {}),
@@ -362,6 +376,16 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                       >
                         {m.enabled !== false ? "freigegeben" : "gesperrt"}
                       </button>
+                      <span className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground" title="Preis je 1 Mio. Token in USD (Eingabe / Ausgabe). Leer = unbekannt, dann zählen diese Läufe 0 USD.">
+                        <input inputMode="decimal" aria-label={`Preis Eingabe ${m.name}`} placeholder="Ein $/1M"
+                          className="w-16 rounded border border-foreground/[0.12] bg-transparent px-1.5 py-0.5 text-[11px]"
+                          value={m.preis_eingabe_usd_1m ?? ""}
+                          onChange={(e) => setForm((f) => ({ ...f, models: f.models.map((x) => x.name === m.name ? { ...x, preis_eingabe_usd_1m: e.target.value } : x) }))} />
+                        <input inputMode="decimal" aria-label={`Preis Ausgabe ${m.name}`} placeholder="Aus $/1M"
+                          className="w-16 rounded border border-foreground/[0.12] bg-transparent px-1.5 py-0.5 text-[11px]"
+                          value={m.preis_ausgabe_usd_1m ?? ""}
+                          onChange={(e) => setForm((f) => ({ ...f, models: f.models.map((x) => x.name === m.name ? { ...x, preis_ausgabe_usd_1m: e.target.value } : x) }))} />
+                      </span>
                       <button type="button" onClick={() => removeModel(m.name)} className="shrink-0 text-muted-foreground hover:text-red-400">
                         <X className="h-3.5 w-3.5" />
                       </button>

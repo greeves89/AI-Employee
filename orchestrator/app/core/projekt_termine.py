@@ -219,7 +219,8 @@ def _aehnlich(a: frozenset[str], b: frozenset[str]) -> bool:
     return len(a & b) / min(len(a), len(b)) >= AEHNLICH_AB
 
 
-def _items(markdown: str) -> list[str]:
+def aktionspunkte(markdown: str) -> list[str]:
+    """Offene Punkte ``- [ ] …`` eines Protokolls — auch für Teams-Termine (services/teams_meetings)."""
     return [z.strip()[5:].strip() for z in (markdown or "").splitlines() if z.strip().startswith("- [ ]")][:MAX_ITEMS]
 
 
@@ -275,7 +276,7 @@ async def abschluss(room_id: str, team_id: str, raum_name: str, zusammenfassung:
                                              erledigt_at.replace(tzinfo=timezone.utc)) >= grenze)
         ]
         items, uebersprungen = [], 0
-        for item in _items(zusammenfassung):
+        for item in aktionspunkte(zusammenfassung):
             nummern = {int(n) for n in _ISSUE_NR.findall(item)}
             woerter = _woerter(item)
             if (nummern and nummern <= geschlossen) or any(_aehnlich(woerter, v) for v in vergleich):

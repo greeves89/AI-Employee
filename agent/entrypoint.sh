@@ -30,7 +30,7 @@ NPM_FRIST="${ENTRYPOINT_NPM_TIMEOUT:-300}"
 # (``--version``) laufen hier als root mit der Umgebung des Containers. Zugänge, die nur der Agenten-Server braucht
 # (app/serverwerte.py: NUR_SERVER), und das Agenten-Token bekommen sie nicht.
 # Die Proxy-Angaben bleiben: npm erreicht die Registry nur darüber.
-OHNE_ZUGAENGE="env -u REDIS_URL -u REDIS_PASSWORD -u BROWSER_PROFIL_KEY -u CUSTOM_MCP_AUTH -u CUSTOM_MCP_HEADERS -u CODEX_AUTH_JSON -u BROWSER_ZUGANG -u AGENT_TOKEN"
+OHNE_ZUGAENGE="env -u REDIS_URL -u REDIS_PASSWORD -u BROWSER_PROFIL_KEY -u CUSTOM_MCP_AUTH -u CUSTOM_MCP_HEADERS -u CODEX_AUTH_JSON -u BROWSER_ZUGANG -u SENTINEL_HINWEIS_KEY -u AGENT_TOKEN"
 # Frist fuer die Versionsabfrage vor einer Installation (siehe update_cli).
 NPM_VIEW_FRIST="${ENTRYPOINT_NPM_VIEW_TIMEOUT:-20}"
 

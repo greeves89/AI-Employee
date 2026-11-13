@@ -218,7 +218,8 @@ class NoSecondPathTests(unittest.TestCase):
         Geheimnis und eine neue Freigabekette beim Kunden bedeutet."""
         src = (ORCH / "app/services/teams_gateway.py").read_text()
         self.assertIn("msgraph_mcp", src)
-        self.assertIn("get_valid_token", src)
+        # Token über die eine Stelle für Agenten (eigenes Konto oder das des Besitzers).
+        self.assertIn("token_fuer", src)
         self.assertNotIn("botframework", src.lower())
 
     def test_teams_sends_through_the_same_graph_path(self):

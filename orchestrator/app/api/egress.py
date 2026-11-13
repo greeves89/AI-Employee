@@ -168,7 +168,26 @@ async def _freigaben(db: AsyncSession, body: Verbindung, request: Request) -> li
 
 @router.post("/verbindung", dependencies=[Depends(_nur_proxy)])
 async def verbindung(body: Verbindung, request: Request, db: AsyncSession = Depends(get_db)):
-    return {"hosts": sorted({h for f in await _freigaben(db, body, request) for h in f.hosts})}
+    hosts = {h for f in await _freigaben(db, body, request) for h in f.hosts}
+    # Anonymisierer (core/anonymisierer): die Modellanbieter dieses Agenten aufbrechen und
+    # dem Proxy sagen, womit er Personendaten ersetzt.
+    from app.core import anonymisierer
+
+    agent = await db.get(Agent, body.agent_id)
+    anonym = anonymisierer.fuer_proxy(agent) if agent is not None else None
+    if anonym:
+        hosts |= set(anonym["ziele"])
+    antwort: dict = {"hosts": sorted(hosts)}
+    if anonym:
+        antwort["anonym"] = anonym
+    # Zielliste am Ausgang (core/zielliste): Ziele, für die die Plattform Zugänge einsetzt,
+    # sind immer erlaubt — sonst bräche der Agent an seinen eigenen Schlüsseln.
+    from app.core import zielliste
+
+    ziele = await zielliste.fuer_proxy(db, agent, hosts) if agent is not None else None
+    if ziele is not None:
+        antwort["zielliste"] = ziele
+    return antwort
 
 
 @router.post("/aufloesen", dependencies=[Depends(_nur_proxy)])
