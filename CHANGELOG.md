@@ -12,6 +12,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   - **Beitritt:** Zum Termin tritt der Agent mit dem Chromium seines Behälters über den Link der Einladung bei, als „<Agent> - KI“. Die Gäste-Regel und der Hinweis „schreibt mit“ gelten wie bisher.
   - **Zuhören:** Der Ton der Besprechung geht in 30-Sekunden-Stücken an `POST /meetings/{id}/teilnehmer-ton`. Er wird transkribiert (gemeinsame Funktion `transkribieren`, Sprache Deutsch) und an die Besprechungsseite gehängt. Das Protokoll entsteht wie bisher ohne Werkzeuge, auch ohne Teams-Transkriptionslizenz.
   - **Sprechen:** `ws /agents/{id}/teams-stimme` verbindet den Teilnehmer mit der Echtzeit-Sprachfront, im Besprechungsmodus (spricht nur, wenn er beim Namen genannt wird). Die Antwort geht über das ersetzte Mikrofon in Teams. Ohne Echtzeit-Sprache hört er nur zu.
+  - **Sicherheit:** In der Besprechung hat die Stimme **keine Werkzeuge**. Durchgesetzt in der Sitzung, nicht nur im Prompt: Es werden keine angeboten, und ein Aufruf wird ohne Ausführung abgelehnt. Mitsprechen kann jeder Teilnehmer, deshalb kann darüber nichts gesendet, geändert oder an den Agenten delegiert werden. Der Endpunkt nimmt nur Agenten-Token aus dem Agenten-Netz an, nur für den eigenen Termin und nur zwischen 10 min vor Beginn und 30 min nach Ende.
   - **Live geprüft** in einem echten Teams-Termin:
     - Beitritt, Wartebereich, Einlassen.
     - Zuhören mit Transkription („Das ist ein wunderschöner Test, oder Maus?“).
