@@ -76,6 +76,12 @@ class AufruferTests(unittest.TestCase):
                 menschlich.add(datei.relative_to(wurzel).as_posix())
         self.assertEqual(menschlich, {"api/ws.py", "telegram/agent_bot.py"})
 
+    def test_telegram_weckt_nur_den_eigenen_agenten(self):
+        from app.telegram import agent_bot
+
+        quelle = inspect.getsource(agent_bot)
+        self.assertIn("durch_mensch=target_agent_id in (None, self.agent_id)", quelle)
+
     def test_chat_weckt_nur_wer_verwaltet(self):
         from app.api import ws
 

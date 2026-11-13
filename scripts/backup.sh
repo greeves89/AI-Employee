@@ -49,7 +49,8 @@ INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=lib/sicherung.sh
 . "${INSTALL_DIR}/scripts/lib/sicherung.sh"
 
-BACKUP_DIR="${BACKUP_DIR:-/var/backups/ai-employee}"
+STANDARD_ZIEL=/var/backups/ai-employee
+BACKUP_DIR="${BACKUP_DIR:-$STANDARD_ZIEL}"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dest) BACKUP_DIR="$2"; shift 2 ;;
@@ -89,6 +90,19 @@ if [ -n "${BACKUP_MOUNT:-}" ] && ! ziel_eingehaengt "$BACKUP_MOUNT"; then
     ZIEL_FEHLT=true
     LOG=/dev/null
 else
+    # Ohne root ist das Standardziel oft nicht beschreibbar: /var/backups gehoert
+    # root, und ein frueheres ``sudo update.sh`` legt den Ordner mit 700 als root an.
+    # Dann bisher: Abbruch, das Update unterbleibt, niemand sichert (14.11.2026).
+    # Jetzt: auf einen eigenen Ordner ausweichen und das laut sagen. Nur beim
+    # Standardziel — ein ausdruecklich gesetztes Ziel (BACKUP_DIR, --dest) bleibt.
+    NEUES_ZIEL="$(sicherungsziel_waehlen "$BACKUP_DIR" "$STANDARD_ZIEL" "$(id -u)" "$HOME")"
+    if [ "$NEUES_ZIEL" != "$BACKUP_DIR" ]; then
+        echo "[WARN] ${BACKUP_DIR} ist für $(id -un) nicht beschreibbar — sichere nach ${NEUES_ZIEL}." >&2
+        echo "[WARN] Dauerhaft beheben: sudo chown -R $(id -un) ${BACKUP_DIR}  (oder BACKUP_DIR in .env setzen)" >&2
+        BACKUP_DIR="$NEUES_ZIEL"
+        BACKUP_PATH="${BACKUP_DIR}/${BACKUP_TYPE}/${TIMESTAMP}"
+        LOG="${BACKUP_DIR}/backup.log"
+    fi
     mkdir -p "$BACKUP_DIR"
     chmod 700 "$BACKUP_DIR"
 fi

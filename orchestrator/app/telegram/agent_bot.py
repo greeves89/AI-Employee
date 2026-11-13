@@ -574,7 +574,9 @@ class TelegramAgentBot:
                 await update.message.reply_text("Agent fährt hoch, einen Moment …")
                 wake_task = asyncio.ensure_future(
                     wake_agent(db, docker, target_agent_id or self.agent_id, wait=True, timeout=20,
-                               durch_mensch=True)
+                               # Einen angehaltenen Agenten weckt nur die Nachricht an den
+                               # EIGENEN Agenten des Bots — nicht ein per /agent gewaehlter.
+                               durch_mensch=target_agent_id in (None, self.agent_id))
                 )
                 while not wake_task.done():
                     try:

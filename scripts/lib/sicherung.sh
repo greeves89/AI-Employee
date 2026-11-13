@@ -338,3 +338,20 @@ ziel_platz_pruefen() {
     fi
     return 0
 }
+
+# Ziel der Sicherung: das gewuenschte — oder, ohne root und nur beim Standardziel,
+# ein eigener Ordner, wenn das Standardziel nicht beschreibbar ist (/var/backups
+# gehoert root; ein frueheres ``sudo update.sh`` legt den Ordner als root mit 700
+# an). Bisher brach das Update dann ohne Sicherung ab (14.11.2026).
+# Aufruf: sicherungsziel_waehlen <ziel> <standardziel> <uid> <home>  → Ziel auf stdout
+sicherungsziel_waehlen() {
+    local ziel="$1" standard="$2" uid="$3" heim="$4"
+    if [ "$uid" != "0" ] && [ "$ziel" = "$standard" ]; then
+        if { [ -d "$ziel" ] && [ ! -w "$ziel" ]; } \
+                || { [ ! -d "$ziel" ] && [ ! -w "$(dirname "$ziel")" ]; }; then
+            echo "${heim}/ai-employee-sicherungen"
+            return 0
+        fi
+    fi
+    echo "$ziel"
+}
