@@ -188,6 +188,8 @@ def host_muster(pattern: str | None) -> str | None:
         p = urlsplit(p).hostname or ""
     else:
         p = p.split("/", 1)[0].split(":", 1)[0]
+    if p.startswith("*.") and not p[2:].strip("."):
+        return None          # „*.“ ist kein Muster — nicht stillschweigend zu „*“ (alles) werden lassen
     p = p.strip(".")
     return p if p and _HOST_MUSTER.match(p) else None
 

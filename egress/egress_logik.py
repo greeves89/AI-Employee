@@ -74,6 +74,41 @@ def host_passt(host: str, muster: list[str]) -> bool:
     return bool(h) and h in (muster or [])
 
 
+def _muster_passt(host: str, muster: str) -> bool:
+    """Wie ``url_allowlist.url_matches_pattern`` (Orchestrator) und der Werkzeug-Ausführer des
+    Agenten: ``github.com`` genau, ``*.github.com`` mit Unterdomänen, ``*`` alles. Die Muster
+    kommen dort schon als Host-Muster an (``url_allowlist.host_muster``)."""
+    m = str(muster or "").strip().lower().strip(".")
+    if not m:
+        return False
+    if m == "*":
+        return True
+    if m.startswith("*."):
+        endung = m[2:]
+        return bool(endung) and (host == endung or host.endswith("." + endung))
+    return host == m
+
+
+def ziel_erlaubt(host: str, ziele: dict | None) -> bool:
+    """Darf ein Agent mit eingeschalteter Zielliste dieses Ziel erreichen?
+
+    ``ziele`` ist ``None`` (Zielliste aus → ja) oder ``{"muster", "rolle", "immer"}``:
+    ``immer`` gilt ohne Weiteres (Modellanbieter, Ziele der Plattform-Zugänge); sonst muss das
+    Ziel auf der Liste des Agenten stehen UND, falls die Rolle Muster vorgibt, auch dort.
+    """
+    if ziele is None:
+        return True
+    h = (host or "").strip().lower().rstrip(".")
+    if not h:
+        return False
+    if h in {str(x).lower() for x in (ziele.get("immer") or [])}:
+        return True
+    rolle = ziele.get("rolle")
+    if rolle is not None and not any(_muster_passt(h, m) for m in rolle):
+        return False
+    return any(_muster_passt(h, m) for m in (ziele.get("muster") or []))
+
+
 def ziel_adresse(host: str, port: int, aufloesen=socket.getaddrinfo) -> str:
     """Oeffentliche IP fuer ``host`` — oder ``Abgelehnt``.
 
@@ -358,6 +393,8 @@ class Orchestrator:
         self._anmeldungen: dict[tuple[str, str], tuple[float, list[str]]] = {}
         #: Anonymisierer je Agent (aus ``/egress/verbindung``), gilt so lange wie die Anmeldung.
         self._anonym: dict[tuple[str, str], dict | None] = {}
+        #: Zielliste am Ausgang je Agent (orchestrator/app/core/zielliste), wie ``_anonym``.
+        self._ziele: dict[tuple[str, str], dict | None] = {}
         self._werte: dict[tuple, tuple[float, dict[str, str]]] = {}
 
     def _http(self, pfad: str, daten: dict) -> tuple[int, dict]:
@@ -397,6 +434,8 @@ class Orchestrator:
             self._anmeldungen[agent] = (jetzt, hosts)
             anonym = antwort.get("anonym")
             self._anonym[agent] = anonym if isinstance(anonym, dict) and anonym.get("schluessel") else None
+            ziele = antwort.get("zielliste")
+            self._ziele[agent] = ziele if isinstance(ziele, dict) else None
             return hosts
         if status in (401, 422):
             self._anmeldungen.pop(agent, None)
@@ -411,6 +450,10 @@ class Orchestrator:
         """Anonymisierer-Einstellung des Agenten (Schlüssel, Begriffe, Ziele) — None = aus.
         Stand der letzten Anmeldung (``hosts``), höchstens ``ANMELDUNG_FRISCH`` alt."""
         return self._anonym.get(agent)
+
+    def zielliste(self, agent: tuple[str, str]) -> dict | None:
+        """Zielliste des Agenten — None = aus. Stand der letzten Anmeldung (``hosts``)."""
+        return self._ziele.get(agent)
 
     def werte(self, agent: tuple[str, str], host: str, platzhalter: set[str]) -> dict[str, str]:
         """Echte Werte — alle oder ``Abgelehnt``."""

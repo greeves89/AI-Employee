@@ -485,13 +485,11 @@ async def _zielliste_umgebung(agent_id: str, proxy: str) -> dict[str, str]:
     from app.db.session import async_session_factory
     from app.models.agent import Agent
 
-    try:
-        async with async_session_factory() as db:
-            agent = await db.get(Agent, agent_id)
-        extra = zielliste.umgebung(agent.config if agent else None)
-    except Exception:  # noqa: BLE001 — lieber ohne Zielliste starten als gar nicht? Nein:
-        logger.exception("Zielliste für Agent %s nicht lesbar", agent_id)
-        raise
+    # Kein Abfangen: Lässt sich die Einstellung nicht lesen, startet der Agent nicht — sonst
+    # liefe er still ohne die Sperre, die sein Besitzer eingeschaltet hat (fail closed).
+    async with async_session_factory() as db:
+        agent = await db.get(Agent, agent_id)
+    extra = zielliste.umgebung(agent.config if agent else None)
     if extra:
         extra.update({"HTTP_PROXY": proxy, "http_proxy": proxy})
     return extra

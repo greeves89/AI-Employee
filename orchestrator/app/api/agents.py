@@ -3944,6 +3944,83 @@ async def get_agent_teams_auswahl(
     return {"chats": chats, "kanaele": kanaele_}
 
 
+class ZiellisteUpdate(BaseModel):
+    aktiv: bool
+
+
+async def _zielliste_stand(db: AsyncSession, agent) -> dict:
+    from app.core import egress, zielliste
+
+    eintraege = await zielliste.eintraege(db, agent.id)
+    proxy = egress.aktiv()
+    hinweis = ""
+    if zielliste.an(agent.config) and not proxy:
+        hinweis = ("Wirkt nicht: Der Egress-Proxy ist aus. Admin → Betrieb → Egress-Proxy einschalten, "
+                   "sonst gehen die Verbindungen nicht über ihn.")
+    elif zielliste.an(agent.config) and not eintraege:
+        hinweis = ("Die Liste ist leer: Der Agent erreicht nur seine Modellanbieter und die Ziele seiner "
+                   "Zugänge, sonst nichts.")
+    return {"aktiv": zielliste.an(agent.config), "wirksam": zielliste.wirksam(agent.config),
+            "proxy_an": proxy, "eintraege": len(eintraege), "hinweis": hinweis}
+
+
+@router.get("/{agent_id}/zielliste")
+async def get_agent_zielliste(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Zielliste am Ausgang (core/zielliste): erlaubte Adressen verbindlich, ja oder nein."""
+    await _check_owner(agent_id, user, db)
+    agent = await db.get(Agent, agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
+    return await _zielliste_stand(db, agent)
+
+
+@router.patch("/{agent_id}/zielliste")
+async def update_agent_zielliste(
+    agent_id: str,
+    body: ZiellisteUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Zielliste ein- oder ausschalten. Nur Besitzer und Admin.
+
+    Der Agent wird danach neu erstellt: Ob alle Ports gesperrt sind (Netzwächter) und Klartext-HTTP
+    über den Proxy geht, hängt an der Umgebung, mit der sein Behälter entsteht."""
+    from app.core import egress, zielliste
+    from app.core.audit import protokolliere
+    from app.models.audit_log import AuditEventType
+    from app.models.user import UserRole
+
+    await _check_owner(agent_id, user, db)
+    agent = await db.get(Agent, agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
+    if getattr(user, "role", None) != UserRole.ADMIN and agent.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Die Zielliste stellt nur der Besitzer des Agenten ein.")
+    if body.aktiv and not egress.aktiv():
+        raise HTTPException(status_code=409, detail="Zuerst den Egress-Proxy einschalten (Admin → Betrieb).")
+    alt = zielliste.an(agent.config)
+    agent.config = zielliste.mit(agent.config, body.aktiv)
+    await protokolliere(db, AuditEventType.SETTINGS_CHANGED, user_id=getattr(user, "id", None), agent_id=agent_id,
+                        command=f"Zielliste am Ausgang: {'an' if body.aktiv else 'aus'}",
+                        meta={"aktion": "zielliste", "aktiv": body.aktiv})
+    await db.commit()
+    stand = await _zielliste_stand(db, agent)
+    if alt != body.aktiv and agent.container_id:
+        try:
+            await manager.restart_agent(agent_id)
+            stand["neu_gestartet"] = True
+        except Exception:  # noqa: BLE001 — Einstellung gilt; der Hinweis sagt, was fehlt
+            logger.exception("Agent %s nach Umschalten der Zielliste nicht neu gestartet", agent_id)
+            stand["hinweis"] = ("Gespeichert, aber der Agent ließ sich nicht neu starten. Bitte „Neu starten“ "
+                                "klicken: Erst dann gilt die Einstellung.")
+    return stand
+
+
 @router.get("/{agent_id}/browser/audit")
 async def get_agent_browser_audit(
     agent_id: str,

@@ -76,6 +76,25 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
   const [changed, setChanged] = useState(false);
   const [mcpChanged, setMcpChanged] = useState(false);
 
+  // Zielliste am Ausgang (core/zielliste): erlaubte Adressen verbindlich machen
+  const [zielliste, setZielliste] = useState<api.ZiellisteStand | null>(null);
+  const [ziellisteBusy, setZiellisteBusy] = useState(false);
+  useEffect(() => {
+    api.getAgentZielliste(agentId).then(setZielliste).catch(() => setZielliste(null));
+  }, [agentId]);
+  const ziellisteSetzen = async (aktiv: boolean) => {
+    setZiellisteBusy(true);
+    try {
+      const s = await api.setzeAgentZielliste(agentId, aktiv);
+      setZielliste(s);
+      toast.success(s.neu_gestartet ? "Gespeichert, der Agent wurde neu gestartet" : "Gespeichert");
+    } catch (e) {
+      toast.error("Speichern fehlgeschlagen", e instanceof Error ? e.message : undefined);
+    } finally {
+      setZiellisteBusy(false);
+    }
+  };
+
   // URL Allowlist state
   const [allowlist, setAllowlist] = useState<UrlAllowlistEntry[]>([]);
   const [templates, setTemplates] = useState<UrlAllowlistTemplate[]>([]);
@@ -684,7 +703,9 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
             <Shield className="h-4 w-4 text-emerald-400" />
             <span className="text-sm font-medium">Erlaubte Adressen</span>
             <span className="text-[10px] text-muted-foreground/60">
-              Lege fest, welche Internetadressen dieser Agent aufrufen darf
+              {zielliste?.aktiv
+                ? "Verbindlich: Der Agent erreicht nur diese Adressen"
+                : "Gilt nur für die Werkzeuge der Plattform, nicht für Claude Code und Codex"}
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -702,6 +723,38 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
             </button>
           </div>
         </div>
+
+        {zielliste && (
+          <div className="flex items-start gap-3 border-b border-foreground/[0.06] px-5 py-3">
+            <Lock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-medium">Am Ausgang erzwingen</p>
+              <p className="text-[11px] text-muted-foreground/70">
+                Der Agent erreicht dann nur diese Adressen, seine Modellanbieter und die Ziele seiner Zugänge,
+                auch mit den eigenen Werkzeugen von Claude Code und Codex. Andere Verbindungen werden gesperrt.
+                Der Agent wird dafür neu gestartet.
+              </p>
+              {zielliste.hinweis && (
+                <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">{zielliste.hinweis}</p>
+              )}
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={zielliste.aktiv}
+              aria-label="Am Ausgang erzwingen"
+              disabled={ziellisteBusy || (!zielliste.aktiv && !zielliste.proxy_an)}
+              onClick={() => ziellisteSetzen(!zielliste.aktiv)}
+              className={cn(
+                "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50",
+                zielliste.aktiv ? "bg-emerald-500" : "bg-foreground/15",
+              )}
+            >
+              <span className={cn("inline-block h-4 w-4 rounded-full bg-white transition-transform",
+                zielliste.aktiv ? "translate-x-6" : "translate-x-1")} />
+            </button>
+          </div>
+        )}
 
         {/* Template picker */}
         {showTemplates && (
@@ -734,7 +787,11 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
         <div className="divide-y divide-foreground/[0.04]">
           {allowlist.length === 0 ? (
             <div className="px-5 py-4 text-center">
-              <p className="text-[11px] text-muted-foreground/50">Keine Regeln — der Agent darf alle Adressen aufrufen</p>
+              <p className="text-[11px] text-muted-foreground/50">
+                {zielliste?.aktiv
+                  ? "Keine Regeln — der Agent erreicht nur seine Modellanbieter und die Ziele seiner Zugänge"
+                  : "Keine Regeln — der Agent darf alle Adressen aufrufen"}
+              </p>
             </div>
           ) : (
             allowlist.map((entry) => (
@@ -765,7 +822,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
               value={newUrl}
               onChange={(e) => setNewUrl(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleAddUrl()}
-              placeholder="https://api.example.com/* oder *.github.com"
+              placeholder="api.example.com oder *.github.com"
               className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-1.5 text-[11px] font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:border-emerald-500/40"
             />
             <input

@@ -100,6 +100,12 @@ def regeln(container: list[dict], subnetze: dict[str, str], ausnahmen: list[str]
             if c.get("nur_proxy"):
                 vorwaerts.append(f"-A AIE-NETZ -s {ip}/32 -p tcp --dport 443 -j REJECT --reject-with tcp-reset")
                 vorwaerts.append(f"-A AIE-NETZ -s {ip}/32 -p udp --dport 443 -j DROP")
+            # 5c. Zielliste: alles Übrige hinaus gesperrt — auch Port 80, 8080, QUIC, ICMP.
+            # Die eigenen Docker-Netze (Proxy, Orchestrator, eigene Apps) sind in Regel 4
+            # schon durchgelassen; DNS fragt der Container bei Docker selbst (127.0.0.11).
+            if c.get("zielliste"):
+                vorwaerts.append(f"-A AIE-NETZ -s {ip}/32 -p tcp -j REJECT --reject-with tcp-reset")
+                vorwaerts.append(f"-A AIE-NETZ -s {ip}/32 -j DROP")
             # 6. Host
             host.append(f"-A AIE-NETZ-HOST -s {ip}/32 -j DROP")
     if standard:
@@ -172,6 +178,17 @@ def nur_ueber_proxy(labels: dict, umgebung: list[str]) -> bool:
             and any(e.startswith("HTTPS_PROXY=") and len(e) > len("HTTPS_PROXY=") for e in umgebung))
 
 
+def mit_zielliste(labels: dict, umgebung: list[str]) -> bool:
+    """Agent mit Zielliste am Ausgang (``AIE_ZIELLISTE=1``, orchestrator/app/core/zielliste).
+
+    Für ihn geht GAR NICHTS direkt hinaus, auf keinem Port und keinem Protokoll, nur über den
+    Egress-Proxy (eigenes Docker-Netz, Regel 4), der die Liste durchsetzt. Die Umgebung ist die
+    vom Anlegen des Behälters; der Agent kann sie nicht nachträglich ändern. Nur zusammen mit
+    dem Proxy (``nur_ueber_proxy``) — ohne ihn hätte der Agent sonst gar keinen Weg hinaus.
+    """
+    return nur_ueber_proxy(labels, umgebung) and "AIE_ZIELLISTE=1" in umgebung
+
+
 def zustand() -> tuple[list[dict], dict[str, str]]:
     ids = subprocess.run(["docker", "ps", "-q"], check=True, capture_output=True, text=True).stdout.split()
     container = []
@@ -195,6 +212,7 @@ def zustand() -> tuple[list[dict], dict[str, str]]:
             "besitzer": besitzer(labels, umgebung),
             "ips": ips,
             "nur_proxy": nur_ueber_proxy(labels, umgebung),
+            "zielliste": mit_zielliste(labels, umgebung),
         })
     subnetze = {}
     netze = []

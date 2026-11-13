@@ -38,6 +38,12 @@ class _Orch:
     def werte(self, *a):
         raise AssertionError("keine Schlüssel-Platzhalter im Test")
 
+    #: Zielliste am Ausgang (orchestrator/app/core/zielliste) — None = aus.
+    ziele = None
+
+    def zielliste(self, agent):
+        return self.ziele
+
 
 @unittest.skipIf(aie_egress is None, "mitmproxy fehlt")
 class AddonTests(unittest.TestCase):
@@ -153,6 +159,37 @@ class AddonTests(unittest.TestCase):
             f.response = __import__("mitmproxy").http.Response.make(200, b"{}")
             addon.responseheaders(f)
         self.assertEqual(getoetet, [True])
+
+    def _connect(self, host: str, ziele, port=443):
+        import base64
+
+        addon = aie_egress.AieEgress()
+        addon.orch = _Orch(None)
+        addon.orch.ziele = ziele
+        f = tflow.tflow(req=tutils.treq(method=b"CONNECT", host=host, port=port, path=b"", scheme=b"", authority=b""))
+        f.request.headers["Proxy-Authorization"] = "Basic " + base64.b64encode(b"a1:tok").decode()
+        asyncio.run(addon.http_connect(f))
+        return f
+
+    def test_zielliste_sperrt_was_nicht_auf_der_liste_steht(self):
+        """Zielliste am Ausgang: CONNECT nur zu erlaubten Zielen, Modellanbieter immer."""
+        ziele = {"muster": ["*.example.com"], "rolle": None, "immer": ["api.anthropic.com"]}
+        self.assertEqual(self._connect("wikipedia.org", ziele).response.status_code, 403)
+        self.assertIsNone(self._connect("api.example.com", ziele).response)
+        self.assertIsNone(self._connect("api.anthropic.com", ziele).response)
+        self.assertIsNone(self._connect("wikipedia.org", None).response, "Zielliste aus: wie bisher")
+
+    def test_zielliste_gilt_auch_fuer_klartext_http(self):
+        import base64
+
+        addon = aie_egress.AieEgress()
+        addon.orch = _Orch(None)
+        addon.orch.ziele = {"muster": ["erlaubt.example.com"], "rolle": None, "immer": []}
+        for host, gesperrt in (("anders.example.org", True), ("erlaubt.example.com", False)):
+            f = tflow.tflow(req=tutils.treq(method=b"GET", host=host, port=80, scheme=b"http", path=b"/"))
+            f.request.headers["Proxy-Authorization"] = "Basic " + base64.b64encode(b"a1:tok").decode()
+            asyncio.run(addon._ohne_tunnel(f))
+            self.assertEqual(f.response is not None and f.response.status_code == 403, gesperrt, host)
 
     def test_tls_zum_anbieter_fragt_frisch(self):
         from types import SimpleNamespace

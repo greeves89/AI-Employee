@@ -151,6 +151,10 @@ class AieEgress:
             flow.response = _antwort(407, "Anmeldung am Egress-Proxy fehlt",
                                      **{"Proxy-Authenticate": 'Basic realm="ai-employee"'})
             return
+        if not logik.ziel_erlaubt(flow.request.host, self.orch.zielliste(agent)):
+            flow.response = _antwort(403, f"Ziel {flow.request.host} steht nicht auf der Liste der "
+                                          "erlaubten Adressen dieses Agenten")
+            return
         # Eine Client-Verbindung = ein Tunnel. Ein zweites CONNECT (etwa im Tunnel)
         # koennte sonst das gemerkte Ziel ueberschreiben.
         if flow.client_conn.id in self.ziele:
@@ -341,6 +345,10 @@ class AieEgress:
         if hosts is None:
             flow.response = _antwort(407, "Anmeldung am Egress-Proxy fehlt",
                                      **{"Proxy-Authenticate": 'Basic realm="ai-employee"'})
+            return
+        if not logik.ziel_erlaubt(flow.request.host, self.orch.zielliste(agent)):
+            flow.response = _antwort(403, f"Ziel {flow.request.host} steht nicht auf der Liste der "
+                                          "erlaubten Adressen dieses Agenten")
             return
         flow.request.headers.pop("Proxy-Authorization", None)
         if logik.platzhalter_in(flow.request.url, *flow.request.headers.values()):
