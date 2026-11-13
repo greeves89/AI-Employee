@@ -4224,6 +4224,8 @@ unter **Besprechungen** (Seitenleiste) ein Protokoll mit Aufgaben und dem Transk
    Domänen (z. B. `@example.com`).
 5. Den Agenten wie eine Kollegin in Outlook oder Teams zum Termin einladen.
 
+![Teams-Besprechungen in den Kanal-Einstellungen des Agenten](screenshots/f30-teams-besprechungen.png)
+
 Was dann passiert:
 - Zu jedem Termin legt die Anlage eine Seite unter **Besprechungen** an. Sie zeigt Zeit, Stand
   und Teilnehmende.
@@ -4233,6 +4235,8 @@ Was dann passiert:
 - Nach dem Termin (sobald Teams das Transkript bereitstellt) schreibt der Agent das Protokoll:
   Zusammenfassung, Entscheidungen, Aufgaben mit Verantwortlichen. Das Transkript liegt
   zusätzlich im Wissen.
+
+![Seite „Besprechungen“ mit Protokoll und Aufgaben (Demodaten)](screenshots/f31-besprechungen.png)
 
 **Gäste von außen:** Ist jemand außerhalb deiner Organisation eingeladen, hält sich der Agent
 heraus: kein Chat, kein Hinweis, kein Protokoll. Die Seite zeigt „Gäste von außen“. Mit dem Haken
@@ -5103,6 +5107,8 @@ Hat die Rolle des Besitzers eine eigene Adressliste, muss eine Adresse auf beide
 2. Bei **Erlaubte Adressen** die Adressen eintragen, etwa `api.example.com` oder
    `*.github.com`. `*.github.com` gilt auch für `github.com` selbst.
 3. Den Schalter **Am Ausgang erzwingen** einschalten.
+
+![Karte „Erlaubte Adressen“ mit eingeschaltetem „Am Ausgang erzwingen“](screenshots/f29-zielliste.png)
 
 Die Anlage startet den Agenten dann neu. Ein laufender Zug wird dabei abgebrochen. Das Ein- und
 Ausschalten steht im Audit-Log.
