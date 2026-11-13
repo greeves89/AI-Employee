@@ -27,12 +27,13 @@ AGENT = ("a1", "tok")
 class _Orch:
     def __init__(self, cfg=CFG):
         self.cfg = cfg
+        self.frisch = False  # einmal frisch gefragt?
 
     def anonym(self, agent):
         return self.cfg
 
     def hosts(self, agent, frisch=False):
-        self.frisch = frisch
+        self.frisch = self.frisch or frisch
         return list(self.cfg["ziele"]) if self.cfg else []
 
     def werte(self, *a):
@@ -237,7 +238,7 @@ class AddonTests(unittest.TestCase):
                                             path=b"", scheme=b"", authority=b""))
             f.request.headers["Proxy-Authorization"] = "Basic " + base64.b64encode(b"zl.a1:tok").decode()
             asyncio.run(addon.http_connect(f))
-            self.assertTrue(addon.orch.frisch is True or ziele is not None)
+            self.assertTrue(addon.orch.frisch, "mit Kennung immer frisch, solange nichts gemerkt ist")
             self.assertEqual(f.response is not None and f.response.status_code == 403, gesperrt, ziele)
             if not gesperrt:
                 self.assertEqual(addon.agenten[f.client_conn.id], ("a1", "tok"), "Kennung abgestreift")
