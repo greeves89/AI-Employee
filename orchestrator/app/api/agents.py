@@ -136,6 +136,11 @@ async def _nur_nutzer_kuerzen(antworten: list, user, db: AsyncSession) -> list:
 
 #: Ordner fuer Dateien von Menschen, die den Agenten nur nutzen (je Person ein Unterordner).
 NUR_NUTZER_ORDNER = "/workspace/geteilt"
+#: Dateien, die ein Nur-Nutzer nie abholt — auch nicht, wenn der Agent sie vorlegt.
+_GESPERRTE_DATEIEN = frozenset({
+    "claude.md", "agents.md", "agent.md", "knowledge.md", "memory.md", "soul.md",
+    "codex.md", "gemini.md", ".env", "credentials.json", "secrets.json",
+})
 
 
 async def _nur_nutzer_datei_pruefen(db: AsyncSession, agent_id: str, user, path: str) -> None:
@@ -154,6 +159,15 @@ async def _nur_nutzer_datei_pruefen(db: AsyncSession, agent_id: str, user, path:
     eigener = f"{NUR_NUTZER_ORDNER}/{user.id}/"
     if sauber.startswith(eigener) and ".." not in sauber.split("/"):
         return
+    # Auch was der Agent „vorgelegt“ hat, nie: Anweisungen, Gedaechtnis, versteckte
+    # Dateien, Ordner anderer. Vorgelegt heisst auch „im Antworttext erwaehnt“
+    # (Server erkennt Pfade) — ein Nur-Nutzer koennte den Agenten dazu bringen.
+    teile = [t for t in sauber.split("/") if t]
+    if (not sauber.startswith("/workspace/") or any(t.startswith(".") for t in teile)
+            or teile[-1].lower() in _GESPERRTE_DATEIEN
+            or sauber.startswith(f"{NUR_NUTZER_ORDNER}/")
+            or any(t in ("memory", "memories", "skills") for t in teile[1:-1])):
+        raise HTTPException(status_code=404, detail="Datei nicht gefunden")
     eigene = await chat_besitz.eigene_sitzungen(db, agent_id, user) or set()
     if eigene:
         zeilen = (await db.execute(

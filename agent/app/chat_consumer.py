@@ -547,8 +547,12 @@ class ChatConsumer:
                     # den Zug dieses Gespraechs — an einem geteilten Agenten soll ein
                     # Stopp nicht die Antwort fuer jemand anderen abbrechen.
                     nur_sitzung = _stopp_sitzung(message.get("data"))
+                    gezielt = ({f"webapp:{nur_sitzung}", f"ios:{nur_sitzung}", f"voice:{nur_sitzung}"}
+                               if nur_sitzung is not None else None)
                     for sk in list(self._active_source_keys):
-                        if nur_sitzung is not None and sk.split(":", 1)[-1] != nur_sitzung:
+                        # Volle Kennung vergleichen: Zeitplan- und Kanal-Faeden
+                        # (scheduler, telegram:…) stoppt ein gezielter Stopp nie.
+                        if gezielt is not None and sk not in gezielt:
                             continue
                         handler = self._handlers.get(sk)
                         if handler and getattr(handler, "is_running", False):

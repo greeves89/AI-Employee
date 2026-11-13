@@ -174,6 +174,16 @@ class FreigebenTests(unittest.IsolatedAsyncioTestCase):
         await api._nur_nutzer_datei_pruefen(self.db, "a1", KOLLEGE, "/workspace/ergebnis.xlsx")
         with self.assertRaises(HTTPException):
             await api._nur_nutzer_datei_pruefen(self.db, "a1", KOLLEGE, "/workspace/knowledge.md")
+        # Auch vorgelegt: Anweisungen, versteckte Dateien und fremde Ordner bleiben zu.
+        for pfad in ("/workspace/CLAUDE.md", "/workspace/.claude/settings.json", "/workspace/geteilt/alt/a.pdf",
+                     "/workspace/memory/notiz.txt"):
+            self.db.add(ChatMessage(agent_id="a1", session_id="s-k", message_id=f"p{len(pfad)}{pfad[-3:]}",
+                                    role="assistant", content="", meta={"presented_files": [{"path": pfad}]}))
+        await self.db.commit()
+        for pfad in ("/workspace/CLAUDE.md", "/workspace/.claude/settings.json", "/workspace/geteilt/alt/a.pdf",
+                     "/workspace/memory/notiz.txt"):
+            with self.assertRaises(HTTPException, msg=pfad):
+                await api._nur_nutzer_datei_pruefen(self.db, "a1", KOLLEGE, pfad)
         # Besitzer: keine Einschraenkung
         await api._nur_nutzer_datei_pruefen(self.db, "a1", BESITZER, "/workspace/knowledge.md")
 
@@ -213,11 +223,14 @@ class FreigebenTests(unittest.IsolatedAsyncioTestCase):
         from app.api import ws
 
         sock = SimpleNamespace(close=AsyncMock())
+        stimme = SimpleNamespace(close=AsyncMock())
+        ws._active_voice_websockets["kollege:a1:voice:1"] = stimme
         ws._active_chat_websockets["kollege:a1:chat:tab1"] = sock
         ws._active_chat_websockets["besitzer:a1:chat:tab1"] = SimpleNamespace(close=AsyncMock())
         try:
-            self.assertEqual(await ws.freigabe_entzogen("a1", ["kollege"]), 1)
+            self.assertEqual(await ws.freigabe_entzogen("a1", ["kollege"]), 2)
             sock.close.assert_awaited_once()
+            stimme.close.assert_awaited_once()
             self.assertIn("besitzer:a1:chat:tab1", ws._active_chat_websockets)
         finally:
             ws._active_chat_websockets.pop("besitzer:a1:chat:tab1", None)

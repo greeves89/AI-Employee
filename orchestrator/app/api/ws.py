@@ -359,15 +359,20 @@ async def _ereignis_fuer_verbindung(ereignis: dict, agent_id: str, user, cache: 
     return cache.get("*", False) or cache[schluessel]
 
 
+#: Offene Sprachsitzungen je ``user:agent:voice:<id>`` (fuer den Entzug einer Freigabe).
+_active_voice_websockets: dict = {}
+
+
 async def freigabe_entzogen(agent_id: str, user_ids) -> int:
     """Offene Chat-Fenster von Menschen schliessen, denen die Freigabe gerade entzogen
     wurde — die Pruefung laeuft nur beim Verbinden (Sicherheitsreview 1.457)."""
     geschlossen = 0
     for uid in user_ids or ():
-        praefix = f"{uid}:{agent_id}:chat:"
-        for schluessel, sock in list(_active_chat_websockets.items()):
+        for ablage, art in ((_active_chat_websockets, "chat"), (_active_voice_websockets, "voice")):
+          praefix = f"{uid}:{agent_id}:{art}:"
+          for schluessel, sock in list(ablage.items()):
             if schluessel.startswith(praefix):
-                _active_chat_websockets.pop(schluessel, None)
+                ablage.pop(schluessel, None)
                 try:
                     await sock.close(code=4003, reason="Freigabe entzogen")
                 except Exception:  # noqa: BLE001
@@ -1369,7 +1374,13 @@ async def ws_agent_voice(
         await websocket.close(code=1011, reason="voice init failed")
         return
 
-    await _sprachsitzung_betreiben(websocket, session, agent_id, interaction_model)
+    # Merken, damit ein Entzug der Freigabe auch offene Sprachsitzungen schliesst.
+    _sprach_schluessel = f"{user_id}:{agent_id}:voice:{id(websocket)}"
+    _active_voice_websockets[_sprach_schluessel] = websocket
+    try:
+        await _sprachsitzung_betreiben(websocket, session, agent_id, interaction_model)
+    finally:
+        _active_voice_websockets.pop(_sprach_schluessel, None)
 
 
 @router.websocket("/agents/{agent_id}/teams-stimme")
