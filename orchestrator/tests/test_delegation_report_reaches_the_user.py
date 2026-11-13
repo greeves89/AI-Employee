@@ -88,7 +88,7 @@ class TheTaskCarriesItsOriginTests(unittest.TestCase):
         src = inspect.getsource(__import__("app.api.tasks", fromlist=["x"]))
         # Seit 1.455 wird der Faden erst geprueft (nur ein eigenes Gespraech,
         # core/chat_besitz) und dann gespeichert — in beiden Wegen.
-        self.assertEqual(src.count("data.chat_session_id)"), 1)
+        self.assertEqual(src.count(" data.chat_session_id)"), 1)
         self.assertEqual(src.count("task_data.chat_session_id)"), 1)
         self.assertEqual(src.count('"chat_session_id": faden'), 2)
 
