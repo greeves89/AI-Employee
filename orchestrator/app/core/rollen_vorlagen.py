@@ -20,10 +20,13 @@ _ARBEIT = ["/heute", "/agents", "/tasks", "/projekte", "/approvals", "/files", "
 VORLAGEN: dict[str, dict[str, Any]] = {
     "teamleitung": {
         "name": "Teamleitung",
-        "grundrolle": "manager",
-        "beschreibung": "Führt ein Team mit Agenten: mehr Agenten, Freigaben und Projekte im Team, "
-                        "keine Plattform-Einstellungen.",
-        "rechte": {"max_agents": 20, "max_autonomy_level": "l3"},
+        # Bewusst NICHT „Manager“: Manager sehen und steuern ALLE Agenten aller Nutzer
+        # (dependencies.require_agent_access) — das ist keine Teamleitung. Teams/Abteilungen,
+        # auf die sich das begrenzen ließe, gibt es (noch) nicht.
+        "grundrolle": "member",
+        "beschreibung": "Führt ein Team: mehr Agenten (20), Agenten fragen vor Wirkung nach außen. "
+                        "Fremde Agenten nur, wenn sie ihr freigegeben werden.",
+        "rechte": {"max_agents": 20, "max_autonomy_level": "l3", "menu_paths": _ARBEIT + ["/apps", "/workflows"]},
     },
     "mitarbeiter": {
         "name": "Mitarbeiter",

@@ -15,6 +15,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   - Die Vorlagen nutzen nur Rechte, die `core/permissions` schon durchsetzt. Es gibt kein zweites Rechtesystem.
 - **Rechte-Übersicht „Wer darf was“** (`GET /roles/uebersicht`, nur Admins): je Person Grundrolle, Gruppe, Anmeldung (lokal oder SSO) und die wirksamen Rechte aus derselben Auswertung wie überall.
 - Rollen-Bearbeitung: Die Menüpfade kennen jetzt auch Besprechungen, Chat, Apps, Abläufe und Hilfe.
+- **Hinweis:** Die Grundrolle „Manager“ sieht und steuert alle Agenten aller Nutzer (`require_agent_access`). Die Vorlage „Teamleitung“ nutzt deshalb die Grundrolle Mitglied. Eine echte Begrenzung auf das eigene Team braucht Teams bzw. Abteilungen und kommt später.
 
 ### Tests
 - `test_rollen_vorlagen.py`:
