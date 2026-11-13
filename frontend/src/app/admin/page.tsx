@@ -80,6 +80,7 @@ import { MountPermissionsModal } from "@/components/admin/mount-permissions-moda
 import { ResetPasswordModal } from "@/components/admin/reset-password-modal";
 import { FeedbackDetailModal } from "@/components/admin/feedback-detail-modal";
 import { RolesPanel } from "@/components/admin/roles-panel";
+import { RechteUebersicht, RollenVorlagen } from "@/components/admin/rollen-vorlagen";
 import { PagesPanel } from "@/components/admin/pages-panel";
 import { SsoGroupsPanel } from "@/components/admin/sso-groups-panel";
 import { DatensicherungKarte } from "@/components/admin/datensicherung-karte";
@@ -130,6 +131,7 @@ export default function AdminPage() {
   // lib/admin-bereiche auf; Unbekanntes faellt auf die Nutzerliste.
   const angefragterReiter = searchParams.get("tab");
   const [tab, setTab] = useState<Tab>(() => adminBereichAusTab(angefragterReiter).bereich);
+  const [rollenStand, setRollenStand] = useState(0);
   // Ein Link auf einen anderen Bereich, waehrend die Konsole schon offen ist,
   // aendert nur die Adresse — der Bereich muss trotzdem folgen.
   useEffect(() => {
@@ -1101,7 +1103,14 @@ export default function AdminPage() {
             )}
 
             {tab === "roles" && (
+              <div className="mb-6 space-y-6">
+                <RollenVorlagen onAngelegt={() => setRollenStand((n) => n + 1)} />
+                <RechteUebersicht stand={rollenStand} />
+              </div>
+            )}
+            {tab === "roles" && (
               <RolesPanel
+                key={rollenStand}
                 users={users}
                 onUserRoleAssigned={(userId, customRoleId) => {
                   setUsers((prev) =>
