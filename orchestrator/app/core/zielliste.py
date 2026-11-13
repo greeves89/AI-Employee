@@ -114,5 +114,5 @@ async def fuer_proxy(db, agent, plattform_hosts: set[str]) -> dict | None:
 
 def umgebung(config: dict | None) -> dict[str, str]:
     """Marke für den Netzwächter (alle Ports nur über den Proxy). Klartext-HTTP über den Proxy
-    setzt ``egress.agent_umgebung`` dazu, sonst ginge es direkt und würde gesperrt."""
+    und die Kennung im Anmeldenamen setzt ``egress.agent_umgebung`` dazu."""
     return {UMGEBUNG: "1"} if wirksam(config) else {}

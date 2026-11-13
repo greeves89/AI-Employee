@@ -25,6 +25,7 @@ CA_HOST = "aie-egress.internal"
 #: stuende waehrend jedes Neustarts aller HTTPS-Verkehr der Agenten.
 ANMELDUNG_FRISCH = 60
 ANMELDUNG_NOTFALL = 6 * 3600
+ZIELLISTE_AUS_FRISCH = 5      # s — ohne Zielliste gemerkter Stand (siehe Orchestrator.hosts)
 WERTE_FRISCH = 30
 #: Bestaetigte Werte gelten weiter, solange der Orchestrator nicht antwortet (Neustart
 #: auf dem Pi > 30 s) — eine ausdrueckliche Ablehnung gilt dagegen sofort.
@@ -53,15 +54,33 @@ class Abgelehnt(Exception):
         self.text = text
 
 
-def anmeldung(kopf: str | None) -> tuple[str, str] | None:
-    """``Proxy-Authorization: Basic base64(agent_id:token)`` → (agent_id, token)."""
+#: Präfix im Anmeldenamen, wenn die Zielliste des Agenten an ist
+#: (orchestrator/app/core/egress.ZIELLISTE_KENNUNG, gleich).
+ZIELLISTE_KENNUNG = "zl."
+
+
+def _anmeldename(kopf: str | None) -> str | None:
     if not kopf or not kopf.startswith("Basic "):
         return None
     try:
-        roh = base64.b64decode(kopf[6:].strip(), validate=True).decode()
+        return base64.b64decode(kopf[6:].strip(), validate=True).decode()
     except Exception:  # noqa: BLE001
         return None
+
+
+def zielliste_erwartet(kopf: str | None) -> bool:
+    """Meldet sich der Agent mit Kennung an, entstand er mit eingeschalteter Zielliste."""
+    return (_anmeldename(kopf) or "").startswith(ZIELLISTE_KENNUNG)
+
+
+def anmeldung(kopf: str | None) -> tuple[str, str] | None:
+    """``Proxy-Authorization: Basic base64([zl.]agent_id:token)`` → (agent_id, token)."""
+    roh = _anmeldename(kopf)
+    if roh is None:
+        return None
     agent_id, sep, token = roh.partition(":")
+    if agent_id.startswith(ZIELLISTE_KENNUNG):
+        agent_id = agent_id[len(ZIELLISTE_KENNUNG):]
     if not sep or not agent_id or not token or len(agent_id) > 32 or len(token) > 128:
         return None
     return agent_id, token
@@ -420,7 +439,10 @@ class Orchestrator:
         ``frisch``: am Zwischenspeicher vorbei (Verbindung zu einem Modellanbieter)."""
         jetzt = self.jetzt()
         gemerkt = self._anmeldungen.get(agent)
-        if gemerkt and jetzt - gemerkt[0] < ANMELDUNG_FRISCH and not frisch:
+        # „Zielliste aus“ gilt nur kurz: Wird sie eingeschaltet, startet der Agent neu, und
+        # der neue Behälter darf nicht mit dem Stand des alten durchkommen.
+        frist = ANMELDUNG_FRISCH if self._ziele.get(agent) is not None else ZIELLISTE_AUS_FRISCH
+        if gemerkt and jetzt - gemerkt[0] < frist and not frisch:
             return gemerkt[1]
         try:
             status, antwort = self._senden("/api/v1/egress/verbindung",

@@ -195,6 +195,11 @@ def mit_zielliste(labels: dict, umgebung: list[str]) -> bool:
 
 def zustand() -> tuple[list[dict], dict[str, str]]:
     ids = subprocess.run(["docker", "ps", "-q"], check=True, capture_output=True, text=True).stdout.split()
+    # Auch gestoppte Agenten: Ihre Zielliste gilt weiter für ihre Apps (Regel 5c). Ohne IP
+    # bekommen sie selbst keine Regeln.
+    gestoppt = subprocess.run(["docker", "ps", "-aq", "--filter", "label=ai-employee.type=agent"],
+                              check=True, capture_output=True, text=True).stdout.split()
+    ids += [i for i in gestoppt if i not in ids]
     container = []
     netznamen: set[str] = {"bridge"}
     gesehen = []
@@ -207,7 +212,8 @@ def zustand() -> tuple[list[dict], dict[str, str]]:
             continue
     for c in gesehen:
         netze = (c.get("NetworkSettings") or {}).get("Networks") or {}
-        ips = {n: v["IPAddress"] for n, v in netze.items() if v.get("IPAddress")}
+        laeuft = bool((c.get("State") or {}).get("Running"))
+        ips = {n: v["IPAddress"] for n, v in netze.items() if v.get("IPAddress")} if laeuft else {}
         netznamen |= set(ips)
         labels = (c.get("Config") or {}).get("Labels") or {}
         umgebung = (c.get("Config") or {}).get("Env") or []

@@ -731,8 +731,8 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
               <p className="text-[13px] font-medium">Am Ausgang erzwingen</p>
               <p className="text-[11px] text-muted-foreground/70">
                 Der Agent erreicht dann nur diese Adressen, seine Modellanbieter und die Ziele seiner Zugänge,
-                auch mit den eigenen Werkzeugen von Claude Code und Codex. Andere Verbindungen werden gesperrt.
-                Der Agent wird dafür neu gestartet.
+                auch mit den eigenen Werkzeugen von Claude Code und Codex. Andere Verbindungen werden gesperrt,
+                auch für Apps, die der Agent selbst startet. Der Agent wird dafür neu gestartet.
               </p>
               {zielliste.hinweis && (
                 <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">{zielliste.hinweis}</p>

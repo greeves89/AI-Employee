@@ -140,20 +140,35 @@ class AieEgress:
         return await asyncio.to_thread(self.orch.hosts, agent)
 
     # ── Anmeldung ───────────────────────────────────────────────────────
-    async def http_connect(self, flow: http.HTTPFlow):
-        agent = logik.anmeldung(flow.request.headers.get("Proxy-Authorization"))
+    async def _zulassen(self, flow: http.HTTPFlow) -> tuple[str, str] | None:
+        """Anmeldung + Zielliste für CONNECT und Klartext-HTTP — None: abgewiesen (Antwort gesetzt)."""
+        kopf = flow.request.headers.get("Proxy-Authorization")
+        agent = logik.anmeldung(kopf)
+        # Mit Kennung (Zielliste beim Start an) nie auf einen gemerkten Stand „aus“ verlassen.
+        erwartet = logik.zielliste_erwartet(kopf)
         try:
-            hosts = await self._hosts(agent) if agent else None
+            frisch = bool(agent) and erwartet and self.orch.zielliste(agent) is None
+            hosts = await asyncio.to_thread(self.orch.hosts, agent, frisch) if agent else None
         except logik.OrchestratorFehler:
             flow.response = _antwort(503, "Egress-Proxy: Orchestrator nicht erreichbar")
-            return
+            return None
         if hosts is None:
             flow.response = _antwort(407, "Anmeldung am Egress-Proxy fehlt",
                                      **{"Proxy-Authenticate": 'Basic realm="ai-employee"'})
-            return
-        if not logik.ziel_erlaubt(flow.request.host, self.orch.zielliste(agent)):
+            return None
+        ziele = self.orch.zielliste(agent)
+        if erwartet and ziele is None:
+            flow.response = _antwort(403, "Egress-Proxy: Liste der erlaubten Adressen nicht bestätigt")
+            return None
+        if not logik.ziel_erlaubt(flow.request.host, ziele):
             flow.response = _antwort(403, f"Ziel {flow.request.host} steht nicht auf der Liste der "
                                           "erlaubten Adressen dieses Agenten")
+            return None
+        return agent
+
+    async def http_connect(self, flow: http.HTTPFlow):
+        agent = await self._zulassen(flow)
+        if agent is None:
             return
         # Eine Client-Verbindung = ein Tunnel. Ein zweites CONNECT (etwa im Tunnel)
         # koennte sonst das gemerkte Ziel ueberschreiben.
@@ -162,6 +177,14 @@ class AieEgress:
             return
         self.agenten[flow.client_conn.id] = agent
         self.ziele[flow.client_conn.id] = (flow.request.host.lower().rstrip("."), flow.request.port)
+
+    def tcp_start(self, flow):
+        """Kein HTTP im Tunnel (rohes TCP, auch nach dem Aufbrechen): Für Agenten mit Zielliste
+        beenden. Der Proxy prüft nur, was er als HTTP lesen kann."""
+        agent = self.agenten.get(flow.client_conn.id)
+        if agent and self.orch.zielliste(agent) is not None:
+            log.info("Zielliste: rohe TCP-Verbindung beendet (Agent %s)", agent[0])
+            flow.kill()
 
     def client_disconnected(self, client):
         self.agenten.pop(client.id, None)
@@ -184,6 +207,14 @@ class AieEgress:
         cid = data.context.client.id
         agent, (ziel, port) = self.agenten.get(cid), self.ziele.get(cid, ("", 0))
         sni = (data.client_hello.sni or "").lower().rstrip(".")
+        if agent and ziel in logik.MODELL_ANBIETER:
+            # Zu einem Modellanbieter immer mit frischer Einstellung: Wurde gerade der
+            # Anonymisierer eingeschaltet, darf keine neue Verbindung im Klartext bleiben,
+            # nur weil die Anmeldung noch eine Minute zwischengespeichert ist.
+            try:
+                await asyncio.to_thread(self.orch.hosts, agent, True)
+            except logik.OrchestratorFehler:
+                pass  # gemerkter Stand gilt (Notfall-Frist in ``hosts``)
         if agent and ziel and self.orch.zielliste(agent) is not None:
             # Zielliste: immer aufbrechen, sonst sähe der Proxy nur das CONNECT-Ziel und ein
             # anderer Name (SNI, Host-Kopf) erreichte am selben CDN ein fremdes Ziel. Der
@@ -194,13 +225,8 @@ class AieEgress:
         aufbrechen = False
         if agent and ziel and sni == ziel and port == logik.KEY_PORT:
             try:
-                # Zu einem Modellanbieter immer mit frischer Einstellung: Wurde gerade der
-                # Anonymisierer eingeschaltet, darf keine neue Verbindung im Klartext bleiben,
-                # nur weil die Anmeldung noch eine Minute zwischengespeichert ist.
-                frisch = sni in logik.MODELL_ANBIETER
-                hosts = (await asyncio.to_thread(self.orch.hosts, agent, frisch) if frisch
-                         else await self._hosts(agent))
-                aufbrechen = logik.host_passt(ziel, hosts or [])
+                # Für Modellanbieter oben schon frisch geholt.
+                aufbrechen = logik.host_passt(ziel, await self._hosts(agent) or [])
             except logik.OrchestratorFehler:
                 aufbrechen = False
         if not aufbrechen:
@@ -212,14 +238,7 @@ class AieEgress:
         cid = flow.client_conn.id
         agent = self.agenten.get(cid)
         if agent is None:
-            await self._ohne_tunnel(flow)
-            return
-        if self.orch.zielliste(agent) is not None:
-            ziel = self.ziele.get(cid, ("", 0))[0]
-            if not logik.host_werte_passen(
-                    flow.request.headers.get_all("host") + [flow.request.authority or ""], ziel):
-                flow.response = _antwort(421, "Host-Kopf passt nicht zum Ziel der Verbindung")
-                return
+            return  # Klartext-HTTP ohne Tunnel: schon in ``requestheaders`` geprüft
         abgelehnt = await self._anonymisieren(flow, agent)
         if abgelehnt is not None:
             flow.response = abgelehnt
@@ -325,11 +344,22 @@ class AieEgress:
         return None
 
     @_sicher("anfrage")
-    def requestheaders(self, flow: http.HTTPFlow):
+    async def requestheaders(self, flow: http.HTTPFlow):
+        # Hier, nicht erst in ``request``: Ein gestreamter Körper (``stream_large_bodies``)
+        # ginge sonst samt Kopfzeilen hinaus, bevor ``request`` läuft.
+        agent = self.agenten.get(flow.client_conn.id)
+        if agent is None:
+            await self._ohne_tunnel(flow)
+            return
+        if self.orch.zielliste(agent) is not None:
+            ziel = self.ziele.get(flow.client_conn.id, ("", 0))[0]
+            if not logik.host_werte_passen(
+                    flow.request.headers.get_all("host") + [flow.request.authority or ""], ziel):
+                flow.response = _antwort(421, "Host-Kopf passt nicht zum Ziel der Verbindung")
+                return
         # Aufgebrochene Verbindung eines Agenten: Antworten unkomprimiert anfordern —
         # verdecken laesst sich nur, was lesbar ist, und Entpacken kostet Speicher.
-        if flow.client_conn.id in self.agenten:
-            flow.request.headers["accept-encoding"] = "identity"
+        flow.request.headers["accept-encoding"] = "identity"
         # Anonymisierer: den Körper IMMER puffern. ``stream_large_bodies`` (Compose: 5m)
         # reichte große Anfragen sonst ungesehen durch — ein langer Verlauf hat schnell 5 MB.
         if self._anonym_einstellung(flow) is not None:
@@ -349,22 +379,10 @@ class AieEgress:
             flow.response = (http.Response.make(200, pem.read_bytes(), {"Content-Type": "application/x-pem-file"})
                              if pem.exists() else _antwort(503, "CA noch nicht erzeugt"))
             return
-        agent = logik.anmeldung(flow.request.headers.get("Proxy-Authorization"))
-        try:
-            hosts = await self._hosts(agent) if agent else None
-        except logik.OrchestratorFehler:
-            flow.response = _antwort(503, "Egress-Proxy: Orchestrator nicht erreichbar")
+        agent = await self._zulassen(flow)
+        if agent is None:
             return
-        if hosts is None:
-            flow.response = _antwort(407, "Anmeldung am Egress-Proxy fehlt",
-                                     **{"Proxy-Authenticate": 'Basic realm="ai-employee"'})
-            return
-        ziele = self.orch.zielliste(agent)
-        if not logik.ziel_erlaubt(flow.request.host, ziele):
-            flow.response = _antwort(403, f"Ziel {flow.request.host} steht nicht auf der Liste der "
-                                          "erlaubten Adressen dieses Agenten")
-            return
-        if ziele is not None and not logik.host_werte_passen(
+        if self.orch.zielliste(agent) is not None and not logik.host_werte_passen(
                 flow.request.headers.get_all("host"), flow.request.host.lower().rstrip(".")):
             flow.response = _antwort(421, "Host-Kopf passt nicht zum Ziel der Anfrage")
             return

@@ -51,6 +51,9 @@ _PLATZHALTER_DOMAIN = b"egress-platzhalter:v1:"
 CA_ADRESSE = "http://aie-egress.internal/ca.pem"
 
 #: Interne Ziele gehen nie ueber den Proxy.
+#: Präfix im Anmeldenamen am Proxy, wenn die Zielliste an ist (egress/egress_logik.py, gleich).
+ZIELLISTE_KENNUNG = "zl."
+
 NO_PROXY = (
     "localhost", "127.0.0.1", "::1",
     "ai-employee-orchestrator", "orchestrator", "ai-employee-redis", "redis",
@@ -478,9 +481,9 @@ def interne_hosts(mcp_server_json: str | None) -> list[str]:
     return gefunden
 
 
-async def _zielliste_umgebung(agent_id: str, proxy: str) -> dict[str, str]:
-    """Zielliste am Ausgang (core/zielliste): dann auch Klartext-HTTP über den Proxy, und die
-    Marke ``AIE_ZIELLISTE=1`` für den Netzwächter (sperrt alle Ports außer zum Proxy)."""
+async def _zielliste_umgebung(agent_id: str) -> dict[str, str]:
+    """Zielliste am Ausgang (core/zielliste): Marke ``AIE_ZIELLISTE=1`` für den Netzwächter
+    (sperrt alle Ports außer zum Proxy) — leer, wenn sie aus ist."""
     from app.core import zielliste
     from app.db.session import async_session_factory
     from app.models.agent import Agent
@@ -489,10 +492,7 @@ async def _zielliste_umgebung(agent_id: str, proxy: str) -> dict[str, str]:
     # liefe er still ohne die Sperre, die sein Besitzer eingeschaltet hat (fail closed).
     async with async_session_factory() as db:
         agent = await db.get(Agent, agent_id)
-    extra = zielliste.umgebung(agent.config if agent else None)
-    if extra:
-        extra.update({"HTTP_PROXY": proxy, "http_proxy": proxy})
-    return extra
+    return zielliste.umgebung(agent.config if agent else None)
 
 
 async def agent_umgebung(agent_id: str, mcp_server_json: str | None = None) -> dict[str, str]:
@@ -508,9 +508,16 @@ async def agent_umgebung(agent_id: str, mcp_server_json: str | None = None) -> d
     from app.dependencies import make_agent_token
     ca = await ca_zertifikat()
     teile = urlsplit(settings.egress_proxy_url)
-    proxy = f"{teile.scheme}://{agent_id}:{make_agent_token(agent_id)}@{teile.netloc}"
+    zielliste = await _zielliste_umgebung(agent_id)
+    # Mit Zielliste meldet sich der Agent mit Kennung am Proxy an (``zl.<id>``). Der Proxy
+    # verlässt sich dann nicht auf seinen Zwischenspeicher: Er fragt frisch nach und sperrt,
+    # solange die Liste nicht bestätigt ist (sonst liefe ein frisch gestarteter Agent bis zu
+    # einer Minute ohne). Klartext-HTTP geht dann ebenfalls über den Proxy.
+    name = f"{ZIELLISTE_KENNUNG}{agent_id}" if zielliste else agent_id
+    proxy = f"{teile.scheme}://{name}:{make_agent_token(agent_id)}@{teile.netloc}"
     no_proxy = ",".join(NO_PROXY + tuple(interne_hosts(mcp_server_json)))
-    zielliste = await _zielliste_umgebung(agent_id, proxy)
+    if zielliste:
+        zielliste = {**zielliste, "HTTP_PROXY": proxy, "http_proxy": proxy}
     return {
         **zielliste,
         "HTTPS_PROXY": proxy, "https_proxy": proxy,

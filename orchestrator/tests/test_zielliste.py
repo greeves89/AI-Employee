@@ -125,6 +125,33 @@ class NetzwaechterTests(unittest.TestCase):
         self.assertIn("-A AIE-NETZ -s 172.18.0.9/32 -j DROP", vor)
         self.assertNotIn("-A AIE-NETZ -s 172.18.0.10/32 -j DROP", vor, "fremder Besitzer bleibt frei")
 
+    def test_gestoppter_agent_sperrt_seine_apps_weiter(self):
+        """Ist der Agent gestoppt, laufen seine Apps weiter — die Sperre muss bleiben."""
+        from unittest.mock import patch
+
+        proxy = "HTTPS_PROXY=http://zl.a1:t@ai-employee-egress-proxy:8080"
+        agent = {"Name": "/ai-agent-a", "State": {"Running": False},
+                 "Config": {"Labels": {"ai-employee.type": "agent"},
+                            "Env": ["AGENT_ID=aaaaaaaa1", proxy, "AIE_ZIELLISTE=1"]},
+                 "NetworkSettings": {"Networks": {"ai-employee-network": {"IPAddress": "172.18.0.3"}}}}
+        app = {"Name": "/agent-aaaaaaaa-web", "State": {"Running": True},
+               "Config": {"Labels": {"com.docker.compose.project": "agent-aaaaaaaa-web"}, "Env": []},
+               "NetworkSettings": {"Networks": {"ai-employee-network": {"IPAddress": "172.18.0.9"}}}}
+        laufend = type("R", (), {"stdout": "app\n", "returncode": 0})()
+        alle = type("R", (), {"stdout": "agent\n", "returncode": 0})()
+
+        def docker_json(*a):
+            if a[0] == "network":
+                return [{"Name": "ai-employee-network", "IPAM": {"Config": [{"Subnet": "172.18.0.0/16"}]}}]
+            return [{"app": app, "agent": agent}[a[1]]]
+        with patch.object(nw, "_docker_json", side_effect=docker_json), \
+                patch.object(nw.subprocess, "run", side_effect=lambda cmd, **k: alle if "-aq" in cmd else laufend):
+            container, subnetze = nw.zustand()
+        gestoppt = next(c for c in container if c["name"] == "ai-agent-a")
+        self.assertEqual(gestoppt["ips"], {}, "gestoppt: keine Regeln für ihn selbst")
+        vor, _ = nw.regeln(container, subnetze, [])
+        self.assertIn("-A AIE-NETZ -s 172.18.0.9/32 -j DROP", vor)
+
     def test_ohne_zielliste_keine_sperre_aller_ports(self):
         vor, _ = nw.regeln([dict(self.AGENT, nur_proxy=True)], self.SUBNETZE, [])
         self.assertNotIn("-A AIE-NETZ -s 172.18.0.3/32 -j DROP", vor)
@@ -207,19 +234,30 @@ class FuerProxyTests(_Db):
 class UmgebungTests(_Db):
     async def _umgebung(self):
         from app.core import egress
+        from app.config import settings
 
-        with patch("app.db.session.async_session_factory", self.Session):
-            return await egress._zielliste_umgebung("a1", "http://a1:t@proxy:8080")
+        with patch("app.db.session.async_session_factory", self.Session), \
+                patch.object(settings, "egress_proxy_enabled", True), \
+                patch.object(settings, "egress_proxy_token", "dienst"), \
+                patch.object(settings, "egress_proxy_url", "http://proxy:8080"), \
+                patch.object(egress, "ca_zertifikat", AsyncMock(return_value="CA")):
+            return await egress.agent_umgebung("a1")
 
-    async def test_marke_und_klartext_ueber_den_proxy(self):
-        self.assertEqual(await self._umgebung(), {})
+    async def test_marke_kennung_und_klartext_ueber_den_proxy(self):
+        from app.dependencies import make_agent_token
+
+        aus = await self._umgebung()
+        self.assertNotIn("AIE_ZIELLISTE", aus)
+        self.assertNotIn("HTTP_PROXY", aus)
+        self.assertTrue(aus["HTTPS_PROXY"].startswith("http://a1:"), "ohne Liste ohne Kennung")
         async with self.Session() as db:
             a = await db.get(Agent, "a1")
             a.config = zielliste.mit(a.config, True)
             await db.commit()
         u = await self._umgebung()
         self.assertEqual(u["AIE_ZIELLISTE"], "1")
-        self.assertEqual(u["HTTP_PROXY"], "http://a1:t@proxy:8080")
+        self.assertEqual(u["HTTPS_PROXY"], f"http://zl.a1:{make_agent_token('a1')}@proxy:8080")
+        self.assertEqual(u["HTTP_PROXY"], u["HTTPS_PROXY"])
 
     async def test_fail_closed_wenn_nicht_lesbar(self):
         from app.core import egress
@@ -228,7 +266,7 @@ class UmgebungTests(_Db):
             raise RuntimeError("Datenbank weg")
 
         with patch("app.db.session.async_session_factory", kaputt), self.assertRaises(RuntimeError):
-            await egress._zielliste_umgebung("a1", "http://p")
+            await egress._zielliste_umgebung("a1")
 
 
 class FreigabelisteTests(_Db):
