@@ -87,6 +87,35 @@ def _is_internal(host: str) -> bool:
     return False
 
 
+def firmennetz(host: str, aufloesen=socket.getaddrinfo) -> bool:
+    """Zeigt ``host`` ausschließlich ins Firmennetz (private Netze, CGNAT)?
+
+    Für Server, die ein Administrator ausdrücklich freigegeben hat (z. B. ein
+    selbst betriebenes GitLab im eigenen Netz). Auch dann nie: die Anlage selbst
+    (Loopback), Link-Local samt Metadatendiensten, unbestimmte, Multicast- oder
+    reservierte Adressen. Nicht auflösbar: nein.
+    """
+    if not host or host.lower() in _METADATA_HOSTS:
+        return False
+    try:
+        infos = aufloesen(host, None)
+    except OSError:
+        return False
+    if not infos:
+        return False
+    for info in infos:
+        try:
+            addr = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            return False
+        if (addr.is_loopback or addr.is_link_local or addr.is_multicast or addr.is_unspecified
+                or addr.is_reserved or str(addr) in _METADATA_HOSTS):
+            return False
+        if not (addr.is_private or addr in _CGNAT):
+            return False
+    return True
+
+
 def check_outbound_url(url: str) -> tuple[bool, str]:
     """``(erlaubt, Begruendung)`` für eine ausgehende Adresse."""
     if not url or len(url) > 2000:

@@ -86,6 +86,8 @@ _SPALTEN_NACH_DER_MARKE = (
     ("chat_sessions", "user_id"), ("notifications", "empfaenger_id"),
     # Freigabe nur zum Nutzen (n2o3p4q5r6s7)
     ("agent_access", "rolle"),
+    # GitLab als Anbieter der Projekt-Repos (m2gitlab1194)
+    ("teams", "repo_anbieter"),
     # Teams-Besprechungen (l0m1n2o3p4q5)
     ("meetings", "quelle"), ("meetings", "agent_id"), ("meetings", "teams_event_id"),
     ("meetings", "beginn"), ("meetings", "ende"), ("meetings", "status"),

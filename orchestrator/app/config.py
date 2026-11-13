@@ -302,6 +302,12 @@ class Settings(BaseSettings):
     egress_ki_zugang: str = ""
     # Codex-Zugang (ChatGPT-Anmeldung) nur als Platzhalter: "" aus, "alle" oder Agenten-IDs.
     egress_codex_zugang: str = ""
+    # Git-Projekte mit eigenem Server (core/projekt_git.py, #1194): Zertifizierungsstelle
+    # der Firma (PEM, eine oder mehrere) — gilt für Abfragen der Plattform, im Egress-Proxy
+    # und in den Agenten. Dazu Server im Firmennetz, die trotz interner Adresse abgefragt
+    # werden dürfen (Namen, Komma-getrennt). Beides nur durch Administratoren.
+    git_ca_zertifikate: str = ""
+    git_interne_server: str = ""
     # Agenten im Leerlauf selbst aktualisieren (core/agenten_aktualisieren.py): "leerlauf" | "aus".
     agenten_auto_update: str = "leerlauf"
     # Version, bei der das automatische Aktualisieren gescheitert ist — dann ruht es für sie.

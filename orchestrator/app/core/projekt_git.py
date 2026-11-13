@@ -1,8 +1,12 @@
 """Git-Projekte: Issues und Pull Requests eines Repos auf dem Board.
 
-Ein Projekt kann ein Repo haben: auf GitHub (``teams.repo`` = ``owner/name``) oder
-auf einem eigenen Forgejo/Gitea-Server (``teams.repo`` = ``https://server/owner/name``,
-siehe ``repo_ziel``; Anbieter ``githost/forgejo.py``). Der Scheduler gleicht alle zehn Minuten ab (``alle_abgleichen``), auf Knopfdruck
+Ein Projekt kann ein Repo haben: auf GitHub (``teams.repo`` = ``owner/name``), auf
+einem eigenen Forgejo/Gitea-Server (``teams.repo`` = ``https://server/owner/name``,
+Anbieter ``githost/forgejo.py``) oder auf GitLab — gitlab.com oder selbst betrieben
+(``teams.repo`` = ``https://server/gruppe/…/name``, ``teams.repo_anbieter`` = "gitlab",
+Anbieter ``githost/gitlab.py``); siehe ``repo_ziel``. Alle Anbieter liefern Issues
+und Pull bzw. Merge Requests in derselben Form — der Abgleich unten ist für alle
+derselbe. Der Scheduler gleicht alle zehn Minuten ab (``alle_abgleichen``), auf Knopfdruck
 auch sofort (``POST /teams/{id}/repo/abgleichen``):
 
 * offene Issues → Karten in der **Inbox** (neu) bzw. Titel/Text/Labels aktualisiert;
@@ -31,14 +35,19 @@ mit ihren eigenen Git-Werkzeugen. Ausnahmen: Übernahme und Rückgabe eines Issu
 (Tag und Kommentar mit Kopfzeile, ``core/uebernahme``), das Lösen einer liegen
 gebliebenen Übernahme und der Abschnitt für die ``AGENTS.md`` als Pull Request.
 Vor jedem ``git push`` eines Agenten fragt der Hook ``push_pruefen``. Eigene Server werden nur über https und nie im
-internen Netz abgefragt (``url_guard.check_outbound_url``).
+internen Netz abgefragt (``url_guard.check_outbound_url``) — außer der Administrator
+hat den Server ausdrücklich freigegeben (``server_pruefen``). Eine eigene
+Zertifizierungsstelle der Firma (``settings.git_ca_zertifikate``) gilt für eigene
+Server (``git_client``), im Egress-Proxy und in den Agenten.
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import re
+import ssl
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 from urllib.parse import urlsplit
@@ -55,6 +64,12 @@ from app.models.team import Team
 log = logging.getLogger(__name__)
 
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$")
+#: GitLab: Gruppen dürfen verschachtelt sein (``gruppe/untergruppe/name``).
+PFAD_RE = re.compile(r"^[A-Za-z0-9_.-]{1,100}(?:/[A-Za-z0-9_.-]{1,100}){1,19}$")
+#: Anbieter, deren Repos als volle Adresse am Projekt stehen (eigener Server).
+EIGENE_SERVER = ("forgejo", "gitlab")
+#: Was ``teams.repo_anbieter`` tragen darf (leer = aus der Adresse: GitHub oder Forgejo/Gitea).
+ANBIETER = ("gitlab",)
 SCHLIESST_RE = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s*#(\d+)", re.I)
 MAX_ISSUES = 300
 MAX_PRS = 30
@@ -84,21 +99,24 @@ class GitFehler(RuntimeError):
 
 
 _GITHUB_HOSTS = {"github.com", "www.github.com"}
+_GITLAB_HOSTS = {"gitlab.com", "www.gitlab.com"}
 
 
 class RepoZiel(NamedTuple):
-    """Wo ein Projekt-Repo liegt. ``art``: "github" oder "forgejo" (auch Gitea)."""
+    """Wo ein Projekt-Repo liegt. ``art``: "github", "forgejo" (auch Gitea) oder "gitlab"."""
 
     art: str
-    basis: str | None   # https://server (nur Forgejo/Gitea)
-    pfad: str           # owner/name
+    basis: str | None   # https://server (Forgejo/Gitea, GitLab)
+    pfad: str           # owner/name, bei GitLab auch gruppe/untergruppe/name
 
 
-def repo_ziel(repo: str) -> RepoZiel:
-    """GitHub-Repos stehen als ``owner/name``, Forgejo/Gitea als volle Adresse.
+def repo_ziel(repo: str, anbieter: str | None = None) -> RepoZiel:
+    """GitHub-Repos stehen als ``owner/name``, Forgejo/Gitea und GitLab als volle Adresse.
 
-    Eine nicht lesbare Adresse (Altbestand, Handarbeit in der Datenbank) wird
-    ``ungueltig`` — sie darf den Abgleich der anderen Projekte nicht abbrechen.
+    ``anbieter`` (``teams.repo_anbieter``): "gitlab" für einen eigenen GitLab-Server;
+    gitlab.com erkennt die Adresse selbst. Eine nicht lesbare Adresse (Altbestand,
+    Handarbeit in der Datenbank) wird ``ungueltig`` — sie darf den Abgleich der
+    anderen Projekte nicht abbrechen.
     """
     if repo.startswith("https://"):
         try:
@@ -108,13 +126,24 @@ def repo_ziel(repo: str) -> RepoZiel:
             return RepoZiel("ungueltig", None, "")
         if not teile.hostname or ":" in teile.hostname:
             return RepoZiel("ungueltig", None, "")
-        return RepoZiel("forgejo", f"https://{teile.hostname}{port}", teile.path.strip("/"))
+        art = "gitlab" if anbieter == "gitlab" or teile.hostname.lower() in _GITLAB_HOSTS else "forgejo"
+        return RepoZiel(art, f"https://{teile.hostname}{port}", teile.path.strip("/"))
     return RepoZiel("github", None, repo)
 
 
-def repo_pruefen(repo: str | None) -> str | None:
+def team_ziel(team: Team) -> RepoZiel:
+    """``repo_ziel`` für das Repo eines Projekts, mit seinem Anbieter."""
+    return repo_ziel(team.repo or "", getattr(team, "repo_anbieter", None))
+
+
+def repo_pruefen(repo: str | None, anbieter: str | None = None) -> str | None:
     """Eingabe → gespeicherte Form: ``owner/name`` (GitHub) oder
-    ``https://server/owner/name`` (Forgejo/Gitea, nur https)."""
+    ``https://server/owner/name`` (Forgejo/Gitea, GitLab — nur https, ohne
+    Zugangsdaten in der Adresse). GitLab erlaubt verschachtelte Gruppen; eine
+    kopierte Adresse wie ``…/repo/-/issues`` wird auf das Repo gekürzt."""
+    if anbieter not in (None, "", *ANBIETER):
+        raise ValueError("Unbekannter Anbieter.")
+    gitlab = anbieter == "gitlab"
     roh = (repo or "").strip()
     if not roh:
         return None
@@ -123,8 +152,12 @@ def repo_pruefen(repo: str | None) -> str | None:
 
         teile = urlsplit(roh)
         host = eindeutiger_host(roh)
-        pfad = teile.path.strip("/").removesuffix(".git")
-        if host in _GITHUB_HOSTS:
+        gitlab = gitlab or host in _GITLAB_HOSTS
+        pfad = teile.path.strip("/")
+        if gitlab:
+            pfad = pfad.split("/-/", 1)[0].removesuffix("/-")
+        pfad = pfad.removesuffix(".git")
+        if host in _GITHUB_HOSTS and not gitlab:
             roh = pfad
         else:
             if teile.scheme.lower() != "https":
@@ -135,15 +168,157 @@ def repo_pruefen(repo: str | None) -> str | None:
             # Adresse danach nicht mehr lesbar.
             if ":" in host or "[" in teile.netloc:
                 raise ValueError("Bitte einen Servernamen angeben, keine IP-Adresse in eckigen Klammern.")
-            if not REPO_RE.match(pfad) or ".." in pfad:
-                raise ValueError("Die Adresse muss auf owner/name enden, z. B. https://git.example.com/team/repo.")
+            muster = PFAD_RE if gitlab else REPO_RE
+            if not muster.match(pfad) or any(t in (".", "..") for t in pfad.split("/")):
+                raise ValueError("Die Adresse muss auf gruppe/name enden, z. B. https://gitlab.example.com/team/repo."
+                                 if gitlab else
+                                 "Die Adresse muss auf owner/name enden, z. B. https://git.example.com/team/repo.")
             port = f":{teile.port}" if teile.port else ""
-            return f"https://{host}{port}/{pfad}"
+            gespeichert = f"https://{host}{port}/{pfad}"
+            if len(gespeichert) > 200:
+                raise ValueError("Die Adresse ist zu lang (höchstens 200 Zeichen).")
+            return gespeichert
+    if gitlab:
+        raise ValueError("GitLab-Repos bitte mit voller Adresse angeben, z. B. https://gitlab.example.com/team/repo.")
     roh = roh.strip("/")
     if not REPO_RE.match(roh) or ".." in roh:
         raise ValueError("Repo bitte als owner/name (GitHub) oder als Adresse "
-                         "(Forgejo/Gitea, z. B. https://git.example.com/team/repo) angeben.")
+                         "(Forgejo/Gitea/GitLab, z. B. https://git.example.com/team/repo) angeben.")
     return roh
+
+
+def anbieter_fuer(repo: str | None, anbieter: str | None) -> str | None:
+    """Was in ``teams.repo_anbieter`` steht: "gitlab" für GitLab-Repos, sonst nichts
+    (GitHub und Forgejo/Gitea erkennt ``repo_ziel`` an der Adresse)."""
+    if not repo:
+        return None
+    return "gitlab" if repo_ziel(repo, anbieter).art == "gitlab" else None
+
+
+def interne_git_server() -> set[str]:
+    """Server im Firmennetz, die der Administrator für Git-Projekte freigegeben hat
+    (``settings.git_interne_server``: Namen, durch Komma oder Zeilen getrennt)."""
+    from app.config import settings
+
+    roh = str(getattr(settings, "git_interne_server", "") or "")
+    return {t.strip().lower().rstrip(".") for t in re.split(r"[,\s]+", roh) if t.strip()}
+
+
+def server_pruefen(basis: str) -> tuple[bool, str]:
+    """Darf die Plattform diesen eigenen Git-Server abfragen? ``(erlaubt, Grund)``.
+
+    Nur https, nie ein internes Ziel (``url_guard.check_outbound_url``) — außer der
+    Name steht in ``interne_git_server`` UND zeigt ins Firmennetz, nicht auf die
+    Anlage selbst (Loopback), Link-Local oder Metadaten-Dienste.
+    """
+    from app.core import url_guard
+
+    erlaubt, grund = url_guard.check_outbound_url(basis)
+    if erlaubt:
+        return True, ""
+    try:
+        teile = urlsplit(basis)
+        host = (teile.hostname or "").lower()
+    except ValueError:
+        return False, grund
+    if (teile.scheme == "https" and host and host in interne_git_server()
+            and not teile.username and not teile.password and url_guard.firmennetz(host)):
+        return True, ""
+    return False, grund
+
+
+MAX_CA_ZERTIFIKATE = 10
+MAX_CA_ZEICHEN = 64_000
+MAX_INTERNE_SERVER = 20
+_HOST_TEIL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+_HOSTNAME_RE = re.compile(rf"^(?=.{{1,253}}$){_HOST_TEIL}(?:\.{_HOST_TEIL})*$")
+
+
+def ca_pruefen(pem: str | None) -> str:
+    """Zertifizierungsstelle(n) der Firma prüfen → gespeicherte Form (leer = keine).
+
+    Nur öffentliche Zertifikate im PEM-Format, höchstens zehn; ein privater
+    Schlüssel wird abgewiesen (er gehört nie in die Plattform)."""
+    roh = (pem or "").strip()
+    if not roh:
+        return ""
+    if len(roh) > MAX_CA_ZEICHEN:
+        raise ValueError("Zu groß — höchstens 64 KB Zertifikate.")
+    if "PRIVATE KEY" in roh:
+        raise ValueError("Das ist ein privater Schlüssel. Bitte nur das öffentliche Zertifikat einfügen.")
+    from cryptography import x509
+
+    try:
+        zertifikate = x509.load_pem_x509_certificates(roh.encode())
+    except ValueError as e:
+        raise ValueError("Kein lesbares Zertifikat im PEM-Format (-----BEGIN CERTIFICATE-----).") from e
+    if len(zertifikate) > MAX_CA_ZERTIFIKATE:
+        raise ValueError(f"Höchstens {MAX_CA_ZERTIFIKATE} Zertifikate.")
+    try:
+        ssl.create_default_context(cadata=roh)
+    except (ssl.SSLError, ValueError) as e:
+        raise ValueError("Das Zertifikat lässt sich nicht als Zertifizierungsstelle laden.") from e
+    return "\n".join(z.public_bytes(_pem_kodierung()).decode().strip() for z in zertifikate)
+
+
+def _pem_kodierung():
+    from cryptography.hazmat.primitives.serialization import Encoding
+
+    return Encoding.PEM
+
+
+def interne_server_pruefen(text: str | None) -> str:
+    """Freigegebene Server im Firmennetz prüfen → gespeicherte Form (Komma-getrennt).
+
+    Nur Servernamen, keine Adressen mit Schema, Pfad oder Muster — freigegeben wird
+    genau dieser Name, nicht ein ganzes Netz."""
+    namen: list[str] = []
+    for teil in re.split(r"[,\s]+", (text or "").strip().lower()):
+        teil = teil.rstrip(".")
+        if not teil:
+            continue
+        if not _HOSTNAME_RE.match(teil) or "." not in teil:
+            raise ValueError(f"„{teil[:80]}“ ist kein Servername (z. B. gitlab.intern.example.com).")
+        if teil not in namen:
+            namen.append(teil)
+    if len(namen) > MAX_INTERNE_SERVER:
+        raise ValueError(f"Höchstens {MAX_INTERNE_SERVER} Server.")
+    return ",".join(namen)
+
+
+#: SSL-Kontext zur eigenen Zertifizierungsstelle (Prüfsumme → Kontext, nur der letzte).
+_SSL: dict[str, ssl.SSLContext] = {}
+
+
+def ssl_kontext(pem: str | None = None) -> ssl.SSLContext | bool:
+    """Prüfung der Server-Zertifikate: die üblichen Stellen plus die der Firma.
+
+    Ohne eigene Stelle ``True`` (Standard von httpx). Eine unlesbare Stelle fällt
+    NICHT auf „ungeprüft“ zurück — dann gelten nur die üblichen."""
+    from app.config import settings
+
+    pem = (pem if pem is not None else str(getattr(settings, "git_ca_zertifikate", "") or "")).strip()
+    if not pem:
+        return True
+    schluessel = hashlib.sha256(pem.encode()).hexdigest()
+    if schluessel not in _SSL:
+        import certifi
+
+        kontext = ssl.create_default_context(cafile=certifi.where())
+        try:
+            kontext.load_verify_locations(cadata=pem)
+        except (ssl.SSLError, ValueError) as e:
+            log.warning("[Projekt] Eigene Zertifizierungsstelle nicht lesbar: %s", e)
+        _SSL.clear()
+        _SSL[schluessel] = kontext
+    return _SSL[schluessel]
+
+
+def git_client(timeout: float, anbieter=None) -> httpx.AsyncClient:
+    """HTTP-Client für Abfragen des Git-Servers: ohne Weiterleitungen (der Token ginge
+    sonst an ein ungeprüftes Ziel), bei eigenen Servern mit der Stelle der Firma."""
+    verify = ssl_kontext() if getattr(anbieter, "base_url", None) else True
+    return httpx.AsyncClient(timeout=httpx.Timeout(timeout), follow_redirects=False, verify=verify)
 
 
 async def _ersteller(db: AsyncSession, team: Team):
@@ -190,21 +365,22 @@ async def zugang(db: AsyncSession, redis, team: Team | None = None):
     from app.models.user import UserRole
     from app.services.oauth_service import OAuthService
 
-    ziel = repo_ziel(team.repo) if team is not None and team.repo else None
+    ziel = team_ziel(team) if team is not None and team.repo else None
     if ziel is not None and ziel.art == "ungueltig":
         raise GitFehler("Die Repo-Adresse ist nicht lesbar — bitte im Projekt neu eintragen.")
-    if ziel is not None and ziel.art == "forgejo":
-        # Eigener Git-Server: nur der Schluessel des Projekts oder anonym — der
-        # GitHub-Zugang der Anlage gilt dort nicht. Vor jeder Abfrage pruefen,
-        # dass die Adresse nicht ins interne Netz zeigt.
+    if ziel is not None and ziel.art in EIGENE_SERVER:
+        # Eigener Git-Server (Forgejo/Gitea, GitLab): nur der Schluessel des Projekts
+        # oder anonym — der GitHub-Zugang der Anlage gilt dort nicht. Vor jeder
+        # Abfrage pruefen, dass die Adresse nicht ins interne Netz zeigt.
         from app.core.githost.forgejo import ForgejoHostProvider
-        from app.core.url_guard import check_outbound_url
+        from app.core.githost.gitlab import GitLabHostProvider
 
         # Namensaufloesung im Thread: sie blockiert sonst die Ereignisschleife.
-        erlaubt, grund = await asyncio.to_thread(check_outbound_url, ziel.basis or "")
+        erlaubt, grund = await asyncio.to_thread(server_pruefen, ziel.basis or "")
         if not erlaubt:
             raise GitFehler(f"Server {ziel.basis} wird nicht abgefragt: {grund}.")
-        return (await schluessel_token(db, team, nur_eigener=True)) or "", ForgejoHostProvider(ziel.basis or "")
+        art = GitLabHostProvider if ziel.art == "gitlab" else ForgejoHostProvider
+        return (await schluessel_token(db, team, nur_eigener=True)) or "", art(ziel.basis or "")
 
     token = await schluessel_token(db, team) if team is not None else None
     if token is None:
@@ -777,7 +953,8 @@ async def _eigene_verlaengern(db: AsyncSession, team: Team, anbieter, client, to
                                                nr=karte.extern_nr, projekt_name=team.name, jetzt=jetzt,
                                                dauer=dauer, seit=u.seit)
         try:
-            if await anbieter.kommentar_aendern(client, token, repo, u.kommentar_id, text):
+            if await anbieter.kommentar_aendern(client, token, repo, u.kommentar_id, text,
+                                                nummer=karte.extern_nr):
                 u.bis, u.geaendert = jetzt + dauer, jetzt
                 karte.uebernahme = u.als_dict()
         except Exception as e:  # noqa: BLE001 — Verlängern ist Beiwerk; der nächste Abgleich versucht es wieder
@@ -826,7 +1003,7 @@ async def konflikte_melden(db: AsyncSession, team: Team, karten: list, jetzt: da
 
 async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client: httpx.AsyncClient) -> dict:
     """Ein Projekt mit seinem Repo abgleichen. Der Aufrufer committet."""
-    repo = repo_ziel(team.repo).pfad
+    repo = team_ziel(team).pfad
     server = getattr(anbieter, "anzeigename", "GitHub")
     herkunft = "github" if server == "GitHub" else server
     try:
@@ -1109,7 +1286,7 @@ async def projekt_abgleichen(db: AsyncSession, redis, team: Team, docker=None) -
         # Lesevorgang — ein Server, der alle paar Sekunden ein Byte schickt, hielte
         # sonst den Scheduler-Takt aller Projekte fest.
         async with asyncio.timeout(ABGLEICH_FRIST_SEKUNDEN):
-            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0), follow_redirects=False) as client:
+            async with git_client(10.0, anbieter) as client:
                 ergebnis = await abgleichen(db, team, token, anbieter, client)
         await db.commit()
         await _rueckkanal_wecken(db, redis, docker, team_id, ergebnis.get("rueckkanal") or [])
@@ -1224,8 +1401,8 @@ async def uebernahme_live(db: AsyncSession, redis, team: Team,
     await uebernahme.anlage_laden(db)
     try:
         token, anbieter = await zugang(db, redis, team)
-        repo = repo_ziel(team.repo).pfad
-        async with httpx.AsyncClient(timeout=httpx.Timeout(8.0), follow_redirects=False) as client:
+        repo = team_ziel(team).pfad
+        async with git_client(8.0, anbieter) as client:
             issue = await anbieter.get_issue(client, token, repo, karte.extern_nr)
             if not isinstance(issue, dict):
                 return karte.extern_bearbeiter, zuletzt
@@ -1275,7 +1452,7 @@ def erlaubte_hosts(team: Team) -> set[str]:
     """Hosts, auf die ein Kommentar der Plattform verlinken darf: der des Repos und der der Anlage."""
     from app.config import settings
 
-    ziel = repo_ziel(team.repo or "")
+    ziel = team_ziel(team)
     hosts = {"github.com"} if ziel.art == "github" else {urlsplit(ziel.basis or "").hostname or ""}
     try:
         hosts.add(urlsplit(getattr(settings, "public_app_url", "") or "").hostname or "")
@@ -1327,8 +1504,8 @@ async def uebergabe_schreiben(db: AsyncSession, redis, team: Team, karte: Projek
                                           von_name=von_name, vorher_wer=vorher_wer, stand=stand,
                                           naechster_schritt=naechster_schritt, nr=karte.extern_nr, jetzt=jetzt,
                                           dauer=uebernahme.dauer_fuer(team))
-    repo = repo_ziel(team.repo).pfad
-    async with httpx.AsyncClient(timeout=httpx.Timeout(10.0), follow_redirects=False) as client:
+    repo = team_ziel(team).pfad
+    async with git_client(10.0, anbieter) as client:
         tag = passendes_tag("in_arbeit", await repo_tags(anbieter, client, token, repo))
         if not await anbieter.add_labels(client, token, repo, karte.extern_nr, [tag]):
             raise GitFehler(f"Tag {tag} ließ sich nicht setzen (Schreibrecht für Issues?).")
@@ -1367,8 +1544,8 @@ async def uebernahme_melden(team_id: str, karte_id: str, redis, *, agent_name: s
             token, anbieter = await zugang(db, redis, team)
             if not token:
                 raise GitFehler("ohne Schlüssel kann das Board nichts ins Repo schreiben")
-            repo = repo_ziel(team.repo).pfad
-            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0), follow_redirects=False) as client:
+            repo = team_ziel(team).pfad
+            async with git_client(10.0, anbieter) as client:
                 if uebernehmen:
                     tag = passendes_tag("in_arbeit", await repo_tags(anbieter, client, token, repo))
                     ok = await anbieter.add_labels(client, token, repo, nr, [tag])
@@ -1411,13 +1588,13 @@ async def extern_freigeben(db: AsyncSession, redis, team: Team, karte: ProjektKa
     token, anbieter = await zugang(db, redis, team)
     if not token:
         raise GitFehler("Ohne Schlüssel kann das Board nichts ins Repo schreiben (Bearbeiten → Schlüssel).")
-    repo, nr = repo_ziel(team.repo).pfad, karte.extern_nr
+    repo, nr = team_ziel(team).pfad, karte.extern_nr
     letzte = extern_regung(karte)
     seit = ""
     if letzte is not None:
         stunden = max(1, int((datetime.now(timezone.utc) - letzte).total_seconds() // 3600))
         seit = f" seit {stunden} Std."
-    async with httpx.AsyncClient(timeout=httpx.Timeout(10.0), follow_redirects=False) as client:
+    async with git_client(10.0, anbieter) as client:
         issue = await anbieter.get_issue(client, token, repo, nr)
         if not isinstance(issue, dict):
             raise GitFehler(f"Issue #{nr} ist nicht lesbar.")
@@ -1477,8 +1654,8 @@ async def status_ins_repo(db: AsyncSession, redis, team: Team, karte: ProjektKar
     token, anbieter = zugang_daten if zugang_daten is not None else await zugang(db, redis, team)
     if not token:
         raise GitFehler("Ohne Schlüssel kann das Board nichts ins Repo schreiben (Bearbeiten → Schlüssel).")
-    repo, nr = repo_ziel(team.repo).pfad, karte.extern_nr
-    async with httpx.AsyncClient(timeout=httpx.Timeout(10.0), follow_redirects=False) as client:
+    repo, nr = team_ziel(team).pfad, karte.extern_nr
+    async with git_client(10.0, anbieter) as client:
         issue = await anbieter.get_issue(client, token, repo, nr) if hasattr(anbieter, "get_issue") else None
         aktuell = _labels(issue) if isinstance(issue, dict) else list(karte.labels or [])
         tag = None
@@ -1555,8 +1732,8 @@ async def issue_kommentieren(db: AsyncSession, redis, team: Team, karte: Projekt
     if not await _kommentar_platz(redis, agent_id):
         raise ZuVieleKommentare(f"Höchstens {ISSUE_KOMMENTARE_JE_STUNDE} Issue-Kommentare je Stunde — bitte "
                                 "später weiter.")
-    async with httpx.AsyncClient(timeout=httpx.Timeout(10.0), follow_redirects=False) as client:
-        await anbieter.comment_issue(client, token, repo_ziel(team.repo).pfad, karte.extern_nr,
+    async with git_client(10.0, anbieter) as client:
+        await anbieter.comment_issue(client, token, team_ziel(team).pfad, karte.extern_nr,
                                      uebernahme.nachricht_kommentar(agent_name=agent_name, agent_id=agent_id,
                                                                     text=sauber))
     return sauber
@@ -1639,7 +1816,8 @@ def werkzeug_grund(art: str | None, werkzeug: str, eingabe: dict | None) -> str 
 
 
 def remote_ziel(remote: str | None) -> tuple[str, str] | None:
-    """(Host, owner/name) aus einer Remote-Adresse — https, ssh oder ``git@host:owner/name``."""
+    """(Host, owner/name) aus einer Remote-Adresse — https, ssh oder ``git@host:owner/name``
+    (bei GitLab auch mit Untergruppen)."""
     roh = (remote or "").strip()
     if not roh or len(roh) > 500 or any(z.isspace() for z in roh):
         return None
@@ -1653,21 +1831,21 @@ def remote_ziel(remote: str | None) -> tuple[str, str] | None:
         except ValueError:
             return None
     pfad = pfad.strip("/").removesuffix(".git")
-    if not host or not REPO_RE.match(pfad):
+    if not host or not PFAD_RE.match(pfad) or ".." in pfad.split("/"):
         return None
     return host.lower(), pfad.lower()
 
 
-def repo_passt(repo: str, remote: str | None) -> bool:
+def repo_passt(repo: str, remote: str | None, anbieter: str | None = None) -> bool:
     """Gehört die Remote-Adresse zum Repo des Projekts?"""
     ziel = remote_ziel(remote)
     if ziel is None:
         return False
     host, pfad = ziel
-    projekt = repo_ziel(repo)
+    projekt = repo_ziel(repo, anbieter)
     if projekt.pfad.lower() != pfad:
         return False
-    if projekt.art == "forgejo":
+    if projekt.art in EIGENE_SERVER:
         return (urlsplit(projekt.basis or "").hostname or "").lower() == host
     # GitHub (auch Enterprise): der Pfad genügt — ein eigener Forgejo-Server mit
     # demselben owner/name stünde im Projekt als volle Adresse.
@@ -1721,7 +1899,8 @@ async def push_pruefen(db: AsyncSession, redis, agent_id: str, *, lauf: str | No
             continue
         remote = ziel.get("remote")
         if remote:
-            kandidaten = [t for t in projekte_des_agenten if repo_passt(t.repo, remote)]
+            kandidaten = [t for t in projekte_des_agenten
+                          if repo_passt(t.repo, remote, getattr(t, "repo_anbieter", None))]
         else:
             kandidaten = projekte_des_agenten if len(projekte_des_agenten) == 1 else []
         if not kandidaten:
@@ -1819,9 +1998,9 @@ async def _uebernahme_im_repo(db: AsyncSession, redis, team: Team, nr: int,
         raise _ZuVieleFragen()
     try:
         token, anbieter = await zugang(db, redis, team)
-        repo = repo_ziel(team.repo).pfad
+        repo = team_ziel(team).pfad
         # Knapp: der Hook wartet höchstens 15 s auf die ganze Entscheidung.
-        async with httpx.AsyncClient(timeout=httpx.Timeout(4.0), follow_redirects=False) as http:
+        async with git_client(4.0, anbieter) as http:
             issue = await anbieter.get_issue(http, token, repo, nr)
             if not isinstance(issue, dict):
                 return False, None
@@ -1880,11 +2059,11 @@ async def agents_md_pr(db: AsyncSession, redis, team: Team) -> dict:
         raise GitFehler("Ohne Schlüssel kann das Board nichts ins Repo schreiben (Bearbeiten → Schlüssel).")
     if not hasattr(anbieter, "pull_anlegen"):
         raise GitFehler("Dieser Git-Server kann hier keine Pull Requests anlegen — bitte den Text kopieren.")
-    repo = repo_ziel(team.repo).pfad
+    repo = team_ziel(team).pfad
     await uebernahme.anlage_laden(db)
     abschnitt = uebernahme.agents_md_abschnitt()
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(15.0), follow_redirects=False) as client:
+        async with git_client(15.0, anbieter) as client:
             basis = await anbieter.standard_branch(client, token, repo) or "main"
             auf_basis, _ = await anbieter.datei_holen(client, token, repo, "AGENTS.md", basis)
             if auf_basis is not None and uebernahme.agents_md_einfuegen(auf_basis, abschnitt) == auf_basis:
@@ -1901,7 +2080,13 @@ async def agents_md_pr(db: AsyncSession, redis, team: Team) -> dict:
                 "Regeln für Agenten an diesem Repo: Übernahme-Kopfzeile, Lebenszeichen, der Branch gehört dem "
                 "Übernehmer, Übergabe und Rückkanal. Erzeugt über das Projekt-Board von AI Employee.")
     except RuntimeError as e:
-        raise GitFehler(f"Kein Pull Request angelegt: {e}") from e
+        raise GitFehler(f"Kein {_pr_wort(anbieter)} angelegt: {e}") from e
     except httpx.HTTPError as e:
-        raise GitFehler(f"Kein Pull Request angelegt: der Server antwortet nicht ({type(e).__name__}).") from e
+        raise GitFehler(f"Kein {_pr_wort(anbieter)} angelegt: der Server antwortet nicht "
+                        f"({type(e).__name__}).") from e
     return {"url": _sichere_url(url, anbieter), "aktuell": False}
+
+
+def _pr_wort(anbieter) -> str:
+    """GitLab sagt Merge Request, die anderen Pull Request."""
+    return "Merge Request" if getattr(anbieter, "art", None) == "gitlab" else "Pull Request"

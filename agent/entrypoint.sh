@@ -222,12 +222,35 @@ egress_ca_fuer_browser() {
   fi
 }
 
+# Eigene Git-Server (#1194): Zertifizierungsstelle der Firma (z. B. fuer ein selbst
+# betriebenes GitLab) kommt als AIE_GIT_CA (nur oeffentliche Zertifikate, geprueft
+# im Orchestrator) und geht in den Systemspeicher -- git und curl trauen dem Server
+# dann auch ohne Egress-Proxy. Gleiche Regeln wie oben: Scheitern haelt nichts auf.
+git_ca_einspielen() {
+  [ -n "${AIE_GIT_CA:-}" ] || return 0
+  case "$AIE_GIT_CA" in
+    "-----BEGIN CERTIFICATE-----"*) ;;
+    *) echo "[entrypoint] WARNUNG: AIE_GIT_CA ist kein Zertifikat -- nicht eingespielt"; return 0 ;;
+  esac
+  case "$AIE_GIT_CA" in
+    *"PRIVATE KEY"*) echo "[entrypoint] WARNUNG: AIE_GIT_CA enthaelt einen Schluessel -- nicht eingespielt"; return 0 ;;
+  esac
+  if ! { mkdir -p "$CA_DIR" && printf '%s\n' "$AIE_GIT_CA" > "$CA_DIR/aie-git-ca.crt"; }; then
+    echo "[entrypoint] WARNUNG: Stelle der Firma nicht geschrieben"
+    return 0
+  fi
+  if ! update-ca-certificates >/dev/null 2>&1; then
+    echo "[entrypoint] WARNUNG: Stelle der Firma nicht im Systemspeicher"
+  fi
+}
+
 
 # Nur die Funktionen bereitstellen -- die Tests binden diese Datei ein und
 # rufen update_cli danach gezielt auf.
 [ "${ENTRYPOINT_NUR_DEFINIEREN:-}" = "1" ] && return 0
 
 egress_ca_einspielen
+git_ca_einspielen
 starte_cli_aktualisierung
 
 exec gosu agent "$@"

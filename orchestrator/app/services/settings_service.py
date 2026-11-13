@@ -86,6 +86,10 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "egress_proxy_enabled",
     "egress_ki_zugang",
     "egress_codex_zugang",
+    # Eigene Git-Server (#1194, api/settings.py /git-server): Zertifizierungsstelle der
+    # Firma und freigegebene Server im Firmennetz. Ohne Eintrag hier scheitert das Speichern still.
+    "git_ca_zertifikate",
+    "git_interne_server",
     "agenten_auto_update",
     "agenten_auto_update_angehalten",
     "aws_region",

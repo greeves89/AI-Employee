@@ -6,6 +6,9 @@
 * In aufgebrochenen Verbindungen werden Platzhalter durch die echten Werte
   ersetzt — nur, wenn der Orchestrator es fuer genau dieses Ziel erlaubt.
 * Ziele mit interner Adresse sind gesperrt; verbunden wird mit der geprueften IP.
+  Ausnahme: Git-Server im Firmennetz, die der Administrator freigegeben hat.
+* Eine Zertifizierungsstelle der Firma (eigene Git-Server) gilt zusaetzlich, wenn
+  der Proxy die Gegenseite prueft (``_upstream_ca``).
 
 Die Logik steht in egress_logik.py (ohne mitmproxy, testbar).
 """
@@ -135,6 +138,30 @@ class AieEgress:
         self.agenten: dict[str, tuple[str, str]] = {}   # client_conn.id → Agent
         self.ziele: dict[str, tuple[str, int]] = {}     # client_conn.id → CONNECT-Ziel (Host, Port)
         self.maske = logik.Maske()
+        self._ca_stand: str | None = None   # zuletzt gesetzte Stelle der Firma
+
+    def _upstream_ca(self) -> None:
+        """Stelle der Firma (vom Orchestrator) in die Prüfung der Gegenseite übernehmen.
+
+        mitmproxy kennt nur EINE Datei; darin stehen die üblichen Stellen (certifi) und
+        die der Firma. Ohne eigene Stelle gilt wieder der Standard."""
+        pem = self.orch.git_ca or ""
+        if pem == self._ca_stand:
+            return
+        try:
+            if not pem:
+                ctx.options.update(ssl_verify_upstream_trusted_ca=None)
+            else:
+                import certifi
+                import hashlib
+                import tempfile
+
+                pfad = Path(tempfile.gettempdir(), f"aie-upstream-{hashlib.sha256(pem.encode()).hexdigest()[:16]}.pem")
+                pfad.write_text(logik.ca_buendel(Path(certifi.where()).read_text(), pem))
+                ctx.options.update(ssl_verify_upstream_trusted_ca=str(pfad))
+            self._ca_stand = pem
+        except Exception:  # noqa: BLE001 — dann gilt die bisherige Prüfung, nie gar keine
+            log.exception("Egress-Proxy: Stelle der Firma nicht übernommen")
 
     async def _hosts(self, agent):
         return await asyncio.to_thread(self.orch.hosts, agent)
@@ -177,6 +204,7 @@ class AieEgress:
             return
         self.agenten[flow.client_conn.id] = agent
         self.ziele[flow.client_conn.id] = (flow.request.host.lower().rstrip("."), flow.request.port)
+        self._upstream_ca()
 
     def tcp_start(self, flow):
         """Kein HTTP im Tunnel (rohes TCP, auch nach dem Aufbrechen): Für Agenten mit Zielliste
@@ -201,7 +229,7 @@ class AieEgress:
             return
         host, port = data.server.address
         try:
-            ip = await asyncio.to_thread(logik.ziel_adresse, host, port)
+            ip = await asyncio.to_thread(logik.ziel_adresse, host, port, interne=self.orch.interne)
         except logik.Abgelehnt as e:
             data.server.error = e.text
             return

@@ -180,6 +180,8 @@ async def verbindung(body: Verbindung, request: Request, db: AsyncSession = Depe
     antwort: dict = {"hosts": sorted(hosts)}
     if anonym:
         antwort["anonym"] = anonym
+    # Eigene Git-Server (#1194): Stelle der Firma und freigegebene Server im Firmennetz.
+    antwort.update(egress.git_server_fuer_proxy())
     # Zielliste am Ausgang (core/zielliste): Ziele, für die die Plattform Zugänge einsetzt,
     # sind immer erlaubt — sonst bräche der Agent an seinen eigenen Schlüsseln.
     from app.core import zielliste

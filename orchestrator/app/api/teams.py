@@ -35,6 +35,9 @@ class CreateTeam(BaseModel):
     takt_minuten: int | None = None
     geteilt_mit: list[str] = []
     repo: str | None = None
+    # Anbieter des Repos: "github", "forgejo" (auch Gitea) oder "gitlab" (auch selbst
+    # betrieben). Leer = aus der Adresse (owner/name = GitHub, volle Adresse = Forgejo/Gitea).
+    repo_anbieter: str | None = Field(default=None, pattern="^(|github|forgejo|gitlab)$")
     repo_secret_id: int | None = None
     angebundene_brains: list[str] = []
 
@@ -49,8 +52,10 @@ class UpdateTeam(BaseModel):
     takt_minuten: int | None = None
     # Nutzer-IDs, die das Projekt sehen dürfen (ersetzt die bisherige Liste).
     geteilt_mit: list[str] | None = None
-    # GitHub-Repo (owner/name); leer entfernt es.
+    # Repo (GitHub owner/name oder volle Adresse); leer entfernt es.
     repo: str | None = None
+    # Anbieter (wie CreateTeam); ohne Angabe bleibt der bisherige.
+    repo_anbieter: str | None = Field(default=None, pattern="^(|github|forgejo|gitlab)$")
     # Schlüssel für private Repos (Schlüsselverwaltung); 0 entfernt ihn.
     repo_secret_id: int | None = None
     # Second Brains (Labels), die die Projektsuche mit durchsucht; [] löst alle.
@@ -97,6 +102,7 @@ def _serialize(t: Team) -> dict:
         "repo_abgleich_at": t.repo_abgleich_at.isoformat() if getattr(t, "repo_abgleich_at", None) else None,
         "repo_fehler": getattr(t, "repo_fehler", None),
         "repo_secret_id": getattr(t, "repo_secret_id", None),
+        "repo_anbieter": _anbieter_anzeige(t),
         "angebundene_brains": list(getattr(t, "angebundene_brains", None) or []),
         "budget_usd": getattr(t, "budget_usd", None),
         "uebernahme_stunden": getattr(t, "uebernahme_stunden", None),
@@ -107,6 +113,16 @@ def _serialize(t: Team) -> dict:
         "repo_oeffentlich": getattr(t, "repo_oeffentlich", None),
         "art": getattr(t, "art", None) or "projekt",
     }
+
+
+def _anbieter_anzeige(t: Team) -> str | None:
+    """Anbieter des Repos für die Oberfläche: "github", "forgejo" oder "gitlab"."""
+    if not getattr(t, "repo", None):
+        return None
+    from app.core.projekt_git import team_ziel
+
+    art = team_ziel(t).art
+    return art if art in ("github", "forgejo", "gitlab") else None
 
 
 def _fuer(t: Team, user) -> dict:
@@ -190,18 +206,23 @@ async def _is_team_member(team: Team, user, db: AsyncSession) -> bool:
     return _ist_ersteller(team, user) or str(getattr(user, "id", "")) in set(getattr(team, "geteilt_mit", None) or [])
 
 
-def _repo_setzen(t: Team, repo: str, user) -> None:
+def _repo_setzen(t: Team, repo: str, user, anbieter: str | None = None) -> None:
     """Repo an ein Projekt hängen (Ersteller). Gelesen wird mit dem Schlüssel des
-    Projekts, anonym — oder, NUR bei Projekten von Administratoren, mit dem
-    GitHub-Zugang der Anlage (core/projekt_git.zugang)."""
-    from app.core.projekt_git import repo_pruefen
+    Projekts, anonym — oder, NUR bei GitHub-Projekten von Administratoren, mit dem
+    GitHub-Zugang der Anlage (core/projekt_git.zugang).
 
+    ``anbieter``: "gitlab" für einen GitLab-Server (gitlab.com erkennt die Adresse
+    selbst), "github"/"forgejo"/"" = aus der Adresse; None = der bisherige."""
+    from app.core.projekt_git import ANBIETER, anbieter_fuer, repo_pruefen
+
+    gewaehlt = getattr(t, "repo_anbieter", None) if anbieter is None else (anbieter if anbieter in ANBIETER else None)
     try:
-        neu = repo_pruefen(repo)
+        neu = repo_pruefen(repo, gewaehlt)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    if neu != t.repo:
-        t.repo, t.repo_abgleich_at, t.repo_fehler = neu, None, None
+    neuer_anbieter = anbieter_fuer(neu, gewaehlt)
+    if (neu, neuer_anbieter) != (t.repo, getattr(t, "repo_anbieter", None)):
+        t.repo, t.repo_anbieter, t.repo_abgleich_at, t.repo_fehler = neu, neuer_anbieter, None, None
 
 
 async def _brains_setzen(db: AsyncSession, t: Team, labels: list[str], user) -> list[str]:
@@ -266,7 +287,7 @@ async def create_team(body: CreateTeam, user=Depends(require_auth), db: AsyncSes
         created_by=getattr(user, "email", None) or str(getattr(user, "id", "")),
     )
     if body.repo:
-        _repo_setzen(team, body.repo, user)
+        _repo_setzen(team, body.repo, user, body.repo_anbieter)
     if body.repo_secret_id:
         team.repo_secret_id = await _repo_schluessel(db, body.repo_secret_id, user)
     if body.angebundene_brains:
@@ -443,7 +464,7 @@ async def update_team(team_id: str, body: UpdateTeam, user=Depends(require_auth)
     _nur_ersteller(t, user)
     await _nur_eigene_agenten([*(body.member_agent_ids or []), body.lead_agent_id], user, db)
     if body.geteilt_mit is not None: t.geteilt_mit = await _freigabe(db, body.geteilt_mit, user)
-    if body.repo is not None: _repo_setzen(t, body.repo, user)
+    if body.repo is not None: _repo_setzen(t, body.repo, user, body.repo_anbieter)
     if body.repo_secret_id is not None: t.repo_secret_id = await _repo_schluessel(db, body.repo_secret_id, user)
     if body.angebundene_brains is not None: t.angebundene_brains = await _brains_setzen(db, t, body.angebundene_brains, user)
     if body.name is not None: t.name = body.name
@@ -1033,7 +1054,8 @@ async def _vergeben(t: Team, karte_id: str, agent_id: str | None, user, request:
 
     prioritaet = {1: 2, 2: 1, 3: 0}.get(karte.prioritaet, 1)
     fremd = await _fremd_fuer(karte, ziel or t.lead_agent_id, db)
-    auftrag = projekte.karten_auftrag(karte, t.name, fremd=fremd) + (f"\n\n{zusatz}" if zusatz else "")
+    auftrag = (projekte.karten_auftrag(karte, t.name, fremd=fremd, anbieter=_anbieter_anzeige(t))
+               + (f"\n\n{zusatz}" if zusatz else ""))
     titel = projekte.lauf_titel(karte, fremd)
     try:
         if an_lead:
@@ -1381,7 +1403,7 @@ async def karte_zurueckgeben(team_id: str, karte_id: str, body: Zurueckgeben, re
         await db.commit()
         raise HTTPException(status_code=422, detail="Schreib dazu, was anders werden soll.")
     prompt = projekte.nacharbeit_prompt(karte, alt, body.hinweis, t.name, fremd=fremd,
-                                        pruefer_befunde=pruefer_befunde)
+                                        pruefer_befunde=pruefer_befunde, anbieter=_anbieter_anzeige(t))
     titel = f"Nacharbeit: {projekte.lauf_titel(karte, fremd)}"[:200]
     try:
         if ueber_lead:

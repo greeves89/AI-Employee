@@ -495,6 +495,32 @@ async def _zielliste_umgebung(agent_id: str) -> dict[str, str]:
     return zielliste.umgebung(agent.config if agent else None)
 
 
+def git_ca_umgebung() -> dict[str, str]:
+    """Zertifizierungsstelle der Firma für eigene Git-Server (#1194) — auch ohne Proxy.
+
+    Das Startskript (agent/entrypoint.sh) legt sie in den Systemspeicher; so traut
+    ``git`` einem GitLab mit firmeneigenem Zertifikat. Nur öffentliche Zertifikate
+    (geprüft in ``projekt_git.ca_pruefen``)."""
+    pem = str(getattr(settings, "git_ca_zertifikate", "") or "").strip()
+    return {"AIE_GIT_CA": pem} if pem.startswith("-----BEGIN CERTIFICATE-----") else {}
+
+
+def git_server_fuer_proxy() -> dict:
+    """Was der Proxy für eigene Git-Server wissen muss: die Stelle der Firma (er prüft
+    die Gegenseite, wenn er für einen Key TLS aufbricht) und die freigegebenen Server
+    im Firmennetz (sonst sperrt er sie als intern). Leer, wenn nichts eingestellt ist."""
+    from app.core.projekt_git import interne_git_server
+
+    antwort: dict = {}
+    pem = git_ca_umgebung().get("AIE_GIT_CA")
+    if pem:
+        antwort["git_ca"] = pem
+    interne = sorted(interne_git_server())
+    if interne:
+        antwort["interne_ziele"] = interne
+    return antwort
+
+
 async def agent_umgebung(agent_id: str, mcp_server_json: str | None = None) -> dict[str, str]:
     """Umgebung, mit der ein Agent ueber den Proxy geht. Leer, wenn der Proxy aus ist.
 
@@ -503,8 +529,9 @@ async def agent_umgebung(agent_id: str, mcp_server_json: str | None = None) -> d
     die eigenen Apps des Agenten (http, Namen ohne Punkt) bleiben direkt erreichbar.
     ``mcp_server_json``: ``CUSTOM_MCP_SERVERS`` des Agenten (interne bleiben direkt).
     """
+    git = git_ca_umgebung()
     if not aktiv():
-        return {}
+        return git
     from app.dependencies import make_agent_token
     ca = await ca_zertifikat()
     teile = urlsplit(settings.egress_proxy_url)
@@ -519,6 +546,7 @@ async def agent_umgebung(agent_id: str, mcp_server_json: str | None = None) -> d
     if zielliste:
         zielliste = {**zielliste, "HTTP_PROXY": proxy, "http_proxy": proxy}
     return {
+        **git,
         **zielliste,
         "HTTPS_PROXY": proxy, "https_proxy": proxy,
         "NO_PROXY": no_proxy, "no_proxy": no_proxy,
