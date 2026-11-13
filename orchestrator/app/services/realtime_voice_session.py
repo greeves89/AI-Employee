@@ -2383,6 +2383,9 @@ class RealtimeVoiceSession:
         Gemessen wird Stille, nicht ein geratener Zustand — dieselbe Idee wie beim
         Stillstands-Wachhund. Begrenzt, damit nie etwas haengen bleibt.
         """
+        # Fuer die Protokollzeilen unten: kurz und ohne Zeilenumbrueche — die Meldung
+        # kann Dateinamen aus dem Browser enthalten (Log-Injection, CodeQL).
+        kurz = str(msg)[:60].replace("\r", " ").replace("\n", " ")
         deadline = time.monotonic() + timeout
         ruhig = False
         while not self._closed and self._nova:
@@ -2395,7 +2398,7 @@ class RealtimeVoiceSession:
             await asyncio.sleep(0.3)
         if self._closed or not self._nova:
             logger.info("Zwischenmeldung verworfen, Sitzung beendet agent=%s: %.60s",
-                        self.agent_id, msg)
+                        self.agent_id, kurz)
             return False
         if not ruhig:
             # ``_last_spoken`` wird bei JEDEM Audioschnipsel neu gesetzt. Redet das
@@ -2420,7 +2423,7 @@ class RealtimeVoiceSession:
                 await asyncio.sleep(0.5)
             if self._closed or not self._nova:
                 logger.warning("Zwischenmeldung verworfen, Sitzung endete waehrend "
-                               "des Wartens agent=%s: %.60s", self.agent_id, msg)
+                               "des Wartens agent=%s: %.60s", self.agent_id, kurz)
                 return False
         if not ruhig:
             # Letzter Ausweg nach der langen Frist: lieber einspielen und
@@ -2429,7 +2432,7 @@ class RealtimeVoiceSession:
             logger.warning(
                 "Zwischenmeldung nach %.0fs immer noch keine Sprechpause — wird in "
                 "die laufende Ausgabe eingespielt und kann verschluckt werden "
-                "agent=%s: %.60s", self.NACHREICH_FRIST, self.agent_id, msg,
+                "agent=%s: %.60s", self.NACHREICH_FRIST, self.agent_id, kurz,
             )
         try:
             await self._nova.inject_user_text(self._engine_safe(msg))
