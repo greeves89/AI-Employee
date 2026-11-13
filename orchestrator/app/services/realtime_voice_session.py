@@ -2677,6 +2677,15 @@ class RealtimeVoiceSession:
         if self._nova:
             await self._nova.send_tool_result(tool_use_id, self._engine_safe(text))
 
+    async def _in_besprechung_ablehnen(self, tool_use_id: str, name: str) -> None:
+        """Zweite Sperre (die erste: keine Werkzeuge angeboten). Sagt ein Modell trotzdem
+        einen Aufruf an, wird er abgelehnt, ohne irgendetwas auszuführen."""
+        logger.warning("[Sprache] Besprechung: Werkzeug %r abgelehnt (Agent %s)", name, self.agent_id)
+        if self._nova is not None:
+            await self._nova.send_tool_result(tool_use_id, self._engine_safe(
+                "In einer Besprechung hast du keine Werkzeuge. Sag kurz, dass du das nach "
+                "der Besprechung erledigen kannst, wenn dein Besitzer es dir aufträgt."))
+
     def _werkzeuge_begrenzen(self, werkzeuge: list) -> list:
         """In einer Besprechung: keine Werkzeuge (siehe ``besprechung``)."""
         return [] if self.besprechung else werkzeuge
@@ -2692,15 +2701,8 @@ class RealtimeVoiceSession:
         except (json.JSONDecodeError, TypeError):
             args = {}
 
-        if self.besprechung:
-            # Zweite Sperre (die erste: keine Werkzeuge angeboten). Sagt ein Modell trotzdem
-            # einen Aufruf an, wird er abgelehnt, ohne irgendetwas auszuführen.
-            logger.warning("[Sprache] Besprechung: Werkzeug %r abgelehnt (Agent %s)", name, self.agent_id)
-            if self._nova is not None:
-                await self._nova.send_tool_result(tool_use_id, self._engine_safe(
-                    "In einer Besprechung hast du keine Werkzeuge. Sag kurz, dass du das nach "
-                    "der Besprechung erledigen kannst, wenn dein Besitzer es dir aufträgt."))
-            return
+        if self.besprechung:   # zweite Sperre: in einer Besprechung nichts ausführen
+            return await self._in_besprechung_ablehnen(tool_use_id, name)
 
         # Fuer die Anzeige merken: der Nutzer soll SEHEN, was gerade benutzt wird.
         # Vorher lief alles unsichtbar, und es sah aus, als haette der Agent nichts
