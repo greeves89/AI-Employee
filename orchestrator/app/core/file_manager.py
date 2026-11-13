@@ -1,5 +1,6 @@
 import logging
 import os
+import posixpath
 import shlex
 from dataclasses import dataclass, field
 
@@ -241,6 +242,13 @@ class ExportZuGross(ValueError):
 UploadZielNichtVorbereitbar = ZielordnerNichtVorbereitbar
 
 
+#: Endung → ffmpeg-Demuxer fuer Standbilder. Nur Containerformate, keine Listen.
+_VIDEO_FORMATE = {
+    ".mp4": "mov", ".m4v": "mov", ".mov": "mov",
+    ".webm": "matroska", ".mkv": "matroska", ".avi": "avi",
+}
+
+
 class FileManager:
     """Manages file access in agent workspace volumes via Docker exec."""
 
@@ -331,10 +339,16 @@ class FileManager:
         if output.strip() == "SYMLINK":
             raise ValueError("Cannot read symlinks for security reasons")
 
+        # Eingabeformat FEST nach Endung, nur das Protokoll ``file``: Sonst erkennt
+        # ffmpeg das Format am Inhalt, und eine als Video getarnte Playlist oder
+        # concat-Liste liest beliebige andere Dateien ein (Sicherheitsreview 1.457).
+        format_ = _VIDEO_FORMATE.get(posixpath.splitext(validated)[1].lower())
+        if format_ is None:
+            raise ValueError("Kein unterstütztes Videoformat")
         ziel = f"/tmp/vorschau-{_uuid.uuid4().hex}.jpg"
         befehl = [
-            "ffmpeg", "-y", "-loglevel", "error",
-            "-ss", "0.5", "-i", validated,
+            "ffmpeg", "-y", "-loglevel", "error", "-protocol_whitelist", "file",
+            "-ss", "0.5", "-f", format_, "-i", validated,
             "-frames:v", "1",
             "-vf", f"scale={self.VORSCHAU_BREITE}:-2",
             "-f", "image2", ziel,
