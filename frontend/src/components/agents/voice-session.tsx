@@ -24,7 +24,7 @@ const NAV_ROUTES: Record<string, string> = {
 
 /** Anzeigename fürs Panel — der rohe Routenname stünde sonst als Überschrift da. */
 const NAV_LABELS: Record<string, string> = {
-  dashboard: "Dashboard", tasks: "Aufgaben", agents: "Agenten", meeting_rooms: "Besprechungsräume",
+  dashboard: "Dashboard", tasks: "Aufgaben", agents: "Agenten", meeting_rooms: "Agenten-Runden",
   knowledge: "Wissen", skills: "Skill-Marktplatz", triggers: "Auslöser",
   approvals: "Freigaben", integrations: "Integrationen", settings: "Einstellungen",
   analytics: "Auswertung", apps: "Apps", audit: "Audit-Log", health: "Systemzustand",

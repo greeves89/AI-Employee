@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.458.0] - 2026-11-13
+
+### Behoben
+- **„Alle aktualisieren“ startet gestoppte Agenten nicht mehr.** Ein Agent, der vor dem Aktualisieren nicht lief, bleibt danach gestoppt, egal ob er vom Nutzer angehalten oder im Leerlauf gestoppt war. Er ist dann auf dem neuen Stand und startet beim nächsten Öffnen oder Start. Bisher lief nach dem Aktualisieren jeder Agent wieder.
+
+### Geändert
+- **Besprechungen neu benannt:** „Besprechungen“ heißt jetzt **Teams-Besprechungen** (Termine in Microsoft Teams). Die bisherigen „Besprechungsräume“ heißen **Agenten-Runden** (mehrere Agenten arbeiten gemeinsam an einem Thema). Handbuch Kap. 9 angepasst.
+
+### Entfernt
+- **„Agent mit Stimme im Termin“** (Teams-Anrufe über einen Azure-Bot, `/teams/calling`). Die Funktion war nirgends eingerichtet, hatte keinen Knopf, und der Rückruf tat nichts. Teams-Termine laufen über die Teams-Besprechungen (seit 1.451.0) und den Agenten als Teilnehmer (1.453.0). Ein gespeichertes Bot-Geheimnis bleibt verschlüsselt und wird nie ausgeliefert.
+
 ## [1.457.0] - 2026-11-13
 
 ### Neu

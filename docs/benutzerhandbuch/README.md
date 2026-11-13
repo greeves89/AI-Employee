@@ -118,7 +118,7 @@ Administratoren mit dem Schalter **Mitglieder-Ansicht** im Benutzermenü.
 6a. [Projekte: Agenten im Raum, Aufträge, Abnahme](#6a-projekte-agenten-im-raum-aufträge-abnahme)
 7. [Analytics](#7-analytics)
 8. [Knowledge Base](#8-knowledge-base)
-9. [Meeting Rooms](#9-meeting-rooms)
+9. [Agenten-Runden](#9-agenten-runden)
 10. [Skill Marketplace](#10-skill-marketplace)
 11. [Triggers](#11-triggers)
 12. [Schedules](#12-schedules)
@@ -195,7 +195,7 @@ ganze Anlage betrifft, steht in einem eigenen **Admin-Bereich** (Kap. 1.5).
 - **Ablage** — **Dateien** und **Wissen**.
 - **Automatisieren** — **Abläufe** und **Skills**.
 - **Weitere Bereiche** (aufklappbar) — Übersicht, Kosten, Aktivität (Kap. 33),
-  Auswertung, Gelerntes, Verbindungen, Apps, Besprechungsräume, Auslöser und
+  Auswertung, Gelerntes, Verbindungen, Apps, Agenten-Runden, Auslöser und
   Prüfaufgaben. Der Bereich bleibt zugeklappt, bis du ihn öffnest; die Leiste merkt sich das.
 
 **Bedienung:**
@@ -1968,13 +1968,13 @@ Seitenleiste → **Knowledge**. Aufbau der Seite:
 
 ---
 
-## 9. Meeting Rooms
+## 9. Agenten-Runden
 
-In einem **Meeting Room** arbeiten **mehrere Agenten gemeinsam** an einem Thema — moderiert
+In einer **Agenten-Runde** arbeiten **mehrere Agenten gemeinsam** an einem Thema — moderiert
 und in Phasen (Stages). Sinnvoll, wenn unterschiedliche „Rollen" (z. B. ein Analyst und ein
-Reviewer) zusammen ein Ergebnis erarbeiten sollen. Seitenleiste → **Meeting Rooms**.
+Reviewer) zusammen ein Ergebnis erarbeiten sollen. Seitenleiste → **Weitere Bereiche → Agenten-Runden** (früher „Besprechungsräume“). Termine in Microsoft Teams stehen dagegen unter **Teams-Besprechungen** (Kap. 34).
 
-![Meeting Rooms](screenshots/07-meeting-rooms.png)
+![Agenten-Runden](screenshots/07-meeting-rooms.png)
 
 **Einen Raum erstellen und nutzen:**
 1. **+ Neuer Raum** (bzw. **New Room**) klicken.
@@ -3882,7 +3882,7 @@ beginnen wolltest).
 
 Aus aufgezeichneten Meetings erkannte **Action-Items** werden automatisch als Aufgaben in einen **MS-Planner-Plan** übertragen (über das M365-Konto des Meeting-Owners).
 
-1. **Meeting Rooms** → Meeting durchführen/aufzeichnen.
+1. **Agenten-Runden** → Runde durchführen/aufzeichnen.
 2. Nach der Auswertung erscheinen erkannte Aufgaben — sofern der Admin eine **Planner-Plan-ID** hinterlegt hat (Abschnitt 30), landen sie automatisch im Plan.
 
 > _[Screenshot folgt: erkannte Action-Items im Meeting-Ergebnis]_
@@ -5275,7 +5275,7 @@ Damit klar wird, **wofür** du Agenten nutzt — ein paar Beispiele, die du einf
 | Tasks | `/tasks` | `04-tasks.png` |
 | Analytics | `/analytics` | `05-analytics.png` |
 | Knowledge | `/knowledge` | `06-knowledge.png` |
-| Meeting Rooms | `/meeting-rooms` | `07-meeting-rooms.png` |
+| Agenten-Runden | `/meeting-rooms` | `07-meeting-rooms.png` |
 | Skill Marketplace | `/skills` | `08-skill-marketplace.png` |
 | Triggers | `/triggers` | `09-triggers.png` |
 | Schedules | `/schedules` | `10-schedules.png` |

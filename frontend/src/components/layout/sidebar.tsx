@@ -160,7 +160,7 @@ const navGroups: NavGroup[] = [
     items: [
       { href: "/files", label: "Dateien", icon: FolderOpen, simpleVisible: true },
       { href: "/knowledge", label: "Wissen", icon: BookOpen, simpleVisible: false },
-      { href: "/besprechungen", label: "Besprechungen", icon: CalendarClock, simpleVisible: true, tooltip: "Teams-Termine deiner Agenten und Mitschnitte: Protokoll, Aufgaben, Transkript." },
+      { href: "/besprechungen", label: "Teams-Besprechungen", icon: CalendarClock, simpleVisible: true, tooltip: "Teams-Termine deiner Agenten und Mitschnitte: Protokoll, Aufgaben, Transkript." },
       { href: "/integrations", label: "Verbindungen", icon: Plug, simpleVisible: false, weitere: true },
     ],
   },
@@ -171,7 +171,7 @@ const navGroups: NavGroup[] = [
       { href: "/workflows", label: "Abläufe", icon: Workflow, simpleVisible: false, tooltip: "Abläufe (Workflows): feste Folgen aus mehreren Schritten, die automatisch nacheinander laufen." },
       { href: "/skills", label: "Skills", icon: Sparkles, simpleVisible: false },
       { href: "/apps", label: "Apps", icon: AppWindow, simpleVisible: false, weitere: true },
-      { href: "/meeting-rooms", label: "Besprechungsräume", icon: Users, simpleVisible: false, weitere: true },
+      { href: "/meeting-rooms", label: "Agenten-Runden", icon: Users, simpleVisible: false, weitere: true },
       { href: "/triggers", label: "Auslöser", icon: Zap, simpleVisible: false, weitere: true },
       { href: "/evals", label: "Prüfaufgaben", icon: ClipboardCheck, simpleVisible: false, weitere: true, tooltip: "Prüfaufgaben (Golden-Tests): bekannte Aufgaben, an denen sich vor einem Update zeigt, ob ein Agent sie noch richtig löst." },
     ],
