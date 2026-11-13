@@ -18,6 +18,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   - Sprache: Ein fremdes Gespräch lässt sich nicht fortsetzen, und beim Anruf wird kein fremdes „letztes Gespräch“ mehr vorgelesen.
 - **Chat-Benachrichtigungen nur an den Besitzer des Gesprächs.** Sie zeigen den Antworttext und gingen bisher an alle, die den Agenten sehen. Die Push-Nachricht ging an den Besitzer des Agenten. Neue Spalte `notifications.empfaenger_id`. Liste, Zähler, „alle gelesen“ und der Live-Kanal filtern danach.
 
+- **Live-Chat:** Aufgaben-Kacheln, Ziele, Stillstands- und Sentinel-Hinweise ohne Nachrichtenkennung gingen an jedes offene Fenster des Agenten. Jetzt gehen sie nur an Fenster, die das Gespräch sehen dürfen.
+- **Aufgaben:** Eine Aufgabe liefert ihre Kachel nur in ein Gespräch, das der Anleger sehen darf (`chat_session_id` wird geprüft).
+- **Meldungen per Nummer** (beantworten, gelesen, löschen) nur für ihren Empfänger.
+- **Systemgespräche** (Zeitplan, Meldungen, Bridge, Kanäle wie Telegram) gehören immer dem Besitzer des Agenten und lassen sich nicht vorab beanspruchen. Eine Gesprächszeile ohne Besitzer gilt nicht als frei.
+- **Kiosk:** Lesen und Schreiben nur noch in eigenen Kiosk-Gesprächen (`kiosk-…`). Vorher ging das ohne Anmeldung in jedes Gespräch, dessen Kennung bekannt war.
+
 ### Betrieb
 - Migration `m1n2o3p4q5r6` (idempotent). Die Spalten legt zusätzlich der Start an.
 ## [1.453.0] - 2026-11-13

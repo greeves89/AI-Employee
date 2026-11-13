@@ -193,6 +193,72 @@ class ChatsJeNutzerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await texte(BESITZER), ({"Für alle"}, 1))
 
 
+    # --- Befunde aus dem Sicherheitsreview ------------------------------------------
+
+    async def test_zeile_ohne_besitzer_ist_nicht_frei(self):
+        """Angepinnt oder vom System angelegt, aber noch ohne Nachricht: gehört dem
+        Besitzer, kein freigegebener Nutzer kann sie übernehmen."""
+        self.db.add(ChatSession(agent_id="a1", session_id="leer-angepinnt", pinned=True))
+        await self.db.commit()
+        self.assertFalse(await chat_besitz.darf(self.db, "a1", ANNA, "leer-angepinnt"))
+        await chat_besitz.beanspruchen(self.db, "a1", "leer-angepinnt", "anna")
+        self.assertIsNone(await chat_besitz.besitzer_von(self.db, "a1", "leer-angepinnt"))
+
+    async def test_systemgespraeche_kann_niemand_vorab_beanspruchen(self):
+        for sid in ("scheduler", "meldungen", "bridge", "zeitplan-42", "telegram:123"):
+            self.assertFalse(await chat_besitz.darf(self.db, "a1", ANNA, sid), sid)
+            await chat_besitz.beanspruchen(self.db, "a1", sid, "anna")
+            self.assertIsNone(await chat_besitz.besitzer_von(self.db, "a1", sid), sid)
+            self.assertTrue(await chat_besitz.darf(self.db, "a1", BESITZER, sid), sid)
+
+    async def test_kennung_muss_text_sein(self):
+        for kaputt in (None, "", 123, ["s-anna"]):
+            self.assertFalse(await chat_besitz.darf(self.db, "a1", BESITZER, kaputt))
+
+    async def test_live_ereignisse_ohne_nachrichtenkennung(self):
+        from app.api import ws
+
+        with patch.object(ws, "async_session_factory", lambda: _Kontext(self.db)):
+            kachel_ben = {"type": "task_card", "session_id": "s-ben", "data": {"result_preview": "geheim"}}
+            self.assertFalse(await ws._ereignis_fuer_verbindung(kachel_ben, "a1", ANNA, {}))
+            self.assertTrue(await ws._ereignis_fuer_verbindung(kachel_ben, "a1", BEN, {}))
+            self.assertTrue(await ws._ereignis_fuer_verbindung(kachel_ben, "a1", BESITZER, {}))
+            ohne = {"type": "task_card", "data": {"result_preview": "wessen?"}}
+            self.assertFalse(await ws._ereignis_fuer_verbindung(ohne, "a1", ANNA, {}))
+            self.assertTrue(await ws._ereignis_fuer_verbindung(ohne, "a1", ADMIN, {}))
+            self.assertTrue(await ws._ereignis_fuer_verbindung({"type": "cancelled"}, "a1", ANNA, {}))
+
+    async def test_aufgabe_liefert_nur_ins_eigene_gespraech(self):
+        from app.api import tasks
+
+        self.assertEqual(await tasks._eigenes_gespraech(self.db, ANNA, "a1", "s-anna"), "s-anna")
+        self.assertIsNone(await tasks._eigenes_gespraech(self.db, ANNA, "a1", "s-ben"))
+        self.assertIsNone(await tasks._eigenes_gespraech(self.db, ANNA, None, "s-anna"))
+        self.assertEqual(await tasks._eigenes_gespraech(self.db, AGENT_SELBST, "a1", "s-ben"), "s-ben")
+
+    async def test_meldung_per_nummer_nur_fuer_empfaenger(self):
+        meldung = Notification(agent_id="a1", title="t", message="Annas Antwort", empfaenger_id="anna")
+        self.db.add(meldung)
+        await self.db.commit()
+        with patch.object(meldungen, "_visible_agent_ids", AsyncMock(return_value=["a1"])):
+            for aufruf in (lambda: meldungen.delete_notification(meldung.id, user=BEN, db=self.db),):
+                with self.assertRaises(HTTPException) as e:
+                    await aufruf()
+                self.assertEqual(e.exception.status_code, 404)
+            await meldungen.delete_notification(meldung.id, user=ANNA, db=self.db)
+
+
+class KioskTests(unittest.TestCase):
+    def test_kiosk_nur_eigene_gespraeche(self):
+        from app.api import kiosk
+
+        self.assertEqual(kiosk._kiosk_gespraech("kiosk-abc"), "kiosk-abc")
+        self.assertIsNone(kiosk._kiosk_gespraech(None))
+        for fremd in ("s-anna", "scheduler", "kiosk" , "x" + "kiosk-a"):
+            with self.assertRaises(HTTPException):
+                kiosk._kiosk_gespraech(fremd)
+
+
 class _Kontext:
     """``async with async_session_factory() as db`` auf die Test-Datenbank."""
 

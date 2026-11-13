@@ -331,6 +331,34 @@ async def _chat_sitzung_erlaubt(agent_id: str, user, sitzung: str, *,
     return True
 
 
+#: Ereignisse ohne Gespraech, die Inhalte eines Gespraechs tragen — an freigegebene
+#: Nutzer nur mit Gespraechskennung (sonst wuesste niemand, wessen es ist).
+_INHALT_OHNE_GESPRAECH = frozenset({"task_card", "sentinel", "goal", "ankuendigung", "stillstand"})
+
+
+async def _ereignis_fuer_verbindung(ereignis: dict, agent_id: str, user, cache: dict) -> bool:
+    """Darf ein Live-Ereignis OHNE Nachrichtenkennung an diese Verbindung?
+
+    Ereignisse MIT Kennung ordnet ``_sitzung_fuer_ereignis`` zu. Die ohne — Aufgaben-
+    Kacheln, Ziele, Stillstands-Hinweise — gingen bisher an jedes offene Fenster des
+    Agenten; an einem freigegebenen Agenten also auch an Kollegen (Sicherheitsreview
+    1.455). Besitzer und Admins bekommen weiter alles, ihr Browser sortiert selbst."""
+    sitzung = ereignis.get("session_id")
+    if sitzung is None and ereignis.get("type") not in _INHALT_OHNE_GESPRAECH:
+        return True  # Steuerereignisse (ready, cancelled, approval_request …)
+    schluessel = sitzung if isinstance(sitzung, str) else ""
+    if schluessel not in cache:
+        from app.core import chat_besitz
+
+        async with async_session_factory() as db:
+            if await chat_besitz.sieht_alle(db, agent_id, user):
+                cache.update({"*": True})
+                cache[schluessel] = True
+            else:
+                cache[schluessel] = bool(schluessel) and await chat_besitz.darf(db, agent_id, user, schluessel)
+    return cache.get("*", False) or cache[schluessel]
+
+
 def _gespraech_fremd() -> dict:
     return {
         "type": "error",
@@ -461,6 +489,9 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
     # ``_sitzung_fuer_ereignis``.
     _nachgeschlagen: dict[str, str] = {}
     _db_gefragt: set[str] = set()
+    # Ereignisse ohne Nachrichtenkennung (Kacheln, Ziele, Hinweise): je Gespraech
+    # einmal nachgeschlagen, ob dieser Mensch es sehen darf (core/chat_besitz).
+    _darf_cache: dict[str, bool] = {}
     # Session tracking - defer session creation until first message
     # so the client can provide an existing session_id
     _session: dict[str, str | None] = {"id": None}
@@ -786,7 +817,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                                     except Exception:
                                         _ws_connected = False
                                 # else: foreign message_id → drop (isolation)
-                            else:
+                            elif await _ereignis_fuer_verbindung(_fwd, agent_id, _user, _darf_cache):
                                 try:
                                     await websocket.send_text(data)
                                 except Exception:

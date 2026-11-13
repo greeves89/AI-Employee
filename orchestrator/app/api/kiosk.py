@@ -207,6 +207,20 @@ async def kiosk_overview(db: AsyncSession = Depends(get_db)):
 # Kiosk chat (local-only) — reuses the agent's chat queue + chat_messages       #
 # --------------------------------------------------------------------------- #
 
+#: Gespraeche des Kiosks tragen dieses Praefix. Lesen und Weiterschreiben geht nur
+#: in solchen — sonst laese oder beschriebe der Kiosk (ohne Anmeldung) jeden Chat
+#: des Agenten, dessen Kennung jemand kennt (Sicherheitsreview 1.455).
+KIOSK_PRAEFIX = "kiosk-"
+
+
+def _kiosk_gespraech(session_id: str | None) -> str | None:
+    if not session_id:
+        return None
+    if not isinstance(session_id, str) or not session_id.startswith(KIOSK_PRAEFIX) or len(session_id) > 64:
+        raise HTTPException(status_code=404, detail="Gespräch nicht gefunden")
+    return session_id
+
+
 class KioskChatSend(BaseModel):
     text: str
     session_id: str | None = None
@@ -234,7 +248,7 @@ async def kiosk_chat_send(
     if not agent.container_id:
         raise HTTPException(status_code=409, detail="Agent has no running container")
 
-    session_id = body.session_id or uuid.uuid4().hex[:12]
+    session_id = _kiosk_gespraech(body.session_id) or f"{KIOSK_PRAEFIX}{uuid.uuid4().hex[:12]}"
     message_id = uuid.uuid4().hex[:12]
 
     db.add(ChatMessage(
@@ -316,6 +330,7 @@ async def kiosk_chat_history(
     db: AsyncSession = Depends(get_db),
 ):
     """Poll the persisted conversation for a kiosk chat session."""
+    _kiosk_gespraech(session_id)
     rows = (await db.execute(
         select(ChatMessage)
         .where(ChatMessage.agent_id == agent_id, ChatMessage.session_id == session_id)

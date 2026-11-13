@@ -203,6 +203,8 @@ async def create_task(
 
     erreichbar = await _erreichbare_agenten(user, db)
     _pruefe_zielagent(data.agent_id, erreichbar)
+    faden = await _eigenes_gespraech(db, user, data.created_by_agent or data.agent_id,
+                                     data.chat_session_id)
 
     task = await router_.create_and_route_task(
         title=(f"[Vorschau] {data.title}" if data.dry_run else data.title),
@@ -212,12 +214,32 @@ async def create_task(
         model=data.model,
         parent_task_id=data.parent_task_id,
         created_by_agent=data.created_by_agent,
-        metadata={**metadata, "chat_session_id": data.chat_session_id}
-        if data.chat_session_id else (metadata or None),
+        metadata={**metadata, "chat_session_id": faden}
+        if faden else (metadata or None),
         anleger_agent=_aufrufender_agent(user),
         erlaubte_agenten=erreichbar,
     )
     return TaskResponse.model_validate(task)
+
+
+async def _eigenes_gespraech(db: AsyncSession, user, agent_id: str | None,
+                             chat_session_id: str | None) -> str | None:
+    """Das Gespraech, in das die Kachel der Aufgabe kommt — nur ein eigenes.
+
+    Ein Mensch kann nur in Gespraeche liefern, die er sehen darf (core/chat_besitz);
+    sonst schriebe er eine Kachel in den Chat eines Kollegen. Der Agent selbst
+    nennt sein laufendes Gespraech. Ohne pruefbaren Agenten: kein Gespraech."""
+    if not chat_session_id:
+        return None
+    from app.dependencies import is_agent_principal
+
+    if is_agent_principal(user):
+        return chat_session_id
+    if not agent_id:
+        return None
+    from app.core import chat_besitz
+
+    return chat_session_id if await chat_besitz.darf(db, agent_id, user, chat_session_id) else None
 
 
 @router.post("/batch", response_model=TaskBatchResponse, status_code=201)
@@ -250,6 +272,9 @@ async def create_task_batch(
 
     created = []
     for task_data in data.tasks:
+        faden = await _eigenes_gespraech(
+            db, user, data.created_by_agent or task_data.created_by_agent or task_data.agent_id,
+            task_data.chat_session_id)
         task = await router_.create_and_route_task(
             title=task_data.title,
             prompt=task_data.prompt,
@@ -258,8 +283,7 @@ async def create_task_batch(
             model=task_data.model,
             parent_task_id=data.parent_task_id or task_data.parent_task_id,
             created_by_agent=data.created_by_agent or task_data.created_by_agent,
-            metadata=({"chat_session_id": task_data.chat_session_id}
-                      if task_data.chat_session_id else None),
+            metadata=({"chat_session_id": faden} if faden else None),
             anleger_agent=_aufrufender_agent(user),
             erlaubte_agenten=erreichbar,
         )

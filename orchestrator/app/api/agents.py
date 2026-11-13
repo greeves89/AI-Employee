@@ -2782,6 +2782,9 @@ async def send_message_to_agent(
                         json.dumps({
                             "type": "task_card",
                             "agent_id": agent_id,
+                            # Gespraech der Frage: nur dessen Fenster zeigt die Kachel
+                            # (core/chat_besitz, Weiterleiter in ws.py).
+                            "session_id": _origin,
                             "data": {
                                 "task_id": f"msg-{body.reply_to}",
                                 "phase": "done",

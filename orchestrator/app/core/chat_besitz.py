@@ -30,6 +30,19 @@ from app.models.chat_message import ChatMessage
 from app.models.chat_session import ChatSession
 
 
+#: Gespraeche, die das System selbst anlegt: Zeitplaene, Meldungen, Bridge. Sie gehoeren
+#: immer dem Besitzer des Agenten — auch solange sie noch leer sind (sonst koennte ein
+#: freigegebener Nutzer die Kennung vorab fuer sich beanspruchen).
+SYSTEM_GESPRAECHE = frozenset({"scheduler", "meldungen", "bridge", "bridge-beobachter"})
+SYSTEM_PRAEFIXE = ("zeitplan-",)
+
+
+def vom_system(session_id: str) -> bool:
+    """Legt das System dieses Gespraech an (Zeitplan, Kanal wie ``telegram:…``)?"""
+    sid = str(session_id or "")
+    return sid in SYSTEM_GESPRAECHE or sid.startswith(SYSTEM_PRAEFIXE) or ":" in sid
+
+
 async def sieht_alle(db: AsyncSession, agent_id: str, user) -> bool:
     """Darf ``user`` ALLE Gespräche dieses Agenten sehen?"""
     from app.dependencies import is_agent_principal
@@ -64,14 +77,19 @@ async def _hat_nachrichten(db: AsyncSession, agent_id: str, session_id: str) -> 
 async def darf(db: AsyncSession, agent_id: str, user, session_id: str) -> bool:
     """Darf ``user`` dieses Gespräch sehen und darin weiterschreiben?
 
-    Ein noch leeres Gespräch ohne Besitzer ist frei: Genau so beginnt jedes neue
-    Gespräch (die Kennung erzeugt der Browser oder der Server)."""
+    Frei ist nur eine Kennung, zu der es noch NICHTS gibt — weder Zeile noch
+    Nachrichten: Genau so beginnt jedes neue Gespräch. Eine Zeile ohne Besitzer
+    (angepinnt, umbenannt, vom System angelegt) gehört dem Besitzer des Agenten."""
+    if not isinstance(session_id, str) or not session_id:
+        return False
     if await sieht_alle(db, agent_id, user):
         return True
+    if vom_system(session_id):
+        return False
     zeile = await db.scalar(select(ChatSession).where(
         ChatSession.agent_id == agent_id, ChatSession.session_id == session_id))
-    if zeile is not None and zeile.user_id:
-        return zeile.user_id == user.id
+    if zeile is not None:
+        return bool(zeile.user_id) and zeile.user_id == user.id
     return not await _hat_nachrichten(db, agent_id, session_id)
 
 
@@ -85,20 +103,18 @@ async def pruefen(db: AsyncSession, agent_id: str, user, session_id: str) -> Non
 async def beanspruchen(db: AsyncSession, agent_id: str, session_id: str, user_id: str | None) -> None:
     """Ein NEUES Gespräch dem Nutzer zuschreiben, der darin zuerst schreibt.
 
-    Ändert nichts an Gesprächen, die schon Nachrichten oder einen Besitzer haben.
+    Ändert nichts an Gesprächen, die schon eine Zeile oder Nachrichten haben, und
+    nichts an Gesprächen des Systems.
     Committet selbst (wird vor dem Speichern der ersten Nachricht aufgerufen)."""
-    if not user_id or user_id == "unknown" or not session_id:
+    if not user_id or user_id == "unknown" or not isinstance(session_id, str) or not session_id:
+        return
+    if vom_system(session_id):
         return
     zeile = await db.scalar(select(ChatSession).where(
         ChatSession.agent_id == agent_id, ChatSession.session_id == session_id))
-    if zeile is not None and zeile.user_id:
+    if zeile is not None or await _hat_nachrichten(db, agent_id, session_id):
         return
-    if await _hat_nachrichten(db, agent_id, session_id):
-        return
-    if zeile is None:
-        db.add(ChatSession(agent_id=agent_id, session_id=session_id, user_id=user_id))
-    else:
-        zeile.user_id = user_id
+    db.add(ChatSession(agent_id=agent_id, session_id=session_id, user_id=user_id))
     try:
         await db.commit()
     except IntegrityError:
