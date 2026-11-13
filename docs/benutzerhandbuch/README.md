@@ -3045,7 +3045,7 @@ das ganze Bündel. Tab **Rollen**:
 
 ![Rollen](screenshots/23-admin-rollen.png)
 
-**Rollen-Vorlagen und „Wer darf was“** *(seit 1.454.0)*: Oben im Tab **Rollen** stehen fertige
+**Rollen-Vorlagen und „Wer darf was“** *(seit 1.456.0)*: Oben im Tab **Rollen** stehen fertige
 Vorlagen für typische Aufgaben. **Gruppe anlegen** legt daraus eine normale Rolle an, die du
 danach anpasst und unter **SSO-Gruppen** einer Entra-Gruppe zuordnest.
 
