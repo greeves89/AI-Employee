@@ -1916,10 +1916,14 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
 
     // Upload attached files to the agent's workspace first — the message only
     // goes out if the upload succeeds (pending chips stay on failure).
+    // Ziel bestimmt der Server: Wer den Agenten nur nutzt, landet in seinem
+    // eigenen Ordner (/workspace/geteilt/<id>), alle anderen in /workspace.
+    let zielOrdner = "/workspace";
     if (files.length > 0) {
       setIsUploading(true);
       try {
-        await api.uploadFiles(agentId, "/workspace", files);
+        const hochgeladen = await api.uploadFiles(agentId, "/workspace", files);
+        if (hochgeladen && typeof hochgeladen.path === "string") zielOrdner = hochgeladen.path;
       } catch (e) {
         setMessages((prev) => [
           ...prev,
@@ -1934,7 +1938,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     // baut der Server (app/core/chat_auftrag.py) — in jeder Laufzeit gleich. In
     // Verlauf und Titel steht nur, was hier getippt wurde.
     const anhaenge = files.map((f) => ({
-      path: `/workspace/${f.name}`, filename: f.name, size: f.size, media_type: f.type || undefined,
+      path: `${zielOrdner}/${f.name}`, filename: f.name, size: f.size, media_type: f.type || undefined,
     }));
 
     const msgId = `user-${Date.now()}`;

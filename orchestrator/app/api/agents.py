@@ -87,9 +87,8 @@ async def _check_nutzen(agent_id: str, user, db: AsyncSession) -> None:
 #: Konfiguration, Konten, Budget, Kosten).
 _NUR_NUTZER_FELDER = (
     "id", "name", "state", "model", "model_provider", "mode", "role", "onboarding_complete",
-    "browser_mode", "autonomy_level", "interaction_model", "user_id", "created_at",
-    "updated_at", "last_active_at", "stopped_by_user", "current_task", "active_sessions",
-    "pending_sessions", "queue_depth", "is_platform_agent", "container_id",
+    "browser_mode", "autonomy_level", "interaction_model", "created_at",
+    "updated_at", "last_active_at", "stopped_by_user", "is_platform_agent", "container_id",
 )
 
 
@@ -119,6 +118,10 @@ async def _nur_nutzer_kuerzen(antworten: list, user, db: AsyncSession) -> list:
             continue
         konfig = a.config or {}
         aus.append(a.model_copy(update={
+            # Laufende Aufgabe und Gespraechskennungen gehoeren anderen Menschen.
+            "current_task": None, "active_sessions": None, "pending_sessions": None,
+            "user_id": None, "voice_delegate_to_agent": None, "parallel_sessions": None,
+            "update_available": False, "image_outdated": False, "queue_depth": None,
             "nur_nutzen": True, "webhook_token": None, "webhook_enabled": False,
             "llm_config": None, "ai_account_id": None, "ai_account_name": None,
             "ai_account_provider": None, "budget_usd": None, "monthly_cost_usd": 0.0,
@@ -129,6 +132,44 @@ async def _nur_nutzer_kuerzen(antworten: list, user, db: AsyncSession) -> list:
             "disk_limit_mb": None, "disk_percent": None,
         }))
     return aus
+
+
+#: Ordner fuer Dateien von Menschen, die den Agenten nur nutzen (je Person ein Unterordner).
+NUR_NUTZER_ORDNER = "/workspace/geteilt"
+
+
+async def _nur_nutzer_datei_pruefen(db: AsyncSession, agent_id: str, user, path: str) -> None:
+    """Darf ein Nur-Nutzer diese Datei abholen? Nur aus seinem eigenen Ordner oder
+    eine, die der Agent in einem SEINER Gespraeche vorgelegt hat (``present_file``). Alles andere im
+    Arbeitsbereich (Dateien anderer, Anweisungen, Gedaechtnis) bleibt zu. 404, damit
+    fremde Pfade nicht als vorhanden erkennbar sind. Fuer alle anderen: nichts."""
+    import posixpath
+
+    from app.core import chat_besitz
+    from app.core.ownership import nur_nutzbare_agent_ids
+
+    if agent_id not in await nur_nutzbare_agent_ids(user, db):
+        return
+    sauber = posixpath.normpath(str(path or ""))
+    eigener = f"{NUR_NUTZER_ORDNER}/{user.id}/"
+    if sauber.startswith(eigener) and ".." not in sauber.split("/"):
+        return
+    eigene = await chat_besitz.eigene_sitzungen(db, agent_id, user) or set()
+    if eigene:
+        zeilen = (await db.execute(
+            select(ChatMessage.meta).where(
+                ChatMessage.agent_id == agent_id, ChatMessage.session_id.in_(eigene),
+                ChatMessage.meta.is_not(None))
+        )).scalars().all()
+        for meta in zeilen:
+            if not isinstance(meta, dict):
+                continue
+            # Nur, was der AGENT vorgelegt hat — ``anhaenge`` schreibt der Mensch selbst
+            # in seine Nachricht und waere damit ein Freibrief fuer jeden Pfad.
+            for eintrag in meta.get("presented_files") or []:
+                if isinstance(eintrag, dict) and posixpath.normpath(str(eintrag.get("path") or "")) == sauber:
+                    return
+    raise HTTPException(status_code=404, detail="Datei nicht gefunden")
 
 
 async def _check_owner_or_self(agent_id: str, user, db: AsyncSession, *, nutzen: bool = False) -> None:
@@ -1164,6 +1205,9 @@ async def set_agent_freigaben(
                             agent_id=agent_id, command="Agent-Freigabe (nutzen) geändert",
                             meta={"neu": sorted(neu), "entfernt": sorted(entfernt)})
     await db.commit()
+    if entfernt:
+        from app.api.ws import freigabe_entzogen
+        await freigabe_entzogen(agent_id, entfernt)
     return {"nutzer": await _freigaben_liste(db, agent_id), "neu": len(neu), "entfernt": len(entfernt)}
 
 
@@ -2371,6 +2415,11 @@ async def upload_files(
 ):
     """Upload files to an agent's workspace."""
     await _check_nutzen(agent_id, user, db)
+    from app.core.ownership import nur_nutzbare_agent_ids
+    if agent_id in await nur_nutzbare_agent_ids(user, db):
+        # Nur-Nutzer laden in ihren eigenen Ordner — nie in Anweisungsdateien
+        # (CLAUDE.md, knowledge.md, .claude/ …) oder Dateien anderer.
+        path = f"{NUR_NUTZER_ORDNER}/{user.id}"
     try:
         agent = await manager._get_agent(agent_id)
         if not agent.container_id:
@@ -2418,6 +2467,7 @@ async def download_file(
     from fastapi.responses import Response
 
     await _check_nutzen(agent_id, user, db)
+    await _nur_nutzer_datei_pruefen(db, agent_id, user, path)
     try:
         agent = await manager._get_agent(agent_id)
         if not agent.container_id:
@@ -2456,6 +2506,7 @@ async def video_thumbnail(
     from fastapi.responses import Response
 
     await _check_nutzen(agent_id, user, db)
+    await _nur_nutzer_datei_pruefen(db, agent_id, user, path)
     agent = await manager._get_agent(agent_id)
     if not agent.container_id:
         raise HTTPException(status_code=400, detail="Der Agent hat keinen laufenden Container.")

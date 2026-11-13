@@ -150,5 +150,93 @@ class FreigebenTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual({n["message"] for n in r["notifications"]}, {"Budget erreicht"})
 
 
+    # --- Befunde aus dem Sicherheitsreview ------------------------------------------
+
+    async def test_dateien_nur_eigener_ordner_und_vorgelegte(self):
+        await self._freigeben("kollege")
+        await api._nur_nutzer_datei_pruefen(self.db, "a1", KOLLEGE, "/workspace/geteilt/kollege/bericht.pdf")
+        for fremd in ("/workspace/knowledge.md", "/workspace/CLAUDE.md", "/workspace/.claude/x",
+                      "/workspace/geteilt/kollege/../../knowledge.md", "/workspace/geteilt/alt/x.pdf"):
+            with self.assertRaises(HTTPException) as e:
+                await api._nur_nutzer_datei_pruefen(self.db, "a1", KOLLEGE, fremd)
+            self.assertEqual(e.exception.status_code, 404, fremd)
+        # Vom Agenten in einem EIGENEN Gespraech vorgelegt: erlaubt. Selbst
+        # eingetragene Anhaenge: nicht.
+        from app.core import chat_besitz
+        await chat_besitz.beanspruchen(self.db, "a1", "s-k", "kollege")
+        self.db.add_all([
+            ChatMessage(agent_id="a1", session_id="s-k", message_id="m1", role="assistant", content="",
+                        meta={"presented_files": [{"path": "/workspace/ergebnis.xlsx"}]}),
+            ChatMessage(agent_id="a1", session_id="s-k", message_id="m2", role="user", content="x",
+                        meta={"anhaenge": [{"path": "/workspace/knowledge.md"}]}),
+        ])
+        await self.db.commit()
+        await api._nur_nutzer_datei_pruefen(self.db, "a1", KOLLEGE, "/workspace/ergebnis.xlsx")
+        with self.assertRaises(HTTPException):
+            await api._nur_nutzer_datei_pruefen(self.db, "a1", KOLLEGE, "/workspace/knowledge.md")
+        # Besitzer: keine Einschraenkung
+        await api._nur_nutzer_datei_pruefen(self.db, "a1", BESITZER, "/workspace/knowledge.md")
+
+    async def test_sprache_nur_gespraechswerkzeuge(self):
+        from app.services.realtime_voice_session import NUR_NUTZER_WERKZEUGE, RealtimeVoiceSession
+
+        def spec(name):
+            return {"toolSpec": {"name": name}}
+
+        alle = [spec(n) for n in ("ask_agent", "manage_schedules", "save_memory", "m365_send_mail",
+                                  "mcp_call_tool", "read_file", "web_search", "get_agent_settings")]
+        nur = RealtimeVoiceSession(agent_id="a1", user_id="kollege", redis=None, nur_nutzen=True)
+        namen = {w["toolSpec"]["name"] for w in nur._werkzeuge_begrenzen(alle)}
+        self.assertEqual(namen, {"ask_agent", "web_search"})
+        self.assertTrue(namen <= NUR_NUTZER_WERKZEUGE)
+        besitzer = RealtimeVoiceSession(agent_id="a1", user_id="besitzer", redis=None)
+        self.assertEqual(len(besitzer._werkzeuge_begrenzen(alle)), len(alle))
+        for gefaehrlich in ("save_memory", "manage_schedules", "mcp_call_tool", "list_agent_secrets",
+                            "complete_onboarding", "write_brain", "read_file", "cancel_task"):
+            self.assertNotIn(gefaehrlich, NUR_NUTZER_WERKZEUGE)
+
+    async def test_sprache_zweite_sperre_fuehrt_nichts_aus(self):
+        from unittest.mock import AsyncMock
+
+        from app.services.realtime_voice_session import RealtimeVoiceSession
+
+        nur = RealtimeVoiceSession(agent_id="a1", user_id="kollege", redis=None, nur_nutzen=True)
+        nur._nova = SimpleNamespace(send_tool_result=AsyncMock())
+        nur._emit = AsyncMock()
+        await nur._handle_tool_use({"tool_use_id": "t1", "name": "save_memory", "input": "{}"})
+        nur._emit.assert_not_awaited()
+        nur._nova.send_tool_result.assert_awaited_once()
+
+    async def test_entzug_schliesst_offene_chatfenster(self):
+        from unittest.mock import AsyncMock
+
+        from app.api import ws
+
+        sock = SimpleNamespace(close=AsyncMock())
+        ws._active_chat_websockets["kollege:a1:chat:tab1"] = sock
+        ws._active_chat_websockets["besitzer:a1:chat:tab1"] = SimpleNamespace(close=AsyncMock())
+        try:
+            self.assertEqual(await ws.freigabe_entzogen("a1", ["kollege"]), 1)
+            sock.close.assert_awaited_once()
+            self.assertIn("besitzer:a1:chat:tab1", ws._active_chat_websockets)
+        finally:
+            ws._active_chat_websockets.pop("besitzer:a1:chat:tab1", None)
+
+    async def test_listeneintrag_ohne_fremde_aufgaben(self):
+        from datetime import datetime, timezone
+
+        from app.schemas.agent import AgentResponse
+
+        await self._freigeben("kollege")
+        jetzt = datetime.now(timezone.utc)
+        eintrag = AgentResponse(id="a1", name="Assistenz", container_id="c", state="running", model="m",
+                                created_at=jetzt, updated_at=jetzt, current_task="Gehaltsliste Besitzer",
+                                active_sessions=["chat:s-anna"], webhook_token="geheim", user_id="besitzer")
+        (aus,) = await api._nur_nutzer_kuerzen([eintrag], KOLLEGE, self.db)
+        self.assertEqual((aus.current_task, aus.active_sessions, aus.webhook_token, aus.user_id),
+                         (None, None, None, None))
+        self.assertTrue(aus.nur_nutzen)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -50,7 +50,7 @@ async def eigene_agent_ids(user, db: AsyncSession) -> set[str]:
     owned = await db.scalars(select(Agent.id).where(Agent.user_id == uid))
     # Freigaben nur zum Nutzen zaehlen hier NICHT: diese Menge steuert Gedaechtnis,
     # Zeitplaene, Auswertungen, Protokolle … — Verwaltung. Nutzen (Chat, Sprache)
-    # fragt ``nutzbare_agent_ids``.
+    # fragt ``require_agent_access(..., nutzen=True)`` bzw. ``nur_nutzbare_agent_ids``.
     shared = await db.scalars(select(AgentAccess.agent_id).where(
         AgentAccess.user_id == uid,
         (AgentAccess.rolle.is_(None)) | (AgentAccess.rolle != ROLLE_NUTZEN)))
