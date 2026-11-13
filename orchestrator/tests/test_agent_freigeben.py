@@ -251,5 +251,26 @@ class FreigebenTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(aus.nur_nutzen)
 
 
+class OhneUmwegTests(unittest.TestCase):
+    """FileManager.ohne_umweg: echter Pfad im Behaelter (Shell-Stueck unter Linux im
+    Agenten-Abbild geprueft: normale Datei OK, verlinkter Ordner/Symlink/harter Link/
+    fehlend abgelehnt)."""
+
+    def _fm(self, code, ausgabe):
+        from app.core.file_manager import FileManager
+
+        aufrufe = []
+        docker = SimpleNamespace(exec_in_container=lambda cid, cmd: (aufrufe.append(cmd), (code, ausgabe))[1])
+        return FileManager(docker), aufrufe
+
+    def test_nur_ok_mit_exit_null(self):
+        fm, aufrufe = self._fm(0, "OK\n")
+        self.assertTrue(fm.ohne_umweg("c", "/workspace/a.txt"))
+        self.assertEqual(aufrufe[0][-1], "/workspace/a.txt", "Pfad als Argument, nicht im Skript")
+        for code, aus in ((2, ""), (3, ""), (1, ""), (0, "")):
+            fm, _ = self._fm(code, aus)
+            self.assertFalse(fm.ohne_umweg("c", "/workspace/a.txt"), (code, aus))
+
+
 if __name__ == "__main__":
     unittest.main()

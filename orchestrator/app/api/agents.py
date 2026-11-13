@@ -143,6 +143,11 @@ _GESPERRTE_DATEIEN = frozenset({
 })
 
 
+async def _ist_nur_nutzer(db: AsyncSession, agent_id: str, user) -> bool:
+    from app.core.ownership import nur_nutzbare_agent_ids
+    return agent_id in await nur_nutzbare_agent_ids(user, db)
+
+
 async def _nur_nutzer_datei_pruefen(db: AsyncSession, agent_id: str, user, path: str) -> None:
     """Darf ein Nur-Nutzer diese Datei abholen? Nur aus seinem eigenen Ordner oder
     eine, die der Agent in einem SEINER Gespraeche vorgelegt hat (``present_file``). Alles andere im
@@ -2486,6 +2491,8 @@ async def download_file(
         agent = await manager._get_agent(agent_id)
         if not agent.container_id:
             raise HTTPException(status_code=400, detail="Der Agent hat keinen laufenden Container.")
+        if await _ist_nur_nutzer(db, agent_id, user) and not file_mgr.ohne_umweg(agent.container_id, path):
+            raise HTTPException(status_code=404, detail="Datei nicht gefunden")
         content = file_mgr.read_file(agent.container_id, path)
         filename = path.split("/")[-1]
         return Response(
@@ -2524,6 +2531,8 @@ async def video_thumbnail(
     agent = await manager._get_agent(agent_id)
     if not agent.container_id:
         raise HTTPException(status_code=400, detail="Der Agent hat keinen laufenden Container.")
+    if await _ist_nur_nutzer(db, agent_id, user) and not file_mgr.ohne_umweg(agent.container_id, path):
+        raise HTTPException(status_code=404, detail="Datei nicht gefunden")
     try:
         bild = file_mgr.video_standbild(agent.container_id, path)
     except (ValueError, FileNotFoundError) as e:

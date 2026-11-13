@@ -280,6 +280,20 @@ class FileManager:
 
         return entries
 
+    def ohne_umweg(self, container_id: str, file_path: str) -> bool:
+        """Liegt die Datei genau dort, wo der Pfad sagt — ohne Symlink in einem
+        Ordner davor und ohne zweiten harten Link? ``read_file`` prueft nur das
+        letzte Glied; fuer Menschen mit eingeschraenktem Zugriff reicht das nicht
+        (ein verlinkter Ordner fuehrte an der Pruefung vorbei)."""
+        validated = _validate_path(file_path)
+        code, output = self.docker.exec_in_container(
+            container_id,
+            ["bash", "-c", 'p="$1"; r=$(realpath -e -- "$p") || exit 1; '
+             '[ "$r" = "$p" ] || exit 2; [ "$(stat -c %h -- "$r")" = 1 ] || exit 3; echo OK',
+             "_", validated],
+        )
+        return code == 0 and (output or "").strip().endswith("OK")
+
     def read_file(self, container_id: str, file_path: str) -> bytes:
         validated = _validate_path(file_path)
         # Verify it's not a symlink before reading (list args — no shell injection)
