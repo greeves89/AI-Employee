@@ -30,6 +30,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ### Behoben
 - `fetchJSON` scheiterte an leeren Antworten (204, z. B. beim Löschen).
+- **`sudo ./scripts/update.sh`** brach nach der Sicherung ab („Host key verification failed“): `git pull` lief als root, der weder SSH-Schlüssel noch den bekannten Host hat. Unter root holt das Skript jetzt als Besitzer des Repos. Ohne sudo scheiterte vorher schon die Sicherung (`/var/backups`).
 
 ### Tests
 - `test_teams_besprechungen.py`:
