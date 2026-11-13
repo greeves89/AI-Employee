@@ -5,7 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.459.0] - 2026-11-13
+## [1.459.0] - 2026-11-14
 
 ### Neu
 - **MCP mit der Firmenanmeldung (OAuth 2.1, #1195).** Second Brains (`/api/v1/mcp/brains/{slug}`) und der Agenten-MCP (`/api/v1/mcp/agents/{id}`) nehmen Zugriffstoken des Firmen-IdP an, etwa Microsoft Entra ID. Der MCP-Client meldet sich dort an, AI Employee prüft das Token und zeigt nur, was der Person freigegeben ist.
