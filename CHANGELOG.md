@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.461.0] - 2026-11-14
+
+### Sicherheit
+- **Angehaltene Agenten bleiben angehalten.** Hat der Nutzer einen Agenten gestoppt, weckt ihn kein automatischer Weg mehr: Aufgaben, Delegationen, Projekt-Takt, Kanäle, Produktivitätswächter. Ihre Nachrichten bleiben in der Warteschlange. Die Prüfung sitzt zentral in `user_lifecycle.wake_agent`.
+  - Wecken darf nur ein Mensch selbst: der Besitzer oder Admin im Chat oder eine Telegram-Nachricht an den eigenen Agenten des Bots. Wer den Agenten nur nutzen darf, hebt den Halt des Besitzers nicht auf.
+  - Am 13.11. liefen angehaltene Agenten wieder, dazu 1.458.0 für „Alle aktualisieren“.
+- **Kiosk nur vom Gerät selbst.** Mit `KIOSK_ENABLED` (Standard aus) antwortete der Kiosk ohne Anmeldung im ganzen lokalen Netz: Status, Chat mit den Agenten, Strompreis. Caddy lässt jetzt nur noch das Gerät selbst zu. Aus dem LAN kommt 404, über den Tunnel wie bisher auch. Die Regel ist auf dem Pi geprüft.
+
+### Behoben
+- **Sicherung vor dem Update ohne root.** War `/var/backups/ai-employee` nicht beschreibbar, etwa nach einem früheren `sudo update.sh`, brach das Update ab und niemand sicherte. Jetzt sichert `backup.sh` nach `~/ai-employee-sicherungen` und nennt den Befehl, mit dem man es dauerhaft behebt. Ein ausdrücklich gesetztes Ziel bleibt unverändert.
+
 ## [1.460.0] - 2026-11-14
 
 ### Neu

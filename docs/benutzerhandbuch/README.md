@@ -4679,7 +4679,10 @@ Installationsordners in Kleinbuchstaben (z. B. `ai-employee`).
 ### 37.2 Sichern
 
 1. Einmal von Hand ausprobieren: `sudo ./scripts/backup.sh`
-   (Ziel: `/var/backups/ai-employee`, anderes Ziel mit `--dest /pfad`).
+   (Ziel: `/var/backups/ai-employee`, anderes Ziel mit `--dest /pfad`). Läuft die Sicherung
+   ohne root und ist dieser Ordner nicht beschreibbar (etwa weil ein früheres `sudo update.sh`
+   ihn angelegt hat), sichert sie nach `~/ai-employee-sicherungen` und nennt das in der Ausgabe.
+   Dauerhaft beheben: `sudo chown -R <nutzer> /var/backups/ai-employee`.
 2. Täglich einplanen: `sudo ./scripts/install-backup-cron.sh` (Cron, 02:00 Uhr) oder
    `sudo ./scripts/install-backup-cron.sh --systemd` (systemd-Timer).
 3. Kontrolle: **Admin-Bereich → Betrieb → Health**. Oben steht die Karte
