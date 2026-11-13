@@ -59,6 +59,11 @@ schlimmsten Fall tut, was ein Angreifer will. Deshalb gilt für jede Schicht:
    über die eigenen Apps hinaus). Er erkennt das an `AIE_ZIELLISTE=1` in der Umgebung, mit der
    der Behälter entstand. Fail closed: Lässt sich die Einstellung beim Start nicht lesen,
    startet der Agent nicht.
+   Mit Liste meldet sich der Agent mit Kennung am Proxy an (`zl.<id>`); dann fragt der Proxy
+   frisch nach und sperrt ohne bestätigte Liste. Ein gemerkter Stand „aus“ gilt 5 s. Entfernt
+   ein Agent die Kennung selbst, bleibt ihm höchstens dieses Fenster nach dem letzten Abruf
+   seines Vorgängers; ein Neustart dauert länger. Geprüft wird vor dem Senden, rohes TCP im
+   Tunnel wird beendet, gestoppte Agenten zählen für den Netzwächter weiter.
    **Bleibt offen:** DNS. Der Agent fragt den Resolver von Docker, und darüber lassen sich
    kleine Datenmengen nach außen geben. Schließen ließe sich das nur mit einem filternden
    Resolver. Was die Plattform für den Agenten tut (Mail, Teams, Websuche der Plattform),

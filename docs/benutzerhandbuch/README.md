@@ -5079,8 +5079,10 @@ Ausschalten steht im Audit-Log.
 **Voraussetzungen und Grenzen:**
 - Der **Egress-Proxy muss an sein** (Kap. 37.10) und der Netzwächter eingerichtet. Ohne Proxy
   lässt sich der Schalter nicht einschalten, der Sicherheitsstatus warnt.
+- Nur HTTP und HTTPS. Andere Protokolle im Tunnel (etwa SSH) beendet der Proxy.
 - Programme, die einem eigenen Zertifikat nicht vertrauen (fest eingebautes Zertifikat), kommen
   nicht hinaus. Der Proxy muss die Verbindungen öffnen, um sie zu prüfen.
+- Neue oder gelöschte Einträge gelten nach spätestens einer Minute, ohne Neustart.
 - **Namensauflösung (DNS)** prüft die Liste nicht. Über DNS-Anfragen lassen sich kleine
   Datenmengen nach außen geben.
 - Was die **Plattform** für den Agenten erledigt (Mail senden, Teams, Websuche über die

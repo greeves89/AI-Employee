@@ -14,6 +14,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   - Gegen Domain-Fronting bricht der Proxy für diese Agenten TLS immer auf, setzt den Servernamen nach außen auf das geprüfte Ziel und prüft den Host-Kopf jeder Anfrage (421 bei Abweichung).
   - Der Netzwächter sperrt für den Agenten alles außer dem Proxy, auf jedem Port. Das gilt für alle Behälter desselben Besitzers, also auch für die Apps des Agenten.
   - Schalter auf der Karte „Erlaubte Adressen“ (`GET`/`PATCH /agents/{id}/zielliste`): nur Besitzer und Admin, nur mit Egress-Proxy, Neustart des Agenten, Eintrag im Audit-Log. Neuer Punkt im Sicherheitsstatus.
+  - Mit Liste meldet sich der Agent mit Kennung am Proxy an (`zl.<id>`). Der Proxy fragt dann frisch nach und sperrt, solange die Liste nicht bestätigt ist. Ein gemerkter Stand „Liste aus“ gilt nur noch 5 s statt 60 s. Ein neu gestarteter Agent kommt so nicht mit dem Stand seines Vorgängers durch.
+  - Prüfung vor dem Senden (`requestheaders`), auch bei gestreamtem Körper. Rohes TCP im Tunnel (kein HTTP) beendet der Proxy für diese Agenten. Gestoppte Agenten zählen für den Netzwächter weiter, ihre Apps bleiben gesperrt.
   - Fail closed: Lässt sich die Einstellung beim Start nicht lesen, startet der Agent nicht.
 
 ### Behoben

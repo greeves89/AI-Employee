@@ -80,6 +80,18 @@ class ProxyEntscheidungTests(unittest.TestCase):
         for ziele, host, erwartet in faelle:
             self.assertEqual(logik.ziel_erlaubt(host, ziele), erwartet, (ziele, host))
 
+    def test_kennung_im_anmeldenamen(self):
+        import base64
+
+        def kopf(roh: bytes) -> str:
+            return "Basic " + base64.b64encode(roh).decode()
+        self.assertEqual(logik.anmeldung(kopf(b"zl.a1:tok")), ("a1", "tok"))
+        self.assertTrue(logik.zielliste_erwartet(kopf(b"zl.a1:tok")))
+        self.assertEqual(logik.anmeldung(kopf(b"a1:tok")), ("a1", "tok"))
+        self.assertFalse(logik.zielliste_erwartet(kopf(b"a1:tok")))
+        self.assertIsNone(logik.anmeldung(kopf(b"zl.:tok")), "nur Kennung, keine ID")
+        self.assertFalse(logik.zielliste_erwartet(None))
+
     def test_proxy_merkt_die_liste_mit_der_anmeldung(self):
         antworten = iter([(200, {"hosts": [], "zielliste": self.Z}), (200, {"hosts": []})])
         o = logik.Orchestrator("http://o", "t", senden=lambda pfad, daten: next(antworten))
