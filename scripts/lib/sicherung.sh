@@ -339,19 +339,28 @@ ziel_platz_pruefen() {
     return 0
 }
 
-# Ziel der Sicherung: das gewuenschte — oder, ohne root und nur beim Standardziel,
-# ein eigener Ordner, wenn das Standardziel nicht beschreibbar ist (/var/backups
-# gehoert root; ein frueheres ``sudo update.sh`` legt den Ordner als root mit 700
-# an). Bisher brach das Update dann ohne Sicherung ab (14.11.2026).
-# Aufruf: sicherungsziel_waehlen <ziel> <standardziel> <uid> <home>  → Ziel auf stdout
+# Ziel der Sicherung: das gewuenschte — oder, ohne root, ein eigener Ordner, wenn das
+# Standardziel nicht beschreibbar ist (/var/backups gehoert root; ein frueheres
+# ``sudo update.sh`` legt den Ordner und daily/weekly als root mit 700 an). Bisher
+# brach das Update dann ohne Sicherung ab (14.11.2026).
+# Nie ausweichen, wenn: root; Ziel ausdruecklich gesetzt; eine eigene Sicherungsplatte
+# (BACKUP_MOUNT) eingehaengt ist — die Sicherung gehoert dann dorthin, nicht auf die
+# Platte der Anlage; kein HOME bekannt.
+# Aufruf: sicherungsziel_waehlen <ziel> <standard> <uid> <home> <gesetzt> <mount> → stdout
 sicherungsziel_waehlen() {
-    local ziel="$1" standard="$2" uid="$3" heim="$4"
-    if [ "$uid" != "0" ] && [ "$ziel" = "$standard" ]; then
-        if { [ -d "$ziel" ] && [ ! -w "$ziel" ]; } \
-                || { [ ! -d "$ziel" ] && [ ! -w "$(dirname "$ziel")" ]; }; then
-            echo "${heim}/ai-employee-sicherungen"
-            return 0
-        fi
+    local ziel="$1" standard="$2" uid="$3" heim="$4" gesetzt="${5:-}" mount="${6:-}" unter
+    if [ "$uid" = "0" ] || [ "$ziel" != "$standard" ] || [ -n "$gesetzt" ] \
+            || [ -n "$mount" ] || [ -z "$heim" ]; then
+        echo "$ziel"; return 0
     fi
-    echo "$ziel"
+    local gesperrt=""
+    if [ -d "$ziel" ]; then
+        [ -w "$ziel" ] || gesperrt=ja
+        for unter in daily weekly; do
+            if [ -e "$ziel/$unter" ] && [ ! -w "$ziel/$unter" ]; then gesperrt=ja; fi
+        done
+    elif [ ! -w "$(dirname "$ziel")" ]; then
+        gesperrt=ja
+    fi
+    if [ -n "$gesperrt" ]; then echo "${heim}/ai-employee-sicherungen"; else echo "$ziel"; fi
 }

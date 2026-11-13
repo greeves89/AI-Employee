@@ -49,19 +49,16 @@ import conf.d/*.caddy
 	import conf.d/site/*.caddy
 
 	# Kiosk is LOCAL-ONLY. Requests coming through the Cloudflare tunnel carry a
-	# Cf-Ray header → 404; requests from other machines in the LAN → 404
-	# (@nichtlokal). Requests from the Pi's own browser → served. (handle blocks are matched most-specific
+	# Cf-Ray header → 404. Everything else needs the kiosk device access
+	# (core/kiosk_zugang). (handle blocks are matched most-specific
 	# first, so these win over /api/* and the catch-all.)
 	@tunnel header Cf-Ray *
-	# Auch nicht aus dem lokalen Netz: Ohne Tunnel erreichte bisher jeder im LAN den
-	# Kiosk ohne Anmeldung (Status, Chat mit den Agenten, Strompreis). Erlaubt ist
-	# nur das Geraet selbst — die Kiosk-Anzeige ruft http://localhost/kiosk auf und
-	# kommt ueber den Docker-Portweg als 172.16.0.0/12 an (auf dem Pi geprueft).
-	@nichtlokal not remote_ip 127.0.0.1/8 ::1 172.16.0.0/12
+	# Aus dem lokalen Netz schuetzt nicht Caddy, sondern der Zugang des Kiosk-Geraets
+	# (core/kiosk_zugang): eine Netzregel liesse 172.x-Firmennetze und Agenten
+	# (direkt am Orchestrator) durch (Sicherheitsreview 1.461).
 	handle /api/v1/kiosk* {
 		route {
 			respond @tunnel "Not found" 404
-			respond @nichtlokal "Not found" 404
 			reverse_proxy ai-employee-orchestrator:8000 {
 				import forwarded_https
 			}
@@ -70,7 +67,6 @@ import conf.d/*.caddy
 	handle /kiosk* {
 		route {
 			respond @tunnel "Not found" 404
-			respond @nichtlokal "Not found" 404
 			reverse_proxy ai-employee-frontend:3000 {
 				import forwarded_https
 			}

@@ -5507,6 +5507,21 @@ export async function setAgentFreigaben(
   });
 }
 
+export interface KioskZugangStand { kiosk_eingeschaltet: boolean; eingerichtet: boolean }
+
+/** Zugang der Kiosk-Anzeige (core/kiosk_zugang) — nur Admin. */
+export async function getKioskZugang(): Promise<KioskZugangStand> {
+  return fetchJSON(`${getBase()}/admin/kiosk-zugang`);
+}
+
+export async function erzeugeKioskZugang(): Promise<{ link: string }> {
+  return fetchJSON(`${getBase()}/admin/kiosk-zugang`, { method: "POST" });
+}
+
+export async function entferneKioskZugang(): Promise<{ eingerichtet: boolean }> {
+  return fetchJSON(`${getBase()}/admin/kiosk-zugang`, { method: "DELETE" });
+}
+
 export async function getProjektVerzeichnis(): Promise<{ users: { id: string; name: string; email?: string }[] }> {
   return fetchJSON(`${getBase()}/teams/verzeichnis`);
 }

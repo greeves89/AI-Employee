@@ -84,6 +84,20 @@ export default function KioskPage() {
 function KioskContent() {
   const [data, setData] = useState<Overview | null>(null);
   const [online, setOnline] = useState(false);
+  // Ohne Zugang des Geraets antwortet der Kiosk mit 404 (core/kiosk_zugang).
+  const [ohneZugang, setOhneZugang] = useState(false);
+  // Link /kiosk?zugang=… einmal gegen ein Cookie tauschen, dann aus der Adresse nehmen.
+  const [angemeldet, setAngemeldet] = useState(false);
+  useEffect(() => {
+    const zugang = new URLSearchParams(window.location.search).get("zugang");
+    if (!zugang) { setAngemeldet(true); return; }
+    fetch("/api/v1/kiosk/anmelden", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ zugang }),
+    }).catch(() => undefined).finally(() => {
+      window.history.replaceState(null, "", window.location.pathname);
+      setAngemeldet(true);
+    });
+  }, []);
   const [now, setNow] = useState<Date | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -104,10 +118,12 @@ function KioskContent() {
   }, [idle, chatAgent, voiceSession.activeSession]);
 
   useEffect(() => {
+    if (!angemeldet) return;
     let alive = true;
     const load = async () => {
       try {
         const r = await fetch("/api/v1/kiosk/overview", { cache: "no-store" });
+        if (alive) setOhneZugang(r.status === 404);
         if (!r.ok) throw new Error();
         const j = (await r.json()) as Overview;
         if (alive) { setData(j); setOnline(true); }
@@ -116,7 +132,7 @@ function KioskContent() {
     load();
     const t = setInterval(load, (idle ? 4 : 1) * lsGet("kiosk_poll_ms", 2500));
     return () => { alive = false; clearInterval(t); };
-  }, [idle]);
+  }, [idle, angemeldet]);
 
   // Deep-linking: /kiosk?tab=agents or ?chat=<agentId> (also handy for debugging)
   useEffect(() => {
@@ -131,6 +147,21 @@ function KioskContent() {
   }, [data, chatAgent]);
 
   if (chatAgent) return <ChatOverlay agent={chatAgent} onBack={() => { lastActivity.current = Date.now(); setChatAgent(null); }} />;
+  if (ohneZugang) {
+    return (
+      <div className="kiosk-root h-screen w-screen flex items-center justify-center kiosk-bg text-slate-100 p-8">
+        <KioskStyles />
+        <div className="max-w-md text-center space-y-3">
+          <ShieldCheck className="h-10 w-10 mx-auto text-amber-400" />
+          <div className="text-lg font-medium">Dieses Gerät ist nicht als Kiosk angemeldet</div>
+          <div className="text-sm text-slate-400">
+            Ein Admin erzeugt unter Admin-Bereich → Betrieb → Kiosk-Anzeige einen Link und öffnet ihn
+            einmal auf diesem Gerät.
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (idle) return <Screensaver now={now} power={data?.power} temp={data?.pi.temp_c ?? null} working={data?.agents_working ?? 0} />;
 
   return (

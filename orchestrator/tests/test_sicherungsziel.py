@@ -17,10 +17,10 @@ from pathlib import Path
 LIB = Path(__file__).resolve().parents[2] / "scripts" / "lib" / "sicherung.sh"
 
 
-def waehlen(ziel, standard, uid, heim):
+def waehlen(ziel, standard, uid, heim, gesetzt="", mount=""):
     aus = subprocess.run(
-        ["bash", "-c", f'. "{LIB}"; sicherungsziel_waehlen "$1" "$2" "$3" "$4"', "_",
-         str(ziel), str(standard), str(uid), str(heim)],
+        ["bash", "-c", f'. "{LIB}"; sicherungsziel_waehlen "$1" "$2" "$3" "$4" "$5" "$6"', "_",
+         str(ziel), str(standard), str(uid), str(heim), gesetzt, mount],
         capture_output=True, text=True, check=True)
     return aus.stdout.strip()
 
@@ -60,10 +60,34 @@ class SicherungszielTests(unittest.TestCase):
                          str(self.gesperrt))
 
 
+    def test_gesetztes_ziel_auch_gleich_standard_bleibt(self):
+        """--dest /var/backups/ai-employee ist eine Ansage — nicht ausweichen."""
+        self.assertEqual(waehlen(self.gesperrt, self.gesperrt, 1000, self.heim, gesetzt="ja"),
+                         str(self.gesperrt))
+
+    def test_mit_sicherungsplatte_nie_auf_die_anlage(self):
+        self.assertEqual(waehlen(self.gesperrt, self.gesperrt, 1000, self.heim, mount="/mnt/nas"),
+                         str(self.gesperrt))
+
+    def test_ohne_home_kein_ausweichen(self):
+        self.assertEqual(waehlen(self.gesperrt, self.gesperrt, 1000, ""), str(self.gesperrt))
+
+    def test_gesperrter_unterordner_weicht_aus(self):
+        (self.offen / "daily").mkdir()
+        (self.offen / "daily").chmod(0o500)
+        try:
+            self.assertEqual(waehlen(self.offen, self.offen, 1000, self.heim),
+                             f"{self.heim}/ai-employee-sicherungen")
+        finally:
+            (self.offen / "daily").chmod(0o700)
+
+
 class BackupSkriptRuftAuf(unittest.TestCase):
     def test_backup_nutzt_die_auswahl(self):
         text = (LIB.parents[1] / "backup.sh").read_text(encoding="utf-8")
         self.assertIn('sicherungsziel_waehlen "$BACKUP_DIR" "$STANDARD_ZIEL"', text)
+        self.assertIn('"${ZIEL_GESETZT:-}" "${BACKUP_MOUNT:-}"', text)
+        self.assertIn('--dest) BACKUP_DIR="$2"; ZIEL_GESETZT=ja', text)
 
 
 if __name__ == "__main__":

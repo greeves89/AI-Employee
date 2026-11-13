@@ -2430,9 +2430,17 @@ class AgentManager:
         config.pop("stop_reason", None)
         return config
 
-    async def start_agent(self, agent_id: str) -> Agent:
-        await self._publish_event(agent_id, "system", "Agent starting...")
+    async def start_agent(self, agent_id: str, *, durch_mensch: bool = False) -> Agent:
         agent = await self._get_agent(agent_id)
+        # Vom Nutzer angehalten: nur ein Mensch startet ihn (Start-Knopf, Fortsetzen,
+        # Concierge, Browser-Reiter). Zustellung, Besprechungsraeume und Agenten-
+        # Nachrichten (``agent_wakeup.ensure_agent_running``) nicht — dieselbe Regel
+        # wie ``user_lifecycle.wake_agent`` (Sicherheitsreview 1.461).
+        from app.core.agent_duty import vom_nutzer_angehalten
+        if not durch_mensch and vom_nutzer_angehalten(agent):
+            logger.info(f"Agent {scrub_log(agent_id)} vom Nutzer angehalten — nicht automatisch gestartet")
+            return agent
+        await self._publish_event(agent_id, "system", "Agent starting...")
         if not agent.container_id:
             # No container exists — recreate it (keeps volumes/data)
             logger.info(f"Agent {scrub_log(agent_id)} has no container — recreating via update_agent")

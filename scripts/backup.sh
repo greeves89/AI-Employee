@@ -50,10 +50,12 @@ INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "${INSTALL_DIR}/scripts/lib/sicherung.sh"
 
 STANDARD_ZIEL=/var/backups/ai-employee
+# Ausdruecklich gesetztes Ziel (BACKUP_DIR oder --dest) wird nie ersetzt.
+ZIEL_GESETZT="${BACKUP_DIR:+ja}"
 BACKUP_DIR="${BACKUP_DIR:-$STANDARD_ZIEL}"
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --dest) BACKUP_DIR="$2"; shift 2 ;;
+        --dest) BACKUP_DIR="$2"; ZIEL_GESETZT=ja; shift 2 ;;
         *) echo "Unbekannte Option: $1"; exit 1 ;;
     esac
 done
@@ -95,7 +97,8 @@ else
     # Dann bisher: Abbruch, das Update unterbleibt, niemand sichert (14.11.2026).
     # Jetzt: auf einen eigenen Ordner ausweichen und das laut sagen. Nur beim
     # Standardziel — ein ausdruecklich gesetztes Ziel (BACKUP_DIR, --dest) bleibt.
-    NEUES_ZIEL="$(sicherungsziel_waehlen "$BACKUP_DIR" "$STANDARD_ZIEL" "$(id -u)" "$HOME")"
+    NEUES_ZIEL="$(sicherungsziel_waehlen "$BACKUP_DIR" "$STANDARD_ZIEL" "$(id -u)" "${HOME:-}" \
+        "${ZIEL_GESETZT:-}" "${BACKUP_MOUNT:-}")"
     if [ "$NEUES_ZIEL" != "$BACKUP_DIR" ]; then
         echo "[WARN] ${BACKUP_DIR} ist für $(id -un) nicht beschreibbar — sichere nach ${NEUES_ZIEL}." >&2
         echo "[WARN] Dauerhaft beheben: sudo chown -R $(id -un) ${BACKUP_DIR}  (oder BACKUP_DIR in .env setzen)" >&2

@@ -1756,7 +1756,8 @@ async def ws_agent_browser(
     from app.core.agent_wakeup import ensure_agent_running
 
     try:
-        await ensure_agent_running(agent_id, _docker, _redis)
+        # Besitzer oeffnet den Browser-Reiter (require_agent_owner): ein Mensch.
+        await ensure_agent_running(agent_id, _docker, _redis, durch_mensch=True)
     except Exception as e:  # noqa: BLE001 — der Versuch darf den Kanal nicht kippen
         logger.warning("[Browser] Wecken von %s fehlgeschlagen: %s", scrub_log(agent_id), e)
 

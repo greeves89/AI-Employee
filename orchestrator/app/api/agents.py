@@ -1420,7 +1420,7 @@ async def start_agent(
 ):
     await _check_owner(agent_id, user, db)
     try:
-        agent = await manager.start_agent(agent_id)
+        agent = await manager.start_agent(agent_id, durch_mensch=True)
         # Der Nutzer hat ihn wieder gestartet — der Halt aus dem Stopp ist aufgehoben.
         from app.core import agent_duty
         agent_duty.nutzerhalt_setzen(agent, False)
@@ -1466,7 +1466,7 @@ async def sentinel_fortsetzen(
     if meta.get("fortgesetzt"):
         return {"status": "bereits_fortgesetzt"}
     try:
-        agent = await manager.start_agent(agent_id)
+        agent = await manager.start_agent(agent_id, durch_mensch=True)
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     from app.core import agent_duty
@@ -3964,7 +3964,12 @@ async def update_agent_anonymisierer(
     # Platzhalter sowie die abgeschaltete Telemetrie bekommt er nur beim Erstellen.
     if neu["aktiv"] and not alt["aktiv"] and agent.container_id:
         try:
-            await manager.restart_agent(agent_id)
+            # Laeuft er, neu starten; steht er, neu bauen und gestoppt lassen —
+            # ein Neustart haette einen angehaltenen Agenten wieder angeworfen.
+            if agent.state in (AgentState.RUNNING, AgentState.IDLE, AgentState.WORKING):
+                await manager.restart_agent(agent_id)
+            else:
+                await manager.update_agent(agent_id)
             stand["neu_gestartet"] = True
         except Exception:  # noqa: BLE001 — Einstellung gilt; der Hinweis sagt, was fehlt
             logger.exception("Agent %s nach dem Einschalten des Anonymisierers nicht neu gestartet", agent_id)
@@ -4288,7 +4293,12 @@ async def update_agent_zielliste(
     stand = await _zielliste_stand(db, agent)
     if alt != body.aktiv and agent.container_id:
         try:
-            await manager.restart_agent(agent_id)
+            # Laeuft er, neu starten; steht er, neu bauen und gestoppt lassen —
+            # ein Neustart haette einen angehaltenen Agenten wieder angeworfen.
+            if agent.state in (AgentState.RUNNING, AgentState.IDLE, AgentState.WORKING):
+                await manager.restart_agent(agent_id)
+            else:
+                await manager.update_agent(agent_id)
             stand["neu_gestartet"] = True
         except Exception:  # noqa: BLE001 — Einstellung gilt; der Hinweis sagt, was fehlt
             logger.exception("Agent %s nach Umschalten der Zielliste nicht neu gestartet", agent_id)
