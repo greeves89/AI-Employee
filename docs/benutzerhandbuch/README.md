@@ -4207,6 +4207,46 @@ Zugangsdaten werden verschlüsselt gespeichert und nie wieder angezeigt. Die Kar
 Für Teams gilt außerdem, was der Agent in Microsoft 365 darf (siehe unten). Chats aus
 Besprechungen, an denen der Agent teilnimmt, kommen von selbst dazu.
 
+### Teams-Besprechungen: Agent schreibt mit *(seit 1.451.0)*
+
+Ein Agent kann in Teams-Terminen dabei sein, zu denen er eingeladen ist. Nach dem Termin steht
+unter **Besprechungen** (Seitenleiste) ein Protokoll mit Aufgaben und dem Transkript.
+
+**So schaltest du es ein** (Besitzer des Agenten oder Administrator):
+1. Agent öffnen → **Konnektoren** → **Microsoft Teams** aufklappen.
+2. Bei **Teams-Besprechungen** den Schalter einschalten.
+3. Die **Rolle** wählen:
+   - **Mitschreiber:** Nach dem Termin holt der Agent das Teams-Transkript und schreibt Protokoll
+     und Aufgaben.
+   - **Beisitzer:** Während des Termins liest er im Chat der Besprechung mit und antwortet, wenn
+     man ihn beim Namen nennt.
+4. Optional **Einladungen selbst annehmen**, auf Wunsch nur von bestimmten Adressen oder
+   Domänen (z. B. `@example.com`).
+5. Den Agenten wie eine Kollegin in Outlook oder Teams zum Termin einladen.
+
+Was dann passiert:
+- Zu jedem Termin legt die Anlage eine Seite unter **Besprechungen** an. Sie zeigt Zeit, Stand
+  und Teilnehmende.
+- Zu Beginn schreibt der Agent einmal in den Chat der Besprechung, dass er mitschreibt. Das gilt
+  für jede Teams-Nachricht des Agenten: Im Modus **Entwurf** wartet der Hinweis auf deine
+  Freigabe. Im Modus **Lesen** schreibt er nichts, die Seite zeigt das an.
+- Nach dem Termin (sobald Teams das Transkript bereitstellt) schreibt der Agent das Protokoll:
+  Zusammenfassung, Entscheidungen, Aufgaben mit Verantwortlichen. Das Transkript liegt
+  zusätzlich im Wissen.
+
+**Gäste von außen:** Ist jemand außerhalb deiner Organisation eingeladen, hält sich der Agent
+heraus: kein Chat, kein Hinweis, kein Protokoll. Die Seite zeigt „Gäste von außen“. Mit dem Haken
+**Auch in Terminen mit Gästen von außen** erlaubst du es für diesen Agenten.
+
+**Voraussetzungen:**
+- Ein Microsoft-Konto für den Agenten, am besten ein eigenes (Kap. 37.16), sonst deins.
+- Ein Transkript gibt es nur, wenn im Termin die Aufzeichnung mit Transkription lief.
+- Berechtigungen der App-Registrierung: `OnlineMeetings.Read` und
+  `OnlineMeetingTranscript.Read.All`, dazu `Calendars.ReadWrite` (Annehmen) und
+  `Chat.ReadWrite` (Hinweis, Beisitzer).
+
+Der Agent hört noch nicht zu und spricht nicht. Er arbeitet über Chat und Transkript.
+
 ### Discord einrichten
 
 Discord braucht drei Dinge, sonst bleibt es still:

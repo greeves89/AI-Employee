@@ -5,6 +5,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.451.0] - 2026-11-13
+
+### Neu
+- **Teams-Besprechungen, Stufe 1** (Plan `docs/plaene/teams-besprechungen.md`, Handbuch Kap. 34).
+  - **Besprechungsseite je Teams-Termin:** Die Tabelle `meetings` (bisher nur Browser-Mitschnitte) bekommt Teams-Termine der Agenten. Neue Spalten: `quelle`, `agent_id`, `teams_event_id`, `beginn`, `ende`, `status`, `gaeste_extern`, `hinweis`, `protokoll`. Besitzer der Zeile ist der Besitzer des Agenten, damit gilt dieselbe Zugriffsprüfung. Neue Seite **Besprechungen** mit Protokoll, Aufgaben und Transkript. Die Schnittstelle `/meetings` hatte bisher keine Oberfläche.
+  - **Hinweis „schreibt mit“:** einmal je Termin im Termin-Chat, über `teams_gateway.senden_nach_regeln`. Lesen sendet nichts, Entwurf legt eine Freigabe an.
+  - **Gäste von außen:** Teilnehmer außerhalb der eigenen Domänen (Konto des Agenten, Besitzer) halten den Agenten heraus, ohne Chat und ohne Protokoll. Abschaltbar je Agent (`mit_gaesten`). Ohne bekannte eigene Domäne gilt jeder als Gast.
+  - **Protokoll nach dem Termin:** Der Agent bekommt das Transkript über denselben Weg wie die Besprechungsräume (`type=meeting`), nicht blockierend. Die Antwort wird geprüft (`_looks_like_todo`). Die Aufgaben sind die `- [ ]`-Zeilen (`projekt_termine.aktionspunkte`, gemeinsam mit den Projekt-Besprechungen).
+  - **Einstellungen** (an, Rolle, Einladungen annehmen, nur von, mit Gästen) sind Teil des Teams-Kanals (`core/kanaele`). Es gelten dieselben Rechte und dasselbe Prüfprotokoll. Bisher gab es dafür weder Schnittstelle noch Oberfläche.
+
+### Behoben
+- `fetchJSON` scheiterte an leeren Antworten (204, z. B. beim Löschen).
+
+### Tests
+- `test_teams_besprechungen.py`:
+  - Gäste-Matrix
+  - Seite je Termin
+  - Hinweis genau einmal, je Modus
+  - Protokoll mit Aufgaben, auch außerhalb des Kalenderfensters
+  - Neuer Auftrag bei unbrauchbarer Antwort
+  - Einstellungen samt Prüfung
+  - Nutzertrennung
+- Gegenprobe: 7 von 8 Schutzmechanismen fängt der Test. Die achte (keine doppelte Seite) sichert zusätzlich der Unique-Constraint.
+
 ## [1.450.0] - 2026-11-13
 
 ### Neu

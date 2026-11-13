@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronDown, ListChecks, Loader2, MessagesSquare, TriangleAlert } from "lucide-react";
+import { CalendarClock, ChevronDown, ListChecks, Loader2, MessagesSquare, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { useToast } from "@/components/ui/dialog-provider";
@@ -167,6 +167,10 @@ function KanalBlock({ agentId, stand, onGespeichert }: {
               <div className="text-[11px] text-muted-foreground/70">
                 Gewählt: {zeilen(ziele).length} Chat(s), {teamsKanaele.length} Kanal/Kanäle
               </div>
+              {stand.besprechungen && (
+                <BesprechungenBlock wert={stand.besprechungen} busy={busy}
+                  speichern={(b, meldung) => speichern({ besprechungen: b }, meldung)} />
+              )}
             </>
           )}
           {(stand.kanal === "slack" || stand.kanal === "discord") && (
@@ -228,6 +232,57 @@ function KanalBlock({ agentId, stand, onGespeichert }: {
             Speichern
           </button>
         </div>
+      )}
+    </div>
+  );
+}
+
+/** Teams-Termine (services/teams_meetings): mitschreiben oder im Chat dabei sein. */
+function BesprechungenBlock({ wert, busy, speichern }: {
+  wert: api.BesprechungsEinstellung; busy: boolean;
+  speichern: (b: Partial<api.BesprechungsEinstellung>, meldung?: string) => Promise<void>;
+}) {
+  const [von, setVon] = useState((wert.annehmen_von || []).join("\n"));
+  return (
+    <div className="space-y-3 rounded-lg border border-foreground/10 p-3">
+      <div className="flex items-center gap-3">
+        <CalendarClock className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-medium">Teams-Besprechungen</p>
+          <p className="text-[11px] text-muted-foreground/70">
+            Der Agent ist in Terminen dabei, zu denen er eingeladen ist. Er sagt im Chat, dass er
+            mitschreibt. Danach steht unter Besprechungen ein Protokoll mit Aufgaben.
+          </p>
+        </div>
+        <Schalter an={wert.aktiv} disabled={busy} label="Teams-Besprechungen"
+          onClick={() => speichern({ aktiv: !wert.aktiv }, wert.aktiv ? "Besprechungen aus" : "Besprechungen an")} />
+      </div>
+      {wert.aktiv && (
+        <>
+          <Feld label="Rolle">
+            <select value={wert.rolle} disabled={busy} className={eingabe}
+              onChange={(e) => speichern({ rolle: e.target.value as api.BesprechungsEinstellung["rolle"] })}>
+              <option value="mitschreiber">Mitschreiber: Protokoll und Aufgaben nach dem Termin</option>
+              <option value="beisitzer">Beisitzer: im Chat dabei, antwortet, wenn man ihn nennt</option>
+            </select>
+          </Feld>
+          <label className="flex items-start gap-2 text-xs">
+            <input type="checkbox" checked={wert.mit_gaesten} disabled={busy}
+              onChange={(e) => speichern({ mit_gaesten: e.target.checked })} />
+            <span>Auch in Terminen mit Gästen von außen. Ohne Haken hält sich der Agent dort heraus.</span>
+          </label>
+          <label className="flex items-start gap-2 text-xs">
+            <input type="checkbox" checked={wert.automatisch_annehmen} disabled={busy}
+              onChange={(e) => speichern({ automatisch_annehmen: e.target.checked })} />
+            <span>Einladungen selbst annehmen</span>
+          </label>
+          {wert.automatisch_annehmen && (
+            <Feld label="Nur von" hilfe="Eine Adresse oder Domäne je Zeile, z. B. @example.com. Leer: von allen.">
+              <textarea value={von} onChange={(e) => setVon(e.target.value)} rows={2} className={eingabe}
+                onBlur={() => speichern({ annehmen_von: zeilen(von) })} />
+            </Feld>
+          )}
+        </>
       )}
     </div>
   );

@@ -3821,6 +3821,8 @@ class KanalUpdate(BaseModel):
     bot_kennung: str | None = None
     telefon_id: str | None = None
     absender: list[str] | None = None
+    #: Teams-Termine: aktiv, rolle, automatisch_annehmen, annehmen_von, mit_gaesten (core/kanaele).
+    besprechungen: dict | None = None
     token: str | None = Field(default=None, max_length=1000)
 
 

@@ -95,6 +95,51 @@ def _stichworte(werte) -> list[str]:
     return aus
 
 
+#: Teams-Termine (services/teams_meetings, ``channels.meetings``) — Teil des Teams-Kanals.
+BESPRECHUNGEN = "meetings"
+ROLLEN = ("mitschreiber", "beisitzer")
+
+
+def besprechungen_lesen(config: dict | None) -> dict:
+    b = ((config or {}).get("channels") or {}).get(BESPRECHUNGEN) or {}
+    return {"aktiv": bool(b.get("enabled")), "rolle": b.get("role") if b.get("role") in ROLLEN else "mitschreiber",
+            "automatisch_annehmen": bool(b.get("auto_accept")), "annehmen_von": list(b.get("accept_from") or []),
+            "mit_gaesten": bool(b.get("mit_gaesten"))}
+
+
+def _besprechungen(alt: dict, e) -> dict:
+    """Termin-Einstellungen prüfen. Felder, die fehlen, bleiben."""
+    if not isinstance(e, dict):
+        raise UngueltigeEinstellung("Besprechungen: Einstellungen fehlen.")
+    b = dict(alt)
+    if "aktiv" in e:
+        b["enabled"] = bool(e["aktiv"])
+    if "rolle" in e:
+        if e["rolle"] not in ROLLEN:
+            raise UngueltigeEinstellung("Besprechungen: Rolle ist „mitschreiber“ oder „beisitzer“.")
+        b["role"] = e["rolle"]
+    if "automatisch_annehmen" in e:
+        b["auto_accept"] = bool(e["automatisch_annehmen"])
+    if "annehmen_von" in e:
+        liste = e["annehmen_von"] or []
+        if not isinstance(liste, list) or len(liste) > HOECHSTENS_ZIELE:
+            raise UngueltigeEinstellung(f"Annehmen von: höchstens {HOECHSTENS_ZIELE} Einträge.")
+        sauber = []
+        for a in liste:
+            a = str(a or "").strip().lower()
+            if not a:
+                continue
+            if not re.fullmatch(r"[a-z0-9._%+\-]*@?[a-z0-9.\-]+\.[a-z]{2,}", a):
+                raise UngueltigeEinstellung(f"„{a[:40]}“ ist keine Adresse oder Domäne.")
+            sauber.append(a)
+        b["accept_from"] = sauber
+    if "mit_gaesten" in e:
+        b["mit_gaesten"] = bool(e["mit_gaesten"])
+    if b.get("enabled") and b.get("role") not in ROLLEN:
+        b["role"] = "mitschreiber"
+    return b
+
+
 def lesen(config: dict | None, kanal: str) -> dict:
     """Was die Oberfläche zeigt — nie ein Token."""
     r = _roh(config, kanal)
@@ -106,7 +151,8 @@ def lesen(config: dict | None, kanal: str) -> dict:
         stand.update(ziele=list(manuell), teams_kanaele=list(r.get("channels") or []),
                      besprechungs_chats=len(r.get("chat_ids_meetings") or []),
                      nur_bei_erwaehnung=bool(r.get("mention_only", True)),
-                     stichworte=list(r.get("mention_names") or []))
+                     stichworte=list(r.get("mention_names") or []),
+                     besprechungen=besprechungen_lesen(config))
     elif kanal == "slack":
         stand.update(ziele=list(r.get("channels") or []), nur_bei_erwaehnung=bool(r.get("mention_only", True)),
                      stichworte=list(r.get("mention_names") or []), bot_kennung=r.get("bot_user_id") or "",
@@ -162,6 +208,12 @@ def setzen(config: dict | None, kanal: str, e: dict) -> tuple[dict, list[str]]:
             setze("mention_only", bool(e["nur_bei_erwaehnung"]), "nur_bei_erwaehnung")
         if "stichworte" in e:
             setze("mention_names", _stichworte(e["stichworte"]), "stichworte")
+        if "besprechungen" in e:
+            alt = dict(kanaele.get(BESPRECHUNGEN) or {})
+            b = _besprechungen(alt, e["besprechungen"])
+            if b != alt:
+                kanaele[BESPRECHUNGEN] = b
+                geaendert.append("besprechungen")
     elif kanal in ("slack", "discord"):
         if "ziele" in e:
             setze("channels", _kennungen(e["ziele"], "Kanäle"), "kanaele")

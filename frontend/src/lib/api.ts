@@ -38,6 +38,8 @@ async function fetchJSON<T>(url: string, options?: RequestInit, _isRetry = false
     const error = await res.text();
     throw new Error(`API Error ${res.status}: ${error}`);
   }
+  // 204 (Löschen) hat keinen Körper — res.json() würde werfen.
+  if (res.status === 204) return undefined as T;
   return res.json();
 }
 
@@ -700,8 +702,18 @@ export async function trenneAgentMicrosoftKonto(agentId: string): Promise<Pick<A
 
 export interface TeamsKanal { team_id: string; channel_id: string; name?: string }
 
+/** Teams-Termine eines Agenten (core/kanaele, ``channels.meetings``). */
+export interface BesprechungsEinstellung {
+  aktiv: boolean;
+  rolle: "mitschreiber" | "beisitzer";
+  automatisch_annehmen: boolean;
+  annehmen_von: string[];
+  mit_gaesten: boolean;
+}
+
 export interface KanalStand {
   kanal: "teams" | "slack" | "discord" | "whatsapp";
+  besprechungen?: BesprechungsEinstellung;
   aktiv: boolean;
   ziele?: string[];
   teams_kanaele?: TeamsKanal[];
@@ -719,7 +731,10 @@ export interface KanalStand {
   anzahl_absender?: number;
 }
 
-export type KanalUpdate = Partial<Omit<KanalStand, "kanal" | "token_gesetzt" | "besprechungs_chats">> & { token?: string };
+export type KanalUpdate = Partial<Omit<KanalStand, "kanal" | "token_gesetzt" | "besprechungs_chats" | "besprechungen">> & {
+  token?: string;
+  besprechungen?: Partial<BesprechungsEinstellung>;
+};
 
 export interface TeamsAuswahl {
   chats: { id: string; art: string; name: string }[];
@@ -1321,6 +1336,35 @@ export async function deleteFile(agentId: string, path: string): Promise<void> {
 }
 
 // Meeting recording: transcribe one recorded audio chunk via the STT service.
+/** Gespeicherte Besprechung: Mitschnitt im Browser oder Teams-Termin eines Agenten (/meetings). */
+export interface Besprechung {
+  id: string;
+  title: string;
+  transcript: string;
+  participants: string[];
+  duration_seconds: number;
+  created_at: string;
+  updated_at: string;
+  quelle: "aufnahme" | "teams";
+  agent_id: string | null;
+  beginn: string | null;
+  ende: string | null;
+  status: "geplant" | "laeuft" | "beendet" | "protokoll" | null;
+  gaeste_extern: boolean;
+  /** Hinweis „Ich schreibe mit“: gesendet, freigabe (wartet auf dich), aus (nur lesen), fehler … */
+  hinweis: string | null;
+  protokoll: string;
+  aufgaben: string[];
+}
+
+export async function getBesprechungen(): Promise<{ meetings: Besprechung[]; total: number }> {
+  return fetchJSON(`${getBase()}/meetings`);
+}
+
+export async function loescheBesprechung(id: string): Promise<void> {
+  await fetchJSON(`${getBase()}/meetings/${id}`, { method: "DELETE" });
+}
+
 export async function transcribeMeetingChunk(blob: Blob): Promise<string> {
   const fd = new FormData();
   fd.append("file", blob, "chunk.webm");
