@@ -4250,7 +4250,12 @@ heraus: kein Chat, kein Hinweis, kein Protokoll. Die Seite zeigt „Gäste von a
   `OnlineMeetingTranscript.Read.All`, dazu `Calendars.ReadWrite` (Annehmen) und
   `Chat.ReadWrite` (Hinweis, Beisitzer).
 
-Der Agent hört noch nicht zu und spricht nicht. Er arbeitet über Chat und Transkript.
+**Rolle „Teilnehmer“ (Vorschau, seit 1.453.0):** Der Agent tritt dem Termin selbst bei und steht
+als „<Name> - KI“ in der Teilnehmerliste. Wer den Termin leitet, lässt ihn aus dem Wartebereich
+herein. Er hört zu: Was gesagt wird, landet als Transkript auf der Besprechungsseite, daraus
+entsteht das Protokoll. Ist die Echtzeit-Sprache eingerichtet (Admin → Sprache), antwortet er
+auch mit Stimme, aber nur, wenn man ihn beim Namen anspricht. Dafür braucht er Zugang zu
+Teams im Netz (bei eingeschalteter Zielliste `*.teams.microsoft.com` und `*.microsoft.com`).
 
 ### Discord einrichten
 

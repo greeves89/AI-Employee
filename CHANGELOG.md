@@ -5,6 +5,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.453.0] - 2026-11-13
+
+### Neu (Vorschau)
+- **Agent als Teilnehmer in Teams-Besprechungen** (Plan und Live-Tests: `docs/plaene/teams-teilnehmer.md`). Neue Rolle „Teilnehmer“ unter Konnektoren → Teams-Besprechungen.
+  - **Beitritt:** Zum Termin tritt der Agent mit dem Chromium seines Behälters über den Link der Einladung bei, als „<Agent> - KI“. Die Gäste-Regel und der Hinweis „schreibt mit“ gelten wie bisher.
+  - **Zuhören:** Der Ton der Besprechung geht in 30-Sekunden-Stücken an `POST /meetings/{id}/teilnehmer-ton`. Er wird transkribiert (gemeinsame Funktion `transkribieren`, Sprache Deutsch) und an die Besprechungsseite gehängt. Das Protokoll entsteht wie bisher ohne Werkzeuge, auch ohne Teams-Transkriptionslizenz.
+  - **Sprechen:** `ws /agents/{id}/teams-stimme` verbindet den Teilnehmer mit der Echtzeit-Sprachfront, im Besprechungsmodus (spricht nur, wenn er beim Namen genannt wird). Die Antwort geht über das ersetzte Mikrofon in Teams. Ohne Echtzeit-Sprache hört er nur zu.
+  - **Live geprüft** in einem echten Teams-Termin:
+    - Beitritt, Wartebereich, Einlassen.
+    - Zuhören mit Transkription („Das ist ein wunderschöner Test, oder Maus?“).
+    - Das Sprechen ist noch nicht live geprüft.
+  - **Im Live-Test gefunden und behoben:**
+    - Klammern im Namen sind in Teams verboten.
+    - Eine abgelehnte Kamera hielt Teams für „kein Audio“, jetzt gibt es eine schwarze Ersatzkamera.
+    - Teams meldet Tonspuren nicht über `track`, deshalb werden die Empfänger abgefragt.
+    - Fast stille Stücke ließen Whisper Sätze erfinden.
+
+### Geändert
+- Die Sprachsitzungs-Schleife ist gemeinsam (`ws._sprachsitzung_betreiben`) für die App und den Teams-Teilnehmer.
+
+### Tests
+- `agent/tests/test_teams_teilnehmer.py`: Links, Name, WAV, Stille, Stückelung, Start je Termin, Stimme.
+- `test_teams_besprechungen.py`:
+  - Rolle „Teilnehmer“
+  - Ton-Endpunkt (Zugang, Besitz, Zeitfenster, Größe)
+  - `teams-stimme` (Zugang, Termin, ohne Echtzeit-Sprache)
+  - Besprechungsregeln
+- Bestehende Sprach- und WebSocket-Tests: 460 grün.
+
 ## [1.452.0] - 2026-11-13
 
 ### Sicherheit
