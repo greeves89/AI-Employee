@@ -214,7 +214,8 @@ async def teilnehmen(meeting_id: str, join_url: str, name: str, ende: datetime) 
             headless=True, executable_path=chromium_pfad(), args=BROWSER_ARGS,
             env={k: os.environ[k] for k in _BROWSER_UMGEBUNG if k in os.environ}, **zusatz)
         try:
-            ctx = await browser.new_context(locale="de-DE", permissions=["microphone"])
+            # Service Worker sperren: Sie könnten Anfragen an der Prüfung unten vorbeiführen.
+            ctx = await browser.new_context(locale="de-DE", permissions=["microphone"], service_workers="block")
             page = await ctx.new_page()
             await page.expose_function("__aieHoeren", hoeren)
 
@@ -226,6 +227,16 @@ async def teilnehmen(meeting_id: str, join_url: str, name: str, ende: datetime) 
                     return await route.abort()
                 await route.continue_()
             await ctx.route("**/*", wache)
+
+            # Weiterleitungen sieht ``route`` nicht: nach jedem Wechsel des Hauptrahmens
+            # nachprüfen und bei einem fremden Ziel die Teilnahme beenden. Popups gibt es nicht.
+            def gewechselt(rahmen):
+                if rahmen == page.main_frame and not navigation_erlaubt(rahmen.url):
+                    logger.warning("[Teilnehmer] Seite außerhalb von Teams (%s) — beendet",
+                                   urlsplit(rahmen.url).hostname)
+                    asyncio.get_running_loop().create_task(page.close())
+            page.on("framenavigated", gewechselt)
+            ctx.on("page", lambda neu: None if neu == page else asyncio.get_running_loop().create_task(neu.close()))
             await page.add_init_script(path=str(_BRUECKE))
             await page.goto(join_url + ("&" if "?" in join_url else "?") + "msLaunch=false&suppressPrompt=true",
                             wait_until="domcontentloaded", timeout=60000)
