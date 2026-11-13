@@ -144,7 +144,55 @@ class MessageConsumer:
             logger.warning(f"custom_llm inter-agent reply failed: {e}")
             return ""
 
-    async def _execute_cli(self, prompt: str, model: str | None = None) -> str:
+    async def _besprechungs_zug(self, msg: dict, log_publisher) -> None:
+        """Beitrag zu einer Besprechung (``type=meeting``): Zug ausführen, Antwort in
+        ``meeting:{room_id}:response:{agent_id}`` legen. ``ohne_werkzeuge`` (Protokoll aus
+        einem Teams-Transkript): Zug ohne Werkzeuge und ohne den Vorspann, der
+        knowledge.md lesen lässt."""
+        room_id = msg.get("room_id")
+        prompt = msg.get("prompt", "")
+        ohne_werkzeuge = bool(msg.get("ohne_werkzeuge"))
+        if not room_id or not prompt:
+            logger.warning("[Meeting] Got meeting message without room_id/prompt, skipping")
+            return
+
+        logger.info(f"[Meeting] Room {room_id}: executing turn ({len(prompt)} char prompt)")
+        await log_publisher.publish_status("meeting", f"room:{room_id}")
+
+        if not ohne_werkzeuge:
+            # Prepend context prefix so the agent reads its identity + knowledge before speaking
+            from app.runner_hooks import get_approval_rules_prefix
+            prompt = get_approval_rules_prefix() + (
+                "MANDATORY FIRST STEP — do this BEFORE responding:\n"
+                "1. Read /workspace/knowledge.md to recall who you are, what you've built, "
+                "and what you know. Use this to speak as yourself, not a generic agent.\n\n"
+            ) + prompt
+
+        try:
+            # Prozessweites Budget (Issue #628 Phase 2): dieser Consumer laeuft ungedeckelt
+            # neben Aufgaben und Chat im selben Prozess — ohne den gemeinsamen Platz
+            # koennte er das Container-Budget alleine sprengen.
+            async with get_run_budget().slot_for_task():
+                response = (await self._execute_cli(prompt, ohne_werkzeuge=True)
+                            if ohne_werkzeuge else await self._execute_cli(prompt))
+        except Exception as e:
+            logger.error(f"[Meeting] CLI execution failed: {e}")
+            response = f"[{self.agent_id} encountered an error: {e}]"
+
+        if not response or not response.strip():
+            response = f"[{self.agent_id} had nothing to add this turn]"
+
+        # Write response to the queue the orchestrator is polling
+        response_key = f"meeting:{room_id}:response:{self.agent_id}"
+        try:
+            await self.redis.lpush(response_key, response)
+            logger.info(f"[Meeting] Room {room_id} response pushed ({len(response)} chars)")
+        except Exception as e:
+            logger.error(f"[Meeting] Failed to push response to {response_key}: {e}")
+
+        await log_publisher.publish_status("idle", f"room:{room_id}")
+
+    async def _execute_cli(self, prompt: str, model: str | None = None, *, ohne_werkzeuge: bool = False) -> str:
         """Lauf ausführen und seine Kosten melden (#919).
 
         Läufe auf eine Nachricht eines Kollegen oder in einer Besprechung legten
@@ -153,6 +201,8 @@ class MessageConsumer:
         """
         self._lauf_kosten = 0.0
         try:
+            if ohne_werkzeuge:
+                return await self._execute_cli_roh(prompt, model, ohne_werkzeuge=True)
             return await self._execute_cli_roh(prompt, model)
         finally:
             await self._kosten_melden()
@@ -184,8 +234,16 @@ class MessageConsumer:
         except Exception as e:  # noqa: BLE001 — eine Buchung darf die Antwort nicht kippen
             logger.warning(f"Kosten des Nachrichten-Laufs nicht gemeldet: {e}")
 
-    async def _execute_cli_roh(self, prompt: str, model: str | None = None) -> str:
-        """Run the agent's runtime with the prompt and return the text response."""
+    async def _execute_cli_roh(self, prompt: str, model: str | None = None, *, ohne_werkzeuge: bool = False) -> str:
+        """Run the agent's runtime with the prompt and return the text response.
+
+        ``ohne_werkzeuge``: Ein Zug, der nur Text liefert — für Aufträge, die fremden Text
+        enthalten (Protokoll aus einem Teams-Transkript). Was dort drinsteht, kann dann
+        nichts ausführen, nichts lesen und nichts wegschicken, in jeder Laufzeit:
+        Claude Code ohne eingebaute Werkzeuge und ohne MCP; Codex in der schreibgeschützten
+        Sandbox (startet im Behälter nicht → kein Befehl läuft), ohne MCP und Websuche;
+        eigenes Modell ohnehin ohne Werkzeuge.
+        """
         import os
 
         # custom_llm has no CLI — answer via the LLM provider directly.
@@ -201,7 +259,8 @@ class MessageConsumer:
                 "codex", "exec",
                 "--json",
                 "--skip-git-repo-check",
-                "--dangerously-bypass-approvals-and-sandbox",
+                *(["--sandbox", "read-only", "-c", "mcp_servers={}", "-c", 'web_search="disabled"']
+                  if ohne_werkzeuge else ["--dangerously-bypass-approvals-and-sandbox"]),
                 "-C", settings.workspace_dir,
             ]
             if model and model != "default":
@@ -210,6 +269,8 @@ class MessageConsumer:
             stdin_input = prompt.encode("utf-8")
         else:
             cmd = ["claude", "-p", "--output-format", "json", "--dangerously-skip-permissions"]
+            if ohne_werkzeuge:
+                cmd.extend(["--tools", "", "--strict-mcp-config"])
             if model and model != "default":
                 cmd.extend(["--model", model])
             stdin_input = prompt.encode("utf-8")
@@ -395,47 +456,7 @@ class MessageConsumer:
                 # write the response into meeting:{room_id}:response:{agent_id}
                 # so the round-robin engine can collect it.
                 if msg.get("type") == "meeting":
-                    room_id = msg.get("room_id")
-                    prompt = msg.get("prompt", "")
-                    if not room_id or not prompt:
-                        logger.warning("[Meeting] Got meeting message without room_id/prompt, skipping")
-                        continue
-
-                    logger.info(f"[Meeting] Room {room_id}: executing turn ({len(prompt)} char prompt)")
-                    await log_publisher.publish_status("meeting", f"room:{room_id}")
-
-                    # Prepend context prefix so the agent reads its identity + knowledge before speaking
-                    from app.runner_hooks import get_approval_rules_prefix
-                    meeting_prefix = get_approval_rules_prefix() + (
-                        f"MANDATORY FIRST STEP — do this BEFORE responding:\n"
-                        f"1. Read /workspace/knowledge.md to recall who you are, what you've built, "
-                        f"and what you know. Use this to speak as yourself, not a generic agent.\n\n"
-                    )
-                    prompt = meeting_prefix + prompt
-
-                    try:
-                        # Prozessweites Budget (Issue #628 Phase 2): dieser
-                        # Consumer laeuft ungedeckelt neben Aufgaben und Chat
-                        # im selben Prozess — ohne den gemeinsamen Platz
-                        # koennte er das Container-Budget alleine sprengen.
-                        async with get_run_budget().slot_for_task():
-                            response = await self._execute_cli(prompt)
-                    except Exception as e:
-                        logger.error(f"[Meeting] CLI execution failed: {e}")
-                        response = f"[{self.agent_id} encountered an error: {e}]"
-
-                    if not response or not response.strip():
-                        response = f"[{self.agent_id} had nothing to add this turn]"
-
-                    # Write response to the queue the orchestrator is polling
-                    response_key = f"meeting:{room_id}:response:{self.agent_id}"
-                    try:
-                        await self.redis.lpush(response_key, response)
-                        logger.info(f"[Meeting] Room {room_id} response pushed ({len(response)} chars)")
-                    except Exception as e:
-                        logger.error(f"[Meeting] Failed to push response to {response_key}: {e}")
-
-                    await log_publisher.publish_status("idle", f"room:{room_id}")
+                    await self._besprechungs_zug(msg, log_publisher)
                     continue
                 # ────────────────────────────────────────────────────────────
 

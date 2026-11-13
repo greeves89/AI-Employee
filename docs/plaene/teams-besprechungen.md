@@ -43,18 +43,12 @@ gibt (eigenes Konto des Agenten oder das des Besitzers, `teams_gateway._agenten_
    - Das Ergebnis kommt in `meetings.protokoll`.
    - Aufgaben sind die Zeilen `- [ ]` daraus.
 
-## Restrisiko (Review 13.11.2026)
+## Fremder Text im Transkript (Review 13.11.2026)
 
-Das Protokoll schreibt der Agent in einem normalen Zug, mit seinen Werkzeugen, wie in den
-Besprechungsräumen. Ein Teilnehmer, der dem Agenten im Transkript Anweisungen unterschiebt,
-trifft auf diese Schutzschichten:
-- Betreff und Transkript sind abgegrenzt und als fremder Text benannt.
-- Gäste von außen sind standardmäßig ausgeschlossen.
-- Senden geht nur nach Sendemodus und Freigaben.
-- Sentinel und Zielliste.
-
-Härter wäre ein Zug ohne Werkzeuge. Dafür müssen alle Laufzeiten gleich ziehen (Claude Code,
-Codex, eigenes Modell), das ist ein eigener Schritt.
+Seit 1.452.0 schreibt der Agent das Protokoll in einem Zug ohne Werkzeuge, in jeder Laufzeit
+(`MessageConsumer._besprechungs_zug`, Feld `ohne_werkzeuge`). Eine Anweisung im Transkript kann
+nichts ausführen, lesen oder wegschicken. Dazu kommen die Abgrenzung als fremder Text
+(Zufallskennung je Auftrag) und die Gäste-Regel.
 
 ## Bewusst nicht in Stufe 1
 
