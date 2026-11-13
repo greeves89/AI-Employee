@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarClock, CheckSquare, FileText, Loader2, Mic, Trash2, TriangleAlert, UserX } from "lucide-react";
+import { CalendarClock, CheckSquare, FileText, Loader2, Mic, Send, Trash2, TriangleAlert, UserX } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { MarkdownContent } from "@/components/ui/markdown-content";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
@@ -42,6 +42,27 @@ export default function BesprechungenPage() {
   const [fehler, setFehler] = useState<string | null>(null);
   const confirm = useConfirm();
   const toast = useToast();
+  const [schickAgent, setSchickAgent] = useState("");
+  const [schickLink, setSchickLink] = useState("");
+  const [schickTitel, setSchickTitel] = useState("");
+  const [schickt, setSchickt] = useState(false);
+
+  const schicken = async () => {
+    if (!schickAgent || !schickLink.trim()) return;
+    setSchickt(true);
+    try {
+      const neu = await api.agentInBesprechungSchicken(schickAgent, schickLink.trim(), schickTitel.trim());
+      toast.success("Agent ist unterwegs", "Lass ihn in Teams aus dem Wartebereich herein.");
+      setSchickLink("");
+      setSchickTitel("");
+      setListe((l) => [neu, ...(l || []).filter((x) => x.id !== neu.id)]);
+      setGewaehlt(neu.id);
+    } catch (e) {
+      toast.error("Nicht geschickt", e instanceof Error ? e.message : undefined);
+    } finally {
+      setSchickt(false);
+    }
+  };
 
   const laden = useCallback(async () => {
     try {
@@ -80,6 +101,31 @@ export default function BesprechungenPage() {
     <div>
       <Header title="Besprechungen" subtitle="Teams-Termine deiner Agenten und Mitschnitte: Protokoll, Aufgaben, Transkript" />
       <div className="p-6">
+        {Object.keys(agenten).length > 0 && (
+          <div className="mb-6 rounded-xl border border-foreground/10 p-4">
+            <p className="text-sm font-medium">Agent in eine Teams-Besprechung schicken</p>
+            <p className="mb-3 text-xs text-muted-foreground">
+              Link aus Teams einfügen („Jetzt an der Besprechung teilnehmen“). Der Agent tritt als Gast bei,
+              hört zu und schreibt das Protokoll. In Teams lässt du ihn aus dem Wartebereich herein.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <select value={schickAgent} onChange={(e) => setSchickAgent(e.target.value)} aria-label="Agent"
+                className="rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm">
+                <option value="">Agent wählen</option>
+                {Object.entries(agenten).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+              </select>
+              <input value={schickLink} onChange={(e) => setSchickLink(e.target.value)} placeholder="https://teams.microsoft.com/…"
+                aria-label="Teams-Link" className="min-w-[16rem] flex-1 rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm" />
+              <input value={schickTitel} onChange={(e) => setSchickTitel(e.target.value)} placeholder="Titel (optional)"
+                aria-label="Titel" className="w-48 rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm" />
+              <button type="button" onClick={schicken} disabled={schickt || !schickAgent || !schickLink.trim()}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">
+                {schickt ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                Schicken
+              </button>
+            </div>
+          </div>
+        )}
         {fehler && <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">{fehler}</div>}
         {liste === null && !fehler && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
         {liste && liste.length === 0 && (

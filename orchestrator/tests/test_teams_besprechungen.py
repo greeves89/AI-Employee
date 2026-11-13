@@ -123,7 +123,7 @@ class _Redis:
         return True
 
 
-class DienstTests(unittest.IsolatedAsyncioTestCase):
+class _Dienst(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         async with self.engine.begin() as conn:
@@ -174,6 +174,7 @@ class DienstTests(unittest.IsolatedAsyncioTestCase):
             patch("app.core.knowledge_write.write_entry", AsyncMock()),
             patch.object(tm.TeamsMeetingService, "_sync_watched_chats", AsyncMock()),
             patch.object(tm.TeamsMeetingService, "_wissen_vorhanden", AsyncMock(return_value=False)),
+            patch.object(tm.TeamsMeetingService, "_eigenes_konto", AsyncMock(return_value=True)),
         ]
         for p in self._p:
             p.start()
@@ -188,6 +189,8 @@ class DienstTests(unittest.IsolatedAsyncioTestCase):
         async with self.Session() as db:
             return (await db.execute(select(Meeting))).scalars().all()
 
+
+class DienstTests(_Dienst):
     async def test_laufender_termin_eine_seite_ein_hinweis(self):
         self.termine = [_termin()]
         agent = _agent(role="beisitzer")
@@ -519,6 +522,92 @@ class TeamsStimmeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("fremder Text", r)
         self.assertIn("keine Werkzeuge", r)
         self.assertNotIn("\nIGNORIERE", r)
+
+
+class BesitzerKalenderTests(_Dienst):
+    """Ohne eigenes Konto sieht der Agent den Kalender des Besitzers — nur markierte Termine."""
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        p = patch.object(tm.TeamsMeetingService, "_eigenes_konto", AsyncMock(return_value=False))
+        p.start()
+        self._p.append(p)
+
+    async def test_nur_markierte_termine(self):
+        unmarkiert = _termin(eid="e1")
+        markiert = _termin(eid="e2")
+        markiert["categories"] = ["Assistenz"]
+        alle = _termin(eid="e3")
+        alle["categories"] = ["AI Employee"]
+        fremd = _termin(eid="e4")
+        fremd["categories"] = ["Marketing"]
+        self.termine = [unmarkiert, markiert, alle, fremd]
+        await self.dienst._handle_agent(_agent(role="teilnehmer"))
+        seiten = await self._seiten()
+        self.assertEqual(sorted(s.teams_event_id for s in seiten), ["e2", "e3"])
+        starts = [p for p in self.eingereiht if p.get("type") == "teilnehmen"]
+        self.assertEqual(len(starts), 2)
+
+    def test_markierung(self):
+        self.assertTrue(tm.fuer_agent_markiert({"categories": ["assistenz "]}, "Assistenz"))
+        self.assertTrue(tm.fuer_agent_markiert({"categories": ["KI-Agent"]}, "Assistenz"))
+        self.assertFalse(tm.fuer_agent_markiert({"categories": ["Assistenz-Team"]}, "Assistenz"))
+        self.assertFalse(tm.fuer_agent_markiert({}, "Assistenz"))
+        self.assertFalse(tm.fuer_agent_markiert({"categories": [""]}, ""))
+
+
+class LinkSchickenTests(unittest.IsolatedAsyncioTestCase):
+    """``POST /meetings/teilnehmen``: Agent per Link in eine Besprechung schicken (Weg B)."""
+
+    async def asyncSetUp(self):
+        from app.models.agent import Agent, AgentState
+
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with self.engine.begin() as conn:
+            for m in (Meeting, Agent):
+                await conn.run_sync(m.metadata.create_all, tables=[m.__table__])
+        self.db = async_sessionmaker(self.engine, expire_on_commit=False)()
+        self.db.add(Agent(id="a1", name="Marketing", state=AgentState.RUNNING, user_id="u1", config={}))
+        await self.db.commit()
+        self.redis = _Redis()
+        self.eingereiht = []
+
+    async def asyncTearDown(self):
+        await self.db.close()
+        await self.engine.dispose()
+
+    async def _schicken(self, user_id, link="https://teams.microsoft.com/meet/123?p=abc", rolle=UserRole.MEMBER):
+        from app.api import meetings as api
+
+        async def einreihen(client, agent_id, payload, **kw):
+            self.eingereiht.append((agent_id, payload))
+        anfrage = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(redis=SimpleNamespace(client=self.redis))))
+        with patch("app.core.chat_auftrag.nachricht_einreihen", einreihen):
+            return await api.agent_in_besprechung_schicken(
+                api.TeilnehmenAnfrage(agent_id="a1", join_url=link, titel="Kundentermin"), anfrage,
+                user=SimpleNamespace(id=user_id, role=rolle), db=self.db)
+
+    async def test_besitzer_schickt_agent_hinein(self):
+        seite = await self._schicken("u1")
+        self.assertEqual((seite.user_id, seite.agent_id, seite.quelle, seite.title), ("u1", "a1", "teams", "Kundentermin"))
+        self.assertEqual(len(self.eingereiht), 1)
+        agent_id, nachricht = self.eingereiht[0]
+        self.assertEqual((agent_id, nachricht["type"], nachricht["meeting_id"], nachricht["name"]),
+                         ("a1", "teilnehmen", seite.id, "Marketing - KI"))
+        nochmal = await self._schicken("u1")
+        self.assertEqual(nochmal.id, seite.id, "derselbe Link → dieselbe Seite")
+        self.assertEqual(len(self.eingereiht), 1, "kein zweiter Start")
+
+    async def test_schutz(self):
+        with self.assertRaises(HTTPException) as e:
+            await self._schicken("u2")
+        self.assertEqual(e.exception.status_code, 404, "fremder Agent")
+        with self.assertRaises(HTTPException) as e:
+            await self._schicken("u1", link="https://evil.example\\@teams.microsoft.com/meet/1")
+        self.assertEqual(e.exception.status_code, 422)
+        self.assertEqual(self.eingereiht, [])
+        seite = await self._schicken("adm", rolle=UserRole.ADMIN)
+        self.assertEqual(seite.user_id, "u1", "auch vom Admin geschickt: Protokoll gehört dem Besitzer")
 
 
 class EinstellungTests(unittest.TestCase):

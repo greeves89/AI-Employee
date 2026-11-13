@@ -168,6 +168,19 @@ def gaeste_extern(event: dict, eigene: set[str]) -> bool:
     return any(domaene(a) not in eigene for a in teilnehmer_adressen(event))
 
 
+#: Kategorien in Outlook/Teams, mit denen ein Termin für ALLE Agenten markiert ist.
+KATEGORIEN_ALLE = ("ki-agent", "ai employee")
+
+
+def fuer_agent_markiert(event: dict, agent_name: str) -> bool:
+    """Arbeitet der Agent mit dem Konto seines Besitzers, sieht er dessen ganzen Kalender.
+    Dann nur Termine, die der Besitzer für ihn markiert hat: Kategorie = Name des Agenten
+    (oder „KI-Agent“ / „AI Employee“). Sonst säße er in jedem Termin des Besitzers."""
+    name = (agent_name or "").strip().casefold()
+    kategorien = {str(k).strip().casefold() for k in (event.get("categories") or [])}
+    return bool(name and name in kategorien) or any(k in kategorien for k in KATEGORIEN_ALLE)
+
+
 def darf_mitmachen(agent: Agent, extern: bool) -> bool:
     """Gäste von außen: Voreinstellung ist NEIN (wie bei „Claude Meetings“). Der Besitzer
     kann es je Agent erlauben (``meetings.mit_gaesten``)."""
@@ -298,11 +311,14 @@ class TeamsMeetingService:
                 "startDateTime": window_start,
                 "endDateTime": window_end,
                 "$select": "id,subject,start,end,isOnlineMeeting,onlineMeeting,"
-                           "organizer,attendees,responseStatus",
+                           "organizer,attendees,responseStatus,categories",
                 "$top": "25",
             },
         )
         events = [e for e in data.get("value", []) if e.get("isOnlineMeeting")]
+        if not await self._eigenes_konto(agent):
+            # Kalender des Besitzers: nur die Termine, die er für den Agenten markiert hat.
+            events = [e for e in events if fuer_agent_markiert(e, agent.name)]
 
         accepted = joined = scribed = 0
         active_chats: list[str] = []
@@ -352,6 +368,18 @@ class TeamsMeetingService:
         for seite in offen:
             if seite.teams_event_id not in gesehen:
                 await self._protokoll(agent, seite)
+
+    @staticmethod
+    async def _eigenes_konto(agent: Agent) -> bool:
+        """Hat der Agent ein eigenes Microsoft-Konto (core/agenten_konto)? Im Zweifel nein —
+        dann gilt die strengere Regel (nur markierte Termine)."""
+        try:
+            from app.core.agenten_konto import _zeile
+
+            async with resilient_session() as db:
+                return await _zeile(db, agent.id) is not None
+        except Exception:  # noqa: BLE001
+            return False
 
     # ── Besprechungsseite ─────────────────────────────────────────────────
     @staticmethod

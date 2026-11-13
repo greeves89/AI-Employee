@@ -25,6 +25,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -124,6 +125,61 @@ TEILNEHMER_MAX_BYTES = 4 * 1024 * 1024
 #: So lange nach dem Termin nimmt die Seite noch Ton an (Nachlauf, Verzögerung).
 TEILNEHMER_NACHLAUF = timedelta(minutes=30)
 TRANSKRIPT_MAX = 200_000
+
+
+class TeilnehmenAnfrage(BaseModel):
+    agent_id: str = Field(min_length=1, max_length=64)
+    join_url: str = Field(min_length=10, max_length=2000)
+    titel: str = Field(default="Teams-Besprechung", max_length=200)
+
+
+@router.post("/teilnehmen", response_model=MeetingResponse, status_code=201)
+async def agent_in_besprechung_schicken(
+    body: TeilnehmenAnfrage,
+    request: Request,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Den Agenten in eine laufende Teams-Besprechung schicken — per Link, ohne Einladung
+    (docs/plaene/teams-teilnehmer.md, Weg B). Nur Besitzer oder Admin: Der Agent tritt dann
+    bei, hört zu und schreibt das Protokoll für seinen Besitzer."""
+    from app.core.chat_auftrag import nachricht_einreihen
+    from app.core.ownership import is_admin
+    from app.models.agent import Agent
+    from app.models.meeting import STATUS_LAEUFT
+    from app.services.teams_meetings import teams_link_erlaubt
+
+    agent = await db.get(Agent, body.agent_id)
+    if agent is None or (agent.user_id != user.id and not is_admin(user)):
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
+    link = body.join_url.strip()
+    if not teams_link_erlaubt(link):
+        raise HTTPException(status_code=422, detail="Bitte einen Teams-Beitrittslink einfügen "
+                                                    "(https://teams.microsoft.com/…).")
+    import hashlib
+
+    jetzt = datetime.now(timezone.utc)
+    kennung = "link-" + hashlib.sha256(link.encode()).hexdigest()[:24]
+    seite = (await db.execute(select(Meeting).where(
+        Meeting.agent_id == agent.id, Meeting.teams_event_id == kennung))).scalar_one_or_none()
+    if seite is None:
+        seite = Meeting(id=uuid.uuid4().hex[:12], user_id=agent.user_id or user.id, agent_id=agent.id,
+                        teams_event_id=kennung, quelle=QUELLE_TEAMS, title=body.titel.strip() or "Teams-Besprechung",
+                        transcript="", protokoll="", participants=[], status=STATUS_LAEUFT)
+        db.add(seite)
+    seite.beginn, seite.ende = jetzt, jetzt + timedelta(hours=2)
+    await db.commit()
+    await db.refresh(seite)
+    redis = getattr(request.app.state, "redis", None)
+    client = getattr(redis, "client", None)
+    if client is None:
+        raise HTTPException(status_code=503, detail="Nachrichtendienst nicht erreichbar")
+    if await client.set(f"teams-teilnahme:{seite.id}", "1", nx=True, ex=2 * 3600):
+        await nachricht_einreihen(client, agent.id, {
+            "type": "teilnehmen", "meeting_id": seite.id, "join_url": link,
+            "name": f"{agent.name} - KI", "ende": seite.ende.isoformat(),
+        }, vorne=True)
+    return seite
 
 
 @router.post("/{meeting_id}/teilnehmer-ton")

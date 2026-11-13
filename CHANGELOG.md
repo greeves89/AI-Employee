@@ -12,11 +12,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   - **Beitritt:** Zum Termin tritt der Agent mit dem Chromium seines Behälters über den Link der Einladung bei, als „<Agent> - KI“. Die Gäste-Regel und der Hinweis „schreibt mit“ gelten wie bisher.
   - **Zuhören:** Der Ton der Besprechung geht in 30-Sekunden-Stücken an `POST /meetings/{id}/teilnehmer-ton`. Er wird transkribiert (gemeinsame Funktion `transkribieren`, Sprache Deutsch) und an die Besprechungsseite gehängt. Das Protokoll entsteht wie bisher ohne Werkzeuge, auch ohne Teams-Transkriptionslizenz.
   - **Sprechen:** `ws /agents/{id}/teams-stimme` verbindet den Teilnehmer mit der Echtzeit-Sprachfront, im Besprechungsmodus (spricht nur, wenn er beim Namen genannt wird). Die Antwort geht über das ersetzte Mikrofon in Teams. Ohne Echtzeit-Sprache hört er nur zu.
-  - **Sicherheit:** In der Besprechung hat die Stimme **keine Werkzeuge**. Durchgesetzt in der Sitzung, nicht nur im Prompt: Es werden keine angeboten, und ein Aufruf wird ohne Ausführung abgelehnt. Mitsprechen kann jeder Teilnehmer, deshalb kann darüber nichts gesendet, geändert oder an den Agenten delegiert werden. Der Endpunkt nimmt nur Agenten-Token aus dem Agenten-Netz an, nur für den eigenen Termin und nur zwischen 10 min vor Beginn und 30 min nach Ende.
+  - **Sicherheit (Review vor dem Release):**
+    - Aus der Besprechung wird nichts in den Chat-Verlauf oder ins Gedächtnis geschrieben, nur ins Transkript der Seite.
+    - Das Gedächtnis des Besitzers ist im Besprechungs-Prompt nicht enthalten.
+    - Der Browser läuft über den Egress-Proxy, WebRTC nicht per UDP am Proxy vorbei, mit eigener Umgebung ohne Werte des Servers.
+    - Navigation nur zu Teams bzw. Microsoft.
+    - Strengere Link-Prüfung, auf beiden Seiten gleich.
+    - Höchstens 2 Teilnahmen gleichzeitig, höchstens 8 Stunden, begrenzte Warteschlange.
+  - In der Besprechung hat die Stimme **keine Werkzeuge**. Durchgesetzt in der Sitzung, nicht nur im Prompt: Es werden keine angeboten, und ein Aufruf wird ohne Ausführung abgelehnt. Mitsprechen kann jeder Teilnehmer, deshalb kann darüber nichts gesendet, geändert oder an den Agenten delegiert werden. Der Endpunkt nimmt nur Agenten-Token aus dem Agenten-Netz an, nur für den eigenen Termin und nur zwischen 10 min vor Beginn und 30 min nach Ende.
   - **Live geprüft** in einem echten Teams-Termin:
     - Beitritt, Wartebereich, Einlassen.
     - Zuhören mit Transkription („Das ist ein wunderschöner Test, oder Maus?“).
     - Das Sprechen ist noch nicht live geprüft.
+  - **Wege hinein:**
+    - Einladung, wenn der Agent ein eigenes Konto hat.
+    - Markierung im Kalender des Besitzers (Kategorie = Name des Agenten oder „KI-Agent“).
+    - Per Link: Seite „Besprechungen“, `POST /meetings/teilnehmen`, nur Besitzer bzw. Admin, einmal je Link.
+  - **Kalender des Besitzers:** Ohne eigenes Konto berücksichtigt der Dienst nur noch markierte Termine. Vorher hätte ein Mitschreiber auch alle anderen Termine des Besitzers mitgeschrieben.
   - **Im Live-Test gefunden und behoben:**
     - Klammern im Namen sind in Teams verboten.
     - Eine abgelehnte Kamera hielt Teams für „kein Audio“, jetzt gibt es eine schwarze Ersatzkamera.
