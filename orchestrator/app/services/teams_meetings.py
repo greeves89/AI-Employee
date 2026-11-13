@@ -219,6 +219,20 @@ def protokoll_brauchbar(text: str | None) -> bool:
     return "## zusammenfassung" in low or "- [ ]" in text
 
 
+def teams_link_erlaubt(url: str) -> bool:
+    """Nur echte Teams-Beitrittslinks (gleiche Regel wie agent/app/teams_teilnehmer.link_erlaubt).
+    Kein Backslash, keine Anmeldedaten oder Ports in der Adresse, keine Steuerzeichen —
+    ``https://evil.example\\@teams.microsoft.com/…`` liest Python anders als Chromium."""
+    from urllib.parse import urlsplit
+
+    if not url or "\\" in url or "@" in url or any(ord(c) < 33 for c in url):
+        return False
+    teile = urlsplit(url)
+    return (teile.scheme == "https" and teile.hostname in ("teams.microsoft.com", "teams.live.com")
+            and teile.port is None and teile.username is None
+            and teile.path.startswith(("/l/meetup-join/", "/meet/")))
+
+
 def protokoll_schluessel(meeting_id: str, agent_id: str) -> str:
     """Antwortliste des Agenten (agent/app/message_consumer, ``type=meeting``)."""
     return f"meeting:teams-{meeting_id}:response:{agent_id}"
@@ -424,7 +438,7 @@ class TeamsMeetingService:
         (agent/app/teams_teilnehmer.py). Er tritt über den Link der Einladung bei,
         hört zu und liefert den Ton an ``/meetings/{id}/teilnehmer-ton``."""
         join_url = ((event.get("onlineMeeting") or {}).get("joinUrl") or "").strip()
-        if not join_url.startswith("https://teams.microsoft.com/") or self.redis is None:
+        if not teams_link_erlaubt(join_url) or self.redis is None:
             return
         client = getattr(self.redis, "client", self.redis)
         _start, ende = _window(event)

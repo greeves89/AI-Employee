@@ -2073,7 +2073,13 @@ class RealtimeVoiceSession:
                 + _ob_note + _rhythm_note + _mcp_note + self._memory_context
             )
         if self.besprechung:
-            sys_prompt += besprechungs_regeln(agent_name, self.besprechung)
+            # Nur Rolle und Regeln — KEIN Gedächtnis des Besitzers, kein früheres Gespräch,
+            # keine Hinweise auf Werkzeuge: Mitsprechen kann jeder Teilnehmer, auch Externe
+            # („was weißt du über deinen Besitzer?“). Review 13.11.2026.
+            self._memory_context = ""
+            self._resume_summary = ""
+            sys_prompt = (_master + _system_prompt(agent_name, agent_role, language)
+                          + besprechungs_regeln(agent_name, self.besprechung))
             self._greeted = True   # in einer laufenden Besprechung nicht von selbst grüßen
             # Durchgesetzt, nicht erbeten: In der Besprechung spricht jeder Teilnehmer —
             # auch Fremde, auch per eingeschleuster Anweisung. Die Stimme bekommt dort
@@ -4066,6 +4072,11 @@ class RealtimeVoiceSession:
         the whole call shows in the agent's chat history and can be continued by
         text — or re-opened by voice. Coalesces streamed deltas into one message
         per turn."""
+        if self.besprechung:
+            # Nichts aus der Besprechung in Chat-Verlauf oder Gedächtnis: Ein späterer Lauf
+            # MIT Werkzeugen läse sonst, was ein Teilnehmer eingeschleust hat. Was gesagt
+            # wurde, steht im Transkript der Besprechungsseite (ohne Werkzeuge verarbeitet).
+            return
         t = (text or "").strip()
         if not t:
             return
@@ -4145,6 +4156,8 @@ class RealtimeVoiceSession:
         pipeline already writes (see api/ws.py) so the SAME iOS/web file-card
         rendering picks it up — no separate voice-only display path.
         """
+        if self.besprechung:
+            return
         if not path or not filename:
             return
         from app.db.session import async_session_factory

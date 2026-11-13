@@ -17,7 +17,10 @@ class LinkTests(unittest.TestCase):
     def test_nur_echte_teams_links(self):
         gut = ["https://teams.microsoft.com/l/meetup-join/19%3ameeting_abc%40thread.v2/0?context=%7b%7d",
                "https://teams.microsoft.com/meet/123456789?p=abc", "https://teams.live.com/meet/9876"]
-        boese = ["http://teams.microsoft.com/l/meetup-join/x", "https://teams.microsoft.com.evil.example/l/meetup-join/x",
+        boese = ["https://evil.example\\@teams.microsoft.com/l/meetup-join/x",
+                 "https://user:pw@teams.microsoft.com/l/meetup-join/x", "https://teams.microsoft.com:8443/meet/1",
+                 "https://teams.microsoft.com/meet/1 x", "https://teams.microsoft.com/meet/1\n",
+                 "http://teams.microsoft.com/l/meetup-join/x", "https://teams.microsoft.com.evil.example/l/meetup-join/x",
                  "https://evil.example/l/meetup-join/x", "https://teams.microsoft.com/_#/settings",
                  "javascript:alert(1)", "", "file:///etc/passwd"]
         for u in gut:
@@ -49,6 +52,16 @@ class NameTests(unittest.TestCase):
         self.assertEqual(tt.teams_name("Anna's Bot @ Büro"), "Anna's Bot @ Büro")
         self.assertEqual(tt.teams_name("<script>"), "script")
         self.assertEqual(tt.teams_name("()"), "KI-Agent")
+
+
+class NavigationTests(unittest.TestCase):
+    def test_nur_teams_und_microsoft(self):
+        for u in ("https://teams.microsoft.com/v2/", "https://login.microsoftonline.com/x",
+                  "https://statics.teams.cdn.office.net/a.js", "about:blank"):
+            self.assertTrue(tt.navigation_erlaubt(u), u)
+        for u in ("https://evil.example/", "http://teams.microsoft.com/", "https://microsoft.com.evil.example/",
+                  "https://notmicrosoft.com/", "file:///etc/passwd", "javascript:alert(1)"):
+            self.assertFalse(tt.navigation_erlaubt(u), u)
 
 
 class TonTests(unittest.TestCase):
@@ -148,6 +161,25 @@ class StartTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0.05)
         self.assertEqual(len(gestartet), 1)
         self.assertEqual(gestartet[0][2], "Assistenz (KI)")
+
+    async def test_hoechstens_zwei_gleichzeitig_und_hoechstdauer(self):
+        laeufe = []
+
+        async def teilnehmen(mid, url, name, ende):
+            laeufe.append(ende)
+            await asyncio.sleep(0.2)
+        basis = {"join_url": "https://teams.microsoft.com/meet/1", "ende": "2099-01-01T00:00:00+00:00"}
+        with patch.object(tt, "teilnehmen", teilnehmen):
+            self.assertTrue(tt.starten({**basis, "meeting_id": "a"}))
+            self.assertTrue(tt.starten({**basis, "meeting_id": "b"}))
+            self.assertFalse(tt.starten({**basis, "meeting_id": "c"}), "dritte gleichzeitig abgelehnt")
+            await asyncio.sleep(0.05)
+            from datetime import datetime, timezone
+            self.assertTrue(all(e <= datetime.now(timezone.utc) + tt.HOECHSTDAUER for e in laeufe))
+            await asyncio.sleep(0.3)
+            self.assertEqual(tt._laufend, {}, "beendete Teilnahmen werden aufgeräumt")
+            self.assertTrue(tt.starten({**basis, "meeting_id": "c"}))
+            await asyncio.sleep(0.3)
 
     async def test_fremder_link_startet_nichts(self):
         self.assertFalse(tt.starten({"meeting_id": "m2", "join_url": "https://evil.example/l/meetup-join/x"}))

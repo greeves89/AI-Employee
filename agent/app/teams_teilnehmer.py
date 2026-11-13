@@ -36,7 +36,16 @@ BEITRITT_WARTEN = timedelta(minutes=10)
 NACHLAUF = timedelta(minutes=15)
 _BRUECKE = Path(__file__).with_name("teams_bruecke.js")
 BROWSER_ARGS = ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream",
-                "--autoplay-policy=no-user-gesture-required"]
+                "--autoplay-policy=no-user-gesture-required",
+                # WebRTC-Medien nicht per UDP am Egress-Proxy vorbei (Review 13.11.2026).
+                "--force-webrtc-ip-handling-policy=disable_non_proxied_udp"]
+#: Höchstens so viele Besprechungen gleichzeitig je Agent.
+HOECHSTENS_GLEICHZEITIG = 2
+#: Länger bleibt ein Teilnehmer nie, egal was in der Nachricht steht.
+HOECHSTDAUER = timedelta(hours=8)
+#: Umgebung des Browsers: nur das Nötigste, keine Werte des Agenten-Servers.
+_BROWSER_UMGEBUNG = ("HOME", "PATH", "LANG", "LC_ALL", "TZ", "PLAYWRIGHT_BROWSERS_PATH", "FONTCONFIG_PATH",
+                     "XDG_RUNTIME_DIR")
 _laufend: dict[str, asyncio.Task] = {}
 
 
@@ -64,10 +73,29 @@ def teams_name(name: str) -> str:
 
 
 def link_erlaubt(url: str) -> bool:
-    """Nur echte Teams-Beitrittslinks — der Browser öffnet sonst, was in einer Nachricht steht."""
+    """Nur echte Teams-Beitrittslinks — der Browser öffnet sonst, was in einer Nachricht steht.
+    Kein Backslash, keine Anmeldedaten oder Ports, keine Steuerzeichen: Python und Chromium
+    lesen ``https://evil.example\\@teams.microsoft.com/…`` verschieden (Review 13.11.2026).
+    Gleiche Regel im Orchestrator (services/teams_meetings.teams_link_erlaubt)."""
+    if not url or "\\" in url or "@" in url or any(ord(c) < 33 for c in url):
+        return False
+    teile = urlsplit(url)
+    return (teile.scheme == "https" and teile.hostname in ("teams.microsoft.com", "teams.live.com")
+            and teile.port is None and teile.username is None
+            and teile.path.startswith(("/l/meetup-join/", "/meet/")))
+
+
+#: Hauptrahmen darf nur hierhin navigieren (Teams und die Anmeldung von Microsoft).
+ERLAUBTE_ZIELE = ("teams.microsoft.com", "teams.live.com", "microsoft.com", "microsoftonline.com",
+                  "live.com", "office.com", "office.net", "skype.com", "teams.cdn.office.net")
+
+
+def navigation_erlaubt(url: str) -> bool:
     teile = urlsplit(url or "")
-    return teile.scheme == "https" and teile.hostname in ("teams.microsoft.com", "teams.live.com") \
-        and teile.path.startswith(("/l/meetup-join/", "/meet/"))
+    if teile.scheme in ("about", "blob", "data"):
+        return True
+    host = (teile.hostname or "").lower()
+    return teile.scheme == "https" and any(host == z or host.endswith("." + z) for z in ERLAUBTE_ZIELE)
 
 
 def wav(pcm: bytes, rate: int = RATE) -> bytes:
@@ -164,15 +192,40 @@ async def teilnehmen(meeting_id: str, join_url: str, name: str, ende: datetime) 
     """Einem Termin beitreten, zuhören, Ton liefern, rechtzeitig wieder gehen."""
     from playwright.async_api import async_playwright
 
+    import os
+
+    from app.tools.browser import proxy_einstellung
+
     sammler = Tonsammler()
-    warteschlange: asyncio.Queue[bytes] = asyncio.Queue()
+    warteschlange: asyncio.Queue[bytes] = asyncio.Queue(maxsize=300)
+
+    def hoeren(b64):
+        try:
+            warteschlange.put_nowait(b64)
+        except asyncio.QueueFull:
+            pass   # die Seite liefert schneller, als verarbeitet wird: verwerfen statt wachsen
     bis = ende + NACHLAUF
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=True, executable_path=chromium_pfad(), args=BROWSER_ARGS)
+        zusatz = {}
+        proxy = proxy_einstellung()
+        if proxy:
+            zusatz["proxy"] = proxy   # Chromium beachtet HTTPS_PROXY nicht von selbst
+        browser = await pw.chromium.launch(
+            headless=True, executable_path=chromium_pfad(), args=BROWSER_ARGS,
+            env={k: os.environ[k] for k in _BROWSER_UMGEBUNG if k in os.environ}, **zusatz)
         try:
             ctx = await browser.new_context(locale="de-DE", permissions=["microphone"])
             page = await ctx.new_page()
-            await page.expose_function("__aieHoeren", lambda b64: warteschlange.put_nowait(b64))
+            await page.expose_function("__aieHoeren", hoeren)
+
+            async def wache(route):
+                anfrage = route.request
+                if anfrage.is_navigation_request() and anfrage.frame == page.main_frame \
+                        and not navigation_erlaubt(anfrage.url):
+                    logger.warning("[Teilnehmer] Navigation gesperrt: %s", urlsplit(anfrage.url).hostname)
+                    return await route.abort()
+                await route.continue_()
+            await ctx.route("**/*", wache)
             await page.add_init_script(path=str(_BRUECKE))
             await page.goto(join_url + ("&" if "?" in join_url else "?") + "msLaunch=false&suppressPrompt=true",
                             wait_until="domcontentloaded", timeout=60000)
@@ -282,21 +335,28 @@ class Stimme:
 
 
 def starten(nachricht: dict) -> bool:
-    """Aus der Nachricht ``type=teilnehmen`` eine Teilnahme starten — höchstens eine je Termin."""
-    meeting_id = str(nachricht.get("meeting_id") or "")
+    """Aus der Nachricht ``type=teilnehmen`` eine Teilnahme starten — höchstens eine je Termin,
+    höchstens ``HOECHSTENS_GLEICHZEITIG`` insgesamt, nie länger als ``HOECHSTDAUER``."""
+    meeting_id = str(nachricht.get("meeting_id") or "")[:64]
     join_url = str(nachricht.get("join_url") or "")
     if not meeting_id or not link_erlaubt(join_url):
         logger.warning("[Teilnehmer] Nachricht ohne gültigen Termin bzw. Teams-Link — verworfen")
         return False
-    alt = _laufend.get(meeting_id)
-    if alt is not None and not alt.done():
+    for mid in [m for m, t in _laufend.items() if t.done()]:
+        _laufend.pop(mid, None)
+    if meeting_id in _laufend:
         return False
+    if len(_laufend) >= HOECHSTENS_GLEICHZEITIG:
+        logger.warning("[Teilnehmer] schon %d Besprechungen — keine weitere", len(_laufend))
+        return False
+    jetzt = datetime.now(timezone.utc)
     try:
         ende = datetime.fromisoformat(str(nachricht.get("ende")))
     except ValueError:
-        ende = datetime.now(timezone.utc) + timedelta(hours=1)
+        ende = jetzt + timedelta(hours=1)
     if ende.tzinfo is None:
         ende = ende.replace(tzinfo=timezone.utc)
+    ende = min(ende, jetzt + HOECHSTDAUER)
     name = str(nachricht.get("name") or "KI-Agent")[:60]
 
     async def lauf():
@@ -305,5 +365,7 @@ def starten(nachricht: dict) -> bool:
         except Exception as e:  # noqa: BLE001 — der Agent selbst läuft weiter
             logger.warning("[Teilnehmer] %s abgebrochen: %s", meeting_id, e)
 
-    _laufend[meeting_id] = asyncio.get_running_loop().create_task(lauf())
+    aufgabe = asyncio.get_running_loop().create_task(lauf())
+    _laufend[meeting_id] = aufgabe
+    aufgabe.add_done_callback(lambda _t, m=meeting_id: _laufend.pop(m, None))
     return True
