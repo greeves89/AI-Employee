@@ -31,7 +31,7 @@ async def _assert_agent_owned(agent_id: str, user, db) -> None:
 
 
 async def _assert_agent_besitzer(agent_id: str, user, db) -> None:
-    """Ändern nur Besitzer und Admin. Seit 1.449.0 kann die Liste am Ausgang verbindlich sein
+    """Ändern nur Besitzer und Admin. Seit 1.450.0 kann die Liste am Ausgang verbindlich sein
     (core/zielliste) — wem der Agent nur freigegeben ist, der soll sie nicht aufweiten."""
     from app.core.ownership import is_admin
     from app.models.agent import Agent
