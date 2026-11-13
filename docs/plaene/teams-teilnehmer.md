@@ -54,12 +54,35 @@ Mensch lässt ihn aus dem Wartebereich herein.
 
 1. Lässt Teams im Browser (headless Chromium, ARM64) einen Gast über den Link beitreten, und
    lassen sich Mikrofon und Kamera unterdrücken bzw. ersetzen?
-2. Kommen die Audiospuren im Seitenskript an (`ontrack`), auch bei mehreren Sprechern?
+2. Kommen die Audiospuren im Seitenskript an (`ontrack`), auch bei mehreren Sprechern? *(Kern im Spike 1 belegt, mehrere Sprecher in Teams offen)*
 3. Latenz Teams → Nova Sonic → Teams unter 2 s?
 4. Erlaubt der Mandant anonymen Beitritt? Sonst mit einem eigenen Microsoft-Konto des Agenten
    anmelden (Kap. 37.16).
 5. Nutzungsbedingungen von Microsoft für automatisierte Teilnehmer: vor dem Einsatz beim
    Kunden prüfen.
+
+## Spike 1: Audio-Brücke im Browser (13.11.2026, ohne Teams)
+
+Dateien in `docs/plaene/teams-teilnehmer-spike/`:
+- `bruecke.js`: das Seitenskript
+- `seite.html`: eine WebRTC-Schleife als Ersatz für die Besprechung
+- `spike.mjs`: Playwright-Lauf mit Auswertung
+
+Ergebnis (Chromium 1243, headless):
+- **Hören:** Eingehende WebRTC-Spuren landen als 16 kHz PCM16 in 200-ms-Häppchen beim
+  Steuerprozess: 3,2 s, RMS 21.356. Die gemessene Frequenz von 384 Hz ist ein Mischwert, weil in
+  der Schleife beide Richtungen in einer Seite liegen (440 Hz Testton und 300 Hz Rückweg).
+- **Sprechen:** 24 kHz PCM16 über die ersetzte `getUserMedia` kommt bei der Gegenseite an
+  (RMS 0,26).
+- **Falle:** Ein AudioWorklet aus einer `blob:`-Adresse lädt nicht. Die Inhaltsrichtlinie einer
+  Seite (in Teams wahrscheinlich ebenso) kann nachgeladene Module sperren. Lösung im Spike:
+  `ScriptProcessorNode`, braucht kein Modul. Für später zu prüfen: `MediaStreamTrackProcessor`
+  (Insertable Streams), ebenfalls ohne Modul und nicht als veraltet markiert.
+- Chrome gibt entfernte Spuren erst an WebAudio, wenn ein (stummes) Media-Element sie spielt.
+  Ist im Skript berücksichtigt.
+
+Damit ist Risiko 2 im Kern geklärt. Offen bleiben die Teile, die einen echten Teams-Termin
+brauchen: Beitritt, Wartebereich, Spuren bei mehreren Sprechern, Latenz.
 
 ## Recherche 13.11.2026
 
