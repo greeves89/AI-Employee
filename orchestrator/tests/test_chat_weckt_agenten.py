@@ -97,7 +97,7 @@ class ChatWecktTests(unittest.TestCase):
         docker = _Docker("exited")
         aufrufe = []
 
-        async def wecken(db, d, agent_id, wait=False, timeout=30):
+        async def wecken(db, d, agent_id, wait=False, timeout=30, **_):
             aufrufe.append((agent_id, wait))
             agent.container_id = "c-neu"
             docker.status = "running"
