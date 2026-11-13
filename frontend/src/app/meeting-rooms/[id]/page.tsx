@@ -225,7 +225,7 @@ export default function MeetingRoomDetailPage() {
 
   const handleDelete = async () => {
     const ok = await confirm({
-      title: "Besprechungsraum löschen?",
+      title: "Agenten-Runde löschen?",
       message: "Der gesamte Verlauf wird endgültig entfernt.",
       variant: "destructive",
       confirmLabel: "Löschen",
@@ -359,7 +359,7 @@ ${msgHtml}
   if (loading) {
     return (
       <div>
-        <Header title="Besprechungsraum" />
+        <Header title="Agenten-Runde" />
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
@@ -370,7 +370,7 @@ ${msgHtml}
   if (!room) {
     return (
       <div>
-        <Header title="Besprechungsraum" />
+        <Header title="Agenten-Runde" />
         <div className="flex flex-col items-center justify-center py-20">
           <p className="text-muted-foreground">Raum nicht gefunden</p>
           <button

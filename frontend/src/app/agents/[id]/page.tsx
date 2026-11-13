@@ -2135,7 +2135,7 @@ function AgentSettings({
       setRoomShared(r.shared_for_rooms);
       setMessage({ type: "success", text: v ? "Agent für Meeting-Räume freigegeben" : "Freigabe entfernt" });
     } catch {
-      setMessage({ type: "error", text: "Fehler beim Ändern der Meeting-Room-Freigabe" });
+      setMessage({ type: "error", text: "Fehler beim Ändern der Freigabe für Agenten-Runden" });
     } finally {
       setRoomSharedLoading(false);
     }

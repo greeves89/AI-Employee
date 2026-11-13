@@ -64,6 +64,12 @@ class FakeDocker:
                 return b
         raise NotFound("weg")
 
+    def get_container_status(self, cid):
+        try:
+            return self._get(cid).status
+        except NotFound:
+            return "missing"
+
     def stop_container(self, cid):
         b = self._get(cid)
         if not b.haelt_nicht:
@@ -451,3 +457,34 @@ class AufraeumenBeimStart(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GestopptBleibtGestoppt(unittest.IsolatedAsyncioTestCase):
+    """„Alle aktualisieren“ startete jeden gestoppten Agenten mit (13.11.2026)."""
+
+    async def _aktualisieren(self, status, *, halt=False, nur_wenn_noetig=False):
+        docker = FakeDocker(FakeBehaelter("alt1", NAME, status=status))
+        ref = [None]
+        mgr = _manager(docker, None)
+        ref[0] = mgr
+        mgr._update_agent_neu_erstellen = _neu(docker, ref)
+        if halt:
+            mgr.agent.config = {"angehalten_vom_nutzer": True}
+        mgr.agent.state = AgentState.RUNNING if status == "running" else AgentState.STOPPED
+        await mgr.update_agent("a1b2c3d4", nur_wenn_noetig=nur_wenn_noetig)
+        return mgr, docker
+
+    async def test_gestoppter_agent_bleibt_nach_dem_aktualisieren_gestoppt(self):
+        mgr, docker = await self._aktualisieren("exited")
+        self.assertEqual(mgr.agent.state, AgentState.STOPPED)
+        self.assertEqual(docker.behaelter["neu1"].status, "exited")
+
+    async def test_vom_nutzer_angehalten_bleibt_angehalten(self):
+        mgr, docker = await self._aktualisieren("running", halt=True)
+        self.assertEqual(mgr.agent.state, AgentState.STOPPED)
+
+    async def test_laufender_agent_laeuft_weiter(self):
+        mgr, docker = await self._aktualisieren("running")
+        self.assertNotEqual(mgr.agent.state, AgentState.STOPPED)
+        self.assertEqual(docker.behaelter["neu1"].status, "running")
+

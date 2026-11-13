@@ -128,11 +128,6 @@ class SettingsUpdate(BaseModel):
     ticket_base_url: str | None = None
     ticket_api_token: str | None = None
     ticket_profile: str | None = None
-    # Teams-Anrufe
-    teams_calling_app_id: str | None = None
-    teams_calling_app_secret: str | None = None
-    teams_calling_tenant_id: str | None = None
-    teams_calling_enabled: str | None = None
     # Websuche-Provider (Admin -> Websuche): "duckduckgo" (Vorgabe) | "brave" | "brave_news" | "serp"
     web_search_provider: str | None = None
     web_search_api_key: str | None = None  # nur fuer brave/brave_news/serp, secret

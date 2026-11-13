@@ -119,7 +119,7 @@ const HELP_TOPICS: HelpTopic[] = [
     body: "Aus Besprechungsaufzeichnungen erkannte Aufgaben werden automatisch in einen MS-Planner-Plan übertragen — über das M365-Konto der Person, der die Besprechung gehört. Voraussetzung: Admin hat die Planner-Plan-ID hinterlegt.",
     keywords: ["meeting", "transkription", "planner", "aufgaben", "action items", "protokoll"],
     href: "/meeting-rooms",
-    hrefLabel: "Zu den Besprechungsräumen",
+    hrefLabel: "Zu den Agenten-Runden",
   },
   {
     id: "notification-task",

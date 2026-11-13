@@ -15,7 +15,6 @@ import { SystemControl } from "@/components/settings/system-control";
 import { SsoAutoProvisioningToggle } from "@/components/settings/sso-auto-provisioning-toggle";
 import { ZweiFaktorPflichtToggle } from "@/components/settings/zwei-faktor";
 import { SamlConfig } from "@/components/settings/saml-config";
-import { TeamsCallingConfig } from "@/components/settings/teams-calling-config";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { LizenzBereich } from "@/components/settings/lizenz-bereich";
@@ -1081,12 +1080,6 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
           {isAdmin && (
             <div className="mb-4">
               <SamlConfig />
-            </div>
-          )}
-
-          {isAdmin && (
-            <div className="mb-4">
-              <TeamsCallingConfig />
             </div>
           )}
 

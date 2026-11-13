@@ -99,7 +99,7 @@ export default function BesprechungenPage() {
 
   return (
     <div>
-      <Header title="Besprechungen" subtitle="Teams-Termine deiner Agenten und Mitschnitte: Protokoll, Aufgaben, Transkript" />
+      <Header title="Teams-Besprechungen" subtitle="Teams-Termine deiner Agenten und Mitschnitte: Protokoll, Aufgaben, Transkript" />
       <div className="p-6">
         {Object.keys(agenten).length > 0 && (
           <div className="mb-6 rounded-xl border border-foreground/10 p-4">
