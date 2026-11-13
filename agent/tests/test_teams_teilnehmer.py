@@ -89,6 +89,47 @@ class TonTests(unittest.TestCase):
         client.assert_not_called()
 
 
+class StimmeTests(unittest.IsolatedAsyncioTestCase):
+    def test_url(self):
+        self.assertEqual(tt.stimme_url("http://ai-employee-orchestrator:8000", "a1", "m 1"),
+                         "ws://ai-employee-orchestrator:8000/api/v1/ws/agents/a1/teams-stimme?meeting_id=m%201")
+        self.assertTrue(tt.stimme_url("https://x.example.com/", "a1", "m1").startswith("wss://x.example.com/api/v1/ws/"))
+
+    async def test_antwort_wird_abgespielt_fremdes_ignoriert(self):
+        import json
+        gespielt, gesendet = [], []
+
+        class Msg:
+            def __init__(self, daten): self.type, self.data = 1, json.dumps(daten)
+
+        class WS:
+            closed, close_code = False, 1000
+            def __init__(self, ereignisse): self._e = ereignisse
+            def __aiter__(self):
+                async def gen():
+                    for e in self._e:
+                        yield Msg(e)
+                return gen()
+            async def send_json(self, d): gesendet.append(d)
+            async def close(self): self.closed = True
+
+        async def abspielen(b64): gespielt.append(b64)
+        st = tt.Stimme("m1", abspielen)
+        st.ws = WS([{"type": "audio_chunk", "data": {"mime": "audio/pcm", "b64": "QUJD", "rate": 24000}},
+                    {"type": "audio_chunk", "data": {"mime": "audio/mpeg", "b64": "WFla"}},
+                    {"type": "transcript", "data": {"text": "hallo"}}])
+        await st._empfangen()
+        self.assertEqual(gespielt, ["QUJD"], "nur PCM der Echtzeit-Sprache wird abgespielt")
+        await st.ton("AAAA")
+        self.assertEqual(gesendet, [{"type": "audio_chunk", "data": {"b64": "AAAA"}}])
+
+    async def test_ohne_verbindung_nur_zuhoeren(self):
+        st = tt.Stimme("m1", None)
+        with patch("aiohttp.ClientSession.ws_connect", side_effect=ConnectionError("4009")):
+            self.assertFalse(await st.verbinden())
+        await st.ton("AAAA")   # darf nichts tun, nicht werfen
+
+
 class StartTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         tt._laufend.clear()

@@ -180,6 +180,10 @@ async def teilnehmen(meeting_id: str, join_url: str, name: str, ende: datetime) 
             logger.info("[Teilnehmer] %s: Beitritt angefragt", meeting_id)
             import base64
 
+            stimme = Stimme(meeting_id, lambda b64: page.evaluate("b => window.__aieSprechen(b)", b64))
+            if not await stimme.verbinden():
+                stimme = None
+
             beitritt = datetime.now(timezone.utc)
             while datetime.now(timezone.utc) < bis:
                 try:
@@ -187,6 +191,8 @@ async def teilnehmen(meeting_id: str, join_url: str, name: str, ende: datetime) 
                 except asyncio.TimeoutError:
                     b64 = None
                 if b64:
+                    if stimme is not None:
+                        await stimme.ton(b64)
                     stueck = sammler.hinzu(base64.b64decode(b64))
                     if stueck:
                         await _senden(meeting_id, stueck)
@@ -196,9 +202,83 @@ async def teilnehmen(meeting_id: str, join_url: str, name: str, ende: datetime) 
                 if page.is_closed():
                     break
             await _senden(meeting_id, sammler.rest())
+            if stimme is not None:
+                await stimme.schliessen()
         finally:
             await browser.close()
     logger.info("[Teilnehmer] %s: beendet", meeting_id)
+
+
+def stimme_url(orchestrator_url: str, agent_id: str, meeting_id: str) -> str:
+    """WebSocket der Sprachfront für diesen Termin (orchestrator ``/agents/{id}/teams-stimme``)."""
+    from urllib.parse import quote
+
+    basis = orchestrator_url.rstrip("/")
+    basis = "wss://" + basis[8:] if basis.startswith("https://") else "ws://" + basis.split("://", 1)[-1]
+    return f"{basis}/api/v1/ws/agents/{quote(agent_id)}/teams-stimme?meeting_id={quote(meeting_id)}"
+
+
+class Stimme:
+    """Verbindung zur Sprachfront: Ton aus Teams hinein, Antwort (24 kHz PCM) zurück in die
+    Besprechung. Ohne Echtzeit-Sprache (4009) oder bei Fehlern: der Teilnehmer hört weiter
+    nur zu — die Stimme ist eine Zugabe, kein Muss."""
+
+    def __init__(self, meeting_id: str, abspielen):
+        self.meeting_id = meeting_id
+        self.abspielen = abspielen            # async (b64 PCM 24 kHz) -> None
+        self.ws = None
+        self._sitzung = None
+        self._empfang = None
+
+    async def verbinden(self) -> bool:
+        import aiohttp
+
+        from app.config import settings
+
+        try:
+            self._sitzung = aiohttp.ClientSession()
+            self.ws = await self._sitzung.ws_connect(
+                stimme_url(settings.orchestrator_url, settings.agent_id, self.meeting_id),
+                headers={"X-Agent-Token": settings.agent_token}, heartbeat=25, timeout=20)
+        except Exception as e:  # noqa: BLE001
+            logger.info("[Teilnehmer] keine Stimme (%s) — nur zuhören", type(e).__name__)
+            await self.schliessen()
+            return False
+        self._empfang = asyncio.get_running_loop().create_task(self._empfangen())
+        return True
+
+    async def _empfangen(self) -> None:
+        import json
+
+        async for nachricht in self.ws:
+            if nachricht.type != 1:            # aiohttp.WSMsgType.TEXT
+                break
+            try:
+                ereignis = json.loads(nachricht.data)
+            except ValueError:
+                continue
+            daten = ereignis.get("data") or {}
+            if ereignis.get("type") == "audio_chunk" and daten.get("mime") == "audio/pcm" and daten.get("b64"):
+                try:
+                    await self.abspielen(daten["b64"])
+                except Exception:  # noqa: BLE001
+                    logger.debug("[Teilnehmer] Abspielen fehlgeschlagen", exc_info=True)
+        logger.info("[Teilnehmer] Stimme getrennt (%s)", getattr(self.ws, "close_code", None))
+
+    async def ton(self, b64: str) -> None:
+        if self.ws is not None and not self.ws.closed:
+            try:
+                await self.ws.send_json({"type": "audio_chunk", "data": {"b64": b64}})
+            except Exception:  # noqa: BLE001
+                pass
+
+    async def schliessen(self) -> None:
+        if self._empfang is not None:
+            self._empfang.cancel()
+        if self.ws is not None:
+            await self.ws.close()
+        if self._sitzung is not None:
+            await self._sitzung.close()
 
 
 def starten(nachricht: dict) -> bool:

@@ -148,6 +148,35 @@ Daniels Termin in seinem Teams, der Teilnehmer lief im Wegwerf-Behälter aus dem
 **Noch offen:** Ein Lauf, bei dem der Bot hereingelassen ist **und** jemand spricht. Beim
 letzten Versuch war die Besprechung schon leer („… einlassen, wenn die Besprechung beginnt“).
 
+## Zweiter Live-Test: Zuhören belegt (13.11.2026, 20:06)
+
+Mit allen Fixes: Der Bot wurde eingelassen, die Brücke las die Tonspur. Aus Daniels Sprache wurde
+über die Transkription der Anlage:
+
+> „Das ist ein wunderschöner Test, oder Maus?“
+
+Fast stille Stücke ließ Whisper englische Sätze erfinden („Bye-bye“, „Thank you for joining
+us …“). Behoben:
+- Stille wird am mittleren Pegel (RMS) erkannt statt am Spitzenwert.
+- Die Transkription bekommt die Sprache `de` vorgegeben.
+
+## Sprechen (Branch `feat/teams-teilnehmer`)
+
+- **Orchestrator:** `ws /agents/{id}/teams-stimme?meeting_id=…`
+  - Agenten-Token (`agent_zugang_pruefen`), nur eigener, laufender Teams-Termin.
+  - Nur mit Echtzeit-Sprache (Nova Sonic bzw. Azure Realtime), sonst Code 4009.
+  - Die Sitzung gehört dem Besitzer des Agenten (Rechte, Freigaben).
+  - Dieselbe Schleife wie die App (`_sprachsitzung_betreiben`), kein zweiter Sprachweg.
+- **Besprechungsmodus** (`RealtimeVoiceSession.besprechung`):
+  - kein Gruß
+  - spricht nur, wenn er beim Namen genannt wird
+  - höchstens drei Sätze
+  - Gesagtes gilt als fremder Text, Aufträge mit Außenwirkung nur auf ausdrückliche Bitte
+- **Agent** (`Stimme`): Der Teilnehmer schickt den Ton aus Teams an die Sitzung und spielt die
+  Antwort (24 kHz PCM) über das ersetzte Mikrofon in Teams ab. Ohne Echtzeit-Sprache hört er
+  weiter nur zu.
+- **Offen:** Live-Test des Sprechens (braucht diesen Stand auf der Anlage).
+
 ## Recherche 13.11.2026
 
 - **Weg B ist erprobte Praxis:** Selbst gehostete Open-Source-Projekte wie Vexa (Apache 2.0)
