@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.459.0] - 2026-11-13
+
+### Neu
+- **MCP mit der Firmenanmeldung (OAuth 2.1, #1195).** Second Brains (`/api/v1/mcp/brains/{slug}`) und der Agenten-MCP (`/api/v1/mcp/agents/{id}`) nehmen Zugriffstoken des Firmen-IdP an, etwa Microsoft Entra ID. Der MCP-Client meldet sich dort an, AI Employee prüft das Token und zeigt nur, was der Person freigegeben ist.
+  - Geprüft werden Signatur (feste Algorithmenliste, kein `none`/HS*), Aussteller, Empfänger (`aud`) und Laufzeit.
+  - Zugelassen sind nur ausdrücklich erlaubte Client-Anwendungen (`azp`/`appid`) oder Tokens mit Pflicht-Berechtigung.
+  - Unbekannte Personen, Gastkonten, App-Tokens und ID-Tokens werden abgewiesen.
+  - Brain-Schlüssel und Webhook-Token gelten weiter, beide Wege enden in derselben Rechteprüfung. Eine Freigabe nur zum Nutzen (1.457.0) gibt keinen Agenten-MCP-Zugang.
+  - Protected Resource Metadata (RFC 9728) unter `/.well-known/oauth-protected-resource/…`. Eine 401 verweist per `WWW-Authenticate` darauf.
+  - Einrichtung unter **Admin-Bereich → Dienste & Konten → MCP-Zugang mit Firmenanmeldung**. Ohne Einrichtung bleibt der Zugang aus. Änderungen landen mit altem und neuem Wert im Prüfprotokoll. Handbuch Kap. 22.5.2.
+
+### Sicherheit
+- Schlüsselabruf beim IdP mit Negativ-Speicher, gemeinsamem Abruf und 4 s Zeitlimit. Adressen werden nach DNS-Auflösung geprüft, interne Ziele sind gesperrt.
+- Der E-Mail-Rückfall bei der Personenzuordnung gilt nur für Microsoft-SSO-Konten. Die erste Bindung landet im Prüfprotokoll.
+
+### Betrieb
+- Spalte `users.idp_object_id`, Migration `o3p4q5r6s7t8`. Der Microsoft-SSO-Login trägt sie künftig ein.
 ## [1.458.0] - 2026-11-13
 
 ### Behoben

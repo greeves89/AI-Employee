@@ -601,12 +601,37 @@ class AgentEndpunkt(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await self._auth(f"Bearer {_token()}", nutzer=_nutzer())).id, "a1")
 
     async def test_freigabe_nur_zum_nutzen_kommt_nicht_durch(self):
-        """Eine Freigabe ``AgentAccess.rolle == "nutzen"`` (PR #1261) gibt keinen MCP-Zugang.
+        """Eine Freigabe ``AgentAccess.rolle == "nutzen"`` (1.457) gibt keinen MCP-Zugang:
+        der Agenten-MCP bietet Werkzeuge der Einrichtung (Wissen schreiben, Bildschirm).
+        Die echte Pruefung: ``require_agent_access`` OHNE ``nutzen=True`` weist eine
+        Nutzungsfreigabe ab, und der MCP-Zugang macht daraus 404."""
+        import inspect
 
-        Die Spalte gibt es in diesem Branch noch nicht: ``require_agent_access`` wird mit
-        der 403 gemockt, die es für eine reine Nutzungsfreigabe liefern muss. Geprüft
-        wird, dass der MCP-Zugang daraus 404 macht und nichts durchlässt.
-        """
+        from fastapi import HTTPException
+
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+        from app.api import mcp_agent
+        from app.dependencies import require_agent_access
+        from app.models.agent import Agent as _Agent
+        from app.models.agent_access import ROLLE_NUTZEN, AgentAccess
+        from app.models.user import User as _User, UserRole
+
+        self.assertNotIn("nutzen=True", inspect.getsource(mcp_agent._auth_agent))
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with engine.begin() as conn:
+            for m in (_User, _Agent, AgentAccess):
+                await conn.run_sync(m.metadata.create_all, tables=[m.__table__])
+        async with async_sessionmaker(engine, expire_on_commit=False)() as db:
+            db.add_all([_User(id="b", email="b@example.com", name="B", role=UserRole.MEMBER),
+                        _User(id="k", email="k@example.com", name="K", role=UserRole.MEMBER)])
+            db.add(_Agent(id="a1", name="A", user_id="b", config={}))
+            db.add(AgentAccess(agent_id="a1", user_id="k", rolle=ROLLE_NUTZEN))
+            await db.commit()
+            kollege = await db.get(_User, "k")
+            with self.assertRaises(HTTPException):
+                await require_agent_access("a1", kollege, db)
+        await engine.dispose()
         with _eingerichtet():
             e = await self._auth(f"Bearer {_token()}", nutzer=_nutzer(), zugang=False)
         self.assertEqual(e.status_code, 404)
