@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.452.0] - 2026-11-13
+
+### Sicherheit
+- **Protokoll aus dem Teams-Transkript ohne Werkzeuge** (letzter offener Punkt aus dem Review von 1.451.0). Steht im Transkript eine Anweisung, kann sie nichts mehr ausführen, lesen oder wegschicken. Das gilt in jeder Laufzeit:
+  - **Claude Code:** `--tools "" --strict-mcp-config`. Keine eingebauten Werkzeuge, keine MCP-Server.
+  - **Codex:** `--sandbox read-only -c mcp_servers={} -c web_search="disabled"` statt Sandbox und Freigaben zu umgehen. Die Sandbox startet im Behälter nicht (bwrap), also läuft kein Befehl. Das blockiert im Fehlerfall.
+  - **Eigenes Modell:** war schon ohne Werkzeuge.
+- Das Feld `ohne_werkzeuge` steht in der Nachricht `type=meeting`. Es entfällt der Vorspann, der den Agenten erst `knowledge.md` lesen lässt. Besprechungsräume bleiben unverändert mit Werkzeugen.
+- Live im Agenten-Abbild geprüft (Claude Code 2.1.323, Codex 0.169): Eine Aufforderung, `ls` bzw. `touch` auszuführen, bleibt ohne Wirkung.
+- Wirksam, sobald ein Agent mit dem neuen Abbild läuft. Ältere Abbilder ignorieren das Feld und schreiben das Protokoll wie bisher.
+
+### Geändert
+- Der Besprechungszug im Agenten ist eine eigene Methode (`MessageConsumer._besprechungs_zug`), statt im Verbraucher-Loop zu stecken.
+
+### Tests
+- `agent/tests/test_besprechung_ohne_werkzeuge.py`: Befehlszeile je Laufzeit mit und ohne Werkzeuge, Besprechungszug mit Feld (ohne Vorspann) und ohne Feld (unverändert). Gegenprobe: 4 von 4 Schutzmechanismen gefangen.
+- `test_teams_besprechungen.py`: Der Protokoll-Auftrag trägt `ohne_werkzeuge`.
+
 ## [1.451.0] - 2026-11-13
 
 ### Neu

@@ -247,6 +247,7 @@ class DienstTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.eingereiht), 1)
         self.assertEqual(self.eingereiht[0]["type"], "meeting")
         self.assertEqual(self.eingereiht[0]["room_id"], f"teams-{s.id}")
+        self.assertIs(self.eingereiht[0]["ohne_werkzeuge"], True, "fremder Text → Zug ohne Werkzeuge")
         self.assertIn("Wir liefern Freitag", self.eingereiht[0]["prompt"])
 
         await self.dienst._handle_agent(agent)

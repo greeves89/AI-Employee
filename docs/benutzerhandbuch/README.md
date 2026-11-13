@@ -4233,7 +4233,8 @@ Was dann passiert:
   für jede Teams-Nachricht des Agenten: Im Modus **Entwurf** wartet der Hinweis auf deine
   Freigabe. Im Modus **Lesen** schreibt er nichts, die Seite zeigt das an.
 - Nach dem Termin (sobald Teams das Transkript bereitstellt) schreibt der Agent das Protokoll:
-  Zusammenfassung, Entscheidungen, Aufgaben mit Verantwortlichen. Das Transkript liegt
+  Zusammenfassung, Entscheidungen, Aufgaben mit Verantwortlichen. Dafür hat er keine Werkzeuge:
+  Was im Transkript steht, kann ihn zu nichts bringen außer Text *(seit 1.452.0)*. Das Transkript liegt
   zusätzlich im Wissen.
 
 ![Seite „Besprechungen“ mit Protokoll und Aufgaben (Demodaten)](screenshots/f31-besprechungen.png)
