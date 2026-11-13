@@ -1452,8 +1452,9 @@ bleiben dir vorbehalten.
 
 ### 6a.9 Git-Projekte: Issues und Pull Requests auf dem Board *(seit 1.369.0)*
 
-Ein Projekt kann mit einem **Git-Repo** verbunden werden — auf **GitHub** oder auf einem eigenen
-**Forgejo- oder Gitea-Server** (seit 1.384.0). Dann kommt die Arbeit von selbst aufs Board. Das Repo
+Ein Projekt kann mit einem **Git-Repo** verbunden werden — auf **GitHub**, auf **GitLab** (gitlab.com
+oder ein eigener GitLab-Server, siehe 6a.9a) oder auf einem eigenen **Forgejo- oder Gitea-Server**
+(seit 1.384.0). Dann kommt die Arbeit von selbst aufs Board. Das Repo
 trägt ein, wer das Projekt angelegt hat. **Öffentliche Repos** gehen ohne weitere Einrichtung
 (abgeglichen alle 30 Minuten). **Private Repos** brauchen einen **Schlüssel**: Lege in der
 Schlüsselverwaltung (Keys) einen Zugangsschlüssel mit Leserecht an (bei GitHub ein GitHub-Token, bei
@@ -1478,11 +1479,79 @@ einen Schlüssel. Den CI-Stand eines Pull Requests liest sie aus dem Commit-Stat
 Actions (bzw. Gitea Actions) setzen.
 
 1. Projekt anlegen oder **Bearbeiten** öffnen.
-2. Unter **Git-Repo** eintragen:
+2. Unter **Git-Repo** den Anbieter wählen (**GitHub**, **GitLab** oder **Forgejo/Gitea**) und eintragen:
    - GitHub: `owner/name`, z. B. `beispiel-org/beispiel-repo` (eine kopierte GitHub-Adresse geht auch),
+   - GitLab: die volle Adresse des Projekts, z. B. `https://gitlab.example.com/gruppe/repo` (siehe 6a.9a),
    - Forgejo/Gitea: die volle Adresse des Repos, z. B. `https://git.example.com/team/repo`.
 3. Bei einem privaten Repo unter **Schlüssel für das Repo** den passenden Schlüssel wählen.
 4. **Speichern**.
+
+#### 6a.9a GitLab-Projekte (gitlab.com und eigener GitLab-Server) *(neu, #1194)*
+
+GitLab ist ein Anbieter wie GitHub: Board, Triage, Übernahme, Rückfragen und der Rückkanal
+funktionieren gleich. Statt Pull Requests gibt es **Merge Requests**; das Board zeigt sie in der
+Spalte **Review** mit dem Stand der jüngsten **Pipeline** (CI läuft, CI grün, CI rot).
+
+**Token anlegen (in GitLab):**
+
+1. Im GitLab-Projekt **Einstellungen → Zugriffstoken** öffnen (oder ein Gruppen- bzw. persönliches
+   Token anlegen).
+2. Rolle **Developer**, Bereich **api** wählen, Ablaufdatum setzen, **Projekt-Zugriffstoken erstellen**.
+3. Token kopieren.
+
+**Token in AI Employee hinterlegen:**
+
+1. Seitenleiste → **Secrets** → **+ Neues Secret**: Schlüsselname `GITLAB_TOKEN`, Wert = das Token,
+   **Speichern**.
+2. Den Key den Agenten zuweisen, die Merge Requests stellen sollen: Agent öffnen → **Konnektoren**
+   → *API Keys & Secrets* → **Zuweisen**.
+3. Beim Key auf das **Globus-Symbol** klicken und unter **Erlaubte Ziele** den Servernamen eintragen,
+   z. B. `gitlab.example.com` (bei gitlab.com schlägt das Feld `gitlab.com` vor) → **Ziele
+   speichern**. Mit eingeschaltetem Egress-Proxy (Kap. 37.10) sieht der Agent dann nur einen
+   Platzhalter; der Proxy setzt das Token erst auf dem Weg zu diesem Server ein (Kap. 16).
+
+**Projekt verbinden:**
+
+1. Projekt **Bearbeiten** → unter **Git-Repo** auf **GitLab** klicken.
+2. Die Adresse des GitLab-Projekts eintragen, z. B. `https://gitlab.example.com/gruppe/untergruppe/repo`.
+   Untergruppen gehen; eine kopierte Adresse wie `…/repo/-/issues/12` wird auf das Projekt gekürzt.
+   Bei `https://gitlab.com/…` wählt das Fenster GitLab von selbst.
+3. Unter **Schlüssel für das Repo** den eben angelegten Key wählen. Bei GitLab geht nur ein
+   **eigener** Schlüssel — ein dir nur geteilter wird nicht an einen selbst eingetragenen Server
+   geschickt.
+4. **Speichern**. Die Fehlerzeile im Projekt nennt fehlende Rechte („verweigert … fehlt dem Token das
+   Recht api oder die Rolle Developer?“).
+
+So läuft ein Ticket:
+
+- Offene Issues kommen in die **Inbox**. Labels wie `status/ready` oder `status/triage` ziehen die
+  Karte in die passende Spalte; das Board setzt und entfernt diese Labels auch selbst (GitLab legt
+  fehlende Labels beim Setzen an).
+- Vergibt das Board ein Ticket, setzt es `status/in-arbeit` und schreibt den Übernahme-Kommentar
+  ins Issue. Der Agent arbeitet auf einem Branch `<nr>-…` und stellt einen **Merge Request** mit
+  `Closes #<nr>` — nie direkt auf den Standard-Branch.
+- **Rückfrage (Triage):** Der Agent schreibt seine Frage als Kommentar ins Issue, das Board setzt
+  `status/triage`. Antwortet jemand mit Rolle **Developer** oder höher im Issue mit
+  `@ai-employee <Agent>: …`, landet die Antwort im Projektgespräch und weckt den Agenten. Kommentare
+  von Gästen oder Reportern wecken niemanden.
+- Geschlossene Issues wandern nach **Erledigt**; GitLab nennt keinen Abschlussgrund.
+- **Regeln für Agenten** stellt den Abschnitt für die `AGENTS.md` als Merge Request.
+
+**Eigener Server im Firmennetz oder mit eigenem Zertifikat** (nur Administratoren):
+
+1. **Admin → Betrieb** öffnen, Karte **Eigene Git-Server**.
+2. Unter **Zertifizierungsstelle der Firma (PEM)** das öffentliche Zertifikat der Firmen-CA
+   einfügen (`-----BEGIN CERTIFICATE-----` …). Private Schlüssel lehnt die Plattform ab.
+3. Liegt der GitLab-Server im eigenen Netz, unter **Server im Firmennetz** seinen Namen eintragen,
+   z. B. `gitlab.intern.example.com` (ein Name je Zeile). Ohne diesen Eintrag fragt die Plattform
+   keine internen Adressen ab. Auch mit Eintrag nie: die Anlage selbst, Link-Local- oder
+   Metadaten-Adressen. Über den Egress-Proxy geht ein interner Server nur über Port 443.
+4. **Speichern**. Die Plattform nutzt beides sofort; der Egress-Proxy bei der nächsten Anmeldung
+   eines Agenten; die Agenten nach dem nächsten **Aktualisieren**.
+
+Grenzen: Kommentare in Merge Requests liest der Rückkanal nicht — Fragen und Antworten laufen über
+das Issue. `gh` funktioniert auf GitLab nicht; Agenten legen Merge Requests mit `glab` (falls im
+Abbild vorhanden) oder über die GitLab-API an.
 
 Ab dann, beim Öffnen des Projekts und regelmäßig (siehe oben):
 - Jedes **offene Issue** erscheint als Karte in der **Inbox** (mit Nummer `#12` und Link). Ändert
@@ -4889,6 +4958,7 @@ eingeschaltet, gehen Agenten für HTTPS über ihn hinaus:
 | Zugang zu externen MCP-Servern (Token und eigene Kopfzeilen, Kap. 14) | ebenso: Platzhalter, eingesetzt nur am Host des Servers; ein erneuertes OAuth-Token gilt sofort *(seit 1.417.0)* |
 | Claude-Zugang (Abo-Token oder API-Schlüssel, Anthropic direkt) | Platzhalter, eingesetzt nur an `api.anthropic.com` — stufenweise, siehe unten *(seit 1.418.0)*; eingesetzt wird immer das aktuelle, erneuerte Token, und die Token-Datei der Teamlizenz bekommt ein solcher Agent nicht mehr *(seit 1.421.0)* |
 | Codex-Zugang (ChatGPT-Anmeldung) | Zugangs-Token als Platzhalter, eingesetzt nur an `chatgpt.com` (immer das aktuelle, zentral erneuerte); das Erneuerungs-Token erreicht den Agenten gar nicht mehr — stufenweise, siehe unten *(seit 1.428.0, in Erprobung)* |
+| Eigener Git-Server mit Zertifikat der Firmen-CA (z. B. GitLab) | der Proxy prüft die Gegenseite zusätzlich mit der Stelle aus **Admin → Betrieb → Eigene Git-Server**; dort freigegebene Server im Firmennetz erreicht er über Port 443 (Kap. 6a.9a) |
 | Alle anderen HTTPS-Ziele | laufen unverändert als Tunnel durch, der Proxy sieht keine Inhalte |
 | Klartext-HTTP (z. B. eigene Apps des Agenten) | geht wie bisher direkt |
 | Adressen im Firmen- oder Docker-Netz | über den Proxy gesperrt |
