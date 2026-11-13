@@ -184,6 +184,13 @@ class AieEgress:
         cid = data.context.client.id
         agent, (ziel, port) = self.agenten.get(cid), self.ziele.get(cid, ("", 0))
         sni = (data.client_hello.sni or "").lower().rstrip(".")
+        if agent and ziel and self.orch.zielliste(agent) is not None:
+            # Zielliste: immer aufbrechen, sonst sähe der Proxy nur das CONNECT-Ziel und ein
+            # anderer Name (SNI, Host-Kopf) erreichte am selben CDN ein fremdes Ziel. Der
+            # Server-Name nach außen ist fest das geprüfte Ziel; den Host-Kopf prüft
+            # ``request`` je Anfrage.
+            data.context.server.sni = ziel
+            return
         aufbrechen = False
         if agent and ziel and sni == ziel and port == logik.KEY_PORT:
             try:
@@ -207,6 +214,12 @@ class AieEgress:
         if agent is None:
             await self._ohne_tunnel(flow)
             return
+        if self.orch.zielliste(agent) is not None:
+            ziel = self.ziele.get(cid, ("", 0))[0]
+            if not logik.host_werte_passen(
+                    flow.request.headers.get_all("host") + [flow.request.authority or ""], ziel):
+                flow.response = _antwort(421, "Host-Kopf passt nicht zum Ziel der Verbindung")
+                return
         abgelehnt = await self._anonymisieren(flow, agent)
         if abgelehnt is not None:
             flow.response = abgelehnt
@@ -346,9 +359,14 @@ class AieEgress:
             flow.response = _antwort(407, "Anmeldung am Egress-Proxy fehlt",
                                      **{"Proxy-Authenticate": 'Basic realm="ai-employee"'})
             return
-        if not logik.ziel_erlaubt(flow.request.host, self.orch.zielliste(agent)):
+        ziele = self.orch.zielliste(agent)
+        if not logik.ziel_erlaubt(flow.request.host, ziele):
             flow.response = _antwort(403, f"Ziel {flow.request.host} steht nicht auf der Liste der "
                                           "erlaubten Adressen dieses Agenten")
+            return
+        if ziele is not None and not logik.host_werte_passen(
+                flow.request.headers.get_all("host"), flow.request.host.lower().rstrip(".")):
+            flow.response = _antwort(421, "Host-Kopf passt nicht zum Ziel der Anfrage")
             return
         flow.request.headers.pop("Proxy-Authorization", None)
         if logik.platzhalter_in(flow.request.url, *flow.request.headers.values()):

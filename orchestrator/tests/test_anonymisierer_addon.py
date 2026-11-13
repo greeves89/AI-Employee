@@ -191,6 +191,39 @@ class AddonTests(unittest.TestCase):
             asyncio.run(addon._ohne_tunnel(f))
             self.assertEqual(f.response is not None and f.response.status_code == 403, gesperrt, host)
 
+    def test_zielliste_bricht_tls_auf_und_haelt_den_servernamen_fest(self):
+        """Domain-Fronting: anderer SNI im Tunnel zum erlaubten Ziel geht nach außen nicht mit."""
+        from types import SimpleNamespace
+        addon, f = self._flow(self.ANFRAGE, host="erlaubt.example.com", cfg=None)
+        addon.orch.ziele = {"muster": ["erlaubt.example.com"], "rolle": None, "immer": []}
+        server = SimpleNamespace(sni=None)
+        data = SimpleNamespace(context=SimpleNamespace(client=SimpleNamespace(id=f.client_conn.id), server=server),
+                               client_hello=SimpleNamespace(sni="fremd.example.org"), ignore_connection=False)
+        asyncio.run(addon.tls_clienthello(data))
+        self.assertFalse(data.ignore_connection, "mit Zielliste immer aufbrechen")
+        self.assertEqual(server.sni, "erlaubt.example.com")
+
+    def test_zielliste_prueft_den_host_kopf_jeder_anfrage(self):
+        ziele = {"muster": ["erlaubt.example.com"], "rolle": None, "immer": []}
+        for host_kopf, gesperrt in (("fremd.example.org", True), ("erlaubt.example.com", False)):
+            addon, f = self._flow({"x": 1}, host="erlaubt.example.com", cfg=None)
+            addon.orch.ziele = ziele
+            f.request.headers["host"] = host_kopf
+            asyncio.run(addon.request(f))
+            self.assertEqual(f.response is not None and f.response.status_code == 421, gesperrt, host_kopf)
+
+    def test_zielliste_klartext_host_kopf_muss_passen(self):
+        import base64
+
+        addon = aie_egress.AieEgress()
+        addon.orch = _Orch(None)
+        addon.orch.ziele = {"muster": ["erlaubt.example.com"], "rolle": None, "immer": []}
+        f = tflow.tflow(req=tutils.treq(method=b"GET", host="erlaubt.example.com", port=80, scheme=b"http", path=b"/"))
+        f.request.headers["Proxy-Authorization"] = "Basic " + base64.b64encode(b"a1:tok").decode()
+        f.request.headers["host"] = "fremd.example.org"
+        asyncio.run(addon._ohne_tunnel(f))
+        self.assertEqual(f.response.status_code, 421)
+
     def test_tls_zum_anbieter_fragt_frisch(self):
         from types import SimpleNamespace
         addon, f = self._flow(self.ANFRAGE)

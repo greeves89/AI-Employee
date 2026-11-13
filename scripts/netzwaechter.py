@@ -75,6 +75,9 @@ def regeln(container: list[dict], subnetze: dict[str, str], ausnahmen: list[str]
     vorwaerts = ["-A AIE-NETZ -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN"]
     host = ["-A AIE-NETZ-HOST -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN"]
     eingeschraenkt = [c for c in container if c["besitzer"]]
+    # Zielliste gilt für den ganzen Besitzer: Die eigenen Apps des Agenten erreicht er über
+    # Regel 4. Hätten sie freien Ausgang, liefe alles über sie am Proxy vorbei.
+    mit_liste = {c["besitzer"] for c in eingeschraenkt if c.get("zielliste")}
     for c in eingeschraenkt:
         for ip in sorted(set(c["ips"].values())):
             # 2. Andere Besitzer im selben Netz
@@ -101,9 +104,10 @@ def regeln(container: list[dict], subnetze: dict[str, str], ausnahmen: list[str]
                 vorwaerts.append(f"-A AIE-NETZ -s {ip}/32 -p tcp --dport 443 -j REJECT --reject-with tcp-reset")
                 vorwaerts.append(f"-A AIE-NETZ -s {ip}/32 -p udp --dport 443 -j DROP")
             # 5c. Zielliste: alles Übrige hinaus gesperrt — auch Port 80, 8080, QUIC, ICMP.
-            # Die eigenen Docker-Netze (Proxy, Orchestrator, eigene Apps) sind in Regel 4
+            # Gilt auch für die Apps desselben Besitzers (ohne Proxy: kein Internet). Die
+            # eigenen Docker-Netze (Proxy, Orchestrator, eigene Apps) sind in Regel 4
             # schon durchgelassen; DNS fragt der Container bei Docker selbst (127.0.0.11).
-            if c.get("zielliste"):
+            if c["besitzer"] in mit_liste:
                 vorwaerts.append(f"-A AIE-NETZ -s {ip}/32 -p tcp -j REJECT --reject-with tcp-reset")
                 vorwaerts.append(f"-A AIE-NETZ -s {ip}/32 -j DROP")
             # 6. Host

@@ -197,7 +197,8 @@ class UmgebungTests(unittest.IsolatedAsyncioTestCase):
         from app.dependencies import make_agent_token
         with patch.object(settings, "egress_proxy_enabled", True), \
                 patch.object(settings, "egress_proxy_token", TOKEN), \
-                patch.object(egress, "ca_zertifikat", AsyncMock(return_value="-----BEGIN CERTIFICATE-----\nX\n")):
+                patch.object(egress, "ca_zertifikat", AsyncMock(return_value="-----BEGIN CERTIFICATE-----\nX\n")), \
+                patch.object(egress, "_zielliste_umgebung", AsyncMock(return_value={})):
             env = await egress.agent_umgebung("a1")
         self.assertEqual(env["HTTPS_PROXY"],
                          f"http://a1:{make_agent_token('a1')}@ai-employee-egress-proxy:8080")
@@ -215,7 +216,8 @@ class UmgebungTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(egress.interne_hosts(None), [])
         with patch.object(settings, "egress_proxy_enabled", True), \
                 patch.object(settings, "egress_proxy_token", TOKEN), \
-                patch.object(egress, "ca_zertifikat", AsyncMock(return_value="-----BEGIN CERTIFICATE-----\nX\n")):
+                patch.object(egress, "ca_zertifikat", AsyncMock(return_value="-----BEGIN CERTIFICATE-----\nX\n")), \
+                patch.object(egress, "_zielliste_umgebung", AsyncMock(return_value={})):
             env = await egress.agent_umgebung("a1", mcp)
         self.assertIn("test-mcp-server", env["NO_PROXY"].split(","))
         self.assertNotIn("mcp.example.com", env["NO_PROXY"], "Externe MCPs bleiben am Proxy")

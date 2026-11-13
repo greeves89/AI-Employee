@@ -66,6 +66,8 @@ class ProxyEntscheidungTests(unittest.TestCase):
             (self.Z, "example.com", True),                                  # *.x deckt x selbst
             (self.Z, "evil-github.com", False),                             # kein Teilstring-Treffer
             (self.Z, "github.com.evil.org", False),
+            (self.Z, "evilexample.com", False),                             # *.x nicht als Teilstring
+            (self.Z, "example.com.evil.org", False),
             (self.Z, "wikipedia.org", False),                               # nicht auf der Liste
             (self.Z, "", False),
             ({**self.Z, "rolle": ["*.example.com"]}, "github.com", False),  # Rolle verbietet
@@ -111,6 +113,17 @@ class NetzwaechterTests(unittest.TestCase):
         eigene = vor.index(f"-A AIE-NETZ -s {ip}/32 -d 172.18.0.0/16 -j RETURN")
         self.assertLess(eigene, vor.index(tcp), "Proxy im eigenen Netz muss erreichbar bleiben")
         self.assertLess(vor.index(tcp), vor.index(rest))
+
+    def test_eigene_apps_des_agenten_ebenso_gesperrt(self):
+        """Sonst liefe alles über eine App des Agenten (Regel 4) am Proxy vorbei."""
+        agent = dict(self.AGENT, nur_proxy=True, zielliste=True)
+        app = {"name": "agent-a1b2c3d4-web", "besitzer": agent["besitzer"],
+               "ips": {"ai-employee-network": "172.18.0.9"}}
+        fremd = {"name": "agent-ffffffff-web", "besitzer": "agent-ffffffff",
+                 "ips": {"ai-employee-network": "172.18.0.10"}}
+        vor, _ = nw.regeln([agent, app, fremd], self.SUBNETZE, [])
+        self.assertIn("-A AIE-NETZ -s 172.18.0.9/32 -j DROP", vor)
+        self.assertNotIn("-A AIE-NETZ -s 172.18.0.10/32 -j DROP", vor, "fremder Besitzer bleibt frei")
 
     def test_ohne_zielliste_keine_sperre_aller_ports(self):
         vor, _ = nw.regeln([dict(self.AGENT, nur_proxy=True)], self.SUBNETZE, [])
