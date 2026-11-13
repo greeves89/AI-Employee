@@ -15,6 +15,7 @@ import { SystemControl } from "@/components/settings/system-control";
 import { SsoAutoProvisioningToggle } from "@/components/settings/sso-auto-provisioning-toggle";
 import { ZweiFaktorPflichtToggle } from "@/components/settings/zwei-faktor";
 import { SamlConfig } from "@/components/settings/saml-config";
+import { McpIdpOAuthConfigPanel } from "@/components/settings/mcp-idp-oauth";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { LizenzBereich } from "@/components/settings/lizenz-bereich";
@@ -1080,6 +1081,12 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
           {isAdmin && (
             <div className="mb-4">
               <SamlConfig />
+            </div>
+          )}
+
+          {isAdmin && (
+            <div className="mb-4">
+              <McpIdpOAuthConfigPanel />
             </div>
           )}
 

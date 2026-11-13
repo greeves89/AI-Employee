@@ -1,4 +1,4 @@
-import type { ActivityTimelineResponse, AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, FeedbackStatus, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, DayPlanItem, ProactiveResponse, Responsibility, ReflectionRun, ReflectionStatus, Task, Schedule, FileEntry, Settings, SecondBrain, Integration, TodoListResponse, WebhookEvent } from "./types";
+import type { ActivityTimelineResponse, AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, FeedbackStatus, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, McpIdpOAuthConfig, MeetingRoom, Notification, PermissionPackage, DayPlanItem, ProactiveResponse, Responsibility, ReflectionRun, ReflectionStatus, Task, Schedule, FileEntry, Settings, SecondBrain, Integration, TodoListResponse, WebhookEvent } from "./types";
 import { getApiUrl, getBase, getWsUrl } from "./config";
 import type { ProjektBesprechung, ProjektBoard, ProjektKarte, ProjektKennzahlen, ProjektLauf, ProjektNachricht, ProjektStatus, ProjektTakt, ProjektTermin } from "./projekte";
 
@@ -527,6 +527,25 @@ export async function setMsgraphMcpExternal(enabled: boolean): Promise<{ msgraph
   return fetchJSON(`${getBase()}/settings/msgraph-mcp-external`, {
     method: "PUT",
     body: JSON.stringify({ enabled }),
+  });
+}
+
+// Eigene MCP-Endpunkte per OAuth über den Firmen-IdP (#1195).
+export async function getMcpIdpOAuth(): Promise<McpIdpOAuthConfig> {
+  return fetchJSON(`${getBase()}/settings/mcp-idp-oauth`);
+}
+
+export async function setMcpIdpOAuth(body: {
+  enabled: boolean;
+  issuer: string;
+  audience: string;
+  required_scope: string;
+  allowed_clients: string;
+  jwks_uri: string;
+}): Promise<McpIdpOAuthConfig> {
+  return fetchJSON(`${getBase()}/settings/mcp-idp-oauth`, {
+    method: "PUT",
+    body: JSON.stringify(body),
   });
 }
 

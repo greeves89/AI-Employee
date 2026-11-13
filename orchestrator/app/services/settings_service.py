@@ -136,6 +136,15 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "agent_idle_timeout_minutes",
     # Expose MS Graph MCP server to external LLM clients (OpenWebUI)
     "msgraph_mcp_external_enabled",
+    # Eigene MCP-Endpunkte per OAuth über den Firmen-IdP (#1195, core/mcp_idp_auth).
+    # Nichts davon ist geheim: Aussteller, Empfänger und Schlüsseladresse stehen
+    # ohnehin in der öffentlichen Protected Resource Metadata.
+    "mcp_idp_oauth_enabled",
+    "mcp_idp_issuer",
+    "mcp_idp_audience",
+    "mcp_idp_jwks_uri",
+    "mcp_idp_required_scope",
+    "mcp_idp_allowed_clients",
     # Platform-wide read-only enforcement for M365/Graph AND on-prem Exchange
     "msgraph_read_only",
     # Improvement engine thresholds

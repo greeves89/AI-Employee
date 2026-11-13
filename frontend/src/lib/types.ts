@@ -834,3 +834,20 @@ export interface ActivityTimelineResponse {
   end: string;
   agents: ActivityAgentTimeline[];
 }
+
+/** Eigene MCP-Endpunkte per OAuth über den Firmen-IdP (#1195) — GET/PUT /settings/mcp-idp-oauth. */
+export interface McpIdpOAuthConfig {
+  enabled: boolean;
+  issuer: string;
+  audience: string;
+  jwks_uri: string;
+  required_scope: string;
+  /** Erlaubte aufrufende Anwendungen (Client-IDs), mit Komma getrennt. */
+  allowed_clients: string;
+  /** Aus der Microsoft-Verzeichnis-ID abgeleiteter Aussteller, leer wenn keiner ableitbar. */
+  derived_issuer: string;
+  /** Eingeschaltet UND vollständig eingerichtet. */
+  active: boolean;
+  brain_url_example: string;
+  prm_url_example: string;
+}

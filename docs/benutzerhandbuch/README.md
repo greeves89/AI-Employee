@@ -3215,6 +3215,83 @@ unter **Wissen** (Kap. 5.5).
 4. Die Mitarbeiter binden es im Agenten (**Wissen**-Tab) an und können darin suchen.
 5. Optional **Stecker-Symbol** → MCP aktivieren, um den Vault auch in n8n/Cursor zu nutzen.
 
+### 22.5.2 MCP-Zugang mit Firmenanmeldung (OAuth)
+Statt eines geteilten Brain-Schlüssels melden sich Mitarbeiter mit ihrem Firmenkonto an
+(Microsoft Entra ID oder ein anderer OIDC-Anbieter). Der MCP-Client bekommt vom Anbieter ein
+Token **im Namen der Person**; AI Employee prüft es und zeigt nur die Second Brains, die
+dieser Person freigegeben sind. Zweiter Faktor und Conditional Access der Firma greifen
+automatisch. Der Brain-Schlüssel gilt daneben weiter (Dienstkonten, n8n). Dasselbe gilt
+für den MCP-Zugang zu Agenten (`/api/v1/mcp/agents/<id>`): wer den Agenten in der Oberfläche
+sieht, kommt auch per Firmenanmeldung an ihn heran.
+
+**Voraussetzung:** Die Person hat ein Konto in AI Employee und hat sich mindestens einmal
+per Microsoft-SSO angemeldet. Dabei merkt sich AI Employee ihre Objekt-ID im Verzeichnis.
+Ohne diese Anmeldung zählt die E-Mail-Adresse (Claim `email`, nicht der Anmeldename), aber
+nur für Konten, die per Microsoft-SSO angelegt oder verknüpft sind, und nur unter derselben
+Bedingung wie beim SSO-Login (Anwendung auf ein Verzeichnis festgelegt bzw. Adresse vom Anbieter
+bestätigt). Diese erste Verknüpfung steht im Prüfprotokoll. Gastkonten (B2B) und Tokens einer
+Anwendung ohne Person werden immer abgewiesen. Unbekannte Personen ebenso; es wird nie ein
+Konto angelegt.
+
+**Schritt 1: App-Registrierung beim Anbieter (Beispiel Entra ID)**
+1. Im Entra-Portal unter **App-Registrierungen** eine **eigene** Registrierung für die
+   Ressource (die MCP-API) anlegen. Nicht die SSO-Registrierung nehmen: Deren Client-ID steht
+   in jedem Anmelde-Token des SSO-Logins und darf nicht der Empfänger sein.
+2. **API verfügbar machen** → Anwendungs-ID-URI setzen (z. B. `api://<Anwendungs-ID>`) →
+   Bereich `mcp.access` hinzufügen.
+3. Im **Manifest** `requestedAccessTokenVersion` auf `2` stellen. Dann steht im Token als
+   Aussteller `https://login.microsoftonline.com/<Verzeichnis-ID>/v2.0` und als Empfänger die
+   Anwendungs-ID.
+4. Für den MCP-Client eine Registrierung als **öffentlicher Client** anlegen, Umleitungs-URI
+   des Clients eintragen (bei Claude Code `http://localhost:<Port>/callback`) und unter
+   **API-Berechtigungen** den Bereich `mcp.access` freigeben. Die **Anwendungs-ID** dieser
+   Client-Registrierung kommt in AI Employee unter **Erlaubte Anwendungen**.
+5. Unter **Unternehmensanwendungen** → die Ressource aus Schritt 1 → **Eigenschaften** →
+   **Zuweisung erforderlich** auf **Ja** stellen und unter **Benutzer und Gruppen** nur die
+   Personen bzw. Gruppen zuweisen, die per MCP zugreifen sollen. Sonst bekommt jedes Konto im
+   Verzeichnis ein Token für die Ressource.
+6. Optional unter **Tokenkonfiguration** den Claim `email` hinzufügen. Ohne ihn erkennt
+   AI Employee eine Person nur an ihrer Objekt-ID, also erst nach einer SSO-Anmeldung.
+
+**Schritt 2: in AI Employee einschalten**
+1. **Admin-Bereich → Dienste & Konten** öffnen.
+2. Zur Karte **MCP-Zugang mit Firmenanmeldung** scrollen (unter SAML 2.0).
+3. Felder ausfüllen:
+   - **Aussteller (Issuer)** — leer lassen, wenn oben bei Microsoft eine Verzeichnis-ID (GUID)
+     steht; sonst die Adresse aus dem Token (`iss`).
+   - **Empfänger (Audience)** — die Anwendungs-ID der eigenen API-Registrierung aus Schritt 1
+     (das `aud` im Token), **nicht** die Client-ID des SSO-Logins.
+   - **Erlaubte Anwendungen** — die Anwendungs-ID(s) der MCP-Clients aus Schritt 1.4, mehrere
+     mit Komma. Tokens anderer Anwendungen werden abgewiesen.
+   - **Erforderliche Berechtigung** — `api://<Anwendungs-ID>/mcp.access`.
+   - **Schlüsseladresse** — leer lassen; sie wird aus dem Aussteller ermittelt und muss dann auf
+     demselben Host liegen.
+4. Auf den **Schalter** oben rechts in der Karte klicken. Grün = an. Ohne Aussteller, ohne
+   Empfänger oder ohne **Erlaubte Anwendungen** bzw. **Erforderliche Berechtigung** lehnt
+   AI Employee das Einschalten mit einer Meldung ab, ebenso bei Adressen, die ins interne Netz
+   zeigen. Ändert sich der Aussteller, erscheint ein gelber Warnhinweis: Danach müssen sich alle
+   MCP-Clients neu anmelden. Jede Änderung steht mit altem und neuem Wert im Prüfprotokoll.
+5. Der grüne Kasten zeigt danach die Adresse für den MCP-Client.
+
+Am Brain muss MCP eingeschaltet sein (**Second Brains → Stecker-Symbol**, Kap. 22.5).
+
+**Schritt 3: MCP-Client verbinden**
+- **Claude Code:** Server mit der Brain-Adresse und der Client-ID aus Schritt 1.4 eintragen,
+  z. B. `claude mcp add --transport http --client-id <Client-ID> --callback-port 8080 wissen
+  https://ai.example.com/api/v1/mcp/brains/<slug>`. Beim ersten Aufruf `/mcp` → **Authenticate**:
+  Der Browser öffnet die Firmenanmeldung.
+- **Open WebUI:** **Admin Settings → External Tools → Add Server**, Typ **MCP (Streamable
+  HTTP)**, Adresse wie oben, Anmeldung **OAuth 2.1**, Client-ID aus Schritt 1.4.
+
+Der Client findet den Anbieter selbst: Ein Aufruf ohne Token bekommt `401` mit einem
+Verweis auf `/.well-known/oauth-protected-resource/api/v1/mcp/brains/<slug>`.
+
+**Was abgewiesen wird:** Tokens für eine andere Anwendung (falsches `aud`), abgelaufene
+Tokens, Tokens eines anderen Ausstellers oder mit fremdem Schlüssel signiert, Tokens ohne die
+erforderliche Berechtigung, Tokens einer nicht erlaubten Anwendung, Anmelde-Tokens (ID-Tokens)
+statt Zugriffstokens, Gastkonten, Personen ohne Konto oder mit gesperrtem Konto. Brains ohne
+Freigabe für die Person antworten mit „nicht gefunden".
+
 ### 22.6 KI-Konten
 ![KI-Konten](screenshots/25-admin-ai-accounts.png)
 1. Bereich **KI-Konten** → zentrale Modell-/Provider-Zugänge anlegen/verwalten

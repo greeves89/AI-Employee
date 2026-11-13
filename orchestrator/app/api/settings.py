@@ -696,6 +696,117 @@ async def set_msgraph_mcp_external(
     return {"msgraph_mcp_external_enabled": enable}
 
 
+class McpIdpOAuthUpdate(BaseModel):
+    """Eigene MCP-Endpunkte per OAuth über den Firmen-IdP (#1195)."""
+
+    enabled: bool = False
+    issuer: str = Field(default="", max_length=500)
+    audience: str = Field(default="", max_length=1000)
+    jwks_uri: str = Field(default="", max_length=500)
+    required_scope: str = Field(default="", max_length=300)
+    allowed_clients: str = Field(default="", max_length=2000)
+
+
+_MCP_IDP_KEYS = {
+    "enabled": "mcp_idp_oauth_enabled",
+    "issuer": "mcp_idp_issuer",
+    "audience": "mcp_idp_audience",
+    "jwks_uri": "mcp_idp_jwks_uri",
+    "required_scope": "mcp_idp_required_scope",
+    "allowed_clients": "mcp_idp_allowed_clients",
+}
+
+
+def _mcp_idp_antwort() -> dict:
+    from app.core import mcp_idp_auth
+
+    basis = (settings.oauth_redirect_base_url or "").rstrip("/")
+    return {
+        "enabled": bool(settings.mcp_idp_oauth_enabled),
+        "issuer": settings.mcp_idp_issuer or "",
+        "audience": settings.mcp_idp_audience or "",
+        "jwks_uri": settings.mcp_idp_jwks_uri or "",
+        "required_scope": settings.mcp_idp_required_scope or "",
+        "allowed_clients": settings.mcp_idp_allowed_clients or "",
+        "derived_issuer": mcp_idp_auth.abgeleiteter_issuer(),
+        "active": mcp_idp_auth.aktiv(),
+        "brain_url_example": f"{basis}/api/v1/mcp/brains/<slug>",
+        "prm_url_example": f"{basis}/.well-known/oauth-protected-resource/api/v1/mcp/brains/<slug>",
+    }
+
+
+@router.get("/mcp-idp-oauth")
+async def get_mcp_idp_oauth(user=Depends(require_admin)):
+    """Admin: Einrichtung des MCP-Zugangs per Firmen-IdP."""
+    return _mcp_idp_antwort()
+
+
+@router.put("/mcp-idp-oauth")
+async def set_mcp_idp_oauth(
+    body: McpIdpOAuthUpdate,
+    user=Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: MCP-Zugang per Firmen-IdP ein-/ausschalten und einrichten.
+
+    Einschalten nur mit prüfbarem Aussteller (eingetragen oder aus der
+    Microsoft-Verzeichnis-ID abgeleitet) und Empfänger — sonst stünde ein Schalter
+    auf „an“, der nichts tut. Adressen nur per https. Wirkt sofort.
+    """
+    from app.core import mcp_idp_auth
+
+    werte = {
+        "issuer": body.issuer.strip(),
+        "audience": ",".join(a.strip() for a in body.audience.split(",") if a.strip()),
+        "jwks_uri": body.jwks_uri.strip(),
+        "required_scope": body.required_scope.strip(),
+        "allowed_clients": ",".join(mcp_idp_auth.liste(body.allowed_clients)),
+    }
+    for feld in ("issuer", "jwks_uri"):
+        if werte[feld] and not werte[feld].lower().startswith("https://"):
+            raise HTTPException(status_code=422, detail="Aussteller und Schlüsseladresse müssen mit https:// beginnen.")
+    if any(c in body.required_scope for c in '"\\\r\n'):
+        raise HTTPException(status_code=422, detail="Berechtigung enthält unzulässige Zeichen.")
+    if body.enabled:
+        if not (werte["issuer"] or mcp_idp_auth.abgeleiteter_issuer()):
+            raise HTTPException(status_code=422, detail="Aussteller fehlt (oder eine Microsoft-Verzeichnis-ID in der SSO-Einrichtung).")
+        if not werte["audience"]:
+            raise HTTPException(status_code=422, detail="Empfänger (Kennung dieser Ressource im IdP) fehlt.")
+        if not werte["allowed_clients"] and not werte["required_scope"]:
+            raise HTTPException(status_code=422, detail="Erlaubte Anwendungen oder eine erforderliche Berechtigung "
+                                                        "eintragen — sonst käme jede Anwendung des Verzeichnisses durch.")
+        # SSRF-Sperre schon beim Speichern (beim Abruf greift sie ohnehin noch einmal).
+        for feld in ("issuer", "jwks_uri"):
+            if werte[feld] and not await mcp_idp_auth._ziel_erlaubt(werte[feld]):
+                raise HTTPException(status_code=422, detail="Aussteller oder Schlüsseladresse zeigt auf ein internes "
+                                                            "oder nicht auflösbares Ziel.")
+
+    svc = SettingsService(db)
+    # Alte und neue Werte ins Protokoll: keiner dieser Werte ist geheim (sie stehen
+    # in der öffentlichen Protected Resource Metadata), und ein still geänderter
+    # Aussteller oder Empfänger ist genau das, was man im Nachhinein finden muss.
+    aenderungen: dict[str, dict] = {}
+    for feld, schluessel in _MCP_IDP_KEYS.items():
+        neu = body.enabled if feld == "enabled" else werte[feld]
+        alt = getattr(settings, schluessel)
+        if alt != neu:
+            aenderungen[schluessel] = {"von": alt, "nach": neu}
+        await svc.set(schluessel, ("true" if neu else "false") if feld == "enabled" else neu)
+        setattr(settings, schluessel, neu)
+    if aenderungen:
+        from app.core.audit import protokolliere
+        from app.models.audit_log import AuditEventType
+
+        await protokolliere(
+            db, AuditEventType.SETTINGS_CHANGED, user_id=getattr(user, "id", None),
+            command="MCP-Zugang mit Firmenanmeldung geändert: " + ", ".join(aenderungen)[:400],
+            meta={"keys": list(aenderungen), "werte": aenderungen},
+        )
+    await db.commit()
+    mcp_idp_auth.cache_leeren()
+    return _mcp_idp_antwort()
+
+
 @router.put("/msgraph-read-only")
 async def set_msgraph_read_only(
     body: dict,
