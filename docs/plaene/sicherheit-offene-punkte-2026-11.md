@@ -56,7 +56,7 @@ gilt das als abgewiesen.
 | 2 Wecken trotz Stopp | Erledigt (1.461 + 1.463). Live: angehaltener Agent startet weder durch Aufgabe noch durch Anmeldung. Die Anmeldung war die eigentliche Ursache vom 13.11. |
 | 3 Freigabe „nur nutzen“ | Erledigt. Live mit Wegwerf-Testkonto geprüft (14.11.), Bildschirmfoto im Handbuch 22.3. |
 | 4 OAuth mit Entra | Live gegen das echte Entra der Anlage (14.11.): Discovery und 6 Schlüssel über die feste Verbindung, gefälschte Tokens abgewiesen (fremder Schlüssel, unbekannte kid, alg none, HS256). Erfolgsfall mit echtem Token läuft seit 14.11. in jeder CI (`test_idp_echter_aussteller`): GitHub Actions stellt ein signiertes Token aus, geprüft über SSRF-Sperre, feste Verbindung, Discovery, JWKS und RS256 wie im Betrieb; veränderte Signatur, anderer Empfänger und falscher Aussteller abgewiesen. Mit Entra selbst ist er auf dieser Anlage nicht prüfbar (Entscheidung Daniel, 14.11.): Es gibt kein Microsoft-Konto für die Anmeldung. Er wird bei der ersten Anlage mit Entra-Anmeldung geprüft (Handbuch 22.5.2). |
-| 5 GitLab | Lesen live gegen gitlab.com geprüft, Token-Tausch im Proxy live mit mitmproxy geprüft. Schreiben (Issue, Branch, Merge Request) nur gegen das nachgestellte GitLab geprüft; ein echtes Testprojekt ist nicht gewünscht (Entscheidung Daniel, 14.11.). Geprüft wird es bei der ersten Anlage mit GitLab. |
+| 5 GitLab | Lesen live gegen gitlab.com geprüft, Token-Tausch im Proxy live mit mitmproxy geprüft. Schreiben seit 14.11. gegen ein echtes GitLab CE geprüft (Workflow `gitlab-echt.yml`, ohne Konto auf gitlab.com): Server im Runner wie im Firmennetz (private Adresse, Freigabe über `git_interne_server`), Issue, Labels, Kommentare mit Rolle des Autors, Branch, Datei, Merge Request, Schließen; ohne Freigabe keine Verbindung, read_api-Token und Reporter abgewiesen, kein Token in Meldungen. |
 | 6 Sicherung | Erledigt (1.461 + 1.464). Live: Ausweichen ohne root, Ziel aus der `.env` (NAS), Update verweigert während einer Sicherung. |
 | 7 Alte Agenten-Abbilder | Erledigt (14.11.): Die 7 Agenten des Besitzers sind aktualisiert, gestoppt und angehalten geblieben. |
 | 8 DNS-Rebinding IdP | Erledigt (1.462). |
@@ -64,4 +64,4 @@ gilt das als abgewiesen.
 
 Alte root-Sicherung `/var/backups/ai-employee` (19 GB, 13.11.) auf Wunsch gelöscht, Platte jetzt bei 74 %.
 
-Damit ist der Plan abgeschlossen. Punkte 4 und 5 sind umgesetzt und getestet, nur ihr Erfolgsfall gegen ein echtes Konto fehlt mangels Konto auf dieser Anlage.
+Damit ist der Plan abgeschlossen. Punkte 4 und 5 laufen gegen echte Server (GitHub-OIDC, GitLab CE) in der CI; offen ist nur der Microsoft-eigene Teil eines Entra-Tokens (`azp`, `scp`, `oid`), geprüft mit dem Nachbau.
