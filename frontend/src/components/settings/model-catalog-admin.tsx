@@ -110,7 +110,7 @@ export function ModelCatalogAdmin() {
     <section>
       <div className="flex items-center gap-2 mb-3">
         <Cpu className="h-4 w-4 text-muted-foreground/60" />
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+        <h2 className="text-sm font-semibold text-foreground">
           Modelle freischalten
         </h2>
       </div>

@@ -94,7 +94,7 @@ export function LizenzBereich() {
     <section id="lizenz" className="scroll-mt-6">
       <div className="flex items-center gap-2 mb-3">
         <Lock className="h-4 w-4 text-muted-foreground/60" />
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+        <h2 className="text-sm font-semibold text-foreground">
           Lizenz
         </h2>
       </div>

@@ -263,7 +263,7 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
                     )}
                   >
                     {EVENT_ICONS[type] ?? <Activity className="h-3 w-3" />}
-                    {EVENT_INFO[type]?.label ?? type.replace(/_/g, " ")}
+                    {EVENT_INFO[type]?.label ?? ereignisLesbar(type)}
                     <span className="opacity-70">{count}</span>
                   </button>
                 ))}
@@ -382,7 +382,7 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
                           EVENT_COLORS[log.event_type] ?? "text-muted-foreground bg-foreground/[0.04] border-foreground/[0.06]"
                         )}>
                           {EVENT_ICONS[log.event_type]}
-                          {EVENT_INFO[log.event_type]?.label ?? log.event_type.replace(/_/g, " ")}
+                          {EVENT_INFO[log.event_type]?.label ?? ereignisLesbar(log.event_type)}
                         </span>
                       </td>
                       <td className="px-3 py-2.5 text-muted-foreground/80 font-mono max-w-[240px] truncate">
@@ -449,7 +449,19 @@ const DLP_ACTION_LABEL: Record<string, string> = {
 
 // Plain-language name + one-sentence explanation per event type, so the modal
 // says WHAT happened instead of showing a raw enum value.
+/** Unbekannte Ereignisarten lesbar: „agent_rechte_geaendert“ → „Agent rechte geändert“.
+ *  Vorher standen sie roh mit ae/oe/ue im Protokoll (Persona Admin, 14.11.2026). */
+function ereignisLesbar(typ: string): string {
+  // Nur deutsche Wortteile, nicht pauschal: „queue“ bliebe sonst nicht „queue“.
+  const t = typ.replace(/_/g, " ")
+    .replace(/aender/g, "änder").replace(/loesch/g, "lösch").replace(/pruef/g, "prüf")
+    .replace(/ueber/g, "über").replace(/fuer/g, "für").replace(/zurueck/g, "zurück").replace(/schluessel/g, "schlüssel");
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 const EVENT_INFO: Record<string, { label: string; desc: string }> = {
+  agent_updated: { label: "Agent geändert", desc: "Einstellungen eines Agenten wurden geändert." },
+  budget_changed: { label: "Budget geändert", desc: "Ein Budget wurde gesetzt oder geändert." },
   agent_started: { label: "Agent gestartet", desc: "Der Container eines Agenten wurde gestartet." },
   agent_stopped: { label: "Agent gestoppt", desc: "Der Container eines Agenten wurde gestoppt." },
   agent_created: { label: "Agent angelegt", desc: "Ein neuer Agent wurde angelegt." },
@@ -562,7 +574,7 @@ function AuditDetailModal({ log, agentName, onClose }: { log: AuditLog; agentNam
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
             <h3 className="text-[15px] font-semibold leading-snug">
-              {EVENT_INFO[log.event_type]?.label ?? log.event_type.replace(/_/g, " ")}
+              {EVENT_INFO[log.event_type]?.label ?? ereignisLesbar(log.event_type)}
             </h3>
             <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground/70">
               {EVENT_INFO[log.event_type]?.desc ?? "Protokollierter System-/Agenten-Vorgang."}

@@ -48,7 +48,7 @@ function Abschnitt({
     <section id={id} className="scroll-mt-20">
       <div className="mb-3 flex items-center gap-2">
         <Icon className="h-4 w-4 text-muted-foreground/60" />
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">{titel}</h2>
+        <h2 className="text-sm font-semibold text-foreground">{titel}</h2>
       </div>
       {children}
     </section>

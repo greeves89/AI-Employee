@@ -675,7 +675,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
         <section>
           <div className="flex items-center gap-2 mb-3">
             <Cpu className="h-4 w-4 text-muted-foreground/60" />
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+            <h2 className="text-sm font-semibold text-foreground">
               Modell-Anbieter
             </h2>
           </div>
@@ -974,7 +974,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
         <section>
           <div className="flex items-center gap-2 mb-3">
             <Bot className="h-4 w-4 text-muted-foreground/60" />
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+            <h2 className="text-sm font-semibold text-foreground">
               Agenten-Einstellungen
             </h2>
           </div>
@@ -1076,7 +1076,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
           <section>
             <div className="flex items-center gap-2 mb-3">
               <KeyRound className="h-4 w-4 text-muted-foreground" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <h2 className="text-sm font-semibold text-foreground">
                 Anmeldung
               </h2>
             </div>
@@ -1092,7 +1092,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
         <section>
           <div className="flex items-center gap-2 mb-3">
             <MessageSquare className="h-4 w-4 text-muted-foreground/60" />
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+            <h2 className="text-sm font-semibold text-foreground">
               Benachrichtigungen
             </h2>
           </div>
@@ -1158,7 +1158,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
           <section>
             <div className="flex items-center gap-2 mb-3">
               <Shield className="h-4 w-4 text-muted-foreground/60" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+              <h2 className="text-sm font-semibold text-foreground">
                 Automatisierung
               </h2>
             </div>
@@ -1232,7 +1232,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
           <section>
             <div className="flex items-center gap-2 mb-3">
               <Moon className="h-4 w-4 text-muted-foreground/60" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+              <h2 className="text-sm font-semibold text-foreground">
                 Nachtschicht
               </h2>
             </div>
@@ -1420,7 +1420,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
           <section>
             <div className="flex items-center gap-2 mb-3">
               <Globe className="h-4 w-4 text-muted-foreground/60" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+              <h2 className="text-sm font-semibold text-foreground">
                 OAuth-Anbindungen
               </h2>
             </div>
@@ -1786,7 +1786,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
           <section>
             <div className="flex items-center gap-2 mb-3">
               <Network className="h-4 w-4 text-muted-foreground/60" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+              <h2 className="text-sm font-semibold text-foreground">
                 Exchange (on-prem)
               </h2>
             </div>
@@ -1939,7 +1939,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
           <section>
             <div className="flex items-center gap-2 mb-3">
               <Shield className="h-4 w-4 text-muted-foreground/60" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+              <h2 className="text-sm font-semibold text-foreground">
                 Zugang
               </h2>
             </div>
@@ -1987,7 +1987,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
           <section>
             <div className="flex items-center gap-2 mb-3">
               <Lock className="h-4 w-4 text-muted-foreground/60" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+              <h2 className="text-sm font-semibold text-foreground">
                 Sicherheit / Anmeldung
               </h2>
             </div>
