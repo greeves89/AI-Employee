@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.468.3] - 2026-11-14
+
+### Geändert
+- **Aufgaben:** „Einzelaufgaben“ und „Zeitpläne“ sind Reiter, die Statusfilter darunter Segmente — vorher zwei gleich aussehende Leisten übereinander. Mitglieder sehen in der Liste nicht mehr den rohen Auftragstext.
+- **Leere Zustände** sehen überall gleich aus (Symbol, Überschrift, ein Satz), nach dem Vorbild „Noch kein Projekt“: Freigaben, Regeln, Aufgaben.
+- **Übersicht:** Kennzahl-Kacheln einfarbig statt fünf Akzentfarben ohne Bedeutung.
+- **Anmeldung:** Hinweis „Passwort vergessen? Dein Administrator setzt es zurück.“
+
 ## [1.468.2] - 2026-11-14
 
 ### Geändert
