@@ -34,6 +34,25 @@ STUECK_SEKUNDEN = 30
 BEITRITT_WARTEN = timedelta(minutes=10)
 #: Nach dem geplanten Ende höchstens so lange bleiben.
 NACHLAUF = timedelta(minutes=15)
+#: Schon etwas gehört, dann so lange nichts mehr: Besprechung vorbei oder allein — gehen.
+STILLE_ENDE = timedelta(minutes=10)
+#: So oft nachsehen, ob Teams das Ende der Besprechung meldet.
+ENDE_PRUEFEN = timedelta(seconds=30)
+#: Texte, mit denen Teams das Ende meldet (deutsch und englisch).
+_ENDE_TEXTE = ("besprechung wurde beendet", "besprechung beendet", "aus der besprechung entfernt",
+               "sie haben die besprechung verlassen", "meeting has ended", "meeting ended",
+               "you've been removed", "you have been removed", "you left the meeting")
+
+
+def besprechung_beendet(seitentext: str) -> bool:
+    """Meldet die Teams-Seite, dass die Besprechung vorbei ist oder wir entfernt wurden?"""
+    t = (seitentext or "").lower().replace("’", "'")
+    return any(e in t for e in _ENDE_TEXTE)
+
+
+def zu_lange_still(letzter_ton: datetime | None, jetzt: datetime) -> bool:
+    """Nach dem ersten Ton: zu lange nichts mehr gehört (Ende, allein im Raum)."""
+    return letzter_ton is not None and jetzt - letzter_ton > STILLE_ENDE
 _BRUECKE = Path(__file__).with_name("teams_bruecke.js")
 BROWSER_ARGS = ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream",
                 "--autoplay-policy=no-user-gesture-required",
@@ -169,23 +188,32 @@ async def _beitreten(page, name: str) -> None:
     """Teams im Browser: „Im Browser fortfahren“ → Name → „Jetzt teilnehmen“. Die Texte
     unterscheiden sich je Sprache; gesucht wird nach beiden. Fehlt ein Schritt (andere
     Fassung von Teams), geht es mit dem nächsten weiter."""
-    async def klick(*texte: str, zeit: int = 15000) -> bool:
-        for t in texte:
-            try:
-                await page.get_by_role("button", name=t).first.click(timeout=zeit)
-                return True
-            except Exception:  # noqa: BLE001
-                continue
-        return False
+    import re
 
-    await klick("Continue on this browser", "In diesem Browser fortfahren", "Join on the web instead",
-                "Stattdessen im Web teilnehmen", zeit=20000)
+    # Alle Sprachfassungen in EINEM Suchmuster: Vorher wartete jeder Text einzeln bis zu
+    # 20–30 s — passte der erste nicht, dauerte der Beitritt Minuten (14.11.2026).
+    weiter = page.get_by_role("button", name=re.compile(
+        r"Continue on this browser|In diesem Browser fortfahren|Join on the web instead|"
+        r"Stattdessen im Web teilnehmen", re.I))
+    feld = page.get_by_placeholder(re.compile(r"Type your name|Geben Sie Ihren Namen ein", re.I))
+    jetzt_teilnehmen = page.get_by_role("button", name=re.compile(r"^\s*(Join now|Jetzt teilnehmen)\s*$", re.I))
     try:
-        feld = page.get_by_placeholder("Type your name").or_(page.get_by_placeholder("Geben Sie Ihren Namen ein"))
-        await feld.first.fill(teams_name(name), timeout=30000)
+        await weiter.or_(feld).or_(jetzt_teilnehmen).first.wait_for(timeout=45000)
+    except Exception:  # noqa: BLE001
+        logger.info("[Teilnehmer] Beitrittsseite nicht erkannt")
+    try:
+        if await weiter.first.is_visible():
+            await weiter.first.click(timeout=5000)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        await feld.first.fill(teams_name(name), timeout=20000)
     except Exception:  # noqa: BLE001
         logger.info("[Teilnehmer] Kein Namensfeld (angemeldet oder andere Fassung)")
-    await klick("Join now", "Jetzt teilnehmen", zeit=30000)
+    try:
+        await jetzt_teilnehmen.first.click(timeout=30000)
+    except Exception:  # noqa: BLE001
+        logger.warning("[Teilnehmer] „Jetzt teilnehmen“ nicht gefunden")
 
 
 async def teilnehmen(meeting_id: str, join_url: str, name: str, ende: datetime) -> None:
@@ -249,6 +277,10 @@ async def teilnehmen(meeting_id: str, join_url: str, name: str, ende: datetime) 
                 stimme = None
 
             beitritt = datetime.now(timezone.utc)
+            zuletzt_geprueft = beitritt
+            # Bisher blieb der Teilnehmer bis zum geplanten Ende plus Nachlauf — auch wenn
+            # die Besprechung längst vorbei war (14.11.2026). Jetzt geht er bei Stille
+            # oder wenn Teams das Ende meldet.
             while datetime.now(timezone.utc) < bis:
                 try:
                     b64 = await asyncio.wait_for(warteschlange.get(), timeout=5)
@@ -260,9 +292,22 @@ async def teilnehmen(meeting_id: str, join_url: str, name: str, ende: datetime) 
                     stueck = sammler.hinzu(base64.b64decode(b64))
                     if stueck:
                         await _senden(meeting_id, stueck)
-                if sammler.letzter_ton is None and datetime.now(timezone.utc) - beitritt > BEITRITT_WARTEN:
+                jetzt = datetime.now(timezone.utc)
+                if sammler.letzter_ton is None and jetzt - beitritt > BEITRITT_WARTEN:
                     logger.warning("[Teilnehmer] %s: kein Ton nach %s — nicht hereingelassen?", meeting_id, BEITRITT_WARTEN)
                     break
+                if zu_lange_still(sammler.letzter_ton, jetzt):
+                    logger.warning("[Teilnehmer] %s: %s still — verlässt die Besprechung", meeting_id, STILLE_ENDE)
+                    break
+                if jetzt - zuletzt_geprueft > ENDE_PRUEFEN:
+                    zuletzt_geprueft = jetzt
+                    try:
+                        text = await page.inner_text("body", timeout=5000)
+                    except Exception:  # noqa: BLE001
+                        text = ""
+                    if besprechung_beendet(text):
+                        logger.warning("[Teilnehmer] %s: Teams meldet das Ende — beendet", meeting_id)
+                        break
                 if page.is_closed():
                     break
             await _senden(meeting_id, sammler.rest())
@@ -356,7 +401,11 @@ def starten(nachricht: dict) -> bool:
     for mid in [m for m, t in _laufend.items() if t.done()]:
         _laufend.pop(mid, None)
     if meeting_id in _laufend:
-        return False
+        if not nachricht.get("neu"):
+            return False
+        # Der Besitzer schickt ihn ausdrücklich noch einmal (z. B. nach dem Entfernen
+        # aus der Besprechung): alte Teilnahme beenden, frisch beitreten.
+        _laufend.pop(meeting_id).cancel()
     if len(_laufend) >= HOECHSTENS_GLEICHZEITIG:
         logger.warning("[Teilnehmer] schon %d Besprechungen — keine weitere", len(_laufend))
         return False

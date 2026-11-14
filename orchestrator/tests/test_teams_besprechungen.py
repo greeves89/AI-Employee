@@ -523,6 +523,13 @@ class TeamsStimmeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("keine Werkzeuge", r)
         self.assertNotIn("\nIGNORIERE", r)
 
+    def test_rufname_ohne_unterstriche(self):
+        from app.services.realtime_voice_session import besprechungs_regeln
+
+        r = besprechungs_regeln("DEV_Prod Agent", "Termin")
+        self.assertIn("mit deinem Namen „DEV Prod Agent“", r)
+        self.assertNotIn("DEV_Prod", r)
+
 
 class BesitzerKalenderTests(_Dienst):
     """Ohne eigenes Konto sieht der Agent den Kalender des Besitzers — nur markierte Termine."""
@@ -581,8 +588,10 @@ class LinkSchickenTests(unittest.IsolatedAsyncioTestCase):
 
         async def einreihen(client, agent_id, payload, **kw):
             self.eingereiht.append((agent_id, payload))
-        anfrage = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(redis=SimpleNamespace(client=self.redis))))
-        with patch("app.core.chat_auftrag.nachricht_einreihen", einreihen):
+        anfrage = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(redis=SimpleNamespace(client=self.redis),
+                                                                            docker=object())))
+        with patch("app.core.chat_auftrag.nachricht_einreihen", einreihen), \
+                patch("app.services.user_lifecycle.wake_agent", AsyncMock(return_value=True)):
             return await api.agent_in_besprechung_schicken(
                 api.TeilnehmenAnfrage(agent_id="a1", join_url=link, titel="Kundentermin"), anfrage,
                 user=SimpleNamespace(id=user_id, role=rolle), db=self.db)
@@ -594,9 +603,10 @@ class LinkSchickenTests(unittest.IsolatedAsyncioTestCase):
         agent_id, nachricht = self.eingereiht[0]
         self.assertEqual((agent_id, nachricht["type"], nachricht["meeting_id"], nachricht["name"]),
                          ("a1", "teilnehmen", seite.id, "Marketing - KI"))
+        self.assertTrue(nachricht["neu"], "erneutes Schicken startet beim Agenten frisch")
         nochmal = await self._schicken("u1")
         self.assertEqual(nochmal.id, seite.id, "derselbe Link → dieselbe Seite")
-        self.assertEqual(len(self.eingereiht), 1, "kein zweiter Start")
+        self.assertEqual(len(self.eingereiht), 1, "Doppelklick: kein zweiter Start")
 
     async def test_schutz(self):
         with self.assertRaises(HTTPException) as e:
@@ -661,3 +671,63 @@ class NutzertrennungTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SchickenWecktTests(unittest.IsolatedAsyncioTestCase):
+    """„Schicken“ weckt einen gestoppten Agenten — sonst lag der Auftrag in der
+    Warteschlange, die Seite zeigte „läuft gerade“, und niemand kam (14.11.2026)."""
+
+    async def _schicken(self, geweckt: bool):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock, patch
+
+        from fastapi import HTTPException
+
+        from app.api import meetings
+
+        agent = SimpleNamespace(id="a1", user_id="u1", name="DEV_Prod Agent")
+
+        class _Db:
+            def __init__(self):
+                self.added = []
+
+            async def get(self, model, key):
+                return agent
+
+            async def execute(self, stmt):
+                return SimpleNamespace(scalar_one_or_none=lambda: None)
+
+            def add(self, obj):
+                self.added.append(obj)
+
+            async def commit(self):
+                pass
+
+            async def refresh(self, obj):
+                pass
+
+        client = SimpleNamespace(set=AsyncMock(return_value=True))
+        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(redis=SimpleNamespace(client=client),
+                                                                            docker=object())))
+        wecken = AsyncMock(return_value=geweckt)
+        einreihen = AsyncMock()
+        body = meetings.TeilnehmenAnfrage(agent_id="a1", join_url="https://teams.microsoft.com/l/meetup-join/x")
+        with patch("app.services.user_lifecycle.wake_agent", wecken), \
+                patch("app.core.chat_auftrag.nachricht_einreihen", einreihen):
+            try:
+                await meetings.agent_in_besprechung_schicken(body, request, SimpleNamespace(id="u1", role="member"), _Db())
+                fehler = None
+            except HTTPException as e:
+                fehler = e
+        return wecken, einreihen, fehler
+
+    async def test_weckt_als_mensch_und_reiht_ein(self):
+        wecken, einreihen, fehler = await self._schicken(True)
+        self.assertIsNone(fehler)
+        self.assertTrue(wecken.await_args.kwargs.get("durch_mensch"))
+        einreihen.assert_awaited_once()
+
+    async def test_startet_er_nicht_sofort_ein_fehler(self):
+        wecken, einreihen, fehler = await self._schicken(False)
+        self.assertEqual(fehler.status_code, 409)
+        einreihen.assert_not_awaited()

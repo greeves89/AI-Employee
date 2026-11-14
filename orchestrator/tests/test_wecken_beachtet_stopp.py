@@ -98,7 +98,9 @@ class AufruferTests(unittest.TestCase):
             text = datei.read_text(encoding="utf-8")
             if "wake_agent(" in text and "durch_mensch=" in text and datei.name != "user_lifecycle.py":
                 menschlich.add(datei.relative_to(wurzel).as_posix())
-        self.assertEqual(menschlich, {"api/ws.py", "telegram/agent_bot.py"})
+        # api/meetings.py: „Agent in eine Teams-Besprechung schicken“ ist ein Klick des
+        # Besitzers oder Admins (seit 1.467.3).
+        self.assertEqual(menschlich, {"api/ws.py", "telegram/agent_bot.py", "api/meetings.py"})
 
     def test_telegram_weckt_nur_den_eigenen_agenten(self):
         from app.telegram import agent_bot
