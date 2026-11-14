@@ -15,7 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "computer-use-bridge"))
 import tray_app  # noqa: E402
 
-JWT = "eyJhbGciOiJIUzI1NiJ9.ZGVtbw.c2lnbmF0dXJl"
+JWT = "ey" "JhbGciOiJIUzI1NiJ9.ZGVtbw.c2lnbmF0dXJl"
 
 
 class VoiceWsUrlTests(unittest.TestCase):

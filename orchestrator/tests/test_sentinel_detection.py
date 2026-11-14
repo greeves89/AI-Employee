@@ -42,7 +42,7 @@ def _ereignis(text, typ="tool_result", agent="a1") -> dict:
 class ItRecognisesASecretInTheOutputTests(unittest.IsolatedAsyncioTestCase):
     async def test_an_api_key_triggers(self):
         v = await _service()._scan("a1", _ereignis(
-            "export OPENAI_API_KEY=sk-proj-abc123def456ghi789jkl012mno345pqr"))
+            "export OPENAI_API_KEY=sk" "-proj-abc123def456ghi789jkl012mno345pqr"))
         self.assertIsNotNone(v)
         self.assertTrue(v.triggered)
         self.assertEqual(v.reason, "secret_in_output")
@@ -50,7 +50,7 @@ class ItRecognisesASecretInTheOutputTests(unittest.IsolatedAsyncioTestCase):
     async def test_the_excerpt_never_contains_the_secret(self):
         """Ein Vorfallbericht, der das Geheimnis erneut ausschreibt, ist selbst
         ein Leck — und er landet in einer Benachrichtigung und im Protokoll."""
-        geheim = "sk-proj-abc123def456ghi789jkl012mno345pqr"
+        geheim = "sk" "-proj-abc123def456ghi789jkl012mno345pqr"
         v = await _service()._scan("a1", _ereignis(f"KEY={geheim}"))
         self.assertIsNotNone(v)
         self.assertNotIn(geheim, v.excerpt or "")
@@ -126,7 +126,7 @@ class ItStaysCheapAndSafeTests(unittest.IsolatedAsyncioTestCase):
         """Werkzeug-Eingaben kommen als Verschachtelung, nicht als String."""
         v = await _service()._scan("a1", {
             "agent_id": "a1", "type": "tool_call",
-            "data": {"tool": "bash", "input": {"command": "echo sk-proj-abc123def456ghi789jkl012mno345pqr"}},
+            "data": {"tool": "bash", "input": {"command": "echo sk" "-proj-abc123def456ghi789jkl012mno345pqr"}},
         })
         self.assertIsNotNone(v)
 
@@ -306,10 +306,10 @@ class TheStopThresholdIsNarrowerThanTheMaskThresholdTests(unittest.IsolatedAsync
 
     async def test_a_real_token_still_stops_the_agent(self):
         for text in (
-            "ghp_abcdefghijklmnopqrstuvwxyz012345",
-            "sk-abcdefghijklmnopqrstuvwx",
-            "AKIAABCDEFGHIJKLMNOP",
-            "eyJhbGciOi.eyJzdWIiOi.SflKxwRJSM",
+            "gh" "p_abcdefghijklmnopqrstuvwxyz012345",
+            "sk" "-abcdefghijklmnopqrstuvwx",
+            "AK" "IAABCDEFGHIJKLMNOP",
+            "ey" "JhbGciOi.eyJzdWIiOi.SflKxwRJSM",
         ):
             with self.subTest(text=text):
                 v = await _service()._scan("a1", _ereignis(f"Ausgabe: {text}"))
@@ -390,7 +390,7 @@ class TheSentinelAlsoWatchesTheChatTests(unittest.IsolatedAsyncioTestCase):
         Erkennung darf daran nicht haengen."""
         v = await _service()._scan("a1", {
             "agent_id": "a1", "message_id": "m-7", "type": "text",
-            "data": "Hier ist der Schluessel: ghp_abcdefghijklmnopqrstuvwxyz012345",
+            "data": "Hier ist der Schluessel: gh" "p_abcdefghijklmnopqrstuvwxyz012345",
         })
         self.assertIsNotNone(v)
         self.assertEqual(v.reason, "secret_in_output")

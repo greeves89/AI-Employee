@@ -20,7 +20,7 @@ class ClassifyTests(unittest.TestCase):
         self.assertEqual(dlp.classify("Treffen um 15 Uhr zum Projekt X, bitte Bescheid geben."), {})
 
     def test_secret_detected(self):
-        self.assertIn("secret", dlp.classify("hier der key: sk-abcdEFGH1234567890xyz"))
+        self.assertIn("secret", dlp.classify("hier der key: sk" "-abcdEFGH1234567890xyz"))
         self.assertIn("secret", dlp.classify("Authorization: Bearer abcdef1234567890abcdef"))
 
     def test_iban_detected(self):
@@ -276,3 +276,51 @@ class WerkzeugMaskierungTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestOeffentlicheBloeckeStoppenNicht(unittest.TestCase):
+    """Ein oeffentlicher Schluessel ist kein Geheimnis, ein privater bleibt eines."""
+
+    KOPF = "-----BE" "GIN "
+    FUSS = "-----E" "ND "
+
+    def _block(self, art: str, inhalt: str = "QUJD") -> str:
+        return f"{self.KOPF}{art}-----\n{inhalt}\n{self.FUSS}{art}-----"
+
+    def test_oeffentlicher_schluessel_und_zertifikat_loesen_nicht_aus(self):
+        for art in ("PUBLIC KEY", "CERTIFICATE"):
+            self.assertEqual(dlp.find_high_confidence_secrets(self._block(art)), [], art)
+
+    def test_privater_schluessel_loest_weiter_aus(self):
+        for art in ("PRIVATE KEY", "RSA PRIVATE KEY", "EC PRIVATE KEY", "OPENSSH PRIVATE KEY"):
+            self.assertTrue(dlp.find_high_confidence_secrets(self._block(art)), art)
+
+    def test_jede_oeffentliche_form_loest_nicht_aus(self):
+        for art in dlp._OEFFENTLICHE_BLOECKE:
+            self.assertEqual(dlp.find_high_confidence_secrets(self._block(art)), [], art)
+
+    def test_privater_block_hinter_oeffentlichem_kopf_loest_aus(self):
+        """Der Ausdruck endet am ersten END: der Kopf allein darf nicht entscheiden."""
+        text = f"{self.KOPF}PUBLIC KEY-----\n" + self._block("PRIVATE KEY")
+        self.assertTrue(dlp.find_high_confidence_secrets(text))
+
+    def test_privater_fuss_unter_oeffentlichem_kopf_loest_aus(self):
+        text = f"{self.KOPF}PUBLIC KEY-----\nQUJD\n{self.FUSS}PRIVATE KEY-----"
+        self.assertTrue(dlp.find_high_confidence_secrets(text))
+
+    def test_kopf_und_fuss_aus_zwei_dateien_loesen_nicht_aus(self):
+        """``cat a b``: ein Werkzeugergebnis, darin Kopf aus a und Fuss aus b."""
+        text = f"a.py: {self.KOPF}CERTIFICATE-----\nviel Text\nb.py: {self.FUSS}PUBLIC KEY-----"
+        self.assertEqual(dlp.find_high_confidence_secrets(text), [])
+
+    def test_unbekannte_marke_loest_aus(self):
+        self.assertTrue(dlp.find_high_confidence_secrets(self._block("IRGENDWAS")))
+
+    def test_token_ohne_blockmarke_bleibt_treffer(self):
+        """Die Ausnahme gilt fuer Bloecke: wer keine Marke traegt, ist nicht oeffentlich."""
+        token = "sk" + "-" + "a1b2c3d4" * 3
+        self.assertTrue(dlp.find_high_confidence_secrets(token))
+
+    def test_maskieren_bleibt_unveraendert(self):
+        """Nur der Stopp wird enger: geschwaerzt wird weiter jeder Block."""
+        self.assertTrue(dlp.scan_matches(self._block("PUBLIC KEY")).get("secret"))

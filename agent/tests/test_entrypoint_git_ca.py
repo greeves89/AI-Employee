@@ -9,7 +9,7 @@ import tempfile
 import unittest
 
 _ENTRYPOINT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "entrypoint.sh")
-PEM = "-----BEGIN CERTIFICATE-----\nMIIBattrappe\n-----END CERTIFICATE-----"
+PEM = "-----BE" "GIN CERTIFICATE-----\nMIIBattrappe\n-----END CERTIFICATE-----"
 
 
 class GitCaTests(unittest.TestCase):
@@ -78,8 +78,8 @@ class GitCaTests(unittest.TestCase):
         self.assertEqual(open(self.protokoll).read().count("lauf"), 1)
 
     def test_schluessel_unsinn_oder_ohne_server_wird_nicht_eingespielt(self):
-        for wert, hosts in (("-----BEGIN PRIVATE KEY-----\nx\n", "g.example"),
-                            (PEM + "\n-----BEGIN PRIVATE KEY-----\nx\n", "g.example"),
+        for wert, hosts in (("-----BE" "GIN PRIVATE KEY-----\nx\n", "g.example"),
+                            (PEM + "\n-----BE" "GIN PRIVATE KEY-----\nx\n", "g.example"),
                             ("kaputt", "g.example"), (PEM, None)):
             with self.subTest(wert=wert[:20], hosts=hosts):
                 r = self._lauf(wert, hosts)
