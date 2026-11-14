@@ -166,7 +166,7 @@ export default function AdminPage() {
   // Redirect non-admins
   useEffect(() => {
     if (user && user.role !== "admin") {
-      router.replace("/dashboard");
+      router.replace("/heute");
     }
   }, [user, router]);
 

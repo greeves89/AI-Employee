@@ -24,6 +24,7 @@ import { MarkdownContent } from "@/components/ui/markdown-content";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import { useAgents } from "@/hooks/use-agents";
 import { useTasks } from "@/hooks/use-tasks";
+import { ErsteSchritteKarte } from "@/components/dashboard/erste-schritte-karte";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
 import { agentZustand, aufgabenTitel, AUFGABEN_STATUS, istSystemZeitplan, zeitplanAnzeige } from "@/lib/aufgaben-anzeige";
 import type { ApprovalRequest, Schedule } from "@/lib/types";
@@ -1058,6 +1059,9 @@ export default function HeutePage() {
     <div>
       <Header title="Start" subtitle={`${datum} — ${daten && !daten.eingerichtet ? "dein Tag" : "dein Sekretariat"}`} />
       <div className="space-y-5 p-4 sm:p-6">
+        {/* Einstieg „In 6 Schritten startklar“ — stand bis 14.11.2026 nur auf der
+            Übersicht. Blendet sich aus, sobald alles erledigt oder weggeklickt ist. */}
+        <ErsteSchritteKarte />
         {!daten ? (
           <div className="flex justify-center py-16 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /></div>
         ) : !daten.eingerichtet ? (

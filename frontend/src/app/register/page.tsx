@@ -64,7 +64,7 @@ export default function RegisterPage() {
         setMfa(ergebnis.mfa);
         return;
       }
-      router.push("/dashboard");
+      router.push("/heute");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registrierung fehlgeschlagen");
     } finally {
@@ -119,7 +119,7 @@ export default function RegisterPage() {
         {mfa && (
           <MfaAnmeldung
             mfa={mfa}
-            onAngemeldet={() => router.push("/dashboard")}
+            onAngemeldet={() => router.push("/heute")}
             onZurueck={() => router.push("/login")}
           />
         )}

@@ -147,7 +147,9 @@ const navGroups: NavGroup[] = [
       { href: "/tasks", label: "Aufgaben", icon: ListTodo, simpleVisible: true },
       { href: "/projekte", label: "Projekte", icon: FolderKanban, simpleVisible: true },
       { href: "/approvals", label: "Freigaben", icon: ShieldCheck, simpleVisible: true },
-      { href: "/dashboard", label: "Übersicht", icon: LayoutDashboard, simpleVisible: true, weitere: true },
+      // Übersicht = Kennzahlen der Anlage für Admins. Für Mitglieder wiederholte sie
+      // „Start“ (UI-Bewertung 14.11.2026) — dort steht jetzt auch der Einstieg.
+      { href: "/dashboard", label: "Übersicht", icon: LayoutDashboard, simpleVisible: false, weitere: true },
       { href: "/finanzen", label: "Kosten", icon: Wallet, simpleVisible: true, weitere: true },
       { href: "/activity", label: "Aktivität", icon: Activity, simpleVisible: false, weitere: true },
       { href: "/analytics", label: "Auswertung", icon: BarChart3, simpleVisible: false, weitere: true },

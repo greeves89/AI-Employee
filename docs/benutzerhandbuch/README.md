@@ -68,7 +68,7 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 
 ## In 6 Schritten startklar
 
-Mit diesen Schritten nutzt du AI-Employee sauber. Auf der **Übersicht** steht dafür die
+Mit diesen Schritten nutzt du AI-Employee sauber. Auf **Start** steht dafür die
 Karte **„In 6 Schritten startklar“**: Sie zeigt, was erledigt ist, und hakt jeden Schritt
 **von selbst** ab, sobald er eingerichtet ist. Der nächste offene Schritt hat den Knopf
 **Jetzt machen**, der direkt auf die richtige Seite führt.
@@ -165,7 +165,7 @@ Administratoren mit dem Schalter **Mitglieder-Ansicht** im Benutzermenü.
 ### 1.1 Anmelden
 1. Öffne die Plattform-URL im Browser.
 2. **E-Mail** und **Passwort** eingeben.
-3. Auf **Anmelden** klicken. Du landest auf der **Übersicht**. Die Sitzung bleibt sicher
+3. Auf **Anmelden** klicken. Du landest auf **Start** *(seit 1.468.2)*. Die Sitzung bleibt sicher
    aktiv (verschlüsseltes Cookie), bis du dich abmeldest oder sie abläuft.
 4. **Hast du die Zwei-Faktor-Anmeldung eingerichtet** (Kap. 20.4) oder verlangt die Anlage
    sie *(seit 1.362.0)*, folgt nach dem Passwort ein zweiter Schritt **Bestätigungscode**:
@@ -372,7 +372,9 @@ Danach findest du die neuen Agenten unter **Agents** und kannst sofort loslegen.
 ## 3. Übersicht
 
 Die **Übersicht** (früher „Dashboard“) ist der Gesamtüberblick über deine
-Agenten, ihre Auslastung, Kosten und letzte Aktivität. Seitenleiste → **Übersicht**.
+Agenten, ihre Auslastung, Kosten und letzte Aktivität. Seitenleiste → **Weitere Bereiche** →
+**Übersicht**. Seit 1.468.2 nur für Admins; Mitglieder finden ihren Tag und den Einstieg
+„In 6 Schritten startklar“ auf **Start** (Kap. 6c.0).
 
 ![Übersicht](screenshots/01-dashboard.png)
 
@@ -1888,6 +1890,10 @@ Solange du kein Sekretariat eingerichtet hast, zeigt **Start** deinen Tag:
 - **Meine Agenten** — mit Zustand; ein Klick öffnet den Chat.
 
 Darunter steht die Karte **Sekretariat einrichten**. Erst **Einrichten** öffnet das Formular aus 6c.1.
+
+Oben auf **Start** steht außerdem der Einstieg **In 6 Schritten startklar**, bis alles erledigt
+ist *(seit 1.468.2)*. Erledigte Schritte sind in einer Zeile zusammengefasst; **anzeigen**
+klappt sie auf.
 
 ![Start ohne Sekretariat: Wartet auf dich, Aufgaben heute, Als Nächstes geplant, Meine Agenten und die Karte Sekretariat einrichten](screenshots/84-mein-tag.png)
 

@@ -263,11 +263,11 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
           {/* Bottom nav */}
           <div className="border-t border-border p-2 space-y-0.5 shrink-0">
             <Link
-              href="/dashboard"
+              href="/heute"
               className="flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all duration-150"
             >
               <LayoutDashboard className="h-4 w-4" />
-              Dashboard
+              Start
             </Link>
             <Link
               href="/agents"

@@ -390,16 +390,16 @@ class RedirectTargetTests(unittest.TestCase):
         for value in hostile:
             with self.subTest(relay=value):
                 location = self._redirect_for(value)
-                self.assertEqual(location, f"{self.FRONTEND}/dashboard")
+                self.assertEqual(location, f"{self.FRONTEND}/heute")
                 self.assertNotIn("evil.example", location)
 
     def test_empty_and_missing_are_safe(self):
         for value in ("", None, "   "):
             with self.subTest(relay=value):
-                self.assertEqual(self._redirect_for(value), f"{self.FRONTEND}/dashboard")
+                self.assertEqual(self._redirect_for(value), f"{self.FRONTEND}/heute")
 
     def test_an_overlong_target_is_rejected(self):
-        self.assertEqual(self._redirect_for("/" + "a" * 2500), f"{self.FRONTEND}/dashboard")
+        self.assertEqual(self._redirect_for("/" + "a" * 2500), f"{self.FRONTEND}/heute")
 
     def test_a_genuine_internal_target_still_works(self):
         """Die Pruefung darf den eigentlichen Zweck nicht kaputt machen."""
