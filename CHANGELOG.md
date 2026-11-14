@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.464.0] - 2026-11-14
+
+### Behoben
+- **Die Sicherung vor einem Update landet dort, wo auch die nächtliche liegt.** `backup.sh` liest `BACKUP_DIR` und `BACKUP_MOUNT` jetzt auch aus der `.env`. Bisher kannte nur die systemd-Unit der nächtlichen Sicherung das Ziel, etwa ein NAS. Das Update schrieb seine Sicherung auf die lokale Platte (auf dem Pi 21 GB je Update, Platte danach zu 91 % voll). Eintrag in `.env.example`.
+
 ## [1.463.0] - 2026-11-14
 
 ### Sicherheit

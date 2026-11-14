@@ -50,7 +50,12 @@ INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "${INSTALL_DIR}/scripts/lib/sicherung.sh"
 
 STANDARD_ZIEL=/var/backups/ai-employee
-# Ausdruecklich gesetztes Ziel (BACKUP_DIR oder --dest) wird nie ersetzt.
+# Ziel und Sicherungsplatte auch aus der .env: Dann sichert ein Update dorthin, wo
+# auch die naechtliche Sicherung liegt (systemd-Unit), statt auf die Platte der
+# Anlage. Vorher landeten 21 GB je Update auf der lokalen Platte (14.11.2026).
+if [ -z "${BACKUP_DIR:-}" ]; then BACKUP_DIR="$(env_wert "${INSTALL_DIR}/.env" BACKUP_DIR)"; fi
+if [ -z "${BACKUP_MOUNT:-}" ]; then BACKUP_MOUNT="$(env_wert "${INSTALL_DIR}/.env" BACKUP_MOUNT)"; fi
+# Ausdruecklich gesetztes Ziel (Umgebung, .env oder --dest) wird nie ersetzt.
 ZIEL_GESETZT="${BACKUP_DIR:+ja}"
 BACKUP_DIR="${BACKUP_DIR:-$STANDARD_ZIEL}"
 while [[ $# -gt 0 ]]; do

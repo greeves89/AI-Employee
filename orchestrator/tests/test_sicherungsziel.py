@@ -82,6 +82,24 @@ class SicherungszielTests(unittest.TestCase):
             (self.offen / "daily").chmod(0o700)
 
 
+class ZielAusEnv(unittest.TestCase):
+    """Update-Sicherung an dasselbe Ziel wie die naechtliche (aus der .env)."""
+
+    def test_env_wert_liest_ziel(self):
+        with tempfile.TemporaryDirectory() as d:
+            env = Path(d) / ".env"
+            env.write_text('X=1\nBACKUP_DIR="/mnt/nas/sicherung"\nBACKUP_MOUNT=/mnt/nas\n', encoding="utf-8")
+            aus = subprocess.run(["bash", "-c", f'. "{LIB}"; env_wert "$1" BACKUP_DIR; env_wert "$1" BACKUP_MOUNT', "_", str(env)],
+                                 capture_output=True, text=True, check=True).stdout.split()
+            self.assertEqual(aus, ["/mnt/nas/sicherung", "/mnt/nas"])
+
+    def test_backup_liest_env_vor_der_auswahl(self):
+        text = (LIB.parents[1] / "backup.sh").read_text(encoding="utf-8")
+        lesen = text.index('BACKUP_DIR="$(env_wert "${INSTALL_DIR}/.env" BACKUP_DIR)"')
+        self.assertLess(lesen, text.index('ZIEL_GESETZT="${BACKUP_DIR:+ja}"'))
+        self.assertIn('BACKUP_MOUNT="$(env_wert "${INSTALL_DIR}/.env" BACKUP_MOUNT)"', text)
+
+
 class BackupSkriptRuftAuf(unittest.TestCase):
     def test_backup_nutzt_die_auswahl(self):
         text = (LIB.parents[1] / "backup.sh").read_text(encoding="utf-8")
