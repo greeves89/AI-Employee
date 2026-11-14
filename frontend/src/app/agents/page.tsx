@@ -532,7 +532,7 @@ export default function AgentsPage() {
         ) : effectiveView === "network" ? (
           <AgentNetworkView agents={agents} />
         ) : agents.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-16 text-center">
+          <div className="rounded-xl border border-dashed border-border bg-card/30 p-16 text-center">
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-foreground/[0.06] mb-4">
               <Bot className="h-7 w-7 text-muted-foreground" />
             </div>
@@ -594,7 +594,7 @@ export default function AgentsPage() {
               <BueroAnsicht agents={visibleAgents} />
             ) : (<>
             {visibleAgents.length === 0 && (
-              <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-10 text-center text-sm text-muted-foreground">
+              <div className="rounded-xl border border-dashed border-border bg-card/30 p-10 text-center text-sm text-muted-foreground">
                 Kein Agent passt zu dieser Suche.
                 <button
                   onClick={resetFilters}

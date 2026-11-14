@@ -10,7 +10,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { Bar, CartesianGrid, ComposedChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, CartesianGrid, ComposedChart, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Download, FolderKanban, Loader2, Pencil, Wallet } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { useToast } from "@/components/ui/dialog-provider";
@@ -210,8 +210,11 @@ function FinanzenSeite() {
                       tickFormatter={(v: number) => `${v.toFixed(0)} ${money.symbol}`} />
                     <Tooltip formatter={(v) => `${Number(v).toFixed(2).replace(".", ",")} ${money.symbol}`}
                       contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                    <Bar dataKey="Aufgaben" stackId="k" fill="#6366f1" radius={[0, 0, 0, 0]} />
-                    <Bar dataKey="Chat" stackId="k" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                    {/* Legende und Akzentfarbe der App statt Indigo/Grün ohne Erklärung
+                        (UI-Bewertung 14.11.2026). */}
+                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
+                    <Bar dataKey="Aufgaben" stackId="k" fill="hsl(var(--primary))" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="Chat" stackId="k" fill="hsl(var(--primary) / 0.45)" radius={[4, 4, 0, 0]} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>

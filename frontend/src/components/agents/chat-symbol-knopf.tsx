@@ -5,10 +5,9 @@ import { cn } from "@/lib/utils";
 
 /** Symbolknopf in der Fußzeile des Chats (Anhängen, Sprechen, Konnektoren …).
  *
- * Am Rechner reicht das Symbol, die Erklärung steht im Tooltip. Auf dem Handy
- * gibt es keinen Tooltip — dort standen fünf, sechs Symbole ohne ein Wort
- * daneben (#907). Unter ``sm`` steht deshalb die Beschriftung unter dem Symbol;
- * ``aria-label`` trägt sie für Bildschirmleser in jeder Breite.
+ * Die Beschriftung steht in jeder Breite unter dem Symbol (#907 fürs Handy, seit
+ * 14.11.2026 auch am Rechner); ``aria-label`` trägt sie für Bildschirmleser,
+ * der Tooltip die ausführliche Erklärung.
  */
 export function ChatSymbolKnopf({
   beschriftung,
@@ -34,12 +33,13 @@ export function ChatSymbolKnopf({
       aria-label={beschriftung}
       title={titel ?? beschriftung}
       className={cn(
-        "flex min-w-[2.75rem] flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-1 text-muted-foreground/70 transition-all hover:bg-foreground/[0.06] hover:text-foreground disabled:opacity-40",
-        "sm:h-8 sm:w-8 sm:min-w-0 sm:p-0",
+        // Beschriftet auf allen Größen: am Desktop standen bis zu acht Symbole ohne
+        // Text nebeneinander (UI-Bewertung 14.11.2026), auf dem Handy waren sie beschriftet.
+        "flex min-w-[2.75rem] flex-col items-center justify-center gap-0.5 rounded-lg px-1.5 py-1 text-muted-foreground transition-all hover:bg-foreground/[0.06] hover:text-foreground disabled:opacity-40",
       )}
     >
       {children}
-      <span className="text-[10px] leading-none sm:hidden">{beschriftung}</span>
+      <span className="text-[10px] leading-none">{beschriftung}</span>
     </button>
   );
 }

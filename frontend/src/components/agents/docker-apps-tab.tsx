@@ -281,7 +281,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
   if (apps.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
-        <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-16 text-center max-w-lg">
+        <div className="rounded-xl border border-dashed border-border bg-card/30 p-16 text-center max-w-lg">
           <Container className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
           <p className="text-sm font-medium text-muted-foreground/60 mb-1">
             Keine Docker-Apps gefunden

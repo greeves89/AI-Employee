@@ -167,7 +167,7 @@ export default function WorkflowsPage() {
           {loading ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Lade…</div>
           ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-foreground/[0.1] py-20 text-center">
+            <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border py-20 text-center">
               <WorkflowIcon className="h-8 w-8 text-muted-foreground/40" />
               <p className="text-sm text-muted-foreground">Keine Workflows hier.</p>
             </div>

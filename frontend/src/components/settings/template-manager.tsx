@@ -420,7 +420,7 @@ export function TemplateManager({ isAdmin }: TemplateManagerProps) {
       ) : (
         <button
           onClick={() => setCreating(true)}
-          className="w-full flex items-center justify-center gap-2 rounded-xl border border-dashed border-foreground/[0.1] py-3 text-sm text-muted-foreground/60 hover:border-foreground/[0.2] hover:text-muted-foreground transition-colors"
+          className="w-full flex items-center justify-center gap-2 rounded-xl border border-dashed border-border py-3 text-sm text-muted-foreground/60 hover:border-foreground/[0.2] hover:text-muted-foreground transition-colors"
         >
           <Plus className="h-4 w-4" /> Neue Vorlage anlegen
         </button>

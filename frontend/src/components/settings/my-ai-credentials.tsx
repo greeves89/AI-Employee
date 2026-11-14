@@ -45,15 +45,18 @@ function relativeZeit(iso: string): string {
   return `vor ${tage} Tag${tage === 1 ? "" : "en"}`;
 }
 
-const HARNESSE: { id: string; name: string; hilfe: string }[] = [
+const HARNESSE: { id: string; name: string; hilfe: string; wofuer: string }[] = [
   {
     id: "claude_code",
     name: "Claude",
+    // Für Laien: was das ist, statt nur des Produktnamens (UI-Bewertung 14.11.2026).
+    wofuer: "Dein Abo bei Anthropic (Claude Pro/Max)",
     hilfe: "OAuth-Token aus `claude setup-token`, oder ein API-Schlüssel (sk-ant-…).",
   },
   {
     id: "codex",
     name: "Codex",
+    wofuer: "Dein Abo bei OpenAI (ChatGPT Plus/Pro)",
     hilfe: "Der vollständige Inhalt deiner `auth.json` aus `~/.codex/`.",
   },
 ];
@@ -227,7 +230,7 @@ export function MyAiCredentials() {
               <div className="flex items-center gap-2.5 min-w-0">
                 <KeyRound className="h-4 w-4 shrink-0 text-muted-foreground/60" />
                 <div className="min-w-0">
-                  <p className="text-sm font-medium">{h.name}</p>
+                  <p className="text-sm font-medium">{h.name} <span className="font-normal text-muted-foreground">· {h.wofuer}</span></p>
                   <p className="truncate text-[11px] text-muted-foreground">
                     {verbunden
                       ? `verbunden${z?.label ? ` · ${z.label}` : ""}${

@@ -13,6 +13,9 @@
 @custom-variant can-hover (@media (hover: hover) and (pointer: fine));
 
 :root {
+  /* Native Bedienelemente (Checkbox, Auswahlfeld, Bildlaufleiste) im passenden Thema —
+     im Dunkelmodus standen sie grell weiß (UI-Bewertung 14.11.2026). */
+  color-scheme: light;
   --background: 0 0% 100%;
   --foreground: 224 71% 4%;
   --card: 0 0% 100%;
@@ -45,6 +48,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: 222 47% 5%;
   --foreground: 210 40% 98%;
   --card: 222 47% 7%;

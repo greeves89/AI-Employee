@@ -563,7 +563,7 @@ export default function MeetingRoomsPage() {
                           {/* Add stage */}
                           <button type="button"
                             onClick={() => setCustomStages(prev => [...prev, { name: "Neue Phase", rounds: 1 }])}
-                            className="w-full rounded border border-dashed border-foreground/[0.08] py-1 text-[11px] text-muted-foreground hover:text-foreground hover:border-foreground/20 transition-colors"
+                            className="w-full rounded border border-dashed border-border py-1 text-[11px] text-muted-foreground hover:text-foreground hover:border-foreground/20 transition-colors"
                           >
                             + Phase hinzufügen
                           </button>

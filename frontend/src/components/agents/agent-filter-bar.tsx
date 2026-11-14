@@ -218,7 +218,7 @@ export function AgentFilterBar({
           onClick={() => setNaming(true)}
           disabled={presetsFull}
           title={presetsFull ? `Höchstens ${MAX_SAVED_FILTERS} gespeicherte Filter` : "Aktuellen Filter unter einem Namen speichern"}
-          className="inline-flex items-center gap-1 rounded-full border border-dashed border-foreground/[0.15] px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-50"
+          className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-50"
         >
           <Bookmark className="h-3 w-3" />
           Filter speichern

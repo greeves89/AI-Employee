@@ -2660,28 +2660,22 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           )}
         </div>
 
-        {/* Connection status */}
-        <div className="flex items-center gap-1.5 ml-1 shrink-0 border-l border-border pl-2">
-          <span className="relative flex h-2 w-2">
-            {isConnected && (
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+        {/* Verbindung zur Plattform: nur sichtbar, wenn etwas nicht stimmt. Ein grünes
+            „Verbunden“ neben einem roten „Gestoppt“ im Seitenkopf verunsicherte
+            (UI-Bewertung 14.11.2026). */}
+        {!isConnected && (
+          <div className="flex items-center gap-1.5 ml-1 shrink-0 border-l border-border pl-2" role="status">
+            <span className={cn("inline-flex h-2 w-2 rounded-full", connectionFailed ? "bg-red-500" : "bg-amber-500")} />
+            <span className="text-[11px] text-muted-foreground" title="Verbindung zur Plattform">
+              {connectionFailed ? "Getrennt" : "Verbindet …"}
+            </span>
+            {connectionFailed && (
+              <button onClick={retryConnect} title="Neu verbinden" aria-label="Neu verbinden" className="text-[11px] text-amber-600 hover:text-amber-500 transition-colors">
+                <RotateCcw className="h-3 w-3" />
+              </button>
             )}
-            <span className={cn(
-              "relative inline-flex h-2 w-2 rounded-full",
-              isConnected ? "bg-emerald-500" : connectionFailed ? "bg-red-500" : "bg-yellow-500"
-            )} />
-          </span>
-          {/* Zeigt die Verbindung zur Plattform, nicht den Zustand des Agenten —
-              „Online“ stand sonst neben „Gestoppt“ im Seitenkopf (UI-Durchsicht 14.11.2026). */}
-          <span className="text-[10px] text-muted-foreground" title="Verbindung zur Plattform">
-            {isConnected ? "Verbunden" : connectionFailed ? "Getrennt" : "Verbindet …"}
-          </span>
-          {connectionFailed && (
-            <button onClick={retryConnect} title="Neu verbinden" aria-label="Neu verbinden" className="text-[10px] text-yellow-500 hover:text-yellow-400 transition-colors">
-              <RotateCcw className="h-3 w-3" />
-            </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
       )}
 

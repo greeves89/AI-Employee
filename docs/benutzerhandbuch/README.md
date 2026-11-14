@@ -2384,7 +2384,7 @@ Handlung einmal aus. Der Agent kann eine Freigabe nicht für etwas anderes verwe
 
 ### 13.1 Der Reiter „Verlauf“ *(seit 1.362.0)*
 
-Oben auf der Seite stehen die Reiter **Ausstehend**, **Eskalationen**, **Nachtschicht**,
+Oben auf der Seite stehen die Reiter **Ausstehend**, **Hilfe nötig** (früher „Eskalationen“), **Über Nacht gelernt** (früher „Nachtschicht“),
 **Verlauf**, **Regeln**, **Stufen-Vorlagen** und **Befehlsregeln**. Unter **Verlauf** findest
 du alle **bereits entschiedenen** Anfragen — wer wann was entschieden hat:
 
@@ -3539,7 +3539,7 @@ kann. Rechts an jedem Punkt: ein **Knopf** (erledigt es sofort) und/oder ein
 
 | Punkt | Was dahintersteckt |
 |---|---|
-| **Eskalationen** | Ein Agent war zu unsicher oder ist endgültig gescheitert und wartet auf deine Entscheidung (Abschnitte 25b/25c) |
+| **Hilfe nötig** | Ein Agent war zu unsicher oder ist endgültig gescheitert und wartet auf deine Entscheidung (Abschnitte 25b/25c) |
 | **Offene Freigaben** | Ein Agent hat gefragt |
 | **Agent im Fehlerzustand** | Der Agent arbeitet nicht → **Neu starten** |
 | **Hängende Aufgabe** | Seit über 30 Minuten kein Lebenszeichen |
@@ -3934,10 +3934,10 @@ reicht, entscheidet **nicht der Agent**, sondern eine Schwelle, die du setzt.
 
 **Was passiert dann?** Liegt der Agent über der Schwelle, macht er einfach weiter —
 das kostet nichts und niemand wird gestört. Liegt er darunter, **hält er an** und die
-Frage landet unter **Freigaben → Eskalationen**, mit dem Prozentwert davor („Unsicher:
+Frage landet unter **Freigaben → Hilfe nötig**, mit dem Prozentwert davor („Unsicher:
 40 % — Schwelle 70 %"). Erst deine Antwort lässt ihn weiterarbeiten.
 
-**Wo du Eskalationen findest:** **Freigaben** → Reiter **Eskalationen**. Dort stehen
+**Wo du Eskalationen findest:** **Freigaben** → Reiter **Hilfe nötig**. Dort stehen
 beide Fälle, in denen ein Mensch übernehmen muss:
 - **Unsicher** — der Agent hat nachgefragt (dieser Abschnitt)
 - **Gescheitert** — die Selbstheilung ist erschöpft (Abschnitt 25b)

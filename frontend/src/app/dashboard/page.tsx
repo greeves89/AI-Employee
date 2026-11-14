@@ -100,7 +100,7 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : agents.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-12 text-center">
+            <div className="rounded-xl border border-dashed border-border bg-card/30 p-12 text-center">
               <div className="flex justify-center mb-4">
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
                   <Bot className="h-6 w-6 text-primary" />

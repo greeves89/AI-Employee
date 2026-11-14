@@ -350,7 +350,7 @@ export function TodoTab({ agentId }: TodoTabProps) {
 
       {/* Empty state */}
       {todos.length === 0 && (
-        <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-12 text-center">
+        <div className="rounded-xl border border-dashed border-border bg-card/30 p-12 text-center">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-foreground/[0.06] mb-3">
             <ListTodo className="h-6 w-6 text-muted-foreground" />
           </div>

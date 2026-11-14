@@ -425,7 +425,7 @@ export function PagesPanel() {
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
       ) : pages.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-foreground/[0.08] py-12 text-center text-[13px] text-muted-foreground">
+        <div className="rounded-2xl border border-dashed border-border py-12 text-center text-[13px] text-muted-foreground">
           Noch keine eigenen Menüpunkte angelegt.
         </div>
       ) : (

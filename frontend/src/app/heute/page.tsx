@@ -272,7 +272,7 @@ function Erinnerungen({ liste, fristen, onNeu }: {
         })}
       </ul>
       {fristen.length > 0 && (
-        <div className="space-y-1 rounded-lg border border-dashed border-foreground/[0.12] p-2">
+        <div className="space-y-1 rounded-lg border border-dashed border-border p-2">
           <p className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground"><CalendarDays className="h-3 w-3" /> Frist aus Mail übernehmen</p>
           <ul className="space-y-1">
             {fristen.map((f) => (
@@ -755,7 +755,7 @@ function Regeln({ regeln, vorschlaege, onNeu }: { regeln: api.SekretariatRegel[]
         </ul>
       )}
       {vorschlaege.length > 0 && (
-        <div className="space-y-1.5 rounded-lg border border-dashed border-foreground/[0.12] p-2">
+        <div className="space-y-1.5 rounded-lg border border-dashed border-border p-2">
           <p className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground"><Lightbulb className="h-3 w-3" /> Vorschläge — werden erst mit deinem Klick zur Regel</p>
           <ul className="space-y-1.5">
             {vorschlaege.map((v) => {
@@ -963,7 +963,12 @@ function MeinTag({ onSekretariatFertig, entwurfFrei }: { onSekretariatFertig: ()
                 <li key={a.id}>
                   <Link href={`/agents/${a.id}`} className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-foreground/[0.04]">
                     <span className="min-w-0 truncate font-medium">{a.name}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground">{agentZustand(a.state)}</span>
+                    <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+                      <span aria-hidden="true" className={cn("h-1.5 w-1.5 rounded-full",
+                        a.state === "working" ? "bg-blue-500" : a.state === "error" ? "bg-red-500"
+                          : a.state === "running" || a.state === "idle" ? "bg-emerald-500" : "bg-zinc-400")} />
+                      {agentZustand(a.state)}
+                    </span>
                   </Link>
                 </li>
               ))}
@@ -976,7 +981,7 @@ function MeinTag({ onSekretariatFertig, entwurfFrei }: { onSekretariatFertig: ()
       {einrichten ? (
         <Einrichten onFertig={onSekretariatFertig} entwurfFrei={entwurfFrei} />
       ) : (
-        <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-dashed border-foreground/[0.12] px-4 py-3">
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-dashed border-border px-4 py-3">
           <div className="min-w-0">
             <p className="text-sm font-medium">Sekretariat einrichten</p>
             <p className="text-xs text-muted-foreground">Agenten sichten Postfach und Kalender und entwerfen Antworten. Gesendet wird nichts ohne dich.</p>

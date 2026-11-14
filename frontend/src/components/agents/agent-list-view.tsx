@@ -87,7 +87,7 @@ export function agentWarnings(a: Agent): string[] {
   if (a.update_available) w.push("Update verfügbar");
   if (a.image_outdated) w.push("Image veraltet");
   if (budgetReached(a) && a.budget_exceeded_action === "stop") w.push("Budget-Stopp");
-  if (!a.has_responsibilities) w.push("Keine Verantwortlichkeiten");
+  if (!a.has_responsibilities) w.push("Keine Zuständigkeit beschrieben");
   return w;
 }
 
@@ -497,9 +497,13 @@ function AgentRow({
       case "warnungen": {
         const warnings = agentWarnings(agent);
         return warnings.length > 0 ? (
-          <span title={warnings.join(" · ")} aria-label={warnings.join(", ")} className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400">
-            <AlertTriangle className="h-4 w-4" />
-            {warnings.length > 1 && <span className="text-[11px]">{warnings.length}</span>}
+          // Text statt nur Dreieck mit Zahl: ein Warnzeichen ohne Inhalt verunsicherte
+          // nur (UI-Bewertung 14.11.2026). Der erste Hinweis steht da, alle im Tooltip.
+          <span title={warnings.join(" · ")} aria-label={warnings.join(", ")}
+            className="inline-flex max-w-[16rem] items-center gap-1 text-[12px] text-amber-700 dark:text-amber-400">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{warnings[0]}</span>
+            {warnings.length > 1 && <span className="shrink-0 text-muted-foreground">+{warnings.length - 1}</span>}
           </span>
         ) : null;
       }

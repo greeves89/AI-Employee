@@ -317,7 +317,7 @@ function SkillDetailModal({ skill, onClose }: SkillDetailModalProps) {
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
             ) : files.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-foreground/[0.08] bg-foreground/[0.01] p-6 flex flex-col items-center gap-2 text-muted-foreground">
+              <div className="rounded-lg border border-dashed border-border bg-foreground/[0.01] p-6 flex flex-col items-center gap-2 text-muted-foreground">
                 <FileIcon className="h-6 w-6" />
                 <p className="text-xs">Noch keine Dateien angehängt</p>
               </div>

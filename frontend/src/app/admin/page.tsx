@@ -905,7 +905,7 @@ export default function AdminPage() {
                 </div>
 
                 {assignments.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-12 text-center">
+                  <div className="rounded-xl border border-dashed border-border bg-card/30 p-12 text-center">
                     <UserCog className="h-8 w-8 mx-auto text-muted-foreground/30 mb-3" />
                     <p className="text-sm text-muted-foreground">Noch keine Zuweisungen</p>
                     <p className="text-xs text-muted-foreground mt-1">Weise einem Nutzer eine Agenten-Vorlage zu</p>

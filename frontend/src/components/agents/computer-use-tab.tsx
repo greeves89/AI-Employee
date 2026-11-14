@@ -378,7 +378,7 @@ export function ComputerUseTab({ agentId, browserMode: initialBrowserMode = fals
           ))}
         </div>
       ) : sessions.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-foreground/[0.1] py-12 gap-3">
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-12 gap-3">
           <Monitor className="h-8 w-8 text-muted-foreground/40" />
           <div className="text-center">
             <p className="text-sm font-medium text-muted-foreground">Noch keine Sitzungen</p>
@@ -808,7 +808,7 @@ function SessionCard({
                     className="w-full rounded-lg border border-foreground/[0.08] object-contain bg-black"
                   />
                 ) : (
-                  <div className="flex items-center justify-center h-32 rounded-lg border border-dashed border-foreground/[0.1] text-xs text-muted-foreground gap-2">
+                  <div className="flex items-center justify-center h-32 rounded-lg border border-dashed border-border text-xs text-muted-foreground gap-2">
                     {screenshotLoading
                       ? <><Loader2 className="h-4 w-4 animate-spin" /> Screenshot wird geladen…</>
                       : "Noch kein Screenshot"}
@@ -1040,7 +1040,7 @@ function MitdenkerPanel({ agentId, session, onChange }: {
             ))}
           </div>
 
-          <div className="space-y-1.5 rounded-lg border border-dashed border-foreground/[0.1] p-3">
+          <div className="space-y-1.5 rounded-lg border border-dashed border-border p-3">
             <p className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Neue Regel</p>
             <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
               <input className={feld} placeholder="Wenn die App … enthält (z. B. Chrome)" value={neu.wenn_app}

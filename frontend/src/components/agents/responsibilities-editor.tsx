@@ -74,7 +74,7 @@ export function ResponsibilitiesEditor({
         </button>
       </div>
       {value.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-foreground/[0.08] p-2.5 text-[10px] leading-relaxed text-muted-foreground">
+        <div className="rounded-lg border border-dashed border-border p-2.5 text-[10px] leading-relaxed text-muted-foreground">
           {emptyHint ??
             "Noch keine Bereiche. Ohne sie plant der Agent nur, was jemand als Todo angelegt hat — mit ihnen weiß er, wofür er dauerhaft zuständig ist, und baut sich daraus selbst den Tag."}
         </div>

@@ -326,7 +326,7 @@ export default function FilesPage() {
         />
 
         {runningAgents.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 px-4 py-10 text-center sm:p-16">
+          <div className="rounded-xl border border-dashed border-border bg-card/30 px-4 py-10 text-center sm:p-16">
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-foreground/[0.06] mb-4">
               <Bot className="h-7 w-7 text-muted-foreground" />
             </div>

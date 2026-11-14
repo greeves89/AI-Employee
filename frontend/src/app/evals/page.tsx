@@ -395,7 +395,7 @@ export default function EvalsPage() {
             Lädt…
           </div>
         ) : sets.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-16 text-center">
+          <div className="rounded-xl border border-dashed border-border bg-card/30 p-16 text-center">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-foreground/[0.06]">
               <ClipboardCheck className="h-7 w-7 text-muted-foreground" />
             </div>
@@ -470,7 +470,7 @@ export default function EvalsPage() {
                 Verlauf {selected ? `— ${selected.name}` : "(alle Sammlungen)"}
               </h3>
               {runsOfSelected.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-foreground/[0.1] p-8 text-center text-[12px] text-muted-foreground">
+                <div className="rounded-xl border border-dashed border-border p-8 text-center text-[12px] text-muted-foreground">
                   Noch kein Lauf. Ein Rückschritt zeigt sich erst an der Reihe —
                   der erste Lauf wird die Grundlinie.
                 </div>

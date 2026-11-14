@@ -284,7 +284,7 @@ function SingleTasksView() {
           ))}
         </div>
       ) : filteredTasks.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-12 text-center text-muted-foreground">
+        <div className="rounded-xl border border-dashed border-border bg-card/30 p-12 text-center text-muted-foreground">
           {filter === "active"
             ? "Keine aktiven Aufgaben."
             : filter === "all"

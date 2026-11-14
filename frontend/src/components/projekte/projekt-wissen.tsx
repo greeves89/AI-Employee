@@ -189,7 +189,7 @@ export function ProjektWissen({
         {darfSchreiben && onAufbauen && (
           <button type="button" disabled={baut} onClick={async () => { setBaut(true); try { await onAufbauen(); } finally { setBaut(false); } }}
             title="Der Lead liest Repo und Beschreibung und schreibt index.md, architektur.md und glossar.md"
-            className="flex w-full items-center gap-1.5 rounded-lg border border-dashed border-foreground/[0.15] px-2 py-1.5 text-xs text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground disabled:opacity-50">
+            className="flex w-full items-center gap-1.5 rounded-lg border border-dashed border-border px-2 py-1.5 text-xs text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground disabled:opacity-50">
             {baut ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Wissen aufbauen lassen
           </button>
         )}

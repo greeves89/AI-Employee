@@ -299,7 +299,7 @@ export function CommandPoliciesTab({ agentId }: Props) {
           <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[10px] text-muted-foreground">{ownPolicies.length}</span>
         </div>
         {ownPolicies.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-foreground/[0.08] bg-card/30 p-8 text-center text-sm text-muted-foreground">
+          <div className="rounded-xl border border-dashed border-border bg-card/30 p-8 text-center text-sm text-muted-foreground">
             Keine Befehlsregeln eingerichtet.
           </div>
         ) : (
