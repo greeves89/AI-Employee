@@ -495,9 +495,11 @@ export default function FilesPage() {
                           )}
                         </div>
                         {isExpanded && treeData[wsKey] && renderTree(agent.id, "/workspace", 1)}
-                        {isExpanded && treeData[wsKey]?.length === 0 && (
-                          <div className="py-2 pl-12 text-xs text-muted-foreground font-sans">
-                            Leerer Arbeitsordner
+                        {/* Zählt, was nach dem Ausblenden der Systemdateien bleibt: sonst
+                            stand unter dem Agenten gar nichts (Persona Einsteigerin, Runde 4). */}
+                        {isExpanded && treeData[wsKey] && treeData[wsKey].filter((e) => !(simpleMode && istSystemDatei(e))).length === 0 && (
+                          <div className="py-2 pl-12 pr-3 text-xs text-muted-foreground font-sans">
+                            Noch keine Dateien. Antworten des Agenten stehen im Chat.
                           </div>
                         )}
                       </div>
@@ -507,11 +509,16 @@ export default function FilesPage() {
                 {/* Gestoppte Agenten fehlten hier ganz — man fragte sich, ob ihre Dateien
                     weg sind (Persona Einsteigerin, 14.11.2026). Jetzt mit „Starten“. */}
                 {!searchQuery.trim() && startbare.length > 0 && (
-                  <div className="mt-2 border-t border-foreground/[0.06] pt-2">
-                    <p className="px-2 pb-1 text-xs text-muted-foreground">Gestoppt — starten, um die Dateien zu sehen</p>
+                  <div className="mt-2 border-t border-foreground/[0.06] pt-2 font-sans">
+                    <p className="px-3 pb-1 text-xs text-muted-foreground">
+                      {startbare.length === 1 ? "Dieser Agent ist gestoppt. Starte ihn, um seine Dateien zu sehen." : "Diese Agenten sind gestoppt. Starte einen, um seine Dateien zu sehen."}
+                    </p>
                     {startbare.map((a) => (
-                      <div key={a.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5">
-                        <span className="min-w-0 truncate text-sm">{a.name}</span>
+                      <div key={a.id} className="flex items-center justify-between gap-2 rounded-lg px-3 py-1.5">
+                        <span className="flex min-w-0 items-center gap-2 text-sm">
+                          <span className="h-2 w-2 shrink-0 rounded-full bg-foreground/40" aria-hidden="true" />
+                          <span className="truncate">{a.name}</span>
+                        </span>
                         <button type="button" onClick={() => agentStarten(a.id)} disabled={startet !== null}
                           aria-label={`${a.name} starten`}
                           className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-[12px] hover:bg-foreground/[0.04] disabled:opacity-60">

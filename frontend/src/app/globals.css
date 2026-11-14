@@ -82,7 +82,7 @@
    custom properties directly, so class-based dark mode keeps switching. */
 @theme inline {
   --font-sans: var(--font-geist-sans), system-ui, sans-serif;
-  --font-display: var(--font-geist-sans), system-ui, sans-serif;
+  --font-display: var(--font-titel), var(--font-geist-sans), system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), monospace;
 
   --color-border: hsl(var(--border));

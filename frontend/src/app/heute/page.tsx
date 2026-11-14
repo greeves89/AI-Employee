@@ -162,7 +162,7 @@ function Einrichten({ onFertig, entwurfFrei }: { onFertig: () => void; entwurfFr
               <button key={a.id} type="button" onClick={() => umschalten(a.id)}
                 className={cn("flex items-center gap-2.5 rounded-xl border px-3 py-2 text-left text-sm transition-colors",
                   platz >= 0 ? "border-primary/40 bg-primary/[0.06]" : "border-foreground/[0.08] hover:bg-foreground/[0.03]")}>
-                <AgentAvatar config={a.config} size="sm" />
+                <AgentAvatar config={a.config} seed={a.id} size="sm" />
                 <span className="min-w-0 flex-1 truncate">{a.name}</span>
                 {platz >= 0 && <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[11px] font-medium text-primary">{ROLLEN[platz]}</span>}
               </button>

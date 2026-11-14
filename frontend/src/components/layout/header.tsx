@@ -27,7 +27,7 @@ export function Header({
           „…" abgeschnitten (#907). */}
       <div className="w-full min-w-0 sm:w-auto sm:flex-1">
         <div className="flex min-w-0 items-center gap-2">
-          <h1 className="truncate text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
+          <h1 className="truncate font-display text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
           {titleAdornment}
         </div>
         {subtitle && (

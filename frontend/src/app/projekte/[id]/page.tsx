@@ -471,7 +471,7 @@ export default function ProjektPage() {
                 return (
                   <li key={mid}>
                     <Link href={`/agents/${mid}`} className="flex items-center gap-3 rounded-xl border border-foreground/[0.08] bg-card px-3 py-2.5 hover:bg-foreground/[0.03]">
-                      <AgentAvatar config={agent?.config} size="sm" active={zustand !== "aus"} />
+                      <AgentAvatar config={agent?.config} seed={agent?.id} size="sm" active={zustand !== "aus"} />
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-1 text-sm font-medium">
                           <span className="truncate">{agent?.name ?? "Gelöschter Agent"}</span>

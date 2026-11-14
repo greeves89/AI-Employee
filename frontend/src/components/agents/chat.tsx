@@ -2592,6 +2592,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           sessions={sessions.map((s) => ({ ...s, fallbackLabel: s.label }))}
           selectedId={activeSessionId}
           busyIds={beschaeftigteFaeden}
+          onClose={() => setRailOpen(false)}
           onSelect={(id) => {
             switchSession(id);
             if (!window.matchMedia("(min-width: 768px)").matches) setRailOpen(false);
@@ -2920,7 +2921,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                 </div>
                 <span className="text-xs text-muted-foreground">
                   {thinkingElapsed > 0 ? (
-                    <>{inWarteschlange ? "Wartet — gleich dran …" : "Denkt nach …"} <span className="tabular-nums text-muted-foreground/60">{thinkingElapsed} s</span></>
+                    <>{schlafHinweis ? "Startet …" : inWarteschlange ? "Wartet — gleich dran …" : "Denkt nach …"} <span className="tabular-nums text-muted-foreground/60">{thinkingElapsed} s</span></>
                   ) : (
                     "Denkt nach …"
                   )}
@@ -3320,8 +3321,10 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
             Eingabefeld — auf schmalen Schirmen blieb für den Text eine Spalte, und
             die Kontextanzeige lag als eigener Streifen darunter, ohne Bezug. */}
         {schlafHinweis && (
-          <p role="status" className="mb-1.5 flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
-            <Moon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <p role="status" className="mb-1.5 flex items-center gap-1.5 px-1 text-[13px] text-muted-foreground">
+            {isWaiting
+              ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" aria-hidden="true" />
+              : <Moon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
             {schlafHinweis}
           </p>
         )}
@@ -3847,7 +3850,9 @@ function MsgTime({ ts }: { ts?: string }) {
 function UserMessage({ content, images, files, timestamp, actions }: { content: string; images?: ChatImage[]; files?: ChatFile[]; timestamp?: string; actions?: React.ReactNode }) {
   const { user } = useAuthStore();
   return (
-    <div className="group flex items-start gap-3 pl-1">
+    // Eigene Nachrichten als getönte Fläche: „Du“ und Agent sahen gleich aus
+    // (Gestaltungsprüfung 14.11.2026).
+    <div className="group flex items-start gap-3 rounded-2xl bg-primary/[0.06] px-3 py-2.5 dark:bg-primary/[0.09]">
       <UserAvatar name={user?.name || "Du"} className="h-6 w-6 rounded-md text-[11px] shrink-0 mt-0.5" />
       <div className="min-w-0 flex-1 text-sm text-foreground leading-relaxed pt-0.5 space-y-2">
         <div className="flex items-center gap-2">

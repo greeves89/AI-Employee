@@ -784,7 +784,7 @@ function BudgetBar({ spent, budget, action }: { spent: number; budget: number; a
  *  Chat-Leiste als Icon — je ein Fenster mit der bestehenden Verwaltung. */
 type SchnellKey = "konnektoren" | "computer" | "modell" | "rechte" | "dateien" | "wissen";
 const SCHNELL: { key: SchnellKey; titel: string; hinweis: string; icon: typeof CheckCircle2 }[] = [
-  { key: "konnektoren", titel: "Konnektoren", hinweis: "Mail, Kalender, Teams und andere Dienste verbinden", icon: Plug },
+  { key: "konnektoren", titel: "Konten & Dienste", hinweis: "Mail, Kalender, Teams und andere Dienste verbinden", icon: Plug },
   // Bridge auf dem eigenen Rechner: Sitzung, Berechtigungen, Mitsehen und Regeln
   // (#1019) — dieselbe Verwaltung wie der Admin-Reiter „Computer-Steuerung".
   { key: "computer", titel: "Computer", hinweis: "Auf deinem Rechner mithelfen lassen", icon: Monitor },
@@ -828,11 +828,12 @@ function Schnellzugriff({ agent, setAgent }: { agent: Agent; setAgent: (a: Agent
           className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-[13px] text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
         >
           <SlidersHorizontal className="h-4 w-4" />
-          Werkzeuge
+          {/* „Werkzeuge“ verriet nicht, dass hier Rechte und Konten liegen (Personas Runde 4). */}
+          Einstellungen
           <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", menue && "rotate-180")} />
         </button>
         {menue && (
-          <div role="menu" className="absolute bottom-full left-0 z-40 mb-1.5 w-64 rounded-xl border border-border bg-card p-1 shadow-xl">
+          <div role="menu" className="fixed inset-x-3 bottom-24 z-40 rounded-xl border border-border bg-card p-1 shadow-xl sm:absolute sm:inset-x-auto sm:bottom-full sm:left-0 sm:mb-1.5 sm:w-72">
             {SCHNELL.map(({ key, titel, hinweis, icon: Icon }) => (
               <button
                 key={key}
@@ -1117,7 +1118,8 @@ function AufgabenSpalte({
             key={key}
             onClick={() => { setReiter(key); setSuche(""); }}
             className={cn(
-              "flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
+              // 25 px waren am Handy zu klein zum Tippen (Persona Mobil, Runde 4).
+              "flex-1 min-h-10 rounded-md px-2 py-1.5 text-sm font-medium transition-colors sm:min-h-8 sm:text-xs",
               reiter === key ? "bg-foreground/[0.08] text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]",
             )}
           >

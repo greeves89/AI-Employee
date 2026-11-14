@@ -414,7 +414,7 @@ export function CreateTeamModal({
                                   : "border-foreground/[0.06] bg-foreground/[0.02] hover:bg-foreground/[0.04]"
                               )}
                             >
-                              <AgentAvatar config={agent.config} size="sm" />
+                              <AgentAvatar config={agent.config} seed={agent.id} size="sm" />
                               <div className="flex-1 min-w-0">
                                 <p className={cn("text-sm font-medium truncate", isSelected ? "text-foreground" : "text-muted-foreground")}>
                                   {agent.name}

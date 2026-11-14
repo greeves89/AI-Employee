@@ -388,7 +388,7 @@ function Bearbeiter({ karte, agents }: { karte: ProjektKarte; agents: Map<string
       )}
     >
       {eigen ? (
-        <AgentAvatar config={eigen.config} size="sm" className="h-4 w-4 rounded" />
+        <AgentAvatar config={eigen.config} seed={eigen.id} size="sm" className="h-4 w-4 rounded" />
       ) : (
         <Icon className="h-3 w-3 shrink-0 text-primary" />
       )}
@@ -411,7 +411,7 @@ function KartenMeta({ karte, agents }: { karte: ProjektKarte; agents: Map<string
       ) : null}
       {agent && (
         <span className="inline-flex items-center gap-1">
-          <AgentAvatar config={agent.config} size="sm" className="h-4 w-4 rounded" />
+          <AgentAvatar config={agent.config} seed={agent.id} size="sm" className="h-4 w-4 rounded" />
           {agent.name}
         </span>
       )}

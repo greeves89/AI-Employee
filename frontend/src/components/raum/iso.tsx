@@ -210,7 +210,7 @@ export function AgentFigur({
           onClick && "hover:scale-110",
         )}
       >
-        <AgentAvatar config={agent?.config} size={klein ? "sm" : "md"} active={zustand !== "aus"} />
+        <AgentAvatar config={agent?.config} seed={agent?.id} size={klein ? "sm" : "md"} active={zustand !== "aus"} />
         {istLead && <Crown className="absolute -right-1.5 -top-1.5 h-3.5 w-3.5 text-amber-500 drop-shadow" />}
       </button>
       {mitText && (

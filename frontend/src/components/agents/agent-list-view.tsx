@@ -83,7 +83,7 @@ function budgetReached(a: Agent): boolean {
   return a.budget_usd != null && a.budget_usd > 0 && a.monthly_cost_usd >= a.budget_usd;
 }
 
-const NUR_ADMIN_HINWEISE = ["Update verfügbar", "Image veraltet"];
+const NUR_ADMIN_HINWEISE = ["Update verfügbar", "Image veraltet", "Keine Zuständigkeit beschrieben"];
 
 export function agentWarnings(a: Agent): string[] {
   const w: string[] = [];
@@ -158,7 +158,7 @@ export function AgentListView({
   groups,
   grouping,
   teamNameOf,
-  columns,
+  columns: alleSpalten,
   sortColumn,
   sortDirection,
   onSort,
@@ -197,6 +197,13 @@ export function AgentListView({
     [groups, sortColumn, sortDirection, teamNameOf],
   );
   const visible = useMemo(() => sortedGroups.flatMap((g) => g.agents), [sortedGroups]);
+  // Spalten, die bei keinem Agenten etwas zeigen, nur „–“ untereinander — das wirkte
+  // unfertig (Persona Teamleitung, Runde 4). Im Spaltenmenü bleiben sie wählbar.
+  const columns = useMemo(() => alleSpalten.filter((c) => {
+    if (c === "aufgabe") return visible.some((a) => a.current_task || (a.queue_depth ?? 0) > 0);
+    if (c === "gruppe") return visible.some((a) => groupLabel(a, teamNameOf[a.id]));
+    return true;
+  }), [alleSpalten, visible, teamNameOf]);
 
   // Nur, was gerade zu sehen ist, zählt als ausgewählt — ein weggefilterter Agent
   // soll nicht unbemerkt mit gestoppt werden.
@@ -300,7 +307,7 @@ export function AgentListView({
         ) : (
           <div className="flex-1" />
         )}
-        <ColumnOrderMenu columns={columns} onChange={onColumnsChange} />
+        <ColumnOrderMenu columns={alleSpalten} onChange={onColumnsChange} />
       </div>
 
       <div
@@ -433,22 +440,30 @@ function AgentRow({
   const active = ACTIVE_STATES.includes(agent.state);
   const { simpleMode: nurHinweiseFuerMich } = useSimpleMode();
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
-  const cellBase = "h-11 border-b border-foreground/[0.04] px-3";
+  const cellBase = "h-12 border-b border-foreground/[0.04] px-3 py-1.5";
 
   const renderCell = (c: ListColumn) => {
     switch (c) {
       case "name":
         return (
           <div className="flex min-w-0 items-center gap-2.5">
-            <AgentAvatar config={agent.config} active={active} size="sm" className="h-7 w-7" />
-            <Link
-              href={`/agents/${agent.id}`}
-              onClick={stop}
-              data-testid="agent-name"
-              className="truncate font-medium hover:underline"
-            >
-              {agent.name}
-            </Link>
+            <AgentAvatar config={agent.config} seed={agent.id} active={active} size="sm" className="h-7 w-7" />
+            <div className="min-w-0">
+              <Link
+                href={`/agents/${agent.id}`}
+                onClick={stop}
+                data-testid="agent-name"
+                className="block truncate font-medium hover:underline"
+              >
+                {agent.name}
+              </Link>
+              {/* Was der Agent tut, stand nur im Chat-Kopf (Persona Teamleitung, Runde 4). */}
+              {agent.role?.trim() && (
+                <span className="block max-w-[22rem] truncate text-xs text-muted-foreground" title={agent.role}>
+                  {agent.role}
+                </span>
+              )}
+            </div>
           </div>
         );
       case "status":

@@ -83,7 +83,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
         {/* Header */}
         <div className="flex items-start justify-between gap-2 mb-4">
           <div className="flex items-center gap-3 min-w-0">
-            <AgentAvatar config={agent.config} active={isActive} />
+            <AgentAvatar config={agent.config} seed={agent.id} active={isActive} />
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 min-w-0">
                 <h4 className="font-semibold text-sm tracking-tight truncate" title={agent.name}>{agent.name}</h4>

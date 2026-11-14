@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Users,
@@ -689,59 +689,18 @@ export default function AdminPage() {
                                 <Check className="h-3.5 w-3.5" /> Freischalten
                               </button>
                             )}
-                            <button
-                              onClick={() => handleCycleRole(u)}
-                              className="p-2 rounded-lg text-xs text-muted-foreground hover:bg-accent transition-colors"
-                              title={`Rolle wechseln (derzeit: ${rollenName(u.role)})`}
-                            >
-                              <Shield className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => handleToggleActive(u)}
-                              className={cn(
-                                "p-2 rounded-lg transition-colors",
-                                u.is_active
-                                  ? "text-emerald-500 hover:bg-emerald-500/10"
-                                  : "text-red-400 hover:bg-red-500/10"
-                              )}
-                              title={u.is_active ? "Deaktivieren" : "Aktivieren"}
-                            >
-                              {u.is_active ? (
-                                <ToggleRight className="h-4 w-4" />
-                              ) : (
-                                <ToggleLeft className="h-4 w-4" />
-                              )}
-                            </button>
-                            <button
-                              onClick={() => setMountUserId(u.id)}
-                              className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                              title="Freigegebene Ordner"
-                            >
-                              <Box className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => handleResetPassword(u)}
-                              className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                              title="Passwort zurücksetzen"
-                            >
-                              <KeyRound className="h-4 w-4" />
-                            </button>
-                            {u.mfa_enabled && (
-                              <button
-                                onClick={() => handleResetMfa(u)}
-                                className="p-2 rounded-lg text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10 transition-colors"
-                                title="Zwei-Faktor zurücksetzen"
-                              >
-                                <ShieldOff className="h-4 w-4" />
-                              </button>
-                            )}
-                            <button
-                              onClick={() => handleDeleteUser(u)}
-                              className="p-2 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                              title="Nutzer löschen"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                            {/* Ein beschriftetes Menü statt sechs Symbole ohne Text; Löschen
+                                steht abgesetzt unten (Persona Admin, Runde 4). */}
+                            <NutzerAktionen
+                              eintraege={[
+                                { titel: `Rolle wechseln (derzeit ${rollenName(u.role)})`, icon: Shield, aktion: () => handleCycleRole(u) },
+                                { titel: u.is_active ? "Deaktivieren" : "Aktivieren", icon: u.is_active ? ToggleRight : ToggleLeft, aktion: () => handleToggleActive(u) },
+                                { titel: "Freigegebene Ordner", icon: Box, aktion: () => setMountUserId(u.id) },
+                                { titel: "Passwort zurücksetzen", icon: KeyRound, aktion: () => handleResetPassword(u) },
+                                ...(u.mfa_enabled ? [{ titel: "Zwei-Faktor zurücksetzen", icon: ShieldOff, aktion: () => handleResetMfa(u) }] : []),
+                              ]}
+                              loeschen={() => handleDeleteUser(u)}
+                            />
                           </>
                         )}
                       </div>
@@ -2060,6 +2019,58 @@ function FeedbackTab({
 
       {detailFeedback && (
         <FeedbackDetailModal feedback={detailFeedback} onClose={() => setDetailFeedback(null)} />
+      )}
+    </div>
+  );
+}
+
+/** Aktionen je Nutzer als Menü mit Text. Escape und ein Klick daneben schließen es. */
+function NutzerAktionen({
+  eintraege,
+  loeschen,
+}: {
+  eintraege: { titel: string; icon: React.ElementType; aktion: () => void }[];
+  loeschen: () => void;
+}) {
+  const [offen, setOffen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!offen) return;
+    const weg = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOffen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOffen(false); };
+    document.addEventListener("mousedown", weg);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", weg); document.removeEventListener("keydown", esc); };
+  }, [offen]);
+  const waehle = (f: () => void) => { setOffen(false); f(); };
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOffen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={offen}
+        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground"
+      >
+        Aktionen
+        <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", offen && "rotate-180")} />
+      </button>
+      {offen && (
+        <div role="menu" className="absolute right-0 top-full z-40 mt-1 w-64 rounded-xl border border-border bg-card p-1 shadow-xl">
+          {eintraege.map(({ titel, icon: Icon, aktion }) => (
+            <button key={titel} role="menuitem" type="button" onClick={() => waehle(aktion)}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-foreground/[0.05]">
+              <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+              {titel}
+            </button>
+          ))}
+          <div className="my-1 border-t border-border" />
+          <button role="menuitem" type="button" onClick={() => waehle(loeschen)}
+            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-red-600 hover:bg-red-500/10 dark:text-red-400">
+            <Trash2 className="h-4 w-4 shrink-0" />
+            Nutzer löschen
+          </button>
+        </div>
       )}
     </div>
   );

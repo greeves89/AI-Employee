@@ -110,7 +110,7 @@ export function ProjektGespraech({
               <div key={n.id} className={cn("flex gap-2.5", system && "rounded-xl bg-foreground/[0.03] p-2.5")}>
                 <div className="shrink-0 pt-0.5">
                   {n.autor_typ === "agent" ? (
-                    <AgentAvatar config={agent?.config} size="sm" />
+                    <AgentAvatar config={agent?.config} seed={agent?.id} size="sm" />
                   ) : (
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-foreground/[0.06]">
                       {system ? <Wand2 className="h-4 w-4 text-muted-foreground" />

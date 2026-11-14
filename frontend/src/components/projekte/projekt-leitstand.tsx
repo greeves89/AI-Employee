@@ -82,7 +82,7 @@ export function ProjektLeitstand({
               return (
                 <li key={l.task_id} className="space-y-1.5">
                   <div className="flex items-center gap-2.5">
-                    <AgentAvatar config={a?.config} size="sm" />
+                    <AgentAvatar config={a?.config} seed={a?.id} size="sm" />
                     <div className="min-w-0 flex-1">
                       <AufgabeLink taskId={l.task_id} className="block truncate text-sm font-medium hover:underline">
                         {l.karte_titel ?? l.titel}

@@ -135,7 +135,7 @@ export function LizenzBereich() {
                 <p className="text-xs text-muted-foreground/70 mt-1">
                   {license.agentenlimit
                     ? `${license.agenten} von ${license.agentenlimit} Agenten belegt`
-                    : `${license.agenten} Agenten, unbegrenzt`}
+                    : `${license.agenten} Agenten angelegt, ohne Obergrenze`}
                 </p>
               )}
               {license.expires_at && (
@@ -162,15 +162,6 @@ export function LizenzBereich() {
                 </label>
               )}
             </div>
-            {license.zustand !== "ohne" && (
-              <button
-                onClick={handleRemoveLicense}
-                disabled={licenseBusy}
-                className="shrink-0 text-xs text-red-400 hover:text-red-300 underline underline-offset-2"
-              >
-                Lizenz entfernen
-              </button>
-            )}
           </div>
         )}
         {(!license || license.zustand !== "aktiv") && (
@@ -225,6 +216,22 @@ export function LizenzBereich() {
                 Lizenz eintragen
               </button>
             </div>
+          </div>
+        )}
+        {/* Abseits der Anzeige: stand rot direkt neben dem Lizenzstand
+            (Persona Admin, Runde 4). Die Rückfrage bleibt. */}
+        {license && license.zustand !== "ohne" && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-foreground/[0.06] pt-4">
+            <p className="text-xs text-muted-foreground">
+              Lizenz von dieser Anlage entfernen, etwa vor einem Umzug auf neue Hardware.
+            </p>
+            <button
+              onClick={handleRemoveLicense}
+              disabled={licenseBusy}
+              className="shrink-0 rounded-lg border border-red-500/30 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-500/10 dark:text-red-400"
+            >
+              Lizenz entfernen
+            </button>
           </div>
         )}
       </div>

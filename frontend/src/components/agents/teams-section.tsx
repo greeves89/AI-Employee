@@ -252,7 +252,7 @@ export function TeamsSection({ agents }: { agents: Agent[] }) {
                         const agent = agentById(id);
                         return (
                           <div key={id} className="rounded-xl ring-2 ring-card" title={agent?.name ?? id}>
-                            <AgentAvatar config={agent?.config} size="sm" />
+                            <AgentAvatar config={agent?.config} seed={agent?.id} size="sm" />
                           </div>
                         );
                       })}
