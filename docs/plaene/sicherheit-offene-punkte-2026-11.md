@@ -48,3 +48,17 @@ gilt das als abgewiesen.
 
 - **Verwalter-Freigaben ohne Live-Signal:** Wer einen Agenten per älterer Voll-Freigabe verwaltet, aber nicht Besitzer ist, bekommt Freigabe-Anfragen nicht mehr als Live-Signal im Chat. Er sieht sie weiter auf der Freigaben-Seite. Falls das stört: `_ereignis_fuer_verbindung` zusätzlich mit `verwaltende_freigaben` prüfen.
 
+## Stand 14.11.2026, 06:30 (nach 1.464)
+
+| # | Stand |
+|---|---|
+| 1 Kiosk | Erledigt (1.461), live: ohne Zugang 404 aus LAN, vom Gerät und am Orchestrator; Anzeige auf dem Pi angemeldet. |
+| 2 Wecken trotz Stopp | Erledigt (1.461 + 1.463). Live: angehaltener Agent startet weder durch Aufgabe noch durch Anmeldung. Die Anmeldung war die eigentliche Ursache vom 13.11. |
+| 3 Freigabe „nur nutzen“ | Live mit Wegwerf-Testkonto geprüft (14.11.). Offen: Bildschirmfotos fürs Handbuch. |
+| 4 OAuth mit Entra | Offen, braucht App-Registrierung im Tenant. |
+| 5 GitLab | Lesen live gegen gitlab.com geprüft. Offen: Schreiben (Kommentar, Merge Request), braucht Testprojekt mit Token. |
+| 6 Sicherung | Erledigt (1.461 + 1.464). Live: Ausweichen ohne root, Ziel aus der `.env` (NAS), Update verweigert während einer Sicherung. |
+| 7 Alte Agenten-Abbilder | Offen, Besitzer entscheidet über das Aktualisieren seiner Agenten. |
+| 8 DNS-Rebinding IdP | Erledigt (1.462). |
+| 9 Freigabe-Anfragen | Leck behoben (1.462). Offen: Statuszeile für Nur-Nutzer (Komfort). |
+
