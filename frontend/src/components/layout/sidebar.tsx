@@ -319,15 +319,19 @@ export function Sidebar() {
   const zurueckgestellt = (item: NavItem) =>
     // Nicht mehr nach Häufigkeit nach oben holen: Die Leiste soll schlank bleiben
     // und immer gleich aussehen (Daniel, 28.10.: „die Sidebar als Admin ist noch
-    // immer voll“). Oben steht ein Punkt nur, solange man gerade dort ist.
-    !einfach && !!item.weitere && !istHier(item.href);
+    // immer voll“). Auch die gerade offene Seite bleibt an ihrem Platz — bis
+    // 14.11.2026 sprang sie beim Anklicken nach oben und danach wieder zurück.
+    !einfach && !!item.weitere;
   const weitereItems = erlaubteGruppen.flatMap((g) => g.items.filter(zurueckgestellt));
+  // Steht man auf einer dieser Seiten, ist der Bereich aufgeklappt (ohne die
+  // gespeicherte Wahl zu ändern), damit der markierte Punkt sichtbar ist.
+  const weitereSichtbar = weitereOffen || weitereItems.some((i) => istHier(i.href));
   const visibleGroups = erlaubteGruppen
     .map((group) => ({ ...group, items: group.items.filter((item) => !zurueckgestellt(item)) }))
     .filter((group) => group.items.length > 0);
 
   // In collapsed mode, show all visible items (groups are irrelevant)
-  const allItems = [...visibleGroups.flatMap((g) => g.items), ...(weitereOffen ? weitereItems : [])];
+  const allItems = [...visibleGroups.flatMap((g) => g.items), ...(weitereSichtbar ? weitereItems : [])];
 
   // Genauer Pfad oder ein Unterpfad davon — nicht blosses startsWith. Sonst
   // faerbte /p/kunde auch /p/kunden-portal mit ein, sobald zwei angelegte Seiten
@@ -484,12 +488,12 @@ export function Sidebar() {
             <button
               key="weitere-bereiche"
               onClick={weitereUmschalten}
-              title={weitereOffen ? "Weitere Bereiche ausblenden" : "Weitere Bereiche zeigen"}
-              aria-label={weitereOffen ? "Weitere Bereiche ausblenden" : "Weitere Bereiche zeigen"}
-              aria-expanded={weitereOffen}
+              title={weitereSichtbar ? "Weitere Bereiche ausblenden" : "Weitere Bereiche zeigen"}
+              aria-label={weitereSichtbar ? "Weitere Bereiche ausblenden" : "Weitere Bereiche zeigen"}
+              aria-expanded={weitereSichtbar}
               className={cn(
                 "flex items-center justify-center h-9 w-9 mx-auto rounded-xl transition-all duration-150",
-                weitereOffen ? "bg-sidebar-hover text-sidebar-foreground" : "text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-foreground"
+                weitereSichtbar ? "bg-sidebar-hover text-sidebar-foreground" : "text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-foreground"
               )}
             >
               <LayoutGrid className="h-4 w-4" />
@@ -533,15 +537,15 @@ export function Sidebar() {
             <div className="mt-2 border-t border-border/60 pt-2">
               <button
                 onClick={weitereUmschalten}
-                aria-expanded={weitereOffen}
+                aria-expanded={weitereSichtbar}
                 className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px] text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-hover transition-colors"
               >
                 <LayoutGrid className="h-3.5 w-3.5" />
                 <span className="flex-1 text-left">Weitere Bereiche</span>
                 <span className="text-[11px] tabular-nums text-sidebar-muted">{weitereItems.length}</span>
-                <ChevronDown className={cn("h-3 w-3 transition-transform duration-200", weitereOffen ? "rotate-0" : "-rotate-90")} />
+                <ChevronDown className={cn("h-3 w-3 transition-transform duration-200", weitereSichtbar ? "rotate-0" : "-rotate-90")} />
               </button>
-              {weitereOffen && <div className="mt-0.5 space-y-0.5">{weitereItems.map(eintrag)}</div>}
+              {weitereSichtbar && <div className="mt-0.5 space-y-0.5">{weitereItems.map(eintrag)}</div>}
             </div>
           )}
           </>

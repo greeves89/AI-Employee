@@ -181,3 +181,15 @@ class AchtSeitenMitReitern(unittest.TestCase):
         self.assertIn('"mcp",', seite.split("EMBEDDED_TABS")[1].split("];")[0])
         for gid in _ausfuehren("m.ADMIN_GRUPPEN.map((g) => g.id)"):
             self.assertIn(f"  {gid}:", symbole.split("ADMIN_SEITEN_SYMBOLE")[1])
+
+
+class SeitenleisteBleibtStehen(unittest.TestCase):
+    """Punkte unter „Weitere Bereiche“ springen beim Anklicken nicht mehr nach oben (14.11.2026)."""
+
+    def test_offene_seite_bleibt_an_ihrem_platz(self):
+        from pathlib import Path
+
+        quelle = (Path(__file__).resolve().parents[2] / "frontend/src/components/layout/sidebar.tsx").read_text()
+        regel = quelle.split("const zurueckgestellt = (item: NavItem) =>")[1].split(";")[0]
+        self.assertNotIn("istHier", regel)
+        self.assertIn("weitereItems.some((i) => istHier(i.href))", quelle, "Bereich klappt auf, Punkt bleibt sichtbar")

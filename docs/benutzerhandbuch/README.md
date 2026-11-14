@@ -200,6 +200,7 @@ ganze Anlage betrifft, steht in einem eigenen **Admin-Bereich** (Kap. 1.5).
 - **Weitere Bereiche** (aufklappbar) — Übersicht, Kosten, Aktivität (Kap. 33),
   Auswertung, Gelerntes, Verbindungen, Apps, Agenten-Runden, Auslöser und
   Prüfaufgaben. Der Bereich bleibt zugeklappt, bis du ihn öffnest; die Leiste merkt sich das.
+  Öffnest du eine Seite daraus, bleibt sie an ihrem Platz und der Bereich ist aufgeklappt *(seit 1.468.0)*.
 
 **Bedienung:**
 - Auf einen **Menüpunkt** klicken → die Seite öffnet sich; der aktive Punkt ist
