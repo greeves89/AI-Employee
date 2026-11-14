@@ -59,11 +59,15 @@ export function AvailableModels() {
         <div className="flex items-start gap-2.5 rounded-xl border border-border bg-card/40 px-3 py-3">
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/60" />
           <div className="text-xs">
-            <p className="font-medium">Noch kein Modell freigegeben</p>
+            {/* Las sich wie „deine Agenten laufen nicht“, obwohl sie über den
+                Standard-Zugang der Anlage arbeiten (UI-Durchsicht 14.11.2026). */}
+            <p className="font-medium">Kein zusätzliches Modell freigegeben</p>
             <p className="mt-0.5 text-muted-foreground">
-              Frag deinen Administrator nach einem Firmen-Zugang — oder verbinde
-              unter <span className="font-medium">Meine KI-Zugänge</span> dein
-              eigenes Claude- oder Codex-Abo.
+              Laufen deine Agenten trotzdem, nutzen sie den Standard-Zugang der
+              Anlage. Weitere Modelle gibt dir dein Administrator frei — oder du
+              verbindest unter{" "}
+              <span className="font-medium">Meine KI-Zugänge</span> dein eigenes
+              Claude- oder Codex-Abo.
             </p>
           </div>
         </div>

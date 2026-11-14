@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.466.2] - 2026-11-14
+
+### Behoben
+- **Aufgaben öffnen auf „Alle“, wenn gerade nichts läuft**, statt mit einem leeren Reiter „Aktiv 0“. Eine eigene Wahl bleibt erhalten.
+- **Chat zeigt „Verbunden“ statt „Online“.** Die Anzeige betrifft die Verbindung zur Plattform, nicht den Agenten. „Online“ stand bisher neben „Gestoppt“ im Seitenkopf.
+- **„Mein Konto“ ohne freigegebenes Modell** sagt jetzt, dass Agenten dann über den Standard-Zugang der Anlage laufen, statt „Noch kein Modell freigegeben“ wie einen Fehler zu melden.
+- **Handbuch:** Bilder zu „Übersicht“ (Kap. 3) und „Kosten“ (Kap. 6b) neu aus dem Demokonto, PDF neu erzeugt.
+
 ## [1.466.1] - 2026-11-14
 
 ### Behoben
