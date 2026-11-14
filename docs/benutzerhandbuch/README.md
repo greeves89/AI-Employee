@@ -3063,12 +3063,18 @@ rechts zwei Buttons:
 
 #### Einen Agenten für Kollegen freigeben (nur nutzen)
 
-So arbeiten viele Menschen mit einem Agenten, ohne dass jeder einen eigenen braucht:
+So arbeiten viele Menschen mit einem Agenten, ohne dass jeder einen eigenen braucht. In der
+Oberfläche gibt ein **Admin** frei, denn Mitglieder sehen die einfache Ansicht ohne Einstellungen:
 
 1. Agent öffnen und auf **Einstellungen** klicken.
 2. Den Abschnitt **Zugriff & Rechte** aufklappen.
 3. Unter **Freigeben für** die Kollegen anhaken. Ab acht Personen erscheint ein Suchfeld.
 4. Auf **Speichern** klicken.
+
+![Freigeben für](screenshots/22-freigeben-fuer.png)
+
+Braucht eine Aufgabe aus dem Gespräch einer freigegebenen Person eine Freigabe, steht dort
+„Wartet auf eine Freigabe durch den Besitzer des Agenten.“ Entscheiden können Besitzer und Admin.
 
 Freigegebene sehen den Agenten in ihrer Liste und bekommen die einfache Ansicht mit Chat und
 Sprache. Sie dürfen chatten, sprechen und Dateien schicken und abholen. Einstellungen,

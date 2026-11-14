@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.465.0] - 2026-11-14
+
+### Neu
+- **„Wartet auf Freigabe“ für Kollegen, die einen Agenten nur nutzen.** Braucht eine Aufgabe aus ihrem Gespräch eine Freigabe, steht dort jetzt „Wartet auf eine Freigabe durch den Besitzer des Agenten.“ Frage, Werkzeug und Begründung bekommen weiter nur Besitzer und Admin, die auch entscheiden. Die Freigabe-Anfrage trägt dafür das Gespräch ihrer Aufgabe.
+
 ## [1.464.0] - 2026-11-14
 
 ### Behoben

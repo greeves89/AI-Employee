@@ -384,6 +384,21 @@ async def freigabe_entzogen(agent_id: str, user_ids) -> int:
     return geschlossen
 
 
+async def _freigabe_kuerzen(ereignis: dict, agent_id: str, user, cache: dict) -> dict | None:
+    """Was von einem Ereignis ohne Nachrichtenkennung an diese Verbindung geht.
+
+    ``None``: nichts. Sonst das Ereignis selbst — bis auf Freigabe-Anfragen an
+    jemanden, der den Agenten nicht verwaltet: Der bekommt im eigenen Gespraech nur
+    den Hinweis ``approval_wait``, ohne Frage, Werkzeug und Begruendung (die gehen den
+    Besitzer an, der auch entscheidet)."""
+    if not await _ereignis_fuer_verbindung(ereignis, agent_id, user, cache):
+        return None
+    if ereignis.get("type") == "approval_request" and not cache.get("*"):
+        return {"type": "approval_wait", "session_id": ereignis.get("session_id"),
+                "data": {"message": "Wartet auf eine Freigabe durch den Besitzer des Agenten."}}
+    return ereignis
+
+
 def _gespraech_fremd() -> dict:
     return {
         "type": "error",
@@ -850,9 +865,9 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                                     except Exception:
                                         _ws_connected = False
                                 # else: foreign message_id → drop (isolation)
-                            elif await _ereignis_fuer_verbindung(_fwd, agent_id, _user, _darf_cache):
+                            elif (_raus := await _freigabe_kuerzen(_fwd, agent_id, _user, _darf_cache)) is not None:
                                 try:
-                                    await websocket.send_text(data)
+                                    await websocket.send_text(data if _raus is _fwd else json.dumps(_raus))
                                 except Exception:
                                     _ws_connected = False
 
