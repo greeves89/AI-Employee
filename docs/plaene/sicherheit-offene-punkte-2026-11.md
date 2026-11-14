@@ -55,10 +55,11 @@ gilt das als abgewiesen.
 | 1 Kiosk | Erledigt (1.461), live: ohne Zugang 404 aus LAN, vom Gerät und am Orchestrator; Anzeige auf dem Pi angemeldet. |
 | 2 Wecken trotz Stopp | Erledigt (1.461 + 1.463). Live: angehaltener Agent startet weder durch Aufgabe noch durch Anmeldung. Die Anmeldung war die eigentliche Ursache vom 13.11. |
 | 3 Freigabe „nur nutzen“ | Live mit Wegwerf-Testkonto geprüft (14.11.). Offen: Bildschirmfotos fürs Handbuch. |
-| 4 OAuth mit Entra | Offen, braucht App-Registrierung im Tenant. |
-| 5 GitLab | Lesen live gegen gitlab.com geprüft. Offen: Schreiben (Kommentar, Merge Request), braucht Testprojekt mit Token. |
+| 4 OAuth mit Entra | Live gegen das echte Entra der Anlage (14.11.): Discovery und 6 Schlüssel über die feste Verbindung, gefälschte Tokens abgewiesen (fremder Schlüssel, unbekannte kid, alg none, HS256). Offen: ein echter Erfolgsfall. Dafür muss sich einmal jemand per Microsoft anmelden, und die App braucht „Expose an API“ (Handbuch 22.5.2). |
+| 5 GitLab | Lesen live gegen gitlab.com geprüft, Token-Tausch im Proxy live mit mitmproxy geprüft. Schreiben nur mit nachgestelltem GitLab, weil kein Testprojekt vorhanden ist (Entscheidung Daniel, 14.11.). |
 | 6 Sicherung | Erledigt (1.461 + 1.464). Live: Ausweichen ohne root, Ziel aus der `.env` (NAS), Update verweigert während einer Sicherung. |
-| 7 Alte Agenten-Abbilder | Offen, Besitzer entscheidet über das Aktualisieren seiner Agenten. |
+| 7 Alte Agenten-Abbilder | Erledigt (14.11.): Die 7 Agenten des Besitzers sind aktualisiert, gestoppt und angehalten geblieben. |
 | 8 DNS-Rebinding IdP | Erledigt (1.462). |
 | 9 Freigabe-Anfragen | Leck behoben (1.462), Statuszeile „wartet auf Freigabe“ für Nur-Nutzer ohne Inhalt (1.465). Erledigt. |
 
+Alte root-Sicherung `/var/backups/ai-employee` (19 GB, 13.11.) auf Wunsch gelöscht, Platte jetzt bei 74 %.
