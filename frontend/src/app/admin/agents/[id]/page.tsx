@@ -77,7 +77,7 @@ export default function AdminAgentDetailPage() {
 
   useEffect(() => {
     if (user && user.role !== "admin") {
-      router.replace("/dashboard");
+      router.replace("/heute");
     }
   }, [user, router]);
 

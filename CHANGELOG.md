@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.468.2] - 2026-11-14
+
+### Geändert
+- **Start ist die Startseite** nach jeder Anmeldung (auch SSO). Der Einstieg „In 6 Schritten startklar“ steht dort; erledigte Schritte sind eine Zeile. „Übersicht“ ist die Kennzahlen-Seite für Admins und erscheint Mitgliedern nicht mehr. Die eingebaute Rolle „Betrachter“ hat Start im Menü.
+- **Freigaben:** Reiter heißen „Hilfe nötig“ (früher „Eskalationen“) und „Über Nacht gelernt“ (früher „Nachtschicht“).
+- **Chat:** Die Symbole unten sind auch am Desktop beschriftet. Die Verbindungsanzeige erscheint nur noch bei Problemen; ein gestoppter Agent hat einen grauen statt roten Punkt.
+- **Agentenliste:** Hinweise stehen als Text („Keine Zuständigkeit beschrieben +1“) statt als Warndreieck mit Zahl.
+- **Mein Konto:** Claude und Codex sind erklärt („Dein Abo bei Anthropic/OpenAI“).
+- **Kosten:** Diagramm mit Legende in der Akzentfarbe.
+- **Start:** Agenten mit Statuspunkt; **Teams-Besprechungen:** Hinweis, warum „Schicken“ noch grau ist.
+
+### Behoben
+- Türkise Pixel an den Ecken gestrichelter Rahmen (Chromium-Fehler bei halbtransparenten gestrichelten Rändern).
+- Checkboxen, Auswahlfelder und Bildlaufleisten im Dunkelmodus nicht mehr grell weiß.
+
 ## [1.468.1] - 2026-11-14
 
 ### Behoben

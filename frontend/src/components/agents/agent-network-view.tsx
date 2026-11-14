@@ -353,7 +353,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
 
   if (agents.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-16 text-center">
+      <div className="rounded-xl border border-dashed border-border bg-card/30 p-16 text-center">
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-foreground/[0.06] mb-4">
           <Bot className="h-7 w-7 text-muted-foreground" />
         </div>

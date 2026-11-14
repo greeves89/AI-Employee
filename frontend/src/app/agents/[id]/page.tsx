@@ -91,7 +91,7 @@ const agentStateConfig: Record<string, { online: boolean; label: string; badge: 
   running: { online: true, label: "Bereit", badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
   idle: { online: true, label: "Bereit", badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
   working: { online: true, label: "Arbeitet", badge: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
-  stopped: { online: false, label: "Gestoppt", badge: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20" },
+  stopped: { online: false, label: "Gestoppt", badge: "bg-zinc-500/10 text-muted-foreground border-zinc-500/20" },
   error: { online: false, label: "Fehler", badge: "bg-red-500/10 text-red-400 border-red-500/20" },
   created: { online: false, label: "Startet", badge: "bg-violet-500/10 text-violet-400 border-violet-500/20" },
 };
@@ -469,7 +469,8 @@ export default function AgentDetailPage() {
                 )}
                 <span className={cn(
                   "relative inline-flex h-1.5 w-1.5 rounded-full",
-                  stateConfig.online ? "bg-emerald-500" : "bg-red-500"
+                  // Rot nur bei Fehler — ein gestoppter Agent ruht nur (UI-Bewertung 14.11.2026).
+                  stateConfig.online ? "bg-emerald-500" : agent.state === "error" ? "bg-red-500" : "bg-zinc-400"
                 )} />
               </span>
               {stateConfig.label}
@@ -1162,7 +1163,7 @@ function TaskHistory({ tasks }: { tasks: ReturnType<typeof useTasks>["tasks"] })
 
   if (tasks.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-12 text-center">
+      <div className="rounded-xl border border-dashed border-border bg-card/30 p-12 text-center">
         <History className="h-8 w-8 text-muted-foreground/50 mx-auto mb-3" />
         <p className="text-sm text-muted-foreground">Dieser Agent hat noch keine Aufgaben ausgeführt.</p>
       </div>

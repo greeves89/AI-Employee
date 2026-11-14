@@ -68,7 +68,7 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 
 ## In 6 Schritten startklar
 
-Mit diesen Schritten nutzt du AI-Employee sauber. Auf der **Übersicht** steht dafür die
+Mit diesen Schritten nutzt du AI-Employee sauber. Auf **Start** steht dafür die
 Karte **„In 6 Schritten startklar“**: Sie zeigt, was erledigt ist, und hakt jeden Schritt
 **von selbst** ab, sobald er eingerichtet ist. Der nächste offene Schritt hat den Knopf
 **Jetzt machen**, der direkt auf die richtige Seite führt.
@@ -165,7 +165,7 @@ Administratoren mit dem Schalter **Mitglieder-Ansicht** im Benutzermenü.
 ### 1.1 Anmelden
 1. Öffne die Plattform-URL im Browser.
 2. **E-Mail** und **Passwort** eingeben.
-3. Auf **Anmelden** klicken. Du landest auf der **Übersicht**. Die Sitzung bleibt sicher
+3. Auf **Anmelden** klicken. Du landest auf **Start** *(seit 1.468.2)*. Die Sitzung bleibt sicher
    aktiv (verschlüsseltes Cookie), bis du dich abmeldest oder sie abläuft.
 4. **Hast du die Zwei-Faktor-Anmeldung eingerichtet** (Kap. 20.4) oder verlangt die Anlage
    sie *(seit 1.362.0)*, folgt nach dem Passwort ein zweiter Schritt **Bestätigungscode**:
@@ -372,7 +372,9 @@ Danach findest du die neuen Agenten unter **Agents** und kannst sofort loslegen.
 ## 3. Übersicht
 
 Die **Übersicht** (früher „Dashboard“) ist der Gesamtüberblick über deine
-Agenten, ihre Auslastung, Kosten und letzte Aktivität. Seitenleiste → **Übersicht**.
+Agenten, ihre Auslastung, Kosten und letzte Aktivität. Seitenleiste → **Weitere Bereiche** →
+**Übersicht**. Seit 1.468.2 nur für Admins; Mitglieder finden ihren Tag und den Einstieg
+„In 6 Schritten startklar“ auf **Start** (Kap. 6c.0).
 
 ![Übersicht](screenshots/01-dashboard.png)
 
@@ -1889,6 +1891,10 @@ Solange du kein Sekretariat eingerichtet hast, zeigt **Start** deinen Tag:
 
 Darunter steht die Karte **Sekretariat einrichten**. Erst **Einrichten** öffnet das Formular aus 6c.1.
 
+Oben auf **Start** steht außerdem der Einstieg **In 6 Schritten startklar**, bis alles erledigt
+ist *(seit 1.468.2)*. Erledigte Schritte sind in einer Zeile zusammengefasst; **anzeigen**
+klappt sie auf.
+
 ![Start ohne Sekretariat: Wartet auf dich, Aufgaben heute, Als Nächstes geplant, Meine Agenten und die Karte Sekretariat einrichten](screenshots/84-mein-tag.png)
 
 ### 6c.1 Einrichten
@@ -2378,7 +2384,7 @@ Handlung einmal aus. Der Agent kann eine Freigabe nicht für etwas anderes verwe
 
 ### 13.1 Der Reiter „Verlauf“ *(seit 1.362.0)*
 
-Oben auf der Seite stehen die Reiter **Ausstehend**, **Eskalationen**, **Nachtschicht**,
+Oben auf der Seite stehen die Reiter **Ausstehend**, **Hilfe nötig** (früher „Eskalationen“), **Über Nacht gelernt** (früher „Nachtschicht“),
 **Verlauf**, **Regeln**, **Stufen-Vorlagen** und **Befehlsregeln**. Unter **Verlauf** findest
 du alle **bereits entschiedenen** Anfragen — wer wann was entschieden hat:
 
@@ -3533,7 +3539,7 @@ kann. Rechts an jedem Punkt: ein **Knopf** (erledigt es sofort) und/oder ein
 
 | Punkt | Was dahintersteckt |
 |---|---|
-| **Eskalationen** | Ein Agent war zu unsicher oder ist endgültig gescheitert und wartet auf deine Entscheidung (Abschnitte 25b/25c) |
+| **Hilfe nötig** | Ein Agent war zu unsicher oder ist endgültig gescheitert und wartet auf deine Entscheidung (Abschnitte 25b/25c) |
 | **Offene Freigaben** | Ein Agent hat gefragt |
 | **Agent im Fehlerzustand** | Der Agent arbeitet nicht → **Neu starten** |
 | **Hängende Aufgabe** | Seit über 30 Minuten kein Lebenszeichen |
@@ -3928,10 +3934,10 @@ reicht, entscheidet **nicht der Agent**, sondern eine Schwelle, die du setzt.
 
 **Was passiert dann?** Liegt der Agent über der Schwelle, macht er einfach weiter —
 das kostet nichts und niemand wird gestört. Liegt er darunter, **hält er an** und die
-Frage landet unter **Freigaben → Eskalationen**, mit dem Prozentwert davor („Unsicher:
+Frage landet unter **Freigaben → Hilfe nötig**, mit dem Prozentwert davor („Unsicher:
 40 % — Schwelle 70 %"). Erst deine Antwort lässt ihn weiterarbeiten.
 
-**Wo du Eskalationen findest:** **Freigaben** → Reiter **Eskalationen**. Dort stehen
+**Wo du Eskalationen findest:** **Freigaben** → Reiter **Hilfe nötig**. Dort stehen
 beide Fälle, in denen ein Mensch übernehmen muss:
 - **Unsicher** — der Agent hat nachgefragt (dieser Abschnitt)
 - **Gescheitert** — die Selbstheilung ist erschöpft (Abschnitt 25b)

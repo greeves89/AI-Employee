@@ -124,12 +124,19 @@ export default function BesprechungenPage() {
                 Schicken
               </button>
             </div>
+            {/* Warum „Schicken“ noch grau ist (UI-Bewertung 14.11.2026). */}
+            {!schickt && (!schickAgent || !schickLink.trim()) && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                {!schickAgent && !schickLink.trim() ? "Agent wählen und Teams-Link einfügen, dann „Schicken“."
+                  : !schickAgent ? "Noch einen Agenten wählen." : "Noch den Teams-Link einfügen."}
+              </p>
+            )}
           </div>
         )}
         {fehler && <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">{fehler}</div>}
         {liste === null && !fehler && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
         {liste && liste.length === 0 && (
-          <div className="max-w-xl rounded-xl border border-foreground/10 p-5 text-sm text-muted-foreground">
+          <div className="rounded-xl border border-foreground/10 p-5 text-sm text-muted-foreground">
             Noch keine Besprechungen. Schalte bei einem Agenten unter <b>Konnektoren → Microsoft Teams →
             Teams-Besprechungen</b> die Teilnahme ein und lade ihn zu einem Teams-Termin ein. Nach dem Termin
             steht hier sein Protokoll.

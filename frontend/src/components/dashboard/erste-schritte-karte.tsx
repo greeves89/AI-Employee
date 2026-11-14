@@ -51,6 +51,9 @@ export function ErsteSchritteKarte() {
   const [zu, setZu] = useState(true);
   // iPhone-App und Bridge haben keine Zielseite: ihr Inhalt klappt in der Karte auf.
   const [auf, setAuf] = useState<string | null>(null);
+  // Erledigte Schritte standen durchgestrichen in voller Höhe da und schoben das
+  // Offene nach unten (UI-Bewertung 14.11.2026) — jetzt eine Zeile, aufklappbar.
+  const [erledigteZeigen, setErledigteZeigen] = useState(false);
 
   useEffect(() => {
     setZu(ausgeblendet(uid));
@@ -114,8 +117,21 @@ export function ErsteSchritteKarte() {
         <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${anteil}%` }} />
       </div>
 
-      <ol className="mt-5 space-y-2">
+      {stand.erledigt > 0 && (
+        <button
+          type="button"
+          onClick={() => setErledigteZeigen((v) => !v)}
+          aria-expanded={erledigteZeigen}
+          className="mt-4 inline-flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground"
+        >
+          <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+          {stand.erledigt} erledigt · {erledigteZeigen ? "ausblenden" : "anzeigen"}
+        </button>
+      )}
+
+      <ol className="mt-3 space-y-2">
         {stand.schritte.map((s, i) => {
+          if (s.erledigt && !erledigteZeigen) return null;
           const Symbol = SYMBOL[s.id] ?? Bot;
           const istNaechster = s.id === naechster?.id;
           return (

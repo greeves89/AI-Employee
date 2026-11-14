@@ -64,7 +64,7 @@ export default function LoginPage() {
     if (redirectTo && /^\/[^/\\]/.test(redirectTo)) {
       window.location.href = redirectTo;
     } else {
-      router.push("/dashboard");
+      router.push("/heute");
     }
   };
 

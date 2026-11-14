@@ -738,7 +738,7 @@ export function CreateAgentModal({
                     {/* Blank Agent Option */}
                     <button
                       onClick={() => selectTemplate(null)}
-                      className="w-full flex items-center gap-3 rounded-xl border border-dashed border-foreground/[0.15] p-3 mb-4 text-left transition-all duration-200 hover:border-primary/40 hover:bg-primary/[0.04]"
+                      className="w-full flex items-center gap-3 rounded-xl border border-dashed border-border p-3 mb-4 text-left transition-all duration-200 hover:border-primary/40 hover:bg-primary/[0.04]"
                     >
                       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-foreground/[0.06] text-muted-foreground">
                         <Plus className="h-4 w-4" />
@@ -1005,7 +1005,7 @@ export function CreateAgentModal({
                                 "flex items-start gap-3 rounded-xl border p-4 text-left transition-all duration-200",
                                 selectedAccountKey === "manual"
                                   ? "border-violet-500/50 bg-violet-500/[0.08] ring-1 ring-violet-500/20"
-                                  : "border-dashed border-foreground/[0.12] hover:border-foreground/[0.2] hover:bg-foreground/[0.02]"
+                                  : "border-dashed border-border hover:border-foreground/[0.2] hover:bg-foreground/[0.02]"
                               )}
                             >
                               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-500/10 text-violet-400">

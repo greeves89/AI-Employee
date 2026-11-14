@@ -180,7 +180,7 @@ export function DelegateToTeamModal({
                       <label className="block text-xs font-medium text-muted-foreground mb-1.5">
                         Dateien <span className="text-muted-foreground">(optional — Kontext/Artefakte für den Agenten)</span>
                       </label>
-                      <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-foreground/[0.15] bg-background/50 px-4 py-2.5 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground transition-all">
+                      <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border bg-background/50 px-4 py-2.5 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground transition-all">
                         <Paperclip className="h-4 w-4" />
                         Dateien anhängen
                         <input

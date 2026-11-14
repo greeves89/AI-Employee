@@ -450,7 +450,7 @@ export default function ApprovalsPage() {
           title="Fälle, in denen ein Mensch übernehmen muss — zu unsicher oder endgültig gescheitert"
         >
           <Siren className="h-3.5 w-3.5" />
-          Eskalationen ({escalationApprovals.length})
+          Hilfe nötig ({escalationApprovals.length})
         </button>
         <button
           onClick={() => setActiveTab("reflection")}
@@ -462,7 +462,7 @@ export default function ApprovalsPage() {
           )}
         >
           <Moon className="h-3.5 w-3.5" />
-          Nachtschicht ({reflectionApprovals.length})
+          Über Nacht gelernt ({reflectionApprovals.length})
         </button>
         <button
           onClick={() => setActiveTab("history")}
@@ -632,7 +632,7 @@ export default function ApprovalsPage() {
               <span className="text-sm">Lade Regeln...</span>
             </div>
           ) : ownRules.length === 0 && autoRules.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-16 text-center">
+            <div className="rounded-xl border border-dashed border-border bg-card/30 p-16 text-center">
               <ShieldCheck className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
               <p className="text-sm text-muted-foreground">Noch keine Regeln definiert</p>
               <p className="text-[11px] text-muted-foreground mt-1">
@@ -737,7 +737,7 @@ export default function ApprovalsPage() {
           <span className="text-sm">Freigaben werden geladen …</span>
         </div>
       ) : shownApprovals.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-16 text-center">
+        <div className="rounded-xl border border-dashed border-border bg-card/30 p-16 text-center">
           {activeTab === "reflection" ? (
             <>
               <Moon className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
@@ -1225,7 +1225,7 @@ function VerlaufTab({ agents }: { agents: { id: string; name: string }[] }) {
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground/50" />
         </div>
       ) : eintraege.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-16 text-center">
+        <div className="rounded-xl border border-dashed border-border bg-card/30 p-16 text-center">
           <History className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
           <p className="text-sm text-muted-foreground">Keine entschiedenen Anfragen für diese Auswahl</p>
         </div>

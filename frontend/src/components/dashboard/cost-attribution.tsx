@@ -38,7 +38,7 @@ export function CostAttribution() {
 
   if (!data || data.top_agents.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-8 text-center">
+      <div className="rounded-xl border border-dashed border-border bg-card/30 p-8 text-center">
         <div className="flex justify-center mb-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/10">
             <DollarSign className="h-5 w-5 text-violet-400" />

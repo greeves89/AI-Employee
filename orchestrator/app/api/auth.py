@@ -921,7 +921,7 @@ async def finish_sso_login(
         base = settings.oauth_redirect_base_url if target.startswith("/api/") else frontend_url
         destination = f"{base.rstrip('/')}{target}"
     else:
-        destination = f"{frontend_url}/dashboard"
+        destination = f"{frontend_url}/heute"   # Startseite seit 1.468.2
 
     # Set auth cookies (same as normal login)
     redirect_resp = RedirectResponse(url=destination, status_code=302)

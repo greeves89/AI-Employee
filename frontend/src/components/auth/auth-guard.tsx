@@ -99,7 +99,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   // Logged in but on public page - redirect to dashboard
   if (isPublicPage) {
-    router.replace("/dashboard");
+    router.replace("/heute");
     return null;
   }
 

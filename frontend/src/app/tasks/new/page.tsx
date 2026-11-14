@@ -207,7 +207,7 @@ export default function NewTaskPage() {
               <Paperclip className="h-3 w-3" />
               Dateien <span className="text-muted-foreground">(optional — Kontext/Artefakte für den Agenten)</span>
             </label>
-            <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-foreground/[0.12] bg-card/60 px-4 py-3 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground transition-all">
+            <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-border bg-card/60 px-4 py-3 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground transition-all">
               <Paperclip className="h-4 w-4" />
               Dateien anhängen
               <input

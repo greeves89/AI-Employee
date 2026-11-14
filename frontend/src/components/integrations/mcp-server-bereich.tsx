@@ -778,7 +778,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
         </div>
       ) : servers.length === 0 && !showForm ? (
-        <div className="max-w-3xl rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-10 text-center">
+        <div className="max-w-3xl rounded-xl border border-dashed border-border bg-card/30 p-10 text-center">
           <Globe className="h-8 w-8 text-muted-foreground/40 mx-auto mb-3" />
           <p className="text-sm text-muted-foreground mb-1">Keine MCP-Server eingerichtet</p>
           <p className="text-xs text-muted-foreground/60">

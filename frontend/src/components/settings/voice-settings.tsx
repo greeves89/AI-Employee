@@ -192,7 +192,7 @@ export function VoiceSettings() {
                 );
               })}
               {models.length === 0 && (
-                <div className="rounded-lg border border-dashed border-foreground/10 px-3.5 py-3 text-[11px] text-muted-foreground/60">
+                <div className="rounded-lg border border-dashed border-border px-3.5 py-3 text-[11px] text-muted-foreground/60">
                   Noch kein Echtzeit-Provider eingerichtet. Lege unter{" "}
                   <a href="/admin?tab=ai-accounts" className="text-fuchsia-400 hover:underline">
                     KI-Konten
