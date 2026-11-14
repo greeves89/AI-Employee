@@ -1,0 +1,98 @@
+name: GitLab echt
+
+# Projekte mit GitLab-Repos (#1194) gegen einen ECHTEN GitLab-Server statt gegen den
+# Nachbau in test_projekt_gitlab.py (Plan Sicherheit 2026-11, Punkt 5). Der Server
+# laeuft hier im Runner, wie ein selbst betriebenes GitLab im Firmennetz: eigener
+# Name auf einer privaten Adresse, vom Administrator freigegeben (git_interne_server).
+# Dauert wegen des GitLab-Starts einige Minuten — deshalb nur, wenn sich der
+# GitLab-Weg aendert, woechentlich und von Hand.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "orchestrator/app/core/githost/**"
+      - "orchestrator/app/core/projekt_git.py"
+      - "orchestrator/app/core/feste_verbindung.py"
+      - "orchestrator/app/core/url_guard.py"
+      - "orchestrator/tests/test_gitlab_echter_server.py"
+      - ".github/workflows/gitlab-echt.yml"
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gitlab-echt:
+    name: GitLab-Anbieter gegen echten Server
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GITLAB_NAME: gitlab.firma.test
+      GITLAB_PORT: "8929"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: GitLab starten
+        run: |
+          IP=$(hostname -I | tr ' ' '\n' | grep -E '^(10|172|192\.168)\.' | head -1)
+          test -n "$IP"
+          echo "$IP $GITLAB_NAME" | sudo tee -a /etc/hosts
+          docker run -d --name gitlab --shm-size 256m -p "$GITLAB_PORT:$GITLAB_PORT" \
+            -e GITLAB_OMNIBUS_CONFIG="external_url 'http://$GITLAB_NAME:$GITLAB_PORT'; prometheus_monitoring['enable'] = false; gitlab_rails['usage_ping_enabled'] = false; puma['worker_processes'] = 2; sidekiq['concurrency'] = 5" \
+            gitlab/gitlab-ce:17.11.1-ce.0
+
+      - name: Orchestrator installieren
+        working-directory: orchestrator
+        run: pip install --no-cache-dir -e . pytest pytest-asyncio
+
+      - name: Warten, bis GitLab antwortet
+        run: |
+          for i in $(seq 1 120); do
+            if curl -sf -o /dev/null "http://$GITLAB_NAME:$GITLAB_PORT/users/sign_in"; then echo "bereit nach $((i*10)) s"; exit 0; fi
+            sleep 10
+          done
+          docker logs --tail 80 gitlab
+          exit 1
+
+      - name: Konten, Tokens und Projekt anlegen
+        run: |
+          ROOT_TOKEN="glpat-$(openssl rand -hex 16)"
+          echo "::add-mask::$ROOT_TOKEN"
+          docker exec -e T="$ROOT_TOKEN" gitlab gitlab-rails runner \
+            "t = User.find_by_username('root').personal_access_tokens.create!(name: 'ci', scopes: %w[api sudo], expires_at: 2.days.from_now); t.set_token(ENV['T']); t.save!"
+          API="http://$GITLAB_NAME:$GITLAB_PORT/api/v4"
+          H="PRIVATE-TOKEN: $ROOT_TOKEN"
+          curl -sf -H "$H" -X POST "$API/projects" -d name=probe -d visibility=private \
+            -d initialize_with_readme=true -d default_branch=main > /dev/null
+          PW="$(openssl rand -hex 16)Aa1!"
+          RID=$(curl -sf -H "$H" -X POST "$API/users" -d username=lesend -d name=Lesend \
+            -d email=lesend@example.invalid -d skip_confirmation=true --data-urlencode "password=$PW" | jq -r .id)
+          curl -sf -H "$H" -X POST "$API/projects/root%2Fprobe/members" -d user_id="$RID" -d access_level=20 > /dev/null
+          REPORTER_TOKEN=$(curl -sf -H "$H" -X POST "$API/users/$RID/impersonation_tokens" -d name=ci \
+            -d "scopes[]=api" -d expires_at="$(date -d '+2 days' +%F)" | jq -r .token)
+          LESE_TOKEN=$(curl -sf -H "$H" -X POST "$API/users/1/impersonation_tokens" -d name=lesen \
+            -d "scopes[]=read_api" -d expires_at="$(date -d '+2 days' +%F)" | jq -r .token)
+          echo "::add-mask::$REPORTER_TOKEN"
+          echo "::add-mask::$LESE_TOKEN"
+          {
+            echo "GITLAB_ECHT_URL=http://$GITLAB_NAME:$GITLAB_PORT"
+            echo "GITLAB_ECHT_REPO=root/probe"
+            echo "GITLAB_ECHT_TOKEN=$ROOT_TOKEN"
+            echo "GITLAB_ECHT_TOKEN_REPORTER=$REPORTER_TOKEN"
+            echo "GITLAB_ECHT_TOKEN_LESEN=$LESE_TOKEN"
+          } >> "$GITHUB_ENV"
+
+      - name: Anbieter gegen den Server pruefen
+        working-directory: orchestrator
+        env:
+          KIOSK_ENABLED: "false"
+        run: pytest -q -rs tests/test_gitlab_echter_server.py
+
+      - name: GitLab-Protokoll bei Fehler
+        if: failure()
+        run: docker logs --tail 150 gitlab
