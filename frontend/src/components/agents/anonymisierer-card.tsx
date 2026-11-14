@@ -51,7 +51,7 @@ export function AnonymisiererCard({ agentId }: { agentId: string }) {
           <EyeOff className="h-4 w-4 mt-0.5 text-muted-foreground" />
           <div>
             <div className="text-sm font-medium">Personendaten vor dem Modell verbergen</div>
-            <div className="text-[11px] text-muted-foreground/60">
+            <div className="text-xs text-muted-foreground/60">
               E-Mail-Adressen, Telefonnummern, IBAN, Kartennummern und die Namen unten gehen nur als
               Platzhalter an den Modellanbieter. In der Antwort und in Werkzeugaufrufen stehen wieder
               die echten Werte.
@@ -96,7 +96,7 @@ export function AnonymisiererCard({ agentId }: { agentId: string }) {
             className="w-full rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm"
           />
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-muted-foreground/60">
+            <span className="text-xs text-muted-foreground/60">
               Kunden, Personen, Projekte. Groß- und Kleinschreibung egal.
             </span>
             <button

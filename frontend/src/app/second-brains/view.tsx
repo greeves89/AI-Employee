@@ -113,7 +113,7 @@ function BrainMcpModal({
         </p>
 
         <div>
-          <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">Endpoint-URL</label>
+          <label className="block text-xs font-medium text-muted-foreground/70 mb-1">Endpoint-URL</label>
           <div className="flex items-center gap-2">
             <div className={fieldCls}>{url}</div>
             <button onClick={() => copy(url, "url")} className={copyBtn} title="URL kopieren">
@@ -124,7 +124,7 @@ function BrainMcpModal({
 
         {token && (
           <div>
-            <label className="block text-[11px] font-medium text-amber-700 dark:text-amber-400 mb-1 flex items-center gap-1">
+            <label className="block text-xs font-medium text-amber-700 dark:text-amber-400 mb-1 flex items-center gap-1">
               <KeyRound className="h-3.5 w-3.5" /> Bearer-Token — wird nur JETZT angezeigt, kopiere ihn
             </label>
             <div className="flex items-center gap-2">
@@ -133,7 +133,7 @@ function BrainMcpModal({
                 {copied === "token" ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
               </button>
             </div>
-            <p className="text-[10px] text-muted-foreground mt-1">
+            <p className="text-[11px] text-muted-foreground mt-1">
               Header: <code>Authorization: Bearer {"<token>"}</code>
             </p>
           </div>
@@ -141,7 +141,7 @@ function BrainMcpModal({
 
         <div className="flex items-center justify-between pt-2 border-t border-foreground/[0.06]">
           <span className={cn(
-            "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium",
+            "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
             enabled ? "bg-emerald-500/10 text-emerald-400" : "bg-foreground/[0.04] text-muted-foreground"
           )}>
             <Power className="h-3 w-3" /> {enabled ? "Aktiv" : "Inaktiv"}
@@ -161,7 +161,7 @@ function BrainMcpModal({
           </div>
         </div>
         {enabled && (
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-[11px] text-muted-foreground">
             „Neu generieren" rotiert den Token — der alte verliert sofort die Gültigkeit.
           </p>
         )}
@@ -355,47 +355,47 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">Name / Abteilung</label>
+                <label className="block text-xs font-medium text-muted-foreground/70 mb-1">Name / Abteilung</label>
                 <input className={inputCls} value={form.name}
                   onChange={(e) => onNameChange(e.target.value)}
                   placeholder="z.B. IT Operations" />
               </div>
               <div>
-                <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">
+                <label className="block text-xs font-medium text-muted-foreground/70 mb-1">
                   Slug {editingId && <span className="text-muted-foreground">(fix)</span>}
                 </label>
                 <input className={cn(inputCls, editingId && "opacity-60")} value={form.slug}
                   disabled={!!editingId}
                   onChange={(e) => { setSlugTouched(true); setForm({ ...form, slug: e.target.value }); }}
                   placeholder="it_operations" />
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <p className="text-[11px] text-muted-foreground mt-1">
                   Pfad: <code>/srv/secondbrain/{slugify(form.slug || form.name) || "<slug>"}</code> → <code>/mnt/brains/{slugify(form.slug || form.name) || "<slug>"}</code>
                 </p>
               </div>
               <div>
-                <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">Standard-Modus</label>
+                <label className="block text-xs font-medium text-muted-foreground/70 mb-1">Standard-Modus</label>
                 <select className={inputCls} value={form.default_mode}
                   onChange={(e) => setForm({ ...form, default_mode: e.target.value as "ro" | "rw" })}>
                   <option value="rw">read-write (Obergrenze)</option>
                   <option value="ro">read-only</option>
                 </select>
-                <p className="text-[10px] text-muted-foreground mt-1">Pro Person/Rolle weiter einschränkbar (ro gewinnt).</p>
+                <p className="text-[11px] text-muted-foreground mt-1">Pro Person/Rolle weiter einschränkbar (ro gewinnt).</p>
               </div>
               <div>
-                <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">Beschreibung</label>
+                <label className="block text-xs font-medium text-muted-foreground/70 mb-1">Beschreibung</label>
                 <input className={inputCls} value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   placeholder="optional" />
               </div>
               <div className="col-span-2">
-                <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">
+                <label className="block text-xs font-medium text-muted-foreground/70 mb-1">
                   Vault-Standard {editingId && <span className="text-muted-foreground">(beim Anlegen festgelegt)</span>}
                 </label>
                 <select className={cn(inputCls, editingId && "opacity-60")} value={form.standard} disabled={!!editingId}
                   onChange={(e) => setForm({ ...form, standard: e.target.value as Standard })}>
                   {STANDARDS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                 </select>
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <p className="text-[11px] text-muted-foreground mt-1">
                   {STANDARDS.find((s) => s.value === form.standard)?.hint}
                   {!editingId && " — Ordner + CONVENTIONS.md werden beim Speichern angelegt."}
                 </p>
@@ -432,20 +432,20 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
                   className="flex-1 min-w-0 text-left rounded-lg -m-1 p-1 hover:bg-foreground/[0.04]">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium truncate">{b.name}</span>
-                    <span className="inline-flex items-center rounded-full border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium text-sky-400">
+                    <span className="inline-flex items-center rounded-full border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-xs font-medium text-sky-400">
                       {b.label}
                     </span>
                     <span className={cn(
-                      "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                      "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium",
                       b.default_mode === "rw" ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400" : "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-400"
                     )}>
                       {b.default_mode}
                     </span>
-                    <span className="inline-flex items-center rounded-full border border-foreground/[0.1] bg-foreground/[0.04] px-2 py-0.5 text-[10px] text-muted-foreground/70">
+                    <span className="inline-flex items-center rounded-full border border-foreground/[0.1] bg-foreground/[0.04] px-2 py-0.5 text-[11px] text-muted-foreground/70">
                       {b.bridge_ordner ? "Bridge-Ordner" : b.standard}
                     </span>
                   </div>
-                  <p className="text-[11px] text-muted-foreground/60 mt-0.5 truncate">
+                  <p className="text-xs text-muted-foreground/60 mt-0.5 truncate">
                     {b.bridge_ordner
                       ? `${b.bridge_ordner} — nur für dich, gepflegt unter Mein Konto → Meine Bridge-Ordner`
                       : `${b.container_path}${b.description ? ` — ${b.description}` : ""}`}
@@ -454,7 +454,7 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
                       nicht zu sehen, ob die Hybrid-Suche in diesem Vault
                       ueberhaupt etwas zu arbeiten hat — ein leerer Index
                       antwortet still ueber den Dateiweg weiter. */}
-                  <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                  <p className="text-xs text-muted-foreground mt-0.5 truncate">
                     {(b.indexed_files ?? 0) > 0
                       ? `${b.indexed_files} Dateien im Index${b.indexed_at ? ` · zuletzt ${new Date(b.indexed_at).toLocaleString("de-DE")}` : ""}`
                       : "noch nicht indiziert — die Suche nutzt bis dahin den Dateiweg"}
@@ -505,7 +505,7 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
             <div className="flex items-start justify-between">
               <div>
                 <h3 className="text-sm font-semibold">Vault einspielen</h3>
-                <p className="mt-0.5 text-[11px] text-muted-foreground/70">
+                <p className="mt-0.5 text-xs text-muted-foreground/70">
                   ZIP mit der Ordnerstruktur — z. B. ein exportierter Obsidian-Vault.
                   Ziel: <span className="font-mono">{importZiel.name}</span>
                 </p>
@@ -524,7 +524,7 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
               />
               <span>
                 Vorhandenes ersetzen
-                <span className="block text-[11px] text-muted-foreground/60">
+                <span className="block text-xs text-muted-foreground/60">
                   Aus: ergänzt und überschreibt, löscht nichts. An: der Vault wird zum
                   Abbild des Archivs — was nicht drin ist, wird gelöscht.
                 </span>
@@ -532,7 +532,7 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
             </label>
 
             {importErsetzen && (
-              <p className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] p-2.5 text-[11px] text-amber-700 dark:text-amber-300/90">
+              <p className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] p-2.5 text-xs text-amber-700 dark:text-amber-300/90">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 Dateien, die nicht im Archiv stehen, werden unwiderruflich entfernt.
               </p>
@@ -549,7 +549,7 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
               className="mt-4 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] p-2 text-xs file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-primary-foreground"
             />
 
-            <p className="mt-3 text-[11px] text-muted-foreground">
+            <p className="mt-3 text-xs text-muted-foreground">
               {importLaeuft
                 ? "Wird eingespielt und neu indiziert…"
                 : "Nach dem Einspielen werden die Einbettungen neu aufgebaut, damit die Notizen auffindbar sind."}

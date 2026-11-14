@@ -337,7 +337,7 @@ export function ZeitplanFormular({ agents, onAngelegt, onAbbrechen }: ZeitplanFo
               </select>
               <span className="text-xs text-muted-foreground">des Monats</span>
               {takt.monatstag > 28 && (
-                <span className="w-full text-[11px] text-muted-foreground/70">
+                <span className="w-full text-xs text-muted-foreground/70">
                   In Monaten ohne diesen Tag fällt der Lauf aus.
                 </span>
               )}
@@ -388,12 +388,12 @@ export function ZeitplanFormular({ agents, onAngelegt, onAbbrechen }: ZeitplanFo
                   Übernehmen
                 </button>
               </div>
-              {deutenFehler && <p className="text-[11px] text-red-400">{deutenFehler}</p>}
+              {deutenFehler && <p className="text-xs text-red-400">{deutenFehler}</p>}
               {vorschau && (
                 <div className="space-y-1 rounded-xl border border-primary/20 bg-primary/[0.04] px-4 py-3">
                   <p className="text-xs font-medium text-primary">{vorschau.explanation}</p>
                   {vorschau.next_runs.length > 0 && (
-                    <p className="text-[11px] text-muted-foreground/70">
+                    <p className="text-xs text-muted-foreground/70">
                       Nächste Läufe:{" "}
                       {vorschau.next_runs
                         .map((r) =>
@@ -410,7 +410,7 @@ export function ZeitplanFormular({ agents, onAngelegt, onAbbrechen }: ZeitplanFo
           )}
 
           {takt.art !== "freitext" && (
-            <p className="mt-2 text-[11px] text-muted-foreground/70">
+            <p className="mt-2 text-xs text-muted-foreground/70">
               {taktBeschreibung(takt)}
               {takt.art !== "intervall" && zeitzone ? ` (Zeitzone ${zeitzone})` : ""}
             </p>

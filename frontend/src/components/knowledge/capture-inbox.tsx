@@ -135,7 +135,7 @@ export function CaptureInbox({ onOpenEntry }: { onOpenEntry?: (id: number) => vo
         </p>
         {selected.size > 0 && (
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-muted-foreground">{selected.size} ausgewählt</span>
+            <span className="text-xs text-muted-foreground">{selected.size} ausgewählt</span>
             <button
               onClick={() => keep()}
               disabled={busy}

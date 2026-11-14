@@ -530,7 +530,7 @@ export default function ApprovalsPage() {
               <p className="text-sm text-muted-foreground">
                 Definiere Regeln, bei denen Agents IMMER um Erlaubnis fragen müssen.
               </p>
-              <p className="text-[11px] text-muted-foreground/60 mt-1">
+              <p className="text-xs text-muted-foreground/60 mt-1">
                 Diese Regeln werden bei jedem Task automatisch in den Agent-Prompt injiziert.
               </p>
             </div>
@@ -562,7 +562,7 @@ export default function ApprovalsPage() {
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">Name</label>
+                    <label className="text-xs font-medium text-muted-foreground/70 mb-1.5 block">Name</label>
                     <input
                       value={ruleDraft.name}
                       onChange={(e) => setRuleDraft({ ...ruleDraft, name: e.target.value })}
@@ -571,7 +571,7 @@ export default function ApprovalsPage() {
                     />
                   </div>
                   <div>
-                    <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">Kategorie</label>
+                    <label className="text-xs font-medium text-muted-foreground/70 mb-1.5 block">Kategorie</label>
                     <select
                       value={ruleDraft.category}
                       onChange={(e) => setRuleDraft({ ...ruleDraft, category: e.target.value })}
@@ -584,7 +584,7 @@ export default function ApprovalsPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
+                  <label className="text-xs font-medium text-muted-foreground/70 mb-1.5 block">
                     Beschreibung (was der Agent beachten soll)
                   </label>
                   <textarea
@@ -596,7 +596,7 @@ export default function ApprovalsPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
+                  <label className="text-xs font-medium text-muted-foreground/70 mb-1.5 block">
                     Schwellwert (optional, z.B. Betrag)
                   </label>
                   <input
@@ -648,7 +648,7 @@ export default function ApprovalsPage() {
                 return (
                   <div key={rule.id}>
                   {groupHeader && (
-                    <p className="mt-4 mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground/70">
+                    <p className="mt-4 mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground/70">
                       <Bot className="h-3.5 w-3.5" />
                       {groupHeader} — automatisch aus der Autonomie-Stufe
                     </p>
@@ -665,16 +665,16 @@ export default function ApprovalsPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <span className="text-sm font-medium">{rule.name}</span>
-                        <span className="inline-flex items-center rounded-full bg-foreground/[0.04] border border-foreground/[0.06] px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        <span className="inline-flex items-center rounded-full bg-foreground/[0.04] border border-foreground/[0.06] px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
                           {cfg.label}
                         </span>
                         {rule.threshold !== null && (
-                          <span className="inline-flex items-center rounded-full bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                          <span className="inline-flex items-center rounded-full bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">
                             &gt; {rule.threshold}
                           </span>
                         )}
                         {rule.is_preset && rule.agent_id && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-medium text-primary">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 border border-primary/20 px-2 py-0.5 text-[11px] font-medium text-primary">
                             <Layers className="h-2.5 w-2.5" />
                             Auto-Preset
                           </span>
@@ -790,21 +790,21 @@ export default function ApprovalsPage() {
                               : approval.tool}
                           </span>
                           {isReflection ? (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-violet-500/20 bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-400">
+                            <span className="inline-flex items-center gap-1 rounded-full border border-violet-500/20 bg-violet-500/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-violet-400">
                               <Moon className="h-2.5 w-2.5" />
                               Nachtschicht
                             </span>
                           ) : isEscalation(approval) ? (
                             // Eskalation: der Mensch MUSS übernehmen. Das als
                             // gewoehnliche Freigabe zu zeigen, wäre untertrieben.
-                            <span className="inline-flex items-center gap-1 rounded-full border border-red-500/20 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-red-400">
+                            <span className="inline-flex items-center gap-1 rounded-full border border-red-500/20 bg-red-500/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-red-400">
                               <Siren className="h-2.5 w-2.5" />
                               {escalationLabel(approval)}
                             </span>
                           ) : (
                             <span
                               className={cn(
-                                "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                                "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider",
                                 config.bg,
                                 config.color,
                                 config.border
@@ -822,7 +822,7 @@ export default function ApprovalsPage() {
                             {/* Before/after side by side */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
                               <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2">
-                                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
                                   Vorher
                                 </p>
                                 {rMeta?.before ? (
@@ -831,7 +831,7 @@ export default function ApprovalsPage() {
                                       {rMeta.before.content}
                                     </p>
                                     {typeof rMeta.before.similarity === "number" && (
-                                      <p className="text-[10px] text-muted-foreground mt-1.5">
+                                      <p className="text-[11px] text-muted-foreground mt-1.5">
                                         Ähnlichkeit: {Math.round(rMeta.before.similarity * 100)}%
                                       </p>
                                     )}
@@ -843,7 +843,7 @@ export default function ApprovalsPage() {
                                 )}
                               </div>
                               <div className="rounded-lg border border-violet-500/20 bg-violet-500/[0.04] px-3 py-2">
-                                <p className="text-[10px] font-semibold uppercase tracking-wider text-violet-400/70 mb-1">
+                                <p className="text-[11px] font-semibold uppercase tracking-wider text-violet-400/70 mb-1">
                                   Nachher
                                 </p>
                                 {rMeta?.change_type === "knowledge" && rMeta?.proposal?.title && (
@@ -882,7 +882,7 @@ export default function ApprovalsPage() {
                             )}
                             {/* Context */}
                             {approval.context && (
-                              <p className="text-[11px] text-muted-foreground/60 line-clamp-2">
+                              <p className="text-xs text-muted-foreground/60 line-clamp-2">
                                 {approval.context}
                               </p>
                             )}
@@ -902,14 +902,14 @@ export default function ApprovalsPage() {
                               </div>
                             )}
                             {/* Reasoning */}
-                            <p className="text-[11px] text-muted-foreground/60 line-clamp-2">
+                            <p className="text-xs text-muted-foreground/60 line-clamp-2">
                               {approval.reasoning}
                             </p>
                           </>
                         )}
 
                         {/* Meta */}
-                        <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
+                        <div className="flex items-center gap-3 mt-2 text-[11px] text-muted-foreground">
                           <span>Agent: {agentName(approval.agent_id)}</span>
                           <span>
                             {new Date(approval.created_at).toLocaleString()}
@@ -967,8 +967,8 @@ export default function ApprovalsPage() {
             <p className="text-sm text-muted-foreground">
               Jedes Level definiert was ein Agent <strong>ohne Rückfrage tun darf</strong> (Whitelist). Alles außerhalb löst automatisch eine Freigabe-Anfrage aus.
             </p>
-            <p className="text-[11px] text-muted-foreground/60 mt-1">
-              Einträge mit dem Badge <span className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 border border-primary/20 px-1.5 py-0.5 text-[10px] text-primary font-medium"><Layers className="h-2.5 w-2.5" />Auto-Preset</span> in der Regeln-Liste sind automatisch generiert.
+            <p className="text-xs text-muted-foreground/60 mt-1">
+              Einträge mit dem Badge <span className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 border border-primary/20 px-1.5 py-0.5 text-[11px] text-primary font-medium"><Layers className="h-2.5 w-2.5" />Auto-Preset</span> in der Regeln-Liste sind automatisch generiert.
             </p>
           </div>
 
@@ -997,10 +997,10 @@ export default function ApprovalsPage() {
                       </span>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium">{preset.label}</p>
-                        <p className="text-[11px] text-muted-foreground/60 mt-0.5">{preset.description}</p>
+                        <p className="text-xs text-muted-foreground/60 mt-0.5">{preset.description}</p>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
-                        <span className="text-[11px] text-muted-foreground">
+                        <span className="text-xs text-muted-foreground">
                           {preset.rule_count === 0 ? "Alles erlaubt" : `${preset.rule_count} erlaubte Aktion${preset.rule_count !== 1 ? "en" : ""}`}
                         </span>
                         {isExpanded
@@ -1012,7 +1012,7 @@ export default function ApprovalsPage() {
                     {isExpanded && (
                       <div className="border-t border-foreground/[0.06] divide-y divide-foreground/[0.04]">
                         {preset.rule_count === 0 && addingRuleLevel !== level ? (
-                          <div className="px-4 py-5 text-center text-[11px] text-muted-foreground">
+                          <div className="px-4 py-5 text-center text-xs text-muted-foreground">
                             Keine Regeln — Agent handelt vollständig autonom.
                           </div>
                         ) : (preset.rules as PresetRule[]).map((rule) => {
@@ -1025,10 +1025,10 @@ export default function ApprovalsPage() {
                               </div>
                               <div className="flex-1 min-w-0">
                                 <p className="text-xs font-medium">{rule.name}</p>
-                                <p className="text-[11px] text-muted-foreground/60 mt-0.5 leading-relaxed">{rule.description}</p>
+                                <p className="text-xs text-muted-foreground/60 mt-0.5 leading-relaxed">{rule.description}</p>
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
-                                <span className="inline-flex items-center rounded-full bg-foreground/[0.04] border border-foreground/[0.06] px-2 py-0.5 text-[10px] text-muted-foreground">
+                                <span className="inline-flex items-center rounded-full bg-foreground/[0.04] border border-foreground/[0.06] px-2 py-0.5 text-[11px] text-muted-foreground">
                                   {cfg.label}
                                 </span>
                                 <button
@@ -1088,7 +1088,7 @@ export default function ApprovalsPage() {
                         ) : (
                           <button
                             onClick={() => { setAddingRuleLevel(level); setExpandedLevel(level); setPresetDraft({ name: "", description: "", category: "custom" }); }}
-                            className="w-full flex items-center gap-2 px-4 py-2.5 text-[11px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.02] transition-colors"
+                            className="w-full flex items-center gap-2 px-4 py-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.02] transition-colors"
                           >
                             <Plus className="h-3 w-3" />
                             Regel hinzufügen
@@ -1229,7 +1229,7 @@ function VerlaufTab({ agents }: { agents: { id: string; name: string }[] }) {
                     <span className="text-sm font-medium truncate">
                       {istFrage ? a.question : a.tool}
                     </span>
-                    <span className={cn("inline-flex items-center gap-1 text-[11px] font-medium", st.color)}>
+                    <span className={cn("inline-flex items-center gap-1 text-xs font-medium", st.color)}>
                       <Icon className="h-3 w-3" />
                       {st.label}
                     </span>
@@ -1243,7 +1243,7 @@ function VerlaufTab({ agents }: { agents: { id: string; name: string }[] }) {
                       {a.user_response}
                     </p>
                   )}
-                  <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground/60">
+                  <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-muted-foreground/60">
                     <span>{new Date(zeitpunkt).toLocaleString("de-DE")}</span>
                     <span>Agent: {a.agent_name || a.agent_id}</span>
                     <span>

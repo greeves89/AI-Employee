@@ -78,13 +78,13 @@ export function SystemControl() {
         <div className="flex items-center justify-between gap-3 px-5 py-3.5 border-b border-foreground/[0.04]">
           <div className="min-w-0">
             <h3 className="text-sm font-semibold">Dienste</h3>
-            <p className="text-[11px] text-muted-foreground/60">
+            <p className="text-xs text-muted-foreground/60">
               Fernwartung: Status & Neustart von außerhalb des Firmennetzes {status?.version ? `· v${status.version}` : ""}
             </p>
           </div>
           <button
             onClick={load}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground/80 hover:bg-foreground/[0.05] transition-all shrink-0"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-2.5 py-1.5 text-xs font-medium text-muted-foreground/80 hover:bg-foreground/[0.05] transition-all shrink-0"
           >
             <RefreshCw className="h-3.5 w-3.5" />
             Aktualisieren
@@ -93,12 +93,12 @@ export function SystemControl() {
 
         {note && (
           <div className="px-5 py-2.5 bg-primary/[0.04] border-b border-foreground/[0.04]">
-            <p className="text-[11px] text-muted-foreground/80">{note}</p>
+            <p className="text-xs text-muted-foreground/80">{note}</p>
           </div>
         )}
         {error && (
           <div className="px-5 py-2.5 bg-red-500/[0.06] border-b border-red-500/10">
-            <p className="text-[11px] text-red-400">{error}</p>
+            <p className="text-xs text-red-400">{error}</p>
           </div>
         )}
 
@@ -117,7 +117,7 @@ export function SystemControl() {
                       <span className="text-sm font-medium capitalize">{label}</span>
                       <span
                         className={cn(
-                          "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                          "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium",
                           STATE_STYLES[state] || STATE_STYLES.absent,
                         )}
                       >
@@ -129,7 +129,7 @@ export function SystemControl() {
                       <button
                         onClick={() => restart(label as "orchestrator" | "frontend")}
                         disabled={busy !== null}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[11px] font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-500/15 disabled:opacity-50 transition-all shrink-0"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-500/15 disabled:opacity-50 transition-all shrink-0"
                       >
                         {busy === label ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -155,7 +155,7 @@ export function SystemControl() {
 
         <div className="flex items-start gap-2 px-5 py-3 border-t border-foreground/[0.04] bg-foreground/[0.01]">
           <AlertTriangle className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400/60 mt-0.5 shrink-0" />
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-[11px] text-muted-foreground">
             Nur Orchestrator und Frontend sind neustartbar — Datenbank, Redis und Proxy sind bewusst ausgenommen,
             damit ein Fehlklick nichts Kritisches trifft.
           </p>

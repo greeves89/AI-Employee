@@ -400,11 +400,11 @@ export default function ProjektPage() {
                   reiter === key ? "border-primary font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}>
                 <Icon className="h-4 w-4" /> {label}
                 {key === "board" && (board.kennzahlen.triage ?? 0) > 0 && (
-                  <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300"
+                  <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300"
                     title="Rückfragen warten auf dich (Triage)"><MessageCircleQuestion className="h-3 w-3" />{board.kennzahlen.triage}</span>
                 )}
                 {key === "board" && board.kennzahlen.pruefung > 0 && (
-                  <span className="rounded-full bg-orange-500/15 px-1.5 text-[10px] font-semibold text-orange-600 dark:text-orange-400"
+                  <span className="rounded-full bg-orange-500/15 px-1.5 text-[11px] font-semibold text-orange-600 dark:text-orange-400"
                     title="Wartet auf dein Review">{board.kennzahlen.pruefung}</span>
                 )}
                 {key === "raum" && board.laufend.length > 0 && (
@@ -436,7 +436,7 @@ export default function ProjektPage() {
                 <div className="rounded-2xl border border-foreground/[0.08] bg-card p-4">
                   <div className="flex items-baseline justify-between">
                     <h2 className="text-sm font-semibold">Erledigt</h2>
-                    <span className="text-[11px] text-muted-foreground">{board.kennzahlen.fertig_7_tage} in 7 Tagen</span>
+                    <span className="text-xs text-muted-foreground">{board.kennzahlen.fertig_7_tage} in 7 Tagen</span>
                   </div>
                   <div className="mt-3"><ProjektVerlauf kennzahlen={board.kennzahlen} farbe={farbe} /></div>
                 </div>
@@ -477,7 +477,7 @@ export default function ProjektPage() {
                           <span className="truncate">{agent?.name ?? "Gelöschter Agent"}</span>
                           {projekt.lead_agent_id === mid && <Crown className="h-3 w-3 shrink-0 text-amber-500" />}
                         </span>
-                        <span className="block truncate text-[11px] text-muted-foreground">
+                        <span className="block truncate text-xs text-muted-foreground">
                           {laeuft ? `Arbeitet an: ${laeuft.karte_titel ?? laeuft.titel}` : agentZustand(agent?.state)}
                         </span>
                       </span>

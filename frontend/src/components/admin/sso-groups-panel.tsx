@@ -224,12 +224,12 @@ export function SsoGroupsPanel() {
                 {unmappedObserved.map((g) => (
                   <div key={g.group_name} className="flex items-center gap-2 rounded-lg bg-card/60 px-3 py-2">
                     <span className="min-w-0 flex-1 truncate text-[12px] font-medium">{g.group_name}</span>
-                    <span className="shrink-0 text-[10px] text-muted-foreground/60">
+                    <span className="shrink-0 text-[11px] text-muted-foreground/60">
                       zuletzt gesehen: {g.last_seen_at ? new Date(g.last_seen_at).toLocaleDateString("de-DE") : "–"}
                     </span>
                     <button
                       onClick={() => startAssign(g.group_name)}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-foreground/[0.08] px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-foreground/[0.08] px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
                     >
                       Rolle zuweisen <ChevronRight className="h-3 w-3" />
                     </button>
@@ -255,7 +255,7 @@ export function SsoGroupsPanel() {
               </span>
               <button
                 onClick={() => { closeEditors(); setManualOpen(true); }}
-                className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium text-primary hover:bg-primary/10"
+                className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10"
               >
                 <Plus className="h-3.5 w-3.5" /> Manuell hinzufügen
               </button>
@@ -263,7 +263,7 @@ export function SsoGroupsPanel() {
 
             {manualOpen && (
               <div className="border-b border-foreground/[0.04] p-4">
-                <label className="mb-1 block text-[11px] font-medium text-muted-foreground">
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">
                   Gruppenname (genau wie beim Anbieter, z. B. der Entra-Anzeigename)
                 </label>
                 <input
@@ -295,7 +295,7 @@ export function SsoGroupsPanel() {
                       <span className="min-w-0 flex-1 truncate text-[12px] font-medium">{m.group_name}</span>
                       <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/40" />
                       <span className={cn(
-                        "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+                        "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium",
                         m.target_kind === "role" ? "bg-primary/10 text-primary" : "bg-violet-500/10 text-violet-400"
                       )}>
                         {m.target_kind === "custom_role" && <Shield className="h-2.5 w-2.5" />}
@@ -303,12 +303,12 @@ export function SsoGroupsPanel() {
                       </span>
                       {m.priority !== 0 && (
                         <span title="Priorität — höher gewinnt bei mehreren zutreffenden Gruppen"
-                              className="shrink-0 rounded bg-foreground/[0.06] px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                              className="shrink-0 rounded bg-foreground/[0.06] px-1.5 py-0.5 text-[11px] text-muted-foreground">
                           P{m.priority}
                         </span>
                       )}
                       <button onClick={() => startEdit(m)}
-                              className="shrink-0 rounded-lg border border-foreground/[0.08] px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground">
+                              className="shrink-0 rounded-lg border border-foreground/[0.08] px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
                         Bearbeiten
                       </button>
                       <button onClick={() => remove(m)} title="Löschen"
@@ -333,7 +333,7 @@ export function SsoGroupsPanel() {
           {/* Beobachtete UND bereits zugeordnete Gruppen — Transparenz, was gerade
               wirklich hereinkommt, auch ohne dass etwas zu tun wäre. */}
           {observed.some((g) => g.mapped) && (
-            <details className="text-[11px] text-muted-foreground/60">
+            <details className="text-xs text-muted-foreground/60">
               <summary className="cursor-pointer select-none">
                 Bereits zugeordnete, beobachtete Gruppen ({observed.filter((g) => g.mapped).length})
               </summary>
@@ -376,7 +376,7 @@ function TargetEditor({
             key={kind}
             onClick={() => setDraft((d) => ({ ...d, kind }))}
             className={cn(
-              "flex-1 rounded-lg border px-3 py-1.5 text-[11px] font-medium transition-colors",
+              "flex-1 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
               draft.kind === kind ? "border-primary/40 bg-primary/10 text-foreground" : "border-foreground/[0.08] text-muted-foreground hover:text-foreground"
             )}
           >
@@ -419,7 +419,7 @@ function TargetEditor({
       </div>
 
       {draft.kind === "custom_role" && customRoles.length === 0 && (
-        <p className="mt-1.5 text-[10px] text-muted-foreground/60">
+        <p className="mt-1.5 text-[11px] text-muted-foreground/60">
           Noch keine eigenen Rollen angelegt — siehe Reiter „Rollen".
         </p>
       )}
@@ -428,12 +428,12 @@ function TargetEditor({
         <button
           onClick={onSave}
           disabled={!valid || saving}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground disabled:opacity-40"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-40"
         >
           {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
           Speichern
         </button>
-        <button onClick={onCancel} className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] text-muted-foreground hover:text-foreground">
+        <button onClick={onCancel} className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground">
           <X className="h-3 w-3" /> Abbrechen
         </button>
       </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -84,6 +84,18 @@ export function MeineEinstellungenView() {
     if (abschnitt) document.getElementById(abschnitt)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [user, router]);
 
+  // Welcher Abschnitt gerade im Blick ist — die Liste zeigte keinen aktiven Punkt
+  // (UI-Bewertung 14.11.2026).
+  const [aktiv, setAktiv] = useState<string>(KONTO_BEREICHE[0]?.id ?? "");
+  useEffect(() => {
+    const beob = new IntersectionObserver((eintraege) => {
+      const sichtbar = eintraege.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+      if (sichtbar) setAktiv(sichtbar.target.id);
+    }, { rootMargin: "-20% 0px -60% 0px" });
+    KONTO_BEREICHE.forEach((b) => { const el = document.getElementById(b.id); if (el) beob.observe(el); });
+    return () => beob.disconnect();
+  }, []);
+
   return (
     <div>
       <Header
@@ -99,9 +111,11 @@ export function MeineEinstellungenView() {
             <a
               key={b.id}
               href={`#${b.id}`}
+              aria-current={aktiv === b.id ? "true" : undefined}
+              onClick={() => setAktiv(b.id)}
               /* Als Knöpfe erkennbar (Rahmen auf dem Handy), vorher sahen sie wie Text aus
                  (Persona Mobil, 14.11.2026). Am Rechner eine ruhige Liste links. */
-              className="shrink-0 rounded-full border border-border px-3 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-card hover:text-foreground lg:rounded-lg lg:border-transparent lg:py-2 lg:text-[14px]"
+              className={`shrink-0 rounded-full border px-3 py-1.5 text-[13px] transition-colors hover:bg-card hover:text-foreground lg:rounded-lg lg:py-2 lg:text-[14px] ${aktiv === b.id ? "border-primary/40 bg-primary/10 font-medium text-foreground lg:border-transparent" : "border-border text-muted-foreground lg:border-transparent"}`}
             >
               {b.titel}
             </a>
@@ -147,7 +161,7 @@ export function MeineEinstellungenView() {
             <div className="flex items-center justify-between gap-3 px-5 py-4">
               <div className="min-w-0">
                 <div className="text-sm font-medium">Erscheinungsbild</div>
-                <p className="mt-0.5 text-[11px] text-muted-foreground/70">Gilt für diesen Browser.</p>
+                <p className="mt-0.5 text-xs text-muted-foreground/70">Gilt für diesen Browser.</p>
               </div>
               <button
                 type="button"
@@ -162,7 +176,7 @@ export function MeineEinstellungenView() {
               <div className="flex items-center justify-between gap-3 px-5 py-4">
                 <div className="min-w-0">
                   <div className="text-sm font-medium">Mitglieder-Ansicht</div>
-                  <p className="mt-0.5 text-[11px] text-muted-foreground/70">
+                  <p className="mt-0.5 text-xs text-muted-foreground/70">
                     Zeigt die Oberfläche so, wie sie Nutzer ohne Admin-Rechte sehen.
                   </p>
                 </div>

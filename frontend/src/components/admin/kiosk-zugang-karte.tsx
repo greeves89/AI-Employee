@@ -51,7 +51,7 @@ export function KioskZugangKarte() {
         <MonitorSmartphone className="h-4 w-4 mt-0.5 text-muted-foreground" />
         <div>
           <div className="text-sm font-medium">Kiosk-Anzeige</div>
-          <div className="text-[11px] text-muted-foreground/60">
+          <div className="text-xs text-muted-foreground/60">
             Der Kiosk zeigt Status und lässt mit Agenten chatten, ohne Anmeldung. Er antwortet nur Geräten
             mit Zugang. Link erzeugen und einmal auf dem Kiosk-Gerät öffnen. Ein neuer Link macht den alten ungültig.
           </div>
@@ -66,7 +66,7 @@ export function KioskZugangKarte() {
           </button>
         </div>
       )}
-      {link && <div className="text-[11px] text-muted-foreground/60">Der Link wird nur jetzt angezeigt.</div>}
+      {link && <div className="text-xs text-muted-foreground/60">Der Link wird nur jetzt angezeigt.</div>}
       <div className="flex gap-2">
         <button type="button" disabled={busy} onClick={erzeugen}
           className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-40">

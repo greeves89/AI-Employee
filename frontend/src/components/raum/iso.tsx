@@ -193,7 +193,7 @@ export function AgentFigur({
           Plätze stehen schräg, der Nachbar sitzt links oben — mittig verdeckte die Blase
           ihn (Board-Test 2026-10-17). Absolut gesetzt, damit Figur und Name nicht springen. */}
       {mitText && titel && (
-        <div className="pointer-events-none absolute bottom-[calc(100%-1.75rem)] left-[calc(50%+0.75rem)] z-10 line-clamp-2 w-max max-w-[9.5rem] rounded-lg rounded-bl-none bg-background/95 px-2 py-0.5 text-[10px] leading-snug shadow ring-1 ring-emerald-500/30" title={titel}>
+        <div className="pointer-events-none absolute bottom-[calc(100%-1.75rem)] left-[calc(50%+0.75rem)] z-10 line-clamp-2 w-max max-w-[9.5rem] rounded-lg rounded-bl-none bg-background/95 px-2 py-0.5 text-[11px] leading-snug shadow ring-1 ring-emerald-500/30" title={titel}>
           {titel}
         </div>
       )}
@@ -214,7 +214,7 @@ export function AgentFigur({
         {istLead && <Crown className="absolute -right-1.5 -top-1.5 h-3.5 w-3.5 text-amber-500 drop-shadow" />}
       </button>
       {mitText && (
-        <span className="mt-1 max-w-[7rem] truncate rounded bg-background/80 px-1.5 text-[10px] font-medium">
+        <span className="mt-1 max-w-[7rem] truncate rounded bg-background/80 px-1.5 text-[11px] font-medium">
           {agent?.name ?? "gelöscht"}
         </span>
       )}

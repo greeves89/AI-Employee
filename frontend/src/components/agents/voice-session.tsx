@@ -1471,7 +1471,7 @@ export function VoiceSessionModal({
               </p>
             </div>
             {isRealtime && (
-              <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-fuchsia-500/10 px-2 py-1 text-[10px] font-medium text-fuchsia-400">
+              <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-fuchsia-500/10 px-2 py-1 text-[11px] font-medium text-fuchsia-400">
                 <Radio className="h-3 w-3" /> Realtime
               </span>
             )}
@@ -1533,11 +1533,11 @@ export function VoiceSessionModal({
                   <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-xl bg-background/70 backdrop-blur-[1px]">
                     <Paperclip className="h-6 w-6 text-primary" />
                     <p className="text-xs font-medium text-primary">Datei hier ablegen</p>
-                    <p className="text-[11px] text-muted-foreground/60">Ich frage dann, was ich damit tun soll</p>
+                    <p className="text-xs text-muted-foreground/60">Ich frage dann, was ich damit tun soll</p>
                   </div>
                 )}
                 <div className="flex items-center justify-between border-b border-border px-3 py-2">
-                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Gespräch</span>
+                  <span className="text-[11px] uppercase tracking-wider text-muted-foreground/60">Gespräch</span>
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -1548,7 +1548,7 @@ export function VoiceSessionModal({
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={uploading}
-                    className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-muted-foreground/70 hover:bg-foreground/[0.06] hover:text-foreground disabled:opacity-50"
+                    className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted-foreground/70 hover:bg-foreground/[0.06] hover:text-foreground disabled:opacity-50"
                     title="Datei in den Workspace laden (oder einfach hierher ziehen)"
                   >
                     {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
@@ -1635,7 +1635,7 @@ export function VoiceSessionModal({
                   {/* Playback volume — GainNode-based so it also works on iOS Safari */}
                   <div className="flex items-center gap-2">
                     <Volume2 className="h-3.5 w-3.5 shrink-0 text-emerald-400/80" />
-                    <span className="w-20 shrink-0 text-[10px] text-muted-foreground/70">Lautstärke</span>
+                    <span className="w-20 shrink-0 text-[11px] text-muted-foreground/70">Lautstärke</span>
                     <input
                       type="range"
                       min={0}
@@ -1653,7 +1653,7 @@ export function VoiceSessionModal({
                       Tonkette, nicht in der Engine. */}
                   <div className="flex items-center gap-2">
                     <Mic className="h-3.5 w-3.5 shrink-0 text-sky-400/80" />
-                    <span className="w-20 shrink-0 text-[10px] text-muted-foreground/70">Mikrofon</span>
+                    <span className="w-20 shrink-0 text-[11px] text-muted-foreground/70">Mikrofon</span>
                     <input
                       type="range"
                       min={0}
@@ -1686,7 +1686,7 @@ export function VoiceSessionModal({
                       />
                     )}
                   </div>
-                  <p className="pl-[22px] text-[10px] leading-tight text-muted-foreground">
+                  <p className="pl-[22px] text-[11px] leading-tight text-muted-foreground">
                     {empfindlichkeit === 0
                       ? "Nimmt jedes Geräusch auf"
                       : empfindlichkeit >= 70
@@ -1723,7 +1723,7 @@ export function VoiceSessionModal({
                 {alleAnzeigen.length > stageItems.length && (
                   /* Stillschweigend abschneiden wäre gelogen — es sieht dann so
                      aus, als haette der Agent nur vier Bilder geliefert. */
-                  <p className="text-center text-[11px] text-muted-foreground">
+                  <p className="text-center text-xs text-muted-foreground">
                     {alleAnzeigen.length - stageItems.length} ältere Anzeige
                     {alleAnzeigen.length - stageItems.length === 1 ? "" : "n"} ausgeblendet —
                     schliesse eine, um sie zu sehen.
@@ -1741,12 +1741,12 @@ export function VoiceSessionModal({
                         Agent redet weiter, statt neu zu begrüßen. */}
                     <button
                       onClick={() => neuVerbindenRef.current?.()}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-medium text-emerald-400 transition-colors hover:bg-emerald-500/20"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-400 transition-colors hover:bg-emerald-500/20"
                     >
                       <Radio className="h-3 w-3" />
                       Neu verbinden
                     </button>
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-[11px] text-muted-foreground">
                       Das Gespräch wird fortgesetzt, nicht neu begonnen.
                     </span>
                   </div>
@@ -1763,7 +1763,7 @@ export function VoiceSessionModal({
                 />
               ) : (
               <div className={`order-3 flex ${paneHeight} min-w-0 flex-col rounded-xl border border-border bg-foreground/[0.02]`}>
-                <div className="flex items-center justify-between border-b border-border px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground/60">
+                <div className="flex items-center justify-between border-b border-border px-3 py-2 text-[11px] uppercase tracking-wider text-muted-foreground/60">
                   <span>Aufgaben &amp; Aktivität</span>
                   <button
                     onClick={() => setAufgabenAus(true)}
@@ -1781,7 +1781,7 @@ export function VoiceSessionModal({
                       {toolLog.slice(-8).map((t, ti) => (
                         <div
                           key={ti}
-                          className="rounded-md border border-border bg-foreground/[0.02] px-2 py-1 text-[10px]"
+                          className="rounded-md border border-border bg-foreground/[0.02] px-2 py-1 text-[11px]"
                         >
                           <div className="flex items-center gap-1.5">
                             {t.done ? (
@@ -1789,7 +1789,7 @@ export function VoiceSessionModal({
                             ) : (
                               <Loader2 className="h-3 w-3 shrink-0 animate-spin text-sky-500" />
                             )}
-                            <span className="font-mono text-[10px] text-foreground/80">{t.name}</span>
+                            <span className="font-mono text-[11px] text-foreground/80">{t.name}</span>
                           </div>
                           {t.input && (
                             <div className="mt-0.5 truncate pl-4 text-muted-foreground/60">
@@ -1811,7 +1811,7 @@ export function VoiceSessionModal({
                         /* Der Tagesplan als Karte. Ohne eigene Darstellung landete er in
                            der Datei-Zeile und der Nutzer sah nur „Datei" — kein Kalender. */
                         <div>
-                          <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-foreground">
+                          <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-foreground">
                             <CalendarClock className="h-3.5 w-3.5 text-sky-400" />
                             {m.caption || "Tagesplan"}
                           </div>
@@ -1819,7 +1819,7 @@ export function VoiceSessionModal({
                             {m.items.map((it, ii) => (
                               <div
                                 key={ii}
-                                className={`flex items-start gap-2 rounded-md border-l-2 px-2 py-1 text-[11px] ${
+                                className={`flex items-start gap-2 rounded-md border-l-2 px-2 py-1 text-xs ${
                                   it.status === "done"
                                     ? "border-l-emerald-500/60 bg-emerald-500/[0.10] text-muted-foreground dark:border-l-emerald-400/60 dark:bg-emerald-400/[0.06]"
                                     : it.status === "running"
@@ -1829,12 +1829,12 @@ export function VoiceSessionModal({
                                     : "border-l-sky-500/40 bg-sky-500/[0.06] text-foreground/90 dark:border-l-sky-400/40 dark:bg-sky-400/[0.04]"
                                 }`}
                               >
-                                <span className="shrink-0 font-mono text-[10px] text-muted-foreground/70">
+                                <span className="shrink-0 font-mono text-[11px] text-muted-foreground/70">
                                   {it.time || "--:--"}
                                 </span>
                                 <span className="min-w-0 flex-1">
                                   <span className="block truncate">{it.title}</span>
-                                  <span className="text-[10px] text-muted-foreground">
+                                  <span className="text-[11px] text-muted-foreground">
                                     {it.status === "done"
                                       ? "erledigt"
                                       : it.status === "running"
@@ -1888,7 +1888,7 @@ export function VoiceSessionModal({
                       )}
                       {/* Beim Tagesplan steht die Ueberschrift schon oben in der Karte. */}
                       {m.caption && m.kind !== "plan" && (
-                        <div className="mt-1 text-[11px] text-muted-foreground/70">{m.caption}</div>
+                        <div className="mt-1 text-xs text-muted-foreground/70">{m.caption}</div>
                       )}
                     </div>
                   ))}
@@ -1923,7 +1923,7 @@ export function VoiceSessionModal({
                             })}
                             className={`min-w-0 flex-1 text-left ${(t.done ? t.result : t.id) ? "cursor-pointer" : "cursor-default"}`}
                           >
-                            <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground/60">
+                            <div className="flex items-center gap-1 text-[11px] uppercase tracking-wider text-muted-foreground/60">
                               {t.done ? "Erledigt" : "Läuft"}
                               {(t.done ? t.result : t.id) && (
                                 open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />
@@ -1942,7 +1942,7 @@ export function VoiceSessionModal({
                           )}
                         </div>
                         {!t.done && open && (
-                          <div className="mt-1 space-y-0.5 font-mono text-[10px] leading-relaxed text-muted-foreground/70">
+                          <div className="mt-1 space-y-0.5 font-mono text-[11px] leading-relaxed text-muted-foreground/70">
                             {(taskSteps[t.id] || []).map((line, li) => (
                               <div key={li} className="truncate">· {line}</div>
                             ))}
@@ -1952,7 +1952,7 @@ export function VoiceSessionModal({
                           </div>
                         )}
                         {t.done && t.result && open && (
-                          <div className="mt-1 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-muted-foreground/80">
+                          <div className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground/80">
                             {linkify(t.result)}
                           </div>
                         )}
@@ -1964,7 +1964,7 @@ export function VoiceSessionModal({
                     <div className="rounded-lg border border-border bg-black/40 p-2.5">
                       <button
                         onClick={() => setActivityOpen((o) => !o)}
-                        className="mb-1.5 flex w-full items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground/60 hover:text-muted-foreground/90"
+                        className="mb-1.5 flex w-full items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground/60 hover:text-muted-foreground/90"
                       >
                         {activityOpen ? (
                           <ChevronDown className="h-3 w-3" />
@@ -1975,7 +1975,7 @@ export function VoiceSessionModal({
                       </button>
                       <div
                         ref={activityRef}
-                        className={`max-h-52 overflow-y-auto font-mono text-[11px] leading-relaxed ${activityOpen ? "" : "hidden"}`}
+                        className={`max-h-52 overflow-y-auto font-mono text-xs leading-relaxed ${activityOpen ? "" : "hidden"}`}
                       >
                         {activity.map((a, i) => (
                           <div
@@ -2016,7 +2016,7 @@ export function VoiceSessionModal({
                   )}
                   {webResults.map((w, wi) => (
                     <div key={wi} className="rounded-lg border border-border bg-foreground/[0.03] p-2.5">
-                      <div className="mb-1.5 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">
+                      <div className="mb-1.5 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground/60">
                         <Search className="h-3 w-3 text-indigo-400" />
                         <span className="min-w-0 flex-1 truncate">{w.query}</span>
                         {/* Ergebnisse bleiben sonst bis zum Sitzungsende stehen und
@@ -2040,7 +2040,7 @@ export function VoiceSessionModal({
                             className="block rounded-md p-1.5 hover:bg-foreground/[0.04]"
                           >
                             <div className="truncate text-xs font-medium text-indigo-300">{r.title || r.url}</div>
-                            <div className="line-clamp-2 text-[11px] text-muted-foreground/70">{r.snippet}</div>
+                            <div className="line-clamp-2 text-xs text-muted-foreground/70">{r.snippet}</div>
                           </a>
                         ))}
                       </div>
@@ -2049,7 +2049,7 @@ export function VoiceSessionModal({
                   {(webResults.length > 1 || media.length > 1) && (
                     <button
                       onClick={() => { setWebResults([]); setMedia([]); }}
-                      className="w-full rounded-lg border border-border/60 py-1.5 text-[11px] text-muted-foreground/70 hover:bg-foreground/[0.04] hover:text-foreground"
+                      className="w-full rounded-lg border border-border/60 py-1.5 text-xs text-muted-foreground/70 hover:bg-foreground/[0.04] hover:text-foreground"
                     >
                       Alle Ergebnisse ausblenden
                     </button>
@@ -2071,7 +2071,7 @@ export function VoiceSessionModal({
                 <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
                   <Network className="h-4 w-4 text-primary" />
                   <span className="text-sm font-medium">Wissensgraph</span>
-                  <span className="text-[11px] text-muted-foreground">— per Sprache steuerbar („mach den Graphen wieder zu")</span>
+                  <span className="text-xs text-muted-foreground">— per Sprache steuerbar („mach den Graphen wieder zu")</span>
                   <button
                     onClick={() => setGraphOverlay(null)}
                     className="ml-auto rounded-md p-1 text-muted-foreground hover:bg-foreground/[0.06]"
@@ -2096,7 +2096,7 @@ export function VoiceSessionModal({
                 <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
                   <LayoutGrid className="h-4 w-4 text-primary" />
                   <span className="text-sm font-medium">{pageOverlay.label}</span>
-                  <span className="hidden text-[11px] text-muted-foreground sm:inline">
+                  <span className="hidden text-xs text-muted-foreground sm:inline">
                     — sprich einfach weiter („mach das wieder zu")
                   </span>
                   <a
@@ -2129,7 +2129,7 @@ export function VoiceSessionModal({
             {meetingOpen && (
               <div className="mt-4 rounded-xl border border-sky-500/30 bg-sky-500/[0.04] p-3">
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="text-[11px] font-medium uppercase tracking-wider text-sky-300/80">
+                  <span className="text-xs font-medium uppercase tracking-wider text-sky-300/80">
                     Meeting aufnehmen &amp; transkribieren
                   </span>
                   <button
@@ -2139,7 +2139,7 @@ export function VoiceSessionModal({
                     Schließen
                   </button>
                 </div>
-                <p className="mb-2 text-[11px] text-muted-foreground/70">
+                <p className="mb-2 text-xs text-muted-foreground/70">
                   Reine Aufnahme — {agentName} hört dabei nicht zu und spricht nicht. Am Ende kannst du das
                   Transkript an {agentName} senden; Transkript und Protokoll erscheinen dann als Chat-Verlauf
                   im Chat-Tab dieses Agenten.
@@ -2208,7 +2208,7 @@ export function VoiceSessionModal({
 
           {!isRealtime && transcript && (
             <div className="mb-3 mt-4 rounded-lg bg-foreground/[0.04] p-3">
-              <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground/60">
+              <div className="mb-1 text-[11px] uppercase tracking-wider text-muted-foreground/60">
                 Du sagtest
               </div>
               <p className="text-sm">{transcript}</p>
@@ -2216,7 +2216,7 @@ export function VoiceSessionModal({
           )}
           {!isRealtime && activity.length > 0 && (
             <div className="mb-3 mt-4 rounded-lg border border-border bg-black/40 p-3">
-              <div className="mb-2 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">
+              <div className="mb-2 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground/60">
                 {delegating ? (
                   <Loader2 className="h-3 w-3 animate-spin text-amber-700 dark:text-amber-400" />
                 ) : (
@@ -2226,7 +2226,7 @@ export function VoiceSessionModal({
               </div>
               <div
                 ref={activityRef}
-                className="max-h-40 overflow-y-auto font-mono text-[11px] leading-relaxed"
+                className="max-h-40 overflow-y-auto font-mono text-xs leading-relaxed"
               >
                 {activity.map((a, i) => (
                   <div
@@ -2267,7 +2267,7 @@ export function VoiceSessionModal({
           )}
           {!isRealtime && response && (
             <div className="rounded-lg border border-primary/20 bg-primary/10 p-3">
-              <div className="mb-1 text-[10px] uppercase tracking-wider text-primary/80">
+              <div className="mb-1 text-[11px] uppercase tracking-wider text-primary/80">
                 {agentName} antwortet
               </div>
               <p className="whitespace-pre-wrap text-sm">{linkify(response)}</p>
@@ -2343,11 +2343,11 @@ function Buehnenkarte({
             <Globe className="mt-0.5 h-4 w-4 shrink-0 text-sky-400" />
             <div className="min-w-0">
               {item.caption && <p className="text-sm text-foreground/90">{item.caption}</p>}
-              <p className="truncate text-[11px] text-muted-foreground/60">{item.url}</p>
+              <p className="truncate text-xs text-muted-foreground/60">{item.url}</p>
             </div>
           </div>
           {blockiert && (
-            <p className="text-[11px] text-amber-700 dark:text-amber-400/90">
+            <p className="text-xs text-amber-700 dark:text-amber-400/90">
               Dein Browser hat den Tab blockiert — hier klicken zum Öffnen.
             </p>
           )}
@@ -2355,7 +2355,7 @@ function Buehnenkarte({
             {item.embeddable && (
               <button
                 onClick={() => onImFenster(item.url!, item.caption)}
-                className="rounded-md bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium text-sky-300 hover:bg-sky-500/20"
+                className="rounded-md bg-sky-500/10 px-2.5 py-1 text-xs font-medium text-sky-300 hover:bg-sky-500/20"
               >
                 Im Fenster öffnen
               </button>
@@ -2364,7 +2364,7 @@ function Buehnenkarte({
               href={item.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.06] px-2.5 py-1 text-[11px] font-medium hover:bg-foreground/[0.10]"
+              className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.06] px-2.5 py-1 text-xs font-medium hover:bg-foreground/[0.10]"
             >
               <ExternalLink className="h-3 w-3" /> Neuer Tab
             </a>
@@ -2403,11 +2403,11 @@ function Klappleiste({
       <Symbol className="h-4 w-4 shrink-0" />
       {/* Quer geschrieben passt die Beschriftung auch in die schmale Leiste;
           auf dem Telefon ist die Leiste breit, dort bleibt sie waagerecht. */}
-      <span className="whitespace-nowrap text-[10px] uppercase tracking-wider lg:[writing-mode:vertical-rl]">
+      <span className="whitespace-nowrap text-[11px] uppercase tracking-wider lg:[writing-mode:vertical-rl]">
         {titel}
       </span>
       {!!anzahl && (
-        <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+        <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[11px] font-medium text-primary">
           {anzahl}
         </span>
       )}
@@ -2453,13 +2453,13 @@ function WebModal({ url, caption, onClose }: { url: string; caption?: string; on
           <Globe className="h-4 w-4 shrink-0 text-sky-400" />
           <div className="min-w-0 flex-1">
             {caption && <p className="truncate text-sm font-medium">{caption}</p>}
-            <p className="truncate text-[11px] text-muted-foreground/60">{url}</p>
+            <p className="truncate text-xs text-muted-foreground/60">{url}</p>
           </div>
           <a
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.06] px-2.5 py-1 text-[11px] hover:bg-foreground/[0.10]"
+            className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.06] px-2.5 py-1 text-xs hover:bg-foreground/[0.10]"
           >
             <ExternalLink className="h-3 w-3" /> Neuer Tab
           </a>
@@ -2502,7 +2502,7 @@ function StatusPill({ state, realtime, focus = false, working = false }: { state
       : { label: "Fokus-Modus – bereit", cls: "bg-emerald-500/10 text-emerald-400" }
     : map[state];
   return (
-    <div className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-medium ${m.cls}`}>
+    <div className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${m.cls}`}>
       <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
       {m.label}
     </div>

@@ -231,7 +231,7 @@ export function MyAiCredentials() {
                 <KeyRound className="h-4 w-4 shrink-0 text-muted-foreground/60" />
                 <div className="min-w-0">
                   <p className="text-sm font-medium">{h.name} <span className="font-normal text-muted-foreground">· {h.wofuer}</span></p>
-                  <p className="truncate text-[11px] text-muted-foreground">
+                  <p className="truncate text-xs text-muted-foreground">
                     {verbunden
                       ? `verbunden${z?.label ? ` · ${z.label}` : ""}${
                           z?.last_used_at ? ` · zuletzt benutzt ${relativeZeit(z.last_used_at)}` : ""
@@ -251,7 +251,7 @@ export function MyAiCredentials() {
                         Ein blasser statt sattgruener Haken macht diese Alters-Luecke
                         sichtbar, ohne einen Fehler zu behaupten, den es nicht gibt. */}
                     {z?.last_status && z.last_status !== "ok" ? (
-                      <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-500">
+                      <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-500">
                         {z.last_status}
                       </span>
                     ) : (() => {
@@ -287,7 +287,7 @@ export function MyAiCredentials() {
                 <button
                   onClick={() => (h.id === "claude_code" ? anmeldenClaude() : anmeldenCodex())}
                   disabled={busy}
-                  className="rounded-lg bg-primary px-2.5 py-1.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+                  className="rounded-lg bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
                 >
                   {verbunden ? "Neu anmelden" : `Mit ${h.name} anmelden`}
                 </button>
@@ -297,7 +297,7 @@ export function MyAiCredentials() {
                 <button
                   onClick={() => { setAnmeldung(null); setOffen(offen === h.id ? null : h.id); setFehler(""); }}
                   title="Zugang von Hand einfügen"
-                  className="rounded-lg border border-border px-2.5 py-1.5 text-[11px] text-muted-foreground hover:bg-accent"
+                  className="rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-accent"
                 >
                   Manuell
                 </button>
@@ -308,19 +308,19 @@ export function MyAiCredentials() {
               <div className="mt-3 space-y-2 border-t border-border pt-3">
                 {anmeldung?.harness === h.id ? (
                   h.id === "claude_code" ? (
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       Im Browser bei Claude anmelden, dann den angezeigten Code
                       (oder die ganze Adresse aus der Adresszeile) hier einfügen.
                     </p>
                   ) : (
                     <div className="space-y-1.5">
-                      <p className="text-[11px] text-muted-foreground">
+                      <p className="text-xs text-muted-foreground">
                         Im Browser bei ChatGPT anmelden. Gerätecode:
                       </p>
                       <code className="block rounded-lg bg-foreground/[0.06] px-2 py-1.5 text-center font-mono text-sm tracking-widest">
                         {anmeldung.code}
                       </code>
-                      <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <Loader2 className="h-3 w-3 animate-spin" />
                         Warte auf die Bestätigung… Sobald die ChatGPT-Seite sagt,
                         sie kann geschlossen werden, bist du fertig — hier ist
@@ -329,7 +329,7 @@ export function MyAiCredentials() {
                     </div>
                   )
                 ) : (
-                  <p className="text-[11px] text-muted-foreground">{h.hilfe}</p>
+                  <p className="text-xs text-muted-foreground">{h.hilfe}</p>
                 )}
                 {!(anmeldung?.harness === "codex") && (<>
                 <textarea
@@ -337,7 +337,7 @@ export function MyAiCredentials() {
                   onChange={(e) => setGeheimnis(e.target.value)}
                   rows={3}
                   placeholder="Zugang einfügen…"
-                  className="w-full rounded-lg border border-input bg-transparent px-3 py-2 font-mono text-[11px] outline-none focus:border-ring"
+                  className="w-full rounded-lg border border-input bg-transparent px-3 py-2 font-mono text-xs outline-none focus:border-ring"
                 />
                 <input
                   value={bezeichnung}
@@ -349,14 +349,14 @@ export function MyAiCredentials() {
                 <div className="flex justify-end gap-2">
                   <button
                     onClick={() => { setOffen(null); setAnmeldung(null); setGeheimnis(""); setFehler(""); }}
-                    className="rounded-lg px-3 py-1.5 text-[11px] text-muted-foreground hover:bg-accent"
+                    className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent"
                   >
                     Abbrechen
                   </button>
                   <button
                     onClick={() => abschliessen(h.id)}
                     disabled={busy}
-                    className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+                    className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
                   >
                     {busy && <Loader2 className="h-3 w-3 animate-spin" />} Speichern
                   </button>

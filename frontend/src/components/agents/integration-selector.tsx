@@ -335,19 +335,19 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
           <div className="flex items-center gap-2">
             <Network className="h-4 w-4 text-violet-400" />
             <span className="text-sm font-medium">MCP-Werkzeuge</span>
-            <span className="text-[10px] text-muted-foreground/60">
+            <span className="text-[11px] text-muted-foreground/60">
               Werkzeug-Server, die dieser Agent nutzen kann
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20">
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20">
               {totalMcpCount} Server aktiv
             </span>
             {mcpChanged && (
               <button
                 onClick={save}
                 disabled={saving}
-                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
               >
                 {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
                 Speichern
@@ -374,11 +374,11 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                   <div className="flex-1 text-left min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium">{server.name}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-foreground/[0.06] text-muted-foreground/60">
+                      <span className="text-[11px] px-1.5 py-0.5 rounded bg-foreground/[0.06] text-muted-foreground/60">
                         built-in
                       </span>
                     </div>
-                    <p className="text-[11px] text-muted-foreground/60 mt-0.5">
+                    <p className="text-xs text-muted-foreground/60 mt-0.5">
                       {server.tools.length} tools
                     </p>
                   </div>
@@ -400,10 +400,10 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                         >
                           <Wrench className="h-3 w-3 text-muted-foreground/40 shrink-0 mt-0.5" />
                           <div className="min-w-0">
-                            <span className="text-[11px] font-mono font-medium text-foreground/80">
+                            <span className="text-xs font-mono font-medium text-foreground/80">
                               {tool.name}
                             </span>
-                            <span className="text-[10px] text-muted-foreground/60 ml-2">
+                            <span className="text-[11px] text-muted-foreground/60 ml-2">
                               {tool.description}
                             </span>
                           </div>
@@ -442,7 +442,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium">{server.name}</span>
                       </div>
-                      <p className="text-[11px] text-muted-foreground/60 mt-0.5">
+                      <p className="text-xs text-muted-foreground/60 mt-0.5">
                         {toolCount} tool{toolCount !== 1 ? "s" : ""}
                       </p>
                     </div>
@@ -465,11 +465,11 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                         >
                           <Wrench className="h-3 w-3 text-violet-400/60 shrink-0 mt-0.5" />
                           <div className="min-w-0">
-                            <span className="text-[11px] font-mono font-medium text-foreground/80">
+                            <span className="text-xs font-mono font-medium text-foreground/80">
                               {tool.name}
                             </span>
                             {tool.description && (
-                              <p className="text-[10px] text-muted-foreground/60 mt-0.5">
+                              <p className="text-[11px] text-muted-foreground/60 mt-0.5">
                                 {tool.description}
                               </p>
                             )}
@@ -486,7 +486,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
 
         {enabledMcpServers.length === 0 && (
           <div className="border-t border-foreground/[0.04] px-5 py-3">
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Werkzeug-Server (MCP) richtet ein Admin im{" "}
               <a href="/admin?tab=integrationen-anlage" className="text-primary hover:underline">Admin-Bereich unter Dienste &amp; Konten</a>{" "}
               ein; danach den Agenten neu starten, damit er sie nutzt.
@@ -496,7 +496,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
 
         {mcpChanged && (
           <div className="border-t border-foreground/[0.06] px-5 py-3">
-            <p className="text-[10px] text-yellow-500/80 flex items-center gap-1.5">
+            <p className="text-[11px] text-yellow-500/80 flex items-center gap-1.5">
               <AlertCircle className="h-3 w-3" />
               Änderungen wirken erst nach einem Neustart des Agenten
             </p>
@@ -510,7 +510,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
           <div className="flex items-center gap-2">
             <Plug className="h-4 w-4 text-blue-400" />
             <span className="text-sm font-medium">Integrationen</span>
-            <span className="text-[10px] text-muted-foreground/60">
+            <span className="text-[11px] text-muted-foreground/60">
               Wähle, auf welche Dienste dieser Agent zugreifen darf — neue
               Verbindungen anlegen: <Link href="/integrations" className="text-primary hover:underline">Integrationen</Link> (Seitenleiste)
             </span>
@@ -518,7 +518,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
           <div className="flex items-center gap-2">
             <button
               onClick={load}
-              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
             >
               <RefreshCw className="h-3 w-3" />
               Aktualisieren
@@ -527,7 +527,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
               <button
                 onClick={save}
                 disabled={saving}
-                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
               >
                 {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
                 Speichern
@@ -574,7 +574,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium">{integration.display_name}</span>
                         {integration.account_label && (
-                          <span className="text-[10px] text-muted-foreground/60">
+                          <span className="text-[11px] text-muted-foreground/60">
                             ({integration.account_label})
                           </span>
                         )}
@@ -591,7 +591,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                           type="button"
                           onClick={() => { setMsgraphAccess("read"); setChanged(true); }}
                           className={cn(
-                            "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                            "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors",
                             msgraphAccess === "read"
                               ? "bg-primary/10 text-primary border-primary/30"
                               : "border-foreground/[0.08] text-muted-foreground hover:bg-foreground/[0.04]"
@@ -605,7 +605,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                           disabled={msReadOnly}
                           onClick={() => { setMsgraphAccess("entwurf"); setChanged(true); }}
                           className={cn(
-                            "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                            "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors",
                             msgraphAccess === "entwurf"
                               ? "bg-primary/10 text-primary border-primary/30"
                               : "border-foreground/[0.08] text-muted-foreground hover:bg-foreground/[0.04]",
@@ -620,7 +620,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                           disabled={msReadOnly}
                           onClick={() => { setMsgraphAccess("write"); setChanged(true); }}
                           className={cn(
-                            "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                            "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors",
                             msgraphAccess === "write"
                               ? "bg-primary/10 text-primary border-primary/30"
                               : "border-foreground/[0.08] text-muted-foreground hover:bg-foreground/[0.04]",
@@ -631,7 +631,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                           Lesen + Schreiben
                         </button>
                       </div>
-                      <p className="text-[11px] text-muted-foreground/60 mt-2">
+                      <p className="text-xs text-muted-foreground/60 mt-2">
                         {msgraphAccess === "entwurf"
                             ? "Entwürfe + Freigabe: Der Agent legt Mails nur als Entwurf an und darf ablegen. Gesendet wird erst, wenn du unter Freigaben zustimmst."
                             : msgraphAccess === "write"
@@ -649,7 +649,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                           type="button"
                           onClick={() => { setExchangeAccess("read"); setChanged(true); }}
                           className={cn(
-                            "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                            "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors",
                             exchangeAccess === "read"
                               ? "bg-primary/10 text-primary border-primary/30"
                               : "border-foreground/[0.08] text-muted-foreground hover:bg-foreground/[0.04]"
@@ -663,7 +663,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                           disabled={msReadOnly}
                           onClick={() => { setExchangeAccess("write"); setChanged(true); }}
                           className={cn(
-                            "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                            "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors",
                             exchangeAccess === "write"
                               ? "bg-primary/10 text-primary border-primary/30"
                               : "border-foreground/[0.08] text-muted-foreground hover:bg-foreground/[0.04]",
@@ -674,7 +674,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                           Lesen + Schreiben
                         </button>
                       </div>
-                      <p className="text-[11px] text-muted-foreground/60 mt-2">
+                      <p className="text-xs text-muted-foreground/60 mt-2">
                         {msReadOnly
                           ? "Microsoft ist plattformweit auf Nur-Lesen gestellt — das gilt auch für das on-prem-Postfach."
                           : "Lesen + Schreiben: Der Agent darf im on-prem-Postfach senden und ändern (Mail + Kalender)."}
@@ -689,7 +689,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
 
         {hasChanges && (
           <div className="border-t border-foreground/[0.06] px-5 py-3">
-            <p className="text-[10px] text-yellow-500/80 flex items-center gap-1.5">
+            <p className="text-[11px] text-yellow-500/80 flex items-center gap-1.5">
               <AlertCircle className="h-3 w-3" />
               Änderungen wirken erst nach einem Neustart des Agenten
             </p>
@@ -702,7 +702,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
           <div className="flex items-center gap-2">
             <Shield className="h-4 w-4 text-emerald-400" />
             <span className="text-sm font-medium">Erlaubte Adressen</span>
-            <span className="text-[10px] text-muted-foreground/60">
+            <span className="text-[11px] text-muted-foreground/60">
               {zielliste?.aktiv
                 ? "Verbindlich: Der Agent erreicht nur diese Adressen"
                 : "Gilt nur für die Werkzeuge der Plattform, nicht für Claude Code und Codex"}
@@ -710,13 +710,13 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
           </div>
           <div className="flex items-center gap-2">
             {allowlist.length > 0 && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                 {allowlist.length} {allowlist.length === 1 ? "Regel" : "Regeln"}
               </span>
             )}
             <button
               onClick={() => setShowTemplates((v) => !v)}
-              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
             >
               <ChevronDown className={cn("h-3 w-3 transition-transform", showTemplates && "rotate-180")} />
               Vorlagen
@@ -729,13 +729,13 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
             <Lock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
             <div className="min-w-0 flex-1">
               <p className="text-[13px] font-medium">Am Ausgang erzwingen</p>
-              <p className="text-[11px] text-muted-foreground/70">
+              <p className="text-xs text-muted-foreground/70">
                 Der Agent erreicht dann nur diese Adressen, seine Modellanbieter und die Ziele seiner Zugänge,
                 auch mit den eigenen Werkzeugen von Claude Code und Codex. Andere Verbindungen werden gesperrt,
                 auch für Apps, die der Agent selbst startet. Der Agent wird dafür neu gestartet.
               </p>
               {zielliste.hinweis && (
-                <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">{zielliste.hinweis}</p>
+                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">{zielliste.hinweis}</p>
               )}
             </div>
             <button
@@ -759,7 +759,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
         {/* Template picker */}
         {showTemplates && (
           <div className="border-b border-foreground/[0.06] px-5 py-3 space-y-2">
-            <p className="text-[10px] text-muted-foreground/60 mb-2">Vorlage übernehmen — die Einträge kommen zu den bestehenden Regeln dazu</p>
+            <p className="text-[11px] text-muted-foreground/60 mb-2">Vorlage übernehmen — die Einträge kommen zu den bestehenden Regeln dazu</p>
             {templates.map((t) => (
               <button
                 key={t.id}
@@ -768,11 +768,11 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                 className="flex items-center justify-between w-full rounded-lg border border-foreground/[0.06] px-3 py-2 hover:bg-foreground/[0.04] transition-colors text-left"
               >
                 <div>
-                  <span className="text-[11px] font-medium">{t.name}</span>
+                  <span className="text-xs font-medium">{t.name}</span>
                   {t.is_builtin && (
-                    <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-foreground/[0.06] text-muted-foreground/60">mitgeliefert</span>
+                    <span className="ml-2 text-[11px] px-1.5 py-0.5 rounded bg-foreground/[0.06] text-muted-foreground/60">mitgeliefert</span>
                   )}
-                  <p className="text-[10px] text-muted-foreground/60 mt-0.5">{t.description}</p>
+                  <p className="text-[11px] text-muted-foreground/60 mt-0.5">{t.description}</p>
                 </div>
                 {applyingTemplate === t.id
                   ? <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
@@ -787,7 +787,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
         <div className="divide-y divide-foreground/[0.04]">
           {allowlist.length === 0 ? (
             <div className="px-5 py-4 text-center">
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 {zielliste?.aktiv
                   ? "Keine Regeln — der Agent erreicht nur seine Modellanbieter und die Ziele seiner Zugänge"
                   : "Keine Regeln — der Agent darf alle Adressen aufrufen"}
@@ -798,9 +798,9 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
               <div key={entry.id} className="flex items-center gap-3 px-5 py-2.5">
                 <Shield className="h-3.5 w-3.5 text-emerald-400/60 shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <span className="text-[11px] font-mono text-foreground/80 truncate block">{entry.url_pattern}</span>
+                  <span className="text-xs font-mono text-foreground/80 truncate block">{entry.url_pattern}</span>
                   {entry.description && (
-                    <span className="text-[10px] text-muted-foreground">{entry.description}</span>
+                    <span className="text-[11px] text-muted-foreground">{entry.description}</span>
                   )}
                 </div>
                 <button
@@ -823,19 +823,19 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
               onChange={(e) => setNewUrl(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleAddUrl()}
               placeholder="api.example.com oder *.github.com"
-              className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-1.5 text-[11px] font-mono placeholder:text-muted-foreground focus:outline-none focus:border-emerald-500/40"
+              className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-1.5 text-xs font-mono placeholder:text-muted-foreground focus:outline-none focus:border-emerald-500/40"
             />
             <input
               type="text"
               value={newUrlDesc}
               onChange={(e) => setNewUrlDesc(e.target.value)}
               placeholder="Beschreibung (optional)"
-              className="w-36 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-1.5 text-[11px] placeholder:text-muted-foreground focus:outline-none focus:border-emerald-500/40"
+              className="w-36 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:border-emerald-500/40"
             />
             <button
               onClick={handleAddUrl}
               disabled={addingUrl || !newUrl.trim()}
-              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors disabled:opacity-40"
             >
               {addingUrl ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
               Hinzufügen
@@ -853,7 +853,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
             </div>
             <div>
               <h3 className="text-sm font-medium">Schlüssel</h3>
-              <p className="text-[11px] text-muted-foreground/60 mt-0.5">
+              <p className="text-xs text-muted-foreground/60 mt-0.5">
                 {agentSecretIds.size > 0 ? `${agentSecretIds.size} zugewiesen` : "Keiner zugewiesen"}
                 {" — der Agent erhält sie beim Start"}
               </p>
@@ -862,7 +862,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setNeuOffen((o) => !o)}
-              className="flex items-center gap-1 rounded-lg border border-foreground/[0.08] px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
+              className="flex items-center gap-1 rounded-lg border border-foreground/[0.08] px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
             >
               <Plus className="h-3 w-3" />
               Schlüssel hinzufügen
@@ -871,7 +871,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
               <a
                 href="/admin?tab=secrets"
                 target="_blank"
-                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 Alle verwalten
                 <ExternalLink className="h-3 w-3" />
@@ -884,7 +884,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
           <div className="space-y-2.5 border-b border-foreground/[0.06] bg-foreground/[0.02] px-5 py-4">
             <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
               <label className="block">
-                <span className="text-[11px] font-medium text-muted-foreground">Name</span>
+                <span className="text-xs font-medium text-muted-foreground">Name</span>
                 <input
                   value={neuName}
                   onChange={(e) => setNeuName(e.target.value)}
@@ -893,7 +893,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                 />
               </label>
               <label className="block">
-                <span className="text-[11px] font-medium text-muted-foreground">Variablenname</span>
+                <span className="text-xs font-medium text-muted-foreground">Variablenname</span>
                 <input
                   value={neuVariable || variableAus(neuName)}
                   onChange={(e) => setNeuVariable(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "_"))}
@@ -903,7 +903,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
               </label>
             </div>
             <label className="block">
-              <span className="text-[11px] font-medium text-muted-foreground">Wert</span>
+              <span className="text-xs font-medium text-muted-foreground">Wert</span>
               <input
                 type="password"
                 autoComplete="off"
@@ -914,7 +914,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
               />
             </label>
             <ZieleFeld kompakt wert={neuZiele} keyName={neuVariable || variableAus(neuName)} onChange={setNeuZiele} />
-            {neuFehler && <p className="text-[11px] text-red-400">{neuFehler}</p>}
+            {neuFehler && <p className="text-xs text-red-400">{neuFehler}</p>}
             <div className="flex justify-end gap-2">
               <button onClick={() => setNeuOffen(false)} className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">
                 Abbrechen
@@ -934,8 +934,8 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
         {allSecrets.length === 0 ? (
           <div className="px-5 py-6 text-center">
             <KeyRound className="h-6 w-6 mx-auto mb-2 text-muted-foreground/30" />
-            <p className="text-[11px] text-muted-foreground">Noch keine Schlüssel.</p>
-            <button onClick={() => setNeuOffen(true)} className="text-[11px] text-violet-400 hover:text-violet-300 transition-colors mt-1 inline-block">
+            <p className="text-xs text-muted-foreground">Noch keine Schlüssel.</p>
+            <button onClick={() => setNeuOffen(true)} className="text-xs text-violet-400 hover:text-violet-300 transition-colors mt-1 inline-block">
               Ersten Schlüssel hinzufügen
             </button>
           </div>
@@ -952,24 +952,24 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-[12px] font-medium truncate">{secret.name}</span>
-                      <span className="text-[10px] font-mono text-muted-foreground bg-foreground/[0.04] px-1.5 py-0.5 rounded">
+                      <span className="text-[11px] font-mono text-muted-foreground bg-foreground/[0.04] px-1.5 py-0.5 rounded">
                         {secret.key_name}
                       </span>
                       {secret.owned && (
-                        <span className="text-[10px] rounded-full border border-violet-500/20 bg-violet-500/10 px-1.5 py-0.5 text-violet-400">eigen</span>
+                        <span className="text-[11px] rounded-full border border-violet-500/20 bg-violet-500/10 px-1.5 py-0.5 text-violet-400">eigen</span>
                       )}
                       {secret.zugang === "person" && (
-                        <span className="text-[10px] rounded-full border border-blue-500/20 bg-blue-500/10 px-1.5 py-0.5 text-blue-600 dark:text-blue-300">
+                        <span className="text-[11px] rounded-full border border-blue-500/20 bg-blue-500/10 px-1.5 py-0.5 text-blue-600 dark:text-blue-300">
                           von {secret.owner_name || "einer Person"}
                         </span>
                       )}
                       {secret.owned && !!secret.shared_with_count && (
-                        <span className="text-[10px] text-muted-foreground/60">an {secret.shared_with_count} freigegeben</span>
+                        <span className="text-[11px] text-muted-foreground/60">an {secret.shared_with_count} freigegeben</span>
                       )}
                       <ZieleAbzeichen secret={secret} klein />
                     </div>
                     {secret.description && (
-                      <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{secret.description}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{secret.description}</p>
                     )}
                     {zieleOffen?.id === secret.id && (
                       <div className="mt-2 space-y-2">
@@ -992,7 +992,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                     onClick={() => handleToggleSecret(secret.id)}
                     disabled={toggling}
                     className={cn(
-                      "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-medium border transition-colors shrink-0 disabled:opacity-40",
+                      "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium border transition-colors shrink-0 disabled:opacity-40",
                       assigned
                         ? "bg-violet-500/10 text-violet-400 border-violet-500/20 hover:bg-violet-500/20"
                         : "bg-foreground/[0.04] text-muted-foreground border-foreground/[0.08] hover:bg-foreground/[0.08]"

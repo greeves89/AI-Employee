@@ -89,7 +89,7 @@ export function ReflectionCard() {
         {statusCfg && (
           <span
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-medium",
+              "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium",
               statusCfg.className,
             )}
           >
@@ -113,7 +113,7 @@ export function ReflectionCard() {
         <>
           {lastRun ? (
             <>
-              <p className="text-[11px] text-muted-foreground/60 mb-2">
+              <p className="text-xs text-muted-foreground/60 mb-2">
                 Letzter Lauf:{" "}
                 {lastRun.started_at
                   ? new Date(lastRun.started_at).toLocaleString("de-DE", {
@@ -167,7 +167,7 @@ export function ReflectionCard() {
               </button>
             )}
             {message && (
-              <span className="text-[11px] text-muted-foreground/60">{message}</span>
+              <span className="text-xs text-muted-foreground/60">{message}</span>
             )}
           </div>
         </>

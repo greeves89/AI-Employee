@@ -61,7 +61,7 @@ export function AgentAppearanceButton({
           <div className="absolute right-0 z-50 mt-2 w-80 rounded-xl border border-foreground/10 bg-card p-3 shadow-xl">
             <AppearancePicker compact value={value} onChange={pick} />
             {saving && (
-              <span className="mt-2 block text-[10px] text-muted-foreground/60">Speichern…</span>
+              <span className="mt-2 block text-[11px] text-muted-foreground/60">Speichern…</span>
             )}
           </div>
         </>

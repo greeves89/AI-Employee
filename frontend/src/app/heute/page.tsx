@@ -85,7 +85,7 @@ function KleinerKnopf({ onClick, children, disabled, titel, gefahr }: {
 }) {
   return (
     <button type="button" onClick={onClick} disabled={disabled} title={titel}
-      className={cn("inline-flex items-center gap-1 rounded-md border border-foreground/[0.08] px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground disabled:opacity-50",
+      className={cn("inline-flex items-center gap-1 rounded-md border border-foreground/[0.08] px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground disabled:opacity-50",
         gefahr && "hover:bg-red-500/10 hover:text-red-600")}>
       {children}
     </button>
@@ -164,7 +164,7 @@ function Einrichten({ onFertig, entwurfFrei }: { onFertig: () => void; entwurfFr
                   platz >= 0 ? "border-primary/40 bg-primary/[0.06]" : "border-foreground/[0.08] hover:bg-foreground/[0.03]")}>
                 <AgentAvatar config={a.config} size="sm" />
                 <span className="min-w-0 flex-1 truncate">{a.name}</span>
-                {platz >= 0 && <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">{ROLLEN[platz]}</span>}
+                {platz >= 0 && <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[11px] font-medium text-primary">{ROLLEN[platz]}</span>}
               </button>
             );
           })}
@@ -191,7 +191,7 @@ function Einrichten({ onFertig, entwurfFrei }: { onFertig: () => void; entwurfFr
           {laeuft ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Sekretariat einrichten
         </button>
       </div>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         Die Agenten bekommen dabei Microsoft 365 im Modus „Entwürfe + Freigabe“ und werden einmal neu gestartet.
         Dein Microsoft-Konto verbindest du unter Verbindungen.
       </p>
@@ -240,7 +240,7 @@ function Erinnerungen({ liste, fristen, onNeu }: {
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1">
                   <p className="break-words">{e.text}</p>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     {datumKurz(e.faellig)}
                     {e.von !== "nutzer" ? " · vom Sekretariat" : ""}
                     {e.bezug?.link && (
@@ -258,7 +258,7 @@ function Erinnerungen({ liste, fristen, onNeu }: {
               </div>
               {spaeterOffen === e.id && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                  <span className="text-[11px] text-muted-foreground">Später:</span>
+                  <span className="text-xs text-muted-foreground">Später:</span>
                   {SPAETER.map((o) => (
                     <KleinerKnopf key={o.wert} disabled={beschaeftigt === `s${e.id}`}
                       onClick={() => machen(`s${e.id}`, async () => { await api.erinnerungSpaeter(e.id, o.wert); setSpaeterOffen(null); }, "Nicht verschoben")}>
@@ -273,7 +273,7 @@ function Erinnerungen({ liste, fristen, onNeu }: {
       </ul>
       {fristen.length > 0 && (
         <div className="space-y-1 rounded-lg border border-dashed border-border p-2">
-          <p className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground"><CalendarDays className="h-3 w-3" /> Frist aus Mail übernehmen</p>
+          <p className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground"><CalendarDays className="h-3 w-3" /> Frist aus Mail übernehmen</p>
           <ul className="space-y-1">
             {fristen.map((f) => (
               <li key={f.mail_id} className="flex items-center gap-2 text-xs">
@@ -331,10 +331,10 @@ function EntwurfBearbeiten({ w, onFertig, onAbbrechen }: { w: api.HeuteWartet; o
   const feld = "w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-2 py-1 text-xs";
   return (
     <div className="space-y-1.5 rounded-xl border border-primary/30 bg-background/60 p-2.5">
-      <label className="block text-[11px] text-muted-foreground">An<input value={an} onChange={(e) => setAn(e.target.value)} className={feld} /></label>
-      <label className="block text-[11px] text-muted-foreground">Cc<input value={cc} onChange={(e) => setCc(e.target.value)} className={feld} /></label>
-      <label className="block text-[11px] text-muted-foreground">Betreff<input value={betreff} onChange={(e) => setBetreff(e.target.value)} className={feld} /></label>
-      <label className="block text-[11px] text-muted-foreground">Text
+      <label className="block text-xs text-muted-foreground">An<input value={an} onChange={(e) => setAn(e.target.value)} className={feld} /></label>
+      <label className="block text-xs text-muted-foreground">Cc<input value={cc} onChange={(e) => setCc(e.target.value)} className={feld} /></label>
+      <label className="block text-xs text-muted-foreground">Betreff<input value={betreff} onChange={(e) => setBetreff(e.target.value)} className={feld} /></label>
+      <label className="block text-xs text-muted-foreground">Text
         <textarea value={text} onChange={(e) => setText(e.target.value)} rows={8} className={cn(feld, "resize-y font-[inherit] text-[13px]")} />
       </label>
       <div className="flex gap-2">
@@ -373,7 +373,7 @@ function Nachfassen({ approvalId, onFertig, onSchliessen }: {
     return `${lokalesDatum(d)}T09:00`;
   };
   return (
-    <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+    <div className="flex flex-wrap items-center gap-1.5 text-xs">
       <span className="text-muted-foreground">Nachfassen, wenn keine Antwort bis</span>
       <KleinerKnopf disabled={laeuft} onClick={() => anlegen(inTagen(3))}>in 3 Tagen</KleinerKnopf>
       <KleinerKnopf disabled={laeuft} onClick={() => anlegen(zeitpunkt("woche"))}>nächste Woche</KleinerKnopf>
@@ -428,7 +428,7 @@ function WartetEintrag({ w, agentName, onNeu, onGesendet }: {
 
   return (
     <li className={cn("space-y-2 rounded-xl p-3", istMail ? "bg-foreground/[0.03]" : "border border-sky-500/25 bg-sky-500/[0.05]")}>
-      <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+      <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
         {istMail ? (
           <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 px-1.5 py-0.5 font-medium text-emerald-700 dark:text-emerald-300">
             <Mail className="h-3 w-3" /> Mail-Freigabe
@@ -497,7 +497,7 @@ function TerminListe({ termine }: { termine: api.HeuteTermin[] }) {
           <span className="min-w-0 flex-1 truncate" title={t.betreff}>
             {t.link ? <a href={t.link} target="_blank" rel="noopener noreferrer" className="hover:underline">{t.betreff}</a> : t.betreff}
           </span>
-          {t.online ? <Video className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : t.ort ? <span className="truncate text-[11px] text-muted-foreground">{t.ort}</span> : null}
+          {t.online ? <Video className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : t.ort ? <span className="truncate text-xs text-muted-foreground">{t.ort}</span> : null}
         </li>
       ))}
     </ul>
@@ -573,15 +573,15 @@ function MailZeile({ m, ordnerLaden, onWeg, onNeu }: {
         <Star className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", m.wichtig ? "fill-amber-400 text-amber-500" : "text-transparent")} />
         <div className="min-w-0 flex-1" title={m.gruende.length ? `Eingeordnet: ${m.gruende.join(", ")}` : undefined}>
           <p className="truncate"><span className="font-medium">{m.von}</span> — {m.betreff}</p>
-          <p className="truncate text-[11px] text-muted-foreground">{m.vorschau}</p>
+          <p className="truncate text-xs text-muted-foreground">{m.vorschau}</p>
         </div>
-        <span className="shrink-0 text-[11px] text-muted-foreground">{m.eingang ? timeAgo(m.eingang) : ""}</span>
+        <span className="shrink-0 text-xs text-muted-foreground">{m.eingang ? timeAgo(m.eingang) : ""}</span>
       </div>
       {id && (
         <div className="ml-5 mt-1 flex flex-wrap gap-1">
           {m.link && (
             <a href={m.link} target="_blank" rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 rounded-md border border-foreground/[0.08] px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground">
+              className="inline-flex items-center gap-1 rounded-md border border-foreground/[0.08] px-2 py-0.5 text-xs text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground">
               <ExternalLink className="h-3 w-3" /> Öffnen
             </a>
           )}
@@ -605,7 +605,7 @@ function MailZeile({ m, ordnerLaden, onWeg, onNeu }: {
       )}
       {id && offen === "erinnern" && (
         <div className="ml-5 mt-1.5 flex flex-wrap items-center gap-1.5">
-          <span className="text-[11px] text-muted-foreground">Erinnern</span>
+          <span className="text-xs text-muted-foreground">Erinnern</span>
           {SPAETER.map((o) => (
             <KleinerKnopf key={o.wert} disabled={laeuft}
               onClick={() => machen(() => api.erinnerungAnlegen(`Mail „${m.betreff}“ von ${m.von}`, zeitpunkt(o.wert), id),
@@ -624,7 +624,7 @@ function MailZeile({ m, ordnerLaden, onWeg, onNeu }: {
           ) : ordner.length > 0 && (
             <>
               <select value={ziel} onChange={(e) => setZiel(e.target.value)} aria-label="Ordner"
-                className="max-w-[12rem] rounded-md border border-foreground/[0.1] bg-background/80 px-1.5 py-0.5 text-[11px]">
+                className="max-w-[12rem] rounded-md border border-foreground/[0.1] bg-background/80 px-1.5 py-0.5 text-xs">
                 <option value="">In Ordner …</option>
                 {ordner.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
@@ -683,7 +683,7 @@ function Posteingang({ daten, onNeu, onErneut }: { daten: api.Heute; onNeu: () =
           </div>
         );
       })}
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         Eingeordnet nach Absender und Kopfzeilen (kein KI-Aufruf) — fahr über eine Mail, um den Grund zu sehen.
       </p>
     </div>
@@ -756,7 +756,7 @@ function Regeln({ regeln, vorschlaege, onNeu }: { regeln: api.SekretariatRegel[]
       )}
       {vorschlaege.length > 0 && (
         <div className="space-y-1.5 rounded-lg border border-dashed border-border p-2">
-          <p className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground"><Lightbulb className="h-3 w-3" /> Vorschläge — werden erst mit deinem Klick zur Regel</p>
+          <p className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground"><Lightbulb className="h-3 w-3" /> Vorschläge — werden erst mit deinem Klick zur Regel</p>
           <ul className="space-y-1.5">
             {vorschlaege.map((v) => {
               const schluessel = v.approval_id ?? v.text;
@@ -764,7 +764,7 @@ function Regeln({ regeln, vorschlaege, onNeu }: { regeln: api.SekretariatRegel[]
                 <li key={schluessel} className="space-y-1 text-xs">
                   <p className="break-words">{v.text}</p>
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-[11px] text-muted-foreground">{v.anlass}</span>
+                    <span className="text-xs text-muted-foreground">{v.anlass}</span>
                     <KleinerKnopf disabled={laeuft === schluessel}
                       onClick={() => machen(schluessel, () => (v.approval_id ? api.sekretariatRegelVorschlag(v.approval_id, true) : api.sekretariatRegelAnlegen(v.text)),
                         "Regel übernommen", "Nicht übernommen")}>
@@ -818,7 +818,7 @@ function Protokoll({ eintraege, agentName, onNeu }: { eintraege: api.HeuteProtok
                     <span className="w-11 shrink-0 tabular-nums text-xs text-muted-foreground">{uhrzeit(e.zeit)}</span>
                     <Icon className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", e.art === "lauf_fehler" ? "text-red-500" : "text-muted-foreground")} />
                     <span className="min-w-0 flex-1 break-words">{e.text}</span>
-                    <span className="shrink-0 text-[11px] text-muted-foreground">{e.agent_id ? agentName(e.agent_id) : "du"}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">{e.agent_id ? agentName(e.agent_id) : "du"}</span>
                     {e.art === "gesendet" && e.approval_id && (
                       <KleinerKnopf onClick={() => setNachfassen(nachfassen === e.approval_id ? null : e.approval_id ?? null)}>
                         <AlarmClock className="h-3 w-3" /> Nachfassen
@@ -901,8 +901,11 @@ function MeinTag({ onSekretariatFertig, entwurfFrei }: { onSekretariatFertig: ()
   return (
     <div className="space-y-4">
       <div className="grid items-start gap-4 lg:grid-cols-2">
+        {/* Was auf dich wartet, ist das Wichtigste des Tages: hervorgehoben und über
+            die ganze Breite, sobald etwas offen ist (UI-Bewertung 14.11.2026). */}
         <Kasten titel="Wartet auf dich" icon={ShieldCheck}
-          rechts={freigaben && freigaben.length > 0 ? <span className="rounded-full bg-amber-500/15 px-2 text-xs font-semibold text-amber-700 dark:text-amber-300">{freigaben.length}</span> : null}>
+          className={freigaben && freigaben.length > 0 ? "border-amber-500/40 bg-amber-500/[0.04] lg:col-span-2" : undefined}
+          rechts={freigaben && freigaben.length > 0 ? <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-sm font-semibold text-amber-700 dark:text-amber-300">{freigaben.length} offen</span> : null}>
           {freigaben === null ? (
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
           ) : freigaben.length === 0 ? (
@@ -1086,7 +1089,7 @@ export default function HeutePage() {
                 </button>
               </div>
               {daten.verarbeitung.length > 0 && (
-                <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
+                <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
                   <Lock className="mt-0.5 h-3 w-3 shrink-0" />
                   <span>
                     Datenschutz: Mails und Termine liest das Sekretariat über dein Microsoft-Konto. Verarbeitet werden die Inhalte von{" "}
@@ -1126,7 +1129,7 @@ export default function HeutePage() {
 
               <Kasten titel="Posteingang" icon={Inbox}
                 rechts={ungelesen && !daten.fehler.posteingang ? (
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-xs text-muted-foreground">
                     {gesamt ?? ungelesen.length} ungelesen{gesamt !== null && gesamt > ungelesen.length ? ` · die neuesten ${ungelesen.length} hier` : ""}
                   </span>
                 ) : null}>
@@ -1140,7 +1143,7 @@ export default function HeutePage() {
               <Kasten titel="Tagesbriefing" icon={Sun}
                 rechts={
                   <div className="flex items-center gap-2">
-                    {daten.briefing?.erstellt && <span className="text-[11px] text-muted-foreground">erstellt um {uhrzeit(daten.briefing.erstellt)}</span>}
+                    {daten.briefing?.erstellt && <span className="text-xs text-muted-foreground">erstellt um {uhrzeit(daten.briefing.erstellt)}</span>}
                     <KleinerKnopf onClick={briefingNeu} disabled={briefingStartet || daten.briefing_laeuft}
                       titel={daten.briefing_laeuft ? "Das Briefing wird gerade erstellt." : "Briefing jetzt neu erstellen"}>
                       {briefingStartet || daten.briefing_laeuft ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Neu erstellen
@@ -1164,7 +1167,7 @@ export default function HeutePage() {
             <Protokoll eintraege={daten.protokoll} agentName={agentName} onNeu={laden} />
 
             {daten.team && (
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Das Sekretariat ist ein Team wie ein Projekt: <Link href={`/projekte/${daten.team.id}`} className="underline">Raum, Board und Gespräch</Link>
                 {" "}· Kosten unter <Link href={`/finanzen?projekt=${daten.team.id}`} className="underline">Finanzen</Link>
               </p>

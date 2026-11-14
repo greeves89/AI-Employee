@@ -119,7 +119,7 @@ export function ModelCatalogAdmin() {
         <div className="flex items-center justify-between gap-3 px-5 py-3.5 border-b border-foreground/[0.04]">
           <div className="min-w-0">
             <h3 className="text-sm font-semibold">Verfügbare Modelle</h3>
-            <p className="text-[11px] text-muted-foreground/60">
+            <p className="text-xs text-muted-foreground/60">
               {discoveredAt
                 ? `Vollständig erkannt: ${discoveredAt}`
                 : lastAttemptAt
@@ -130,7 +130,7 @@ export function ModelCatalogAdmin() {
                 : ""}
             </p>
             {failedPersisted.length > 0 && (
-              <p className="text-[11px] text-amber-600 dark:text-amber-500 mt-0.5">
+              <p className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">
                 Nicht erreicht:{" "}
                 {failedPersisted.map(([name, grund]) => `${name} (${grund})`).join(", ")} — der
                 bisherige Stand dieser Anbieter bleibt erhalten
@@ -158,12 +158,12 @@ export function ModelCatalogAdmin() {
         {note && (
           <div className="flex items-start gap-2 px-5 py-2.5 bg-primary/[0.04] border-b border-foreground/[0.04]">
             <Info className="h-3.5 w-3.5 text-primary/70 mt-0.5 shrink-0" />
-            <p className="text-[11px] text-muted-foreground/80">{note}</p>
+            <p className="text-xs text-muted-foreground/80">{note}</p>
           </div>
         )}
         {error && (
           <div className="px-5 py-2.5 bg-red-500/[0.06] border-b border-red-500/10">
-            <p className="text-[11px] text-red-400">{error}</p>
+            <p className="text-xs text-red-400">{error}</p>
           </div>
         )}
 
@@ -177,12 +177,12 @@ export function ModelCatalogAdmin() {
               <div key={mode.mode} className="px-5 py-4">
                 <div className="flex items-center gap-2 mb-2.5">
                   <span className="text-xs font-semibold">{mode.label}</span>
-                  <span className="text-[10px] text-muted-foreground font-mono">{mode.mode}</span>
+                  <span className="text-[11px] text-muted-foreground font-mono">{mode.mode}</span>
                 </div>
                 <div className="space-y-3">
                   {mode.providers.map((prov) => (
                     <div key={prov.provider}>
-                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">
+                      <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5">
                         {prov.provider}
                       </div>
                       <div className="space-y-1">
@@ -205,7 +205,7 @@ export function ModelCatalogAdmin() {
                                   {m.source === "discovered" ? "Erkannt" : "Basis"}
                                 </span>
                               </div>
-                              <div className="text-[10px] text-muted-foreground font-mono truncate">{m.value}</div>
+                              <div className="text-[11px] text-muted-foreground font-mono truncate">{m.value}</div>
                             </div>
                             <button
                               role="switch"
@@ -241,7 +241,7 @@ export function ModelCatalogAdmin() {
 
         <div className="flex items-start gap-2 px-5 py-3 border-t border-foreground/[0.04] bg-foreground/[0.01]">
           <Check className="h-3.5 w-3.5 text-emerald-400/70 mt-0.5 shrink-0" />
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-[11px] text-muted-foreground">
             Nur freigeschaltete Modelle erscheinen bei der Agent-Erstellung und in den Agent-Einstellungen.
             Welche Laufzeit ein Modell nutzt (Claude Code / Codex), legt weiterhin der Server fest.
           </p>

@@ -52,7 +52,7 @@ export default function PdfViewer({ fileUrl }: PdfViewerProps) {
           >
             <ChevronLeft className="h-3.5 w-3.5" />
           </button>
-          <span className="text-[11px] tabular-nums text-muted-foreground">
+          <span className="text-xs tabular-nums text-muted-foreground">
             {currentPage} / {numPages}
           </span>
           <button
@@ -76,10 +76,10 @@ export default function PdfViewer({ fileUrl }: PdfViewerProps) {
           <div className="flex flex-col items-center justify-center gap-1 py-10 text-center">
             <FileWarning className="h-6 w-6 text-muted-foreground/50" />
             <p className="text-sm font-medium">PDF kann nicht angezeigt werden</p>
-            <p className="text-[11px] text-muted-foreground/60">{fehler}</p>
+            <p className="text-xs text-muted-foreground/60">{fehler}</p>
             <a
               href={fileUrl}
-              className="mt-2 text-[11px] text-primary hover:underline"
+              className="mt-2 text-xs text-primary hover:underline"
               target="_blank"
               rel="noreferrer"
             >

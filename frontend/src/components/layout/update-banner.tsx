@@ -165,10 +165,10 @@ export function UpdateBanner() {
           >
             <ArrowUpCircle className="h-4 w-4 shrink-0 text-blue-400" />
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-medium text-blue-300">
+              <p className="text-xs font-medium text-blue-300">
                 Neue Version verfügbar!
               </p>
-              <p className="text-[10px] text-blue-400/70 truncate">
+              <p className="text-[11px] text-blue-400/70 truncate">
                 {version!.current} → {version!.latest}
               </p>
             </div>
@@ -196,10 +196,10 @@ export function UpdateBanner() {
           >
             <AlertTriangle className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" />
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-medium text-amber-700 dark:text-amber-300">
+              <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
                 Veraltete Oberfläche — neu laden
               </p>
-              <p className="text-[10px] text-amber-700 dark:text-amber-400/70 truncate">
+              <p className="text-[11px] text-amber-700 dark:text-amber-400/70 truncate">
                 Frontend {BUNDLE_VERSION} · Backend {backendVersion}
               </p>
             </div>
@@ -263,7 +263,7 @@ export function UpdateBanner() {
 
               {/* Changelog */}
               <div className="flex-1 overflow-y-auto px-6 py-4">
-                <p className="mb-3 text-[11px] font-medium uppercase tracking-widest text-muted-foreground/60">
+                <p className="mb-3 text-xs font-medium uppercase tracking-widest text-muted-foreground/60">
                   Changelog
                 </p>
 
@@ -289,10 +289,10 @@ export function UpdateBanner() {
                           <GitCommit className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/40" />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-0.5">
-                              <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${type.color}`}>
+                              <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[11px] font-medium ${type.color}`}>
                                 {type.label}
                               </span>
-                              <span className="font-mono text-[10px] text-muted-foreground">
+                              <span className="font-mono text-[11px] text-muted-foreground">
                                 {commit.sha}
                               </span>
                             </div>
@@ -301,7 +301,7 @@ export function UpdateBanner() {
                             </p>
                             <div className="flex items-center gap-2 mt-1">
                               <Clock className="h-3 w-3 text-muted-foreground/30" />
-                              <span className="text-[10px] text-muted-foreground">
+                              <span className="text-[11px] text-muted-foreground">
                                 {formatDate(commit.date)}
                                 {commit.author && ` · ${commit.author}`}
                               </span>
@@ -316,8 +316,8 @@ export function UpdateBanner() {
 
               {/* Footer */}
               <div className="border-t border-foreground/[0.06] px-6 py-3 flex items-center justify-between">
-                <p className="text-[11px] text-muted-foreground">
-                  Update: <code className="font-mono text-[10px]">./scripts/update.sh</code>
+                <p className="text-xs text-muted-foreground">
+                  Update: <code className="font-mono text-[11px]">./scripts/update.sh</code>
                 </p>
                 <Dialog.Close className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-colors">
                   Verstanden
@@ -348,7 +348,7 @@ function MarkdownChangelog({ content }: { content: string }) {
       );
     } else if (line.startsWith("### ")) {
       elements.push(
-        <h3 key={key++} className="mt-3 mb-1 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+        <h3 key={key++} className="mt-3 mb-1 text-xs font-semibold uppercase tracking-widest text-muted-foreground/60">
           {line.slice(4)}
         </h3>
       );

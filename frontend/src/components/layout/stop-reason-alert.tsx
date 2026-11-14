@@ -85,7 +85,7 @@ export function StopReasonAlert() {
                     <div className="flex items-center gap-2 mb-1">
                       <HardDrive className="h-3.5 w-3.5 shrink-0 text-red-700 dark:text-red-400" />
                       <span className="text-[13px] font-medium text-foreground/90">{agent.name}</span>
-                      <span className="ml-auto text-[11px] font-mono text-red-700 dark:text-red-400">{reason.disk_percent}%</span>
+                      <span className="ml-auto text-xs font-mono text-red-700 dark:text-red-400">{reason.disk_percent}%</span>
                     </div>
                     <p className="text-[12px] text-muted-foreground/70 leading-snug">{reason.detail}</p>
                   </Link>
@@ -93,7 +93,7 @@ export function StopReasonAlert() {
               </div>
 
               <div className="border-t border-foreground/[0.06] px-6 py-3 flex items-center justify-between">
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   Aufräumen im Workspace, dann Agent neu starten.
                 </p>
                 <Dialog.Close className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-colors">

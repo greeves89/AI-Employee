@@ -66,7 +66,7 @@ export function ProjektLeitstand({
       <section className="min-w-0 rounded-2xl border border-foreground/[0.08] bg-card p-4">
         <div className="flex items-baseline justify-between gap-2">
           <h2 className="text-sm font-semibold">Gerade in Arbeit</h2>
-          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground" title="Arbeitstakt des Projekts">
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title="Arbeitstakt des Projekts">
             <Timer className="h-3 w-3" />
             {takt.aktiv ? `Takt ${taktLabel.toLowerCase()} · nächster ${bis(takt.naechster_lauf) ?? "—"}` : "Takt aus"}
           </span>
@@ -88,11 +88,11 @@ export function ProjektLeitstand({
                         {l.karte_titel ?? l.titel}
                       </AufgabeLink>
                       {l.letzte_ausgabe && (
-                        <p className="line-clamp-2 text-[11px] italic text-foreground/70" title={l.letzte_ausgabe}>
+                        <p className="line-clamp-2 text-xs italic text-foreground/70" title={l.letzte_ausgabe}>
                           „{l.letzte_ausgabe}“
                         </p>
                       )}
-                      <p className="truncate text-[11px] text-muted-foreground">
+                      <p className="truncate text-xs text-muted-foreground">
                         {a?.name ?? "Agent"}{l.teilarbeit ? " · Teilarbeit" : ""}
                         {l.status === "running" ? " · arbeitet" : " · wartet auf Start"}
                         {l.gestartet ? ` · seit ${timeAgo(l.gestartet).replace("vor ", "")}` : ""}
@@ -118,9 +118,9 @@ export function ProjektLeitstand({
           </button>
           {naechste ? (
             <div className="mt-3 rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-2.5">
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Als Nächstes</p>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Als Nächstes</p>
               <p className="mt-0.5 flex items-center gap-1.5 text-sm">
-                <span className={cn("rounded px-1 text-[10px] font-semibold", PRIORITAETEN[naechste.prioritaet]?.klasse)}>
+                <span className={cn("rounded px-1 text-[11px] font-semibold", PRIORITAETEN[naechste.prioritaet]?.klasse)}>
                   {PRIORITAETEN[naechste.prioritaet]?.label}
                 </span>
                 {naechste.extern_nr ? <span className="text-xs text-muted-foreground">#{naechste.extern_nr}</span> : null}
@@ -146,7 +146,7 @@ export function ProjektLeitstand({
                     <GitPullRequest className="h-3.5 w-3.5 shrink-0" style={{ color: farbe }} />
                     <span className="font-medium">#{x.pr_nr ?? "?"}</span>
                     <span className="min-w-0 flex-1 truncate">{x.titel}</span>
-                    <span className={cn("shrink-0 rounded px-1 text-[10px]",
+                    <span className={cn("shrink-0 rounded px-1 text-[11px]",
                       x.pr_zustand === "ci_rot" ? "bg-red-500/15 text-red-600 dark:text-red-400"
                         : x.pr_zustand === "ci_gruen" ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
                           : "bg-foreground/[0.06] text-muted-foreground")}>

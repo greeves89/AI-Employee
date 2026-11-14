@@ -44,12 +44,12 @@ export function Mermaid({ chart, caption }: { chart: string; caption?: string })
   return (
     <figure className="my-4 rounded-xl border border-border bg-foreground/[0.02] p-4">
       {error ? (
-        <pre className="overflow-x-auto text-[11px] leading-relaxed text-muted-foreground">{chart.trim()}</pre>
+        <pre className="overflow-x-auto text-xs leading-relaxed text-muted-foreground">{chart.trim()}</pre>
       ) : (
         <div ref={ref} className="mermaid-host flex justify-center overflow-x-auto [&_svg]:max-w-full [&_svg]:h-auto" />
       )}
       {caption && (
-        <figcaption className="mt-2 text-center text-[11px] text-muted-foreground/60">{caption}</figcaption>
+        <figcaption className="mt-2 text-center text-xs text-muted-foreground/60">{caption}</figcaption>
       )}
     </figure>
   );

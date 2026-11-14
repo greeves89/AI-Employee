@@ -143,10 +143,10 @@ export function MeetingRecorder({
       {(transcript || recording) && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">Transkript</span>
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground/60">Transkript</span>
             <button
               onClick={() => { navigator.clipboard?.writeText(transcript); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
-              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/60 hover:text-foreground"
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground/60 hover:text-foreground"
             >
               {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />} Kopieren
             </button>

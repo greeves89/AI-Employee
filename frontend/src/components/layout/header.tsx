@@ -39,7 +39,8 @@ export function Header({
           <div className={subtitleClassName}>
             <p
               title={subtitle}
-              className="mt-0.5 line-clamp-2 break-words text-[13px] text-muted-foreground sm:block sm:truncate"
+              /* Handy: eine Zeile statt zwei — der Kopf war zu hoch (UI-Bewertung 14.11.2026). */
+              className="mt-0.5 line-clamp-1 break-words text-[13px] text-muted-foreground sm:block sm:truncate"
             >
               {subtitle}
             </p>

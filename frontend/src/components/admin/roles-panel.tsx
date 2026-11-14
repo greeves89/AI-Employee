@@ -396,7 +396,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
               <div className="flex items-center gap-2">
                 <Shield className="h-4 w-4 shrink-0 text-primary" />
                 <span className="truncate text-sm font-semibold">{role.name}</span>
-                <span className="ml-auto shrink-0 rounded-md bg-foreground/10 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                <span className="ml-auto shrink-0 rounded-md bg-foreground/10 px-1.5 py-0.5 text-[11px] text-muted-foreground">
                   {memberCounts.get(role.id) ?? 0}
                 </span>
               </div>
@@ -412,7 +412,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
         <div className="rounded-xl border border-foreground/[0.08] bg-card/70 p-5">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Name</label>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">Name</label>
               <input
                 value={draft.name}
                 onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
@@ -420,7 +420,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
               />
             </div>
             <div>
-              <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Max. Agenten</label>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">Max. Agenten</label>
               <input
                 type="number"
                 min={0}
@@ -433,7 +433,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
           </div>
 
           <div className="mt-3">
-            <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Beschreibung</label>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">Beschreibung</label>
             <input
               value={draft.description}
               onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
@@ -453,7 +453,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
                     <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>
-                <p className="mt-2 text-[11px] text-muted-foreground">
+                <p className="mt-2 text-xs text-muted-foreground">
                   So selbstständig dürfen Mitglieder dieser Rolle ihre Agenten höchstens einstellen — beim Anlegen
                   und beim Ändern. Sudo-Pakete und Root-Zugriff gibt es nur ohne Grenze. Bestehende Agenten werden
                   nicht zurückgestuft; sie stehen unten in der Liste.
@@ -481,7 +481,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
               <PermissionBlock title="Modelle" zusammenfassung={zaehlen(draft.models, modelOptions.length, "alle")}>
                 <div className="flex flex-wrap gap-2">
                   {modelOptions.length === 0 ? (
-                    <span className="text-[11px] text-muted-foreground">Keine Modelle aus KI-Konten</span>
+                    <span className="text-xs text-muted-foreground">Keine Modelle aus KI-Konten</span>
                   ) : modelOptions.map((model) => (
                     <ToggleChip
                       key={model}
@@ -500,7 +500,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
               <PermissionBlock title="KI-Konten" zusammenfassung={zaehlen(draft.ai_account_ids, aiAccounts.length, "keine")}>
                 <div className="flex flex-wrap gap-2">
                   {aiAccounts.length === 0 && (
-                    <span className="text-[11px] text-muted-foreground">Keine KI-Konten angelegt</span>
+                    <span className="text-xs text-muted-foreground">Keine KI-Konten angelegt</span>
                   )}
                   {aiAccounts.map((acc) => (
                     <ToggleChip
@@ -522,7 +522,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
               <PermissionBlock title="Schlüssel & Zugangsdaten" zusammenfassung={zaehlen(draft.secret_ids, secrets.length, "keine")}>
                 <div className="flex flex-wrap gap-2">
                   {secrets.length === 0 && (
-                    <span className="text-[11px] text-muted-foreground">Keine Schlüssel angelegt</span>
+                    <span className="text-xs text-muted-foreground">Keine Schlüssel angelegt</span>
                   )}
                   {secrets.map((s) => (
                     <ToggleChip
@@ -547,7 +547,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
               >
                 <div className="flex flex-wrap gap-2">
                   {mcpServers.length === 0 && (
-                    <span className="text-[11px] text-muted-foreground">Keine MCP-Server angelegt</span>
+                    <span className="text-xs text-muted-foreground">Keine MCP-Server angelegt</span>
                   )}
                   {mcpServers.map((m) => (
                     <ToggleChip
@@ -562,7 +562,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
                     />
                   ))}
                 </div>
-                <p className="mt-2 text-[11px] text-muted-foreground">
+                <p className="mt-2 text-xs text-muted-foreground">
                   {draft.mcp_server_ids == null
                     ? "Keine Liste: alle für alle freigegebenen Server (Schalter „Allen Nutzern bereitstellen“ unter Admin-Bereich → Dienste & Konten)."
                     : "Nur markierte sind für diese Rolle freigegeben, unabhängig vom Schalter „Allen Nutzern bereitstellen“. Ohne Auswahl: keiner. Admins sehen immer alle."}
@@ -575,7 +575,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
               <PermissionBlock title="Integrationen (M365 / Exchange)" zusammenfassung={zaehlen(draft.integration_providers, integrations.length, "alle")}>
                 <div className="flex flex-wrap gap-2">
                   {integrations.length === 0 && (
-                    <span className="text-[11px] text-muted-foreground">Keine Integrationen verfügbar</span>
+                    <span className="text-xs text-muted-foreground">Keine Integrationen verfügbar</span>
                   )}
                   {integrations.map((it) => (
                     <ToggleChip
@@ -607,7 +607,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
                     />
                   ))}
                 </div>
-                <p className="mt-2 text-[11px] text-muted-foreground">
+                <p className="mt-2 text-xs text-muted-foreground">
                   Der Nachrichtenindex braucht Brave als Anbieter unter Admin → Websuche. Ohne Freigabe wird das Werkzeug den Agenten dieser Rolle gar nicht angeboten; die Websuche bleibt immer verfügbar.
                 </p>
                 <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, search_indexes: null }))} />
@@ -657,7 +657,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
                   onChange={(e) => setDraft((d) => ({ ...d, template_ids: e.target.value }))}
                   className="w-full rounded-lg border border-foreground/[0.08] bg-background px-3 py-2 text-sm outline-none focus:border-primary/50"
                 />
-                <div className="mt-2 max-h-24 overflow-y-auto text-[11px] text-muted-foreground">
+                <div className="mt-2 max-h-24 overflow-y-auto text-xs text-muted-foreground">
                   {templates.slice(0, 20).map((t) => (
                     <div key={t.id}>{t.id}: {t.display_name}</div>
                   ))}
@@ -705,11 +705,11 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
             <Users className="h-4 w-4 text-primary" />
             <h3 className="text-sm font-semibold">Mitglieder</h3>
             {selectedRole && (
-              <span className="rounded-md bg-foreground/10 px-1.5 py-0.5 text-[11px] text-muted-foreground">
+              <span className="rounded-md bg-foreground/10 px-1.5 py-0.5 text-xs text-muted-foreground">
                 {members.length}
               </span>
             )}
-            <span className="ml-auto flex items-center gap-2 text-[11px] text-muted-foreground">
+            <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
               {selectedRole ? selectedRole.name : "keine Rolle gewählt"}
               <ChevronDown className={cn("h-4 w-4 transition-transform", membersOpen && "rotate-180")} />
             </span>
@@ -734,7 +734,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
                         >
                           <div className="min-w-0">
                             <p className="truncate text-sm font-medium">{u.name}</p>
-                            <p className="truncate text-[11px] text-muted-foreground">{u.email}</p>
+                            <p className="truncate text-xs text-muted-foreground">{u.email}</p>
                           </div>
                           <button
                             type="button"
@@ -784,9 +784,9 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
                           >
                             <div className="min-w-0">
                               <p className="truncate text-sm">{u.name}</p>
-                              <p className="truncate text-[11px] text-muted-foreground">{u.email}</p>
+                              <p className="truncate text-xs text-muted-foreground">{u.email}</p>
                             </div>
-                            <span className="shrink-0 text-[11px] text-muted-foreground">
+                            <span className="shrink-0 text-xs text-muted-foreground">
                               {pendingUserId === u.id
                                 ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                 : u.custom_role_id != null
@@ -839,10 +839,10 @@ function AgentenUeberDerGrenze({ stand }: { stand: number }) {
         <ShieldAlert className="h-4 w-4 text-amber-700 dark:text-amber-400" />
         <h3 className="text-sm font-semibold">Agenten über der Rollengrenze</h3>
         {liste && (
-          <span className="rounded-md bg-foreground/10 px-1.5 py-0.5 text-[11px] text-muted-foreground">{liste.length}</span>
+          <span className="rounded-md bg-foreground/10 px-1.5 py-0.5 text-xs text-muted-foreground">{liste.length}</span>
         )}
       </div>
-      <p className="mt-1 text-[11px] text-muted-foreground">
+      <p className="mt-1 text-xs text-muted-foreground">
         Diese Agenten dürfen mehr, als die Rolle ihres Besitzers heute erlaubt. Sie bleiben, wie sie sind;
         erhöhen lässt sich nichts mehr. Zurückstufen geht in den Einstellungen des Agenten.
       </p>
@@ -862,11 +862,11 @@ function AgentenUeberDerGrenze({ stand }: { stand: number }) {
             >
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{a.agent_name}</p>
-                <p className="truncate text-[11px] text-muted-foreground">
+                <p className="truncate text-xs text-muted-foreground">
                   {a.user_name || a.user_email || a.user_id} · Grenze {a.grenze.toUpperCase()}
                 </p>
               </div>
-              <span className="shrink-0 text-right text-[11px] text-amber-700 dark:text-amber-400">{a.gruende.join(" · ")}</span>
+              <span className="shrink-0 text-right text-xs text-amber-700 dark:text-amber-400">{a.gruende.join(" · ")}</span>
             </Link>
           ))}
         </div>
@@ -890,7 +890,7 @@ function PermissionBlock({ title, zusammenfassung, children }: { title: string; 
         <ChevronRight className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", offen && "rotate-90")} />
         <span className="text-xs font-semibold">{title}</span>
         {zusammenfassung && (
-          <span className="ml-auto rounded-md bg-foreground/[0.06] px-2 py-0.5 text-[11px] text-muted-foreground">{zusammenfassung}</span>
+          <span className="ml-auto rounded-md bg-foreground/[0.06] px-2 py-0.5 text-xs text-muted-foreground">{zusammenfassung}</span>
         )}
       </button>
       {offen && <div className="border-t border-foreground/[0.06] px-3 pb-3 pt-2.5">{children}</div>}
@@ -901,7 +901,7 @@ function PermissionBlock({ title, zusammenfassung, children }: { title: string; 
 function RechteGruppe({ titel, children }: { titel: string; children: React.ReactNode }) {
   return (
     <section>
-      <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{titel}</h3>
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{titel}</h3>
       <div className="space-y-1.5">{children}</div>
     </section>
   );
@@ -921,7 +921,7 @@ function ToggleChip({ label, active, muted, onClick }: { label: string; active: 
       type="button"
       onClick={onClick}
       className={cn(
-        "rounded-md border px-2 py-1 text-[11px] transition-colors",
+        "rounded-md border px-2 py-1 text-xs transition-colors",
         active
           ? muted
             ? "border-primary/20 bg-primary/5 text-primary/70"
@@ -939,7 +939,7 @@ function ToggleChip({ label, active, muted, onClick }: { label: string; active: 
  *  erlauben“ setzte genau diesen Zustand — ein Admin sperrte damit alles (03.10.2026). */
 function NurFreigegebenHinweis() {
   return (
-    <p className="mt-2 text-[11px] text-muted-foreground">
+    <p className="mt-2 text-xs text-muted-foreground">
       Nur markierte sind für diese Rolle freigegeben. Ohne Auswahl: keiner. Admins sehen immer alle.
     </p>
   );
@@ -950,7 +950,7 @@ function AlleAuswaehlenButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="mt-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+      className="mt-1 text-xs font-medium text-muted-foreground hover:text-foreground"
     >
       Alle auswählen
     </button>
@@ -962,7 +962,7 @@ function SetUnlimitedButton({ onClick, label = "Alle erlauben" }: { onClick: () 
     <button
       type="button"
       onClick={onClick}
-      className="mt-2 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+      className="mt-2 text-xs font-medium text-muted-foreground hover:text-foreground"
     >
       {label}
     </button>

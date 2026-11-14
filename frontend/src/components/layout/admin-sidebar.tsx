@@ -48,7 +48,7 @@ export function AdminSidebar() {
           <Shield className="h-4 w-4 text-amber-500" />
         </div>
         <span className={cn("text-sm font-semibold", collapsed && "lg:hidden")}>AI Employee</span>
-        <span className={cn("ml-auto rounded-md bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.06em] text-amber-700 dark:text-amber-400", collapsed && "lg:hidden")}>
+        <span className={cn("ml-auto rounded-md bg-amber-500/15 px-2 py-0.5 text-xs font-bold uppercase tracking-[0.06em] text-amber-700 dark:text-amber-400", collapsed && "lg:hidden")}>
           Admin
         </span>
       </div>

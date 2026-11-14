@@ -202,7 +202,7 @@ export function ConciergeWidget() {
                                   {it.title}
                                 </span>
                               </div>
-                              <div className="mt-0.5 text-[10px] text-muted-foreground/60">
+                              <div className="mt-0.5 text-[11px] text-muted-foreground/60">
                                 {it.detail}
                               </div>
                             </div>
@@ -214,7 +214,7 @@ export function ConciergeWidget() {
                                         it.action_label ?? it.action ?? "")
                                   }
                                   disabled={busy}
-                                  className="rounded-lg border border-foreground/[0.08] px-2 py-1 text-[11px] hover:bg-foreground/[0.06] disabled:opacity-40"
+                                  className="rounded-lg border border-foreground/[0.08] px-2 py-1 text-xs hover:bg-foreground/[0.06] disabled:opacity-40"
                                 >
                                   {it.action_label ?? "Ausführen"}
                                 </button>
@@ -239,7 +239,7 @@ export function ConciergeWidget() {
 
                 {/* Die Zahlen bleiben — aber als Fussnote. Sie verlangen keine
                     Handlung, und als vier Kacheln haben sie die Liste verdraengt. */}
-                <p className="border-t border-foreground/[0.06] pt-2.5 text-[10px] text-muted-foreground">
+                <p className="border-t border-foreground/[0.06] pt-2.5 text-[11px] text-muted-foreground">
                   {stats.agents} Agent{stats.agents !== 1 ? "en" : ""}
                   {stats.resting > 0 && ` · ${stats.resting} ruhen`}
                   {" · "}
@@ -249,7 +249,7 @@ export function ConciergeWidget() {
                 </p>
 
                 <div>
-                  <div className="mb-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                  <div className="mb-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
                     Plattform
                   </div>
                   {data.actions

@@ -128,7 +128,7 @@ export function DatenschutzKarte() {
                 aria-label="Aufbewahrungsfrist Prüfprotokoll in Tagen"
                 className={cn(EINGABE, "mt-1 block")}
               />
-              <span className="mt-1 block text-[11px] text-muted-foreground">
+              <span className="mt-1 block text-xs text-muted-foreground">
                 mindestens {stand.mindest_tage_audit} Tage
               </span>
             </label>
@@ -142,7 +142,7 @@ export function DatenschutzKarte() {
                 aria-label="Aufbewahrungsfrist Chatverläufe in Tagen"
                 className={cn(EINGABE, "mt-1 block")}
               />
-              <span className="mt-1 block text-[11px] text-muted-foreground">
+              <span className="mt-1 block text-xs text-muted-foreground">
                 mindestens {stand.mindest_tage_chat} Tage
               </span>
             </label>

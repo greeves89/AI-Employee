@@ -241,7 +241,7 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
             <h2 className="text-sm font-semibold mb-4">Neuer Schlüssel</h2>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2 flex flex-col gap-1">
-                <label className="text-[11px] font-medium text-muted-foreground/70">Art</label>
+                <label className="text-xs font-medium text-muted-foreground/70">Art</label>
                 <div className="grid grid-cols-3 gap-2">
                   {(["api_key", "sso_profile", "oauth_token"] as const).map(type => {
                     const { label, Icon } = TYPE_LABELS[type];
@@ -272,7 +272,7 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                 </div>
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-[11px] font-medium text-muted-foreground/70">Name</label>
+                <label className="text-xs font-medium text-muted-foreground/70">Name</label>
                 <input
                   placeholder={createCopy.namePlaceholder}
                   value={form.name}
@@ -288,7 +288,7 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                 />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-[11px] font-medium text-muted-foreground/70">Name der Umgebungsvariable</label>
+                <label className="text-xs font-medium text-muted-foreground/70">Name der Umgebungsvariable</label>
                 <input
                   placeholder={createCopy.envPlaceholder}
                   value={form.key_name}
@@ -300,7 +300,7 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                 />
               </div>
               <div className="col-span-2 flex flex-col gap-1">
-                <label className="text-[11px] font-medium text-muted-foreground/70">{createCopy.valueLabel}</label>
+                <label className="text-xs font-medium text-muted-foreground/70">{createCopy.valueLabel}</label>
                 <textarea
                   rows={form.secret_type === "api_key" ? 3 : 7}
                   placeholder={createCopy.valuePlaceholder}
@@ -310,7 +310,7 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                 />
               </div>
               <div className="col-span-2 flex flex-col gap-1">
-                <label className="text-[11px] font-medium text-muted-foreground/70">Beschreibung (optional)</label>
+                <label className="text-xs font-medium text-muted-foreground/70">Beschreibung (optional)</label>
                 <input
                   placeholder={createCopy.descriptionPlaceholder}
                   value={form.description}
@@ -319,7 +319,7 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                 />
               </div>
               <ZieleFeld wert={form.ziele} keyName={form.key_name} onChange={v => setForm(p => ({ ...p, ziele: v }))} />
-              <p className="col-span-2 text-[11px] leading-relaxed text-muted-foreground/60">
+              <p className="col-span-2 text-xs leading-relaxed text-muted-foreground/60">
                 Zugewiesene Agenten bekommen den Wert als <span className="font-mono text-muted-foreground">{form.key_name || createCopy.envPlaceholder}</span>.
                 Das Modell nutzt den Variablennamen in Werkzeugen und Skripten und gibt den Wert nie aus.
               </p>
@@ -360,7 +360,7 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                   {isEditing ? (
                     <div className="flex flex-col gap-3">
                       <div className="flex items-center gap-2">
-                        <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium", TYPE_COLORS[editForm.secret_type])}>
+                        <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium", TYPE_COLORS[editForm.secret_type])}>
                           {TYPE_LABELS[editForm.secret_type]?.label ?? editForm.secret_type}
                         </span>
                         <span className="text-xs text-muted-foreground">
@@ -369,7 +369,7 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div className="flex flex-col gap-1">
-                          <label className="text-[11px] font-medium text-muted-foreground/70">Name</label>
+                          <label className="text-xs font-medium text-muted-foreground/70">Name</label>
                           <input
                             value={editForm.name}
                             onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))}
@@ -377,7 +377,7 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                           />
                         </div>
                         <div className="flex flex-col gap-1">
-                          <label className="text-[11px] font-medium text-muted-foreground/70">Env-Var Name</label>
+                          <label className="text-xs font-medium text-muted-foreground/70">Env-Var Name</label>
                           <input
                             value={editForm.key_name}
                             readOnly
@@ -385,7 +385,7 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                           />
                         </div>
                         <div className="col-span-2 flex flex-col gap-1">
-                          <label className="text-[11px] font-medium text-muted-foreground/70">
+                          <label className="text-xs font-medium text-muted-foreground/70">
                             {editCopy.valueLabel} ersetzen (leer lassen = behalten)
                           </label>
                           <textarea
@@ -396,7 +396,7 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                             className="resize-y rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-mono leading-relaxed"
                           />
                           {editForm.secret_type === "sso_profile" && (
-                            <p className="text-[11px] leading-relaxed text-muted-foreground/60">
+                            <p className="text-xs leading-relaxed text-muted-foreground/60">
                               Für SSO-Profile alle Angaben hier als JSON hinterlegen, etwa Server-Adresse,
                               Aussteller, Zielgruppe, Token und optionale Header. Der zugewiesene Agent liest sie aus
                               <span className="font-mono text-muted-foreground"> ${editForm.key_name}</span>.
@@ -404,7 +404,7 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                           )}
                         </div>
                         <div className="col-span-2 flex flex-col gap-1">
-                          <label className="text-[11px] font-medium text-muted-foreground/70">Beschreibung</label>
+                          <label className="text-xs font-medium text-muted-foreground/70">Beschreibung</label>
                           <input
                             value={editForm.description}
                             onChange={e => setEditForm(p => ({ ...p, description: e.target.value }))}
@@ -443,27 +443,27 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-medium text-sm">{s.name}</span>
-                            <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium", TYPE_COLORS[s.secret_type])}>
+                            <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium", TYPE_COLORS[s.secret_type])}>
                               {label}
                             </span>
                             {!s.is_active && (
-                              <span className="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium bg-foreground/[0.04] text-muted-foreground border-foreground/[0.08]">
+                              <span className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium bg-foreground/[0.04] text-muted-foreground border-foreground/[0.08]">
                                 Inaktiv
                               </span>
                             )}
                             <ZieleAbzeichen secret={s} />
                             {s.zugang === "person" && (
-                              <span className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20">
+                              <span className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20">
                                 <Users size={11} /> Freigegeben von {s.owner_name || "einer Person"}
                               </span>
                             )}
                             {s.zugang === "rolle" && (
-                              <span className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium bg-foreground/[0.04] text-muted-foreground border-foreground/[0.08]">
+                              <span className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium bg-foreground/[0.04] text-muted-foreground border-foreground/[0.08]">
                                 <Shield size={11} /> Über deine Rolle freigegeben
                               </span>
                             )}
                             {s.manageable && !!s.shared_with_count && (
-                              <span className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium bg-foreground/[0.04] text-muted-foreground border-foreground/[0.08]">
+                              <span className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium bg-foreground/[0.04] text-muted-foreground border-foreground/[0.08]">
                                 <Users size={11} /> An {s.shared_with_count} Person{s.shared_with_count === 1 ? "" : "en"} freigegeben
                               </span>
                             )}
@@ -487,7 +487,7 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                             </button>
                           </div>
                           {s.assigned_agent_ids.length > 0 && (
-                            <p className="text-[11px] text-muted-foreground mt-1">
+                            <p className="text-xs text-muted-foreground mt-1">
                               Zugewiesen an {s.assigned_agent_ids.length} Agent{s.assigned_agent_ids.length !== 1 ? "en" : ""}
                             </p>
                           )}

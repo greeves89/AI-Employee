@@ -182,20 +182,20 @@ function McpToolRunner({ serverId, tool }: { serverId: number; tool: McpTool }) 
     <div className="mt-1.5">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-1 text-[10px] text-violet-400 hover:text-violet-300"
+        className="inline-flex items-center gap-1 text-[11px] text-violet-400 hover:text-violet-300"
       >
         <Play className="h-3 w-3" /> {open ? "Schließen" : "Werkzeug testen"}
       </button>
       {open && (
         <div className="mt-1.5 space-y-2 rounded-md bg-foreground/[0.02] border border-foreground/[0.04] p-2.5">
           {propNames.length === 0 ? (
-            <p className="text-[10px] text-muted-foreground">Keine Parameter.</p>
+            <p className="text-[11px] text-muted-foreground">Keine Parameter.</p>
           ) : (
             propNames.map((key) => {
               const prop = properties[key] || {};
               return (
                 <div key={key} className="space-y-0.5">
-                  <label className="block text-[10px] font-mono text-muted-foreground/70">
+                  <label className="block text-[11px] font-mono text-muted-foreground/70">
                     {key}
                     {required.has(key) && <span className="text-red-400">*</span>}
                     {prop.type && <span className="text-muted-foreground"> : {prop.type}</span>}
@@ -205,7 +205,7 @@ function McpToolRunner({ serverId, tool }: { serverId: number; tool: McpTool }) 
                     value={values[key] ?? ""}
                     onChange={(e) => setValues((v) => ({ ...v, [key]: e.target.value }))}
                     placeholder={prop.description || ""}
-                    className="w-full rounded-md bg-background border border-foreground/10 px-2 py-1 text-[11px] font-mono focus:outline-none focus:border-violet-400/40"
+                    className="w-full rounded-md bg-background border border-foreground/10 px-2 py-1 text-xs font-mono focus:outline-none focus:border-violet-400/40"
                   />
                 </div>
               );
@@ -214,16 +214,16 @@ function McpToolRunner({ serverId, tool }: { serverId: number; tool: McpTool }) 
           <button
             onClick={run}
             disabled={running}
-            className="inline-flex items-center gap-1.5 rounded-md bg-violet-500/15 text-violet-300 px-2.5 py-1 text-[11px] font-medium hover:bg-violet-500/25 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-md bg-violet-500/15 text-violet-300 px-2.5 py-1 text-xs font-medium hover:bg-violet-500/25 disabled:opacity-50"
           >
             {running ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
             Ausführen
           </button>
-          {error && <p className="text-[10px] text-red-400">{error}</p>}
+          {error && <p className="text-[11px] text-red-400">{error}</p>}
           {result && (
             <pre
               className={cn(
-                "mt-1 max-h-56 overflow-auto rounded-md border p-2 text-[10px] font-mono whitespace-pre-wrap break-all",
+                "mt-1 max-h-56 overflow-auto rounded-md border p-2 text-[11px] font-mono whitespace-pre-wrap break-all",
                 result.is_error
                   ? "border-red-500/30 bg-red-500/[0.06] text-red-300"
                   : "border-emerald-500/20 bg-emerald-500/[0.04] text-foreground/80",
@@ -584,7 +584,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
               {editingId == null ? "Neuen MCP-Server hinzufügen" : `„${editingServer?.name ?? ""}“ bearbeiten`}
             </p>
             <div>
-              <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Name</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Name</label>
               <input
                 type="text"
                 value={addName}
@@ -594,7 +594,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
               />
             </div>
             <div>
-              <label className="text-[11px] font-medium text-muted-foreground mb-1 block">URL</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">URL</label>
               <input
                 type="text"
                 value={addUrl}
@@ -605,7 +605,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
               />
             </div>
             <div>
-              <label className="text-[11px] font-medium text-muted-foreground mb-1 block">
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">
                 Bearer Token{" "}
                 <span className="text-muted-foreground">
                   {editingServer?.has_auth ? "(leer lassen = unverändert)" : "(optional)"}
@@ -621,7 +621,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
                 onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
               />
               {editingServer?.has_auth && (
-                <label className="mt-1.5 flex items-center gap-1.5 text-[10px] text-muted-foreground/70 cursor-pointer">
+                <label className="mt-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground/70 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={removeToken}
@@ -633,7 +633,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
               )}
             </div>
             <div>
-              <label className="text-[11px] font-medium text-muted-foreground mb-1 block">
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">
                 Eigene Header{" "}
                 <span className="text-muted-foreground">
                   {editingServer?.has_headers
@@ -650,7 +650,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
                 className="w-full rounded-lg border border-foreground/[0.08] bg-background/50 px-3 py-2 text-sm font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all resize-y disabled:opacity-40"
               />
               {editingServer?.has_headers && (
-                <label className="mt-1.5 flex items-center gap-1.5 text-[10px] text-muted-foreground/70 cursor-pointer">
+                <label className="mt-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground/70 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={removeHeaders}
@@ -660,13 +660,13 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
                   Gespeicherte Header entfernen
                 </label>
               )}
-              <p className="text-[10px] text-muted-foreground mt-1">
+              <p className="text-[11px] text-muted-foreground mt-1">
                 Für Server, die statt „Bearer" einen eigenen Header erwarten (z. B. Composio: x-consumer-api-key).
               </p>
             </div>
             {editingId != null && (
               <div>
-                <label className="text-[11px] font-medium text-muted-foreground mb-1 block">
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">
                   Eigene OAuth-Rückkehr-Adresse{" "}
                   <span className="text-muted-foreground">(optional — leer = die dieser Installation)</span>
                 </label>
@@ -677,7 +677,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
                   placeholder="https://beispiel.invalid"
                   className="w-full rounded-lg border border-foreground/[0.08] bg-background/50 px-3 py-2 text-sm font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
                 />
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <p className="text-[11px] text-muted-foreground mt-1">
                   Nur nötig, wenn dieser Anbieter eine enge Liste erlaubter Rückkehr-Adressen führt.
                   Sonst musste bisher die Adresse der ganzen Installation umgestellt werden — was
                   gleichzeitig Anmeldung und Kalender-Anbindung umgehängt hat.
@@ -692,7 +692,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
             )}
             {probeResult && (
               <div className={cn(
-                "rounded-lg border px-3 py-2 text-[11px] flex items-center gap-2",
+                "rounded-lg border px-3 py-2 text-xs flex items-center gap-2",
                 probeResult.ok
                   ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
                   : "bg-red-500/10 border-red-500/20 text-red-400"
@@ -705,7 +705,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
               // Erscheint erst NACH einer Ablehnung wegen privater Adresse — also
               // genau dann, wenn er hilft, und nicht als Dauerangebot.
               <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2.5 space-y-1.5">
-                <label className="flex items-start gap-2 text-[11px] text-amber-700 dark:text-amber-200/90 cursor-pointer">
+                <label className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-200/90 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={allowPrivate}
@@ -717,7 +717,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
                     eigenen Netz und ist von aussen nicht erreichbar.
                   </span>
                 </label>
-                <p className="text-[10px] text-amber-700 dark:text-amber-200/60 pl-5">
+                <p className="text-[11px] text-amber-700 dark:text-amber-200/60 pl-5">
                   Gilt nur für diesen Eintrag. Adressen, hinter denen nie ein
                   MCP-Server steht, bleiben gesperrt: dieser Server selbst
                   (127.0.0.1) und der Metadatenpunkt der Cloud (169.254.169.254).
@@ -725,7 +725,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
               </div>
             )}
             {editingId == null && (
-              <label className="flex items-start gap-2 text-[11px] text-muted-foreground cursor-pointer">
+              <label className="flex items-start gap-2 text-xs text-muted-foreground cursor-pointer">
                 <input
                   type="checkbox"
                   checked={addFuerAlle}
@@ -740,7 +740,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
               </label>
             )}
             {editingServer?.has_auth && !addBearer.trim() && !removeToken && (
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-[11px] text-muted-foreground">
                 Hinweis: Der Verbindungstest nutzt nur ein hier eingegebenes Token — der gespeicherte Token kann dafür nicht ausgelesen werden.
               </p>
             )}
@@ -823,7 +823,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
                       {server.has_auth && (
                         <span
                           title="Zugangs-Token gespeichert"
-                          className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400"
+                          className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400"
                         >
                           <KeyRound className="h-2.5 w-2.5" />
                           Token
@@ -835,7 +835,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
                             ? "OAuth verbunden — Access-Token wird serverseitig automatisch erneuert"
                             : "OAuth konfiguriert, aber noch nicht verbunden — auf „Verbinden“ klicken"}
                           className={cn(
-                            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+                            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium",
                             server.oauth_connected
                               ? "bg-emerald-500/10 text-emerald-400"
                               : "bg-amber-500/10 text-amber-700 dark:text-amber-400"
@@ -845,31 +845,31 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
                           {server.oauth_connected ? "OAuth" : "OAuth offen"}
                         </span>
                       )}
-                      <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-400">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-2 py-0.5 text-[11px] font-medium text-violet-400">
                         <Wrench className="h-2.5 w-2.5" />
                         {toolCount} Tool{toolCount !== 1 && "s"} entdeckt
                       </span>
                       {server.fuer_alle && (
                         <span
                           title="Steht allen Nutzern bereit"
-                          className="inline-flex items-center gap-1 rounded-full bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium text-sky-700 dark:text-sky-400"
+                          className="inline-flex items-center gap-1 rounded-full bg-sky-500/10 px-2 py-0.5 text-[11px] font-medium text-sky-700 dark:text-sky-400"
                         >
                           <Users className="h-2.5 w-2.5" />
                           Für alle
                         </span>
                       )}
                       {!server.enabled && (
-                        <span className="text-[10px] text-muted-foreground">deaktiviert</span>
+                        <span className="text-[11px] text-muted-foreground">deaktiviert</span>
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground/60 font-mono truncate mt-0.5">{server.url}</p>
-                    <div className={cn("mt-1 flex items-center gap-1.5 text-[11px]", health.className)} title={health.title}>
+                    <div className={cn("mt-1 flex items-center gap-1.5 text-xs", health.className)} title={health.title}>
                       {health.ok ? <CheckCircle2 className="h-3 w-3 shrink-0" /> : <AlertCircle className="h-3 w-3 shrink-0" />}
                       <span className="truncate">{health.label}</span>
                     </div>
                     {agentView && (
                       <div
-                        className={cn("mt-1 flex items-center gap-1.5 text-[11px]", agentView.className)}
+                        className={cn("mt-1 flex items-center gap-1.5 text-xs", agentView.className)}
                         title="Ergebnis von `claude mcp list` in den laufenden Agent-Containern (Agent-Perspektive, #425)."
                       >
                         {agentView.ok ? <CheckCircle2 className="h-3 w-3 shrink-0" /> : <AlertCircle className="h-3 w-3 shrink-0" />}
@@ -877,7 +877,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
                       </div>
                     )}
                     {disagreement && (
-                      <div className="mt-1 flex items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-400" title="Der Orchestrator erreicht den Server, aber mindestens ein Agent nicht — oft ein pro-Agent-Token, das der Server ablehnt.">
+                      <div className="mt-1 flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400" title="Der Orchestrator erreicht den Server, aber mindestens ein Agent nicht — oft ein pro-Agent-Token, das der Server ablehnt.">
                         <AlertCircle className="h-3 w-3 shrink-0" />
                         <span className="truncate">Abweichung: Orchestrator erreicht den Server, Agenten melden Probleme</span>
                       </div>
@@ -986,7 +986,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
                             <div className="min-w-0 flex-1">
                               <span className="text-[12px] font-medium font-mono text-foreground">{tool.name}</span>
                               {tool.description && (
-                                <p className="text-[11px] text-muted-foreground/60 mt-0.5 line-clamp-2">{tool.description}</p>
+                                <p className="text-xs text-muted-foreground/60 mt-0.5 line-clamp-2">{tool.description}</p>
                               )}
                               <McpToolRunner serverId={server.id} tool={tool} />
                             </div>
@@ -994,7 +994,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
                         ))}
                       </div>
                     )}
-                    <p className="text-[10px] text-muted-foreground mt-3">
+                    <p className="text-[11px] text-muted-foreground mt-3">
                       Die Agenten müssen neu gestartet werden, um neue MCP-Server zu nutzen.
                     </p>
                   </div>

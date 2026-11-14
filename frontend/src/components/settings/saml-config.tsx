@@ -109,18 +109,18 @@ export function SamlConfig() {
           </div>
           <div>
             <h3 className="text-sm font-semibold">SAML 2.0</h3>
-            <p className="text-[11px] text-muted-foreground/60">
+            <p className="text-xs text-muted-foreground/60">
               Anmeldung über den eigenen Identitätsanbieter (ADFS, Entra ID, Keycloak)
             </p>
           </div>
         </div>
         {configured ? (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-medium text-emerald-400">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-400">
             <CheckCircle2 className="h-3 w-3" />
             Aktiv
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-500/20 bg-zinc-500/10 px-2.5 py-1 text-[10px] font-medium text-zinc-400">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-500/20 bg-zinc-500/10 px-2.5 py-1 text-[11px] font-medium text-zinc-400">
             Nicht eingerichtet
           </span>
         )}
@@ -128,15 +128,15 @@ export function SamlConfig() {
 
       <div className="space-y-4 p-5">
         <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-3">
-          <div className="text-[11px] font-medium">Schritt 1 — unsere Metadaten eintragen</div>
-          <p className="mt-1 text-[11px] text-muted-foreground/60">
+          <div className="text-xs font-medium">Schritt 1 — unsere Metadaten eintragen</div>
+          <p className="mt-1 text-xs text-muted-foreground/60">
             Diese Adresse beim Identitätsanbieter als Dienstanbieter hinterlegen:
           </p>
           <a
             href={metadataUrl}
             target="_blank"
             rel="noreferrer"
-            className="mt-1.5 inline-flex items-center gap-1.5 break-all text-[11px] text-primary hover:underline"
+            className="mt-1.5 inline-flex items-center gap-1.5 break-all text-xs text-primary hover:underline"
           >
             {metadataUrl}
             <ExternalLink className="h-3 w-3 shrink-0" />
@@ -146,7 +146,7 @@ export function SamlConfig() {
         <div className="grid gap-3 sm:grid-cols-2">
           {FIELDS.map((f) => (
             <div key={f.key}>
-              <label className="text-[11px] font-medium">
+              <label className="text-xs font-medium">
                 {f.label}
                 {f.required && <span className="ml-1 text-red-400">*</span>}
               </label>
@@ -155,13 +155,13 @@ export function SamlConfig() {
                 onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
                 className="mt-1 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm outline-none focus:border-primary/50"
               />
-              <p className="mt-1 text-[10px] text-muted-foreground">{f.hint}</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">{f.hint}</p>
             </div>
           ))}
         </div>
 
         <div>
-          <label className="text-[11px] font-medium">
+          <label className="text-xs font-medium">
             Signatur-Zertifikat des Anbieters <span className="text-red-400">*</span>
           </label>
           <textarea
@@ -170,15 +170,15 @@ export function SamlConfig() {
             rows={5}
             spellCheck={false}
             placeholder="MIIC..."
-            className="mt-1 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 font-mono text-[11px] outline-none focus:border-primary/50"
+            className="mt-1 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 font-mono text-xs outline-none focus:border-primary/50"
           />
-          <p className="mt-1 text-[10px] text-muted-foreground">
+          <p className="mt-1 text-[11px] text-muted-foreground">
             Damit wird jede Antwort geprüft. Ohne Zertifikat wird SAML nicht als
             Anmeldeweg angeboten.
           </p>
         </div>
 
-        <p className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2 text-[11px] text-muted-foreground">
+        <p className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2 text-xs text-muted-foreground">
           Welche Gruppe welche Rolle bekommt, wird jetzt unter{" "}
           <span className="font-medium text-foreground">Admin → Nutzer & Rollen → SSO-Gruppen</span>{" "}
           eingerichtet — dort auch für Microsoft-SSO, nicht nur SAML.

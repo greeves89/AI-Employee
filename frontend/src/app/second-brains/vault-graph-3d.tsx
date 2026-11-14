@@ -543,7 +543,7 @@ export default function VaultGraph3D({
           )}
 
           {/* Stats */}
-          <div className="pointer-events-none absolute left-3 top-3 rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-[11px] text-white/60 backdrop-blur-sm">
+          <div className="pointer-events-none absolute left-3 top-3 rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-white/60 backdrop-blur-sm">
             {graph.nodes.length} Notizen · {graph.edges.length} Verknüpfungen
             {graph.truncated && " · (gekürzt)"}
             {!use3D && " · 2D-Ansicht"}
@@ -561,14 +561,14 @@ export default function VaultGraph3D({
                     />
                     <span className="truncate">{selected.name}</span>
                   </div>
-                  <div className="mt-0.5 truncate font-mono text-[10px] text-white/40">{selected.path}</div>
+                  <div className="mt-0.5 truncate font-mono text-[11px] text-white/40">{selected.path}</div>
                 </div>
                 <button onClick={() => setSelected(null)} className="shrink-0 text-white/40 hover:text-white">
                   <X className="h-4 w-4" />
                 </button>
               </div>
 
-              <div className="flex items-center gap-3 border-b border-white/10 px-4 py-2 text-[11px] text-white/60">
+              <div className="flex items-center gap-3 border-b border-white/10 px-4 py-2 text-xs text-white/60">
                 <span className="flex items-center gap-1">
                   <ArrowLeftRight className="h-3 w-3" /> {selected.in}← / →{selected.out}
                 </span>
@@ -580,7 +580,7 @@ export default function VaultGraph3D({
                   {selected.tags.map((t) => (
                     <span
                       key={t}
-                      className="flex items-center gap-0.5 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300"
+                      className="flex items-center gap-0.5 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[11px] text-emerald-300"
                     >
                       <Hash className="h-2.5 w-2.5" />
                       {t}
@@ -591,7 +591,7 @@ export default function VaultGraph3D({
 
               {selectedNeighbors.length > 0 && (
                 <div className="border-b border-white/10 px-4 py-2">
-                  <div className="mb-1 text-[10px] uppercase tracking-wide text-white/40">
+                  <div className="mb-1 text-[11px] uppercase tracking-wide text-white/40">
                     Verlinkte Notizen ({selectedNeighbors.length})
                   </div>
                   <div className="flex flex-col gap-0.5">
@@ -602,7 +602,7 @@ export default function VaultGraph3D({
                         <button
                           key={id}
                           onClick={() => handleNodeClick(n)}
-                          className="flex items-center gap-1.5 truncate rounded px-1.5 py-0.5 text-left text-[11px] text-white/70 hover:bg-white/5"
+                          className="flex items-center gap-1.5 truncate rounded px-1.5 py-0.5 text-left text-xs text-white/70 hover:bg-white/5"
                         >
                           <span
                             className="h-1.5 w-1.5 shrink-0 rounded-full"
@@ -643,7 +643,7 @@ export default function VaultGraph3D({
             <div className="shrink-0 border-t border-white/10 bg-black/40 px-3 py-2">
               <button
                 onClick={() => setLegendOpen((o) => !o)}
-                className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-white/40 hover:text-white/60"
+                className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-white/40 hover:text-white/60"
               >
                 <ChevronDown className={cn("h-3 w-3 transition-transform", !legendOpen && "-rotate-90")} />
                 Ordner ({folderColor.size})
@@ -651,7 +651,7 @@ export default function VaultGraph3D({
               {legendOpen && (
                 <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
                   {Array.from(folderColor.entries()).map(([f, c]) => (
-                    <span key={f} className="flex items-center gap-1 text-[10px] text-white/70">
+                    <span key={f} className="flex items-center gap-1 text-[11px] text-white/70">
                       <span className="h-2 w-2 rounded-full" style={{ background: c }} />
                       {f || "(Wurzel)"}
                     </span>

@@ -443,7 +443,7 @@ export function TaskDetail({
                 >
                   <FileText className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-primary transition-colors" />
                   <span className="min-w-0 flex-1 truncate text-sm text-foreground/90">{a.name}</span>
-                  <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
                     {formatBytes(a.size)}
                   </span>
                   <Download className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 group-hover:text-primary transition-colors" />
@@ -470,7 +470,7 @@ export function TaskDetail({
                 className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all resize-none placeholder:text-muted-foreground"
               />
               <div className="flex items-center justify-between">
-                <span className="text-[11px] text-muted-foreground">Der Agent arbeitet mit seinem bisherigen Ergebnis weiter (⌘/Strg+Enter)</span>
+                <span className="text-xs text-muted-foreground">Der Agent arbeitet mit seinem bisherigen Ergebnis weiter (⌘/Strg+Enter)</span>
                 <button
                   onClick={sendFollowUp}
                   disabled={sendingFollowUp || !followUp.trim()}
@@ -502,14 +502,14 @@ export function TaskDetail({
               {task.agent_id && (
                 <div className="flex items-center gap-1.5">
                   <div className={cn("h-1.5 w-1.5 rounded-full", isConnected ? "bg-emerald-500" : "bg-red-500")} />
-                  <span className="text-[10px] text-muted-foreground/60">
+                  <span className="text-[11px] text-muted-foreground/60">
                     {isConnected ? "Live" : "Getrennt"}
                   </span>
                 </div>
               )}
               <button
                 onClick={() => setLogs([])}
-                className="text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+                className="text-[11px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
               >
                 Leeren
               </button>
@@ -552,7 +552,7 @@ export function TaskDetail({
                 <button
                   onClick={loadReplay}
                   disabled={replayLoading}
-                  className="flex items-center gap-1.5 rounded-lg bg-foreground/[0.06] px-3 py-1.5 text-[11px] font-medium text-foreground hover:bg-foreground/[0.1] disabled:opacity-50 transition-colors"
+                  className="flex items-center gap-1.5 rounded-lg bg-foreground/[0.06] px-3 py-1.5 text-xs font-medium text-foreground hover:bg-foreground/[0.1] disabled:opacity-50 transition-colors"
                 >
                   {replayLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
                   Verlauf laden
@@ -561,14 +561,14 @@ export function TaskDetail({
                 <div className="flex items-center gap-1.5">
                   <a
                     href={api.taskTraceExportUrl(taskId)}
-                    className="flex items-center gap-1.5 rounded-lg bg-foreground/[0.06] px-2.5 py-1.5 text-[11px] font-medium text-foreground hover:bg-foreground/[0.1] transition-colors"
+                    className="flex items-center gap-1.5 rounded-lg bg-foreground/[0.06] px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-foreground/[0.1] transition-colors"
                     title="Trace als JSON herunterladen"
                   >
                     <FileJson className="h-3 w-3" /> JSON
                   </a>
                   <button
                     onClick={() => window.print()}
-                    className="flex items-center gap-1.5 rounded-lg bg-foreground/[0.06] px-2.5 py-1.5 text-[11px] font-medium text-foreground hover:bg-foreground/[0.1] transition-colors"
+                    className="flex items-center gap-1.5 rounded-lg bg-foreground/[0.06] px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-foreground/[0.1] transition-colors"
                     title="Als PDF drucken (Browser-Druckdialog)"
                   >
                     <Printer className="h-3 w-3" /> PDF
@@ -603,7 +603,7 @@ export function TaskDetail({
                         onChange={(e) => { setReplayPlaying(false); setReplayIndex(parseInt(e.target.value, 10)); }}
                         className="volle-breite flex-1 accent-blue-500"
                       />
-                      <span className="text-[11px] tabular-nums text-muted-foreground/70 w-28 text-right">
+                      <span className="text-xs tabular-nums text-muted-foreground/70 w-28 text-right">
                         Schritt {replayIndex}/{replaySteps.length}
                         {currentStepDurationMs != null && <span className="text-muted-foreground"> · {formatDuration(currentStepDurationMs)}</span>}
                       </span>
@@ -618,7 +618,7 @@ export function TaskDetail({
                     </div>
                     {trace && (trace.summary.cost_usd != null || trace.governance.length > 0) && (
                       <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-3 space-y-2">
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground/70">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground/70">
                           {trace.summary.cost_usd != null && <span>Kosten <span className="text-foreground">{formatMoney(trace.summary.cost_usd)}</span></span>}
                           {trace.summary.num_turns != null && <span>Schritte <span className="text-foreground">{trace.summary.num_turns}</span></span>}
                           {trace.summary.duration_ms != null && <span>Dauer <span className="text-foreground">{formatDuration(trace.summary.duration_ms)}</span></span>}
@@ -628,14 +628,14 @@ export function TaskDetail({
                         </div>
                         {trace.governance.length > 0 && (
                           <div>
-                            <p className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                            <p className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
                               <ShieldCheck className="h-2.5 w-2.5 text-emerald-400" /> Governance ({trace.governance.length})
                             </p>
                             <div className="space-y-0.5">
                               {trace.governance.slice(0, 8).map((g, i) => (
-                                <div key={i} className="flex items-center gap-2 text-[11px]">
+                                <div key={i} className="flex items-center gap-2 text-xs">
                                   <span className={cn(
-                                    "w-14 shrink-0 text-[10px]",
+                                    "w-14 shrink-0 text-[11px]",
                                     g.outcome === "blocked" ? "text-red-400" : g.outcome === "failure" ? "text-amber-700 dark:text-amber-400" : "text-emerald-400/70",
                                   )}>{g.outcome ?? "—"}</span>
                                   <span className="font-medium">{g.event_type}</span>
@@ -655,7 +655,7 @@ export function TaskDetail({
         )}
 
         {/* Timestamps */}
-        <div className="flex items-center gap-6 text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-6 text-xs text-muted-foreground">
           <span>Erstellt: {new Date(task.created_at).toLocaleString("de-DE")}</span>
           {task.started_at && <span>Gestartet: {new Date(task.started_at).toLocaleString("de-DE")}</span>}
           {task.completed_at && <span>Fertig: {new Date(task.completed_at).toLocaleString("de-DE")}</span>}
@@ -683,7 +683,7 @@ function MiniCard({
     )}>
       <div className="flex items-center gap-1.5 mb-1">
         <Icon className="h-3 w-3 text-muted-foreground/60" />
-        <span className="text-[10px] text-muted-foreground/60">{label}</span>
+        <span className="text-[11px] text-muted-foreground/60">{label}</span>
       </div>
       <p className="text-sm font-medium tabular-nums truncate">{value}</p>
     </div>
@@ -754,7 +754,7 @@ function TaskLogLine({ event, agentNames = {} }: { event: LogEvent; agentNames?:
       );
     case "system":
       return (
-        <div className="text-violet-600/80 dark:text-violet-400/70 text-[11px]">
+        <div className="text-violet-600/80 dark:text-violet-400/70 text-xs">
           <span className="text-muted-foreground mr-2 select-none">{time}</span>
           {String(data.message || "")}
         </div>
@@ -768,7 +768,7 @@ function TaskLogLine({ event, agentNames = {} }: { event: LogEvent; agentNames?:
       );
     default:
       return (
-        <div className="text-muted-foreground text-[11px]">
+        <div className="text-muted-foreground text-xs">
           {JSON.stringify(event.data)}
         </div>
       );

@@ -176,7 +176,7 @@ export function ProjektWissen({
                   <span className="truncate">{t.path}</span>
                 </button>
                 {treffer && (
-                  <p className="line-clamp-2 px-7 text-[11px] text-muted-foreground">
+                  <p className="line-clamp-2 px-7 text-xs text-muted-foreground">
                     {aus && <span className="mr-1 font-medium text-violet-600 dark:text-violet-400">{aus.quelle}:</span>}
                     {t.snippets.join(" … ")}
                   </p>
@@ -210,7 +210,7 @@ export function ProjektWissen({
             {fremd && <span className="mr-1.5 text-violet-600 dark:text-violet-400">{fremd.quelle} ·</span>}
             {pfad}
           </h3>
-          {fremd && <span className="ml-auto text-[11px] text-muted-foreground">Second Brain — nur lesen</span>}
+          {fremd && <span className="ml-auto text-xs text-muted-foreground">Second Brain — nur lesen</span>}
           {!fremd && !bearbeiten && inhalt !== null && (
             <button type="button" onClick={verlaufOeffnen}
               className="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground">

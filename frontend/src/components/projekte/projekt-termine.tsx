@@ -100,7 +100,7 @@ export function ProjektTermine({ projektId, darfVerwalten, anzahlAgenten }: { pr
                     {t.wochentag ? ` · ${WOCHENTAGE.find((w) => w.key === t.wochentag)?.label ?? t.wochentag}` : ""}
                   </p>
                   <p className="truncate text-xs text-muted-foreground" title={t.thema}>{t.thema}</p>
-                  <p className="text-[11px] text-muted-foreground">Nächster: {t.aktiv ? wann(t.naechster) : "—"}</p>
+                  <p className="text-xs text-muted-foreground">Nächster: {t.aktiv ? wann(t.naechster) : "—"}</p>
                 </div>
                 {darfVerwalten && (
                   <button type="button" onClick={() => entfernen(t)} aria-label="Termin entfernen" title="Termin entfernen"
@@ -162,7 +162,7 @@ export function ProjektTermine({ projektId, darfVerwalten, anzahlAgenten }: { pr
               <li key={b.id} className="rounded-xl bg-foreground/[0.03] px-3 py-2">
                 <div className="flex items-center justify-between gap-2">
                   <p className="truncate text-sm font-medium">{b.name}</p>
-                  <Link href={`/meeting-rooms/${b.id}`} className="inline-flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
+                  <Link href={`/meeting-rooms/${b.id}`} className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
                     {b.zustand === "running" ? "läuft" : b.erstellt ? timeAgo(b.erstellt) : ""} <ExternalLink className="h-3 w-3" />
                   </Link>
                 </div>

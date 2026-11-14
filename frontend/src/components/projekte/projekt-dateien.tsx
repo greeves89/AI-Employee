@@ -100,7 +100,7 @@ export function ProjektDateien({
         ziehen && "border-primary/60 bg-primary/[0.05]")}
     >
       <div className="flex items-center justify-between px-1">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Dateien</span>
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Dateien</span>
         {darfSchreiben && (
           <button type="button" onClick={() => eingabe.current?.click()} disabled={laedt}
             title={endungen.length ? `Erlaubt: ${endungen.join(", ")}` : undefined}
@@ -112,7 +112,7 @@ export function ProjektDateien({
           onChange={(e) => e.target.files && hochladen(e.target.files)} />
       </div>
       {dateien.length === 0 ? (
-        <p className="px-1 text-[11px] text-muted-foreground/70">
+        <p className="px-1 text-xs text-muted-foreground/70">
           {darfSchreiben ? "PDF, Word, Excel oder Text hierher ziehen — der Inhalt wird durchsuchbar." : "Keine Dateien."}
         </p>
       ) : (
@@ -121,7 +121,7 @@ export function ProjektDateien({
             <li key={d.name} className="group flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-sm hover:bg-foreground/[0.04]">
               <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1 truncate" title={d.name}>{d.name}</span>
-              <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">{groesse(d.bytes)}</span>
+              <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">{groesse(d.bytes)}</span>
               <button type="button" onClick={() => onTextOeffnen(d.seite)} title="Ausgelesenen Text ansehen" aria-label={`Text von ${d.name} ansehen`}
                 className="rounded p-0.5 text-muted-foreground hover:text-foreground">
                 <FileText className="h-3.5 w-3.5" />

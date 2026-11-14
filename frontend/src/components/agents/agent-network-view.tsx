@@ -97,7 +97,7 @@ function FloatingBubble({ fromX, fromY, toX, toY, text, delay }: {
     >
       <div className="flex items-center gap-1.5 rounded-full bg-card/90 backdrop-blur-md border border-foreground/[0.08] px-3 py-1.5 shadow-lg">
         <MessageSquare className="h-3 w-3 text-primary/70 shrink-0" />
-        <span className="text-[10px] font-medium text-foreground/80 whitespace-nowrap max-w-[100px] truncate">
+        <span className="text-[11px] font-medium text-foreground/80 whitespace-nowrap max-w-[100px] truncate">
           {text}
         </span>
       </div>
@@ -383,7 +383,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
             key={opt.value}
             onClick={() => setTimeFilter(opt.value)}
             className={cn(
-              "rounded-md px-3 py-1.5 text-[11px] font-medium transition-all",
+              "rounded-md px-3 py-1.5 text-xs font-medium transition-all",
               timeFilter === opt.value
                 ? "bg-primary text-primary-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
@@ -393,7 +393,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
           </button>
         ))}
       </div>
-      <span className="text-[10px] text-muted-foreground">
+      <span className="text-[11px] text-muted-foreground">
         {messageCount} Nachrichten · {connections.length} Verbindungen{teams.length > 0 ? ` · ${teams.length} Team${teams.length !== 1 ? "s" : ""}` : ""}
       </span>
     </div>
@@ -412,7 +412,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
           <Minus className="h-3.5 w-3.5" />
         </button>
         <button onClick={() => setZoom(1)} title="Ansicht zurücksetzen"
-          className="px-1.5 text-[10px] tabular-nums text-muted-foreground/60 hover:text-foreground">
+          className="px-1.5 text-[11px] tabular-nums text-muted-foreground/60 hover:text-foreground">
           {Math.round(zoom * 100)}%
         </button>
         <button onClick={() => zoomBy(0.1)} title="Vergrößern"
@@ -544,7 +544,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
                   className="text-[9px] font-bold" fill={conn.crossTeamLead ? "rgb(52,211,153)" : "rgb(165,180,252)"}>{conn.count}</text>
                 {conn.crossTeamLead && (
                   <text x={ctrlX} y={ctrlY - 15} textAnchor="middle" dominantBaseline="middle"
-                    className="text-[10px]" fill="rgb(52,211,153)">♛</text>
+                    className="text-[11px]" fill="rgb(52,211,153)">♛</text>
                 )}
               </g>
             </g>
@@ -666,7 +666,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
               transition={{ delay: i * 0.08 + 0.3 }}
             >
               <div className="flex flex-col items-center gap-0.5">
-                <span className="text-[11px] font-semibold text-foreground/90 bg-card/70 backdrop-blur-sm px-2 py-0.5 rounded-md border border-foreground/[0.06]">
+                <span className="text-xs font-semibold text-foreground/90 bg-card/70 backdrop-blur-sm px-2 py-0.5 rounded-md border border-foreground/[0.06]">
                   {agent.name}
                 </span>
                 {agentConnCount > 0 && (
@@ -694,23 +694,23 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
                       <span className="text-xs font-semibold">{agent.name}</span>
                     </div>
                     <div className="space-y-1">
-                      <div className="flex justify-between text-[10px]">
+                      <div className="flex justify-between text-[11px]">
                         <span className="text-muted-foreground">Zustand</span>
                         <span className="font-medium">{agentZustand(agent.state)}</span>
                       </div>
-                      <div className="flex justify-between text-[10px]">
+                      <div className="flex justify-between text-[11px]">
                         <span className="text-muted-foreground">Modell</span>
                         <span className="font-mono font-medium">{agent.model.split("-").slice(0, 2).join("-")}</span>
                       </div>
                       {agentConnCount > 0 && (
-                        <div className="flex justify-between text-[10px]">
+                        <div className="flex justify-between text-[11px]">
                           <span className="text-muted-foreground">Verbindungen</span>
                           <span className="font-medium text-indigo-400">{agentConnCount}</span>
                         </div>
                       )}
                       {agent.current_task && (
                         <div className="mt-1.5 pt-1.5 border-t border-foreground/[0.06]">
-                          <span className="text-[10px] text-blue-400 font-medium truncate block max-w-[140px]">{agent.current_task}</span>
+                          <span className="text-[11px] text-blue-400 font-medium truncate block max-w-[140px]">{agent.current_task}</span>
                         </div>
                       )}
                     </div>
@@ -733,7 +733,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
           <div className="h-12 w-12 rounded-xl bg-foreground/[0.04] flex items-center justify-center">
             <Users className="h-5 w-5 text-muted-foreground/30" />
           </div>
-          <span className="text-[10px] font-medium text-muted-foreground">
+          <span className="text-[11px] font-medium text-muted-foreground">
             {agents.length} Agent{agents.length !== 1 ? "s" : ""}
           </span>
           {messageCount > 0 && (
@@ -754,27 +754,27 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
         <div className="flex items-center gap-4 rounded-lg bg-card/70 backdrop-blur-sm border border-foreground/[0.06] px-3 py-2">
           <div className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-emerald-400" />
-            <span className="text-[10px] text-muted-foreground">Bereit</span>
+            <span className="text-[11px] text-muted-foreground">Bereit</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-blue-400" />
-            <span className="text-[10px] text-muted-foreground">Arbeitet</span>
+            <span className="text-[11px] text-muted-foreground">Arbeitet</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-zinc-500" />
-            <span className="text-[10px] text-muted-foreground">Gestoppt</span>
+            <span className="text-[11px] text-muted-foreground">Gestoppt</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="h-1.5 w-4 rounded-full bg-gradient-to-r from-indigo-400 to-violet-400 opacity-60" />
-            <span className="text-[10px] text-muted-foreground">Aktive Verbindung</span>
+            <span className="text-[11px] text-muted-foreground">Aktive Verbindung</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="h-1.5 w-4 rounded-full opacity-80" style={{ backgroundImage: "repeating-linear-gradient(90deg, rgb(251,191,36) 0 3px, transparent 3px 6px)" }} />
-            <span className="text-[10px] text-muted-foreground">Delegation</span>
+            <span className="text-[11px] text-muted-foreground">Delegation</span>
           </div>
           <div className="flex items-center gap-1.5">
             <Crown className="h-3 w-3 text-amber-700 dark:text-amber-400" />
-            <span className="text-[10px] text-muted-foreground">Team-Lead</span>
+            <span className="text-[11px] text-muted-foreground">Team-Lead</span>
           </div>
         </div>
       </motion.div>
@@ -786,7 +786,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
         <div className="flex items-center gap-2 mb-3">
           <MessageSquare className="h-4 w-4 text-indigo-400" />
           <span className="text-xs font-semibold text-foreground/80">Konversationen</span>
-          <span className="text-[10px] text-muted-foreground ml-auto">{messageCount} Nachrichten gesamt</span>
+          <span className="text-[11px] text-muted-foreground ml-auto">{messageCount} Nachrichten gesamt</span>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
           {connections.map((conn, i) => {
@@ -804,11 +804,11 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
                 transition={{ delay: i * 0.05 }}
               >
                 <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                  <span className="text-[11px] font-semibold text-indigo-400 truncate">{conn.from_name}</span>
+                  <span className="text-xs font-semibold text-indigo-400 truncate">{conn.from_name}</span>
                   <ArrowRight className="h-3 w-3 text-muted-foreground/30 shrink-0 group-hover:text-indigo-400/50 transition-colors" />
-                  <span className="text-[11px] font-semibold text-violet-400 truncate">{conn.to_name}</span>
+                  <span className="text-xs font-semibold text-violet-400 truncate">{conn.to_name}</span>
                 </div>
-                <span className="inline-flex items-center justify-center h-5 min-w-[20px] rounded-full bg-indigo-500/10 border border-indigo-500/20 px-1.5 text-[10px] font-bold text-indigo-400 shrink-0">
+                <span className="inline-flex items-center justify-center h-5 min-w-[20px] rounded-full bg-indigo-500/10 border border-indigo-500/20 px-1.5 text-[11px] font-bold text-indigo-400 shrink-0">
                   {conn.count}
                 </span>
               </motion.button>
@@ -836,7 +836,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
                 <span className="text-sm font-semibold text-indigo-400">{convoAgents.aName}</span>
                 <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/40" />
                 <span className="text-sm font-semibold text-violet-400">{convoAgents.bName}</span>
-                <span className="text-[10px] text-muted-foreground ml-2">
+                <span className="text-[11px] text-muted-foreground ml-2">
                   {convoMessages.length} Nachrichten
                 </span>
               </div>
@@ -873,7 +873,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
                           : "bg-violet-500/10 border border-violet-500/15 rounded-tr-md"
                       )}>
                         <div className="flex items-center gap-2 mb-1">
-                          <span className={cn("text-[10px] font-semibold", isFromA ? "text-indigo-400" : "text-violet-400")}>
+                          <span className={cn("text-[11px] font-semibold", isFromA ? "text-indigo-400" : "text-violet-400")}>
                             {msg.from_name}
                           </span>
                           {msg.message_type && msg.message_type !== "message" && (

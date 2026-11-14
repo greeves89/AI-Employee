@@ -36,7 +36,7 @@ export function ZieleFeld({ wert, keyName, onChange, kompakt = false }: {
   const vorschlag = ZIEL_VORSCHLAEGE[keyName];
   return (
     <div className={cn("flex flex-col gap-1", !kompakt && "col-span-2")}>
-      <label className={cn("font-medium", kompakt ? "text-[11px] text-muted-foreground" : "text-[11px] text-muted-foreground/70")}>
+      <label className={cn("font-medium", kompakt ? "text-xs text-muted-foreground" : "text-xs text-muted-foreground/70")}>
         Erlaubte Ziele (optional)
       </label>
       <input
@@ -47,7 +47,7 @@ export function ZieleFeld({ wert, keyName, onChange, kompakt = false }: {
           kompakt ? "border-foreground/[0.1] bg-background px-3 py-1.5 text-xs outline-none focus:border-primary/50"
                   : "border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm")}
       />
-      <p className="text-[11px] leading-relaxed text-muted-foreground/60">
+      <p className="text-xs leading-relaxed text-muted-foreground/60">
         Mit Zielen bekommt der Agent nur einen Platzhalter. Den echten Wert setzt der Egress-Proxy erst auf dem
         Weg zu diesen Adressen ein, an jedes andere Ziel geht der Key nicht. Leer = der Agent sieht den Wert.
         {vorschlag && !wert && (
@@ -68,7 +68,7 @@ export function ZieleAbzeichen({ secret, klein = false }: { secret: AgentSecretE
     <span
       title={`Agenten sehen nur einen Platzhalter. Erlaubte Ziele: ${ziele.join(", ")}`}
       className={cn("inline-flex items-center gap-1 rounded-full border font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20",
-        klein ? "px-1.5 py-0.5 text-[10px]" : "px-2.5 py-1 text-[11px]")}
+        klein ? "px-1.5 py-0.5 text-[11px]" : "px-2.5 py-1 text-xs")}
     >
       <Globe size={klein ? 10 : 11} /> Nur an {ziele.length === 1 ? ziele[0] : `${ziele.length} Ziele`}
     </span>

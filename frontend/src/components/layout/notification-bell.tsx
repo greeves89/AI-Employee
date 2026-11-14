@@ -326,7 +326,7 @@ export function NotificationBell({
           </div>
           Benachrichtigungen
           {unreadCount > 0 && (
-            <span className="ml-auto px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-500/10 text-red-400">
+            <span className="ml-auto px-1.5 py-0.5 rounded text-[11px] font-semibold bg-red-500/10 text-red-400">
               {unreadCount}
             </span>
           )}
@@ -361,7 +361,7 @@ export function NotificationBell({
               {unreadCount > 0 && (
                 <button
                   onClick={handleMarkAllRead}
-                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                   title="Alle als gelesen markieren"
                 >
                   <CheckCheck className="h-3 w-3" />
@@ -414,7 +414,7 @@ export function NotificationBell({
                       {notif.title}
                     </p>
                     {notif.message && (
-                      <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">
+                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
                         {notif.message}
                       </p>
                     )}
@@ -422,14 +422,14 @@ export function NotificationBell({
                     {notif.type === "approval" && Array.isArray(notif.meta?.options) && (
                       <div className="flex gap-1.5 mt-2 flex-wrap">
                         {notif.meta?.response ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                             <Check className="h-3 w-3" />
                             {String(notif.meta.response)}
                           </span>
                         ) : notif.meta?.entschieden ? (
                           // Anderswo entschieden (Freigaben-Seite, Telegram, Ablauf):
                           // keine Knoepfe mehr fuer eine erledigte Frage.
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-foreground/[0.05] text-muted-foreground border border-foreground/[0.08]">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-foreground/[0.05] text-muted-foreground border border-foreground/[0.08]">
                             <Check className="h-3 w-3" />
                             {{ approved: "Freigegeben", denied: "Abgelehnt", expired: "Verfallen" }[String(notif.meta.entschieden)] ?? "Erledigt"}
                             {notif.meta.antwort && !String(notif.meta.antwort).startsWith("Approved by") ? ` · ${String(notif.meta.antwort)}` : ""}
@@ -440,7 +440,7 @@ export function NotificationBell({
                               key={i}
                               onClick={(e) => { e.stopPropagation(); handleApprovalChoice(notif.id, opt); }}
                               className={cn(
-                                "px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors",
+                                "px-2.5 py-1 rounded-lg text-xs font-medium transition-colors",
                                 i === 0
                                   ? "bg-primary text-primary-foreground hover:bg-primary/90"
                                   : "bg-accent text-foreground hover:bg-accent/80"
@@ -452,7 +452,7 @@ export function NotificationBell({
                         )}
                       </div>
                     )}
-                    <p className="text-[10px] text-muted-foreground/60 mt-1">
+                    <p className="text-[11px] text-muted-foreground/60 mt-1">
                       {formatTime(notif.created_at)}
                     </p>
                   </div>

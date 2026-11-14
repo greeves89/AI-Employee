@@ -316,13 +316,13 @@ function SingleTasksView() {
                       )}
                       <h4 className="font-medium text-sm truncate">{task.title}</h4>
                       <span className={cn(
-                        "shrink-0 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                        "shrink-0 inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium",
                         cfg.badge
                       )}>
                         {AUFGABEN_STATUS[task.status] ?? task.status}
                       </span>
                       {task.parent_task_id && (
-                        <span className="shrink-0 inline-flex items-center rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[10px] font-medium text-blue-400">
+                        <span className="shrink-0 inline-flex items-center rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[11px] font-medium text-blue-400">
                           Teilaufgabe
                         </span>
                       )}
@@ -341,7 +341,7 @@ function SingleTasksView() {
                     {task.status === "failed" && (
                       <button
                         onClick={(e) => { e.preventDefault(); retryTask(task); }}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500/10 border border-orange-500/20 px-3 py-1.5 text-[11px] font-medium text-orange-400 hover:bg-orange-500/20 transition-colors"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500/10 border border-orange-500/20 px-3 py-1.5 text-xs font-medium text-orange-400 hover:bg-orange-500/20 transition-colors"
                       >
                         <RotateCcw className="h-3 w-3" />
                         Wiederholen
@@ -351,7 +351,7 @@ function SingleTasksView() {
                       <button
                         onClick={(e) => handleCancel(e, task.id)}
                         className={cn(
-                          "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-medium transition-colors",
+                          "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
                           läuft
                             // Bei einer laufenden Aufgabe NICHT erst beim Überfahren
                             // zeigen: wer sie stoppen will, sucht den Knopf sofort.
@@ -380,7 +380,7 @@ function SingleTasksView() {
                 </div>
 
                 {/* Meta row */}
-                <div className="mt-2.5 ml-9 flex items-center gap-4 text-[11px] text-muted-foreground/60">
+                <div className="mt-2.5 ml-9 flex items-center gap-4 text-xs text-muted-foreground/60">
                   {!simpleMode && <span className="flex items-center gap-1 font-mono">
                     <Hash className="h-3 w-3" />{task.id.slice(0, 8)}
                   </span>}
@@ -410,7 +410,7 @@ function SingleTasksView() {
 
                 {/* Error */}
                 {task.error && (
-                  <div className="mt-2.5 ml-9 rounded-lg bg-red-500/5 border border-red-500/10 px-3 py-2 text-[11px] text-red-400/80">
+                  <div className="mt-2.5 ml-9 rounded-lg bg-red-500/5 border border-red-500/10 px-3 py-2 text-xs text-red-400/80">
                     {task.error}
                   </div>
                 )}
@@ -618,7 +618,7 @@ function ScheduledTasksView({ hervorgehoben = "" }: { hervorgehoben?: string }) 
               onClick={() =>
                 setOffeneGruppen(alleOffen ? new Set() : new Set(gruppen.map((g) => g.id)))
               }
-              className="text-[11px] text-muted-foreground/60 hover:text-foreground transition-colors"
+              className="text-xs text-muted-foreground/60 hover:text-foreground transition-colors"
             >
               {alleOffen ? "Alle zuklappen" : "Alle aufklappen"}
             </button>
@@ -637,7 +637,7 @@ function ScheduledTasksView({ hervorgehoben = "" }: { hervorgehoben?: string }) 
               />
               <Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
               <span className="text-sm font-medium truncate">{gruppe.name}</span>
-              <span className="ml-auto flex items-center gap-3 text-[11px] text-muted-foreground/60 shrink-0">
+              <span className="ml-auto flex items-center gap-3 text-xs text-muted-foreground/60 shrink-0">
                 <span>
                   {gruppe.plaene.length} {gruppe.plaene.length === 1 ? "Zeitplan" : "Zeitpläne"}
                 </span>
@@ -679,7 +679,7 @@ function ScheduledTasksView({ hervorgehoben = "" }: { hervorgehoben?: string }) 
                       {zeitplanAnzeige(schedule, simpleMode).titel}
                     </h3>
                     <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
                         schedule.enabled
                           ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
                           : "bg-foreground/[0.04] text-muted-foreground border border-foreground/[0.06]"
@@ -753,7 +753,7 @@ function ScheduledTasksView({ hervorgehoben = "" }: { hervorgehoben?: string }) 
                   {schedule.adaptive && (
                     <span
                       title="Der Takt passt sich selbst an: bei Leerlauf langsamer, bei neuer Arbeit sofort wieder im Grundtakt."
-                      className="rounded-md border border-sky-500/20 bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:text-sky-400"
+                      className="rounded-md border border-sky-500/20 bg-sky-500/10 px-1.5 py-0.5 text-[11px] font-medium text-sky-700 dark:text-sky-400"
                     >
                       adaptiv
                     </span>

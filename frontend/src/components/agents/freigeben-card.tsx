@@ -66,7 +66,7 @@ export function FreigebenCard({ agentId }: { agentId: string }) {
         <Users className="h-4 w-4 mt-0.5 text-muted-foreground" />
         <div>
           <div className="text-sm font-medium">Freigeben für</div>
-          <div className="text-[11px] text-muted-foreground/60">
+          <div className="text-xs text-muted-foreground/60">
             Freigegebene chatten und sprechen mit dem Agenten und sehen nur ihre eigenen Gespräche.
             Einstellungen, Gedächtnis, Zeitpläne und Löschen bleiben bei dir. Was der Agent in seinem
             Gedächtnis und seinen Dateien ablegt, kennt er für alle.
@@ -113,7 +113,7 @@ export function FreigebenCard({ agentId }: { agentId: string }) {
             })}
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-muted-foreground/60">
+            <span className="text-xs text-muted-foreground/60">
               {gewaehlt.length === 0 ? "Nur du nutzt diesen Agenten." : `${gewaehlt.length} ausgewählt`}
             </span>
             <button

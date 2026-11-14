@@ -95,7 +95,7 @@ function ImageChoice({ agentId, data, antworten, beschaeftigt }: AgentViewProps)
                    gar nicht, während der Agent wartet. */
                 <div className="flex h-full flex-col items-center justify-center gap-1 text-muted-foreground">
                   <ImageOff className="h-5 w-5" />
-                  <span className="text-[10px]">nicht gefunden</span>
+                  <span className="text-[11px]">nicht gefunden</span>
                 </div>
               ) : (
                 <Image
@@ -119,7 +119,7 @@ function ImageChoice({ agentId, data, antworten, beschaeftigt }: AgentViewProps)
                 </div>
               )}
             </div>
-            <p className="truncate px-2 py-1.5 text-[11px] text-muted-foreground group-hover:text-foreground">
+            <p className="truncate px-2 py-1.5 text-xs text-muted-foreground group-hover:text-foreground">
               {beschriftung}
             </p>
           </button>
@@ -150,7 +150,7 @@ function MailEntwurf({ data }: AgentViewProps) {
         {antwortAn.length > 0 && <p className="text-muted-foreground"><span className="text-foreground/70">Antwort an:</span> {antwortAn.join(", ")}</p>}
       </div>
       {warnungen.length > 0 && (
-        <ul className="space-y-0.5 border-b border-amber-500/20 bg-amber-500/5 px-3 py-1.5 text-[11px] text-amber-800 dark:text-amber-300">
+        <ul className="space-y-0.5 border-b border-amber-500/20 bg-amber-500/5 px-3 py-1.5 text-xs text-amber-800 dark:text-amber-300">
           {warnungen.map((w) => <li key={w}>{w}</li>)}
         </ul>
       )}
@@ -176,14 +176,14 @@ function Handlung({ data }: AgentViewProps) {
       <dl className="space-y-1.5 px-3 py-2">
         {felder.map((f, i) => (
           <div key={i}>
-            <dt className="text-[11px] text-muted-foreground">{String(f.name ?? "")}</dt>
+            <dt className="text-xs text-muted-foreground">{String(f.name ?? "")}</dt>
             <dd className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words text-[13px] text-foreground/90">
               {String(f.wert ?? "")}
             </dd>
           </div>
         ))}
       </dl>
-      <p className="border-t border-foreground/[0.06] px-3 py-1.5 text-[11px] text-muted-foreground">
+      <p className="border-t border-foreground/[0.06] px-3 py-1.5 text-xs text-muted-foreground">
         Freigeben führt genau diese Handlung einmal aus.
       </p>
     </div>

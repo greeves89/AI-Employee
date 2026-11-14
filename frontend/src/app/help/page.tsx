@@ -386,7 +386,7 @@ export default function HelpPage() {
           )}
           {byCategory.map(([category, topics]) => (
             <div key={category}>
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-2">
+              <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60 mb-2">
                 {category}
               </div>
               <div className="space-y-2">

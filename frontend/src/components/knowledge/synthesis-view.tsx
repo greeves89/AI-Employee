@@ -101,7 +101,7 @@ export function SynthesisView({ onOpenEntry }: { onOpenEntry?: (id: number) => v
               <header className="mb-2 flex items-center gap-2">
                 <Calendar className="h-3.5 w-3.5 text-primary" />
                 <h3 className="text-sm font-medium">{s.title}</h3>
-                <span className="ml-auto text-[11px] text-muted-foreground">
+                <span className="ml-auto text-xs text-muted-foreground">
                   {s.created_at ? new Date(s.created_at).toLocaleDateString("de-DE") : ""}
                 </span>
               </header>

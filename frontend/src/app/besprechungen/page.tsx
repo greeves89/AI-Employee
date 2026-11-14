@@ -155,7 +155,7 @@ export default function BesprechungenPage() {
                         : <Mic className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
                       <span className="truncate text-sm font-medium">{x.title}</span>
                     </div>
-                    <div className="mt-0.5 pl-5 text-[11px] text-muted-foreground">
+                    <div className="mt-0.5 pl-5 text-xs text-muted-foreground">
                       {zeit(x)}
                       {x.agent_id && agenten[x.agent_id] && ` · ${agenten[x.agent_id]}`}
                       {x.status && ` · ${STATUS[x.status] || x.status}`}

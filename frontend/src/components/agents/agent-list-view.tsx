@@ -328,7 +328,7 @@ export function AgentListView({
                     data-testid={`col-${c}`}
                     aria-sort={active ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}
                     className={cn(
-                      "sticky top-0 z-10 h-10 whitespace-nowrap border-b border-foreground/[0.06] bg-card p-0 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground",
+                      "sticky top-0 z-10 h-10 whitespace-nowrap border-b border-foreground/[0.06] bg-card p-0 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground",
                       cellVisibility(c),
                     )}
                   >
@@ -466,7 +466,7 @@ function AgentRow({
               {agent.current_task ? (agent.current_task.startsWith("chat:") ? "Antwortet im Chat" : agent.current_task) : "–"}
             </span>
             {queued > 0 && (
-              <span className="shrink-0 rounded-full bg-foreground/[0.06] px-1.5 text-[10px]" title={`${queued} in Warteschlange`}>
+              <span className="shrink-0 rounded-full bg-foreground/[0.06] px-1.5 text-[11px]" title={`${queued} in Warteschlange`}>
                 +{queued}
               </span>
             )}

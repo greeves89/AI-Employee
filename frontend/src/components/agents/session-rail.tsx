@@ -62,7 +62,7 @@ export function SessionRail({
   return (
     <div className={cn("flex w-56 shrink-0 flex-col", className)}>
       <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
-        <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
+        <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground/60">
           Gespräche
         </span>
         <button
@@ -138,7 +138,7 @@ export function SessionRail({
                     )}
                   </span>
                   {s.last_message_at && (
-                    <span className="pl-4 text-[10px] text-muted-foreground">
+                    <span className="pl-4 text-[11px] text-muted-foreground">
                       {timeAgo(s.last_message_at)}
                       {s.message_count !== undefined && ` · ${s.message_count}`}
                     </span>
@@ -172,7 +172,7 @@ export function SessionRail({
               );
             })}
             {sessions.length === 0 && (
-              <p className="px-2.5 py-4 text-center text-[11px] text-muted-foreground">
+              <p className="px-2.5 py-4 text-center text-xs text-muted-foreground">
                 Noch keine Gespräche
               </p>
             )}

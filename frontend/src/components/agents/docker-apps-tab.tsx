@@ -286,7 +286,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
           <p className="text-sm font-medium text-muted-foreground/60 mb-1">
             Keine Docker-Apps gefunden
           </p>
-          <p className="text-[11px] text-muted-foreground leading-relaxed">
+          <p className="text-xs text-muted-foreground leading-relaxed">
             Legt dein Agent ein Projekt mit einer docker-compose.yml an, erscheint
             es hier. Du kannst die App dann direkt von hier starten, stoppen und
             beobachten. (Nur Apps DIESES Agenten — die Übersicht aller
@@ -314,12 +314,12 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
           <span className="text-sm font-medium">
             {apps.length} {apps.length === 1 ? "App" : "Apps"} gefunden
           </span>
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-[11px] text-muted-foreground">
             — nur dieser Agent
           </span>
           <Link
             href="/apps"
-            className="text-[10px] text-muted-foreground hover:text-primary hover:underline"
+            className="text-[11px] text-muted-foreground hover:text-primary hover:underline"
           >
             alle Agenten →
           </Link>
@@ -379,13 +379,13 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                           {app.name}
                         </span>
                         {isBuilding ? (
-                          <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-blue-500/10 text-blue-400 border-blue-500/20">
+                          <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider bg-blue-500/10 text-blue-400 border-blue-500/20">
                             {actionType === "rebuild" ? "Wird neu gebaut" : "Wird gestartet"}
                           </span>
                         ) : (
                           <span
                             className={cn(
-                              "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                              "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider",
                               config.bg, config.color, config.border,
                             )}
                           >
@@ -394,7 +394,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                         )}
                       </div>
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        <p className="text-[11px] text-muted-foreground font-mono">
+                        <p className="text-xs text-muted-foreground font-mono">
                           /workspace/{app.path}/{app.compose_file}
                         </p>
                         {/* Auto-detected ports in header */}
@@ -404,7 +404,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                             href={appProxyUrl(agentId, p.cname, p.container_port)}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-0.5 rounded-md bg-primary/10 border border-primary/20 px-1.5 py-0 text-[10px] font-mono text-primary hover:bg-primary/20 transition-colors"
+                            className="inline-flex items-center gap-0.5 rounded-md bg-primary/10 border border-primary/20 px-1.5 py-0 text-[11px] font-mono text-primary hover:bg-primary/20 transition-colors"
                           >
                             :{p.host_port}
                             <ExternalLink className="h-2 w-2" />
@@ -521,7 +521,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                         return (
                           <div
                             key={svc.name}
-                            className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.04] border border-foreground/[0.06] px-2 py-0.5 text-[10px] text-muted-foreground"
+                            className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.04] border border-foreground/[0.06] px-2 py-0.5 text-[11px] text-muted-foreground"
                           >
                             <Circle className={cn("h-2 w-2 fill-current", isRunning ? "text-emerald-400" : container ? "text-zinc-500" : "text-zinc-600")} />
                             {svc.name}
@@ -558,14 +558,14 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                       if (allPorts.length === 0) return null;
                       return (
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="text-[10px] text-muted-foreground mr-0.5">Ports:</span>
+                          <span className="text-[11px] text-muted-foreground mr-0.5">Ports:</span>
                           {allPorts.map((p) => (
                             <a
                               key={`${p.service}-${p.host_port}`}
                               href={appProxyUrl(agentId, p.cname, p.container_port)}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 rounded-md bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-mono text-primary hover:bg-primary/20 transition-colors"
+                              className="inline-flex items-center gap-1 rounded-md bg-primary/10 border border-primary/20 px-2 py-0.5 text-[11px] font-mono text-primary hover:bg-primary/20 transition-colors"
                             >
                               {p.service}:{p.host_port}
                               <ExternalLink className="h-2.5 w-2.5" />
@@ -589,7 +589,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                     className="overflow-hidden"
                   >
                     <div className="border-t border-foreground/[0.04] px-4 py-3 space-y-2">
-                      <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                      <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
                         Dienste
                       </span>
                       {app.services.map((svc) => {
@@ -613,12 +613,12 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                               />
                               <span className="text-xs font-medium">{svc.name}</span>
                               {svc.image && (
-                                <span className="text-[10px] text-muted-foreground font-mono">
+                                <span className="text-[11px] text-muted-foreground font-mono">
                                   {svc.image}
                                 </span>
                               )}
                               {svc.build && !svc.image && (
-                                <span className="text-[10px] text-muted-foreground font-mono">
+                                <span className="text-[11px] text-muted-foreground font-mono">
                                   [build]
                                 </span>
                               )}
@@ -632,7 +632,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                                   href={appProxyUrl(agentId, container.name, p.container_port)}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 rounded-md bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-mono text-primary hover:bg-primary/20 transition-colors"
+                                  className="inline-flex items-center gap-1 rounded-md bg-primary/10 border border-primary/20 px-2 py-0.5 text-[11px] font-mono text-primary hover:bg-primary/20 transition-colors"
                                 >
                                   :{p.host_port}
                                   <ExternalLink className="h-2.5 w-2.5" />
@@ -642,7 +642,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                                 svc.ports.map((port) => (
                                   <span
                                     key={String(port)}
-                                    className="inline-flex items-center rounded-md bg-foreground/[0.04] border border-foreground/[0.06] px-2 py-0.5 text-[10px] font-mono text-muted-foreground"
+                                    className="inline-flex items-center rounded-md bg-foreground/[0.04] border border-foreground/[0.06] px-2 py-0.5 text-[11px] font-mono text-muted-foreground"
                                   >
                                     {String(port)}
                                   </span>
@@ -651,14 +651,14 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                               {container?.exposed_ports?.map((ep) => (
                                 <span
                                   key={ep}
-                                  className="inline-flex items-center rounded-md bg-amber-500/5 border border-amber-500/15 px-2 py-0.5 text-[10px] font-mono text-amber-700 dark:text-amber-400/60"
+                                  className="inline-flex items-center rounded-md bg-amber-500/5 border border-amber-500/15 px-2 py-0.5 text-[11px] font-mono text-amber-700 dark:text-amber-400/60"
                                   title="Freigegeben, aber nicht auf den Rechner weitergeleitet"
                                 >
                                   {ep}
                                 </span>
                               ))}
                               {container && (
-                                <span className="text-[10px] text-muted-foreground">
+                                <span className="text-[11px] text-muted-foreground">
                                   {container.status}
                                 </span>
                               )}
@@ -667,7 +667,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                                   onClick={() => handleRestartService(app, svc.name)}
                                   disabled={restartingService === svc.name}
                                   className={cn(
-                                    "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] transition-all disabled:opacity-50",
+                                    "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] transition-all disabled:opacity-50",
                                     isRunning
                                       ? "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]"
                                       : "text-emerald-400/70 hover:text-emerald-400 hover:bg-emerald-500/10"
@@ -707,11 +707,11 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                       {/* Log Header */}
                       <div className="flex items-center justify-between px-4 py-2 bg-foreground/[0.02]">
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
                             Protokolle
                           </span>
                           {isBuilding && (
-                            <span className="inline-flex items-center gap-1 text-[10px] text-blue-400">
+                            <span className="inline-flex items-center gap-1 text-[11px] text-blue-400">
                               <Loader2 className="h-2.5 w-2.5 animate-spin" />
                               aktualisiert sich selbst
                             </span>
@@ -721,7 +721,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                           <button
                             onClick={refreshLogs}
                             disabled={logsLoading}
-                            className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
+                            className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
                           >
                             <RefreshCw className={cn("h-2.5 w-2.5", logsLoading && "animate-spin")} />
                             Aktualisieren
@@ -738,7 +738,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                       {/* Log Content */}
                       <div
                         ref={logRef}
-                        className="max-h-72 overflow-y-auto bg-background dark:bg-[#0d1117] px-4 py-2 font-mono text-[11px] leading-5"
+                        className="max-h-72 overflow-y-auto bg-background dark:bg-[#0d1117] px-4 py-2 font-mono text-xs leading-5"
                       >
                         {isBuilding && logs.length === 0 ? (
                           <div className="flex items-center gap-2 py-4 text-blue-400/60">
@@ -775,7 +775,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
               {/* Parse Error */}
               {app.error && (
                 <div className="border-t border-red-500/10 px-4 py-2 bg-red-500/5">
-                  <p className="text-[11px] text-red-400">{app.error}</p>
+                  <p className="text-xs text-red-400">{app.error}</p>
                 </div>
               )}
 
@@ -787,7 +787,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                       <p className="text-xs font-medium text-red-400 mb-1">
                         {actionError.titel}
                       </p>
-                      <pre className="text-[11px] text-red-300/80 whitespace-pre-wrap break-all font-mono leading-relaxed max-h-40 overflow-y-auto">
+                      <pre className="text-xs text-red-300/80 whitespace-pre-wrap break-all font-mono leading-relaxed max-h-40 overflow-y-auto">
                         {actionError.message}
                       </pre>
                     </div>

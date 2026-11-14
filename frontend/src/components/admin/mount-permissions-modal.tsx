@@ -120,7 +120,7 @@ export function MountPermissionsModal({ userId, userName, onClose }: Props) {
                       <div key={m.label} className="flex items-center justify-between gap-3 rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2.5">
                         <div className="min-w-0">
                           <p className="text-sm font-medium truncate">{m.label}</p>
-                          <p className="text-[11px] text-muted-foreground/60 truncate font-mono">{m.container_path}</p>
+                          <p className="text-xs text-muted-foreground/60 truncate font-mono">{m.container_path}</p>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           {(["none", "ro", "rw"] as const).map((mode) => (
@@ -128,7 +128,7 @@ export function MountPermissionsModal({ userId, userName, onClose }: Props) {
                               key={mode}
                               onClick={() => setGrants((g) => ({ ...g, [m.label]: mode }))}
                               className={cn(
-                                "rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors",
+                                "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
                                 grants[m.label] === mode
                                   ? mode === "none"
                                     ? "bg-zinc-500/20 text-zinc-300"

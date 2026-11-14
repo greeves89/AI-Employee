@@ -199,13 +199,13 @@ export function TodoTab({ agentId }: TodoTabProps) {
         <div className="flex items-center gap-2">
           <button
             onClick={fetchTodos}
-            className="flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[11px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+            className="flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
           >
             <RefreshCw className="h-3 w-3" />
           </button>
           <button
             onClick={() => setShowAddForm(!showAddForm)}
-            className="flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+            className="flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
           >
             <Plus className="h-3 w-3" />
             Hinzufügen
@@ -219,7 +219,7 @@ export function TodoTab({ agentId }: TodoTabProps) {
           <button
             onClick={() => setSelectedProject(null)}
             className={cn(
-              "rounded-full px-3 py-1 text-[10px] font-medium transition-colors border",
+              "rounded-full px-3 py-1 text-[11px] font-medium transition-colors border",
               selectedProject === null
                 ? "bg-primary/15 text-primary border-primary/30"
                 : "text-muted-foreground/60 border-foreground/[0.08] hover:text-foreground hover:border-foreground/20"
@@ -232,7 +232,7 @@ export function TodoTab({ agentId }: TodoTabProps) {
               key={p}
               onClick={() => setSelectedProject(selectedProject === p ? null : p)}
               className={cn(
-                "rounded-full px-3 py-1 text-[10px] font-medium transition-colors border",
+                "rounded-full px-3 py-1 text-[11px] font-medium transition-colors border",
                 selectedProject === p
                   ? "bg-primary/15 text-primary border-primary/30"
                   : "text-muted-foreground/60 border-foreground/[0.08] hover:text-foreground hover:border-foreground/20"
@@ -256,7 +256,7 @@ export function TodoTab({ agentId }: TodoTabProps) {
               }}
             />
           </div>
-          <div className="flex items-center gap-4 text-[10px] text-muted-foreground/60 tabular-nums">
+          <div className="flex items-center gap-4 text-[11px] text-muted-foreground/60 tabular-nums">
             <span className="flex items-center gap-1">
               <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" />
               {counts.pending} pending
@@ -312,13 +312,13 @@ export function TodoTab({ agentId }: TodoTabProps) {
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-[11px] text-muted-foreground">Priorität:</span>
+              <span className="text-xs text-muted-foreground">Priorität:</span>
               {[1, 2, 3, 4, 5].map((p) => (
                 <button
                   key={p}
                   onClick={() => setNewPriority(p)}
                   className={cn(
-                    "h-6 rounded-md px-2 text-[10px] font-medium border transition-all",
+                    "h-6 rounded-md px-2 text-[11px] font-medium border transition-all",
                     newPriority === p
                       ? priorityColors[p]
                       : "border-transparent text-muted-foreground hover:text-foreground"
@@ -331,7 +331,7 @@ export function TodoTab({ agentId }: TodoTabProps) {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowAddForm(false)}
-                className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 <X className="h-3 w-3" />
                 Abbrechen
@@ -339,7 +339,7 @@ export function TodoTab({ agentId }: TodoTabProps) {
               <button
                 onClick={handleAdd}
                 disabled={!newTitle.trim()}
-                className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
+                className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
               >
                 Erstellen
               </button>
@@ -370,11 +370,11 @@ export function TodoTab({ agentId }: TodoTabProps) {
             {projectKey !== "_general" && (
               <FolderOpen className="h-3 w-3 text-muted-foreground/40 shrink-0" />
             )}
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
               {projectKey !== "_general" ? projectKey : "Allgemein"}
             </span>
             <div className="flex-1 h-px bg-foreground/[0.06]" />
-            <span className="text-[10px] text-muted-foreground tabular-nums">
+            <span className="text-[11px] text-muted-foreground tabular-nums">
               {groupTodos.filter((t) => t.status === "completed").length}/{groupTodos.length}
             </span>
           </div>
@@ -398,11 +398,11 @@ export function TodoTab({ agentId }: TodoTabProps) {
             onClick={() => setShowCompleted(!showCompleted)}
             className="flex items-center gap-2 px-1 pb-1 w-full text-left"
           >
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
               Erledigt ({completedTodos.length})
             </span>
             <div className="flex-1 h-px bg-foreground/[0.06]" />
-            <span className="text-[10px] text-emerald-500">
+            <span className="text-[11px] text-emerald-500">
               {showCompleted ? "Verbergen" : "Anzeigen"}
             </span>
           </button>

@@ -399,7 +399,7 @@ ${msgHtml}
         <div className="lg:hidden px-4 pt-2">
           <button
             onClick={() => setDescOpen((o) => !o)}
-            className="flex w-full items-center justify-between gap-2 py-1 text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider"
+            className="flex w-full items-center justify-between gap-2 py-1 text-xs font-medium text-muted-foreground/70 uppercase tracking-wider"
           >
             <span>Beschreibung</span>
             <ChevronDown className={cn("h-4 w-4 transition-transform", descOpen && "rotate-180")} />
@@ -500,7 +500,7 @@ ${msgHtml}
           {/* Mobile: collapsible chat (desktop: always open) */}
           <button
             onClick={() => setChatOpen((o) => !o)}
-            className="lg:hidden flex items-center justify-between border-b border-border px-4 py-2.5 text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider"
+            className="lg:hidden flex items-center justify-between border-b border-border px-4 py-2.5 text-xs font-medium text-muted-foreground/70 uppercase tracking-wider"
           >
             <span>Chat ({messages.filter((m) => m.role === "agent").length} Beiträge)</span>
             <ChevronDown className={cn("h-4 w-4 transition-transform", chatOpen && "rotate-180")} />
@@ -540,10 +540,10 @@ ${msgHtml}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5 mb-0.5">
-                          <span className={cn("text-[11px] font-medium", getAgentColor(msg.agent_id || ""))}>
+                          <span className={cn("text-xs font-medium", getAgentColor(msg.agent_id || ""))}>
                             {getAgentName(msg.agent_id)}
                           </span>
-                          <span className="text-[10px] text-muted-foreground">reagiert</span>
+                          <span className="text-[11px] text-muted-foreground">reagiert</span>
                         </div>
                         <div className="rounded-lg bg-foreground/[0.03] border border-foreground/[0.05] px-3 py-1.5 text-sm text-foreground/70 italic leading-snug">
                           {msg.content}
@@ -611,11 +611,11 @@ ${msgHtml}
                             {getAgentName(msg.agent_id)}
                           </span>
                           {msg.round !== undefined && (
-                            <span className="text-[10px] text-muted-foreground">
+                            <span className="text-[11px] text-muted-foreground">
                               R{msg.round + 1}
                             </span>
                           )}
-                          <span className="text-[10px] text-muted-foreground">
+                          <span className="text-[11px] text-muted-foreground">
                             {new Date(msg.timestamp).toLocaleTimeString()}
                           </span>
                         </div>
@@ -636,7 +636,7 @@ ${msgHtml}
                               table: ({ children }) => <div className="overflow-x-auto mb-3"><table className="w-full text-xs border-collapse">{children}</table></div>,
                               th: ({ children }) => <th className="border border-foreground/20 px-2 py-1.5 bg-foreground/[0.06] font-semibold text-left">{children}</th>,
                               td: ({ children }) => <td className="border border-foreground/20 px-2 py-1.5">{children}</td>,
-                              code: ({ children }) => <code className="rounded bg-foreground/[0.06] px-1 py-0.5 font-mono text-[11px]">{children}</code>,
+                              code: ({ children }) => <code className="rounded bg-foreground/[0.06] px-1 py-0.5 font-mono text-xs">{children}</code>,
                             }}
                           >
                             {cleanMeetingContent(msg.content)}
@@ -700,7 +700,7 @@ ${msgHtml}
           {/* Mobile: collapsible header (desktop: panel is always open, no toggle) */}
           <button
             onClick={() => setParticipantsOpen((o) => !o)}
-            className="lg:hidden flex items-center justify-between px-4 py-2.5 text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider"
+            className="lg:hidden flex items-center justify-between px-4 py-2.5 text-xs font-medium text-muted-foreground/70 uppercase tracking-wider"
           >
             <span>Teilnehmer ({room.agent_ids.length}{room.use_moderator ? " + Moderator" : ""})</span>
             <ChevronDown className={cn("h-4 w-4 transition-transform", participantsOpen && "rotate-180")} />
@@ -710,7 +710,7 @@ ${msgHtml}
             "flex-1 overflow-y-auto p-4 grid grid-cols-2 gap-2 content-start max-h-[42vh] lg:block lg:space-y-2 lg:max-h-none",
             !participantsOpen && "hidden lg:block",
           )}>
-            <p className="col-span-2 hidden lg:block text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-3">
+            <p className="col-span-2 hidden lg:block text-xs font-medium text-muted-foreground/70 uppercase tracking-wider mb-3">
               Teilnehmer
             </p>
 
@@ -733,7 +733,7 @@ ${msgHtml}
                   </div>
                   <Gavel className="h-3.5 w-3.5 text-violet-400 shrink-0" />
                   <span className="text-sm font-medium text-violet-300 flex-1 truncate">Moderator</span>
-                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground shrink-0">
+                  <div className="flex items-center gap-1 text-[11px] text-muted-foreground shrink-0">
                     <MessageSquare className="h-3 w-3" />
                     {messages.filter(m => m.role === "moderator").length}
                   </div>
@@ -746,7 +746,7 @@ ${msgHtml}
                         key={lastMod.timestamp}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        className="text-[11px] text-violet-300/60 leading-relaxed line-clamp-2 italic"
+                        className="text-xs text-violet-300/60 leading-relaxed line-clamp-2 italic"
                       >
                         {lastMod.content}
                       </motion.p>
@@ -755,7 +755,7 @@ ${msgHtml}
                         key="mod-waiting"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        className="text-[11px] text-muted-foreground italic"
+                        className="text-xs text-muted-foreground italic"
                       >
                         {room.state === "running" ? "Wartet auf ersten Beitrag…" : "Bereit"}
                       </motion.p>
@@ -817,7 +817,7 @@ ${msgHtml}
                       {getAgentName(aid)}
                     </span>
 
-                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground shrink-0">
+                    <div className="flex items-center gap-1 text-[11px] text-muted-foreground shrink-0">
                       <MessageSquare className="h-3 w-3" />
                       {stats.count}
                     </div>
@@ -832,7 +832,7 @@ ${msgHtml}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         className={cn(
-                          "flex items-center gap-1.5 text-[11px]",
+                          "flex items-center gap-1.5 text-xs",
                           AGENT_COLORS[colorIdx],
                         )}
                       >
@@ -845,7 +845,7 @@ ${msgHtml}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="text-[11px] text-muted-foreground/60 leading-relaxed line-clamp-2"
+                        className="text-xs text-muted-foreground/60 leading-relaxed line-clamp-2"
                       >
                         {lastMsg.content}
                       </motion.p>
@@ -855,7 +855,7 @@ ${msgHtml}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="text-[11px] text-muted-foreground italic"
+                        className="text-xs text-muted-foreground italic"
                       >
                         Noch nicht dran
                       </motion.p>
@@ -869,10 +869,10 @@ ${msgHtml}
           {/* Round Progress */}
           <div className="border-t border-border p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <p className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">
+              <p className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">
                 Fortschritt
               </p>
-              <span className="text-[11px] text-muted-foreground/60">
+              <span className="text-xs text-muted-foreground/60">
                 {room.rounds_completed} / {room.max_rounds} Runden
               </span>
             </div>
@@ -889,29 +889,29 @@ ${msgHtml}
             {/* State badge */}
             <div className="flex items-center gap-2">
               {room.state === "running" && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-[11px] font-medium text-emerald-400">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-xs font-medium text-emerald-400">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
                   Läuft
                 </span>
               )}
               {room.state === "paused" && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 text-xs font-medium text-amber-700 dark:text-amber-400">
                   <Square className="h-2.5 w-2.5" />
                   Pausiert
                 </span>
               )}
               {room.state === "idle" && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.04] border border-foreground/[0.08] px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-foreground/[0.04] border border-foreground/[0.08] px-2.5 py-1 text-xs font-medium text-muted-foreground">
                   Bereit
                 </span>
               )}
               {room.state === "completed" && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 px-2.5 py-1 text-[11px] font-medium text-blue-400">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 px-2.5 py-1 text-xs font-medium text-blue-400">
                   <CheckCircle2 className="h-3 w-3" />
                   Abgeschlossen
                 </span>
               )}
-              <span className="text-[11px] text-muted-foreground ml-auto">
+              <span className="text-xs text-muted-foreground ml-auto">
                 {messages.filter((m) => m.role === "agent").length} Beiträge
               </span>
             </div>
@@ -968,7 +968,7 @@ function DeliverableResult({ roomId, deliv }: { roomId: string; deliv: api.Deliv
         <Hammer className="h-4 w-4 text-primary" />
         <span className="text-sm font-semibold text-primary">Taskforce-Ergebnis</span>
         <span className={cn(
-          "text-[10px] px-2 py-0.5 rounded-full border font-medium",
+          "text-[11px] px-2 py-0.5 rounded-full border font-medium",
           done ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
         )}>
@@ -1047,14 +1047,14 @@ function DeliverableResult({ roomId, deliv }: { roomId: string; deliv: api.Deliv
       {openPath && (
         <div className="mt-3 rounded-lg border border-border bg-card/60 overflow-hidden">
           <div className="flex items-center justify-between px-3 py-1.5 border-b border-border">
-            <span className="text-[11px] font-mono truncate">{openPath}</span>
+            <span className="text-xs font-mono truncate">{openPath}</span>
             <button onClick={() => setOpenPath(null)} className="text-muted-foreground hover:text-foreground">
               <Square className="h-3.5 w-3.5" />
             </button>
           </div>
           <div className="max-h-80 overflow-auto p-3">
             {loading ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-              : <pre className="text-[11px] leading-relaxed whitespace-pre-wrap break-words font-mono text-foreground/80">{content}</pre>}
+              : <pre className="text-xs leading-relaxed whitespace-pre-wrap break-words font-mono text-foreground/80">{content}</pre>}
           </div>
         </div>
       )}
@@ -1104,7 +1104,7 @@ function TaskforcePhaseBar({
           return (
             <div key={label} className="flex items-center gap-1.5 flex-1 last:flex-none">
               <div className={cn(
-                "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium whitespace-nowrap",
+                "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap",
                 stepDone && "bg-emerald-500/10 text-emerald-400",
                 stepActive && "bg-primary/15 text-primary",
                 !stepDone && !stepActive && "bg-foreground/[0.04] text-muted-foreground/60",
@@ -1162,7 +1162,7 @@ function TaskforcePhaseBar({
             )}
           </div>
           {/* Files counter */}
-          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <FileCode className="h-3.5 w-3.5" />
             {files.length > 0
               ? `${files.length} Datei${files.length === 1 ? "" : "en"} im gemeinsamen Arbeitsverzeichnis`

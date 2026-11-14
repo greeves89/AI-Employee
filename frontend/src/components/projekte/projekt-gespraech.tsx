@@ -122,7 +122,7 @@ export function ProjektGespraech({
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
                     <span className="font-semibold">{n.autor_name}</span>
-                    {meta.label && <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium", meta.klasse)}>{meta.label}</span>}
+                    {meta.label && <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", meta.klasse)}>{meta.label}</span>}
                     {n.an.length > 0 && (
                       <span className="text-muted-foreground">an {n.an.map((id) => agentById.get(id)?.name ?? id).join(", ")}</span>
                     )}
@@ -145,7 +145,7 @@ export function ProjektGespraech({
 
       {darfSchreiben && (
         <div className="border-t border-foreground/[0.06] p-3">
-          <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+          <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
             <span>Ansprechen:</span>
             {mitglieder.map(({ id, agent }) => agent && (
               <button key={id} type="button" onClick={() => setText((t) => `${t}${t && !t.endsWith(" ") ? " " : ""}@${agent.name} `)}
@@ -183,7 +183,7 @@ export function ProjektGespraech({
             </button>
           </div>
           {entscheidung && (
-            <p className="mt-1.5 text-[11px] text-muted-foreground">Entscheidungen landen zusätzlich in entscheidungen.md im Projektwissen.</p>
+            <p className="mt-1.5 text-xs text-muted-foreground">Entscheidungen landen zusätzlich in entscheidungen.md im Projektwissen.</p>
           )}
         </div>
       )}

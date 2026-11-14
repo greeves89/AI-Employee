@@ -101,7 +101,7 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
           <UserAvatar name={user.name} />
           <div className="flex-1 min-w-0 text-left">
             <p className="text-[13px] font-semibold text-sidebar-foreground truncate">{user.name}</p>
-            <p className="text-[11px] text-sidebar-muted truncate">Mein Konto</p>
+            <p className="text-xs text-sidebar-muted truncate">Mein Konto</p>
           </div>
           {user.role === "admin" && (
             <Shield className="h-3 w-3 text-amber-500 shrink-0" />
@@ -136,7 +136,7 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
               >
                 <UserRound className="h-4 w-4" />
                 <span className="text-[13px] font-medium">Mitglieder-Ansicht</span>
-                <span className="ml-auto text-[11px] text-muted-foreground/60">{mitgliederAnsicht ? "an" : "aus"}</span>
+                <span className="ml-auto text-xs text-muted-foreground/60">{mitgliederAnsicht ? "an" : "aus"}</span>
               </button>
             )}
             {!simpleMode && <a
@@ -167,13 +167,13 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
               <Info className="h-4 w-4" />
               <span className="text-[13px] font-medium">Über AI Employee</span>
               {aboutVersion && (
-                <span className="ml-auto text-[11px] font-mono text-muted-foreground">v{aboutVersion}</span>
+                <span className="ml-auto text-xs font-mono text-muted-foreground">v{aboutVersion}</span>
               )}
             </button>
           </div>
           <div className="px-3 py-2 border-b border-border">
             <p className="text-xs font-medium truncate">{user.name}</p>
-            <p className="text-[10px] text-muted-foreground truncate">{user.email}</p>
+            <p className="text-[11px] text-muted-foreground truncate">{user.email}</p>
             <span className={cn(
               "inline-flex mt-1 px-1.5 py-0.5 rounded text-[9px] font-medium",
               user.role === "admin"
@@ -246,7 +246,7 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
               </div>
               <div className="flex-1 overflow-y-auto px-6 py-4">
                 {aboutChangelog ? (
-                  <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] [&_h1]:hidden [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-muted-foreground [&_h3]:mt-3 [&_h3]:mb-1 [&_ul]:space-y-1 [&_li]:text-muted-foreground [&_strong]:text-foreground [&_p]:text-muted-foreground [&_hr]:border-foreground/[0.06] [&_code]:rounded [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[11px] [&_code]:font-mono [&_code]:text-amber-600 dark:[&_code]:text-amber-700 dark:text-amber-300 [&_code]:before:content-[''] [&_code]:after:content-['']">
+                  <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] [&_h1]:hidden [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-muted-foreground [&_h3]:mt-3 [&_h3]:mb-1 [&_ul]:space-y-1 [&_li]:text-muted-foreground [&_strong]:text-foreground [&_p]:text-muted-foreground [&_hr]:border-foreground/[0.06] [&_code]:rounded [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-xs [&_code]:font-mono [&_code]:text-amber-600 dark:[&_code]:text-amber-700 dark:text-amber-300 [&_code]:before:content-[''] [&_code]:after:content-['']">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{aboutChangelog}</ReactMarkdown>
                   </div>
                 ) : (
@@ -256,9 +256,9 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
                 )}
               </div>
               <div className="flex items-center justify-between px-6 py-3 border-t border-foreground/[0.06] shrink-0">
-                <span className="text-[11px] text-muted-foreground">Made with ♥ by greeves89</span>
+                <span className="text-xs text-muted-foreground">Made with ♥ by greeves89</span>
                 <a href="https://github.com/greeves89/AI-Employee" target="_blank" rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-yellow-400 transition-colors">
+                  className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-yellow-400 transition-colors">
                   <Star className="h-3 w-3" />GitHub
                 </a>
               </div>

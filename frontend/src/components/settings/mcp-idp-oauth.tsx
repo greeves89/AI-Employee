@@ -91,7 +91,7 @@ export function McpIdpOAuthConfigPanel() {
           </div>
           <div>
             <h3 className="text-sm font-semibold">MCP-Zugang mit Firmenanmeldung</h3>
-            <p className="text-[11px] text-muted-foreground/60">
+            <p className="text-xs text-muted-foreground/60">
               Second Brains und Agenten per OAuth 2.1 über den eigenen Identitätsanbieter statt über einen geteilten Schlüssel
             </p>
           </div>
@@ -121,7 +121,7 @@ export function McpIdpOAuthConfigPanel() {
         <div className="grid gap-3 sm:grid-cols-2">
           {FIELDS.map((f) => (
             <div key={f.key}>
-              <label className="text-[11px] font-medium">{f.label}</label>
+              <label className="text-xs font-medium">{f.label}</label>
               <input
                 value={values[f.key]}
                 onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
@@ -129,13 +129,13 @@ export function McpIdpOAuthConfigPanel() {
                 spellCheck={false}
                 className="mt-1 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 font-mono text-[12px] outline-none focus:border-primary/50"
               />
-              <p className="mt-1 text-[10px] text-muted-foreground">{f.hint}</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">{f.hint}</p>
             </div>
           ))}
         </div>
 
         {config.issuer && values.issuer.trim() !== config.issuer && (
-          <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300">
+          <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             Der Aussteller ändert sich. Danach gelten nur noch Tokens dieses Anbieters; alle bisher verbundenen MCP-Clients müssen sich neu anmelden. Nur ändern, wenn du dem neuen Aussteller vertraust.
           </p>
@@ -143,11 +143,11 @@ export function McpIdpOAuthConfigPanel() {
 
         {config.active && (
           <div className="space-y-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
-            <p className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+            <p className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
               <CheckCircle2 className="h-3.5 w-3.5" />
               Aktiv. Im MCP-Client diese Adresse eintragen, Anmeldung „OAuth“:
             </p>
-            <div className="flex items-center gap-2 rounded-md border border-foreground/10 bg-background/50 px-3 py-1.5 font-mono text-[11px]">
+            <div className="flex items-center gap-2 rounded-md border border-foreground/10 bg-background/50 px-3 py-1.5 font-mono text-xs">
               <span className="flex-1 break-all">{config.brain_url_example}</span>
               <button
                 onClick={() => navigator.clipboard.writeText(config.brain_url_example)}
@@ -157,13 +157,13 @@ export function McpIdpOAuthConfigPanel() {
                 <Copy className="h-3 w-3" />
               </button>
             </div>
-            <p className="text-[10px] text-muted-foreground/60">
+            <p className="text-[11px] text-muted-foreground/60">
               Jede Person sieht nur die Second Brains, die ihr freigegeben sind. Wer in AI Employee kein Konto hat, wird abgewiesen. Der Brain-Schlüssel gilt daneben weiter.
             </p>
           </div>
         )}
         {enabled && !config.active && (
-          <p className="text-[11px] text-amber-700 dark:text-amber-400/80">
+          <p className="text-xs text-amber-700 dark:text-amber-400/80">
             Eingeschaltet, aber noch nicht wirksam: Aussteller, Empfänger und erlaubte Anwendungen oder Berechtigung fehlen.
           </p>
         )}

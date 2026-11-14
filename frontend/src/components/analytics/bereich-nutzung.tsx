@@ -54,7 +54,7 @@ export function BereichNutzung({ tage }: { tage: number }) {
       <div className="overflow-x-auto">
         <table className="w-full text-left">
           <thead>
-            <tr className="border-b border-foreground/[0.06] text-[11px] text-muted-foreground">
+            <tr className="border-b border-foreground/[0.06] text-xs text-muted-foreground">
               <th className="pb-2 pr-4 font-medium">Bereich</th>
               <th className="pb-2 px-3 font-medium w-1/3">Aufrufe</th>
               <th className="pb-2 px-3 text-right font-medium">Personen</th>
@@ -66,7 +66,7 @@ export function BereichNutzung({ tage }: { tage: number }) {
               <tr key={z.href} className="border-b border-foreground/[0.04] last:border-0">
                 <td className="py-2 pr-4">
                   <div className={cn("text-[13px] font-medium", z.aufrufe === 0 && "text-muted-foreground")}>{z.label}</div>
-                  <div className="text-[11px] text-muted-foreground">
+                  <div className="text-xs text-muted-foreground">
                     {z.gruppe}
                     {z.weitere && " · unter „Weitere Bereiche“"}
                   </div>

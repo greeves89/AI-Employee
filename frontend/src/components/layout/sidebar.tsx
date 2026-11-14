@@ -393,7 +393,7 @@ export function Sidebar() {
         {item.href === "/approvals" && pendingApprovals > 0 ? (
           <span
             title={`${pendingApprovals} offene Freigabe(n)`}
-            className="ml-auto shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-700 dark:text-amber-400"
+            className="ml-auto shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-amber-700 dark:text-amber-400"
           >
             {pendingApprovals > 99 ? "99+" : pendingApprovals}
           </span>
@@ -513,7 +513,7 @@ export function Sidebar() {
                   onClick={() => toggleGroup(group.key)}
                   className={cn(
                     "flex w-full items-center gap-2 px-2.5 pb-1 pt-2 rounded-lg transition-colors",
-                    "text-[11px] font-medium uppercase tracking-[0.06em]",
+                    "text-xs font-medium uppercase tracking-[0.06em]",
                     hasActive ? "text-sidebar-foreground/90" : "text-sidebar-muted",
                     "hover:text-sidebar-foreground"
                   )}
@@ -544,7 +544,7 @@ export function Sidebar() {
               >
                 <LayoutGrid className="h-3.5 w-3.5" />
                 <span className="flex-1 text-left">Weitere Bereiche</span>
-                <span className="text-[11px] tabular-nums text-sidebar-muted">{weitereItems.length}</span>
+                <span className="text-xs tabular-nums text-sidebar-muted">{weitereItems.length}</span>
                 <ChevronDown className={cn("h-3 w-3 transition-transform duration-200", weitereSichtbar ? "rotate-0" : "-rotate-90")} />
               </button>
               {weitereSichtbar && <div className="mt-0.5 space-y-0.5">{weitereItems.map(eintrag)}</div>}

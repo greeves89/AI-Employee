@@ -141,7 +141,7 @@ export function ProjektRaum({
           <button
             type="button"
             onClick={onStapel}
-            className="pointer-events-auto absolute -translate-x-1/2 -translate-y-full rounded-md bg-background/90 px-1.5 py-0.5 text-[10px] font-medium shadow ring-1 ring-foreground/10"
+            className="pointer-events-auto absolute -translate-x-1/2 -translate-y-full rounded-md bg-background/90 px-1.5 py-0.5 text-[11px] font-medium shadow ring-1 ring-foreground/10"
             style={{ left: sx, top: sy - 4 }}
           >
             {offen} offen
@@ -158,7 +158,7 @@ export function ProjektRaum({
       </RaumEbene>
 
       {weitere > 0 && (
-        <span className="absolute bottom-1 right-2 rounded-md bg-background/90 px-2 py-0.5 text-[10px] text-muted-foreground ring-1 ring-foreground/10">
+        <span className="absolute bottom-1 right-2 rounded-md bg-background/90 px-2 py-0.5 text-[11px] text-muted-foreground ring-1 ring-foreground/10">
           +{weitere} weitere
         </span>
       )}

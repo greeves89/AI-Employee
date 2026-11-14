@@ -62,14 +62,14 @@ function StatusDot({
         <span className={cn("h-2 w-2 rounded-full relative", colors[status])} />
       </div>
       <Icon className={cn("h-3.5 w-3.5", textColors[status])} />
-      <span className={cn("text-[11px] font-medium", textColors[status])}>
+      <span className={cn("text-xs font-medium", textColors[status])}>
         {label}
       </span>
 
       {/* Tooltip */}
       {detail && (
         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-50 pointer-events-none">
-          <div className="rounded-lg border border-foreground/[0.08] bg-popover px-2.5 py-1.5 text-[11px] text-muted-foreground shadow-lg whitespace-nowrap">
+          <div className="rounded-lg border border-foreground/[0.08] bg-popover px-2.5 py-1.5 text-xs text-muted-foreground shadow-lg whitespace-nowrap">
             {detail}
           </div>
         </div>
@@ -142,7 +142,7 @@ export function SystemStatusBar() {
         {/* Overall pill */}
         <div
           className={cn(
-            "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-medium",
+            "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium",
             loading
               ? "border-foreground/10 text-muted-foreground"
               : overallHealthy

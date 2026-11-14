@@ -109,7 +109,7 @@ export function InteractionModelCard({
           <Radio className="h-4 w-4 text-fuchsia-400" />
           <span className="text-sm font-medium">Sprach-Interaktion</span>
           {selValue && (
-            <span className="rounded-full border border-fuchsia-500/20 bg-fuchsia-500/10 px-2 py-0.5 text-[10px] font-medium text-fuchsia-400">
+            <span className="rounded-full border border-fuchsia-500/20 bg-fuchsia-500/10 px-2 py-0.5 text-[11px] font-medium text-fuchsia-400">
               Realtime
             </span>
           )}
@@ -117,7 +117,7 @@ export function InteractionModelCard({
         {saving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/60" />}
       </div>
       <div className="space-y-3 p-5">
-        <p className="text-[11px] text-muted-foreground/70">
+        <p className="text-xs text-muted-foreground/70">
           Klassisch per Aufnahme oder als Gespräch in Echtzeit.
         </p>
 
@@ -137,7 +137,7 @@ export function InteractionModelCard({
               <Mic className="h-3.5 w-3.5" /> Klassisch
               {selValue === null && <Check className="ml-auto h-3.5 w-3.5 text-fuchsia-400" />}
             </span>
-            <span className="text-[11px] text-muted-foreground/70">Aufnehmen &amp; senden (Push-to-Talk)</span>
+            <span className="text-xs text-muted-foreground/70">Aufnehmen &amp; senden (Push-to-Talk)</span>
           </button>
 
           {/* Realtime models from configured accounts */}
@@ -160,7 +160,7 @@ export function InteractionModelCard({
                   <Radio className="h-3.5 w-3.5" /> {o.model_label}
                   {active && <Check className="ml-auto h-3.5 w-3.5 text-fuchsia-400" />}
                 </span>
-                <span className="text-[11px] text-muted-foreground/70">
+                <span className="text-xs text-muted-foreground/70">
                   {o.provider_label} · {o.account_name}
                   {!o.implemented && " · bald"}
                 </span>
@@ -173,7 +173,7 @@ export function InteractionModelCard({
             vorher ist die Frage gegenstandslos. */}
         {selValue && (
         <div className="space-y-1.5 border-t border-foreground/[0.06] pt-3">
-          <p className="text-[11px] font-medium text-muted-foreground/80">
+          <p className="text-xs font-medium text-muted-foreground/80">
             Wer antwortet im Echtzeit-Gespräch?
           </p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -195,7 +195,7 @@ export function InteractionModelCard({
                     {o.label}
                     {active && <Check className="ml-auto h-3 w-3 text-fuchsia-400" />}
                   </span>
-                  <span className="text-[10px] text-muted-foreground/70">{o.hint}</span>
+                  <span className="text-[11px] text-muted-foreground/70">{o.hint}</span>
                 </button>
               );
             })}
@@ -207,13 +207,13 @@ export function InteractionModelCard({
         {!loading && models.length === 0 && !simpleMode && (
           <a
             href="/admin?tab=ai-accounts"
-            className="flex items-center gap-1.5 text-[11px] text-fuchsia-400 hover:underline"
+            className="flex items-center gap-1.5 text-xs text-fuchsia-400 hover:underline"
           >
             <ExternalLink className="h-3 w-3" />
             Noch kein Echtzeit-Anbieter. Lege unter KI-Konten einen AWS-Bedrock-Zugang an.
           </a>
         )}
-        {msg && <p className="text-[11px] text-muted-foreground/70">{msg}</p>}
+        {msg && <p className="text-xs text-muted-foreground/70">{msg}</p>}
       </div>
     </div>
   );

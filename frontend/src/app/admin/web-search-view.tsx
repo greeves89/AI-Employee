@@ -96,7 +96,7 @@ export function WebSearchView({ embedded = false }: { embedded?: boolean }) {
 
       <div className="rounded-xl border border-foreground/[0.06] bg-card/60 p-4 space-y-4">
         <div>
-          <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">Anbieter</p>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground/60">Anbieter</p>
           <div className="space-y-2">
             {(Object.keys(PROVIDER_LABEL) as Provider[]).map((p) => (
               <label
@@ -117,7 +117,7 @@ export function WebSearchView({ embedded = false }: { embedded?: boolean }) {
                 />
                 <div>
                   <p className="text-[13px] font-medium">{PROVIDER_LABEL[p]}</p>
-                  <p className="text-[11px] text-muted-foreground/60">{PROVIDER_HINT[p]}</p>
+                  <p className="text-xs text-muted-foreground/60">{PROVIDER_HINT[p]}</p>
                 </div>
               </label>
             ))}
@@ -126,7 +126,7 @@ export function WebSearchView({ embedded = false }: { embedded?: boolean }) {
 
         {provider === "brave_news" && (
           <div>
-            <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">
+            <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground/60">
               Aktualität
             </p>
             <select
@@ -138,7 +138,7 @@ export function WebSearchView({ embedded = false }: { embedded?: boolean }) {
                 <option key={f} value={f}>{FRESHNESS_LABEL[f]}</option>
               ))}
             </select>
-            <p className="mt-1.5 text-[11px] text-muted-foreground/60">
+            <p className="mt-1.5 text-xs text-muted-foreground/60">
               Begrenzt Treffer auf einen Zeitraum. Für Agenten, die über aktuelle Ereignisse schreiben, empfiehlt sich „Letzte 7 Tage“.
             </p>
           </div>
@@ -146,7 +146,7 @@ export function WebSearchView({ embedded = false }: { embedded?: boolean }) {
 
         {needsKey && (
           <div>
-            <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">
+            <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground/60">
               <KeyRound className="h-3 w-3" /> API-Key
             </p>
             <input
@@ -157,7 +157,7 @@ export function WebSearchView({ embedded = false }: { embedded?: boolean }) {
               className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-[13px] focus:border-primary/30 focus:outline-none"
             />
             {!hasKey && !apiKey && (
-              <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-400/80">
+              <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-400/80">
                 Kein Key hinterlegt — die Suche fällt bis dahin automatisch auf DuckDuckGo zurück.
               </p>
             )}

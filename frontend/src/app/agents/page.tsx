@@ -611,8 +611,8 @@ export default function AgentsPage() {
                 <div className="flex items-center gap-2 mb-3">
                   {g.isTeam ? <Users className="h-4 w-4 text-violet-400" /> : <Bot className="h-4 w-4 text-muted-foreground" />}
                   <h3 className="text-sm font-semibold">{g.name}</h3>
-                  {g.leadName && <span className="flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-400"><Crown className="h-3 w-3" /> {g.leadName} · Lead</span>}
-                  <span className="text-[11px] text-muted-foreground">· {g.agents.length} Agent{g.agents.length !== 1 ? "s" : ""}</span>
+                  {g.leadName && <span className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400"><Crown className="h-3 w-3" /> {g.leadName} · Lead</span>}
+                  <span className="text-xs text-muted-foreground">· {g.agents.length} Agent{g.agents.length !== 1 ? "s" : ""}</span>
                 </div>
               )}
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">

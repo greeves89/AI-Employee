@@ -148,7 +148,7 @@ export default function AdminAgentDetailPage() {
                     <h3 className="text-lg font-semibold">{data.agent.name}</h3>
                     <span
                       className={cn(
-                        "px-2.5 py-1 rounded-lg text-[11px] font-semibold capitalize",
+                        "px-2.5 py-1 rounded-lg text-xs font-semibold capitalize",
                         stateBg[data.agent.state] || "bg-zinc-500/10",
                         stateColors[data.agent.state] || "text-zinc-500"
                       )}
@@ -266,7 +266,7 @@ export default function AdminAgentDetailPage() {
                     </div>
                     <span
                       className={cn(
-                        "ml-auto px-2 py-0.5 rounded text-[10px] font-semibold",
+                        "ml-auto px-2 py-0.5 rounded text-[11px] font-semibold",
                         data.owner.role === "admin"
                           ? "bg-amber-500/10 text-amber-500"
                           : "bg-blue-500/10 text-blue-500"
@@ -292,7 +292,7 @@ export default function AdminAgentDetailPage() {
                       key={i}
                       className="flex items-center gap-2 text-sm"
                     >
-                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-foreground/5 text-muted-foreground capitalize">
+                      <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-foreground/5 text-muted-foreground capitalize">
                         {SICHTBARKEIT[v.scope] ?? v.scope}
                       </span>
                       {v.reason && (
@@ -342,25 +342,25 @@ export default function AdminAgentDetailPage() {
                         )}
                       />
                       <span className="flex-1 text-sm truncate">{task.title}</span>
-                      <span className="shrink-0 text-[11px] text-muted-foreground">
+                      <span className="shrink-0 text-xs text-muted-foreground">
                         {AUFGABEN_STATUS[task.status] ?? task.status}
                       </span>
                       {task.cost_usd !== null && (
-                        <span className="shrink-0 text-[11px] text-muted-foreground">
+                        <span className="shrink-0 text-xs text-muted-foreground">
                           {formatMoney(task.cost_usd)}
                         </span>
                       )}
                       {task.duration_ms !== null && (
-                        <span className="shrink-0 text-[11px] text-muted-foreground">
+                        <span className="shrink-0 text-xs text-muted-foreground">
                           {formatDuration(task.duration_ms)}
                         </span>
                       )}
                       {task.num_turns !== null && (
-                        <span className="shrink-0 text-[11px] text-muted-foreground">
+                        <span className="shrink-0 text-xs text-muted-foreground">
                           {task.num_turns} turns
                         </span>
                       )}
-                      <span className="shrink-0 text-[11px] text-muted-foreground">
+                      <span className="shrink-0 text-xs text-muted-foreground">
                         {formatDate(task.created_at)}
                       </span>
                     </div>
@@ -395,7 +395,7 @@ function StatCard({
           <Icon className={cn("h-4.5 w-4.5", color)} />
         </div>
         <div>
-          <p className="text-[11px] text-muted-foreground">{label}</p>
+          <p className="text-xs text-muted-foreground">{label}</p>
           <p className="text-lg font-semibold tracking-tight">{value}</p>
         </div>
       </div>

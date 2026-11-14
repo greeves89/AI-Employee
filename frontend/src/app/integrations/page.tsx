@@ -251,25 +251,25 @@ export default function IntegrationsPage() {
                           <div className="flex items-center gap-2">
                             <h3 className="text-sm font-semibold">{integration.display_name}</h3>
                             {isHealthy && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400">
                                 <CheckCircle2 className="h-2.5 w-2.5" />
                                 Verbunden
                               </span>
                             )}
                             {isExpired && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400 border border-amber-500/30">
                                 <AlertTriangle className="h-2.5 w-2.5" />
                                 Abgelaufen
                               </span>
                             )}
                             {isFailing && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400 border border-amber-500/30">
                                 <AlertTriangle className="h-2.5 w-2.5" />
                                 Erneuerung schlägt fehl
                               </span>
                             )}
                             {integration.per_user && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-medium text-blue-400 border border-blue-500/20">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-[11px] font-medium text-blue-400 border border-blue-500/20">
                                 <Users className="h-2.5 w-2.5" />
                                 Je Nutzer
                               </span>
@@ -289,14 +289,14 @@ export default function IntegrationsPage() {
                                   : `Token gilt noch${integration.expires_at ? ` bis ${new Date(integration.expires_at).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}` : ""}, lässt sich aber nicht erneuern. Neu verbinden, bevor er abläuft.`}
                               </p>
                               {integration.refresh_error && (
-                                <p className="font-mono text-[10px] text-amber-700/80 dark:text-amber-400/70">
+                                <p className="font-mono text-[11px] text-amber-700/80 dark:text-amber-400/70">
                                   Letzter Fehler: {integration.refresh_error}
                                 </p>
                               )}
                             </div>
                           )}
                           {!integration.available && !integration.connected && integration.auth_type !== "pat" && (
-                            <p className="text-[10px] text-yellow-500/80 mt-1.5">
+                            <p className="text-[11px] text-yellow-500/80 mt-1.5">
                               Noch nicht eingerichtet — die Zugangsdaten (Client ID) hinterlegt der Administrator unter Admin-Bereich → Dienste & Konten.
                             </p>
                           )}
@@ -304,7 +304,7 @@ export default function IntegrationsPage() {
                             const scopeList = integration.scopes.split(/\s+/).filter(Boolean);
                             return (
                               <details className="mt-1.5 group">
-                                <summary className="cursor-pointer list-none text-[10px] text-muted-foreground/60 hover:text-muted-foreground/90 select-none">
+                                <summary className="cursor-pointer list-none text-[11px] text-muted-foreground/60 hover:text-muted-foreground/90 select-none">
                                   {integration.connected ? "Erteilte" : "Angeforderte"} Berechtigungen ({scopeList.length})
                                   <span className="ml-1 text-muted-foreground group-open:hidden">· anzeigen</span>
                                 </summary>
@@ -312,14 +312,14 @@ export default function IntegrationsPage() {
                                   {scopeList.map((s) => (
                                     <span
                                       key={s}
-                                      className="inline-block rounded bg-foreground/[0.05] border border-foreground/[0.06] px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground/70"
+                                      className="inline-block rounded bg-foreground/[0.05] border border-foreground/[0.06] px-1.5 py-0.5 text-[11px] font-mono text-muted-foreground/70"
                                     >
                                       {s}
                                     </span>
                                   ))}
                                 </div>
                                 {!integration.connected && (
-                                  <p className="mt-1 text-[10px] text-muted-foreground">
+                                  <p className="mt-1 text-[11px] text-muted-foreground">
                                     Anpassbar via OAUTH_{integration.provider.toUpperCase()}_SCOPES.
                                   </p>
                                 )}
@@ -349,7 +349,7 @@ export default function IntegrationsPage() {
                             Trennen
                           </button>
                         ) : integration.auth_type === "pat" ? (
-                          <span className="text-[10px] text-muted-foreground">Token unten eingeben</span>
+                          <span className="text-[11px] text-muted-foreground">Token unten eingeben</span>
                         ) : integration.available ? (
                           <button
                             onClick={() => handleConnect(integration.provider)}
@@ -360,7 +360,7 @@ export default function IntegrationsPage() {
                             Verbinden
                           </button>
                         ) : (
-                          <span className="text-[10px] text-muted-foreground px-3 py-2">Nicht verfügbar</span>
+                          <span className="text-[11px] text-muted-foreground px-3 py-2">Nicht verfügbar</span>
                         )}
                       </div>
                     </div>
@@ -370,7 +370,7 @@ export default function IntegrationsPage() {
                       <div className="mt-4 pt-4 border-t border-foreground/[0.06]">
                         <button
                           onClick={() => setSetupExpanded(setupExpanded === "microsoft" ? null : "microsoft")}
-                          className="flex items-center gap-2 text-[11px] font-medium text-blue-400 hover:text-blue-300 transition-colors"
+                          className="flex items-center gap-2 text-xs font-medium text-blue-400 hover:text-blue-300 transition-colors"
                         >
                           <Info className="h-3.5 w-3.5" />
                           So richtest du Microsoft 365 ein (Azure-App-Registrierung)
@@ -381,7 +381,7 @@ export default function IntegrationsPage() {
                             <ol className="list-decimal list-inside space-y-2">
                               <li><strong className="text-foreground">portal.azure.com</strong> öffnen → Microsoft Entra ID → App-Registrierungen → Neue Registrierung</li>
                               <li>Umleitungs-URI (Web) setzen auf:
-                                <div className="mt-1 flex items-center gap-2 rounded-md border border-foreground/10 bg-background/50 px-3 py-1.5 font-mono text-[10px]">
+                                <div className="mt-1 flex items-center gap-2 rounded-md border border-foreground/10 bg-background/50 px-3 py-1.5 font-mono text-[11px]">
                                   <span className="flex-1 text-emerald-400 break-all">{redirectUrl}</span>
                                   <button
                                     onClick={() => navigator.clipboard.writeText(redirectUrl)}
@@ -392,13 +392,13 @@ export default function IntegrationsPage() {
                                 </div>
                               </li>
                               <li>Unter <strong className="text-foreground">API-Berechtigungen</strong> → Berechtigung hinzufügen → Microsoft Graph → Delegiert:<br />
-                                <span className="text-[10px] font-mono text-blue-300/80">User.Read, Mail.ReadWrite, Mail.Send, Calendars.ReadWrite, Files.ReadWrite, Chat.ReadWrite, Chat.ReadBasic, ChannelMessage.Read.All, ChannelMessage.Send, Team.ReadBasic.All, Tasks.ReadWrite, Contacts.ReadWrite, People.Read, offline_access</span>
+                                <span className="text-[11px] font-mono text-blue-300/80">User.Read, Mail.ReadWrite, Mail.Send, Calendars.ReadWrite, Files.ReadWrite, Chat.ReadWrite, Chat.ReadBasic, ChannelMessage.Read.All, ChannelMessage.Send, Team.ReadBasic.All, Tasks.ReadWrite, Contacts.ReadWrite, People.Read, offline_access</span>
                                 <p className="mt-1 text-amber-700 dark:text-amber-400/80">→ Danach auf <strong>„Administratorzustimmung erteilen“</strong> klicken</p>
                               </li>
                               <li>Unter <strong className="text-foreground">Zertifikate &amp; Geheimnisse</strong> einen neuen geheimen Clientschlüssel anlegen</li>
                               <li><strong className="text-foreground">Client-ID &amp; Secret</strong> unter <strong className="text-foreground">Admin-Bereich → Dienste & Konten → Microsoft 365</strong> eintragen</li>
                             </ol>
-                            <p className="text-[10px] text-muted-foreground/60">
+                            <p className="text-[11px] text-muted-foreground/60">
                               Der Administrator richtet das einmal ein. Danach verbindet jeder Nutzer hier sein eigenes Konto — Token werden je Nutzer gespeichert, nicht geteilt.
                             </p>
                           </div>
@@ -409,7 +409,7 @@ export default function IntegrationsPage() {
                     {/* PAT token input for PAT-based providers (e.g. GitHub) */}
                     {integration.auth_type === "pat" && !integration.connected && (
                       <div className="mt-4 pt-4 border-t border-foreground/[0.06]">
-                        <label className="text-[11px] font-medium text-muted-foreground mb-1.5 block">
+                        <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
                           Persönliches Zugangstoken
                         </label>
                         <div className="flex items-center gap-2">
@@ -443,13 +443,13 @@ export default function IntegrationsPage() {
                             Speichern
                           </button>
                         </div>
-                        <p className="text-[10px] text-muted-foreground mt-1.5">
+                        <p className="text-[11px] text-muted-foreground mt-1.5">
                           Ein Token legst du unter github.com/settings/tokens mit den Rechten repo, workflow und read:org an
                         </p>
 
                         {integration.provider === "github" && (
                           <div className="mt-3">
-                            <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer select-none">
+                            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
                               <input
                                 type="checkbox"
                                 checked={patSelfHosted}

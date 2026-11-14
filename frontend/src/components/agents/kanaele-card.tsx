@@ -40,7 +40,7 @@ function Feld({ label, hilfe, children }: { label: string; hilfe?: string; child
     <div className="space-y-1">
       <div className="text-xs font-medium">{label}</div>
       {children}
-      {hilfe && <div className="text-[11px] text-muted-foreground/60">{hilfe}</div>}
+      {hilfe && <div className="text-xs text-muted-foreground/60">{hilfe}</div>}
     </div>
   );
 }
@@ -122,7 +122,7 @@ function KanalBlock({ agentId, stand, onGespeichert }: {
         <button type="button" onClick={() => setOffen(!offen)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
           <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", !offen && "-rotate-90")} />
           <span className="text-[13px] font-medium">{NAMEN[stand.kanal]}</span>
-          <span className="truncate text-[11px] text-muted-foreground/70">
+          <span className="truncate text-xs text-muted-foreground/70">
             {stand.aktiv ? "aktiv" : "aus"}
             {hatToken && ` · Token ${stand.token_gesetzt ? "gesetzt" : "nicht gesetzt"}`}
           </span>
@@ -134,7 +134,7 @@ function KanalBlock({ agentId, stand, onGespeichert }: {
         <div className="space-y-3 px-5 pb-4">
           {stand.kanal === "teams" && (
             <>
-              <div className="text-[11px] text-muted-foreground/70">
+              <div className="text-xs text-muted-foreground/70">
                 Der Agent liest die gewählten Chats und Kanäle mit dem Microsoft-Konto, das er nutzt (eigenes
                 oder deins). Ob er antworten darf, entscheidet seine Microsoft-Einstellung (Lesen, Entwurf mit
                 Freigabe, Schreiben).
@@ -148,7 +148,7 @@ function KanalBlock({ agentId, stand, onGespeichert }: {
               {auswahl && (
                 <div className="max-h-64 space-y-2 overflow-y-auto rounded-lg border border-foreground/10 p-3">
                   {auswahl.chats.length === 0 && auswahl.kanaele.length === 0 && (
-                    <div className="text-[11px] text-muted-foreground">Keine Chats oder Kanäle gefunden.</div>
+                    <div className="text-xs text-muted-foreground">Keine Chats oder Kanäle gefunden.</div>
                   )}
                   {auswahl.chats.map((c) => (
                     <label key={c.id} className="flex items-center gap-2 text-xs">
@@ -164,7 +164,7 @@ function KanalBlock({ agentId, stand, onGespeichert }: {
                   ))}
                 </div>
               )}
-              <div className="text-[11px] text-muted-foreground/70">
+              <div className="text-xs text-muted-foreground/70">
                 Gewählt: {zeilen(ziele).length} Chat(s), {teamsKanaele.length} Kanal/Kanäle
               </div>
               {stand.besprechungen && (
@@ -213,7 +213,7 @@ function KanalBlock({ agentId, stand, onGespeichert }: {
                   placeholder={stand.token_gesetzt ? "gesetzt" : "nicht gesetzt"} className={eingabe} />
                 {stand.token_gesetzt && (
                   <button type="button" disabled={busy} onClick={() => speichern({ token: "" }, "Token entfernt")}
-                    className="shrink-0 rounded-lg px-2.5 text-[11px] text-muted-foreground hover:bg-red-500/10 hover:text-red-400">
+                    className="shrink-0 rounded-lg px-2.5 text-xs text-muted-foreground hover:bg-red-500/10 hover:text-red-400">
                     Token entfernen
                   </button>
                 )}
@@ -249,7 +249,7 @@ function BesprechungenBlock({ wert, busy, speichern }: {
         <CalendarClock className="h-4 w-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0 flex-1">
           <p className="text-[13px] font-medium">Teams-Besprechungen</p>
-          <p className="text-[11px] text-muted-foreground/70">
+          <p className="text-xs text-muted-foreground/70">
             Der Agent ist in Terminen dabei, zu denen er eingeladen ist. Er sagt im Chat, dass er
             mitschreibt. Danach steht unter Besprechungen ein Protokoll mit Aufgaben.
           </p>
@@ -305,7 +305,7 @@ export function KanaeleCard({ agentId }: { agentId: string }) {
         </div>
         <div>
           <h3 className="text-sm font-medium">Kanäle</h3>
-          <p className="mt-0.5 text-[11px] text-muted-foreground/60">
+          <p className="mt-0.5 text-xs text-muted-foreground/60">
             Wo der Agent außer im Chat erreichbar ist. Nachrichten dort wecken ihn, wenn er gestoppt ist.
           </p>
         </div>
@@ -313,7 +313,7 @@ export function KanaeleCard({ agentId }: { agentId: string }) {
       {kanaele.map((k) => k.nur_zusammenfassung ? (
         <div key={k.kanal} className="flex items-center justify-between border-t border-foreground/[0.06] px-5 py-3 first:border-t-0">
           <span className="text-[13px] font-medium">{NAMEN[k.kanal]}</span>
-          <span className="text-[11px] text-muted-foreground/70">
+          <span className="text-xs text-muted-foreground/70">
             {k.aktiv ? "aktiv" : "aus"}{k.aktiv ? ` · ${k.anzahl_ziele || k.anzahl_absender || 0} Ziel(e)` : ""}
           </span>
         </div>

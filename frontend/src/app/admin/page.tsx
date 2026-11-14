@@ -522,7 +522,7 @@ export default function AdminPage() {
               )}>
               {ADMIN_BEREICH_NAMEN[b]}
               {anzahl[b] ? (
-                <span className="rounded-full bg-foreground/[0.06] px-1.5 text-[11px] text-muted-foreground">{anzahl[b]}</span>
+                <span className="rounded-full bg-foreground/[0.06] px-1.5 text-xs text-muted-foreground">{anzahl[b]}</span>
               ) : null}
             </Link>
           ))}
@@ -641,18 +641,18 @@ export default function AdminPage() {
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground truncate">{u.email}</p>
-                      <p className="mt-0.5 text-[10px] text-muted-foreground/70">
+                      <p className="mt-0.5 text-[11px] text-muted-foreground/70">
                         {u.last_active_at ? `Zuletzt aktiv: ${timeAgo(u.last_active_at)}` : "Noch nie aktiv"}
                         {" · "}
                         {formatCost(u.monthly_cost_usd ?? 0)} diesen Monat
                       </p>
                       {u.approved === false && (
-                        <span className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/15 text-amber-700 dark:text-amber-400">
+                        <span className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-amber-500/15 text-amber-700 dark:text-amber-400">
                           Wartet auf Freischaltung
                         </span>
                       )}
                       {u.mfa_enabled && (
-                        <span className="mt-1 ml-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">
+                        <span className="mt-1 ml-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">
                           <ShieldCheck className="h-3 w-3" /> Zwei-Faktor aktiv
                         </span>
                       )}
@@ -661,7 +661,7 @@ export default function AdminPage() {
                     {/* Role badge */}
                     <span
                       className={cn(
-                        "shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1",
+                        "shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1",
                         u.role === "admin"   ? "bg-amber-500/10 text-amber-500" :
                         u.role === "manager" ? "bg-purple-500/10 text-purple-400" :
                         u.role === "viewer"  ? "bg-zinc-500/10 text-zinc-400" :
@@ -683,7 +683,7 @@ export default function AdminPage() {
                             {u.approved === false && (
                               <button
                                 onClick={() => handleApprove(u)}
-                                className="px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 transition-colors flex items-center gap-1"
+                                className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 transition-colors flex items-center gap-1"
                                 title="Konto freischalten"
                               >
                                 <Check className="h-3.5 w-3.5" /> Freischalten
@@ -792,9 +792,9 @@ export default function AdminPage() {
                         </span>
                       </div>
                       <div className="flex items-center gap-3 mt-0.5">
-                        <p className="text-[11px] text-muted-foreground">{agent.model}</p>
+                        <p className="text-xs text-muted-foreground">{agent.model}</p>
                         {agent.role && (
-                          <p className="text-[11px] text-muted-foreground/60 truncate max-w-[200px]">
+                          <p className="text-xs text-muted-foreground/60 truncate max-w-[200px]">
                             {agent.role}
                           </p>
                         )}
@@ -803,25 +803,25 @@ export default function AdminPage() {
 
                     {/* Owner */}
                     <div className="shrink-0 text-right">
-                      <p className="text-[11px] text-muted-foreground">Besitzer</p>
+                      <p className="text-xs text-muted-foreground">Besitzer</p>
                       <p className="text-xs font-medium">{getUserName(agent.user_id)}</p>
                     </div>
 
                     {/* Container */}
                     <div className="shrink-0 text-right min-w-[100px]">
-                      <p className="text-[11px] text-muted-foreground">Container</p>
+                      <p className="text-xs text-muted-foreground">Container</p>
                       {agent.container_id ? (
-                        <p className="text-[11px] font-mono text-foreground/80 flex items-center gap-1 justify-end">
+                        <p className="text-xs font-mono text-foreground/80 flex items-center gap-1 justify-end">
                           <Box className="h-3 w-3" />
                           {agent.container_id.slice(0, 12)}
                         </p>
                       ) : (
-                        <p className="text-[11px] text-muted-foreground">Keiner</p>
+                        <p className="text-xs text-muted-foreground">Keiner</p>
                       )}
                     </div>
 
                     {/* Metrics */}
-                    <div className="shrink-0 flex items-center gap-3 text-[11px]">
+                    <div className="shrink-0 flex items-center gap-3 text-xs">
                       {agent.cpu_percent !== null && (
                         <span className="text-muted-foreground">
                           CPU {agent.cpu_percent.toFixed(1)}%
@@ -920,7 +920,7 @@ export default function AdminPage() {
                           </div>
                           <div>
                             <p className="text-sm font-semibold">{a.agent_name}</p>
-                            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
                               <span>Nutzer: <strong className="text-foreground/80">{a.user_name}</strong></span>
                               <span>•</span>
                               <span>{a.template_name || "Ohne Vorlage"}</span>
@@ -959,7 +959,7 @@ export default function AdminPage() {
 
                       <div className="space-y-3">
                         <div>
-                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">Nutzer</label>
+                          <label className="text-xs font-medium text-muted-foreground/70 mb-1 block">Nutzer</label>
                           <select
                             value={assignForm.userId}
                             onChange={(e) => setAssignForm({ ...assignForm, userId: e.target.value })}
@@ -973,7 +973,7 @@ export default function AdminPage() {
                         </div>
 
                         <div>
-                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">Vorlage</label>
+                          <label className="text-xs font-medium text-muted-foreground/70 mb-1 block">Vorlage</label>
                           <select
                             value={assignForm.templateId}
                             onChange={(e) => setAssignForm({ ...assignForm, templateId: Number(e.target.value) })}
@@ -987,7 +987,7 @@ export default function AdminPage() {
                         </div>
 
                         <div>
-                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">Name (optional)</label>
+                          <label className="text-xs font-medium text-muted-foreground/70 mb-1 block">Name (optional)</label>
                           <input
                             value={assignForm.name}
                             onChange={(e) => setAssignForm({ ...assignForm, name: e.target.value })}
@@ -1033,7 +1033,7 @@ export default function AdminPage() {
                       </p>
                       <div className="space-y-3">
                         <div>
-                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">Quell-Agent (das fertige Original)</label>
+                          <label className="text-xs font-medium text-muted-foreground/70 mb-1 block">Quell-Agent (das fertige Original)</label>
                           <select
                             value={distForm.sourceAgentId}
                             onChange={(e) => setDistForm({ ...distForm, sourceAgentId: e.target.value })}
@@ -1044,7 +1044,7 @@ export default function AdminPage() {
                           </select>
                         </div>
                         <div>
-                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">An Gruppe (Rolle) — alle aktiven Mitglieder</label>
+                          <label className="text-xs font-medium text-muted-foreground/70 mb-1 block">An Gruppe (Rolle) — alle aktiven Mitglieder</label>
                           <select
                             value={distForm.roleId}
                             onChange={(e) => setDistForm({ ...distForm, roleId: Number(e.target.value) })}
@@ -1055,7 +1055,7 @@ export default function AdminPage() {
                           </select>
                         </div>
                         <div>
-                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">…und/oder einzelne Nutzer (Strg/Cmd-Klick)</label>
+                          <label className="text-xs font-medium text-muted-foreground/70 mb-1 block">…und/oder einzelne Nutzer (Strg/Cmd-Klick)</label>
                           <select
                             multiple
                             size={5}
@@ -1067,7 +1067,7 @@ export default function AdminPage() {
                           </select>
                         </div>
                         <div>
-                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">Namens-Präfix (optional)</label>
+                          <label className="text-xs font-medium text-muted-foreground/70 mb-1 block">Namens-Präfix (optional)</label>
                           <input
                             value={distForm.namePrefix}
                             onChange={(e) => setDistForm({ ...distForm, namePrefix: e.target.value })}
@@ -1251,7 +1251,7 @@ export default function AdminPage() {
                     })}
                   </div>
                 )}
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <p className="text-[11px] text-muted-foreground mt-1">
                   Bestimmt die Rechte des Nutzers (Second Brains, KI-Konten, Schlüssel, MCP …). Administratorrechte werden separat in der Nutzerliste vergeben.
                 </p>
               </div>
@@ -1499,16 +1499,16 @@ function BudgetTab({
       {/* Platform summary cards */}
       <div className="grid grid-cols-4 gap-4">
         <div className="rounded-xl border border-foreground/[0.06] bg-card/80 p-4">
-          <p className="text-[11px] font-medium text-muted-foreground/70 mb-1">Kosten diesen Monat</p>
+          <p className="text-xs font-medium text-muted-foreground/70 mb-1">Kosten diesen Monat</p>
           <p className="text-2xl font-bold text-foreground" title={moneyTitle(monthCostExakt)}>{formatMoney(monthCost)}</p>
-          <p className="text-[10px] text-muted-foreground mt-0.5" title={moneyTitle(sinceStart)}>
+          <p className="text-[11px] text-muted-foreground mt-0.5" title={moneyTitle(sinceStart)}>
             Aufgaben und Chat · seit Beginn {formatMoney(sinceStart)}
           </p>
         </div>
         <div className="rounded-xl border border-foreground/[0.06] bg-card/80 p-4">
-          <p className="text-[11px] font-medium text-muted-foreground/70 mb-1">Mit Budget-Limit</p>
+          <p className="text-xs font-medium text-muted-foreground/70 mb-1">Mit Budget-Limit</p>
           <p className="text-2xl font-bold text-foreground">{agentsWithBudget.length}</p>
-          <p className="text-[10px] text-muted-foreground mt-0.5">von {agents.length} Agenten</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">von {agents.length} Agenten</p>
         </div>
         <div className={cn(
           "rounded-xl border p-4",
@@ -1516,11 +1516,11 @@ function BudgetTab({
             ? "border-red-500/30 bg-red-500/5"
             : "border-foreground/[0.06] bg-card/80"
         )}>
-          <p className="text-[11px] font-medium text-muted-foreground/70 mb-1">Budget überschritten</p>
+          <p className="text-xs font-medium text-muted-foreground/70 mb-1">Budget überschritten</p>
           <p className={cn("text-2xl font-bold", agentsOverBudget.length > 0 ? "text-red-400" : "text-foreground")}>
             {agentsOverBudget.length}
           </p>
-          <p className="text-[10px] text-muted-foreground mt-0.5">Agenten</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">Agenten</p>
         </div>
         <div className={cn(
           "rounded-xl border p-4",
@@ -1528,11 +1528,11 @@ function BudgetTab({
             ? "border-amber-500/30 bg-amber-500/5"
             : "border-foreground/[0.06] bg-card/80"
         )}>
-          <p className="text-[11px] font-medium text-muted-foreground/70 mb-1">Nahe am Limit</p>
+          <p className="text-xs font-medium text-muted-foreground/70 mb-1">Nahe am Limit</p>
           <p className={cn("text-2xl font-bold", agentsNearBudget.length > 0 ? "text-amber-700 dark:text-amber-400" : "text-foreground")}>
             {agentsNearBudget.length}
           </p>
-          <p className="text-[10px] text-muted-foreground mt-0.5">&gt;75% verbraucht</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">&gt;75% verbraucht</p>
         </div>
       </div>
 
@@ -1540,7 +1540,7 @@ function BudgetTab({
       <div id="agenten-budget" className="scroll-mt-24 rounded-xl border border-foreground/[0.06] bg-card/80 overflow-hidden">
         <div className="px-5 py-3 border-b border-foreground/[0.06] flex items-center justify-between">
           <h3 className="text-sm font-semibold">Agenten Budget-Übersicht</h3>
-          <p className="text-[11px] text-muted-foreground">Klick auf Stift-Icon zum Bearbeiten</p>
+          <p className="text-xs text-muted-foreground">Klick auf Stift-Icon zum Bearbeiten</p>
         </div>
         <div className="divide-y divide-foreground/[0.04]">
           {sorted.map((agent) => {
@@ -1573,13 +1573,13 @@ function BudgetTab({
                 {/* Agent name + state */}
                 <div className="w-[180px] shrink-0">
                   <p className="text-sm font-medium truncate">{agent.name}</p>
-                  <p className="text-[10px] text-muted-foreground">{agentZustand(agent.state)}</p>
+                  <p className="text-[11px] text-muted-foreground">{agentZustand(agent.state)}</p>
                 </div>
 
                 {/* Spent */}
                 <div className="w-[90px] shrink-0 text-right">
                   <p className="text-sm font-mono font-semibold">{formatMoney(spent)}</p>
-                  <p className="text-[10px] text-muted-foreground">verbraucht</p>
+                  <p className="text-[11px] text-muted-foreground">verbraucht</p>
                 </div>
 
                 {/* Budget bar */}
@@ -1595,12 +1595,12 @@ function BudgetTab({
                           style={{ width: `${pct * 100}%` }}
                         />
                       </div>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
                         {(pct * 100).toFixed(1)}% von {formatMoney(limit)}
                       </p>
                     </div>
                   ) : (
-                    <p className="text-[11px] text-muted-foreground italic">kein Limit</p>
+                    <p className="text-xs text-muted-foreground italic">kein Limit</p>
                   )}
                 </div>
 
@@ -1609,7 +1609,7 @@ function BudgetTab({
                   {isEditing ? (
                     <>
                       <div className="flex items-center gap-1 rounded-lg border border-foreground/[0.12] bg-foreground/[0.04] px-2 py-1">
-                        <span className="text-[11px] text-muted-foreground">{money.symbol}</span>
+                        <span className="text-xs text-muted-foreground">{money.symbol}</span>
                         <input
                           type="number"
                           min={0}
@@ -1630,7 +1630,7 @@ function BudgetTab({
                         value={editAction}
                         onChange={(e) => setEditAction(e.target.value as "haiku" | "stop")}
                         title="Aktion wenn Budget aufgebraucht"
-                        className="rounded-lg border border-foreground/[0.12] bg-foreground/[0.04] px-2 py-1 text-[11px] outline-none"
+                        className="rounded-lg border border-foreground/[0.12] bg-foreground/[0.04] px-2 py-1 text-xs outline-none"
                       >
                         <option value="stop">→ Stoppen</option>
                         <option value="haiku">→ Sparmodus</option>
@@ -1638,7 +1638,7 @@ function BudgetTab({
                       <button
                         onClick={() => handleSave(agent.id)}
                         disabled={savingId === agent.id}
-                        className="rounded-lg bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                        className="rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
                       >
                         {savingId === agent.id ? (
                           <Loader2 className="h-3 w-3 animate-spin" />
@@ -1648,7 +1648,7 @@ function BudgetTab({
                       </button>
                       <button
                         onClick={() => setEditingId(null)}
-                        className="rounded-lg px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
+                        className="rounded-lg px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
                       >
                         ✕
                       </button>
@@ -1656,7 +1656,7 @@ function BudgetTab({
                   ) : (
                     <button
                       onClick={() => handleEdit(agent)}
-                      className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+                      className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
                       title="Budget bearbeiten"
                     >
                       <Edit3 className="h-3.5 w-3.5" />
@@ -1674,11 +1674,11 @@ function BudgetTab({
               </div>
               <div className="w-[180px] shrink-0">
                 <p className="text-sm font-medium truncate text-muted-foreground">Gelöschte Agenten</p>
-                <p className="text-[10px] text-muted-foreground">nicht mehr vorhanden</p>
+                <p className="text-[11px] text-muted-foreground">nicht mehr vorhanden</p>
               </div>
               <div className="w-[90px] shrink-0 text-right">
                 <p className="text-sm font-mono font-semibold" title={moneyTitle(geloeschtMonat)}>{formatMoney(geloeschtMonat)}</p>
-                <p className="text-[10px] text-muted-foreground">verbraucht</p>
+                <p className="text-[11px] text-muted-foreground">verbraucht</p>
               </div>
               <div className="flex-1 min-w-0" />
             </div>
@@ -1891,14 +1891,14 @@ function FeedbackTab({
                   <div className="flex items-center gap-2 flex-wrap">
                     <h4 className="text-sm font-medium truncate hover:underline">{f.title}</h4>
                     <span className={cn(
-                      "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                      "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium",
                       statusCfg.color
                     )}>
                       {statusCfg.label}
                     </span>
-                    <span className="text-[10px] text-muted-foreground capitalize">{f.category}</span>
+                    <span className="text-[11px] text-muted-foreground capitalize">{f.category}</span>
                     {sentiment && (
-                      <span className={cn("inline-flex items-center gap-1 text-[10px]", sentiment.color)}>
+                      <span className={cn("inline-flex items-center gap-1 text-[11px]", sentiment.color)}>
                         <sentiment.icon className="h-3 w-3" />
                         {sentiment.label}
                       </span>
@@ -1907,7 +1907,7 @@ function FeedbackTab({
                   {f.description && (
                     <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{f.description}</p>
                   )}
-                  <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
+                  <div className="flex items-center gap-3 mt-2 text-[11px] text-muted-foreground">
                     <span>{f.user_name || f.user_id}</span>
                     <span>{new Date(f.created_at).toLocaleString("de-DE")}</span>
                     {f.page && <span className="font-mono">{f.page}</span>}
@@ -1941,7 +1941,7 @@ function FeedbackTab({
                     )}
                   </div>
                   {f.admin_notes && !isExpanded && (
-                    <p className="text-[11px] text-muted-foreground/70 mt-1.5 italic">
+                    <p className="text-xs text-muted-foreground/70 mt-1.5 italic">
                       Admin: {f.admin_notes}
                     </p>
                   )}
@@ -1955,7 +1955,7 @@ function FeedbackTab({
                       value={f.status}
                       onChange={(e) => handleStatusChange(f, e.target.value as FeedbackStatus)}
                       disabled={actionLoading === f.id}
-                      className="appearance-none rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] pl-2.5 pr-6 py-1.5 text-[11px] font-medium outline-none cursor-pointer hover:bg-foreground/[0.06] transition-colors"
+                      className="appearance-none rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] pl-2.5 pr-6 py-1.5 text-xs font-medium outline-none cursor-pointer hover:bg-foreground/[0.06] transition-colors"
                     >
                       {STATUS_OPTIONS.map((s) => (
                         <option key={s.value} value={s.value}>{s.label}</option>

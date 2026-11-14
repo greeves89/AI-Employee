@@ -111,7 +111,7 @@ export function FileUploader({
 
       {/* Zielordner — wählbar statt fest verdrahtet. */}
       <div className="border-b border-foreground/[0.06] px-5 py-3">
-        <label className="mb-1.5 block text-[11px] font-medium text-muted-foreground/70">
+        <label className="mb-1.5 block text-xs font-medium text-muted-foreground/70">
           Zielordner
         </label>
         <input
@@ -126,7 +126,7 @@ export function FileUploader({
           }`}
         />
         {!zielErlaubt && (
-          <p className="mt-1 text-[11px] text-red-400">
+          <p className="mt-1 text-xs text-red-400">
             Muss unter <span className="font-mono">/workspace</span> liegen.
           </p>
         )}
@@ -136,7 +136,7 @@ export function FileUploader({
               key={z.pfad}
               onClick={() => setZiel(z.pfad)}
               title={z.was}
-              className={`rounded-md px-2 py-1 font-mono text-[10px] transition-colors ${
+              className={`rounded-md px-2 py-1 font-mono text-[11px] transition-colors ${
                 zielSauber === z.pfad
                   ? "bg-primary/15 text-foreground"
                   : "bg-foreground/[0.06] text-muted-foreground hover:bg-foreground/[0.1]"
@@ -146,7 +146,7 @@ export function FileUploader({
             </button>
           ))}
         </div>
-        <p className="mt-1.5 text-[11px] text-muted-foreground">
+        <p className="mt-1.5 text-xs text-muted-foreground">
           Der Ordner wird angelegt, falls es ihn noch nicht gibt.
         </p>
       </div>
@@ -202,7 +202,7 @@ export function FileUploader({
               <span className="text-xs font-medium truncate flex-1">
                 {file.name}
               </span>
-              <span className="text-[10px] text-muted-foreground shrink-0">
+              <span className="text-[11px] text-muted-foreground shrink-0">
                 {formatSize(file.size)}
               </span>
               <button

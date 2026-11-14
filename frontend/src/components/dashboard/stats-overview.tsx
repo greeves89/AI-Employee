@@ -116,7 +116,7 @@ export function StatsOverview({ agents, tasks }: StatsOverviewProps) {
               <Icon className="h-4 w-4 text-muted-foreground" />
             </div>
 
-            <p className="text-[11px] font-medium text-muted-foreground mb-0.5">
+            <p className="text-xs font-medium text-muted-foreground mb-0.5">
               {stat.label}
             </p>
             <p

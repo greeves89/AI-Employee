@@ -307,10 +307,10 @@ export default function KnowledgePage() {
 
               {activeTag && (
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-muted-foreground/70">Gefiltert nach:</span>
+                  <span className="text-xs text-muted-foreground/70">Gefiltert nach:</span>
                   <button
                     onClick={() => setActiveTag(null)}
-                    className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary"
+                    className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
                   >
                     #{activeTag}
                     <X className="h-3 w-3" />
@@ -355,7 +355,7 @@ export default function KnowledgePage() {
                               {entry.tags.slice(0, 5).map((tag) => (
                                 <span
                                   key={tag}
-                                  className="inline-flex items-center rounded-full bg-foreground/[0.04] px-2 py-0.5 text-[10px] text-muted-foreground/60"
+                                  className="inline-flex items-center rounded-full bg-foreground/[0.04] px-2 py-0.5 text-[11px] text-muted-foreground/60"
                                 >
                                   #{tag}
                                 </span>
@@ -364,11 +364,11 @@ export default function KnowledgePage() {
                           )}
                         </div>
                         <div className="flex flex-col items-end gap-1 shrink-0">
-                          <span className="text-[10px] text-muted-foreground">
+                          <span className="text-[11px] text-muted-foreground">
                             {new Date(entry.updated_at).toLocaleDateString()}
                           </span>
                           {entry.backlinks.length > 0 && (
-                            <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                            <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
                               <Link2 className="h-3 w-3" />
                               {entry.backlinks.length}
                             </span>
@@ -385,7 +385,7 @@ export default function KnowledgePage() {
             {tags.length > 0 && (
               <div className="w-56 shrink-0 hidden lg:block">
                 <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4">
-                  <h3 className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-3">
+                  <h3 className="flex items-center gap-2 text-xs font-medium text-muted-foreground/70 uppercase tracking-wider mb-3">
                     <Tag className="h-3.5 w-3.5" />
                     Schlagwörter
                   </h3>
@@ -405,7 +405,7 @@ export default function KnowledgePage() {
                           <Hash className="h-3 w-3" />
                           {tag.name}
                         </span>
-                        <span className="rounded-full bg-foreground/[0.06] px-1.5 py-0.5 text-[10px]">
+                        <span className="rounded-full bg-foreground/[0.06] px-1.5 py-0.5 text-[11px]">
                           {tag.count}
                         </span>
                       </button>
@@ -436,11 +436,11 @@ export default function KnowledgePage() {
               <div className="flex items-center gap-2">
                 {!isNew && selectedEntry && (
                   <>
-                    <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                    <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                       <User className="h-3 w-3" />
                       {selectedEntry.created_by}
                     </span>
-                    <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                    <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                       <Clock className="h-3 w-3" />
                       {new Date(selectedEntry.updated_at).toLocaleString("de-DE")}
                     </span>
@@ -506,7 +506,7 @@ export default function KnowledgePage() {
                 <div className="flex gap-8">
                   {selectedEntry.backlinks.length > 0 && (
                     <div>
-                      <h4 className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
+                      <h4 className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
                         Verweist auf
                       </h4>
                       <div className="flex flex-wrap gap-1.5">
@@ -514,7 +514,7 @@ export default function KnowledgePage() {
                           <button
                             key={link}
                             onClick={() => handleBacklinkClick(link)}
-                            className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2.5 py-1 text-[11px] text-primary hover:bg-primary/10 transition-colors"
+                            className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2.5 py-1 text-xs text-primary hover:bg-primary/10 transition-colors"
                           >
                             <Link2 className="h-3 w-3" />
                             {link}
@@ -525,7 +525,7 @@ export default function KnowledgePage() {
                   )}
                   {(selectedEntry.incoming_backlinks || []).length > 0 && (
                     <div>
-                      <h4 className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
+                      <h4 className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
                         Verlinkt von
                       </h4>
                       <div className="flex flex-wrap gap-1.5">
@@ -533,7 +533,7 @@ export default function KnowledgePage() {
                           <button
                             key={link}
                             onClick={() => handleBacklinkClick(link)}
-                            className="inline-flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-1 text-[11px] text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                            className="inline-flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-1 text-xs text-emerald-400 hover:bg-emerald-500/10 transition-colors"
                           >
                             <ArrowLeft className="h-3 w-3" />
                             {link}
@@ -549,7 +549,7 @@ export default function KnowledgePage() {
             {/* Second Brain: cross-system related (semantic) — memories + knowledge (#157) */}
             {!isNew && selectedEntry && (relatedLoading || (related && (related.related_knowledge.length > 0 || related.related_memories.length > 0))) && (
               <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4">
-                <h4 className="mb-3 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
+                <h4 className="mb-3 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground/70">
                   <Sparkles className="h-3 w-3 text-primary" /> Semantisch verwandt
                 </h4>
                 {relatedLoading ? (
@@ -560,7 +560,7 @@ export default function KnowledgePage() {
                   <div className="flex flex-col gap-3 sm:flex-row sm:gap-8">
                     {related && related.related_knowledge.length > 0 && (
                       <div className="flex-1">
-                        <p className="mb-1.5 flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                        <p className="mb-1.5 flex items-center gap-1 text-[11px] uppercase tracking-wide text-muted-foreground">
                           <Link2 className="h-2.5 w-2.5 text-sky-400" /> Wissen
                         </p>
                         <div className="flex flex-col gap-1">
@@ -570,7 +570,7 @@ export default function KnowledgePage() {
                               onClick={() => openEntry(r.id)}
                               className="flex items-center gap-2 rounded-lg px-2 py-1 text-left text-[12px] transition-colors hover:bg-foreground/[0.04]"
                             >
-                              <span className="w-9 shrink-0 text-right text-[11px] text-sky-400/80">{Math.round(r.similarity * 100)}%</span>
+                              <span className="w-9 shrink-0 text-right text-xs text-sky-400/80">{Math.round(r.similarity * 100)}%</span>
                               <span className="truncate">{r.title}</span>
                             </button>
                           ))}
@@ -579,7 +579,7 @@ export default function KnowledgePage() {
                     )}
                     {related && related.related_memories.length > 0 && (
                       <div className="flex-1">
-                        <p className="mb-1.5 flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                        <p className="mb-1.5 flex items-center gap-1 text-[11px] uppercase tracking-wide text-muted-foreground">
                           <Brain className="h-2.5 w-2.5 text-emerald-400" /> Agent-Memories
                         </p>
                         <div className="flex flex-col gap-1">
@@ -589,7 +589,7 @@ export default function KnowledgePage() {
                               className="flex items-center gap-2 px-2 py-1 text-[12px]"
                               title={r.snippet}
                             >
-                              <span className="w-9 shrink-0 text-right text-[11px] text-emerald-400/80">{Math.round(r.similarity * 100)}%</span>
+                              <span className="w-9 shrink-0 text-right text-xs text-emerald-400/80">{Math.round(r.similarity * 100)}%</span>
                               <span className="truncate font-medium">{r.key}</span>
                               <span className="truncate text-muted-foreground/60">— {r.snippet}</span>
                             </div>
@@ -665,7 +665,7 @@ export default function KnowledgePage() {
                       {graphPreview.tags.length > 0 && (
                         <div className="mt-1.5 flex flex-wrap gap-1">
                           {graphPreview.tags.map((tag) => (
-                            <span key={tag} className="inline-flex items-center rounded-full bg-foreground/[0.06] px-2 py-0.5 text-[10px] text-muted-foreground/70">
+                            <span key={tag} className="inline-flex items-center rounded-full bg-foreground/[0.06] px-2 py-0.5 text-[11px] text-muted-foreground/70">
                               #{tag}
                             </span>
                           ))}
@@ -675,7 +675,7 @@ export default function KnowledgePage() {
                     <div className="flex items-center gap-1 shrink-0">
                       <button
                         onClick={() => openEntry(graphPreview.id)}
-                        className="rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+                        className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
                       >
                         Bearbeiten
                       </button>
@@ -712,7 +712,7 @@ export default function KnowledgePage() {
                               <button
                                 key={link}
                                 onClick={() => { const f = entries.find((e) => e.title === link); if (f) openGraphPreview(f.id); }}
-                                className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2 py-0.5 text-[10px] text-primary hover:bg-primary/10"
+                                className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2 py-0.5 text-[11px] text-primary hover:bg-primary/10"
                               >
                                 <Link2 className="h-2.5 w-2.5" />
                                 {link}
@@ -729,7 +729,7 @@ export default function KnowledgePage() {
                               <button
                                 key={link}
                                 onClick={() => { const f = entries.find((e) => e.title === link); if (f) openGraphPreview(f.id); }}
-                                className="inline-flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/5 px-2 py-0.5 text-[10px] text-emerald-400 hover:bg-emerald-500/10"
+                                className="inline-flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/5 px-2 py-0.5 text-[11px] text-emerald-400 hover:bg-emerald-500/10"
                               >
                                 <ArrowLeft className="h-2.5 w-2.5" />
                                 {link}
@@ -744,12 +744,12 @@ export default function KnowledgePage() {
                   {/* Footer meta */}
                   <div className="border-t border-foreground/[0.06] px-4 py-2 flex items-center gap-3">
                     {graphPreview.created_by && (
-                      <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                      <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                         <User className="h-2.5 w-2.5" />
                         {graphPreview.created_by}
                       </span>
                     )}
-                    <span className="flex items-center gap-1 text-[10px] text-muted-foreground ml-auto">
+                    <span className="flex items-center gap-1 text-[11px] text-muted-foreground ml-auto">
                       <Clock className="h-2.5 w-2.5" />
                       {new Date(graphPreview.updated_at).toLocaleDateString()}
                     </span>

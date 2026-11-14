@@ -103,7 +103,7 @@ export function AgentenUpdatesKarte() {
                   disabled={speichert}
                   onClick={() => umschalten(m.modus)}
                   className={cn(
-                    "rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors disabled:opacity-50",
+                    "rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50",
                     stand.modus === m.modus ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground",
                   )}
                 >
@@ -124,7 +124,7 @@ export function AgentenUpdatesKarte() {
                 type="button"
                 disabled={speichert}
                 onClick={() => umschalten("leerlauf")}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-500/30 px-2.5 py-1 text-[11px] font-medium text-amber-700 hover:bg-amber-500/10 disabled:opacity-50 dark:text-amber-300"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-500/30 px-2.5 py-1 text-xs font-medium text-amber-700 hover:bg-amber-500/10 disabled:opacity-50 dark:text-amber-300"
               >
                 Wieder aufnehmen
               </button>
@@ -141,7 +141,7 @@ export function AgentenUpdatesKarte() {
               type="button"
               onClick={laden}
               disabled={laedt}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-foreground/[0.08] px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground disabled:opacity-50"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-foreground/[0.08] px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground disabled:opacity-50"
             >
               <RefreshCw className={cn("h-3 w-3", laedt && "animate-spin")} /> Neu laden
             </button>
