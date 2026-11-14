@@ -4682,7 +4682,9 @@ Installationsordners in Kleinbuchstaben (z. B. `ai-employee`).
    (Ziel: `/var/backups/ai-employee`, anderes Ziel mit `--dest /pfad`). Läuft die Sicherung
    ohne root und ist dieser Ordner nicht beschreibbar (etwa weil ein früheres `sudo update.sh`
    ihn angelegt hat), sichert sie nach `~/ai-employee-sicherungen` und nennt das in der Ausgabe.
-   Dauerhaft beheben: `sudo chown -R <nutzer> /var/backups/ai-employee`.
+   Dauerhaft beheben: `sudo chown -R <nutzer> /var/backups/ai-employee`. Liegt die nächtliche
+   Sicherung auf einem NAS, `BACKUP_DIR` und `BACKUP_MOUNT` auch in die `.env` eintragen. Dann sichert
+   auch jedes Update dorthin und nicht auf die Platte der Anlage.
 
 **Kiosk-Anzeige anmelden** *(seit 1.461.0, nur mit `KIOSK_ENABLED`)*: Der Kiosk antwortet nur
 Geräten mit Zugang.
