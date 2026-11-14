@@ -454,8 +454,11 @@ class AdminUiTests(unittest.TestCase):
     def test_setup_card_exists_and_is_admin_only(self):
         src = (REPO / "frontend/src/app/settings/view.tsx").read_text()
         self.assertIn("SamlConfig", src)
-        block = src.split("<SamlConfig />")[0][-200:]
-        self.assertIn("isAdmin", block, "Einrichtungsangaben sind interne Infrastruktur.")
+        # Seit 1.468.0 steht die Karte im Abschnitt „Anmeldung“, der als Ganzes nur
+        # für Admins erscheint: die Prüfung steht vor der Überschrift.
+        block = src.split("<SamlConfig />")[0][-600:]
+        self.assertIn("{isAdmin && (", block, "Einrichtungsangaben sind interne Infrastruktur.")
+        self.assertNotIn("</section>", block.split("{isAdmin && (")[-1], "Karte im Admin-Abschnitt")
 
     def test_metadata_link_is_the_first_step(self):
         """Der Ablauf beim Kunden faengt IMMER damit an, unsere Metadaten beim
