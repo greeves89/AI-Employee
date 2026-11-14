@@ -18,6 +18,7 @@ import {
   CirclePause,
   ShieldAlert,
   Copy,
+  Moon,
 } from "lucide-react";
 import { useWebSocket } from "@/hooks/use-websocket";
 import type { LogEvent } from "@/lib/types";
@@ -207,6 +208,9 @@ interface ChatEvent {
   type: "text" | "tool_call" | "tool_result" | "error" | "system" | "done" | "session" | "cancelled" | "queued" | "image" | "file" | "task_card" | "context"
     | "approval_request"  // Freigabe angelegt (approvals.py) — Anstoss fuer den Banner-Abgleich
     | "approval_wait"  // Nur-Nutzer: die eigene Anfrage wartet auf den Besitzer (ws.py, ohne Inhalt)
+    | "ready"  // Verbindung steht; ``data.schlaeft``: Agent gestoppt, startet mit der ersten Nachricht (ws.py)
+    | "agent_startet"  // die erste Nachricht weckt den Agenten gerade (ws.py)
+    | "agent_schlaeft"  // Wecken ging nicht (angehalten): die Nachricht wartet (ws.py)
     | "attached"  // Quittung auf {action: "attach"} (ws.py)
     | "goal"  // /goal gesetzt oder beendet (ws.py) — Anstoß, den Ziel-Stand neu zu laden
     | "stillstand"  // #891: Zug endete mit einer Ankündigung, danach lief nichts (app/core/ankuendigung.py)
@@ -514,6 +518,9 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   zuletztAktives?: boolean;
 }) {
   const { simpleMode } = useSimpleMode();
+  // Hinweis über dem Eingabefeld, solange ein gestoppter Agent erst mit der
+  // ersten Nachricht startet (ws.py: ready.schlaeft, agent_startet, agent_schlaeft).
+  const [schlafHinweis, setSchlafHinweis] = useState("");
   const [sessions, setSessions] = useState<SessionTab[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   // Kennung aus „Neues Gespräch“, solange darin noch nichts geschrieben wurde —
@@ -1361,6 +1368,20 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         if (chatEvent.type === "approval_request") {
           // Live-Signal: sofort abgleichen statt auf den naechsten Takt zu warten.
           approvalRecheckRef.current();
+        }
+        // Gestoppter Agent: Öffnen startet ihn nicht mehr, erst die erste Nachricht
+        // (Entscheidung 14.11.2026). Eine Zeile über dem Eingabefeld sagt, was
+        // passiert; sie verschwindet, sobald der Agent antwortet. Nicht im Verlauf:
+        // den ersetzt das Nachladen des Gesprächs.
+        if (chatEvent.type === "ready" || chatEvent.type === "agent_startet" || chatEvent.type === "agent_schlaeft") {
+          const text = chatEvent.type === "ready"
+            ? (chatEvent.data?.schlaeft ? "Der Agent ist gestoppt. Er startet, sobald du schreibst." : "")
+            : String(chatEvent.data?.message || "");
+          setSchlafHinweis(text);
+          return;
+        }
+        if (chatEvent.type === "text" || chatEvent.type === "tool_call" || chatEvent.type === "done") {
+          setSchlafHinweis("");
         }
         if (chatEvent.type === "approval_wait") {
           // Wer den Agenten nur nutzt, entscheidet nicht selbst — er sieht nur, dass
@@ -3297,6 +3318,12 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
             einer Fusszeile darunter. Vorher standen sechs Knoepfe NEBEN dem
             Eingabefeld — auf schmalen Schirmen blieb für den Text eine Spalte, und
             die Kontextanzeige lag als eigener Streifen darunter, ohne Bezug. */}
+        {schlafHinweis && (
+          <p role="status" className="mb-1.5 flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
+            <Moon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            {schlafHinweis}
+          </p>
+        )}
         <div
           className={cn(
             "rounded-2xl border bg-background/80 transition-all",

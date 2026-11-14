@@ -428,6 +428,8 @@ Seitenleiste → **Agents**. Jeder Agent erscheint als **Kachel**. Was du darauf
 
 ### 4.1a Ansicht „Büro“: alle Agenten an ihrem Platz *(seit 1.367.0)*
 
+Seit 1.467.0 öffnet die Seite zuerst die **Liste**. Wählst du eine andere Ansicht, merkt sich die Seite deine Wahl.
+
 Neben Kachel- und Listenansicht gibt es das **Büro**: alle deine Agenten an ihren
 Schreibtischen, aufgeteilt in Bereiche (Werkstatt, Bibliothek, Lounge, Fensterfront —
 reichen die Plätze nicht, kommen Anbauten dazu).
@@ -623,6 +625,10 @@ Darunter die **Tabs**: **Chat · Todos · Activity · Workspace · Wissen · Set
 
 ### 5.1 Chat — mit dem Agenten sprechen
 Tab **Chat**. Das ist das direkte Gespräch (wie ein Messenger).
+- **Gestoppter Agent** *(seit 1.467.0)* — Öffnen startet ihn nicht. Über dem Eingabefeld steht
+  „Der Agent ist gestoppt. Er startet, sobald du schreibst.“ Mit deiner ersten Nachricht startet er
+  („Agent startet …“) und antwortet dann. Hat der Besitzer den Agenten angehalten und du nutzt ihn
+  nur, wartet deine Nachricht, bis er wieder gestartet wird.
 - **Eingabefeld unten** — Nachricht/Anweisung tippen, **Enter** oder **Senden** (Pfeil).
   Mit **Shift+Enter** fügst du einen Zeilenumbruch ein — das Feld wächst automatisch mit
   (bis ca. 8 Zeilen, danach scrollt es), und die Umbrüche bleiben in der gesendeten
@@ -1864,9 +1870,20 @@ Fristen im Blick und schreiben dir morgens ein Tagesbriefing. **Gesendet wird ni
 die Anlage ist nicht auf **Microsoft nur lesend** gesperrt (Kap. 20.1). Ist sie gesperrt, liest das
 Sekretariat nur.
 
+### 6c.0 Start ohne Sekretariat: „Mein Tag“ *(seit 1.467.0)*
+
+Solange du kein Sekretariat eingerichtet hast, zeigt **Start** deinen Tag:
+
+- **Wartet auf dich** — offene Freigaben deiner Agenten; **Zu den Freigaben** öffnet die Liste.
+- **Aufgaben heute** — was gerade läuft und was heute fertig wurde.
+- **Als Nächstes geplant** — die nächsten Zeitpläne mit Uhrzeit und Agent.
+- **Meine Agenten** — mit Zustand; ein Klick öffnet den Chat.
+
+Darunter steht die Karte **Sekretariat einrichten**. Erst **Einrichten** öffnet das Formular aus 6c.1.
+
 ### 6c.1 Einrichten
 
-1. Seitenleiste → **Heute**.
+1. Seitenleiste → **Start** → Karte **Sekretariat einrichten** → **Einrichten**.
 2. Unter **1. Agenten wählen** ein bis vier deiner Agenten anklicken. Der **erste** ist der Lead —
    er sichtet das Postfach; die weiteren übernehmen Entwerfen, Prüfen, Ablegen.
 3. Unter **2.** wählen, wie oft das Postfach gesichtet wird (werktags 7–18 Uhr).
@@ -2606,6 +2623,9 @@ hier holst du **Ergebnisse** ab (Dokumente, Bilder, Videos, Auswertungen). Seite
 1. Den **Agenten/Workspace** wählen, dessen Dateien du sehen willst.
 2. Durch die **Ordnerstruktur** klicken (z. B. `transfer/` für fertige Ergebnisse).
 3. Auf eine **Datei** klicken → **Vorschau** (bei Bildern/Text/PDF) bzw. **Herunterladen**.
+
+**Läuft keiner deiner Agenten** *(seit 1.467.0)*, steht je gestopptem Agent ein Knopf **Agent starten**.
+Nach dem Start erscheinen seine Dateien. Agenten, die du nur nutzen darfst, startet ihr Besitzer.
 
 > Dieselben Dateien siehst du auch direkt am Agenten unter **Workspace** (Kap. 5.4) — der
 > Explorer bündelt sie zentral.

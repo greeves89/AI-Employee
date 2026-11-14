@@ -88,8 +88,9 @@ export interface AgentsPagePrefs {
 }
 
 export const DEFAULT_AGENTS_PAGE_PREFS: AgentsPagePrefs = {
-  // Karten bleiben für alle der Standard.
-  ansicht: "grid",
+  // Liste als Standard (Entscheidung 14.11.2026): Status, letzte Aktivität und
+  // Kosten auf einen Blick, auch auf dem Handy. Eine gespeicherte Wahl gilt weiter.
+  ansicht: "list",
   liste: {
     spalten: [...LIST_COLUMNS],
     sortierung: { spalte: "name", richtung: "asc" },

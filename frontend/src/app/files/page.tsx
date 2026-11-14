@@ -4,7 +4,7 @@ import { useState, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   FolderOpen, File, Folder, ChevronRight, Upload,
-  Loader2, Bot, Download, RefreshCw, Trash2,
+  Loader2, Bot, Download, RefreshCw, Trash2, Play,
   Search, ArrowUpDown, Clock, Hash, X,
 } from "lucide-react";
 import { useAgents } from "@/hooks/use-agents";
@@ -35,7 +35,23 @@ type SortMode = "name" | "date" | "size";
 export default function FilesPage() {
   const toast = useToast();
   const confirm = useConfirm();
-  const { agents } = useAgents();
+  const { agents, refresh: ladeAgenten } = useAgents();
+  const [startet, setStartet] = useState<string | null>(null);
+  // Dateien liest die Plattform aus dem laufenden Agenten. Gestoppte, die man
+  // verwaltet, lassen sich hier direkt starten (Entscheidung 14.11.2026);
+  // „nur nutzen“ darf nicht starten — die stehen nicht in der Liste.
+  const startbare = agents.filter((a) => a.state === "stopped" && !a.nur_nutzen);
+  const agentStarten = async (id: string) => {
+    setStartet(id);
+    try {
+      await api.startAgent(id);
+      await ladeAgenten();
+    } catch (e) {
+      toast.error("Agent konnte nicht gestartet werden", e instanceof Error ? e.message : undefined);
+    } finally {
+      setStartet(null);
+    }
+  };
   // Mitglieder sehen keine Steuerdateien der Agenten (#907).
   const { simpleMode } = useSimpleMode();
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
@@ -316,8 +332,27 @@ export default function FilesPage() {
             </div>
             <h3 className="text-lg font-semibold mb-1.5">Keine aktiven Agenten</h3>
             <p className="text-sm text-muted-foreground">
-              Starte einen Agenten, um seine Dateien zu durchsuchen.
+              Die Dateien liegen im Arbeitsbereich eines laufenden Agenten.
+              {startbare.length > 0 ? " Starte einen, um sie zu sehen." : ""}
             </p>
+            {startbare.length > 0 && (
+              <ul className="mx-auto mt-5 flex max-w-sm flex-col gap-2">
+                {startbare.map((a) => (
+                  <li key={a.id} className="flex items-center justify-between gap-3 rounded-lg border border-foreground/[0.08] bg-card px-3 py-2 text-left">
+                    <span className="truncate text-sm font-medium">{a.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => agentStarten(a.id)}
+                      disabled={startet !== null}
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+                    >
+                      {startet === a.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                      Agent starten
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         ) : (
           <div className="flex gap-4 h-[calc(100vh-240px)]">
