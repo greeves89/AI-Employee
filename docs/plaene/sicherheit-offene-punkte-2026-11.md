@@ -48,18 +48,20 @@ gilt das als abgewiesen.
 
 - **Verwalter-Freigaben ohne Live-Signal:** Wer einen Agenten per älterer Voll-Freigabe verwaltet, aber nicht Besitzer ist, bekommt Freigabe-Anfragen nicht mehr als Live-Signal im Chat. Er sieht sie weiter auf der Freigaben-Seite. Falls das stört: `_ereignis_fuer_verbindung` zusätzlich mit `verwaltende_freigaben` prüfen.
 
-## Stand 14.11.2026, 06:30 (nach 1.464)
+## Stand 14.11.2026 (nach 1.466, abgeschlossen)
 
 | # | Stand |
 |---|---|
 | 1 Kiosk | Erledigt (1.461), live: ohne Zugang 404 aus LAN, vom Gerät und am Orchestrator; Anzeige auf dem Pi angemeldet. |
 | 2 Wecken trotz Stopp | Erledigt (1.461 + 1.463). Live: angehaltener Agent startet weder durch Aufgabe noch durch Anmeldung. Die Anmeldung war die eigentliche Ursache vom 13.11. |
-| 3 Freigabe „nur nutzen“ | Live mit Wegwerf-Testkonto geprüft (14.11.). Offen: Bildschirmfotos fürs Handbuch. |
-| 4 OAuth mit Entra | Live gegen das echte Entra der Anlage (14.11.): Discovery und 6 Schlüssel über die feste Verbindung, gefälschte Tokens abgewiesen (fremder Schlüssel, unbekannte kid, alg none, HS256). Offen: ein echter Erfolgsfall. Dafür muss sich einmal jemand per Microsoft anmelden, und die App braucht „Expose an API“ (Handbuch 22.5.2). |
-| 5 GitLab | Lesen live gegen gitlab.com geprüft, Token-Tausch im Proxy live mit mitmproxy geprüft. Schreiben nur mit nachgestelltem GitLab, weil kein Testprojekt vorhanden ist (Entscheidung Daniel, 14.11.). |
+| 3 Freigabe „nur nutzen“ | Erledigt. Live mit Wegwerf-Testkonto geprüft (14.11.), Bildschirmfoto im Handbuch 22.3. |
+| 4 OAuth mit Entra | Live gegen das echte Entra der Anlage (14.11.): Discovery und 6 Schlüssel über die feste Verbindung, gefälschte Tokens abgewiesen (fremder Schlüssel, unbekannte kid, alg none, HS256). Der Erfolgsfall mit echtem Token ist auf dieser Anlage nicht prüfbar (Entscheidung Daniel, 14.11.): Es gibt kein Microsoft-Konto für die Anmeldung. Er wird bei der ersten Anlage mit Entra-Anmeldung geprüft (Handbuch 22.5.2). |
+| 5 GitLab | Lesen live gegen gitlab.com geprüft, Token-Tausch im Proxy live mit mitmproxy geprüft. Schreiben (Issue, Branch, Merge Request) nur gegen das nachgestellte GitLab geprüft; ein echtes Testprojekt ist nicht gewünscht (Entscheidung Daniel, 14.11.). Geprüft wird es bei der ersten Anlage mit GitLab. |
 | 6 Sicherung | Erledigt (1.461 + 1.464). Live: Ausweichen ohne root, Ziel aus der `.env` (NAS), Update verweigert während einer Sicherung. |
 | 7 Alte Agenten-Abbilder | Erledigt (14.11.): Die 7 Agenten des Besitzers sind aktualisiert, gestoppt und angehalten geblieben. |
 | 8 DNS-Rebinding IdP | Erledigt (1.462). |
 | 9 Freigabe-Anfragen | Leck behoben (1.462), Statuszeile „wartet auf Freigabe“ für Nur-Nutzer ohne Inhalt (1.465). Erledigt. |
 
 Alte root-Sicherung `/var/backups/ai-employee` (19 GB, 13.11.) auf Wunsch gelöscht, Platte jetzt bei 74 %.
+
+Damit ist der Plan abgeschlossen. Punkte 4 und 5 sind umgesetzt und getestet, nur ihr Erfolgsfall gegen ein echtes Konto fehlt mangels Konto auf dieser Anlage.
