@@ -240,7 +240,7 @@ export default function NewTaskPage() {
                   ))}
                 </ul>
                 {!agentId && (
-                  <p className="text-[11px] text-amber-700 dark:text-amber-400/90">
+                  <p className="text-xs text-amber-700 dark:text-amber-400/90">
                     Für Datei-Anhänge oben einen konkreten Agenten wählen (nicht Auto-assign).
                   </p>
                 )}
@@ -259,7 +259,7 @@ export default function NewTaskPage() {
                 type="button"
                 onClick={estimateCost}
                 disabled={estimating || !prompt.trim() || prompt.length < 20}
-                className="text-[11px] text-primary hover:text-primary/80 disabled:text-muted-foreground transition-colors"
+                className="text-xs text-primary hover:text-primary/80 disabled:text-muted-foreground transition-colors"
               >
                 {estimating ? "Wird berechnet …" : "Kosten schätzen"}
               </button>

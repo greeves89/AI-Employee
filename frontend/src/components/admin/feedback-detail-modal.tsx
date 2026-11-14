@@ -121,25 +121,25 @@ export function FeedbackDetailModal({ feedback: f, onClose }: Props) {
               <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
                 {/* Badges */}
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium", statusColor)}>
+                  <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium", statusColor)}>
                     {f.status}
                   </span>
-                  <span className="text-[10px] text-muted-foreground capitalize">{f.category}</span>
+                  <span className="text-[11px] text-muted-foreground capitalize">{f.category}</span>
                   {sentiment && (
-                    <span className={cn("inline-flex items-center gap-1 text-[10px]", sentiment.color)}>
+                    <span className={cn("inline-flex items-center gap-1 text-[11px]", sentiment.color)}>
                       <sentiment.icon className="h-3 w-3" />
                       {sentiment.label}
                     </span>
                   )}
-                  {f.page && <span className="text-[10px] font-mono text-muted-foreground">{f.page}</span>}
+                  {f.page && <span className="text-[11px] font-mono text-muted-foreground">{f.page}</span>}
                   {f.element_label && (
-                    <span className="text-[10px] text-muted-foreground" title={f.selector || undefined}>
+                    <span className="text-[11px] text-muted-foreground" title={f.selector || undefined}>
                       Element: {f.element_label}
                     </span>
                   )}
                   {f.github_issue_url && (
                     <a href={f.github_issue_url} target="_blank" rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline">
+                      className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline">
                       <Github className="h-3 w-3" />
                       Issue
                       <ExternalLink className="h-2.5 w-2.5" />
@@ -183,7 +183,7 @@ export function FeedbackDetailModal({ feedback: f, onClose }: Props) {
 
                 {f.admin_notes && (
                   <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2.5">
-                    <p className="text-[11px] font-medium text-muted-foreground mb-1">Admin-Notizen</p>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Admin-Notizen</p>
                     <p className="text-sm text-foreground/80 whitespace-pre-wrap">{f.admin_notes}</p>
                   </div>
                 )}

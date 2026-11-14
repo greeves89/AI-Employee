@@ -236,12 +236,12 @@ function FilePreviewInner({
         {filePath}
       </span>
       {fileSize != null && (
-        <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 ml-2">
+        <span className="text-[11px] text-muted-foreground tabular-nums shrink-0 ml-2">
           {formatFileSize(fileSize)}
         </span>
       )}
       {fileModified != null && fileModified > 0 && (
-        <span className="text-[10px] text-muted-foreground tabular-nums shrink-0" title={formatModifiedFull(fileModified)}>
+        <span className="text-[11px] text-muted-foreground tabular-nums shrink-0" title={formatModifiedFull(fileModified)}>
           {formatModifiedFull(fileModified)}
         </span>
       )}
@@ -252,7 +252,7 @@ function FilePreviewInner({
           <button
             onClick={() => setHtmlTab("rendered")}
             className={cn(
-              "inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors",
+              "inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium transition-colors",
               htmlTab === "rendered" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
             )}
           >
@@ -261,7 +261,7 @@ function FilePreviewInner({
           <button
             onClick={() => setHtmlTab("source")}
             className={cn(
-              "inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors",
+              "inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium transition-colors",
               htmlTab === "source" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
             )}
           >
@@ -273,7 +273,7 @@ function FilePreviewInner({
       {bearbeitbar && !imBearbeiten && (
         <button
           onClick={() => setEntwurf(textContent ?? "")}
-          className="ml-auto flex h-6 items-center gap-1.5 rounded-lg px-2 text-[11px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors shrink-0"
+          className="ml-auto flex h-6 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors shrink-0"
         >
           <Pencil className="h-3 w-3" />
           Bearbeiten
@@ -285,14 +285,14 @@ function FilePreviewInner({
           <button
             onClick={() => { setEntwurf(null); setSpeicherFehler(null); }}
             disabled={speichert}
-            className="flex h-6 items-center rounded-lg px-2 text-[11px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors disabled:opacity-50"
+            className="flex h-6 items-center rounded-lg px-2 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors disabled:opacity-50"
           >
             Abbrechen
           </button>
           <button
             onClick={speichern}
             disabled={speichert || entwurf === textContent}
-            className="flex h-6 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40"
+            className="flex h-6 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40"
           >
             {speichert ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
             {speichert ? "Speichert…" : "Speichern"}
@@ -303,7 +303,7 @@ function FilePreviewInner({
       {onDownload && !imBearbeiten && (
         <button
           onClick={onDownload}
-          className="ml-auto flex h-6 items-center gap-1.5 rounded-lg px-2 text-[11px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors shrink-0"
+          className="ml-auto flex h-6 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors shrink-0"
         >
           <Download className="h-3 w-3" />
           Herunterladen
@@ -335,7 +335,7 @@ function FilePreviewInner({
     <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
       <File className="h-12 w-12" />
       <span className="text-sm font-medium">{fileName}</span>
-      <span className="text-[11px]">
+      <span className="text-xs">
         {fileSize != null ? formatFileSize(fileSize) : ""} &middot; Binaerdatei
       </span>
       {onDownload && (
@@ -388,7 +388,7 @@ function FilePreviewInner({
   const bearbeitungsFlaeche = (
     <div className="flex h-full flex-col">
       {speicherFehler && (
-        <div className="shrink-0 border-b border-red-500/20 bg-red-500/10 px-4 py-2 text-[11px] text-red-400">
+        <div className="shrink-0 border-b border-red-500/20 bg-red-500/10 px-4 py-2 text-xs text-red-400">
           {speicherFehler}
         </div>
       )}

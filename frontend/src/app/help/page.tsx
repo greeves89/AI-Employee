@@ -80,7 +80,7 @@ const HELP_TOPICS: HelpTopic[] = [
     id: "agent-rechte",
     category: "Agenten",
     title: "Rechte eines Agenten einstellen",
-    body: "Im Agenten in der Leiste unter dem Chat auf „Rechte“ klicken. Die Autonomie-Stufe (L1 nur lesen bis L4 vollständig autonom) legt fest, was der Agent selbst darf; je Fähigkeit lässt sich erlauben, eine Freigabe verlangen oder verbieten. L3 arbeitet im eigenen Container selbstständig und fragt vor Außenwirkung. Die eigene Rolle kann eine Obergrenze setzen (Mitglieder: L3); Stufen darüber sind ausgegraut, Sudo-Pakete und Root-Zugriff vergibt nur, wessen Rolle keine Grenze hat. Änderungen wirken ab der nächsten Aufgabe.",
+    body: "Im Agenten unten links auf „Einstellungen“ und dann auf „Rechte“ klicken. Drei Stufen stehen zur Wahl: „Nur zuschauen“ (liest nur), „Fragt vorher“ (empfohlen: arbeitet selbst, fragt aber, bevor etwas nach außen geht, zum Beispiel eine Mail) und „Darf selbst“. Ist eine Stufe mit Schloss ausgegraut, erlaubt deine Rolle sie nicht; freischalten kann das dein Administrator. Änderungen gelten ab der nächsten Aufgabe.",
     keywords: ["rechte", "autonomie", "freigabe", "erlaubt", "verboten", "stufe", "l1", "l2", "l3", "l4"],
     tutorial: "rechte",
   },
@@ -386,7 +386,7 @@ export default function HelpPage() {
           )}
           {byCategory.map(([category, topics]) => (
             <div key={category}>
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-2">
+              <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60 mb-2">
                 {category}
               </div>
               <div className="space-y-2">

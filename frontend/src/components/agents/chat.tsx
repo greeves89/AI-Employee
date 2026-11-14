@@ -321,7 +321,7 @@ function LiveActivity({ agentId }: { agentId: string }) {
     : 0;
 
   return (
-    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70 tabular-nums">
+    <div className="flex items-center gap-1.5 text-xs text-muted-foreground/70 tabular-nums">
       <Wrench className="h-3 w-3 shrink-0" />
       <span className="font-medium text-muted-foreground/90" title={tool}>{werkzeugKurzname(tool)}</span>
       {target && (
@@ -2592,6 +2592,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           sessions={sessions.map((s) => ({ ...s, fallbackLabel: s.label }))}
           selectedId={activeSessionId}
           busyIds={beschaeftigteFaeden}
+          onClose={() => setRailOpen(false)}
           onSelect={(id) => {
             switchSession(id);
             if (!window.matchMedia("(min-width: 768px)").matches) setRailOpen(false);
@@ -2656,7 +2657,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           >
             <LayoutGrid className="h-3.5 w-3.5" />
           </button>
-          <button onClick={() => changeFontScale(-0.1)} disabled={fontScale <= 0.85} className="rounded px-1 py-0.5 text-[11px] font-semibold text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06] disabled:opacity-30" title="Schrift kleiner" aria-label="Schrift kleiner">A−</button>
+          <button onClick={() => changeFontScale(-0.1)} disabled={fontScale <= 0.85} className="rounded px-1 py-0.5 text-xs font-semibold text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06] disabled:opacity-30" title="Schrift kleiner" aria-label="Schrift kleiner">A−</button>
           <Type className="h-3 w-3 text-muted-foreground/40" />
           <button onClick={() => changeFontScale(0.1)} disabled={fontScale >= 1.4} className="rounded px-1 py-0.5 text-[13px] font-semibold text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06] disabled:opacity-30" title="Schrift größer" aria-label="Schrift größer">A+</button>
           {sessions.length > 0 && (
@@ -2673,11 +2674,11 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         {!isConnected && (
           <div className="flex items-center gap-1.5 ml-1 shrink-0 border-l border-border pl-2" role="status">
             <span className={cn("inline-flex h-2 w-2 rounded-full", connectionFailed ? "bg-red-500" : "bg-amber-500")} />
-            <span className="text-[11px] text-muted-foreground" title="Verbindung zur Plattform">
+            <span className="text-xs text-muted-foreground" title="Verbindung zur Plattform">
               {connectionFailed ? "Getrennt" : "Verbindet …"}
             </span>
             {connectionFailed && (
-              <button onClick={retryConnect} title="Neu verbinden" aria-label="Neu verbinden" className="text-[11px] text-amber-600 hover:text-amber-500 transition-colors">
+              <button onClick={retryConnect} title="Neu verbinden" aria-label="Neu verbinden" className="text-xs text-amber-600 hover:text-amber-500 transition-colors">
                 <RotateCcw className="h-3 w-3" />
               </button>
             )}
@@ -2783,11 +2784,11 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                         <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
                       )}
                       <span className="min-w-0 flex-1 truncate font-medium">{aufgabenTitel(karte.title)}</span>
-                      <span className="shrink-0 text-[11px] text-muted-foreground">
+                      <span className="shrink-0 text-xs text-muted-foreground">
                         {karte.assigned_agent_name}
                       </span>
                     </div>
-                    <div className="mt-0.5 pl-5 text-[11px] text-muted-foreground">
+                    <div className="mt-0.5 pl-5 text-xs text-muted-foreground">
                       {läuft ? "in Arbeit" : gescheitert ? "fehlgeschlagen" : "abgeschlossen"}
                       {karte.duration_ms ? ` · ${Math.round(karte.duration_ms / 1000)} s` : ""}
                     </div>
@@ -2814,7 +2815,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                             else next.add(karte.task_id);
                             return next;
                           })}
-                          className="flex w-full items-center gap-1 text-left text-[11px] text-muted-foreground hover:text-foreground"
+                          className="flex w-full items-center gap-1 text-left text-xs text-muted-foreground hover:text-foreground"
                         >
                           <ChevronRight
                             className={`h-3 w-3 shrink-0 transition-transform ${eingeklappt ? "" : "rotate-90"}`}
@@ -2831,7 +2832,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                         {!eingeklappt && (
                           <div className="mt-1 max-h-48 space-y-0.5 overflow-y-auto">
                             {schritte.map((s) => (
-                              <div key={s.sequence} className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
+                              <div key={s.sequence} className="flex items-start gap-1.5 text-xs text-muted-foreground">
                                 {s.timestamp && (
                                   <span className="shrink-0 tabular-nums text-muted-foreground/70">
                                     {new Date(s.timestamp).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
@@ -2897,7 +2898,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                 {offeneAuftraege.length}{" "}
                 {offeneAuftraege.length === 1 ? "Auftrag läuft noch" : "Aufträge laufen noch"}
               </span>
-              <span className="truncate text-[10px] text-muted-foreground">
+              <span className="truncate text-[11px] text-muted-foreground">
                 {/* WER noch aussteht, nicht nur „irgendetwas läuft" — das war
                     der eigentliche Wunsch: „warte noch auf SubAgents". */}
                 wartet auf {Array.from(new Set(offeneAuftraege.map(
@@ -2920,13 +2921,13 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                 </div>
                 <span className="text-xs text-muted-foreground">
                   {thinkingElapsed > 0 ? (
-                    <>{inWarteschlange ? "Wartet — gleich dran …" : "Denkt nach …"} <span className="tabular-nums text-muted-foreground/60">{thinkingElapsed} s</span></>
+                    <>{schlafHinweis ? "Startet …" : inWarteschlange ? "Wartet — gleich dran …" : "Denkt nach …"} <span className="tabular-nums text-muted-foreground/60">{thinkingElapsed} s</span></>
                   ) : (
                     "Denkt nach …"
                   )}
                 </span>
                 {thinkingElapsed > 30 && (
-                  <span className="text-[10px] text-muted-foreground/60 italic">Complex task — this may take a while</span>
+                  <span className="text-[11px] text-muted-foreground/60 italic">Complex task — this may take a while</span>
                 )}
               </div>
               <LiveActivity agentId={agentId} />
@@ -3010,13 +3011,13 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                     ) : (
                       // Lieber ehrlich als falsch: eine erfundene Fenstergroesse
                       // verspricht Luft, die es vielleicht nicht gibt.
-                      <p className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] p-2.5 text-[11px] text-amber-700 dark:text-amber-300">
+                      <p className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] p-2.5 text-xs text-amber-700 dark:text-amber-300">
                         Die Fenstergröße von <b>{contextInfo.model || "diesem Modell"}</b> ist
                         hier nicht hinterlegt — der Anteil lässt sich nicht ausrechnen.
                         Verdichten geht trotzdem.
                       </p>
                     )}
-                    <dl className="mt-3 space-y-1 text-[11px] text-muted-foreground">
+                    <dl className="mt-3 space-y-1 text-xs text-muted-foreground">
                       <div className="flex justify-between">
                         <dt>Geschätzt belegt</dt>
                         <dd className="tabular-nums text-foreground/80">
@@ -3051,7 +3052,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                         </div>
                       )}
                     </dl>
-                    <p className="mt-3 text-[10px] leading-relaxed text-muted-foreground/60">
+                    <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground/60">
                       Die Belegung ist <b>geschätzt</b> (Zeichen ÷ 4). Genau ginge nur mit dem
                       Tokenisierer des jeweiligen Modells — eine Zahl, die genauer aussieht
                       als sie ist, wäre schlechter als eine gerundete.
@@ -3064,7 +3065,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                       {compacting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                       Verlauf verdichten
                     </button>
-                    <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground/60">
+                    <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground/60">
                       {contextInfo.can_compact
                         ? `Die letzten ${contextInfo.keeps_verbatim} Nachrichten bleiben wörtlich — die jüngste Werkzeug-Ein- und -Ausgabe ist zusammengefasst wertlos. Ältere werden markiert, nicht gelöscht.`
                         : "Noch zu kurz zum Verdichten."}
@@ -3077,7 +3078,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                 <h3 className="text-sm font-semibold">
                   Werkzeuge dieses Agenten
                   {toolset && (
-                    <span className="ml-2 font-normal text-[11px] text-muted-foreground">
+                    <span className="ml-2 font-normal text-xs text-muted-foreground">
                       {toolset.mode === "claude_code" ? "Claude Code"
                         : toolset.mode === "codex_cli" ? "Codex" : "Eigenes Modell"}
                       {" · "}{toolset.total}
@@ -3090,7 +3091,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                   <div className="mt-3 space-y-3">
                     {toolset.groups.map((g) => (
                       <div key={g.key}>
-                        <div className="text-[11px] font-medium">
+                        <div className="text-xs font-medium">
                           {g.label}
                           {g.note && (
                             <span className="ml-1.5 font-normal text-muted-foreground">
@@ -3102,7 +3103,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                           {g.tools.map((t) => (
                             <span
                               key={t}
-                              className="rounded border border-foreground/[0.08] bg-foreground/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                              className="rounded border border-foreground/[0.08] bg-foreground/[0.03] px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
                             >
                               {t}
                             </span>
@@ -3114,7 +3115,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                         lassen sie sich nicht auslösen — deshalb nur als Auskunft. */}
                     {(toolset.laufzeit_befehle?.length ?? 0) > 0 && (
                       <div>
-                        <div className="text-[11px] font-medium">
+                        <div className="text-xs font-medium">
                           Befehle der Laufzeit
                           <span className="ml-1.5 font-normal text-muted-foreground">
                             — laufen in der CLI des Agenten, nicht von hier auslösbar
@@ -3125,7 +3126,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                             <span
                               key={c.name}
                               title={c.hint}
-                              className="rounded border border-foreground/[0.08] bg-foreground/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                              className="rounded border border-foreground/[0.08] bg-foreground/[0.03] px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
                             >
                               /{c.name}
                             </span>
@@ -3282,7 +3283,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
               <div key={`${file.name}-${i}`} className="group inline-flex items-center gap-1.5 rounded-lg border border-border bg-background/80 px-2.5 py-1.5 text-xs">
                 <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 <span className="max-w-[180px] truncate">{file.name}</span>
-                <span className="text-[10px] text-muted-foreground/60 tabular-nums">{formatBytes(file.size)}</span>
+                <span className="text-[11px] text-muted-foreground/60 tabular-nums">{formatBytes(file.size)}</span>
                 <button
                   onClick={() => setPendingFiles((prev) => prev.filter((_, j) => j !== i))}
                   className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:text-foreground hover:bg-foreground/10"
@@ -3320,8 +3321,10 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
             Eingabefeld — auf schmalen Schirmen blieb für den Text eine Spalte, und
             die Kontextanzeige lag als eigener Streifen darunter, ohne Bezug. */}
         {schlafHinweis && (
-          <p role="status" className="mb-1.5 flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
-            <Moon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <p role="status" className="mb-1.5 flex items-center gap-1.5 px-1 text-[13px] text-muted-foreground">
+            {isWaiting
+              ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" aria-hidden="true" />
+              : <Moon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
             {schlafHinweis}
           </p>
         )}
@@ -3364,7 +3367,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                 schlimmer als gar keiner. */}
             {slashOpen && (
               <div className="absolute bottom-full left-3 z-50 mb-2 w-72 overflow-hidden rounded-xl border border-border bg-card shadow-xl shadow-black/20">
-                <p className="px-3 pb-1.5 pt-2.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                <p className="px-3 pb-1.5 pt-2.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
                   Befehle
                 </p>
                 {slashCommands.filter((c) =>
@@ -3376,11 +3379,11 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                     className="flex w-full items-start gap-2.5 px-3 py-2 text-left transition-colors hover:bg-foreground/[0.06]"
                   >
                     <span className="font-mono text-xs text-primary">/{c.name}</span>
-                    <span className="text-[11px] text-muted-foreground/70">{c.hint}</span>
+                    <span className="text-xs text-muted-foreground/70">{c.hint}</span>
                   </button>
                 ))}
                 {slashCommands.every((c) => !c.name.startsWith(input.slice(1).toLowerCase())) && (
-                  <p className="px-3 pb-2.5 text-[11px] text-muted-foreground">
+                  <p className="px-3 pb-2.5 text-xs text-muted-foreground">
                     Kein Befehl mit diesem Namen — Enter schickt den Text normal ab.
                   </p>
                 )}
@@ -3431,7 +3434,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                     : `Denktiefe: ${REASONING_OPTIONS.find((o) => o.value === reasoning)?.label}`
                 }
                 className={cn(
-                  "flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11px] transition-all disabled:opacity-40",
+                  "flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs transition-all disabled:opacity-40",
                   reasoning
                     ? "bg-violet-500/10 text-violet-300 hover:bg-violet-500/20"
                     // Geerbt: sichtbar, aber blasser als eine bewusste Wahl —
@@ -3450,7 +3453,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
               </button>
               {reasoningOpen && (
                 <div className="absolute bottom-full left-0 z-50 mb-2 w-52 overflow-hidden rounded-xl border border-border bg-card shadow-xl shadow-black/20">
-                  <p className="px-3 pb-1.5 pt-2.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                  <p className="px-3 pb-1.5 pt-2.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
                     Wie gründlich denken?
                   </p>
                   {REASONING_OPTIONS.map((opt) => (
@@ -3482,7 +3485,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
             <div className="ml-auto flex items-center gap-1.5">
               {agentModel && !simpleMode && (
                 <span
-                  className="hidden max-w-[10rem] truncate font-mono text-[10px] text-muted-foreground sm:inline"
+                  className="hidden max-w-[10rem] truncate font-mono text-[11px] text-muted-foreground sm:inline"
                   title={agentModel}
                 >
                   {agentModel}
@@ -3498,14 +3501,14 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                   onClick={() => setContextOpen((o) => !o)}
                   title="Kontext: belegter Anteil des Gesprächsfensters"
                   aria-label="Kontext: belegter Anteil des Gesprächsfensters"
-                  className="flex h-8 items-center gap-1.5 rounded-lg px-1.5 text-[10px] tabular-nums text-muted-foreground/70 transition-all hover:bg-foreground/[0.06] hover:text-foreground"
+                  className="flex h-8 items-center gap-1.5 rounded-lg px-1.5 text-[11px] tabular-nums text-muted-foreground/70 transition-all hover:bg-foreground/[0.06] hover:text-foreground"
                 >
                   <ContextRing percent={contextPercent} />
                   <span>{contextPercent.toFixed(0)}%</span>
                 </button>
                 {contextOpen && (
                   <div className="absolute bottom-full right-0 z-50 mb-2 w-64 overflow-hidden rounded-xl border border-border bg-card p-3 shadow-xl shadow-black/20">
-                    <div className="space-y-1 text-[11px] text-muted-foreground">
+                    <div className="space-y-1 text-xs text-muted-foreground">
                       <div className="flex justify-between">
                         <span>Zeichen als Tokens geschätzt</span>
                         <span className="tabular-nums text-foreground/80">
@@ -3532,18 +3535,18 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                     <button
                       onClick={() => { setContextOpen(false); void summarizeToNew(); }}
                       disabled={!activeSessionId || messages.length < 6}
-                      className="mt-2.5 w-full rounded-lg border border-foreground/[0.08] px-2 py-1.5 text-[11px] transition-colors hover:bg-foreground/[0.06] disabled:opacity-30"
+                      className="mt-2.5 w-full rounded-lg border border-foreground/[0.08] px-2 py-1.5 text-xs transition-colors hover:bg-foreground/[0.06] disabled:opacity-30"
                     >
                       In frischem Gespräch weiterreden
                     </button>
-                    <p className="mt-1.5 text-[10px] text-muted-foreground">
+                    <p className="mt-1.5 text-[11px] text-muted-foreground">
                       Der Verlauf bleibt unangetastet — die Fortsetzung startet mit
                       einem kurzen Stand statt der vollen Last.
                     </p>
                     {/* Erklaert die haeufigste Rueckfrage: hier stehen 7%, und der
                         Agent verdichtet trotzdem. Beides stimmt — es sind zwei
                         verschiedene Dinge. */}
-                    <p className="mt-1.5 border-t border-border/60 pt-1.5 text-[10px] text-muted-foreground">
+                    <p className="mt-1.5 border-t border-border/60 pt-1.5 text-[11px] text-muted-foreground">
                       Gezählt wird das sichtbare Gespräch. Der Agent trägt zusätzlich
                       seine Anweisungen und jede Werkzeugausgabe mit — deshalb kann er
                       verdichten, während hier noch viel Platz steht.
@@ -3567,7 +3570,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                   <button
                     onClick={() => sendMessage(true)}
                     disabled={!isConnected || isUploading || !input.trim()}
-                    className="flex h-9 items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-2.5 text-[11px] font-medium text-amber-700 dark:text-amber-300 transition-all hover:bg-amber-500/20 disabled:opacity-40"
+                    className="flex h-9 items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-2.5 text-xs font-medium text-amber-700 dark:text-amber-300 transition-all hover:bg-amber-500/20 disabled:opacity-40"
                     title="Nur planen — der Agent beschreibt die Schritte, führt aber nichts aus"
                   >
                     <ListChecks className="h-4 w-4" /> Planen
@@ -3649,7 +3652,7 @@ function MessageRow({
           </button>
         )}
         {message.meta.gestoppt && message.meta.fortgesetzt && (
-          <span className="text-[11px] text-muted-foreground">Fortgesetzt</span>
+          <span className="text-xs text-muted-foreground">Fortgesetzt</span>
         )}
       </div>
     );
@@ -3659,7 +3662,7 @@ function MessageRow({
     if (message.isQueued) {
       return (
         <div className="text-center py-1">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 px-3 py-1 text-[10px] text-amber-500/80">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 px-3 py-1 text-[11px] text-amber-500/80">
             <Clock className="h-3 w-3" />
             Nachricht angekommen — fließt in die laufende Antwort ein
           </span>
@@ -3668,7 +3671,7 @@ function MessageRow({
     }
     return (
       <div className="text-center py-1">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 border border-border px-3 py-1 text-[10px] text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 border border-border px-3 py-1 text-[11px] text-muted-foreground">
           {message.content}
         </span>
       </div>
@@ -3836,7 +3839,7 @@ function MsgTime({ ts }: { ts?: string }) {
   if (isNaN(d.getTime())) return null;
   const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return (
-    <time dateTime={ts} title={d.toLocaleString()} className="text-[10px] text-muted-foreground tabular-nums">
+    <time dateTime={ts} title={d.toLocaleString()} className="text-[11px] text-muted-foreground tabular-nums">
       {time}
     </time>
   );
@@ -3847,11 +3850,13 @@ function MsgTime({ ts }: { ts?: string }) {
 function UserMessage({ content, images, files, timestamp, actions }: { content: string; images?: ChatImage[]; files?: ChatFile[]; timestamp?: string; actions?: React.ReactNode }) {
   const { user } = useAuthStore();
   return (
-    <div className="group flex items-start gap-3 pl-1">
-      <UserAvatar name={user?.name || "Du"} className="h-6 w-6 rounded-md text-[10px] shrink-0 mt-0.5" />
+    // Eigene Nachrichten als getönte Fläche: „Du“ und Agent sahen gleich aus
+    // (Gestaltungsprüfung 14.11.2026).
+    <div className="group flex items-start gap-3 rounded-2xl bg-primary/[0.06] px-3 py-2.5 dark:bg-primary/[0.09]">
+      <UserAvatar name={user?.name || "Du"} className="h-6 w-6 rounded-md text-[11px] shrink-0 mt-0.5" />
       <div className="min-w-0 flex-1 text-sm text-foreground leading-relaxed pt-0.5 space-y-2">
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-medium text-muted-foreground">Du</span>
+          <span className="text-xs font-medium text-muted-foreground">Du</span>
           {actions}
           <MsgTime ts={timestamp} />
         </div>
@@ -3875,7 +3880,7 @@ function UserMessage({ content, images, files, timestamp, actions }: { content: 
                 <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 <span className="max-w-[200px] truncate">{file.filename}</span>
                 {typeof file.size === "number" && (
-                  <span className="text-[10px] text-muted-foreground/60 tabular-nums">{formatBytes(file.size)}</span>
+                  <span className="text-[11px] text-muted-foreground/60 tabular-nums">{formatBytes(file.size)}</span>
                 )}
               </span>
             ))}
@@ -3893,12 +3898,12 @@ function UserMessage({ content, images, files, timestamp, actions }: { content: 
 function ZielChip({ ziel }: { ziel?: ZielStand }) {
   if (!ziel) return null;
   return ziel === "erreicht" ? (
-    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-700 dark:text-emerald-400">
+    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-700 dark:text-emerald-400">
       <Target className="h-3 w-3" />
       Ziel erreicht
     </span>
   ) : (
-    <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-700 dark:text-amber-400">
+    <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-700 dark:text-amber-400">
       <CirclePause className="h-3 w-3" />
       Ziel pausiert — wartet auf dich
     </span>
@@ -4051,7 +4056,7 @@ function SubagentLeiste({
         onClick={() => setOffen((o) => !o)}
         title={`${subagenten.length} Helfer in dieser Sitzung — klicken für die Liste`}
         className={cn(
-          "flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11px] transition-all",
+          "flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs transition-all",
           laufen > 0
             ? "bg-violet-500/15 text-violet-300 hover:bg-violet-500/25"
             : "text-muted-foreground/70 hover:bg-foreground/[0.06] hover:text-foreground",
@@ -4082,7 +4087,7 @@ function SubagentLeiste({
               <span className="text-xs font-medium text-foreground">
                 Subagenten dieser Sitzung
               </span>
-              <span className="text-[11px] text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 {fertig} fertig{laufen > 0 ? `, ${laufen} laufen` : ""}
               </span>
             </div>
@@ -4097,12 +4102,12 @@ function SubagentLeiste({
                   />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-xs text-foreground">{sa.beschreibung}</span>
-                    <span className="block truncate text-[11px] text-muted-foreground">
+                    <span className="block truncate text-xs text-muted-foreground">
                       {sa.herkunft === "eigen" ? "eigener Subagent" : "an anderen Agenten"}
                       {sa.art ? ` · ${sa.art}` : ""}
                     </span>
                   </span>
-                  <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                     {sa.status === "fertig" ? dauerText(sa.dauerMs) : "läuft"}
                   </span>
                 </div>
@@ -4182,13 +4187,13 @@ function SubagentCluster({ steps }: { steps: SubagentStep[] }) {
                 />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm text-foreground">{sa.beschreibung}</span>
-                  <span className="block truncate text-[11px] text-muted-foreground">
+                  <span className="block truncate text-xs text-muted-foreground">
                     {sa.herkunft === "eigen" ? "eigener Subagent" : "an anderen Agenten"}
                     {sa.art ? ` · ${sa.art}` : ""}
                     {sa.imHintergrund ? " · im Hintergrund" : ""}
                   </span>
                 </span>
-                <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                   {sa.status === "fertig" ? dauerText(sa.dauerMs) : "läuft"}
                 </span>
                 <ChevronDown
@@ -4201,19 +4206,19 @@ function SubagentCluster({ steps }: { steps: SubagentStep[] }) {
               {detail === sa.id && (
                 <div className="space-y-2 px-2 pb-2 pt-1">
                   <div>
-                    <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                       Auftrag
                     </div>
-                    <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded bg-muted/60 p-2 text-[11px] leading-relaxed">
+                    <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded bg-muted/60 p-2 text-xs leading-relaxed">
                       {sa.auftrag || "(kein Auftragstext übermittelt)"}
                     </pre>
                   </div>
                   {sa.ergebnis && (
                     <div>
-                      <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                         Ergebnis
                       </div>
-                      <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-muted/60 p-2 text-[11px] leading-relaxed">
+                      <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-muted/60 p-2 text-xs leading-relaxed">
                         {sa.ergebnis}
                       </pre>
                     </div>
@@ -4505,7 +4510,7 @@ function VideoAttachment({ agentId, file }: { agentId: string; file: ChatFile })
           </span>
         </span>
         {laedt && (
-          <span className="absolute bottom-2 left-2 rounded bg-black/70 px-2 py-0.5 text-[11px] text-white">
+          <span className="absolute bottom-2 left-2 rounded bg-black/70 px-2 py-0.5 text-xs text-white">
             Wird geladen …
           </span>
         )}
@@ -4626,7 +4631,7 @@ function AudioAttachment({ agentId, file }: { agentId: string; file: ChatFile })
             </button>
           </div>
           <Waveform seed={file.path} progress={progress} />
-          <div className="mt-1 flex justify-between text-[11px] tabular-nums text-muted-foreground">
+          <div className="mt-1 flex justify-between text-xs tabular-nums text-muted-foreground">
             <span>{formatAudioTime(currentTime)}</span>
             <span>{duration > 0 ? formatAudioTime(duration) : file.size ? `${Math.max(1, Math.round(file.size / 1024))} KB` : "Voice"}</span>
           </div>
@@ -4680,7 +4685,7 @@ function ToolCluster({ steps, isStreaming }: { steps: ToolStep[]; isStreaming?: 
       <div className="space-y-1.5">
         <button
           onClick={() => setExpanded(false)}
-          className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
         >
           <ChevronRight className="h-3 w-3 rotate-90" /> {steps.length} {simpleMode ? (steps.length === 1 ? "Schritt" : "Schritte") : (steps.length === 1 ? "Werkzeugaufruf" : "Werkzeugaufrufe")} einklappen
         </button>
@@ -4725,14 +4730,14 @@ function ToolCluster({ steps, isStreaming }: { steps: ToolStep[]; isStreaming?: 
         })}
         {extra > 0 && (
           <span
-            className="-ml-2.5 flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-foreground/10 text-[10px] font-semibold text-muted-foreground"
+            className="-ml-2.5 flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-foreground/10 text-[11px] font-semibold text-muted-foreground"
             style={{ zIndex: 0 }}
           >
             +{extra}
           </span>
         )}
       </div>
-      <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground group-hover:text-foreground">
+      <span className="flex items-center gap-1.5 text-xs text-muted-foreground group-hover:text-foreground">
         {/* „es dreht sich kein Kreis" — aus dem ersten Kundenfeedback zu dieser
             Zeile. Ein Wort allein liest man nicht als Bewegung. */}
         {anyRunning && <Loader2 className="h-3 w-3 animate-spin text-amber-500" />}
@@ -4800,7 +4805,7 @@ function ToolCallBlock({ step, isStreaming }: { step: ToolStep; isStreaming?: bo
           {/* IN block */}
           {detail && (
             <div className="flex gap-0">
-              <span className="text-[10px] text-muted-foreground w-10 shrink-0 text-right pr-2 pt-1.5 font-mono select-none">IN</span>
+              <span className="text-[11px] text-muted-foreground w-10 shrink-0 text-right pr-2 pt-1.5 font-mono select-none">IN</span>
               <pre className="text-[12px] font-mono text-muted-foreground bg-muted/80 dark:bg-muted/40 border border-border rounded-md px-3 py-2 overflow-x-auto max-w-full flex-1 whitespace-pre-wrap break-all">
                 {detail}
               </pre>
@@ -4810,7 +4815,7 @@ function ToolCallBlock({ step, isStreaming }: { step: ToolStep; isStreaming?: bo
           {/* OUT block */}
           {hasOutput && (
             <div className="flex gap-0">
-              <span className="text-[10px] text-muted-foreground w-10 shrink-0 text-right pr-2 pt-1.5 font-mono select-none">OUT</span>
+              <span className="text-[11px] text-muted-foreground w-10 shrink-0 text-right pr-2 pt-1.5 font-mono select-none">OUT</span>
               <pre className="text-[12px] font-mono text-muted-foreground bg-muted/80 dark:bg-muted/40 border border-border rounded-md px-3 py-2 overflow-x-auto max-w-full flex-1 max-h-60 overflow-y-auto whitespace-pre-wrap break-all">
                 {(step.output || "").length > 2000
                   ? step.output!.slice(0, 2000) + "\n… (gekürzt)"
@@ -4849,7 +4854,7 @@ function MetaBar({ meta }: { meta: { cost_usd?: number; duration_ms?: number; nu
   if (parts.length === 0) return null;
 
   return (
-    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60 tabular-nums pl-1 pt-1">
+    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/60 tabular-nums pl-1 pt-1">
       <CheckCircle2 className="h-3 w-3 text-emerald-600 dark:text-emerald-500" />
       <span>{parts.join(" \u00b7 ")}</span>
     </div>

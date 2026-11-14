@@ -97,7 +97,7 @@ export function KeyFreigabeDialog({ secret, onClose, onSaved, onError }: Props) 
               />
               <span className="min-w-0">
                 <span className="block truncate text-sm">{p.name}</span>
-                {p.email && <span className="block truncate text-[11px] text-muted-foreground">{p.email}</span>}
+                {p.email && <span className="block truncate text-xs text-muted-foreground">{p.email}</span>}
               </span>
             </label>
           ))}

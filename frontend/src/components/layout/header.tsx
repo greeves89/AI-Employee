@@ -27,7 +27,7 @@ export function Header({
           „…" abgeschnitten (#907). */}
       <div className="w-full min-w-0 sm:w-auto sm:flex-1">
         <div className="flex min-w-0 items-center gap-2">
-          <h1 className="truncate text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
+          <h1 className="truncate font-display text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
           {titleAdornment}
         </div>
         {subtitle && (
@@ -39,7 +39,8 @@ export function Header({
           <div className={subtitleClassName}>
             <p
               title={subtitle}
-              className="mt-0.5 line-clamp-2 break-words text-[13px] text-muted-foreground sm:block sm:truncate"
+              /* Handy: eine Zeile statt zwei — der Kopf war zu hoch (UI-Bewertung 14.11.2026). */
+              className="mt-0.5 line-clamp-1 break-words text-[13px] text-muted-foreground sm:block sm:truncate"
             >
               {subtitle}
             </p>

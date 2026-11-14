@@ -152,7 +152,7 @@ export default function ChatPage() {
                     stateConfig?.online ? "bg-emerald-500" : "bg-red-500"
                   )} />
                 </span>
-                <span className={cn("text-[10px] font-medium", stateConfig?.color)}>
+                <span className={cn("text-[11px] font-medium", stateConfig?.color)}>
                   {stateConfig?.label}
                 </span>
               </div>
@@ -172,7 +172,7 @@ export default function ChatPage() {
                 className="absolute top-full left-0 mt-1 z-50 w-72 rounded-xl border border-border bg-card shadow-2xl shadow-black/20 overflow-hidden"
               >
                 <div className="p-2">
-                  <p className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+                  <p className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60">
                     Agent wechseln
                   </p>
                   {agents.map((agent) => {
@@ -194,7 +194,7 @@ export default function ChatPage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{agent.name}</p>
-                          <div className="flex items-center gap-2 text-[10px]">
+                          <div className="flex items-center gap-2 text-[11px]">
                             <span className={cn("font-medium", sc.color)}>{sc.label}</span>
                             {agent.current_task && (
                               <span className="text-blue-400 truncate">
@@ -233,7 +233,7 @@ export default function ChatPage() {
           )}
           <a
             href={`/agents/${selectedAgent.id}`}
-            className="text-[11px] text-muted-foreground/60 hover:text-foreground transition-colors"
+            className="text-xs text-muted-foreground/60 hover:text-foreground transition-colors"
           >
             Details
           </a>

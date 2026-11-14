@@ -153,7 +153,7 @@ function VoiceSessionIndicator({
             {snapshot?.mode === "nova_sonic" && <Radio className="h-3 w-3 text-fuchsia-400" />}
             {label}
           </span>
-          <span className="block truncate text-[11px] text-muted-foreground">
+          <span className="block truncate text-xs text-muted-foreground">
             spricht mit {session.agentName}
           </span>
         </span>

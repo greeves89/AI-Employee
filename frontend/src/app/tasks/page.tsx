@@ -316,13 +316,13 @@ function SingleTasksView() {
                       )}
                       <h4 className="font-medium text-sm truncate">{task.title}</h4>
                       <span className={cn(
-                        "shrink-0 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                        "shrink-0 inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium",
                         cfg.badge
                       )}>
                         {AUFGABEN_STATUS[task.status] ?? task.status}
                       </span>
                       {task.parent_task_id && (
-                        <span className="shrink-0 inline-flex items-center rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[10px] font-medium text-blue-400">
+                        <span className="shrink-0 inline-flex items-center rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[11px] font-medium text-blue-400">
                           Teilaufgabe
                         </span>
                       )}
@@ -341,7 +341,7 @@ function SingleTasksView() {
                     {task.status === "failed" && (
                       <button
                         onClick={(e) => { e.preventDefault(); retryTask(task); }}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500/10 border border-orange-500/20 px-3 py-1.5 text-[11px] font-medium text-orange-400 hover:bg-orange-500/20 transition-colors"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500/10 border border-orange-500/20 px-3 py-1.5 text-xs font-medium text-orange-400 hover:bg-orange-500/20 transition-colors"
                       >
                         <RotateCcw className="h-3 w-3" />
                         Wiederholen
@@ -351,7 +351,7 @@ function SingleTasksView() {
                       <button
                         onClick={(e) => handleCancel(e, task.id)}
                         className={cn(
-                          "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-medium transition-colors",
+                          "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
                           läuft
                             // Bei einer laufenden Aufgabe NICHT erst beim Überfahren
                             // zeigen: wer sie stoppen will, sucht den Knopf sofort.
@@ -380,7 +380,7 @@ function SingleTasksView() {
                 </div>
 
                 {/* Meta row */}
-                <div className="mt-2.5 ml-9 flex items-center gap-4 text-[11px] text-muted-foreground/60">
+                <div className="mt-2.5 ml-9 flex items-center gap-4 text-xs text-muted-foreground/60">
                   {!simpleMode && <span className="flex items-center gap-1 font-mono">
                     <Hash className="h-3 w-3" />{task.id.slice(0, 8)}
                   </span>}
@@ -410,7 +410,7 @@ function SingleTasksView() {
 
                 {/* Error */}
                 {task.error && (
-                  <div className="mt-2.5 ml-9 rounded-lg bg-red-500/5 border border-red-500/10 px-3 py-2 text-[11px] text-red-400/80">
+                  <div className="mt-2.5 ml-9 rounded-lg bg-red-500/5 border border-red-500/10 px-3 py-2 text-xs text-red-400/80">
                     {task.error}
                   </div>
                 )}
@@ -475,6 +475,15 @@ function ScheduledTasksView({ hervorgehoben = "" }: { hervorgehoben?: string }) 
       else naechste.add(id);
       return naechste;
     });
+
+  // Bei wenigen Agenten gleich aufgeklappt: eingeklappt sah die Persona Teamleitung
+  // (Runde 4) die Pläne erst nach „Alle aufklappen“. Einmal je Seitenaufruf.
+  const vorAufgeklappt = useRef(false);
+  useEffect(() => {
+    if (vorAufgeklappt.current || gruppen.length === 0) return;
+    vorAufgeklappt.current = true;
+    if (gruppen.length <= 4) setOffeneGruppen(new Set(gruppen.map((g) => g.id)));
+  }, [gruppen]);
 
   const alleOffen = gruppen.length > 0 && offeneGruppen.size === gruppen.length;
 
@@ -618,7 +627,7 @@ function ScheduledTasksView({ hervorgehoben = "" }: { hervorgehoben?: string }) 
               onClick={() =>
                 setOffeneGruppen(alleOffen ? new Set() : new Set(gruppen.map((g) => g.id)))
               }
-              className="text-[11px] text-muted-foreground/60 hover:text-foreground transition-colors"
+              className="text-xs text-muted-foreground/60 hover:text-foreground transition-colors"
             >
               {alleOffen ? "Alle zuklappen" : "Alle aufklappen"}
             </button>
@@ -637,7 +646,7 @@ function ScheduledTasksView({ hervorgehoben = "" }: { hervorgehoben?: string }) 
               />
               <Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
               <span className="text-sm font-medium truncate">{gruppe.name}</span>
-              <span className="ml-auto flex items-center gap-3 text-[11px] text-muted-foreground/60 shrink-0">
+              <span className="ml-auto flex items-center gap-3 text-xs text-muted-foreground/60 shrink-0">
                 <span>
                   {gruppe.plaene.length} {gruppe.plaene.length === 1 ? "Zeitplan" : "Zeitpläne"}
                 </span>
@@ -653,7 +662,7 @@ function ScheduledTasksView({ hervorgehoben = "" }: { hervorgehoben?: string }) 
                   <span title="Nächster Lauf in dieser Gruppe" className="hidden sm:inline">
                     {(() => {
                       const aktiv = gruppe.plaene.filter((p) => p.enabled);
-                      return aktiv.length ? `Nächster: ${formatRelative(aktiv[0].next_run_at)}` : "alle pausiert";
+                      return aktiv.length ? `Nächster: ${formatRelative(aktiv[0].next_run_at)}` : <span className="font-medium text-amber-700 dark:text-amber-400">alle pausiert</span>;
                     })()}
                   </span>
                 )}
@@ -679,15 +688,15 @@ function ScheduledTasksView({ hervorgehoben = "" }: { hervorgehoben?: string }) 
                       {zeitplanAnzeige(schedule, simpleMode).titel}
                     </h3>
                     <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
                         schedule.enabled
                           ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                          : "bg-foreground/[0.04] text-muted-foreground border border-foreground/[0.06]"
+                          : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20"
                       }`}
                     >
                       <span
                         className={`h-1.5 w-1.5 rounded-full ${
-                          schedule.enabled ? "bg-emerald-400" : "bg-muted-foreground"
+                          schedule.enabled ? "bg-emerald-400" : "bg-amber-500"
                         }`}
                       />
                       {schedule.enabled ? "Aktiv" : "Pausiert"}
@@ -705,19 +714,22 @@ function ScheduledTasksView({ hervorgehoben = "" }: { hervorgehoben?: string }) 
                     disabled={triggering === schedule.id}
                     title="Jetzt ausführen"
                     aria-label="Jetzt ausführen"
-                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 backdrop-blur-sm transition-colors disabled:opacity-50"
+                    className="flex h-10 min-w-10 items-center justify-center gap-1.5 rounded-lg bg-primary/10 border border-primary/20 px-2.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors disabled:opacity-50 sm:h-8"
                   >
                     {triggering === schedule.id ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     ) : (
                       <PlayCircle className="h-3.5 w-3.5" />
                     )}
+                    {/* Beschriftet: zwei fast gleiche Play-Symbole verwechselte die
+                        Persona Teamleitung (Runde 4). */}
+                    <span className="hidden sm:inline">Jetzt ausführen</span>
                   </button>
                   <button
                     onClick={() => handleToggle(schedule)}
                     title={schedule.enabled ? "Pausieren" : "Fortsetzen"}
                     aria-label={schedule.enabled ? "Pausieren" : "Fortsetzen"}
-                    className={`flex h-8 w-8 items-center justify-center rounded-lg border backdrop-blur-sm transition-colors ${
+                    className={`flex h-10 min-w-10 items-center justify-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors sm:h-8 ${
                       schedule.enabled
                         ? "bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20"
                         : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20"
@@ -728,12 +740,13 @@ function ScheduledTasksView({ hervorgehoben = "" }: { hervorgehoben?: string }) 
                     ) : (
                       <Play className="h-3.5 w-3.5" />
                     )}
+                    <span className="hidden sm:inline">{schedule.enabled ? "Pausieren" : "Fortsetzen"}</span>
                   </button>
                   <button
                     onClick={() => handleDelete(schedule)}
                     title="Löschen"
                     aria-label="Zeitplan löschen"
-                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 backdrop-blur-sm transition-colors"
+                    className="ml-1 flex h-10 w-10 items-center justify-center rounded-lg border border-transparent text-muted-foreground hover:border-red-500/20 hover:bg-red-500/10 hover:text-red-500 transition-colors sm:h-8 sm:w-8"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -753,7 +766,7 @@ function ScheduledTasksView({ hervorgehoben = "" }: { hervorgehoben?: string }) 
                   {schedule.adaptive && (
                     <span
                       title="Der Takt passt sich selbst an: bei Leerlauf langsamer, bei neuer Arbeit sofort wieder im Grundtakt."
-                      className="rounded-md border border-sky-500/20 bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:text-sky-400"
+                      className="rounded-md border border-sky-500/20 bg-sky-500/10 px-1.5 py-0.5 text-[11px] font-medium text-sky-700 dark:text-sky-400"
                     >
                       adaptiv
                     </span>

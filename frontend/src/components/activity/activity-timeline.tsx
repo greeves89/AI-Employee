@@ -298,7 +298,7 @@ function MultiAgentStrip({
 
   return (
     <>
-      <div className="flex pl-[calc(11rem+0.75rem)] pr-1 text-[10px] text-muted-foreground">
+      <div className="flex pl-[calc(11rem+0.75rem)] pr-1 text-[11px] text-muted-foreground">
         {HOUR_MARKS.map((h, i) => (
           <div key={h} className={cn("flex-1", i === HOUR_MARKS.length - 1 ? "text-right" : "text-left")}>
             {String(h).padStart(2, "0")}:00
@@ -320,7 +320,7 @@ function MultiAgentStrip({
                   isOpen && "rotate-90"
                 )} />
                 <span className="text-sm font-semibold">{g.label}</span>
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   {g.agents.length} Agent{g.agents.length !== 1 ? "en" : ""}
                 </span>
               </button>
@@ -375,9 +375,9 @@ function AgentRow({
               )}
               style={{ left: `${left}%`, width: `${width}%`, minWidth: `${MIN_BAR_PX}px` }}
             >
-              <div className="truncate text-[10px] font-medium leading-tight text-foreground">{t.title}</div>
+              <div className="truncate text-[11px] font-medium leading-tight text-foreground">{t.title}</div>
               <div className="truncate text-[9px] leading-tight text-foreground/70">{fmtTime(t.started_at)}</div>
-              <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-foreground/10 bg-card px-2 py-1 text-left text-[11px] shadow-lg group-hover:block">
+              <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-foreground/10 bg-card px-2 py-1 text-left text-xs shadow-lg group-hover:block">
                 <div className="max-w-[280px] truncate font-medium text-foreground">{t.title}</div>
                 <div className="text-muted-foreground/70">{timeRange} · {t.status}{durationSuffix}{costSuffix}</div>
               </div>
@@ -613,7 +613,7 @@ function DayAgenda({
           {Array.from({ length: 24 }).map((_, h) => (
             <div
               key={h}
-              className="relative text-right text-[11px] text-muted-foreground"
+              className="relative text-right text-xs text-muted-foreground"
               style={{ height: HOUR_PX }}
             >
               <span className="absolute -top-2 right-2">{String(h).padStart(2, "0")}:00</span>
@@ -675,14 +675,14 @@ function DayAgenda({
                 style={{ top, height, width: `${PLAN_COL_PCT}%` }}
               >
                 <div className={cn(
-                  "flex items-start gap-1 text-[11px] font-medium",
+                  "flex items-start gap-1 text-xs font-medium",
                   dropped ? "text-muted-foreground/60 line-through" : "text-sky-700 dark:text-sky-200"
                 )}>
                   <CalendarClock className="mt-[2px] h-3 w-3 shrink-0 opacity-70" />
                   <span className="truncate">{item.title}</span>
                 </div>
                 {height >= 30 && (
-                  <div className="truncate text-[10px] text-muted-foreground/60">
+                  <div className="truncate text-[11px] text-muted-foreground/60">
                     {statusLabel(item.status)} · {item.estimated_minutes} Min
                     {item.task_id ? " · Ergebnis ansehen" : " · bearbeiten"}
                   </div>
@@ -726,11 +726,11 @@ function DayAgenda({
                 className="group absolute cursor-pointer overflow-hidden rounded-md border border-emerald-500/40 bg-emerald-500/[0.07] px-2 py-1 hover:opacity-80 dark:border-emerald-400/40"
                 style={{ top, right: `${col * w}%`, width: `calc(${w}% - 4px)`, height: MARK_CARD_PX }}
               >
-                <div className="flex items-start gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-200">
+                <div className="flex items-start gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-200">
                   <Repeat className="mt-[2px] h-3 w-3 shrink-0 opacity-70" />
                   <span className="truncate">{label}</span>
                 </div>
-                <div className="truncate text-[10px] text-muted-foreground/60">
+                <div className="truncate text-[11px] text-muted-foreground/60">
                   {fmtTime(m.time)}
                   {m.rhythm ? ` · ${m.rhythm}` : ""} · bearbeiten
                 </div>
@@ -792,7 +792,7 @@ function DayAgenda({
                   <span className="truncate">{cleanTitle(t.title)}</span>
                 </div>
                 {height >= 32 && (
-                  <div className="truncate text-[10px] text-muted-foreground/70">
+                  <div className="truncate text-[11px] text-muted-foreground/70">
                     {t.resumed ? "fortgesetzt · " : ""}{timeRange} · {t.status}{durationSuffix}{costSuffix}
                   </div>
                 )}
@@ -814,13 +814,13 @@ function DayAgenda({
           "heute noch" erledigen wollte. */}
       {undatedPlan.length > 0 && (
         <div className="border-t border-foreground/[0.06] px-3 py-2">
-          <div className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+          <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
             <CalendarClock className="h-3 w-3" />
             Heute vorgenommen, ohne feste Zeit
           </div>
           <div className="space-y-1">
             {undatedPlan.map((item) => (
-              <div key={`undated-${item.id}`} className="group flex items-center gap-2 text-[11px]">
+              <div key={`undated-${item.id}`} className="group flex items-center gap-2 text-xs">
                 <button
                   type="button"
                   onClick={() => openEditor(item)}
@@ -832,7 +832,7 @@ function DayAgenda({
                 >
                   {item.title}
                 </button>
-                <span className="shrink-0 text-[10px] text-muted-foreground">
+                <span className="shrink-0 text-[11px] text-muted-foreground">
                   {item.estimated_minutes} Min
                 </span>
                 <button
@@ -868,7 +868,7 @@ function DayAgenda({
             </div>
             <div className="space-y-3">
               <div>
-                <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground/60">
+                <label className="mb-1 block text-xs uppercase tracking-wide text-muted-foreground/60">
                   Was soll er tun?
                 </label>
                 <input
@@ -879,7 +879,7 @@ function DayAgenda({
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground/60">
+                  <label className="mb-1 block text-xs uppercase tracking-wide text-muted-foreground/60">
                     Uhrzeit
                   </label>
                   <input
@@ -890,7 +890,7 @@ function DayAgenda({
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground/60">
+                  <label className="mb-1 block text-xs uppercase tracking-wide text-muted-foreground/60">
                     Dauer (Min, mind. 15)
                   </label>
                   <input
@@ -904,7 +904,7 @@ function DayAgenda({
                 </div>
               </div>
               <div>
-                <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground/60">
+                <label className="mb-1 block text-xs uppercase tracking-wide text-muted-foreground/60">
                   Präzisierung (optional)
                 </label>
                 <textarea
@@ -915,13 +915,13 @@ function DayAgenda({
                 />
               </div>
               {!editTime && (
-                <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                <p className="text-xs text-amber-600 dark:text-amber-400">
                   Ohne Uhrzeit läuft der Block nicht von allein — er bleibt eine Notiz,
                   die der Agent beim nächsten Lauf aufgreift.
                 </p>
               )}
               {editError && (
-                <p className="text-[11px] text-red-600 dark:text-red-400">{editError}</p>
+                <p className="text-xs text-red-600 dark:text-red-400">{editError}</p>
               )}
             </div>
             <div className="mt-4 flex justify-end gap-2">

@@ -102,7 +102,7 @@ export default function LoginPage() {
             <Cpu className="h-6 w-6 text-white" />
           </div>
           <div className="text-center">
-            <h1 className="text-xl font-semibold tracking-tight">AI Employee</h1>
+            <h1 className="font-display text-2xl font-semibold tracking-tight">AI Employee</h1>
             <p className="text-sm text-muted-foreground mt-1">Melde dich bei deinem Konto an</p>
           </div>
         </div>

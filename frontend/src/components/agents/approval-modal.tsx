@@ -181,7 +181,7 @@ export function ApprovalModal({
                         <Dialog.Title className="text-lg font-semibold">
                           {isQuestion ? "Der Agent braucht deine Entscheidung" : "Befehl braucht deine Freigabe"}
                         </Dialog.Title>
-                        <Dialog.Description className="text-[11px] text-muted-foreground/60">
+                        <Dialog.Description className="text-xs text-muted-foreground/60">
                           {isQuestion
                             ? "Erst nach deiner Antwort macht der Agent weiter."
                             : "Der Agent möchte einen Befehl ausführen, der deine Freigabe braucht."}
@@ -191,7 +191,7 @@ export function ApprovalModal({
                     <div className="flex items-center gap-3">
                       <span
                         className={cn(
-                          "inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider",
+                          "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider",
                           config.bg,
                           config.color,
                           config.border
@@ -231,7 +231,7 @@ export function ApprovalModal({
                       <>
                         {/* Tool */}
                         <div>
-                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
+                          <label className="text-xs font-medium text-muted-foreground/70 mb-1.5 block">
                             Werkzeug
                           </label>
                           <div className="rounded-lg bg-foreground/[0.03] border border-foreground/[0.06] px-3.5 py-2.5 text-sm font-mono">
@@ -241,7 +241,7 @@ export function ApprovalModal({
 
                         {/* Command */}
                         <div>
-                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
+                          <label className="text-xs font-medium text-muted-foreground/70 mb-1.5 block">
                             Befehl
                           </label>
                           <div className="rounded-lg bg-foreground/[0.03] border border-foreground/[0.06] px-3.5 py-2.5 text-sm font-mono whitespace-pre-wrap break-all">
@@ -252,7 +252,7 @@ export function ApprovalModal({
                         {/* Reasoning */}
                         {request.reasoning && (
                           <div>
-                            <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
+                            <label className="text-xs font-medium text-muted-foreground/70 mb-1.5 block">
                               Begründung des Agenten
                             </label>
                             <div className="rounded-lg bg-foreground/[0.03] border border-foreground/[0.06] px-3.5 py-2.5 text-sm">
@@ -264,7 +264,7 @@ export function ApprovalModal({
                     )}
 
                     {/* Meta */}
-                    <div className="text-[10px] text-muted-foreground">
+                    <div className="text-[11px] text-muted-foreground">
                       Agent: {request.agent_id} &middot; Angefragt:{" "}
                       {new Date(request.created_at).toLocaleString("de-DE")}
                     </div>
@@ -272,7 +272,7 @@ export function ApprovalModal({
                     {/* Deny Reason Form */}
                     {showDenyForm && (
                       <div>
-                        <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
+                        <label className="text-xs font-medium text-muted-foreground/70 mb-1.5 block">
                           {isQuestion ? "Antwort oder Grund für die Ablehnung (optional)" : "Grund für die Ablehnung (optional)"}
                         </label>
                         <textarea

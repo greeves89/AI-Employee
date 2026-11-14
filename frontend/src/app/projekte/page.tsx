@@ -20,7 +20,7 @@ function Zahl({ wert, label, farbe }: { wert: number; label: string; farbe?: str
       <div className="text-xl font-semibold tabular-nums" style={farbe && wert ? { color: farbe } : undefined}>
         {wert}
       </div>
-      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className="text-[11px] text-muted-foreground">{label}</div>
     </div>
   );
 }
@@ -53,7 +53,9 @@ export default function ProjektePage() {
       <Header
         title="Projekte"
         subtitle="Agenten einem Projekt zuweisen, Aufträge geben, Ergebnisse abnehmen"
-        actions={
+        /* Ohne Projekte steht der Knopf im leeren Zustand — doppelt wirkte er
+           unentschlossen (UI-Bewertung 14.11.2026). */
+        actions={projekte && projekte.length === 0 ? undefined :
           <button
             type="button"
             onClick={() => setNeu(true)}
@@ -107,7 +109,7 @@ export default function ProjektePage() {
                       </h2>
                       {pr.description && <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{pr.description}</p>}
                       <ProjektStatusZeile status={pr.status} className="mt-1.5" />
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      <p className="mt-0.5 text-xs text-muted-foreground">
                         {pr.takt?.aktiv ? `Takt ${TAKTE.find((t) => t.minuten === pr.takt.minuten)?.label.toLowerCase() ?? "an"} · nächster ${bis(pr.takt.naechster_lauf) ?? "—"}` : "Takt aus"}
                         {pr.kennzahlen.eingang ? ` · ${pr.kennzahlen.eingang} in der Inbox` : ""}
                         {pr.kennzahlen.triage ? ` · ${pr.kennzahlen.triage} Rückfrage${pr.kennzahlen.triage === 1 ? "" : "n"} offen` : ""}

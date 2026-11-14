@@ -109,7 +109,7 @@ function ExternStand({ karte, farbe, onFreigeben }: { karte: ProjektKarte; farbe
   ];
   return (
     <div className="mt-2 space-y-1.5">
-      <div className="flex items-center gap-1 text-[10px]">
+      <div className="flex items-center gap-1 text-[11px]">
         {schritte.map((s, i) => (
           <span key={s.label} className="inline-flex items-center gap-1">
             {i > 0 && <span className="h-px w-3 bg-foreground/15" />}
@@ -123,12 +123,12 @@ function ExternStand({ karte, farbe, onFreigeben }: { karte: ProjektKarte; farbe
         ))}
       </div>
       {karte.extern_branch && (
-        <p className="flex items-center gap-1 truncate text-[10px] text-muted-foreground" title={karte.extern_branch}>
+        <p className="flex items-center gap-1 truncate text-[11px] text-muted-foreground" title={karte.extern_branch}>
           <GitBranch className="h-3 w-3 shrink-0" /> {karte.extern_branch}
         </p>
       )}
       {karte.extern_stockt ? (
-        <div className="rounded-md bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+        <div className="rounded-md bg-amber-500/10 px-2 py-1.5 text-xs text-amber-700 dark:text-amber-300">
           <p className="flex items-start gap-1">
             <TriangleAlert className="mt-px h-3 w-3 shrink-0" />
             <span>
@@ -144,7 +144,7 @@ function ExternStand({ karte, farbe, onFreigeben }: { karte: ProjektKarte; farbe
         </div>
       ) : (
         (karte.extern_regung || karte.extern_bis) && (
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-[11px] text-muted-foreground">
             {karte.extern_regung && <>Letzte Bewegung {timeAgo(karte.extern_regung)}</>}
             {karte.extern_regung && karte.extern_bis && " · "}
             {karte.extern_bis && <>gilt bis {new Date(karte.extern_bis).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}</>}
@@ -152,7 +152,7 @@ function ExternStand({ karte, farbe, onFreigeben }: { karte: ProjektKarte; farbe
         )
       )}
       {!!karte.bearbeiter_uebernahmen && (
-        <p className="flex items-start gap-1 text-[10px] text-amber-700 dark:text-amber-300">
+        <p className="flex items-start gap-1 text-[11px] text-amber-700 dark:text-amber-300">
           <TriangleAlert className="mt-px h-3 w-3 shrink-0" />
           Dieser Bearbeiter hält {karte.bearbeiter_uebernahmen} Übernahmen — mehr als im Projekt erlaubt.
         </p>
@@ -167,7 +167,7 @@ function WartetAufDich({ karte, gross = false }: { karte: ProjektKarte; gross?: 
   if (!(karte.wartet_auf_dich ?? karte.spalte === "triage")) return null;
   return (
     <p className={cn("flex items-start gap-1 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300",
-      gross ? "px-3 py-2 text-xs" : "mt-1.5 px-2 py-1 text-[11px]")}>
+      gross ? "px-3 py-2 text-xs" : "mt-1.5 px-2 py-1 text-xs")}>
       <MessageCircleQuestion className={cn("mt-px shrink-0", gross ? "h-3.5 w-3.5" : "h-3 w-3")} />
       <span>
         <span className="font-medium">Wartet auf dich:</span>{" "}
@@ -184,7 +184,7 @@ function WartetAufDich({ karte, gross = false }: { karte: ProjektKarte; gross?: 
 function Konflikt({ karte }: { karte: ProjektKarte }) {
   if (!karte.konflikt) return null;
   return (
-    <p className="mt-1.5 flex items-start gap-1 rounded-md bg-red-500/10 px-2 py-1 text-[11px] text-red-700 dark:text-red-300">
+    <p className="mt-1.5 flex items-start gap-1 rounded-md bg-red-500/10 px-2 py-1 text-xs text-red-700 dark:text-red-300">
       <TriangleAlert className="mt-px h-3 w-3 shrink-0" />
       <span><span className="font-medium">Konflikt:</span> {karte.konflikt}</span>
     </p>
@@ -347,7 +347,7 @@ function KartenAktionen({
       {/* Bei offenem PR kein „Erledigt“: der Knopf verschob nur die Karte, der PR
           blieb offen — und nach dem Merge zieht der Abgleich die Karte ohnehin nach. */}
       {karte.spalte === "pruefung" && !karte.task_id && prOffen && (
-        <span className="text-[11px] text-muted-foreground">Wandert nach dem Merge von selbst nach Erledigt.</span>
+        <span className="text-xs text-muted-foreground">Wandert nach dem Merge von selbst nach Erledigt.</span>
       )}
       {karte.spalte === "in_arbeit" && karte.quelle === "issue" && aktionen.uebergabeOeffnen && (
         <Knopf leise titel="Übergeben an … — Stand und nächster Schritt kommen ins Issue"
@@ -388,7 +388,7 @@ function Bearbeiter({ karte, agents }: { karte: ProjektKarte; agents: Map<string
       )}
     >
       {eigen ? (
-        <AgentAvatar config={eigen.config} size="sm" className="h-4 w-4 rounded" />
+        <AgentAvatar config={eigen.config} seed={eigen.id} size="sm" className="h-4 w-4 rounded" />
       ) : (
         <Icon className="h-3 w-3 shrink-0 text-primary" />
       )}
@@ -403,7 +403,7 @@ function KartenMeta({ karte, agents }: { karte: ProjektKarte; agents: Map<string
   const agent = karte.agent_id ? agents.get(karte.agent_id) : undefined;
   const wann = karte.erledigt ?? karte.aktualisiert ?? karte.erstellt;
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
       {karte.extern_nr && karte.url ? (
         <a href={karte.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 hover:text-foreground">
           {karte.quelle === "pr" ? <GitPullRequest className="h-3 w-3" /> : <CircleDot className="h-3 w-3" />}#{karte.extern_nr}
@@ -411,7 +411,7 @@ function KartenMeta({ karte, agents }: { karte: ProjektKarte; agents: Map<string
       ) : null}
       {agent && (
         <span className="inline-flex items-center gap-1">
-          <AgentAvatar config={agent.config} size="sm" className="h-4 w-4 rounded" />
+          <AgentAvatar config={agent.config} seed={agent.id} size="sm" className="h-4 w-4 rounded" />
           {agent.name}
         </span>
       )}
@@ -428,11 +428,11 @@ function Tags({ labels, alle = false }: { labels: string[]; alle?: boolean }) {
   return (
     <div className="mt-1.5 flex flex-wrap gap-1">
       {zeigen.map((tag) => (
-        <span key={tag} className="rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground">
+        <span key={tag} className="rounded-full border border-border px-1.5 py-px text-[11px] text-muted-foreground">
           {tag}
         </span>
       ))}
-      {labels.length > zeigen.length && <span className="text-[10px] text-muted-foreground">+{labels.length - zeigen.length}</span>}
+      {labels.length > zeigen.length && <span className="text-[11px] text-muted-foreground">+{labels.length - zeigen.length}</span>}
     </div>
   );
 }
@@ -441,7 +441,7 @@ function PrLink({ karte }: { karte: ProjektKarte }) {
   if (!karte.pr_url) return null;
   return (
     <a href={karte.pr_url} target="_blank" rel="noopener noreferrer"
-      className="mt-2 inline-flex items-center gap-1 rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] hover:bg-foreground/[0.08]">
+      className="mt-2 inline-flex items-center gap-1 rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-xs hover:bg-foreground/[0.08]">
       <GitPullRequest className="h-3 w-3" /> PR #{karte.pr_nr ?? "?"} · {PR_ZUSTAND[karte.pr_zustand ?? "offen"] ?? karte.pr_zustand}
       <ExternalLink className="h-2.5 w-2.5" />
     </a>
@@ -488,7 +488,7 @@ function Karte({
           title="Priorität ändern"
           onClick={() => aktionen.verschieben(karte, { prioritaet: (karte.prioritaet % 3) + 1 })}
           disabled={karte.spalte === "erledigt" || karte.spalte === "verworfen"}
-          className={cn("mt-0.5 shrink-0 rounded px-1 text-[10px] font-semibold", prio.klasse)}
+          className={cn("mt-0.5 shrink-0 rounded px-1 text-[11px] font-semibold", prio.klasse)}
         >
           {prio.label}
         </button>
@@ -502,7 +502,7 @@ function Karte({
       <Konflikt karte={karte} />
       <WartetAufDich karte={karte} />
 
-      {karte.notiz && <p className="mt-1.5 rounded-md bg-amber-500/10 px-2 py-1 text-[11px] text-amber-700 dark:text-amber-300">{karte.notiz}</p>}
+      {karte.notiz && <p className="mt-1.5 rounded-md bg-amber-500/10 px-2 py-1 text-xs text-amber-700 dark:text-amber-300">{karte.notiz}</p>}
 
       {karte.spalte === "in_arbeit" && karte.extern_bearbeiter && !karte.task_id && (
         <ExternStand karte={karte} farbe={farbe} onFreigeben={() => aktionen.freigeben(karte)} />
@@ -511,7 +511,7 @@ function Karte({
       {karte.spalte === "in_arbeit" && !(karte.extern_bearbeiter && !karte.task_id) && (
         <>
           {ausgabe && (
-            <p className="mt-1.5 line-clamp-2 text-[11px] italic text-foreground/70" title={ausgabe}>„{ausgabe}“</p>
+            <p className="mt-1.5 line-clamp-2 text-xs italic text-foreground/70" title={ausgabe}>„{ausgabe}“</p>
           )}
           <div className="mt-2"><StufenLeiste stufe={karte.stufe} farbe={farbe} klein /></div>
         </>
@@ -569,7 +569,7 @@ function Karte({
 
       {/* „Fertig nur mit Beleg“: im Review sehen, ob der Agent geprüft hat. */}
       {karte.spalte === "pruefung" && !karte.sentinel && !gescheitert && (karte.beleg === "fehlt" || karte.beleg === "ungeprueft") && (
-        <p className="mt-2 flex items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-400" role="status">
+        <p className="mt-2 flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400" role="status">
           <ShieldAlert className="h-3 w-3 shrink-0" aria-hidden="true" />
           {karte.beleg === "fehlt" ? "Ohne Beleg gemeldet — bitte selbst prüfen" : "Vom Agenten als ungeprüft gemeldet"}
         </p>
@@ -635,12 +635,12 @@ function KartenFenster({
                 title="Priorität ändern"
                 onClick={() => aktionen.verschieben(k, { prioritaet: (k.prioritaet % 3) + 1 })}
                 disabled={k.spalte === "erledigt" || k.spalte === "verworfen"}
-                className={cn("mt-1 shrink-0 rounded px-1.5 text-[11px] font-semibold", prio.klasse)}
+                className={cn("mt-1 shrink-0 rounded px-1.5 text-xs font-semibold", prio.klasse)}
               >
                 {prio.label}
               </button>
               <h2 className="min-w-0 flex-1 text-lg font-semibold leading-snug">{k.titel}</h2>
-              <span className="shrink-0 rounded-full bg-foreground/[0.06] px-2 py-0.5 text-[11px] text-muted-foreground">{spalte}</span>
+              <span className="shrink-0 rounded-full bg-foreground/[0.06] px-2 py-0.5 text-xs text-muted-foreground">{spalte}</span>
             </div>
             <KartenMeta karte={k} agents={agents} />
             <Tags labels={k.labels} alle />
@@ -757,7 +757,7 @@ export function ProjektBoardAnsicht({
                 title={`${sp.label} aufklappen — ${sp.beschreibung}`} aria-label={`${sp.label} aufklappen`}
                 className="flex w-11 shrink-0 flex-col items-center gap-2 rounded-2xl border border-foreground/[0.06] bg-foreground/[0.02] py-3 text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground">
                 <UnfoldHorizontal className="h-3.5 w-3.5" />
-                <span className="rounded-full bg-foreground/[0.06] px-1.5 py-0.5 text-[11px] tabular-nums">{karten.length}</span>
+                <span className="rounded-full bg-foreground/[0.06] px-1.5 py-0.5 text-xs tabular-nums">{karten.length}</span>
                 <span className="text-xs font-semibold uppercase tracking-wide [writing-mode:vertical-rl]">{sp.label}</span>
               </button>
             );
@@ -771,7 +771,7 @@ export function ProjektBoardAnsicht({
                     {sp.label}
                   </span>
                   <span className="flex items-center gap-1">
-                    <span className={cn("rounded-full px-2 py-0.5 text-[11px] normal-case",
+                    <span className={cn("rounded-full px-2 py-0.5 text-xs normal-case",
                       karten.length && sp.key === "pruefung" ? "bg-orange-500/15 text-orange-600 dark:text-orange-400"
                         : karten.length && sp.key === "triage" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
                           : "bg-foreground/[0.06]")}>
@@ -791,7 +791,7 @@ export function ProjektBoardAnsicht({
                     )}
                   </span>
                 </h3>
-                <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground/80">{sp.beschreibung}</p>
+                <p className="mt-0.5 text-xs leading-snug text-muted-foreground/80">{sp.beschreibung}</p>
               </div>
               {/* Bis zum unteren Rand (nach „Board“-Sprung steht der Reiter oben), statt bei
                   34rem leeren Platz zu lassen. */}

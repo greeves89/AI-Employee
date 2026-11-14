@@ -96,7 +96,7 @@ export function TutorialFenster() {
               >
                 <span
                   className={cn(
-                    "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-medium",
+                    "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-medium",
                     s.erledigt ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-foreground/[0.06]",
                   )}
                 >
@@ -121,7 +121,7 @@ export function TutorialFenster() {
                   : "border-foreground/[0.06] hover:bg-foreground/[0.04]",
               )}
             >
-              <span className="mt-0.5 font-mono text-[11px] text-muted-foreground">{String(i + 1).padStart(2, "0")}</span>
+              <span className="mt-0.5 font-mono text-xs text-muted-foreground">{String(i + 1).padStart(2, "0")}</span>
               <span className="min-w-0">
                 <span className="block text-sm font-medium">{x.titel}</span>
                 <span className="block text-xs text-muted-foreground">

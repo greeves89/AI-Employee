@@ -139,7 +139,7 @@ export function NutzerBudget() {
             Standard
           </label>
           <div className="flex items-center gap-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-2 py-1.5">
-            <span className="text-[11px] text-muted-foreground">{money.symbol}</span>
+            <span className="text-xs text-muted-foreground">{money.symbol}</span>
             <input
               id="nutzer-budget-standard"
               type="number"
@@ -179,7 +179,7 @@ export function NutzerBudget() {
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="text-left text-[11px] text-muted-foreground/70">
+              <tr className="text-left text-xs text-muted-foreground/70">
                 <th className="py-2 pr-3 font-medium">Nutzer</th>
                 <th className="py-2 pr-3 font-medium text-right">Diesen Monat</th>
                 <th className="py-2 pr-3 font-medium">Grenze</th>
@@ -196,7 +196,7 @@ export function NutzerBudget() {
                   <tr key={u.id} className="border-t border-foreground/[0.04] align-middle">
                     <td className="py-2 pr-3">
                       <div className="font-medium text-foreground">{u.name || u.email}</div>
-                      <div className="text-[11px] text-muted-foreground/70">{u.email}</div>
+                      <div className="text-xs text-muted-foreground/70">{u.email}</div>
                     </td>
                     <td className="py-2 pr-3 text-right tabular-nums" title={money.title(kosten)}>
                       {money.fmt(kosten)}
@@ -216,7 +216,7 @@ export function NutzerBudget() {
                             value={art}
                             onChange={(e) => setArt(e.target.value as Art)}
                             aria-label="Art der Grenze"
-                            className="rounded-lg border border-foreground/[0.12] bg-foreground/[0.04] px-2 py-1 text-[11px] outline-none"
+                            className="rounded-lg border border-foreground/[0.12] bg-foreground/[0.04] px-2 py-1 text-xs outline-none"
                           >
                             <option value="standard">Standard</option>
                             <option value="eigene">Eigene Grenze</option>
@@ -224,7 +224,7 @@ export function NutzerBudget() {
                           </select>
                           {art === "eigene" ? (
                             <div className="flex items-center gap-1 rounded-lg border border-foreground/[0.12] bg-foreground/[0.04] px-2 py-1">
-                              <span className="text-[11px] text-muted-foreground">{money.symbol}</span>
+                              <span className="text-xs text-muted-foreground">{money.symbol}</span>
                               <input
                                 type="number"
                                 min={0}

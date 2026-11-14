@@ -599,19 +599,19 @@ function SessionCard({
             <div className="flex items-center gap-2">
               <p className="text-sm font-medium text-foreground font-mono truncate">{session.session_id}</p>
               {session.platform && session.platform !== "unknown" && (
-                <span className="inline-flex items-center rounded-full border border-foreground/[0.1] bg-foreground/[0.04] px-2 py-0.5 text-[10px] text-muted-foreground font-medium">
+                <span className="inline-flex items-center rounded-full border border-foreground/[0.1] bg-foreground/[0.04] px-2 py-0.5 text-[11px] text-muted-foreground font-medium">
                   {session.platform}
                 </span>
               )}
               {visibleBridgeVersion && (
-                <span className="inline-flex items-center rounded-full border border-foreground/[0.1] bg-foreground/[0.04] px-2 py-0.5 text-[10px] text-muted-foreground font-medium">
+                <span className="inline-flex items-center rounded-full border border-foreground/[0.1] bg-foreground/[0.04] px-2 py-0.5 text-[11px] text-muted-foreground font-medium">
                   Bridge v{visibleBridgeVersion}
                 </span>
               )}
             </div>
             <div className="flex items-center gap-2 mt-0.5">
               <span className={cn(
-                "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium border",
+                "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium border",
                 isConnected
                   ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                   : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20"
@@ -620,7 +620,7 @@ function SessionCard({
                 {isConnected ? "Verbunden" : "Warte auf Bridge"}
               </span>
               {session.action_count > 0 && (
-                <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                <span className="text-[11px] text-muted-foreground flex items-center gap-1">
                   <Activity className="h-2.5 w-2.5" />
                   {session.action_count} Aktionen
                 </span>
@@ -632,7 +632,7 @@ function SessionCard({
           <button
             onClick={() => setShowPermissions((v) => !v)}
             className={cn(
-              "inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[10px] font-medium transition-all",
+              "inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-all",
               showPermissions
                 ? "bg-violet-500/10 border border-violet-500/20 text-violet-400"
                 : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
@@ -660,7 +660,7 @@ function SessionCard({
             className="overflow-hidden"
           >
             <div className="px-4 pb-3 pt-1 border-t border-foreground/[0.06] space-y-1">
-              <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
+              <p className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
                 Was darf der Agent auf diesem Rechner?
               </p>
               {CAPABILITY_META.map((cap) => {
@@ -675,7 +675,7 @@ function SessionCard({
                         <p className={cn("text-xs font-medium truncate", enabled ? "text-foreground" : "text-muted-foreground/60")}>
                           {cap.label}
                         </p>
-                        <p className="text-[10px] text-muted-foreground truncate">{cap.description}</p>
+                        <p className="text-[11px] text-muted-foreground truncate">{cap.description}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -713,11 +713,11 @@ function SessionCard({
 
       {/* WS URL */}
       <div className="px-4 pb-3 space-y-1 border-t border-foreground/[0.04]">
-        <p className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider pt-3">
+        <p className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider pt-3">
           Verbindungsadresse der Bridge
         </p>
         <div className="flex items-center gap-2 rounded-lg bg-foreground/[0.04] border border-foreground/[0.06] px-3 py-2">
-          <code className="flex-1 text-[11px] text-foreground/70 truncate">{wsUrl}</code>
+          <code className="flex-1 text-xs text-foreground/70 truncate">{wsUrl}</code>
           <button
             onClick={copyWs}
             className="shrink-0 p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
@@ -726,23 +726,23 @@ function SessionCard({
           </button>
         </div>
         {!isConnected && (
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-[11px] text-muted-foreground">
             Bridge-App starten und diese URL einfügen:{" "}
             <code className="text-violet-400/80">python tray_app.py</code>
           </p>
         )}
         {bridgeUrl.source === "browser_derived" && (
-          <p className="text-[10px] text-amber-700 dark:text-amber-400/70">
+          <p className="text-[11px] text-amber-700 dark:text-amber-400/70">
             Abgeleitet aus der Adresse dieses Browsers. Wenn die Bridge über einen anderen Hostnamen verbindet, verwende diesen Hostnamen.
           </p>
         )}
         {bridgeUrl.source === "bridge_host" && (
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-[11px] text-muted-foreground">
             Hostname von der aktiven Bridge-Verbindung übernommen.
           </p>
         )}
         {bridgeUrl.source === "configured" && (
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-[11px] text-muted-foreground">
             Hostname aus der Server-Konfiguration übernommen.
           </p>
         )}
@@ -752,7 +752,7 @@ function SessionCard({
       {isConnected && (
         <div className="px-4 pb-4 border-t border-foreground/[0.04]">
           <div className="flex items-center justify-between pt-3 mb-2">
-            <p className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Live-Bildschirm</p>
+            <p className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">Live-Bildschirm</p>
             <div className="flex items-center gap-1.5">
               {liveView && screenshotLoading && (
                 <Loader2 className="h-3 w-3 text-muted-foreground animate-spin" />
@@ -768,7 +768,7 @@ function SessionCard({
               <button
                 onClick={() => setLiveView((v) => !v)}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all",
+                  "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-all",
                   liveView
                     ? "bg-violet-500/10 border border-violet-500/20 text-violet-400"
                     : "bg-foreground/[0.04] border border-foreground/[0.08] text-muted-foreground hover:text-foreground"
@@ -791,13 +791,13 @@ function SessionCard({
                   <div className="flex flex-col items-center justify-center h-32 rounded-lg border border-dashed border-amber-500/30 bg-amber-500/5 gap-2">
                     <WifiOff className="h-5 w-5 text-amber-700 dark:text-amber-400/60" />
                     <p className="text-xs text-amber-700 dark:text-amber-400/80 font-medium">Bridge getrennt</p>
-                    <p className="text-[10px] text-muted-foreground/60">Bridge-App neu starten — Verbindung wird automatisch erkannt.</p>
+                    <p className="text-[11px] text-muted-foreground/60">Bridge-App neu starten — Verbindung wird automatisch erkannt.</p>
                   </div>
                 ) : screenshotError === "error" ? (
                   <div className="flex flex-col items-center justify-center h-32 rounded-lg border border-dashed border-red-500/30 bg-red-500/5 gap-2">
                     <AlertCircle className="h-5 w-5 text-red-400/60" />
                     <p className="text-xs text-red-400/80">Screenshot fehlgeschlagen</p>
-                    <button onClick={fetchScreenshot} className="text-[10px] text-muted-foreground hover:text-foreground underline">
+                    <button onClick={fetchScreenshot} className="text-[11px] text-muted-foreground hover:text-foreground underline">
                       Erneut versuchen
                     </button>
                   </div>
@@ -941,11 +941,11 @@ function MitdenkerPanel({ agentId, session, onChange }: {
         onClick={() => setOffen((v) => !v)}
         className="flex w-full items-center justify-between pt-3 text-left"
       >
-        <span className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+        <span className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">
           <ScanEye className="h-3 w-3" />
           Mitsehen und Mitdenken
         </span>
-        <span className="flex items-center gap-2 text-[10px] text-muted-foreground/60">
+        <span className="flex items-center gap-2 text-[11px] text-muted-foreground/60">
           {beobachten ? (mitdenkenHier ? "Mitdenken an" : "nur Regeln") : "aus"}
           {offen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
         </span>
@@ -954,7 +954,7 @@ function MitdenkerPanel({ agentId, session, onChange }: {
       {offen && (
         <div className="mt-3 space-y-3">
           {!beobachten && (
-            <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400/80">
+            <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-400/80">
               Schalte unter Berechtigungen „Mitsehen“ ein. Erst dann prüft die Bridge Regeln und bietet im Overlay Hilfe an.
             </p>
           )}
@@ -962,7 +962,7 @@ function MitdenkerPanel({ agentId, session, onChange }: {
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs font-medium text-foreground">Mitdenken</p>
-              <p className="text-[10px] text-muted-foreground/60">
+              <p className="text-[11px] text-muted-foreground/60">
                 Bei deutlichen Bildschirmwechseln sieht dieser Agent ein Bild und bietet von sich aus an, was er abnehmen kann.
                 {session.agent_id && session.agent_id !== agentId
                   ? " Gerade denkt ein anderer Agent mit — Einschalten übernimmt es für diesen."
@@ -987,7 +987,7 @@ function MitdenkerPanel({ agentId, session, onChange }: {
             </button>
           </div>
 
-          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span>Höchstens</span>
             <input
               type="number"
@@ -1003,9 +1003,9 @@ function MitdenkerPanel({ agentId, session, onChange }: {
           </div>
 
           <div className="space-y-1.5">
-            <p className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Regeln</p>
+            <p className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">Regeln</p>
             {regeln.length === 0 && (
-              <p className="text-[11px] text-muted-foreground/60">
+              <p className="text-xs text-muted-foreground/60">
                 Noch keine Regeln. Du kannst deinem Agenten auch sagen: „Wenn ich in YouTube Studio bin, biete mir Titel an.“
               </p>
             )}
@@ -1013,18 +1013,18 @@ function MitdenkerPanel({ agentId, session, onChange }: {
               <div key={r.id} className="flex items-start justify-between gap-3 rounded-lg border border-foreground/[0.06] px-3 py-2">
                 <div className="min-w-0">
                   <p className={cn("text-xs font-medium truncate", r.aktiv ? "text-foreground" : "text-muted-foreground")}>{r.name}</p>
-                  <p className="text-[10px] text-muted-foreground/60 truncate">
+                  <p className="text-[11px] text-muted-foreground/60 truncate">
                     Wenn {[r.wenn_app && `App enthält „${r.wenn_app}“`, r.wenn_titel && `Titel enthält „${r.wenn_titel}“`].filter(Boolean).join(" und ")}
                     {" → „"}{r.angebot}{"“"}
                   </p>
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-[11px] text-muted-foreground">
                     {r.treffer} Treffer · {r.von === "nutzer" ? "von dir" : "vom Agenten"}
                   </p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <button
                     onClick={() => umschalten(r)}
-                    className="rounded px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground border border-foreground/[0.08]"
+                    className="rounded px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground border border-foreground/[0.08]"
                   >
                     {r.aktiv ? "Ausschalten" : "Einschalten"}
                   </button>
@@ -1041,7 +1041,7 @@ function MitdenkerPanel({ agentId, session, onChange }: {
           </div>
 
           <div className="space-y-1.5 rounded-lg border border-dashed border-border p-3">
-            <p className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Neue Regel</p>
+            <p className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">Neue Regel</p>
             <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
               <input className={feld} placeholder="Wenn die App … enthält (z. B. Chrome)" value={neu.wenn_app}
                 onChange={(e) => setNeu({ ...neu, wenn_app: e.target.value })} />
@@ -1053,7 +1053,7 @@ function MitdenkerPanel({ agentId, session, onChange }: {
             <textarea className={cn(feld, "min-h-[56px]")} placeholder="Auftrag nach einem Ja (was der Agent dann tun soll)" value={neu.auftrag}
               maxLength={300}
               onChange={(e) => setNeu({ ...neu, auftrag: e.target.value })} />
-            <p className="text-right text-[10px] text-muted-foreground">
+            <p className="text-right text-[11px] text-muted-foreground">
               {neu.auftrag.length}/300 — steht im Overlay vollständig neben dem Ja
             </p>
             <input className={feld} placeholder="Name (optional)" value={neu.name}
@@ -1061,14 +1061,14 @@ function MitdenkerPanel({ agentId, session, onChange }: {
             <button
               onClick={anlegen}
               disabled={speichert || !neu.angebot.trim() || !neu.auftrag.trim() || (!neu.wenn_app.trim() && !neu.wenn_titel.trim())}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-violet-500/10 border border-violet-500/20 px-3 py-1.5 text-[11px] font-medium text-violet-400 disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-violet-500/10 border border-violet-500/20 px-3 py-1.5 text-xs font-medium text-violet-400 disabled:opacity-40"
             >
               {speichert ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
               Regel anlegen
             </button>
           </div>
 
-          {fehler && <p className="text-[11px] text-red-400">{fehler}</p>}
+          {fehler && <p className="text-xs text-red-400">{fehler}</p>}
         </div>
       )}
     </div>
@@ -1156,10 +1156,10 @@ function ReplayPanel({
     <div className="px-4 pb-3 pt-3 border-t border-foreground/[0.06] space-y-3">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">
+          <p className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">
             Replay-Modus
           </p>
-          <p className="text-[11px] text-muted-foreground/60 mt-0.5">
+          <p className="text-xs text-muted-foreground/60 mt-0.5">
             Ablauf einmal aufzeichnen, dann als wiederverwendbaren Skill speichern.
           </p>
         </div>
@@ -1168,7 +1168,7 @@ function ReplayPanel({
             <button
               onClick={start}
               disabled={busy || !isConnected}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-1.5 text-[11px] font-medium text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-40"
             >
               <Circle className="h-3 w-3 fill-current" />
               Aufnahme
@@ -1177,7 +1177,7 @@ function ReplayPanel({
             <button
               onClick={stop}
               disabled={busy}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-foreground/[0.06] border border-foreground/[0.1] px-3 py-1.5 text-[11px] font-medium hover:bg-foreground/[0.1] transition-colors disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-foreground/[0.06] border border-foreground/[0.1] px-3 py-1.5 text-xs font-medium hover:bg-foreground/[0.1] transition-colors disabled:opacity-40"
             >
               <Square className="h-3 w-3 fill-current" />
               Stopp
@@ -1189,7 +1189,7 @@ function ReplayPanel({
       {recording && (
         <div className="flex items-center gap-2 rounded-lg bg-red-500/[0.07] border border-red-500/20 px-3 py-2">
           <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse shrink-0" />
-          <span className="text-[11px] text-red-400">
+          <span className="text-xs text-red-400">
             Nimmt auf — {stepCount} {stepCount === 1 ? "Schritt" : "Schritte"} erfasst
             {captureHuman && " (inkl. deiner eigenen Eingaben)"}
           </span>
@@ -1198,7 +1198,7 @@ function ReplayPanel({
 
       {!recording && (
         <label className={cn(
-          "flex items-start gap-2 text-[11px]",
+          "flex items-start gap-2 text-xs",
           humanCaptureAllowed ? "text-muted-foreground/80" : "text-muted-foreground",
         )}>
           <input
@@ -1224,12 +1224,12 @@ function ReplayPanel({
             value={goalHint}
             onChange={(e) => setGoalHint(e.target.value)}
             placeholder="Was war das Ziel? (optional, z.B. 'Rechnung in Ablage einsortieren')"
-            className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-[11px] outline-none focus:border-violet-500/50 transition-all"
+            className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-xs outline-none focus:border-violet-500/50 transition-all"
           />
           <button
             onClick={makeSkill}
             disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-violet-500/10 border border-violet-500/20 px-3 py-1.5 text-[11px] font-medium text-violet-400 hover:bg-violet-500/20 transition-colors disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-violet-500/10 border border-violet-500/20 px-3 py-1.5 text-xs font-medium text-violet-400 hover:bg-violet-500/20 transition-colors disabled:opacity-40"
           >
             {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
             Skill aus {stepCount} Schritten erzeugen
@@ -1239,7 +1239,7 @@ function ReplayPanel({
 
       {status && (
         <p className={cn(
-          "text-[11px]",
+          "text-xs",
           status.kind === "error" ? "text-red-400" : "text-emerald-400",
         )}>
           {status.text}
@@ -1255,7 +1255,7 @@ function InstallStep({ step, title, children }: { step: number; title: string; c
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-2">
-        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-violet-500/10 text-[10px] font-bold text-violet-400 border border-violet-500/20">
+        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-violet-500/10 text-[11px] font-bold text-violet-400 border border-violet-500/20">
           {step}
         </span>
         <p className="text-xs font-medium text-foreground">{step}. {title}</p>
@@ -1274,7 +1274,7 @@ function CodeBlock({ children }: { children: string }) {
   };
   return (
     <div className="flex items-start gap-2 rounded-lg bg-foreground/[0.04] border border-foreground/[0.06] px-3 py-2 group">
-      <pre className="flex-1 text-[11px] text-foreground/80 whitespace-pre-wrap break-all font-mono leading-relaxed">
+      <pre className="flex-1 text-xs text-foreground/80 whitespace-pre-wrap break-all font-mono leading-relaxed">
         {children}
       </pre>
       <button

@@ -94,12 +94,12 @@ export function GitServerKarte() {
             placeholder="gitlab.intern.example.com"
             className="mt-1 w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-xs outline-none focus:border-primary/50"
           />
-          <p className="mt-1 text-[11px] text-muted-foreground">
+          <p className="mt-1 text-xs text-muted-foreground">
             Ein Servername je Zeile. Nur für diese Server gilt die Zertifizierungsstelle unten. Ein Name gilt für
             Port 443; ein anderer Port nur mit Angabe (gitlab.intern.example.com:8443) und dann nur für die
             Plattform, nicht für Agenten.
           </p>
-          <p className="mt-1 flex gap-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+          <p className="mt-1 flex gap-1.5 text-xs text-amber-700 dark:text-amber-300">
             <TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0" />
             Liegt ein Server im Firmennetz, erreichen ihn danach alle Nutzer und alle Agenten der Anlage über
             Port 443 — nicht nur die Projekte, die ihn brauchen.
@@ -115,22 +115,22 @@ export function GitServerKarte() {
             rows={4}
             spellCheck={false}
             placeholder="-----BEGIN CERTIFICATE-----"
-            className="mt-1 w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 font-mono text-[11px] outline-none focus:border-primary/50"
+            className="mt-1 w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 font-mono text-xs outline-none focus:border-primary/50"
           />
           {stand.stellen.length > 0 && (
-            <ul className="mt-1 space-y-0.5 text-[11px] text-muted-foreground">
+            <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
               {stand.stellen.map((s) => (
                 <li key={s.name + s.gueltig_bis}>{s.name} · gültig bis {s.gueltig_bis}</li>
               ))}
             </ul>
           )}
-          <p className="mt-1 flex gap-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+          <p className="mt-1 flex gap-1.5 text-xs text-amber-700 dark:text-amber-300">
             <TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0" />
             Nur das Zertifikat der Firmen-CA (CA:TRUE, gültig), kein Server-Zertifikat. Wer den Schlüssel dieser CA
             hat, kann sich gegenüber Plattform, Egress-Proxy und Agenten als einer der freigegebenen Server
             ausgeben. Für andere Ziele, auch Modellanbieter, gilt sie nicht.
           </p>
-          <p className="mt-1 text-[11px] text-muted-foreground">
+          <p className="mt-1 text-xs text-muted-foreground">
             Plattform und Proxy übernehmen Änderungen sofort, die Agenten erst, wenn sie aktualisiert (neu
             erstellt) werden. Das gilt auch für das Entfernen der CA.
           </p>

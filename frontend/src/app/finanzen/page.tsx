@@ -38,7 +38,7 @@ function Kachel({ label, wert, titel, sub }: { label: string; wert: string; tite
     <div className="rounded-2xl border border-foreground/[0.08] bg-card p-4">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="mt-1 text-2xl font-semibold tabular-nums" title={titel}>{wert}</p>
-      {sub && <p className="mt-1 text-[11px] text-muted-foreground">{sub}</p>}
+      {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
     </div>
   );
 }
@@ -225,7 +225,7 @@ function FinanzenSeite() {
             <section className="rounded-2xl border border-foreground/[0.08] bg-card p-4">
               <div className="flex items-baseline justify-between gap-2">
                 <h3 className="text-sm font-semibold">Projekte</h3>
-                <span className="text-[11px] text-muted-foreground">Läufe des Projekts: Karten, Takt, Gespräch</span>
+                <span className="text-xs text-muted-foreground">Läufe des Projekts: Karten, Takt, Gespräch</span>
               </div>
               {daten.je_projekt.length === 0 ? (
                 <p className="mt-3 text-xs text-muted-foreground">
@@ -234,7 +234,7 @@ function FinanzenSeite() {
               ) : (
                 <div className="mt-3 overflow-x-auto">
                   <table className="w-full min-w-[40rem] text-sm">
-                    <thead className="text-left text-[11px] text-muted-foreground">
+                    <thead className="text-left text-xs text-muted-foreground">
                       <tr>
                         <th className="pb-2 font-medium">Projekt</th>
                         <th className="pb-2 text-right font-medium">Dieser Monat</th>
@@ -275,7 +275,7 @@ function FinanzenSeite() {
               ) : (
                 <div className="mt-3 overflow-x-auto">
                   <table className="w-full min-w-[36rem] text-sm">
-                    <thead className="text-left text-[11px] text-muted-foreground">
+                    <thead className="text-left text-xs text-muted-foreground">
                       <tr>
                         <th className="pb-2 font-medium">Agent</th>
                         <th className="pb-2 text-right font-medium">Aufgaben</th>
@@ -296,7 +296,7 @@ function FinanzenSeite() {
                               ? "Für das Modell dieses Agenten ist kein Preis hinterlegt. Der Verbrauch steht in der Spalte Tokens."
                               : money.title(a.monat_usd)}>
                             {a.preis_unbekannt ? <span className="text-muted-foreground">Preis unbekannt</span> : money.fmt(a.monat_usd)}
-                            {a.budget_usd ? <span className="text-[11px] text-muted-foreground"> / {money.fmt(a.budget_usd)}</span> : null}
+                            {a.budget_usd ? <span className="text-xs text-muted-foreground"> / {money.fmt(a.budget_usd)}</span> : null}
                           </td>
                           <td className="py-2 text-right tabular-nums text-muted-foreground">{money.fmt(a.vormonat_usd)}</td>
                           <td className="py-2 text-right tabular-nums text-muted-foreground"
@@ -309,7 +309,7 @@ function FinanzenSeite() {
               )}
             </section>
 
-            <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Wallet className="h-3 w-3" /> Abgerechnet wird in US-Dollar; angezeigt in der Währung der Anlage.
               <FolderKanban className="ml-2 h-3 w-3" /> Ist ein Projektbudget aufgebraucht, starten bis Monatsende keine neuen Läufe des Projekts.
             </p>

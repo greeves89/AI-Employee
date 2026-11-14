@@ -257,7 +257,7 @@ export default function EvalsPage() {
           <div className="space-y-4 rounded-xl border border-foreground/[0.06] bg-card/80 p-5">
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block">
-                <span className="text-[11px] text-muted-foreground">Name</span>
+                <span className="text-xs text-muted-foreground">Name</span>
                 <input
                   value={draft.name}
                   onChange={(e) => setDraft({ ...draft, name: e.target.value })}
@@ -266,7 +266,7 @@ export default function EvalsPage() {
                 />
               </label>
               <label className="block">
-                <span className="text-[11px] text-muted-foreground">Rolle (frei wählbar)</span>
+                <span className="text-xs text-muted-foreground">Rolle (frei wählbar)</span>
                 <input
                   value={draft.role}
                   onChange={(e) => setDraft({ ...draft, role: e.target.value })}
@@ -283,7 +283,7 @@ export default function EvalsPage() {
                   className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-4"
                 >
                   <div className="mb-2 flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-medium text-muted-foreground">
+                    <span className="text-xs font-medium text-muted-foreground">
                       Aufgabe {i + 1}
                     </span>
                     {draft.items.length > 1 && (
@@ -308,7 +308,7 @@ export default function EvalsPage() {
                       placeholder="Kurzer Titel — z. B. „USt korrekt berechnen“"
                       className="rounded-lg border border-foreground/[0.08] bg-background/60 px-3 py-1.5 text-xs outline-none focus:border-primary/50"
                     />
-                    <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
                       Gewicht
                       <input
                         type="number"
@@ -329,7 +329,7 @@ export default function EvalsPage() {
                   />
                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
                     <label className="block">
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="text-[11px] text-muted-foreground">
                         Muss enthalten (eine Angabe je Zeile)
                       </span>
                       <textarea
@@ -338,11 +338,11 @@ export default function EvalsPage() {
                           patchItem(i, { expect_contains: splitList(e.target.value) })
                         }
                         rows={2}
-                        className="mt-1 w-full rounded-lg border border-foreground/[0.08] bg-background/60 px-3 py-1.5 font-mono text-[11px] outline-none focus:border-primary/50"
+                        className="mt-1 w-full rounded-lg border border-foreground/[0.08] bg-background/60 px-3 py-1.5 font-mono text-xs outline-none focus:border-primary/50"
                       />
                     </label>
                     <label className="block">
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="text-[11px] text-muted-foreground">
                         Darf nicht enthalten
                       </span>
                       <textarea
@@ -351,7 +351,7 @@ export default function EvalsPage() {
                           patchItem(i, { expect_absent: splitList(e.target.value) })
                         }
                         rows={2}
-                        className="mt-1 w-full rounded-lg border border-foreground/[0.08] bg-background/60 px-3 py-1.5 font-mono text-[11px] outline-none focus:border-primary/50"
+                        className="mt-1 w-full rounded-lg border border-foreground/[0.08] bg-background/60 px-3 py-1.5 font-mono text-xs outline-none focus:border-primary/50"
                       />
                     </label>
                   </div>
@@ -359,14 +359,14 @@ export default function EvalsPage() {
               ))}
               <button
                 onClick={() => setDraft({ ...draft, items: [...draft.items, { ...EMPTY_ITEM }] })}
-                className="inline-flex items-center gap-1.5 text-[11px] text-primary hover:underline"
+                className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
               >
                 <Plus className="h-3 w-3" />
                 Aufgabe hinzufügen
               </button>
             </div>
 
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-[11px] text-muted-foreground">
               Jede Aufgabe braucht mindestens eine Erwartung — eine Aufgabe, die nie
               durchfallen kann, ist kein Test und würde den Wert stillschweigend nach
               oben ziehen. Ändern sich die Aufgaben, steigt die Fassung: sonst könnte
@@ -425,7 +425,7 @@ export default function EvalsPage() {
                   >
                     <div className="min-w-0">
                       <div className="truncate text-sm font-medium">{s.name}</div>
-                      <div className="text-[11px] text-muted-foreground/60">
+                      <div className="text-xs text-muted-foreground/60">
                         {s.role || "ohne Rolle"} · {s.item_count} Aufgabe
                         {s.item_count !== 1 ? "n" : ""} · Fassung {s.version}
                       </div>
@@ -442,14 +442,14 @@ export default function EvalsPage() {
                       onClick={() => run(s)}
                       disabled={busy || !agentId}
                       title={agentId ? "Gegen den gewählten Agenten laufen lassen" : "Erst einen Agenten wählen"}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-[11px] text-emerald-400 hover:bg-emerald-500/25 disabled:opacity-40"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-xs text-emerald-400 hover:bg-emerald-500/25 disabled:opacity-40"
                     >
                       <Play className="h-3 w-3" />
                       Laufen lassen
                     </button>
                     <button
                       onClick={() => edit(s)}
-                      className="rounded-lg border border-foreground/[0.08] px-3 py-1.5 text-[11px] hover:bg-foreground/[0.06]"
+                      className="rounded-lg border border-foreground/[0.08] px-3 py-1.5 text-xs hover:bg-foreground/[0.06]"
                     >
                       Bearbeiten
                     </button>
@@ -506,13 +506,13 @@ export default function EvalsPage() {
                             {agents.find((a) => a.id === r.agent_id)?.name ?? r.agent_id}
                           </span>
                           {r.regression && (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-red-500/20 bg-red-500/10 px-1.5 py-0.5 text-[10px] text-red-400">
+                            <span className="inline-flex items-center gap-1 rounded-full border border-red-500/20 bg-red-500/10 px-1.5 py-0.5 text-[11px] text-red-400">
                               <TrendingDown className="h-2.5 w-2.5" />
                               Rückschritt
                             </span>
                           )}
                         </div>
-                        <div className="text-[11px] text-muted-foreground/60">
+                        <div className="text-xs text-muted-foreground/60">
                           {r.passed}/{r.total} bestanden · Fassung {r.set_version}
                           {r.baseline_score !== null
                             ? ` · Grundlinie ${r.baseline_score.toFixed(0)}`
@@ -530,7 +530,7 @@ export default function EvalsPage() {
                     {openRun === r.id && (
                       <div className="mt-3 space-y-2 border-t border-foreground/[0.06] pt-3">
                         {r.results.map((res) => (
-                          <div key={res.id} className="text-[11px]">
+                          <div key={res.id} className="text-xs">
                             <div className="flex items-center gap-1.5">
                               {res.ok ? (
                                 <Check className="h-3 w-3 shrink-0 text-emerald-400" />

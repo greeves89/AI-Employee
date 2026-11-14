@@ -170,7 +170,7 @@ export function MasterRulesView() {
         />
 
         <div className="flex items-center justify-between">
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Wirksam bei jedem Agenten, sobald er aktualisiert wurde.
           </p>
           <button
@@ -184,7 +184,7 @@ export function MasterRulesView() {
         </div>
 
         <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] p-3">
-          <p className="flex items-start gap-2 text-[11px] text-amber-700 dark:text-amber-300/90">
+          <p className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-300/90">
             <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>
               Master-Regeln sind eine <strong>Anweisung, keine Sperre</strong>. Sprachmodelle
@@ -263,9 +263,9 @@ export function MasterRulesView() {
                   />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-medium">{p.name}</p>
-                    <p className="truncate font-mono text-[11px] text-muted-foreground/60">{p.pattern}</p>
+                    <p className="truncate font-mono text-xs text-muted-foreground/60">{p.pattern}</p>
                   </div>
-                  <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium", w.klasse)}>
+                  <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium", w.klasse)}>
                     {w.text}
                   </span>
                   <button

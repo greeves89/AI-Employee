@@ -111,7 +111,7 @@ export function MfaAnmeldung({
               className="flex h-10 w-full rounded-xl border border-border bg-card px-3 font-mono text-sm tracking-widest transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               placeholder="123456"
             />
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Kein Zugriff auf dein Telefon? Gib stattdessen einen deiner Wiederherstellungscodes ein.
             </p>
           </div>

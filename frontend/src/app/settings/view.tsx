@@ -675,7 +675,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
         <section>
           <div className="flex items-center gap-2 mb-3">
             <Cpu className="h-4 w-4 text-muted-foreground/60" />
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+            <h2 className="text-sm font-semibold text-foreground">
               Modell-Anbieter
             </h2>
           </div>
@@ -722,7 +722,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                     )}>
                       {p.short}
                     </p>
-                    <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+                    <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
                       {p.id === "anthropic" ? "Direkte API" :
                        p.id === "bedrock" ? "AWS" :
                        p.id === "vertex" ? "Google Cloud" :
@@ -744,16 +744,16 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold">{activeProvider.label}</h3>
-                  <p className="text-[11px] text-muted-foreground/60">{activeProvider.description}</p>
+                  <p className="text-xs text-muted-foreground/60">{activeProvider.description}</p>
                 </div>
               </div>
               {providerConfigured(provider) ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-[10px] font-medium text-emerald-400">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-[11px] font-medium text-emerald-400">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                   Verbunden
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-500/10 border border-zinc-500/20 px-2.5 py-1 text-[10px] font-medium text-zinc-400">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-500/10 border border-zinc-500/20 px-2.5 py-1 text-[11px] font-medium text-zinc-400">
                   <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" />
                   Nicht eingerichtet
                 </span>
@@ -779,7 +779,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                         <Key className="h-3 w-3" />
                         API-Schlüssel
                       </span>
-                      <span className="block text-[10px] opacity-50 mt-0.5">Abrechnung je Token</span>
+                      <span className="block text-[11px] opacity-50 mt-0.5">Abrechnung je Token</span>
                     </button>
                     <button
                       onClick={() => setAuthMethod("oauth_token")}
@@ -794,7 +794,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                         <Lock className="h-3 w-3" />
                         OAuth-Token
                       </span>
-                      <span className="block text-[10px] opacity-50 mt-0.5">Claude Pro/Team</span>
+                      <span className="block text-[11px] opacity-50 mt-0.5">Claude Pro/Team</span>
                     </button>
                   </div>
                   {authMethod === "api_key" ? (
@@ -817,11 +817,11 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                         Mit Claude einloggen
                         <ExternalLink className="h-3 w-3 opacity-50" />
                       </button>
-                      <p className="text-[10px] text-muted-foreground">
+                      <p className="text-[11px] text-muted-foreground">
                         Erstellt eine eigene OAuth-Session für den Bot. Kein Konflikt mit VS Code.
                       </p>
                       {settings?.has_oauth_token && (
-                        <div className="flex items-center gap-1.5 text-[11px] text-emerald-400">
+                        <div className="flex items-center gap-1.5 text-xs text-emerald-400">
                           <CheckCircle2 className="h-3 w-3" />
                           OAuth-Sitzung aktiv
                         </div>
@@ -840,7 +840,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                         <Sparkles className="h-3 w-3" />
                         ChatGPT-Anmeldung
                       </span>
-                      <span className="block text-center text-[10px] opacity-50 mt-0.5">
+                      <span className="block text-center text-[11px] opacity-50 mt-0.5">
                         Nutzt deine Codex/ChatGPT Subscription, keinen API-Key
                       </span>
                     </div>
@@ -853,12 +853,12 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                     {codexLoginLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
                     Mit ChatGPT/Codex einloggen
                   </button>
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-[11px] text-muted-foreground">
                     Öffnet den ChatGPT Device-Login im Browser. Nach der Autorisierung speichert der
                     Orchestrator die Codex-Session verschlüsselt und stellt sie Agent-Containern als CODEX_HOME bereit.
                   </p>
                   {settings?.has_codex_oauth && (
-                    <div className="flex items-center gap-1.5 text-[11px] text-emerald-400">
+                    <div className="flex items-center gap-1.5 text-xs text-emerald-400">
                       <CheckCircle2 className="h-3 w-3" />
                       Codex-Sitzung (ChatGPT) aktiv
                     </div>
@@ -893,7 +893,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                     onChange={setAwsRegion}
                     options={AWS_REGIONS.map((r) => ({ value: r, label: r }))}
                   />
-                  <p className="text-[10px] text-muted-foreground pt-1">
+                  <p className="text-[11px] text-muted-foreground pt-1">
                     Die Claude-Modelle müssen in der AWS-Bedrock-Konsole für die gewählte Region freigeschaltet sein.
                   </p>
                 </div>
@@ -917,7 +917,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-medium text-muted-foreground/70">Dienstkonto-JSON</label>
+                    <label className="text-xs font-medium text-muted-foreground/70">Dienstkonto-JSON</label>
                     <textarea
                       value={vertexCredentials}
                       onChange={(e) => setVertexCredentials(e.target.value)}
@@ -926,7 +926,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                       className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-xs font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground resize-none"
                     />
                   </div>
-                  <p className="text-[10px] text-muted-foreground pt-1">
+                  <p className="text-[11px] text-muted-foreground pt-1">
                     Das vollständige JSON des GCP-Dienstkontoschlüssels einfügen. Die Vertex-AI-API muss aktiviert sein.
                   </p>
                 </div>
@@ -951,7 +951,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                       mono
                     />
                   </div>
-                  <p className="text-[10px] text-muted-foreground pt-1">
+                  <p className="text-[11px] text-muted-foreground pt-1">
                     Einrichtung im Azure-AI-Foundry-Portal. Die Claude-Modelle müssen in deiner Ressource bereitgestellt sein.
                     {" "}Eigene Deployments (z.&nbsp;B. GPT) werden hier <strong>nicht</strong> automatisch erkannt —
                     lege sie unter <strong>KI-Konten</strong> als Anbieter &bdquo;Azure OpenAI&ldquo; mit dem
@@ -963,7 +963,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
 
             {/* Footer: configured providers info */}
             <div className="px-5 py-3 bg-foreground/[0.015] border-t border-foreground/[0.04]">
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-[11px] text-muted-foreground">
                 Das Modell wählst du je Agent in dessen Einstellungen.
               </p>
             </div>
@@ -974,7 +974,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
         <section>
           <div className="flex items-center gap-2 mb-3">
             <Bot className="h-4 w-4 text-muted-foreground/60" />
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+            <h2 className="text-sm font-semibold text-foreground">
               Agenten-Einstellungen
             </h2>
           </div>
@@ -983,7 +983,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
             <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Gauge className="h-3.5 w-3.5 text-muted-foreground/50" />
-                <label className="text-[11px] font-medium text-muted-foreground/70">Max. Schritte je Aufgabe</label>
+                <label className="text-xs font-medium text-muted-foreground/70">Max. Schritte je Aufgabe</label>
               </div>
               <input
                 type="number"
@@ -991,7 +991,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                 onChange={(e) => setMaxTurns(Number(e.target.value))}
                 className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-medium outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all tabular-nums"
               />
-              <p className="text-[10px] text-muted-foreground mt-1.5">
+              <p className="text-[11px] text-muted-foreground mt-1.5">
                 Höchstzahl der Modellaufrufe je Aufgabe.
               </p>
             </div>
@@ -999,7 +999,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
             <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Bot className="h-3.5 w-3.5 text-muted-foreground/50" />
-                <label className="text-[11px] font-medium text-muted-foreground/70">Max. gleichzeitige Agenten</label>
+                <label className="text-xs font-medium text-muted-foreground/70">Max. gleichzeitige Agenten</label>
               </div>
               <input
                 type="number"
@@ -1007,7 +1007,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                 onChange={(e) => setMaxAgents(Number(e.target.value))}
                 className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-medium outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all tabular-nums"
               />
-              <p className="text-[10px] text-muted-foreground mt-1.5">
+              <p className="text-[11px] text-muted-foreground mt-1.5">
                 So viele Agenten dürfen gleichzeitig laufen.
               </p>
             </div>
@@ -1019,7 +1019,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
             <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.015] p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Coins className="h-3.5 w-3.5 text-muted-foreground/50" />
-                <label className="text-[11px] font-medium text-muted-foreground/70">Anzeigewährung</label>
+                <label className="text-xs font-medium text-muted-foreground/70">Anzeigewährung</label>
               </div>
               <select
                 value={displayCurrency}
@@ -1031,7 +1031,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
               </select>
               {displayCurrency === "EUR" && (
                 <>
-                  <label className="mt-3 block text-[11px] font-medium text-muted-foreground/70">
+                  <label className="mt-3 block text-xs font-medium text-muted-foreground/70">
                     Kurs USD → EUR
                   </label>
                   <input
@@ -1043,7 +1043,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                     onChange={(e) => setUsdEurRate(Number(e.target.value))}
                     className="mt-1.5 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-medium outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all tabular-nums"
                   />
-                  <p className="text-[10px] text-muted-foreground mt-1.5">
+                  <p className="text-[11px] text-muted-foreground mt-1.5">
                     Fester Kurs — er wird nicht automatisch nachgeführt. Abgerechnet
                     wird weiterhin in USD; der Originalbetrag steht an jeder Zahl als
                     Beschriftung.
@@ -1062,7 +1062,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
         {/* ─── Bereich: Dienste & Konten ─── */}
         {bereich === "integrationen" && (
         <div className="space-y-6">
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           Anbindungen für die ganze Anlage: Anmeldung, Benachrichtigungskanäle,
           Mail und Kalender. Eigene Konten (Microsoft, Google) verbindet jeder Nutzer
           selbst unter{" "}
@@ -1076,7 +1076,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
           <section>
             <div className="flex items-center gap-2 mb-3">
               <KeyRound className="h-4 w-4 text-muted-foreground" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <h2 className="text-sm font-semibold text-foreground">
                 Anmeldung
               </h2>
             </div>
@@ -1092,7 +1092,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
         <section>
           <div className="flex items-center gap-2 mb-3">
             <MessageSquare className="h-4 w-4 text-muted-foreground/60" />
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+            <h2 className="text-sm font-semibold text-foreground">
               Benachrichtigungen
             </h2>
           </div>
@@ -1105,16 +1105,16 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold">Telegram-Bot der Anlage</h3>
-                  <p className="text-[11px] text-muted-foreground/60">Ein Bot für Benachrichtigungen der Anlage — nicht zu verwechseln mit einem eigenen Bot je Agent (Agent-Einstellungen)</p>
+                  <p className="text-xs text-muted-foreground/60">Ein Bot für Benachrichtigungen der Anlage — nicht zu verwechseln mit einem eigenen Bot je Agent (Agent-Einstellungen)</p>
                 </div>
               </div>
               {settings?.has_telegram ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-[10px] font-medium text-emerald-400">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-[11px] font-medium text-emerald-400">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                   Verbunden
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-500/10 border border-zinc-500/20 px-2.5 py-1 text-[10px] font-medium text-zinc-400">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-500/10 border border-zinc-500/20 px-2.5 py-1 text-[11px] font-medium text-zinc-400">
                   <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" />
                   Nicht eingerichtet
                 </span>
@@ -1137,7 +1137,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                   placeholder="-1001234567890"
                 />
               </div>
-              <p className="text-[10px] text-muted-foreground mt-3">
+              <p className="text-[11px] text-muted-foreground mt-3">
                 Lege über @BotFather in Telegram einen Bot an und füge ihn deiner Gruppe oder deinem Kanal hinzu.
               </p>
             </div>
@@ -1158,7 +1158,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
           <section>
             <div className="flex items-center gap-2 mb-3">
               <Shield className="h-4 w-4 text-muted-foreground/60" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+              <h2 className="text-sm font-semibold text-foreground">
                 Automatisierung
               </h2>
             </div>
@@ -1166,7 +1166,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
               <div className="flex items-center justify-between gap-3 px-5 py-4">
                 <div className="min-w-0">
                   <div className="text-sm font-medium">&bdquo;Dreaming&ldquo;-Memory</div>
-                  <p className="mt-0.5 text-[11px] text-muted-foreground/60">
+                  <p className="mt-0.5 text-xs text-muted-foreground/60">
                     Aktualisiert stündlich das adaptive Nutzerprofil aus den Memories (heuristisch, ohne LLM-Kosten).
                   </p>
                 </div>
@@ -1187,7 +1187,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
               </div>
               <div className="px-5 py-4">
                 <div className="text-sm font-medium">Meeting → MS Planner</div>
-                <p className="mt-0.5 mb-2 text-[11px] text-muted-foreground/60">
+                <p className="mt-0.5 mb-2 text-xs text-muted-foreground/60">
                   Plan-ID, in die erkannte Meeting-Action-Items gespiegelt werden (leer = aus).
                 </p>
                 <div className="flex gap-2">
@@ -1209,7 +1209,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
               </div>
               <div className="px-5 py-4 border-t border-foreground/[0.04]">
                 <div className="text-sm font-medium">Moderation von Besprechungen — Modell (Standard)</div>
-                <p className="mt-0.5 mb-2 text-[11px] text-muted-foreground/60">
+                <p className="mt-0.5 mb-2 text-xs text-muted-foreground/60">
                   Welches KI-Konto den Moderator antreibt. Pro Besprechung überschreibbar. Leer = erstes verfügbares KI-Konto.
                 </p>
                 <select
@@ -1232,7 +1232,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
           <section>
             <div className="flex items-center gap-2 mb-3">
               <Moon className="h-4 w-4 text-muted-foreground/60" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+              <h2 className="text-sm font-semibold text-foreground">
                 Nachtschicht
               </h2>
             </div>
@@ -1240,7 +1240,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
               <div className="flex items-center justify-between gap-3 px-5 py-4">
                 <div className="min-w-0">
                   <div className="text-sm font-medium">Aktiviert</div>
-                  <p className="mt-0.5 text-[11px] text-muted-foreground/60">
+                  <p className="mt-0.5 text-xs text-muted-foreground/60">
                     Der nächtliche Reflexions-Lauf liest die Gespräche und Aufgaben des Tages und
                     destilliert daraus dauerhaftes Wissen.
                   </p>
@@ -1267,7 +1267,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
               <div className="px-5 py-4 grid grid-cols-2 gap-3">
                 <div>
                   <div className="text-sm font-medium">Uhrzeit</div>
-                  <p className="mt-0.5 mb-2 text-[11px] text-muted-foreground/60">
+                  <p className="mt-0.5 mb-2 text-xs text-muted-foreground/60">
                     Wann der Lauf startet (lokale Stunde).
                   </p>
                   <select
@@ -1289,7 +1289,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                 </div>
                 <div>
                   <div className="text-sm font-medium">Modus</div>
-                  <p className="mt-0.5 mb-2 text-[11px] text-muted-foreground/60">
+                  <p className="mt-0.5 mb-2 text-xs text-muted-foreground/60">
                     Wie viel ohne Freigabe übernommen wird.
                   </p>
                   <select
@@ -1310,7 +1310,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
               </div>
               <div className="px-5 py-4">
                 <div className="text-sm font-medium">Token-Budget</div>
-                <p className="mt-0.5 mb-2 text-[11px] text-muted-foreground/60">
+                <p className="mt-0.5 mb-2 text-xs text-muted-foreground/60">
                   Hartes Limit pro Lauf — schützt vor unerwarteten Kosten.
                 </p>
                 <div className="flex gap-2">
@@ -1338,7 +1338,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="text-sm font-medium">Wochensynthese</div>
-                    <p className="mt-0.5 text-[11px] text-muted-foreground/60">
+                    <p className="mt-0.5 text-xs text-muted-foreground/60">
                       Fasst einmal pro Woche zusammen, welches Thema sich durchzieht, wo
                       Neues einer älteren Überzeugung widerspricht und was der größte
                       Hebel wäre. Das Ergebnis landet als Wissenseintrag.
@@ -1420,7 +1420,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
           <section>
             <div className="flex items-center gap-2 mb-3">
               <Globe className="h-4 w-4 text-muted-foreground/60" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+              <h2 className="text-sm font-semibold text-foreground">
                 OAuth-Anbindungen
               </h2>
             </div>
@@ -1435,16 +1435,16 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                     </div>
                     <div>
                       <h3 className="text-sm font-semibold">Google OAuth</h3>
-                      <p className="text-[11px] text-muted-foreground/60">Gmail, Kalender, Drive</p>
+                      <p className="text-xs text-muted-foreground/60">Gmail, Kalender, Drive</p>
                     </div>
                   </div>
                   {settings?.has_google_oauth ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-[10px] font-medium text-emerald-400">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-[11px] font-medium text-emerald-400">
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                       Eingerichtet
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-500/10 border border-zinc-500/20 px-2.5 py-1 text-[10px] font-medium text-zinc-400">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-500/10 border border-zinc-500/20 px-2.5 py-1 text-[11px] font-medium text-zinc-400">
                       <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" />
                       Nicht eingerichtet
                     </span>
@@ -1478,18 +1478,18 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                     </div>
                     <div>
                       <h3 className="text-sm font-semibold">Microsoft 365 — SSO + MS Graph</h3>
-                      <p className="text-[11px] text-muted-foreground/60">
+                      <p className="text-xs text-muted-foreground/60">
                         Ermöglicht: Anmeldung mit Microsoft &amp; M365-Anbindung je Nutzer (Outlook, Teams, Kalender, OneDrive, To-Do)
                       </p>
                     </div>
                   </div>
                   {settings?.has_microsoft_oauth ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-[10px] font-medium text-emerald-400">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-[11px] font-medium text-emerald-400">
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                       Aktiv
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-500/10 border border-zinc-500/20 px-2.5 py-1 text-[10px] font-medium text-zinc-400">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-500/10 border border-zinc-500/20 px-2.5 py-1 text-[11px] font-medium text-zinc-400">
                       <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" />
                       Nicht eingerichtet
                     </span>
@@ -1500,7 +1500,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                 <div className="px-5 pt-4 pb-2">
                   <button
                     onClick={() => setMsGuideExpanded(!msGuideExpanded)}
-                    className="flex items-center gap-2 text-[11px] font-medium text-blue-400 hover:text-blue-300 transition-colors"
+                    className="flex items-center gap-2 text-xs font-medium text-blue-400 hover:text-blue-300 transition-colors"
                   >
                     <Info className="h-3.5 w-3.5" />
                     Azure App Registration — Setup-Anleitung
@@ -1508,7 +1508,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                   </button>
                   {msGuideExpanded && (
                     <div className="mt-3 rounded-lg border border-blue-500/20 bg-blue-500/5 p-4 space-y-3 text-xs text-muted-foreground">
-                      <p className="text-[11px] font-medium text-blue-300">
+                      <p className="text-xs font-medium text-blue-300">
                         Einmalige Einrichtung durch den Admin. Danach können sich alle User per Microsoft anmelden UND ihre M365-Konten verbinden.
                       </p>
                       <ol className="list-decimal list-inside space-y-2.5">
@@ -1521,7 +1521,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                             `${typeof window !== "undefined" ? window.location.origin : "https://deine-domain.com"}/api/v1/auth/sso/microsoft/callback`,
                             `${typeof window !== "undefined" ? window.location.origin : "https://deine-domain.com"}/api/v1/integrations/microsoft/callback`,
                           ].map((url) => (
-                            <div key={url} className="mt-1.5 flex items-center gap-2 rounded-md border border-foreground/10 bg-background/50 px-3 py-1.5 font-mono text-[10px]">
+                            <div key={url} className="mt-1.5 flex items-center gap-2 rounded-md border border-foreground/10 bg-background/50 px-3 py-1.5 font-mono text-[11px]">
                               <span className="flex-1 text-emerald-400 break-all">{url}</span>
                               <button
                                 onClick={() => navigator.clipboard.writeText(url)}
@@ -1535,10 +1535,10 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                         </li>
                         <li>
                           Unter <strong className="text-foreground">API-Berechtigungen</strong> → Berechtigung hinzufügen → Microsoft Graph → Delegiert:
-                          <div className="mt-1.5 rounded-md border border-foreground/10 bg-background/50 px-3 py-2 font-mono text-[10px] text-blue-300/80 leading-relaxed">
+                          <div className="mt-1.5 rounded-md border border-foreground/10 bg-background/50 px-3 py-2 font-mono text-[11px] text-blue-300/80 leading-relaxed">
                             User.Read, Mail.ReadWrite, Mail.Send, Calendars.ReadWrite, Files.ReadWrite, Chat.ReadWrite, Chat.ReadBasic, ChannelMessage.Read.All, ChannelMessage.Send, Team.ReadBasic.All, Tasks.ReadWrite, Contacts.ReadWrite, People.Read, offline_access
                           </div>
-                          <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-400/80">→ Danach <strong>&quot;Administratorzustimmung erteilen&quot;</strong> klicken</p>
+                          <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400/80">→ Danach <strong>&quot;Administratorzustimmung erteilen&quot;</strong> klicken</p>
                         </li>
                         <li>
                           Unter <strong className="text-foreground">Zertifikate &amp; Geheimnisse</strong> → Neuer geheimer Clientschlüssel erstellen
@@ -1547,7 +1547,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                           <strong className="text-foreground">Application (Client) ID</strong> und Secret in die Felder unten eintragen &amp; speichern
                         </li>
                       </ol>
-                      <p className="text-[10px] text-muted-foreground pt-1 border-t border-foreground/[0.06]">
+                      <p className="text-[11px] text-muted-foreground pt-1 border-t border-foreground/[0.06]">
                         Jeder Nutzer verbindet sein eigenes M365-Konto unter <strong>Integrationen</strong>. Token werden je Nutzer gespeichert, nicht geteilt.
                       </p>
                     </div>
@@ -1580,7 +1580,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                         : "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx oder firma.de"}
                       mono
                     />
-                    <p className="mt-1 text-[11px] text-muted-foreground/60">
+                    <p className="mt-1 text-xs text-muted-foreground/60">
                       Pflicht bei einer Single-Tenant-App: ohne sie läuft die Anmeldung über
                       „/common", und Entra lehnt das ab (AADSTS50194). Im Azure-Portal unter
                       der App-Registrierung als „Verzeichnis-ID (Mandant)". Eine feste
@@ -1598,7 +1598,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                     <div className="flex flex-wrap gap-1.5">
                       {(settings?.microsoft_required_scopes || []).map((sc) => (
                         <span key={sc}
-                          className="rounded-md border border-foreground/10 bg-foreground/[0.06] px-2 py-1 font-mono text-[11px] text-muted-foreground/70"
+                          className="rounded-md border border-foreground/10 bg-foreground/[0.06] px-2 py-1 font-mono text-xs text-muted-foreground/70"
                           title="Pflicht — ohne diese Rechte funktioniert die Anmeldung nicht">
                           {sc}
                         </span>
@@ -1612,7 +1612,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                               next.has(sc) ? next.delete(sc) : next.add(sc);
                               return next;
                             }); }}
-                            className={`rounded-md border px-2 py-1 font-mono text-[11px] transition ${
+                            className={`rounded-md border px-2 py-1 font-mono text-xs transition ${
                               on ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
                                  : "border-foreground/10 text-muted-foreground hover:text-foreground"}`}>
                             {sc}
@@ -1620,7 +1620,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                         );
                       })}
                     </div>
-                    <p className="mt-1.5 text-[11px] text-muted-foreground/60">
+                    <p className="mt-1.5 text-xs text-muted-foreground/60">
                       Grau hinterlegt = Pflicht, ohne sie gibt es keine Anmeldung und kein
                       Aktualisierungs-Token. Die übrigen nur aktivieren, wenn sie in der
                       App-Registrierung unter „API-Berechtigungen" wirklich eingetragen sind —
@@ -1632,7 +1632,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                 </div>
 
                 {settings?.has_microsoft_oauth && (
-                  <div className="px-5 pb-4 flex items-center gap-2 text-[11px] text-emerald-400/80">
+                  <div className="px-5 pb-4 flex items-center gap-2 text-xs text-emerald-400/80">
                     <CheckCircle2 className="h-3.5 w-3.5" />
                     SSO aktiv — &quot;Mit Microsoft anmelden&quot; erscheint auf der Login-Seite. User können ihr Konto unter Integrations verbinden.
                   </div>
@@ -1646,7 +1646,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                         <Lock className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400" />
                         Microsoft nur lesend (Anlage sperren)
                       </div>
-                      <p className="mt-0.5 text-[10px] text-muted-foreground/60">
+                      <p className="mt-0.5 text-[11px] text-muted-foreground/60">
                         An: Für M365/Graph <span className="text-muted-foreground">und</span> den on-prem-Exchange-Connector sendet, entwirft oder ändert kein Agent etwas — gleich, was beim Agenten eingestellt ist.
                         Aus: Jeder Nutzer stellt seine eigenen Agenten selbst ein (Lesen, Entwürfe + Freigabe, Lesen + Schreiben).
                       </p>
@@ -1671,7 +1671,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                     </button>
                   </div>
                   {!settings?.msgraph_read_only && (
-                    <p className="mt-1.5 text-[10px] text-amber-700 dark:text-amber-400/70">
+                    <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-400/70">
                       Nicht gesperrt: Jeder Nutzer entscheidet für seine Agenten. Mit &quot;Lesen + Schreiben&quot; senden und ändern sie in seinem Postfach ohne Rückfrage.
                     </p>
                   )}
@@ -1685,7 +1685,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                         <Network className="h-3.5 w-3.5 text-blue-400" />
                         MCP-Server extern exponieren (OpenWebUI)
                       </div>
-                      <p className="mt-0.5 text-[10px] text-muted-foreground/60">
+                      <p className="mt-0.5 text-[11px] text-muted-foreground/60">
                         Stellt den MS-Graph-MCP-Server externen LLM-Clients per OAuth 2.1 bereit. Angemeldet wird mit dem Microsoft-Konto — keine zusätzliche AI-Employee-Anmeldung. Jeder User nutzt sein eigenes M365, immer nur lesend.
                       </p>
                     </div>
@@ -1709,14 +1709,14 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                     </button>
                   </div>
                   {!settings?.has_microsoft_oauth && (
-                    <p className="mt-1.5 text-[10px] text-amber-700 dark:text-amber-400/70">Erst die Microsoft App-Registrierung oben eintragen &amp; speichern.</p>
+                    <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-400/70">Erst die Microsoft App-Registrierung oben eintragen &amp; speichern.</p>
                   )}
                   {settings?.msgraph_mcp_external_enabled && (
                     <div className="mt-2.5 space-y-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
-                      <p className="text-[10px] font-medium text-emerald-300">
+                      <p className="text-[11px] font-medium text-emerald-300">
                         In OpenWebUI → Admin Settings → External Tools → Add Server → Type: MCP (Streamable HTTP), Auth: OAuth 2.1 — diese Server-URL eintragen:
                       </p>
-                      <div className="flex items-center gap-2 rounded-md border border-foreground/10 bg-background/50 px-3 py-1.5 font-mono text-[10px]">
+                      <div className="flex items-center gap-2 rounded-md border border-foreground/10 bg-background/50 px-3 py-1.5 font-mono text-[11px]">
                         <span className="flex-1 break-all text-emerald-400">
                           {typeof window !== "undefined" ? window.location.origin : "https://deine-domain.com"}/api/v1/mcp/msgraph
                         </span>
@@ -1728,7 +1728,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                           <Copy className="h-3 w-3" />
                         </button>
                       </div>
-                      <p className="text-[10px] text-muted-foreground">
+                      <p className="text-[11px] text-muted-foreground">
                         Login &amp; Client-Registrierung (DCR) laufen automatisch über OAuth: Der User wird direkt zur Microsoft-Anmeldung geschickt und landet zurück im Chat. Wer in OpenWebUI bereits mit Microsoft angemeldet ist, sieht gar keine Maske. Token sind pro User — kein geteilter Zugriff.
                       </p>
                     </div>
@@ -1745,16 +1745,16 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                     </div>
                     <div>
                       <h3 className="text-sm font-semibold">Apple Sign In</h3>
-                      <p className="text-[11px] text-muted-foreground/60">Anmeldung mit der Apple-ID</p>
+                      <p className="text-xs text-muted-foreground/60">Anmeldung mit der Apple-ID</p>
                     </div>
                   </div>
                   {settings?.has_apple_oauth ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-[10px] font-medium text-emerald-400">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-[11px] font-medium text-emerald-400">
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                       Eingerichtet
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-500/10 border border-zinc-500/20 px-2.5 py-1 text-[10px] font-medium text-zinc-400">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-500/10 border border-zinc-500/20 px-2.5 py-1 text-[11px] font-medium text-zinc-400">
                       <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" />
                       Nicht eingerichtet
                     </span>
@@ -1786,13 +1786,13 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
           <section>
             <div className="flex items-center gap-2 mb-3">
               <Network className="h-4 w-4 text-muted-foreground/60" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+              <h2 className="text-sm font-semibold text-foreground">
                 Exchange (on-prem)
               </h2>
             </div>
             <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
               <div className="px-5 py-3.5 border-b border-foreground/[0.04]">
-                <p className="text-[11px] text-muted-foreground/60 leading-relaxed">
+                <p className="text-xs text-muted-foreground/60 leading-relaxed">
                   On-prem Exchange (EWS) für Mail &amp; Kalender — getrennt von M365/Graph. Zugriff ist{" "}
                   <strong className="text-foreground">benutzerspezifisch</strong>: jeder Agent liest/schreibt das
                   Postfach seines Owners via Impersonation auf dessen E-Mail (aus dem SSO-Login). Hier konfiguriert
@@ -1846,7 +1846,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                     mono
                   />
                 )}
-                <p className="text-[10px] text-muted-foreground pt-1 border-t border-foreground/[0.06]">
+                <p className="text-[11px] text-muted-foreground pt-1 border-t border-foreground/[0.06]">
                   Server-URL eintragen &amp; speichern aktiviert die Integration. Im service_account/modern_auth-Modus
                   muss der User nichts hinterlegen. Voraussetzung am Server: ApplicationImpersonation-Rolle
                   (service_account) bzw. EWS-App-Berechtigung (modern_auth).
@@ -1856,7 +1856,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                 <div className="pt-3 mt-2 border-t border-foreground/[0.06] space-y-3">
                   <div>
                     <p className="text-xs font-medium">E-Mail-Versand über SMTP-Relay</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
                       Universeller Sendeweg — funktioniert auch, wenn EWS/443 zum Mailserver gesperrt ist.
                       Der Agent sendet als sein Besitzer; Relay-Adresse legt nur der Admin fest.
                     </p>
@@ -1939,7 +1939,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
           <section>
             <div className="flex items-center gap-2 mb-3">
               <Shield className="h-4 w-4 text-muted-foreground/60" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+              <h2 className="text-sm font-semibold text-foreground">
                 Zugang
               </h2>
             </div>
@@ -1954,7 +1954,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                     <p className="text-sm font-semibold">
                       {registrationOpen ? "Registrierung offen" : "Registrierung geschlossen"}
                     </p>
-                    <p className="text-[11px] text-muted-foreground/60">
+                    <p className="text-xs text-muted-foreground/60">
                       {registrationOpen
                         ? "Jeder kann sich auf der Anmeldeseite ein Konto anlegen."
                         : "Nur Administratoren können neue Konten anlegen."}
@@ -1987,7 +1987,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
           <section>
             <div className="flex items-center gap-2 mb-3">
               <Lock className="h-4 w-4 text-muted-foreground/60" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+              <h2 className="text-sm font-semibold text-foreground">
                 Sicherheit / Anmeldung
               </h2>
             </div>
@@ -2001,7 +2001,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                       <Shield className="h-3.5 w-3.5 text-blue-400" />
                       Eigene KI-Zugänge der Mitarbeiter erlauben
                     </div>
-                    <p className="mt-0.5 text-[10px] text-muted-foreground/60">
+                    <p className="mt-0.5 text-[11px] text-muted-foreground/60">
                       Mitarbeiter dürfen ihr privates Claude- oder ChatGPT-Abo einbinden
                       und damit Agenten betreiben. Aus: bereits hinterlegte Zugänge
                       wirken nicht mehr, die Agenten fallen auf die Firmen-Konten zurück.
@@ -2038,7 +2038,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                       <Shield className="h-3.5 w-3.5 text-blue-400" />
                       Nur Anmeldung per SSO (Anmeldung mit Passwort abschalten)
                     </div>
-                    <p className="mt-0.5 text-[10px] text-muted-foreground/60">
+                    <p className="mt-0.5 text-[11px] text-muted-foreground/60">
                       Blendet die Passwort-Anmeldung auf der Login-Seite aus — nur noch SSO.
                     </p>
                   </div>
@@ -2063,7 +2063,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                 </div>
                 <div className="mt-2.5 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-700 dark:text-amber-400 mt-0.5" />
-                  <p className="text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">
+                  <p className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
                     <strong>Achtung:</strong> Danach ist die Anmeldung NUR noch über Microsoft-SSO möglich. Nutzer ohne SSO-Konto im konfigurierten Tenant werden ausgesperrt. Notfall-Zugang: auf dem Server ENV <code className="font-mono">EMERGENCY_PASSWORD_LOGIN=true</code> setzen.
                   </p>
                 </div>
@@ -2077,7 +2077,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                       <Shield className="h-3.5 w-3.5 text-blue-400" />
                       Neue Nutzer müssen freigeschaltet werden
                     </div>
-                    <p className="mt-0.5 text-[10px] text-muted-foreground/60">
+                    <p className="mt-0.5 text-[11px] text-muted-foreground/60">
                       Neu per SSO oder Registrierung angelegte Konten landen auf „Warten auf Freischaltung“ — ein Admin gibt sie unter Admin-Bereich → Nutzer frei (wie OpenWebUI).
                     </p>
                   </div>
@@ -2113,7 +2113,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                       <Network className="h-3.5 w-3.5 text-blue-400" />
                       MS-Graph-Token bei Logout entfernen
                     </div>
-                    <p className="mt-0.5 text-[10px] text-muted-foreground/60">
+                    <p className="mt-0.5 text-[11px] text-muted-foreground/60">
                       Entfernt den gespeicherten Microsoft-Token beim Abmelden. Autonome Agenten verlieren MS-Graph dann bis zum nächsten Login + Verbinden.
                     </p>
                   </div>
@@ -2303,7 +2303,7 @@ function CredentialField({
 }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-[11px] font-medium text-muted-foreground/70">{label}</label>
+      <label className="text-xs font-medium text-muted-foreground/70">{label}</label>
       <input
         type={type}
         value={value}
@@ -2314,7 +2314,7 @@ function CredentialField({
           mono && "font-mono text-xs"
         )}
       />
-      {hint && <p className="text-[10px] text-muted-foreground">{hint}</p>}
+      {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
     </div>
   );
 }
@@ -2332,7 +2332,7 @@ function SelectField({
 }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-[11px] font-medium text-muted-foreground/70">{label}</label>
+      <label className="text-xs font-medium text-muted-foreground/70">{label}</label>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}

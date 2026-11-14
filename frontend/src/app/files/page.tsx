@@ -266,12 +266,12 @@ export default function FilesPage() {
               <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/40 shrink-0" />
             )}
             {!isDir && entry.modified > 0 && (
-              <span className="text-[10px] text-muted-foreground tabular-nums shrink-0" title={formatModifiedFull(entry.modified)}>
+              <span className="text-[11px] text-muted-foreground tabular-nums shrink-0" title={formatModifiedFull(entry.modified)}>
                 {formatModified(entry.modified)}
               </span>
             )}
             {!isDir && (
-              <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 w-12 text-right">
+              <span className="text-[11px] text-muted-foreground tabular-nums shrink-0 w-12 text-right">
                 {formatFileSize(entry.size)}
               </span>
             )}
@@ -326,11 +326,11 @@ export default function FilesPage() {
         />
 
         {runningAgents.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border bg-card/30 px-4 py-10 text-center sm:p-16">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-foreground/[0.06] mb-4">
-              <Bot className="h-7 w-7 text-muted-foreground" />
-            </div>
-            <h3 className="text-lg font-semibold mb-1.5">Keine aktiven Agenten</h3>
+          // Gleiches Muster wie die übrigen leeren Zustände, ohne gestrichelten
+          // Großrahmen (UI-Bewertung 14.11.2026).
+          <div className="mx-auto max-w-md py-16 text-center">
+            <Bot className="mx-auto mb-3 h-10 w-10 text-muted-foreground/50" aria-hidden="true" />
+            <h3 className="mb-1 font-semibold">Keine aktiven Agenten</h3>
             <p className="text-sm text-muted-foreground">
               Die Dateien liegen im Arbeitsbereich eines laufenden Agenten.
               {startbare.length > 0 ? " Starte einen, um sie zu sehen." : ""}
@@ -385,7 +385,7 @@ export default function FilesPage() {
                       key={mode}
                       onClick={() => setSortMode(mode)}
                       className={cn(
-                        "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors",
+                        "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors",
                         sortMode === mode
                           ? "bg-primary/10 text-primary"
                           : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
@@ -396,7 +396,7 @@ export default function FilesPage() {
                       {mode === "size" && <><ArrowUpDown className="h-2.5 w-2.5" /> Größe</>}
                     </button>
                   ))}
-                  <span className="text-[10px] text-muted-foreground ml-auto">
+                  <span className="text-[11px] text-muted-foreground ml-auto">
                     {runningAgents.length} Agent{runningAgents.length !== 1 && "s"}
                   </span>
                 </div>
@@ -408,11 +408,11 @@ export default function FilesPage() {
                   allFiles.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
                       <Search className="h-5 w-5 mb-2" />
-                      <span className="text-[11px]">Keine Treffer</span>
+                      <span className="text-xs">Keine Treffer</span>
                     </div>
                   ) : (
                     <div className="py-1">
-                      <div className="px-3 py-1 text-[10px] text-muted-foreground">
+                      <div className="px-3 py-1 text-[11px] text-muted-foreground">
                         {allFiles.length} Treffer
                       </div>
                       {allFiles.map(({ agentId, agentName, entry }) => {
@@ -429,14 +429,14 @@ export default function FilesPage() {
                             <File className={cn("h-3.5 w-3.5 shrink-0", getFileColor(entry.name))} />
                             <div className="flex flex-col flex-1 min-w-0">
                               <span className="text-[12px] truncate">{entry.name}</span>
-                              <span className="text-[10px] text-muted-foreground truncate">{agentName} &middot; {entry.path}</span>
+                              <span className="text-[11px] text-muted-foreground truncate">{agentName} &middot; {entry.path}</span>
                             </div>
                             {entry.modified > 0 && (
-                              <span className="text-[10px] text-muted-foreground tabular-nums shrink-0" title={formatModifiedFull(entry.modified)}>
+                              <span className="text-[11px] text-muted-foreground tabular-nums shrink-0" title={formatModifiedFull(entry.modified)}>
                                 {formatModified(entry.modified)}
                               </span>
                             )}
-                            <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 w-12 text-right">
+                            <span className="text-[11px] text-muted-foreground tabular-nums shrink-0 w-12 text-right">
                               {formatFileSize(entry.size)}
                             </span>
                           </div>
@@ -495,9 +495,11 @@ export default function FilesPage() {
                           )}
                         </div>
                         {isExpanded && treeData[wsKey] && renderTree(agent.id, "/workspace", 1)}
-                        {isExpanded && treeData[wsKey]?.length === 0 && (
-                          <div className="py-2 pl-12 text-[11px] text-muted-foreground font-sans">
-                            Leerer Arbeitsordner
+                        {/* Zählt, was nach dem Ausblenden der Systemdateien bleibt: sonst
+                            stand unter dem Agenten gar nichts (Persona Einsteigerin, Runde 4). */}
+                        {isExpanded && treeData[wsKey] && treeData[wsKey].filter((e) => !(simpleMode && istSystemDatei(e))).length === 0 && (
+                          <div className="py-2 pl-12 pr-3 text-xs text-muted-foreground font-sans">
+                            Noch keine Dateien. Antworten des Agenten stehen im Chat.
                           </div>
                         )}
                       </div>
@@ -507,11 +509,16 @@ export default function FilesPage() {
                 {/* Gestoppte Agenten fehlten hier ganz — man fragte sich, ob ihre Dateien
                     weg sind (Persona Einsteigerin, 14.11.2026). Jetzt mit „Starten“. */}
                 {!searchQuery.trim() && startbare.length > 0 && (
-                  <div className="mt-2 border-t border-foreground/[0.06] pt-2">
-                    <p className="px-2 pb-1 text-[11px] text-muted-foreground">Gestoppt — starten, um die Dateien zu sehen</p>
+                  <div className="mt-2 border-t border-foreground/[0.06] pt-2 font-sans">
+                    <p className="px-3 pb-1 text-xs text-muted-foreground">
+                      {startbare.length === 1 ? "Dieser Agent ist gestoppt. Starte ihn, um seine Dateien zu sehen." : "Diese Agenten sind gestoppt. Starte einen, um seine Dateien zu sehen."}
+                    </p>
                     {startbare.map((a) => (
-                      <div key={a.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5">
-                        <span className="min-w-0 truncate text-sm">{a.name}</span>
+                      <div key={a.id} className="flex items-center justify-between gap-2 rounded-lg px-3 py-1.5">
+                        <span className="flex min-w-0 items-center gap-2 text-sm">
+                          <span className="h-2 w-2 shrink-0 rounded-full bg-foreground/40" aria-hidden="true" />
+                          <span className="truncate">{a.name}</span>
+                        </span>
                         <button type="button" onClick={() => agentStarten(a.id)} disabled={startet !== null}
                           aria-label={`${a.name} starten`}
                           className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-[12px] hover:bg-foreground/[0.04] disabled:opacity-60">

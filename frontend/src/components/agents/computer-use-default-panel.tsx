@@ -77,13 +77,13 @@ export function ComputerUseDefaultPanel({ agentId }: { agentId: string }) {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-all"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-all"
         >
           {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
           Speichern
         </button>
       </div>
-      <p className="px-5 pt-4 text-[11px] text-muted-foreground">
+      <p className="px-5 pt-4 text-xs text-muted-foreground">
         Diese Fähigkeiten erhält jede Desktop-Sitzung dieses Agenten höchstens
         — unabhängig davon, was der Plattform-Standard sonst erlaubt. Eine
         laufende Sitzung kann dies nur noch einschränken, nie erweitern.
@@ -129,7 +129,7 @@ export function ComputerUseDefaultPanel({ agentId }: { agentId: string }) {
         })}
       </div>
       {saved && (
-        <p className="px-5 pb-4 text-[11px] text-emerald-600 dark:text-emerald-400">
+        <p className="px-5 pb-4 text-xs text-emerald-600 dark:text-emerald-400">
           Gespeichert.
         </p>
       )}

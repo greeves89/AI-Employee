@@ -74,21 +74,21 @@ function PolicyRow({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium truncate">{policy.name}</span>
-          <span className={cn("rounded-md px-1.5 py-0.5 text-[10px] font-medium", config.bg, config.color)}>
+          <span className={cn("rounded-md px-1.5 py-0.5 text-[11px] font-medium", config.bg, config.color)}>
             {config.label}
           </span>
           {readOnly && (
-            <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[10px] text-muted-foreground">
+            <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] text-muted-foreground">
               geerbt
             </span>
           )}
         </div>
-        <code className="mt-1 block truncate text-[11px] text-muted-foreground/60">{policy.pattern}</code>
+        <code className="mt-1 block truncate text-xs text-muted-foreground/60">{policy.pattern}</code>
         {policy.description && (
-          <p className="mt-1 truncate text-[11px] text-muted-foreground">{policy.description}</p>
+          <p className="mt-1 truncate text-xs text-muted-foreground">{policy.description}</p>
         )}
       </div>
-      <span className="shrink-0 text-[10px] text-muted-foreground">#{policy.sort_order}</span>
+      <span className="shrink-0 text-[11px] text-muted-foreground">#{policy.sort_order}</span>
       {!readOnly && (
         <>
           <button
@@ -282,7 +282,7 @@ export function CommandPoliciesTab({ agentId }: Props) {
           <div className="mb-3 flex items-center gap-2 text-sm font-medium text-muted-foreground/70">
             <Lock className="h-4 w-4" />
             Geerbte globale Regeln
-            <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[10px]">{globalPolicies.length}</span>
+            <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px]">{globalPolicies.length}</span>
           </div>
           <div className="space-y-2">
             {globalPolicies.map((policy) => (
@@ -296,7 +296,7 @@ export function CommandPoliciesTab({ agentId }: Props) {
         <div className="mb-3 flex items-center gap-2 text-sm font-medium">
           <Shield className="h-4 w-4 text-primary/70" />
           {mode === "agent" ? "Eigene Regeln dieses Agenten" : "Globale Regeln"}
-          <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[10px] text-muted-foreground">{ownPolicies.length}</span>
+          <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] text-muted-foreground">{ownPolicies.length}</span>
         </div>
         {ownPolicies.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border bg-card/30 p-8 text-center text-sm text-muted-foreground">

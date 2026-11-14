@@ -132,7 +132,7 @@ export default function CustomPageView() {
               <ExternalLink className="h-4 w-4" />
               In neuem Tab öffnen
             </button>
-            <p className="mt-4 break-all text-[11px] text-muted-foreground/60">{page.url}</p>
+            <p className="mt-4 break-all text-xs text-muted-foreground/60">{page.url}</p>
           </div>
         </div>
       </div>

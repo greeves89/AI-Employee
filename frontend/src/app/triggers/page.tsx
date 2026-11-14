@@ -179,7 +179,7 @@ export default function TriggersPage() {
               <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-[11px] font-medium text-muted-foreground/70">Name</label>
+                    <label className="text-xs font-medium text-muted-foreground/70">Name</label>
                     <input
                       value={name}
                       onChange={(e) => setName(e.target.value)}
@@ -188,7 +188,7 @@ export default function TriggersPage() {
                     />
                   </div>
                   <div>
-                    <label className="text-[11px] font-medium text-muted-foreground/70">Agent</label>
+                    <label className="text-xs font-medium text-muted-foreground/70">Agent</label>
                     <select
                       value={agentId}
                       onChange={(e) => setAgentId(e.target.value)}
@@ -204,7 +204,7 @@ export default function TriggersPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-[11px] font-medium text-muted-foreground/70">Filter nach Quelle</label>
+                    <label className="text-xs font-medium text-muted-foreground/70">Filter nach Quelle</label>
                     <div className="mt-1 flex gap-2">
                       <select
                         value={sourceFilter}
@@ -219,7 +219,7 @@ export default function TriggersPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="text-[11px] font-medium text-muted-foreground/70">Filter nach Ereignisart</label>
+                    <label className="text-xs font-medium text-muted-foreground/70">Filter nach Ereignisart</label>
                     <div className="mt-1">
                       {eventPresets.length > 0 ? (
                         <select
@@ -245,7 +245,7 @@ export default function TriggersPage() {
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-medium text-muted-foreground/70">
+                  <label className="text-xs font-medium text-muted-foreground/70">
                     Bedingungen an die Nutzdaten (JSON, optional)
                   </label>
                   <input
@@ -254,13 +254,13 @@ export default function TriggersPage() {
                     placeholder='z.B. {"action": "opened", "pull_request.draft": false}'
                     className="mt-1 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-mono"
                   />
-                  <p className="mt-1 text-[10px] text-muted-foreground">
+                  <p className="mt-1 text-[11px] text-muted-foreground">
                     Operatoren: {`{"field": {"$in": [...]}}`}, {`{"$ne": "value"}`}, {`{"$contains": "x"}`}, {`{"$exists": true}`}
                   </p>
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-medium text-muted-foreground/70">
+                  <label className="text-xs font-medium text-muted-foreground/70">
                     Prompt Template
                   </label>
                   <textarea
@@ -270,14 +270,14 @@ export default function TriggersPage() {
                     placeholder={"PR prüfen: {{payload.pull_request.title}} von {{payload.pull_request.user.login}}\n\nBitte die Änderungen prüfen und Rückmeldung geben."}
                     className="mt-1 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-mono"
                   />
-                  <p className="mt-1 text-[10px] text-muted-foreground">
+                  <p className="mt-1 text-[11px] text-muted-foreground">
                     Nutze {"{{payload.field}}"} um Werte aus dem Webhook-Payload einzusetzen.
                   </p>
                 </div>
 
                 <div className="flex items-center gap-4">
                   <div>
-                    <label className="text-[11px] font-medium text-muted-foreground/70">Priority</label>
+                    <label className="text-xs font-medium text-muted-foreground/70">Priority</label>
                     <div className="mt-1 flex gap-1">
                       {[1, 3, 5, 7, 10].map((p) => (
                         <button
@@ -334,7 +334,7 @@ export default function TriggersPage() {
                     <div className="flex items-center gap-2">
                       <h3 className="text-sm font-medium truncate">{trigger.name}</h3>
                       <span className={cn(
-                        "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium",
+                        "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium",
                         trigger.enabled
                           ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                           : "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
@@ -343,22 +343,22 @@ export default function TriggersPage() {
                       </span>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-2">
-                      <span className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.04] px-2 py-1 text-[11px] text-muted-foreground">
+                      <span className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.04] px-2 py-1 text-xs text-muted-foreground">
                         <Zap className="h-3 w-3" />
                         {agentName(trigger.agent_id)}
                       </span>
                       {trigger.source_filter && (
-                        <span className="inline-flex items-center gap-1 rounded-md bg-blue-500/10 px-2 py-1 text-[11px] text-blue-400">
+                        <span className="inline-flex items-center gap-1 rounded-md bg-blue-500/10 px-2 py-1 text-xs text-blue-400">
                           {trigger.source_filter}
                         </span>
                       )}
                       {trigger.event_type_filter && (
-                        <span className="inline-flex items-center gap-1 rounded-md bg-purple-500/10 px-2 py-1 text-[11px] text-purple-400">
+                        <span className="inline-flex items-center gap-1 rounded-md bg-purple-500/10 px-2 py-1 text-xs text-purple-400">
                           {trigger.event_type_filter}
                         </span>
                       )}
                       {trigger.payload_conditions && (
-                        <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-1 text-[11px] text-amber-700 dark:text-amber-400">
+                        <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-1 text-xs text-amber-700 dark:text-amber-400">
                           {Object.keys(trigger.payload_conditions).length} conditions
                         </span>
                       )}
@@ -376,7 +376,7 @@ export default function TriggersPage() {
                         {trigger.fire_count}x
                       </p>
                       {trigger.last_fired_at && (
-                        <p className="text-[10px] text-muted-foreground">
+                        <p className="text-[11px] text-muted-foreground">
                           {new Date(trigger.last_fired_at).toLocaleDateString()}
                         </p>
                       )}
@@ -427,7 +427,7 @@ export default function TriggersPage() {
                       className="overflow-hidden"
                     >
                       <div className="mt-4 pt-4 border-t border-foreground/[0.06] space-y-3">
-                        <label className="text-[11px] font-medium text-muted-foreground/70">
+                        <label className="text-xs font-medium text-muted-foreground/70">
                           Test-Payload (JSON)
                         </label>
                         <textarea

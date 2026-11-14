@@ -36,7 +36,7 @@ export function BridgeDownload() {
           Windows (.zip)
         </a>
       </div>
-      <p className="mt-2.5 text-[10px] text-muted-foreground">
+      <p className="mt-2.5 text-[11px] text-muted-foreground">
         Im Menü der Bridge siehst du jederzeit, was der Agent auf deinem Rechner darf.
       </p>
     </div>

@@ -94,7 +94,7 @@ export function LizenzBereich() {
     <section id="lizenz" className="scroll-mt-6">
       <div className="flex items-center gap-2 mb-3">
         <Lock className="h-4 w-4 text-muted-foreground/60" />
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+        <h2 className="text-sm font-semibold text-foreground">
           Lizenz
         </h2>
       </div>
@@ -104,7 +104,7 @@ export function LizenzBereich() {
             <div className="min-w-0">
               <div className="flex items-center gap-2 mb-1">
                 <span className={cn(
-                  "inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider",
+                  "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider",
                   license.tier === "enterprise" ? "bg-purple-500/10 text-purple-400 border-purple-500/20" :
                   license.tier === "business" ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
                   license.tier === "team" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
@@ -114,13 +114,13 @@ export function LizenzBereich() {
                   {license.tier}
                 </span>
                 {license.zustand === "aktiv" && (
-                  <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400">
+                  <span className="inline-flex items-center gap-1 text-xs text-emerald-400">
                     <CheckCircle2 className="h-3 w-3" />
                     Aktiv
                   </span>
                 )}
                 {(license.zustand === "abgelaufen" || license.zustand === "widerrufen") && (
-                  <span className="inline-flex items-center gap-1 text-[11px] text-red-400">
+                  <span className="inline-flex items-center gap-1 text-xs text-red-400">
                     <AlertCircle className="h-3 w-3" />
                     {license.zustand === "widerrufen" ? "Widerrufen" : "Abgelaufen"}
                   </span>
@@ -132,14 +132,14 @@ export function LizenzBereich() {
                   : `Lizenziert für ${license.issued_to}`}
               </p>
               {typeof license.agenten === "number" && (
-                <p className="text-[11px] text-muted-foreground/70 mt-1">
+                <p className="text-xs text-muted-foreground/70 mt-1">
                   {license.agentenlimit
                     ? `${license.agenten} von ${license.agentenlimit} Agenten belegt`
-                    : `${license.agenten} Agenten, unbegrenzt`}
+                    : `${license.agenten} Agenten angelegt, ohne Obergrenze`}
                 </p>
               )}
               {license.expires_at && (
-                <p className="text-[11px] text-muted-foreground/60 mt-1">
+                <p className="text-xs text-muted-foreground/60 mt-1">
                   {license.is_expired ? "Abgelaufen am" : "Gültig bis"}: {new Date(license.expires_at).toLocaleDateString("de-DE")}
                 </p>
               )}
@@ -162,21 +162,12 @@ export function LizenzBereich() {
                 </label>
               )}
             </div>
-            {license.zustand !== "ohne" && (
-              <button
-                onClick={handleRemoveLicense}
-                disabled={licenseBusy}
-                className="shrink-0 text-[11px] text-red-400 hover:text-red-300 underline underline-offset-2"
-              >
-                Lizenz entfernen
-              </button>
-            )}
           </div>
         )}
         {(!license || license.zustand !== "aktiv") && (
           <div className="space-y-3 border-t border-foreground/[0.04] pt-4">
             <div>
-              <label htmlFor="lizenzschluessel" className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
+              <label htmlFor="lizenzschluessel" className="text-xs font-medium text-muted-foreground/70 mb-1.5 block">
                 Lizenzschlüssel
               </label>
               <textarea
@@ -189,7 +180,7 @@ export function LizenzBereich() {
               />
             </div>
             {licenseError && (
-              <p className="text-[11px] text-red-400 flex items-center gap-1">
+              <p className="text-xs text-red-400 flex items-center gap-1">
                 <AlertCircle className="h-3 w-3" />
                 {licenseError}
               </p>
@@ -198,7 +189,7 @@ export function LizenzBereich() {
               {/* Editionen, Preise und Kontakt kommen vom Anbieter der Anlage
                   (ANBIETER_URL / ANBIETER_KONTAKT), nicht aus dem Quellcode-Repository. */}
               {(anbieterUrl || anbieterKontakt) ? (
-                <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground/60">
+                <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground/60">
                   <span>Editionen, Preise und Lizenzschlüssel beim Anbieter:</span>
                   {anbieterUrl && (
                     <a href={anbieterUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
@@ -225,6 +216,22 @@ export function LizenzBereich() {
                 Lizenz eintragen
               </button>
             </div>
+          </div>
+        )}
+        {/* Abseits der Anzeige: stand rot direkt neben dem Lizenzstand
+            (Persona Admin, Runde 4). Die Rückfrage bleibt. */}
+        {license && license.zustand !== "ohne" && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-foreground/[0.06] pt-4">
+            <p className="text-xs text-muted-foreground">
+              Lizenz von dieser Anlage entfernen, etwa vor einem Umzug auf neue Hardware.
+            </p>
+            <button
+              onClick={handleRemoveLicense}
+              disabled={licenseBusy}
+              className="shrink-0 rounded-lg border border-red-500/30 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-500/10 dark:text-red-400"
+            >
+              Lizenz entfernen
+            </button>
           </div>
         )}
       </div>

@@ -22,7 +22,7 @@ export function ProjektStatusZeile({ status, className }: { status?: ProjektStat
   const d = DARSTELLUNG[status.stufe] ?? DARSTELLUNG.ruht;
   const Icon = d.icon;
   return (
-    <p className={cn("inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium", d.klasse, className)}
+    <p className={cn("inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium", d.klasse, className)}
       role="status">
       <Icon className={cn("h-3 w-3 shrink-0", status.stufe === "arbeitet" && "animate-spin")} aria-hidden="true" />
       <span className="truncate">{status.text}</span>

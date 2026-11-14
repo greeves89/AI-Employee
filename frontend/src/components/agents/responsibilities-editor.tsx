@@ -57,7 +57,7 @@ export function ResponsibilitiesEditor({
   return (
     <div>
       <div className="mb-1 flex items-center justify-between gap-2">
-        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
           Verantwortungsbereiche
         </span>
         <button
@@ -65,7 +65,7 @@ export function ResponsibilitiesEditor({
           onClick={add}
           disabled={value.length >= MAX_RESPONSIBILITIES}
           className={cn(
-            "inline-flex items-center gap-1 rounded-lg border border-foreground/[0.08] px-2 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-foreground/[0.04]",
+            "inline-flex items-center gap-1 rounded-lg border border-foreground/[0.08] px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-foreground/[0.04]",
             value.length >= MAX_RESPONSIBILITIES && "cursor-not-allowed opacity-40",
           )}
         >
@@ -74,7 +74,7 @@ export function ResponsibilitiesEditor({
         </button>
       </div>
       {value.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border p-2.5 text-[10px] leading-relaxed text-muted-foreground">
+        <div className="rounded-lg border border-dashed border-border p-2.5 text-[11px] leading-relaxed text-muted-foreground">
           {emptyHint ??
             "Noch keine Bereiche. Ohne sie plant der Agent nur, was jemand als Todo angelegt hat — mit ihnen weiß er, wofür er dauerhaft zuständig ist, und baut sich daraus selbst den Tag."}
         </div>
@@ -91,12 +91,12 @@ export function ResponsibilitiesEditor({
                   value={duty.title}
                   onChange={(e) => patch(idx, { title: e.target.value })}
                   placeholder="z.B. Posteingang sichten"
-                  className="min-w-0 flex-1 rounded-md border border-foreground/[0.08] bg-background/60 px-2 py-1 text-[11px] text-foreground placeholder:text-muted-foreground focus:border-emerald-500/40 focus:outline-none"
+                  className="min-w-0 flex-1 rounded-md border border-foreground/[0.08] bg-background/60 px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:border-emerald-500/40 focus:outline-none"
                 />
                 <select
                   value={duty.rhythm}
                   onChange={(e) => patch(idx, { rhythm: e.target.value as ResponsibilityRhythm })}
-                  className="rounded-md border border-foreground/[0.08] bg-background/60 px-1.5 py-1 text-[10px] text-foreground focus:border-emerald-500/40 focus:outline-none"
+                  className="rounded-md border border-foreground/[0.08] bg-background/60 px-1.5 py-1 text-[11px] text-foreground focus:border-emerald-500/40 focus:outline-none"
                 >
                   {RHYTHMS.map((r) => (
                     <option key={r.value} value={r.value}>{r.label}</option>
@@ -105,7 +105,7 @@ export function ResponsibilitiesEditor({
                 <select
                   value={duty.priority}
                   onChange={(e) => patch(idx, { priority: e.target.value as ResponsibilityPriority })}
-                  className="rounded-md border border-foreground/[0.08] bg-background/60 px-1.5 py-1 text-[10px] text-foreground focus:border-emerald-500/40 focus:outline-none"
+                  className="rounded-md border border-foreground/[0.08] bg-background/60 px-1.5 py-1 text-[11px] text-foreground focus:border-emerald-500/40 focus:outline-none"
                 >
                   {PRIORITIES.map((p) => (
                     <option key={p.value} value={p.value}>{p.label}</option>
@@ -125,13 +125,13 @@ export function ResponsibilitiesEditor({
                 value={duty.notes ?? ""}
                 onChange={(e) => patch(idx, { notes: e.target.value })}
                 placeholder="Präzisierung (optional) — woran genau erkennt er, dass es erledigt ist?"
-                className="mt-1.5 w-full rounded-md border border-foreground/[0.06] bg-background/40 px-2 py-1 text-[10px] text-muted-foreground placeholder:text-muted-foreground focus:border-emerald-500/40 focus:outline-none"
+                className="mt-1.5 w-full rounded-md border border-foreground/[0.06] bg-background/40 px-2 py-1 text-[11px] text-muted-foreground placeholder:text-muted-foreground focus:border-emerald-500/40 focus:outline-none"
               />
             </div>
           ))}
         </div>
       )}
-      <div className="mt-1.5 text-[10px] text-muted-foreground">
+      <div className="mt-1.5 text-[11px] text-muted-foreground">
         {footnote ??
           "Daueraufträge, keine Todos: der Lauf leitet daraus die Aufgaben des Tages ab (STEP 1). Ein Bereich wird nie „fertig\" — abgehakt wird der heutige Durchgang."}
       </div>

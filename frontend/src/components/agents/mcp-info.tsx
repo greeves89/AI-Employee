@@ -130,13 +130,13 @@ export function McpInfo() {
           </div>
           <div className="text-left">
             <span className="text-sm font-medium">MCP Tools</span>
-            <span className="text-[10px] text-muted-foreground/60 ml-2">
+            <span className="text-[11px] text-muted-foreground/60 ml-2">
               Model Context Protocol
             </span>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
             {MCP_SERVERS.length} servers active
           </span>
           <ChevronDown
@@ -152,7 +152,7 @@ export function McpInfo() {
         <div className="border-t border-foreground/[0.06]">
           {/* What is MCP? */}
           <div className="px-5 py-3 bg-foreground/[0.02]">
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
+            <p className="text-xs text-muted-foreground leading-relaxed">
               <span className="font-semibold text-foreground">MCP (Model Context Protocol)</span>{" "}
               gives agents native tools that appear directly in Claude&apos;s tool list.
               Each MCP server is a standalone service that can be used by any MCP-compatible
@@ -179,7 +179,7 @@ export function McpInfo() {
                       <span className="text-xs font-medium">
                         mcp-{server.name.toLowerCase()}
                       </span>
-                      <span className="text-[10px] text-muted-foreground/60 ml-2">
+                      <span className="text-[11px] text-muted-foreground/60 ml-2">
                         {server.tools.length} tools
                       </span>
                     </div>
@@ -193,7 +193,7 @@ export function McpInfo() {
 
                   {isOpen && (
                     <div className="px-5 pb-3 space-y-2">
-                      <p className="text-[11px] text-muted-foreground leading-relaxed pl-7">
+                      <p className="text-xs text-muted-foreground leading-relaxed pl-7">
                         {server.description}
                       </p>
                       <div className="pl-7 space-y-1">
@@ -206,10 +206,10 @@ export function McpInfo() {
                             >
                               <ToolIcon className="h-3 w-3 text-muted-foreground/60 shrink-0" />
                               <div className="min-w-0">
-                                <span className="text-[11px] font-mono font-medium text-foreground/80">
+                                <span className="text-xs font-mono font-medium text-foreground/80">
                                   {tool.name}
                                 </span>
-                                <span className="text-[10px] text-muted-foreground/60 ml-2">
+                                <span className="text-[11px] text-muted-foreground/60 ml-2">
                                   {tool.description}
                                 </span>
                               </div>

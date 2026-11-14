@@ -517,7 +517,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
         from app.models.agent import Agent as _Agent
         await websocket.send_text(json.dumps({
             "type": "agent_startet",
-            "data": {"message": "Agent startet …"},
+            "data": {"message": "Agent wird gestartet. Das dauert beim ersten Mal bis zu einer Minute."},
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }))
         try:

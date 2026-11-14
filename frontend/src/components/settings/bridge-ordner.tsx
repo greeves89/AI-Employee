@@ -131,14 +131,14 @@ export function BridgeOrdner() {
         {neu && (
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <label className="block">
-              <span className="mb-1 block text-[11px] font-medium text-muted-foreground/70">Freigegebener Ordner</span>
+              <span className="mb-1 block text-xs font-medium text-muted-foreground/70">Freigegebener Ordner</span>
               <select value={neu.wahl} onChange={(e) => setNeu({ ...neu, wahl: e.target.value })}
                 className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm outline-none focus:border-primary/50">
                 {neu.ordner.map((o) => <option key={o} value={o}>{o}</option>)}
               </select>
             </label>
             <label className="block">
-              <span className="mb-1 block text-[11px] font-medium text-muted-foreground/70">Name des Brains</span>
+              <span className="mb-1 block text-xs font-medium text-muted-foreground/70">Name des Brains</span>
               <input value={neu.name} maxLength={200} onChange={(e) => setNeu({ ...neu, name: e.target.value })}
                 className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm outline-none focus:border-primary/50" />
             </label>
@@ -165,10 +165,10 @@ export function BridgeOrdner() {
               <Brain className="mt-0.5 h-4 w-4 shrink-0 text-violet-500" />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-medium">{b.name}</div>
-                <div className="truncate text-[11px] text-muted-foreground" title={b.bridge_ordner ?? undefined}>{b.bridge_ordner}</div>
-                <div className="mt-0.5 text-[11px] text-muted-foreground/80">{stand(b)}</div>
+                <div className="truncate text-xs text-muted-foreground" title={b.bridge_ordner ?? undefined}>{b.bridge_ordner}</div>
+                <div className="mt-0.5 text-xs text-muted-foreground/80">{stand(b)}</div>
                 {b.sync_fehler && (
-                  <div className="mt-1 flex items-start gap-1.5 text-[11px] text-amber-700 dark:text-amber-400">
+                  <div className="mt-1 flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
                     <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" /> {b.sync_fehler}
                   </div>
                 )}

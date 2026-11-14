@@ -56,7 +56,7 @@ export function ProjektKopfleiste({
                 style={f.aktiv ? { color: farbe } : undefined}>
                 {f.wert}
               </span>
-              <span className="mt-1 max-w-full truncate text-[10px] text-muted-foreground sm:text-[11px]" title={f.label + (f.zusatz ?? "")}>
+              <span className="mt-1 max-w-full truncate text-[11px] text-muted-foreground sm:text-xs" title={f.label + (f.zusatz ?? "")}>
                 {f.label}{f.zusatz && <span className="hidden sm:inline">{f.zusatz}</span>}
               </span>
               {i < fluss.length - 1 && (

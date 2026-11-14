@@ -221,11 +221,11 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
                     <div key={agent.id} className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-3">
                       <p className="text-xs font-medium truncate mb-1">{agent.name}</p>
                       <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="text-[11px] text-muted-foreground">
                           {formatMoney(spent)} / {formatMoney(agent.budget_usd!)}
                         </span>
                         <span className={cn(
-                          "text-[10px] font-bold",
+                          "text-[11px] font-bold",
                           pct >= 90 ? "text-red-400" : pct >= 75 ? "text-amber-700 dark:text-amber-400" : "text-emerald-400"
                         )}>
                           {Math.round(pct)}%
@@ -256,14 +256,14 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
                     key={type}
                     onClick={() => setEventTypeFilter(eventTypeFilter === type ? "" : type)}
                     className={cn(
-                      "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium transition-all",
+                      "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all",
                       eventTypeFilter === type
                         ? (EVENT_COLORS[type] ?? "text-primary bg-primary/10 border-primary/20")
                         : "text-muted-foreground bg-foreground/[0.03] border-foreground/[0.06] hover:bg-foreground/[0.06]"
                     )}
                   >
                     {EVENT_ICONS[type] ?? <Activity className="h-3 w-3" />}
-                    {EVENT_INFO[type]?.label ?? type.replace(/_/g, " ")}
+                    {EVENT_INFO[type]?.label ?? ereignisLesbar(type)}
                     <span className="opacity-70">{count}</span>
                   </button>
                 ))}
@@ -378,11 +378,11 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
                       </td>
                       <td className="px-3 py-2.5">
                         <span className={cn(
-                          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",
                           EVENT_COLORS[log.event_type] ?? "text-muted-foreground bg-foreground/[0.04] border-foreground/[0.06]"
                         )}>
                           {EVENT_ICONS[log.event_type]}
-                          {EVENT_INFO[log.event_type]?.label ?? log.event_type.replace(/_/g, " ")}
+                          {EVENT_INFO[log.event_type]?.label ?? ereignisLesbar(log.event_type)}
                         </span>
                       </td>
                       <td className="px-3 py-2.5 text-muted-foreground/80 font-mono max-w-[240px] truncate">
@@ -390,7 +390,7 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
                       </td>
                       <td className="px-3 py-2.5">
                         <span className={cn(
-                          "inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                          "inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-medium",
                           OUTCOME_BADGE[log.outcome] ?? "text-muted-foreground"
                         )}>
                           {log.outcome === "success" && <CheckCircle2 className="h-2.5 w-2.5" />}
@@ -449,7 +449,19 @@ const DLP_ACTION_LABEL: Record<string, string> = {
 
 // Plain-language name + one-sentence explanation per event type, so the modal
 // says WHAT happened instead of showing a raw enum value.
+/** Unbekannte Ereignisarten lesbar: „agent_rechte_geaendert“ → „Agent rechte geändert“.
+ *  Vorher standen sie roh mit ae/oe/ue im Protokoll (Persona Admin, 14.11.2026). */
+function ereignisLesbar(typ: string): string {
+  // Nur deutsche Wortteile, nicht pauschal: „queue“ bliebe sonst nicht „queue“.
+  const t = typ.replace(/_/g, " ")
+    .replace(/aender/g, "änder").replace(/loesch/g, "lösch").replace(/pruef/g, "prüf")
+    .replace(/ueber/g, "über").replace(/fuer/g, "für").replace(/zurueck/g, "zurück").replace(/schluessel/g, "schlüssel");
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 const EVENT_INFO: Record<string, { label: string; desc: string }> = {
+  agent_updated: { label: "Agent geändert", desc: "Einstellungen eines Agenten wurden geändert." },
+  budget_changed: { label: "Budget geändert", desc: "Ein Budget wurde gesetzt oder geändert." },
   agent_started: { label: "Agent gestartet", desc: "Der Container eines Agenten wurde gestartet." },
   agent_stopped: { label: "Agent gestoppt", desc: "Der Container eines Agenten wurde gestoppt." },
   agent_created: { label: "Agent angelegt", desc: "Ein neuer Agent wurde angelegt." },
@@ -562,7 +574,7 @@ function AuditDetailModal({ log, agentName, onClose }: { log: AuditLog; agentNam
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
             <h3 className="text-[15px] font-semibold leading-snug">
-              {EVENT_INFO[log.event_type]?.label ?? log.event_type.replace(/_/g, " ")}
+              {EVENT_INFO[log.event_type]?.label ?? ereignisLesbar(log.event_type)}
             </h3>
             <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground/70">
               {EVENT_INFO[log.event_type]?.desc ?? "Protokollierter System-/Agenten-Vorgang."}
@@ -583,7 +595,7 @@ function AuditDetailModal({ log, agentName, onClose }: { log: AuditLog; agentNam
 
         {isDlp ? (
           <div className="mt-4 rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-3">
-            <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">Erkannte sensible Daten</p>
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground/60">Erkannte sensible Daten</p>
             {Object.keys(classes).length === 0 ? (
               <p className="text-[12px] text-muted-foreground">Keine Klassen aufgezeichnet.</p>
             ) : (
@@ -594,7 +606,7 @@ function AuditDetailModal({ log, agentName, onClose }: { log: AuditLog; agentNam
                       <span className="w-40 shrink-0">{DLP_CLASS_LABEL[c] ?? c}</span>
                       <span className="text-muted-foreground/60">{n}×</span>
                       <span className={cn(
-                        "ml-auto rounded-md px-2 py-0.5 text-[11px] font-medium",
+                        "ml-auto rounded-md px-2 py-0.5 text-xs font-medium",
                         actions[c] === "block" ? "bg-red-500/10 text-red-400"
                           : actions[c] === "mask" ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
                           : "bg-sky-500/10 text-sky-400",
@@ -603,7 +615,7 @@ function AuditDetailModal({ log, agentName, onClose }: { log: AuditLog; agentNam
                     {(samples[c]?.length ?? 0) > 0 && (
                       <div className="mt-1 flex flex-wrap gap-1.5 pl-1">
                         {samples[c].map((s, i) => (
-                          <code key={i} className="rounded bg-foreground/[0.06] px-1.5 py-0.5 font-mono text-[11px] text-foreground/80">{s}</code>
+                          <code key={i} className="rounded bg-foreground/[0.06] px-1.5 py-0.5 font-mono text-xs text-foreground/80">{s}</code>
                         ))}
                       </div>
                     )}
@@ -611,14 +623,14 @@ function AuditDetailModal({ log, agentName, onClose }: { log: AuditLog; agentNam
                 ))}
               </div>
             )}
-            <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
               Angezeigt wird nur ein <b>maskierter Ausschnitt</b> (z. B. <code className="font-mono">df***as</code>) — genug, um den Treffer zu erkennen. Der vollständige Wert (Key/IBAN etc.) wird bewusst <b>nie</b> gespeichert.
             </p>
           </div>
         ) : (
           meta && Object.keys(meta).length > 0 && (
             <div className="mt-4 rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-3">
-              <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">Details</p>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground/60">Details</p>
               <dl className="space-y-1.5">
                 {Object.entries(meta).map(([k, v]) => (
                   <div key={k} className="flex items-baseline gap-3 text-[12px]">
@@ -628,8 +640,8 @@ function AuditDetailModal({ log, agentName, onClose }: { log: AuditLog; agentNam
                 ))}
               </dl>
               <details className="mt-2.5">
-                <summary className="cursor-pointer text-[11px] text-muted-foreground hover:text-muted-foreground/70">Rohdaten (JSON)</summary>
-                <pre className="mt-1.5 max-h-48 overflow-auto whitespace-pre-wrap break-words text-[11px] text-muted-foreground/60">{JSON.stringify(meta, null, 2)}</pre>
+                <summary className="cursor-pointer text-xs text-muted-foreground hover:text-muted-foreground/70">Rohdaten (JSON)</summary>
+                <pre className="mt-1.5 max-h-48 overflow-auto whitespace-pre-wrap break-words text-xs text-muted-foreground/60">{JSON.stringify(meta, null, 2)}</pre>
               </details>
             </div>
           )
@@ -642,7 +654,7 @@ function AuditDetailModal({ log, agentName, onClose }: { log: AuditLog; agentNam
 function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-baseline gap-3">
-      <dt className="w-28 shrink-0 text-[11px] uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dt className="w-28 shrink-0 text-xs uppercase tracking-wide text-muted-foreground">{label}</dt>
       <dd className={cn("flex-1 break-words", mono && "font-mono text-[12px]")}>{value}</dd>
     </div>
   );
@@ -652,7 +664,7 @@ function SummaryCard({ label, value, icon, color }: { label: string; value: numb
   return (
     <div className="rounded-xl border border-foreground/[0.06] bg-card/80 p-4 backdrop-blur-sm">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[11px] font-medium text-muted-foreground/70">{label}</span>
+        <span className="text-xs font-medium text-muted-foreground/70">{label}</span>
         {icon}
       </div>
       <p className={cn("text-2xl font-bold tabular-nums", color)}>{value.toLocaleString("de-DE")}</p>

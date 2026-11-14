@@ -111,7 +111,7 @@ export function AdminSuche() {
           {ADMIN_GRUPPEN.map((gruppe) => ({ ...gruppe, bereiche: gruppe.bereiche.filter((b) => b !== "suche") }))
             .filter((g) => g.bereiche.length > 0).map((gruppe) => (
             <div key={gruppe.id} className="rounded-xl border border-foreground/[0.06] bg-card/60 p-4">
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">
                 {gruppe.titel}
               </p>
               <div className="space-y-0.5">

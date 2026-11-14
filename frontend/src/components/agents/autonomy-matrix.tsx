@@ -128,7 +128,7 @@ export function AutonomyMatrix({
         </p>
       )}
       {fehler && !feinOffen && (
-        <p className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-[11px] text-red-400">{fehler}</p>
+        <p className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">{fehler}</p>
       )}
 
       <button
@@ -145,7 +145,7 @@ export function AutonomyMatrix({
       {feinOffen && (<>
       {/* Preset buttons */}
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="mr-1 text-[11px] font-medium text-muted-foreground/70">Vorlage:</span>
+        <span className="mr-1 text-xs font-medium text-muted-foreground/70">Vorlage:</span>
         {(["l1", "l2", "l3", "l4"] as const).map((lvl) => {
           const gesperrt = ueber(lvl) && level !== lvl;
           return (
@@ -154,7 +154,7 @@ export function AutonomyMatrix({
               onClick={() => applyPreset(lvl)}
               disabled={busy || gesperrt}
               className={cn(
-                "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-all disabled:opacity-40",
+                "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all disabled:opacity-40",
                 gesperrt && "cursor-not-allowed",
                 level === lvl
                   ? "bg-primary/15 text-primary border-primary/30"
@@ -169,20 +169,20 @@ export function AutonomyMatrix({
             </button>
           );
         })}
-        <span className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground/70">
+        <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground/70">
           <ShieldCheck className="h-3.5 w-3.5" /> Aktiv: <b className="text-foreground">{LEVEL_LABEL[level] || level}</b>
         </span>
       </div>
 
       {grenze && (
-        <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Lock className="h-3 w-3" />
           Deine Rolle erlaubt höchstens Stufe {grenze.toUpperCase()}. Was darüber liegt, ist ausgegraut
           — bestehende Einstellungen bleiben erhalten.
         </p>
       )}
       {fehler && (
-        <p className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-[11px] text-red-400">{fehler}</p>
+        <p className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">{fehler}</p>
       )}
 
       {/* Groups */}
@@ -199,7 +199,7 @@ export function AutonomyMatrix({
                 <div key={c.key} className="flex items-center justify-between gap-3 px-4 py-2.5">
                   <div className="min-w-0">
                     <div className="text-sm font-medium">{c.label}</div>
-                    <div className="truncate text-[11px] text-muted-foreground/70">{c.description}</div>
+                    <div className="truncate text-xs text-muted-foreground/70">{c.description}</div>
                   </div>
                   <div className="flex shrink-0 gap-1">
                     {(taxonomy.states).map((st) => {
@@ -213,7 +213,7 @@ export function AutonomyMatrix({
                           onClick={() => setMatrix((m) => ({ ...m, [c.key]: st }))}
                           disabled={gesperrt}
                           className={cn(
-                            "inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium transition-all",
+                            "inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-medium transition-all",
                             active ? meta.on : "border-transparent text-muted-foreground hover:bg-foreground/[0.05]",
                             gesperrt && "cursor-not-allowed opacity-30 hover:bg-transparent"
                           )}
@@ -233,14 +233,14 @@ export function AutonomyMatrix({
       })}
 
       <div className="flex items-center justify-between">
-        <p className="text-[11px] text-muted-foreground/60">
+        <p className="text-xs text-muted-foreground/60">
           Änderungen wirken beim nächsten Task des Agenten. Ausnahme: Wird „Pakete / Config“ neu erlaubt, braucht der Agent einmal „Neu starten“, erst dann lässt der Container sudo zu.
         </p>
         {dirty && (
           <button
             onClick={save}
             disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-[11px] font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
           >
             {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
             Matrix speichern

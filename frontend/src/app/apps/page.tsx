@@ -135,13 +135,13 @@ export default function AppsPage() {
                         </div>
                         <div className="min-w-0">
                           <p className="text-sm font-medium truncate">{app.name}</p>
-                          <p className="flex items-center gap-1 text-[11px] text-muted-foreground truncate">
+                          <p className="flex items-center gap-1 text-xs text-muted-foreground truncate">
                             <Cpu className="h-3 w-3" /> {app.agent_name}
                           </p>
                           {app.owner_name && (
                             // Bei fremden Apps die eigentliche Frage: von wem ist das?
                             // Bei eigenen erklaert es, wieso sie ueberhaupt hier steht.
-                            <p className="flex items-center gap-1 text-[11px] text-muted-foreground/70 truncate">
+                            <p className="flex items-center gap-1 text-xs text-muted-foreground/70 truncate">
                               <User className="h-3 w-3" />
                               {app.owned_by_me ? app.owner_name : `von ${app.owner_name}`}
                             </p>
@@ -150,7 +150,7 @@ export default function AppsPage() {
                       </div>
                       <div className="flex flex-col items-end gap-1 shrink-0">
                         <span className={cn(
-                          "flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border font-medium",
+                          "flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border font-medium",
                           isBusy ? "bg-primary/10 text-primary border-primary/20"
                             : running ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                             : notStarted ? "bg-blue-500/10 text-blue-400 border-blue-500/20"
@@ -160,14 +160,14 @@ export default function AppsPage() {
                           {isBusy ? "startet…" : running ? "läuft" : notStarted ? "nicht gestartet" : "gestoppt"}
                         </span>
                         {readOnly && (
-                          <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border border-violet-500/20 bg-violet-500/10 text-violet-300 font-medium">
+                          <span className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border border-violet-500/20 bg-violet-500/10 text-violet-300 font-medium">
                             <Share2 className="h-2.5 w-2.5" /> für mich freigegeben
                           </span>
                         )}
                       </div>
                     </div>
 
-                    <p className="mt-2 text-[11px] text-muted-foreground/70 truncate">
+                    <p className="mt-2 text-xs text-muted-foreground/70 truncate">
                       {app.containers.length > 0
                         ? `${app.containers.length} Container · ${app.containers.map((c) => c.service || c.name).slice(0, 3).join(", ")}`
                         : app.path ? `Workspace: ${app.path}` : app.project}
@@ -233,11 +233,11 @@ export default function AppsPage() {
                   </div>
                   {err && (
                     <div className="space-y-1.5">
-                      <p className="text-[11px] text-red-400/90 bg-red-500/[0.06] rounded-lg px-2.5 py-1.5 break-words">
+                      <p className="text-xs text-red-400/90 bg-red-500/[0.06] rounded-lg px-2.5 py-1.5 break-words">
                         {err}{app.containers.length > 0 ? " — Details unter Logs." : ""}
                       </p>
                       {reported[app.project] ? (
-                        <p className="flex items-center gap-1.5 text-[11px] text-emerald-400">
+                        <p className="flex items-center gap-1.5 text-xs text-emerald-400">
                           <CheckCircle2 className="h-3.5 w-3.5" />
                           An {reported[app.project]} gemeldet — der Agent kümmert sich darum.
                         </p>
@@ -522,12 +522,12 @@ function DetailModal({ app, onClose, onShowLogs }: {
                       <div key={c.name} className="flex items-center justify-between gap-3 px-3 py-2">
                         <div className="min-w-0">
                           <p className="text-sm truncate">{c.service || c.name}</p>
-                          <p className="text-[11px] text-muted-foreground/70 truncate font-mono">
+                          <p className="text-xs text-muted-foreground/70 truncate font-mono">
                             {c.image || c.name}{c.port ? ` · Port ${c.port}` : ""}
                           </p>
                         </div>
                         <span className={cn(
-                          "text-[10px] px-2 py-0.5 rounded-full border shrink-0",
+                          "text-[11px] px-2 py-0.5 rounded-full border shrink-0",
                           c.status === "running" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                             : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
                         )}>{c.status}</span>
@@ -549,7 +549,7 @@ function DetailModal({ app, onClose, onShowLogs }: {
                   <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
                     <Share2 className="h-3.5 w-3.5" /> Freigaben
                   </h3>
-                  <p className="text-[11px] text-muted-foreground/70 mb-3">
+                  <p className="text-xs text-muted-foreground/70 mb-3">
                     Ohne Freigabe kommt nur du an diese App. Freigegebene Nutzer dürfen sie ausschließlich
                     öffnen — Starten, Stoppen, Neu bauen und Logs bleiben bei dir.
                   </p>
@@ -566,7 +566,7 @@ function DetailModal({ app, onClose, onShowLogs }: {
                               <p className="text-sm truncate">
                                 {s.scope === "user" ? (s.user_name || s.user_id) : SCOPE_LABEL[s.scope]}
                               </p>
-                              <p className="text-[11px] text-muted-foreground/70">
+                              <p className="text-xs text-muted-foreground/70">
                                 {s.expired ? "abgelaufen"
                                   : s.expires_at ? `läuft ab am ${new Date(s.expires_at).toLocaleDateString("de-DE")}`
                                   : "unbefristet"}
@@ -630,7 +630,7 @@ function DetailModal({ app, onClose, onShowLogs }: {
                       <div className="space-y-2">
                         <div className="flex items-start gap-2 rounded-lg bg-amber-500/[0.07] border border-amber-500/20 px-3 py-2">
                           <AlertTriangle className="h-4 w-4 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
-                          <p className="text-[11px] text-amber-700 dark:text-amber-200/90">
+                          <p className="text-xs text-amber-700 dark:text-amber-200/90">
                             Jeder mit dem Link kommt <strong>ohne Anmeldung</strong> an die App — auch außerhalb
                             eures Netzes. Nur für Demos, und nie für Apps mit echten Daten.
                           </p>
@@ -652,7 +652,7 @@ function DetailModal({ app, onClose, onShowLogs }: {
                           Unbefristet — läuft nie ab
                         </label>
                         {neverExpires && (
-                          <p className="text-[11px] text-amber-700 dark:text-amber-300/90">
+                          <p className="text-xs text-amber-700 dark:text-amber-300/90">
                             Dieser Link bleibt gültig, bis du ihn zurückziehst. Niemand
                             erinnert dich daran.
                           </p>
@@ -661,7 +661,7 @@ function DetailModal({ app, onClose, onShowLogs }: {
                     )}
 
                     {scope === "authenticated" && (
-                      <p className="text-[11px] text-muted-foreground/80">
+                      <p className="text-xs text-muted-foreground/80">
                         Jeder angemeldete Nutzer dieser Plattform darf die App öffnen.
                       </p>
                     )}
@@ -673,18 +673,18 @@ function DetailModal({ app, onClose, onShowLogs }: {
                     </button>
 
                     {shareErr && (
-                      <p className="text-[11px] text-red-400/90 bg-red-500/[0.06] rounded-lg px-2.5 py-1.5 break-words">{shareErr}</p>
+                      <p className="text-xs text-red-400/90 bg-red-500/[0.06] rounded-lg px-2.5 py-1.5 break-words">{shareErr}</p>
                     )}
 
                     {freshLink && (
                       <div className="space-y-1.5">
-                        <p className="flex items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+                        <p className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300">
                           <Link2 className="h-3.5 w-3.5" />
                           Jetzt kopieren — dieser Link wird nur einmal angezeigt.
                         </p>
                         <div className="flex items-center gap-2">
                           <input readOnly value={freshLink} onFocus={(e) => e.currentTarget.select()}
-                            className="flex-1 rounded-lg border border-border bg-background px-2.5 py-1.5 text-[11px] font-mono" />
+                            className="flex-1 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs font-mono" />
                           <button
                             onClick={() => {
                               navigator.clipboard.writeText(freshLink).then(() => {
@@ -1054,7 +1054,7 @@ function ImportModal({ onClose, onFertig }: { onClose: () => void; onFertig: () 
 function Field({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="min-w-0">
-      <p className="text-[11px] text-muted-foreground/70">{label}</p>
+      <p className="text-xs text-muted-foreground/70">{label}</p>
       <p className={cn("truncate", mono && "font-mono text-[12px]")} title={value}>{value}</p>
     </div>
   );
@@ -1104,12 +1104,12 @@ function LogsModal({ app, onClose }: { app: api.AppEntry; onClose: () => void })
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-xs font-medium">{c.service || c.name}</span>
                   <span className={cn(
-                    "text-[10px] px-1.5 py-0.5 rounded-full border",
+                    "text-[11px] px-1.5 py-0.5 rounded-full border",
                     c.status === "running" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                       : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
                   )}>{c.status}</span>
                 </div>
-                <pre className="text-[11px] leading-relaxed whitespace-pre-wrap break-words font-mono text-foreground/75 bg-foreground/[0.03] rounded-lg p-3 max-h-72 overflow-auto">
+                <pre className="text-xs leading-relaxed whitespace-pre-wrap break-words font-mono text-foreground/75 bg-foreground/[0.03] rounded-lg p-3 max-h-72 overflow-auto">
                   {c.logs || "(leer)"}
                 </pre>
               </div>

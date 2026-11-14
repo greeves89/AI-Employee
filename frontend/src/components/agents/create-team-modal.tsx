@@ -260,7 +260,7 @@ export function CreateTeamModal({
                           placeholder={REPO_ANBIETER.find((a) => a.key === anbieter)?.beispiel}
                           className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
                         />
-                        <p className="text-[11px] text-muted-foreground mt-1">
+                        <p className="text-xs text-muted-foreground mt-1">
                           {anbieter === "github"
                             ? "GitHub als owner/name."
                             : anbieter === "gitlab"
@@ -286,7 +286,7 @@ export function CreateTeamModal({
                                 <option key={k.id} value={k.id}>{k.name} ({k.key_name})</option>
                               ))}
                             </select>
-                            <p className="text-[11px] text-muted-foreground mt-1">
+                            <p className="text-xs text-muted-foreground mt-1">
                               Für private Repos: einen Zugangsschlüssel aus der Schlüsselverwaltung wählen, bei
                               GitHub ein GitHub-Token, sonst ein Token dieses Servers (GitLab: Bereich „api“, Rolle
                               Developer). Bei eigenen Servern nur ein eigener Schlüssel. Öffentliche Repos gehen ohne
@@ -298,27 +298,27 @@ export function CreateTeamModal({
                           <div className="mt-3 space-y-2 rounded-lg border border-foreground/[0.08] p-3">
                             <p className="text-xs font-medium text-muted-foreground">Zusammenarbeit am Repo</p>
                             <div className="grid grid-cols-2 gap-2">
-                              <label className="block text-[11px] text-muted-foreground">
+                              <label className="block text-xs text-muted-foreground">
                                 Übernahme gilt ohne Lebenszeichen (Stunden)
                                 <input type="number" min={1} max={24} value={uebernahmeStunden}
                                   onChange={(e) => setUebernahmeStunden(Math.min(24, Math.max(1, Number(e.target.value) || 2)))}
                                   className="mt-1 w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-sm outline-none focus:border-primary/50" />
                               </label>
-                              <label className="block text-[11px] text-muted-foreground">
+                              <label className="block text-xs text-muted-foreground">
                                 Höchstens offene Übernahmen je Bearbeiter
                                 <input type="number" min={1} max={20} value={maxUebernahmen}
                                   onChange={(e) => setMaxUebernahmen(Math.min(20, Math.max(1, Number(e.target.value) || 2)))}
                                   className="mt-1 w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-sm outline-none focus:border-primary/50" />
                               </label>
                             </div>
-                            <label className="flex items-start gap-2 text-[11px] text-muted-foreground">
+                            <label className="flex items-start gap-2 text-xs text-muted-foreground">
                               <input type="checkbox" checked={abloesen} onChange={(e) => setAbloesen(e.target.checked)} className="mt-0.5" />
                               <span>
                                 Agenten dürfen abgelaufene fremde Übernahmen selbst übernehmen (30 Minuten nach dem Ablauf,
                                 mit Kommentar an den bisherigen Bearbeiter). Aus: nur ein Mensch gibt sie im Board frei.
                               </span>
                             </label>
-                            <label className="block text-[11px] text-muted-foreground">
+                            <label className="block text-xs text-muted-foreground">
                               Fragen aus dem Issue („@ai-employee Agent: …“) wecken Agenten
                               <select value={rueckkanal} onChange={(e) => setRueckkanal(e.target.value as "an" | "aus" | "auto")}
                                 className="mt-1 w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-sm outline-none focus:border-primary/50">
@@ -336,7 +336,7 @@ export function CreateTeamModal({
                     )}
 
                     {projekt && (
-                      <label className="flex items-start gap-2 rounded-lg border border-foreground/[0.06] p-3 text-[11px] text-muted-foreground">
+                      <label className="flex items-start gap-2 rounded-lg border border-foreground/[0.06] p-3 text-xs text-muted-foreground">
                         <input type="checkbox" checked={blinderPruefer} onChange={(e) => setBlinderPruefer(e.target.checked)} className="mt-0.5" />
                         <span>
                           <span className="block text-xs font-medium text-foreground">Blinder Prüfer</span>
@@ -366,7 +366,7 @@ export function CreateTeamModal({
                             );
                           })}
                         </div>
-                        <p className="text-[11px] text-muted-foreground mt-1">
+                        <p className="text-xs text-muted-foreground mt-1">
                           Die Suche im Projektwissen — auch die der Agenten — sieht dann dort mit nach. Gelesen wird nur, nichts verändert.
                         </p>
                       </div>
@@ -414,7 +414,7 @@ export function CreateTeamModal({
                                   : "border-foreground/[0.06] bg-foreground/[0.02] hover:bg-foreground/[0.04]"
                               )}
                             >
-                              <AgentAvatar config={agent.config} size="sm" />
+                              <AgentAvatar config={agent.config} seed={agent.id} size="sm" />
                               <div className="flex-1 min-w-0">
                                 <p className={cn("text-sm font-medium truncate", isSelected ? "text-foreground" : "text-muted-foreground")}>
                                   {agent.name}
@@ -464,7 +464,7 @@ export function CreateTeamModal({
                           </option>
                         ))}
                       </select>
-                      <p className="text-[11px] text-muted-foreground mt-1">
+                      <p className="text-xs text-muted-foreground mt-1">
                         {projekt
                           ? "Der Lead verteilt Aufträge ans Projekt an die passenden Kollegen. Ohne Lead wählst du je Auftrag selbst."
                           : "Der Lead muss Mitglied des Teams sein und erhält delegierte Tasks."}
@@ -483,7 +483,7 @@ export function CreateTeamModal({
                             <option key={t.minuten} value={t.minuten}>{t.label}</option>
                           ))}
                         </select>
-                        <p className="text-[11px] text-muted-foreground mt-1">
+                        <p className="text-xs text-muted-foreground mt-1">
                           Im Takt sichtet der Lead die Inbox und vergibt die nächsten freigegebenen Karten. Ohne offene
                           Karten fällt der Lauf aus — er kostet dann nichts. Braucht einen Lead (oder genau ein Mitglied).
                         </p>
@@ -495,7 +495,7 @@ export function CreateTeamModal({
                         <label className="block text-xs font-medium text-muted-foreground mb-1.5">
                           Freigeben für <span className="text-muted-foreground">(optional)</span>
                         </label>
-                        <p className="text-[11px] text-muted-foreground/60 mb-2">
+                        <p className="text-xs text-muted-foreground/60 mb-2">
                           Ohne Freigabe siehst nur du das Projekt. Freigegebene sehen Board und Wissen und arbeiten mit —
                           ihren eigenen Agenten geben sie Aufträge. Verwalten kannst nur du.
                         </p>

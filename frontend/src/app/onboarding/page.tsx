@@ -93,7 +93,7 @@ export default function OnboardingPage() {
                 <PackIcon name={p.icon} className="h-6 w-6 text-blue-500 mb-3" />
                 <p className="text-sm font-semibold">{p.name}</p>
                 <p className="text-xs text-muted-foreground mt-1 line-clamp-3">{p.description}</p>
-                <p className="text-[11px] text-muted-foreground/60 mt-3">{p.agent_count} Agenten</p>
+                <p className="text-xs text-muted-foreground/60 mt-3">{p.agent_count} Agenten</p>
               </button>
             ))}
           </div>
@@ -126,7 +126,7 @@ export default function OnboardingPage() {
                   <div key={a.name} className="rounded-lg bg-foreground/[0.03] px-3 py-2">
                     <p className="text-sm font-medium">
                       {a.display_name}
-                      {!a.available && <span className="text-amber-700 dark:text-amber-400 text-[11px] ml-2">(Template fehlt)</span>}
+                      {!a.available && <span className="text-amber-700 dark:text-amber-400 text-xs ml-2">(Template fehlt)</span>}
                     </p>
                     {a.description && <p className="text-xs text-muted-foreground mt-0.5">{a.description}</p>}
                   </div>

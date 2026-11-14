@@ -70,7 +70,7 @@ export default function XlsxViewer({ fileData }: XlsxViewerProps) {
               key={name}
               onClick={() => switchSheet(name)}
               className={cn(
-                "px-3 py-1 text-[11px] font-medium rounded-md whitespace-nowrap transition-colors",
+                "px-3 py-1 text-xs font-medium rounded-md whitespace-nowrap transition-colors",
                 activeSheet === name
                   ? "bg-primary/10 text-primary"
                   : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
@@ -94,7 +94,7 @@ export default function XlsxViewer({ fileData }: XlsxViewerProps) {
                       key={ci}
                       className={cn(
                         "border border-foreground/[0.08] px-2.5 py-1.5 text-[12px] font-mono text-left",
-                        ri === 0 && "text-[11px] font-medium bg-foreground/[0.04]"
+                        ri === 0 && "text-xs font-medium bg-foreground/[0.04]"
                       )}
                     >
                       {cell}

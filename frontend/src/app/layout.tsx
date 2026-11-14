@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
+import { Bricolage_Grotesque } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthGuard } from "@/components/auth/auth-guard";
 import { DialogProvider } from "@/components/ui/dialog-provider";
@@ -11,6 +12,15 @@ import { TutorialFenster } from "@/components/tutorials/tutorial-fenster";
 import { FeedbackWidget } from "@/components/feedback/feedback-widget";
 import { cn } from "@/lib/utils";
 import "./globals.css";
+
+// Titelschrift mit eigener Handschrift (Entscheidung Daniel, 14.11.2026): die
+// Gestaltungsprüfung fand die Oberfläche austauschbar. Fließtext bleibt Geist.
+// next/font legt die Datei beim Bauen ins Abbild — zur Laufzeit kein Google-Abruf.
+const titelSchrift = Bricolage_Grotesque({
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-titel",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "AI Employee",
@@ -45,6 +55,7 @@ export default function RootLayout({
         className={cn(
           GeistSans.variable,
           GeistMono.variable,
+          titelSchrift.variable,
           "min-h-screen bg-background font-sans antialiased"
         )}
       >

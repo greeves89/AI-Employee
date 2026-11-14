@@ -67,9 +67,9 @@ function StatCard({
     <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[11px] font-medium text-muted-foreground/70">{label}</p>
+          <p className="text-xs font-medium text-muted-foreground/70">{label}</p>
           <p className="mt-1.5 text-2xl font-semibold tracking-tight">{value}</p>
-          {sub && <p className="mt-0.5 text-[11px] text-muted-foreground">{sub}</p>}
+          {sub && <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>}
         </div>
         <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl", colors[color])}>
           <Icon className="h-5 w-5" />
@@ -144,10 +144,10 @@ function AgentDetailModal({ agentId, days, onClose }: { agentId: string; days: n
                   </div>
                   <div>
                     <p className="text-base font-semibold">{data.agent.name}</p>
-                    {data.agent.role && <p className="text-[11px] text-muted-foreground">{data.agent.role}</p>}
+                    {data.agent.role && <p className="text-xs text-muted-foreground">{data.agent.role}</p>}
                   </div>
                   <span className={cn(
-                    "ml-auto inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium",
+                    "ml-auto inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium",
                     data.agent.state === "running" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
                     data.agent.state === "idle" ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
                     "bg-foreground/[0.05] text-muted-foreground border-foreground/[0.08]"
@@ -168,7 +168,7 @@ function AgentDetailModal({ agentId, days, onClose }: { agentId: string; days: n
                   { label: "Ø Turns", value: String(data.summary.avg_turns) },
                 ].map((s) => (
                   <div key={s.label} className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-3">
-                    <p className="text-[10px] font-medium text-muted-foreground/70">{s.label}</p>
+                    <p className="text-[11px] font-medium text-muted-foreground/70">{s.label}</p>
                     <p className="mt-0.5 text-lg font-semibold">{s.value}</p>
                   </div>
                 ))}
@@ -177,7 +177,7 @@ function AgentDetailModal({ agentId, days, onClose }: { agentId: string; days: n
               {/* Daily volume mini chart */}
               {data.daily?.length > 0 && (
                 <div className="mb-5">
-                  <p className="text-[11px] font-medium text-muted-foreground/70 mb-2">Task-Volumen ({days}d)</p>
+                  <p className="text-xs font-medium text-muted-foreground/70 mb-2">Task-Volumen ({days}d)</p>
                   <ResponsiveContainer width="100%" height={120}>
                     <ComposedChart data={data.daily}>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
@@ -196,11 +196,11 @@ function AgentDetailModal({ agentId, days, onClose }: { agentId: string; days: n
                 <div className="mb-5">
                   <div className="flex items-center gap-1.5 mb-2">
                     <AlertTriangle className="h-3.5 w-3.5 text-red-400" />
-                    <p className="text-[11px] font-medium text-muted-foreground/70">Letzte Fehler</p>
+                    <p className="text-xs font-medium text-muted-foreground/70">Letzte Fehler</p>
                   </div>
                   <div className="space-y-1.5">
                     {data.recent_errors.map((e: any, i: number) => (
-                      <div key={i} className="rounded-lg border border-red-500/10 bg-red-500/5 px-3 py-2 text-[11px]">
+                      <div key={i} className="rounded-lg border border-red-500/10 bg-red-500/5 px-3 py-2 text-xs">
                         <p className="font-medium text-red-300">{e.title || "Unbekannt"}</p>
                         {e.error && <p className="text-muted-foreground mt-0.5 truncate">{e.error}</p>}
                       </div>
@@ -214,11 +214,11 @@ function AgentDetailModal({ agentId, days, onClose }: { agentId: string; days: n
                 <div>
                   <div className="flex items-center gap-1.5 mb-2">
                     <MessageSquare className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400" />
-                    <p className="text-[11px] font-medium text-muted-foreground/70">Bewertungen</p>
+                    <p className="text-xs font-medium text-muted-foreground/70">Bewertungen</p>
                   </div>
                   <div className="space-y-1.5">
                     {data.ratings.map((r: any) => (
-                      <div key={r.id} className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2 text-[11px]">
+                      <div key={r.id} className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2 text-xs">
                         <div className="flex items-center justify-between">
                           <Stars value={r.rating} />
                           <span className="text-muted-foreground">{r.created_at ? r.created_at.slice(0, 10) : ""}</span>
@@ -405,7 +405,7 @@ export default function AnalyticsPage() {
               <div className="flex items-center gap-2 mb-4">
                 <Sparkles className="h-4 w-4 text-primary" />
                 <h2 className="text-sm font-semibold">Skill Analytics — Zeitersparnis & Qualität</h2>
-                <span className="ml-auto text-[11px] text-muted-foreground">{sortedSkills.length} Skills</span>
+                <span className="ml-auto text-xs text-muted-foreground">{sortedSkills.length} Skills</span>
               </div>
 
               {sortedSkills.length === 0 ? (
@@ -416,7 +416,7 @@ export default function AnalyticsPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-foreground/[0.06] text-[11px] font-medium text-muted-foreground/70">
+                      <tr className="border-b border-foreground/[0.06] text-xs font-medium text-muted-foreground/70">
                         <th className="text-left pb-2 pr-4">Skill</th>
                         <th
                           className="text-right pb-2 px-3 cursor-pointer hover:text-foreground whitespace-nowrap"
@@ -458,12 +458,12 @@ export default function AnalyticsPage() {
                         <tr key={s.id} className="hover:bg-foreground/[0.02] transition-colors">
                           <td className="py-2.5 pr-4">
                             <div className="font-medium text-[13px]">{s.name}</div>
-                            <div className="text-[11px] text-muted-foreground truncate max-w-[200px]">{s.description}</div>
+                            <div className="text-xs text-muted-foreground truncate max-w-[200px]">{s.description}</div>
                           </td>
                           <td className="py-2.5 px-3 text-right text-[12px] text-muted-foreground">
                             <span className={s.usage_count > 0 ? "text-foreground font-medium" : ""}>{s.usage_count ?? 0}</span>
                             {s.period_uses > 0 && s.period_uses < s.usage_count && (
-                              <div className="text-[10px] text-muted-foreground">{s.period_uses} ({days}d)</div>
+                              <div className="text-[11px] text-muted-foreground">{s.period_uses} ({days}d)</div>
                             )}
                           </td>
                           <td className="py-2.5 px-3 text-right text-[12px]">
@@ -488,7 +488,7 @@ export default function AnalyticsPage() {
                             {s.roi_factor
                               ? (
                                 <span className={cn(
-                                  "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium",
+                                  "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
                                   s.roi_factor >= 5 ? "bg-emerald-500/10 text-emerald-400" :
                                   s.roi_factor >= 2 ? "bg-blue-500/10 text-blue-400" :
                                   "bg-amber-500/10 text-amber-700 dark:text-amber-400"
@@ -501,7 +501,7 @@ export default function AnalyticsPage() {
                           <td className="py-2.5 px-3 text-right">
                             <Stars value={s.avg_rating} />
                           </td>
-                          <td className="py-2.5 pl-3 text-right text-[11px] text-muted-foreground whitespace-nowrap">
+                          <td className="py-2.5 pl-3 text-right text-xs text-muted-foreground whitespace-nowrap">
                             {s.avg_agent_self_rating ? `${s.avg_agent_self_rating.toFixed(1)}` : "—"} / {s.avg_user_rating ? `${s.avg_user_rating.toFixed(1)}` : "—"}
                           </td>
                         </tr>
@@ -518,13 +518,13 @@ export default function AnalyticsPage() {
                 <div className="flex items-center gap-2 mb-4">
                   <Bot className="h-4 w-4 text-primary" />
                   <h2 className="text-sm font-semibold">Leistung je Agent</h2>
-                  <span className="ml-auto text-[11px] text-muted-foreground">Klicken für Details</span>
+                  <span className="ml-auto text-xs text-muted-foreground">Klicken für Details</span>
                 </div>
                 {agentsData?.agents?.length > 0 ? (
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-b border-foreground/[0.06] text-[11px] font-medium text-muted-foreground/70">
+                        <tr className="border-b border-foreground/[0.06] text-xs font-medium text-muted-foreground/70">
                           <th className="text-left pb-2 pr-4">Agent</th>
                           <th className="text-right pb-2 px-3">Tasks</th>
                           <th className="text-right pb-2 px-3">Erfolg</th>
@@ -543,7 +543,7 @@ export default function AnalyticsPage() {
                             >
                               <td className="py-2.5 pr-4">
                                 <div className="font-medium text-[13px]">{a.name}</div>
-                                {a.role && <div className="text-[11px] text-muted-foreground">{a.role}</div>}
+                                {a.role && <div className="text-xs text-muted-foreground">{a.role}</div>}
                               </td>
                               <td className="py-2.5 px-3 text-right text-[12px]">{a.total_tasks}</td>
                               <td className="py-2.5 px-3 text-right text-[12px]">

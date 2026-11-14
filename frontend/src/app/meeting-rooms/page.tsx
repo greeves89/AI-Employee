@@ -309,7 +309,7 @@ export default function MeetingRoomsPage() {
               <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-2 space-y-4">
                 {/* Name */}
                 <div>
-                  <label className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">Name</label>
+                  <label className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">Name</label>
                   <input
                     type="text"
                     value={name}
@@ -321,7 +321,7 @@ export default function MeetingRoomsPage() {
 
                 {/* Topic — required */}
                 <div>
-                  <label className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider flex items-center gap-1.5">
+                  <label className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider flex items-center gap-1.5">
                     Agenda / Thema
                     <span className="text-red-400">*</span>
                   </label>
@@ -338,13 +338,13 @@ export default function MeetingRoomsPage() {
                     )}
                   />
                   {topicError && (
-                    <p className="mt-1 text-[11px] text-red-400">Eine Agenda ist Pflicht — ohne Thema kein Meeting.</p>
+                    <p className="mt-1 text-xs text-red-400">Eine Agenda ist Pflicht — ohne Thema kein Meeting.</p>
                   )}
                 </div>
 
                 {/* Team picker — pre-fills the agent selection below */}
                 <div>
-                  <label className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">
+                  <label className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">
                     Team auswählen <span className="normal-case">(optional)</span>
                   </label>
                   <select
@@ -358,14 +358,14 @@ export default function MeetingRoomsPage() {
                       <option key={t.id} value={t.id}>{t.name}</option>
                     ))}
                   </select>
-                  <p className="mt-1 text-[10px] text-muted-foreground/60">
+                  <p className="mt-1 text-[11px] text-muted-foreground/60">
                     Ein Team füllt die Agenten-Auswahl vor — du kannst sie danach anpassen.
                   </p>
                 </div>
 
                 {/* Agents */}
                 <div>
-                  <label className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">
+                  <label className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">
                     Agenten <span className="normal-case">(2–6)</span>
                   </label>
                   <div className="mt-2 grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
@@ -397,7 +397,7 @@ export default function MeetingRoomsPage() {
                     )}
                   </div>
                   {teamOverflow && (
-                    <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-400">
+                    <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-400">
                       Team hat mehr als 6 Mitglieder — 6 vorausgewählt, bitte anpassen.
                     </p>
                   )}
@@ -421,7 +421,7 @@ export default function MeetingRoomsPage() {
                       </div>
                       <div>
                         <p className="text-sm font-medium">Taskforce — echtes Ergebnis bauen</p>
-                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                        <p className="text-xs text-muted-foreground mt-0.5">
                           Statt nur zu besprechen, bauen die Agenten gemeinsam ein echtes, lauffähiges Ergebnis
                           (z.B. eine App) in einem geteilten Arbeitsverzeichnis. Ein Koordinator fügt die Teile am
                           Ende zu einem fertigen Deliverable zusammen.
@@ -459,7 +459,7 @@ export default function MeetingRoomsPage() {
                           </div>
                           <div>
                             <p className="text-sm font-medium">Moderator</p>
-                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                            <p className="text-xs text-muted-foreground mt-0.5">
                               Ein virtueller Moderator führt das Meeting, stellt gezielte Fragen und leitet Übergänge ein.
                             </p>
                           </div>
@@ -482,7 +482,7 @@ export default function MeetingRoomsPage() {
                       {/* Moderator-LLM (pro-Meeting-Override) */}
                       {useModerator && (
                         <div className="pl-11 -mt-1">
-                          <label className="block text-[11px] text-muted-foreground mb-1">Moderator-LLM</label>
+                          <label className="block text-xs text-muted-foreground mb-1">Moderator-LLM</label>
                           <select
                             value={moderatorAiAccountId}
                             onChange={(e) => setModeratorAiAccountId(e.target.value)}
@@ -493,7 +493,7 @@ export default function MeetingRoomsPage() {
                               <option key={a.id} value={String(a.id)}>{a.name}</option>
                             ))}
                           </select>
-                          <p className="text-[10px] text-muted-foreground/60 mt-1">
+                          <p className="text-[11px] text-muted-foreground/60 mt-1">
                             Welches LLM den Moderator antreibt. Leer = globaler Default.
                           </p>
                         </div>
@@ -507,7 +507,7 @@ export default function MeetingRoomsPage() {
                           </div>
                           <div>
                             <p className="text-sm font-medium">Besprechungsphasen</p>
-                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                            <p className="text-xs text-muted-foreground mt-0.5">
                               Gliedert die Besprechung in Eröffnung, Analyse und Synthese, statt reihum ohne Ende zu reden.
                             </p>
                           </div>
@@ -563,11 +563,11 @@ export default function MeetingRoomsPage() {
                           {/* Add stage */}
                           <button type="button"
                             onClick={() => setCustomStages(prev => [...prev, { name: "Neue Phase", rounds: 1 }])}
-                            className="w-full rounded border border-dashed border-border py-1 text-[11px] text-muted-foreground hover:text-foreground hover:border-foreground/20 transition-colors"
+                            className="w-full rounded border border-dashed border-border py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/20 transition-colors"
                           >
                             + Phase hinzufügen
                           </button>
-                          <div className="pt-1 border-t border-foreground/[0.06] text-[10px] text-muted-foreground/60">
+                          <div className="pt-1 border-t border-foreground/[0.06] text-[11px] text-muted-foreground/60">
                             Gesamt: {customStages.reduce((s, r) => s + r.rounds, 0)} Runden
                             × {selectedAgents.length || "n"} Agenten
                             {useModerator && " + Moderator"}
@@ -578,7 +578,7 @@ export default function MeetingRoomsPage() {
                       {/* Plain max rounds (only shown without stages) */}
                       {!useStages && (
                         <div>
-                          <label className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">Max Runden</label>
+                          <label className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">Max Runden</label>
                           <input
                             type="number"
                             value={maxRounds}
@@ -859,7 +859,7 @@ function DeliverableFiles({ roomId }: { roomId: string }) {
         <Hammer className="h-4 w-4 text-primary" />
         <span className="text-sm font-medium text-primary">Taskforce-Ergebnis</span>
         <span className={cn(
-          "text-[10px] px-2 py-0.5 rounded-full border font-medium",
+          "text-[11px] px-2 py-0.5 rounded-full border font-medium",
           integrated
             ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
             : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
@@ -898,7 +898,7 @@ function DeliverableFiles({ roomId }: { roomId: string }) {
       {openPath && (
         <div className="mt-3 rounded-lg border border-border bg-card/60 overflow-hidden">
           <div className="flex items-center justify-between px-3 py-1.5 border-b border-border">
-            <span className="text-[11px] font-mono truncate">{openPath}</span>
+            <span className="text-xs font-mono truncate">{openPath}</span>
             <button onClick={() => setOpenPath(null)} className="text-muted-foreground hover:text-foreground">
               <X className="h-3.5 w-3.5" />
             </button>
@@ -911,7 +911,7 @@ function DeliverableFiles({ roomId }: { roomId: string }) {
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{openContent}</ReactMarkdown>
               </div>
             ) : (
-              <pre className="text-[11px] leading-relaxed whitespace-pre-wrap break-words font-mono text-foreground/80">{openContent}</pre>
+              <pre className="text-xs leading-relaxed whitespace-pre-wrap break-words font-mono text-foreground/80">{openContent}</pre>
             )}
           </div>
         </div>

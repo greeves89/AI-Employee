@@ -83,7 +83,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
         {/* Header */}
         <div className="flex items-start justify-between gap-2 mb-4">
           <div className="flex items-center gap-3 min-w-0">
-            <AgentAvatar config={agent.config} active={isActive} />
+            <AgentAvatar config={agent.config} seed={agent.id} active={isActive} />
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 min-w-0">
                 <h4 className="font-semibold text-sm tracking-tight truncate" title={agent.name}>{agent.name}</h4>
@@ -91,7 +91,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
                 {agentTag && (
                   <span
                     title={`Schlagwort: ${agentTag}`}
-                    className="shrink-0 rounded-full border border-foreground/[0.08] bg-foreground/[0.04] px-1.5 py-0.5 text-[10px] text-muted-foreground max-w-[8rem] truncate"
+                    className="shrink-0 rounded-full border border-foreground/[0.08] bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] text-muted-foreground max-w-[8rem] truncate"
                   >
                     {agentTag}
                   </span>
@@ -99,9 +99,9 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
               </div>
               <div className="flex items-center gap-1.5">
                 {agent.role ? (
-                  <span className="text-[11px] text-primary/70 font-medium truncate">{agent.role}</span>
+                  <span className="text-xs text-primary/70 font-medium truncate">{agent.role}</span>
                 ) : simpleMode ? null : (
-                  <span className="text-[11px] font-mono text-muted-foreground/70">
+                  <span className="text-xs font-mono text-muted-foreground/70">
                     {agent.model.split("-").slice(0, 2).join("-")}
                   </span>
                 )}
@@ -142,7 +142,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
               return (
                 <div
                   title={`Proactive Mode aktiv${label ? ` — alle ${label}` : ""}`}
-                  className="inline-flex items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-[10px] font-medium text-emerald-400"
+                  className="inline-flex items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-[11px] font-medium text-emerald-400"
                 >
                   <Zap className="h-3 w-3 fill-emerald-400/30" />
                   {label && <span className="tabular-nums">{label}</span>}
@@ -150,17 +150,17 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
               );
             })()}
             {simpleMode ? null : agent.mode === "claude_code" ? (
-              <div className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium bg-orange-500/10 text-orange-400 border-orange-500/20">
+              <div className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-medium bg-orange-500/10 text-orange-400 border-orange-500/20">
                 <Plug className="h-3 w-3" />
                 Anthropic
               </div>
             ) : agent.mode === "custom_llm" && agent.ai_account_id ? (
-              <div className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium bg-violet-500/10 text-violet-400 border-violet-500/20">
+              <div className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-medium bg-violet-500/10 text-violet-400 border-violet-500/20">
                 <Plug className="h-3 w-3" />
                 {agent.ai_account_name || agent.ai_account_provider || "KI-Konto"}
               </div>
             ) : agent.mode === "custom_llm" && agent.llm_config ? (
-              <div className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium bg-violet-500/10 text-violet-400 border-violet-500/20">
+              <div className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-medium bg-violet-500/10 text-violet-400 border-violet-500/20">
                 <Plug className="h-3 w-3" />
                 {agent.llm_config.provider_type === "openai" ? "OpenAI" :
                  agent.llm_config.provider_type === "google" ? "Gemini" :
@@ -169,7 +169,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
               </div>
             ) : null}
             {!simpleMode && (updating || agent.update_available) && (
-              <div className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
+              <div className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
                 {updating ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowUpCircle className="h-3 w-3" />}
                 {updating ? "Wird aktualisiert …" : "Aktualisierung"}
               </div>
@@ -177,7 +177,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
             {!simpleMode && !updating && !agent.update_available && agent.image_outdated && (
               <div
                 title="Läuft auf einem veralteten Agent-Image. Auf dem Host ./scripts/update.sh ausführen und den Agent neu erstellen."
-                className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium bg-orange-500/10 text-orange-400 border-orange-500/20"
+                className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-medium bg-orange-500/10 text-orange-400 border-orange-500/20"
               >
                 <ArrowUpCircle className="h-3 w-3" />
                 Abbild veraltet
@@ -186,7 +186,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
             {agent.config?.stop_reason && (
               <div
                 title={agent.config.stop_reason.detail}
-                className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20"
+                className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-medium bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20"
               >
                 <AlertTriangle className="h-3 w-3" />
                 Speicher voll
@@ -194,7 +194,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
             )}
             {agent.budget_usd != null && agent.budget_usd > 0 && agent.monthly_cost_usd >= agent.budget_usd && (
               <div className={cn(
-                "inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium",
+                "inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-medium",
                 agent.budget_exceeded_action === "stop"
                   ? "bg-red-500/10 text-red-400 border-red-500/20"
                   : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20"
@@ -203,7 +203,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
               </div>
             )}
             <div className={cn(
-              "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium",
+              "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium",
               config.badge
             )}>
               {/* Green/red dot = online/offline */}
@@ -224,7 +224,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
         {/* Current task */}
         {agent.current_task && (
           <div className="mb-4 rounded-lg bg-blue-500/5 border border-blue-500/10 px-3 py-2">
-            <p className="text-[11px] font-medium text-blue-400 truncate">
+            <p className="text-xs font-medium text-blue-400 truncate">
               {simpleMode && agent.current_task.startsWith("chat:") ? "Antwortet im Chat" : agent.current_task}
             </p>
           </div>
@@ -234,7 +234,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
         {!simpleMode && (
           <div className="space-y-3 flex-1">
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-[11px]">
+              <div className="flex items-center justify-between text-xs">
                 <span className="flex items-center gap-1.5 text-muted-foreground">
                   <Cpu className="h-3 w-3" /> CPU
                 </span>
@@ -249,7 +249,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
             </div>
 
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-[11px]">
+              <div className="flex items-center justify-between text-xs">
                 <span className="flex items-center gap-1.5 text-muted-foreground">
                   <MemoryStick className="h-3 w-3" /> Memory
                 </span>
@@ -265,7 +265,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
 
             {agent.budget_usd != null && agent.budget_usd > 0 && (
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-[11px]">
+                <div className="flex items-center justify-between text-xs">
                   <span className="flex items-center gap-1.5 text-muted-foreground">
                     <Wallet className="h-3 w-3" /> Budget / Monat
                   </span>
@@ -292,14 +292,14 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
         {/* Footer */}
         <div className="mt-4 flex items-center justify-between pt-3 border-t border-foreground/[0.04]">
           {!simpleMode && agent.queue_depth !== null && agent.queue_depth > 0 ? (
-            <div className="flex items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-400">
+            <div className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400">
               <Layers className="h-3 w-3" />
               {agent.queue_depth} in Warteschlange
             </div>
           ) : (
-            <span className="text-[11px] text-muted-foreground">{simpleMode ? "" : "Keine Warteschlange"}</span>
+            <span className="text-xs text-muted-foreground">{simpleMode ? "" : "Keine Warteschlange"}</span>
           )}
-          <div className="flex items-center gap-1 text-[11px] text-muted-foreground can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1 text-xs text-muted-foreground can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-opacity">
             Öffnen <ArrowUpRight className="h-3 w-3" />
           </div>
         </div>

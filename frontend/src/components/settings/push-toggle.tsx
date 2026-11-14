@@ -63,7 +63,7 @@ export function PushToggle() {
           {active ? <Bell className="h-4 w-4 text-primary" /> : <BellOff className="h-4 w-4 text-muted-foreground/60" />}
           Browser-Meldungen
         </div>
-        <p className="mt-0.5 text-[11px] text-muted-foreground/60">
+        <p className="mt-0.5 text-xs text-muted-foreground/60">
           {unsupported
             ? "Dieser Browser unterstützt keine Push-Meldungen. Auf dem iPhone muss die Seite dafür zum Home-Bildschirm hinzugefügt werden."
             : blocked

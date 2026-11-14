@@ -55,11 +55,11 @@ function HerkunftAbzeichen({ herkunft, hinweise, vorlagen }: { herkunft?: string
   return (
     <div className="space-y-1">
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium", stil.klasse)}>
+        <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium", stil.klasse)}>
           <Ico className="h-3 w-3" /> {herkunft}
         </span>
         {vorlagen && vorlagen.length > 0 && (
-          <span className="text-[10px] text-muted-foreground/70">
+          <span className="text-[11px] text-muted-foreground/70">
             Von Vorlage {vorlagen.slice(0, 2).join(", ")}{vorlagen.length > 2 ? ` und ${vorlagen.length - 2} weiteren` : ""} genutzt
           </span>
         )}
@@ -67,7 +67,7 @@ function HerkunftAbzeichen({ herkunft, hinweise, vorlagen }: { herkunft?: string
       {hinweise && hinweise.length > 0 && (
         <ul className="space-y-0.5">
           {hinweise.map((h) => (
-            <li key={h} className="flex items-start gap-1 text-[10px] text-amber-700 dark:text-amber-400">
+            <li key={h} className="flex items-start gap-1 text-[11px] text-amber-700 dark:text-amber-400">
               <AlertTriangle className="mt-px h-3 w-3 shrink-0" /> {h}
             </li>
           ))}
@@ -200,7 +200,7 @@ function SkillDetailModal({ skill, onClose }: SkillDetailModalProps) {
             </div>
             <div>
               <h2 className="text-sm font-semibold">{skill.name}</h2>
-              <p className="text-[10px] text-muted-foreground/60">{skill.description}</p>
+              <p className="text-[11px] text-muted-foreground/60">{skill.description}</p>
             </div>
           </div>
           <button onClick={onClose} className="rounded-lg p-1.5 hover:bg-foreground/[0.06] text-muted-foreground hover:text-foreground transition-all">
@@ -214,16 +214,16 @@ function SkillDetailModal({ skill, onClose }: SkillDetailModalProps) {
           {/* Metadata */}
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-3 space-y-1">
-              <p className="text-muted-foreground/60 text-[10px] uppercase tracking-wide">Kategorie</p>
+              <p className="text-muted-foreground/60 text-[11px] uppercase tracking-wide">Kategorie</p>
               <p className="font-medium">{cfg.label}</p>
             </div>
             <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-3 space-y-1">
-              <p className="text-muted-foreground/60 text-[10px] uppercase tracking-wide">Nutzung</p>
+              <p className="text-muted-foreground/60 text-[11px] uppercase tracking-wide">Nutzung</p>
               <p className="font-medium">{skill.usage_count ?? 0}× verwendet</p>
             </div>
             {skill.source_repo && (
               <div className="col-span-2 rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-3 space-y-1">
-                <p className="text-muted-foreground/60 text-[10px] uppercase tracking-wide">Quelle</p>
+                <p className="text-muted-foreground/60 text-[11px] uppercase tracking-wide">Quelle</p>
                 <a
                   href={skill.source_url || `https://github.com/${skill.source_repo}`}
                   target="_blank"
@@ -239,8 +239,8 @@ function SkillDetailModal({ skill, onClose }: SkillDetailModalProps) {
           {/* Manual duration for ROI analytics */}
           {skill.id && (
             <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-3 space-y-2">
-              <p className="text-muted-foreground/60 text-[10px] uppercase tracking-wide">Manuelle Dauer (Minuten)</p>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-muted-foreground/60 text-[11px] uppercase tracking-wide">Manuelle Dauer (Minuten)</p>
+              <p className="text-xs text-muted-foreground">
                 Wie lange würde diese Aufgabe manuell dauern? Basis für die Zeitersparnis-Berechnung in Analytics.
               </p>
               <div className="flex items-center gap-2">
@@ -269,7 +269,7 @@ function SkillDetailModal({ skill, onClose }: SkillDetailModalProps) {
           {/* Instructions preview */}
           {skill.content && (
             <div className="space-y-2">
-              <p className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wide">Instruktionen</p>
+              <p className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wide">Instruktionen</p>
               <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-3 font-mono text-xs text-foreground/70 whitespace-pre-wrap max-h-48 overflow-y-auto">
                 {skill.content}
               </div>
@@ -282,7 +282,7 @@ function SkillDetailModal({ skill, onClose }: SkillDetailModalProps) {
               <div className="flex items-center gap-2">
                 <Paperclip className="h-3.5 w-3.5 text-muted-foreground/60" />
                 <p className="text-xs font-semibold">Datei-Anhänge</p>
-                <span className="text-[10px] text-muted-foreground">({files.length})</span>
+                <span className="text-[11px] text-muted-foreground">({files.length})</span>
               </div>
               <div>
                 <input
@@ -307,7 +307,7 @@ function SkillDetailModal({ skill, onClose }: SkillDetailModalProps) {
               <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{uploadError}</p>
             )}
 
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-[11px] text-muted-foreground">
               Dateien werden beim Installieren dieses Skills automatisch in den Agenten-Workspace kopiert
               (<code className="font-mono">/workspace/skills/{skill.name}/</code>).
             </p>
@@ -331,7 +331,7 @@ function SkillDetailModal({ skill, onClose }: SkillDetailModalProps) {
                     <FileIcon className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium truncate">{f.filename}</p>
-                      <p className="text-[10px] text-muted-foreground">{formatBytes(f.size_bytes)} · {f.content_type}</p>
+                      <p className="text-[11px] text-muted-foreground">{formatBytes(f.size_bytes)} · {f.content_type}</p>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       <button
@@ -440,7 +440,7 @@ function SkillModal({ initial, onClose, onSave }: SkillModalProps) {
               placeholder="mein-skill"
               className="w-full rounded-xl border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground disabled:opacity-50"
             />
-            <p className="text-[10px] text-muted-foreground">Kleinbuchstaben und Bindestriche. Wird als Verzeichnisname verwendet.</p>
+            <p className="text-[11px] text-muted-foreground">Kleinbuchstaben und Bindestriche. Wird als Verzeichnisname verwendet.</p>
           </div>
 
           {/* Description */}
@@ -464,7 +464,7 @@ function SkillModal({ initial, onClose, onSave }: SkillModalProps) {
               placeholder={`# ${form.name || "Mein Skill"}\n\nBeschreibe hier detailliert was der Agent tun soll wenn dieser Skill aktiv ist.\n\n## Wann verwenden\n- ...\n\n## Vorgehen\n1. ...\n2. ...`}
               className="w-full rounded-xl border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground resize-none leading-relaxed"
             />
-            <p className="text-[10px] text-muted-foreground">Markdown-Instruktionen für den Agenten. Der Skill wird als SKILL.md gespeichert.</p>
+            <p className="text-[11px] text-muted-foreground">Markdown-Instruktionen für den Agenten. Der Skill wird als SKILL.md gespeichert.</p>
           </div>
 
           {error && (
@@ -586,21 +586,21 @@ function SkillSourcesAdmin() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="font-medium truncate">{s.name}</span>
-                      {s.builtin && <span className="rounded border border-sky-500/30 px-1 text-[10px] text-sky-600 dark:text-sky-400">eingebaut</span>}
-                      {s.trusted && <span className="flex items-center gap-0.5 text-[10px] text-emerald-400"><ShieldCheck className="h-3 w-3" />trusted</span>}
-                      {s.has_credential && <span className="text-[10px] text-amber-700 dark:text-amber-400">Credential</span>}
+                      {s.builtin && <span className="rounded border border-sky-500/30 px-1 text-[11px] text-sky-600 dark:text-sky-400">eingebaut</span>}
+                      {s.trusted && <span className="flex items-center gap-0.5 text-[11px] text-emerald-400"><ShieldCheck className="h-3 w-3" />trusted</span>}
+                      {s.has_credential && <span className="text-[11px] text-amber-700 dark:text-amber-400">Credential</span>}
                     </div>
                     <div className="text-muted-foreground truncate">
                       {s.location}{s.ref ? `#${s.ref}` : ""}{s.subdir ? ` /${s.subdir}` : ""}
                       {s.last_status ? ` · ${s.last_status}` : ""}
                     </div>
                     {s.vorlagen && s.vorlagen.length > 0 && (
-                      <div className="text-[10px] text-muted-foreground/70 truncate">
+                      <div className="text-[11px] text-muted-foreground/70 truncate">
                         Von Vorlage {s.vorlagen.slice(0, 3).join(", ")}{s.vorlagen.length > 3 ? ` und ${s.vorlagen.length - 3} weiteren` : ""} genutzt
                       </div>
                     )}
                   </div>
-                  <button onClick={() => toggle(s)} className={cn("rounded px-2 py-1 text-[11px] border", s.enabled ? "border-emerald-500/40 text-emerald-400" : "border-foreground/10 text-muted-foreground")}>
+                  <button onClick={() => toggle(s)} className={cn("rounded px-2 py-1 text-xs border", s.enabled ? "border-emerald-500/40 text-emerald-400" : "border-foreground/10 text-muted-foreground")}>
                     {s.enabled ? "aktiv" : "aus"}
                   </button>
                   <button onClick={() => remove(s)} className="text-muted-foreground hover:text-red-400"><Trash2 className="h-4 w-4" /></button>
@@ -611,12 +611,12 @@ function SkillSourcesAdmin() {
 
           {builtin.length > 0 && (
             <div className="rounded-lg border border-foreground/[0.05] bg-foreground/[0.01] p-2.5">
-              <p className="mb-1.5 text-[11px] uppercase tracking-wide text-muted-foreground/60">
+              <p className="mb-1.5 text-xs uppercase tracking-wide text-muted-foreground/60">
                 Über die Umgebung gesetzt ({builtin.length}) — werden gecrawlt (SKILL_REPOS, nur Lesen)
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {builtin.map((b) => (
-                  <span key={b.location} className="flex items-center gap-1 rounded border border-foreground/[0.06] bg-foreground/[0.02] px-2 py-0.5 text-[11px] text-muted-foreground">
+                  <span key={b.location} className="flex items-center gap-1 rounded border border-foreground/[0.06] bg-foreground/[0.02] px-2 py-0.5 text-xs text-muted-foreground">
                     <Globe className="h-3 w-3 text-sky-400/70" /> {b.location}
                   </span>
                 ))}
@@ -818,7 +818,7 @@ export default function SkillsPage() {
         {/* Abgrenzung zur zweiten Skill-Oberflaeche (#787 Punkt 5): dieselbe
             Katalog-Quelle (/api/v1/skills/catalog) steht verkuerzt auch in den
             Agent-Einstellungen → Wissen → Skills, dort ohne Wechsel der Seite. */}
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           Katalog und Installation für jeden Agenten über den Agenten-Wähler unten.
           Auf der Seite eines Agenten geht das auch unter Wissen → Skills, mit
           demselben Katalog.
@@ -932,7 +932,7 @@ export default function SkillsPage() {
             <button
               onClick={() => setCategory(null)}
               className={cn(
-                "rounded-full border px-3 py-1 text-[11px] font-medium transition-all",
+                "rounded-full border px-3 py-1 text-xs font-medium transition-all",
                 !category
                   ? "bg-foreground/[0.08] text-foreground border-foreground/[0.12]"
                   : "text-muted-foreground/60 border-foreground/[0.06] hover:text-foreground"
@@ -949,7 +949,7 @@ export default function SkillsPage() {
                   key={cat}
                   onClick={() => setCategory(category === cat ? null : cat)}
                   className={cn(
-                    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium transition-all",
+                    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all",
                     category === cat ? cfg.color : "text-muted-foreground/60 border-foreground/[0.06] hover:text-foreground"
                   )}
                 >
@@ -1002,14 +1002,14 @@ export default function SkillsPage() {
                         </div>
                         <div>
                           <p className="text-sm font-semibold">{skill.name}</p>
-                          <p className="text-[10px] text-muted-foreground">{skill.repo}</p>
+                          <p className="text-[11px] text-muted-foreground">{skill.repo}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5">
                         {skill.type === "db" && skill.id && (
-                          <span className="text-[10px] text-muted-foreground group-hover:text-muted-foreground/60 transition-colors">Details →</span>
+                          <span className="text-[11px] text-muted-foreground group-hover:text-muted-foreground/60 transition-colors">Details →</span>
                         )}
-                        <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium", cfg.color)}>
+                        <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium", cfg.color)}>
                           {cfg.label}
                         </span>
                       </div>
@@ -1080,7 +1080,7 @@ export default function SkillsPage() {
                           href={skill.source_url || `https://github.com/${skill.source_repo}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-[10px] text-amber-700 dark:text-amber-400/70 hover:text-amber-700 dark:text-amber-400 mt-1 inline-flex items-center gap-1 transition-colors"
+                          className="text-[11px] text-amber-700 dark:text-amber-400/70 hover:text-amber-700 dark:text-amber-400 mt-1 inline-flex items-center gap-1 transition-colors"
                         >
                           📦 {skill.source_repo} ↗
                         </a>
@@ -1248,19 +1248,19 @@ export default function SkillsPage() {
                             ` · Hilfreichkeit vorher ${prop.avg_helpfulness_before.toFixed(1)}/5 (${prop.rated_count_before ?? 0} Bewertungen)`}
                         </p>
                       </div>
-                      <span className="shrink-0 text-[10px] rounded-full border border-sky-500/30 bg-sky-500/10 text-sky-400 px-2 py-0.5">
+                      <span className="shrink-0 text-[11px] rounded-full border border-sky-500/30 bg-sky-500/10 text-sky-400 px-2 py-0.5">
                         Vorschlag
                       </span>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                       <div>
-                        <p className="text-[10px] uppercase text-muted-foreground/60 mb-1">Aktuell</p>
+                        <p className="text-[11px] uppercase text-muted-foreground/60 mb-1">Aktuell</p>
                         <div className="text-xs text-foreground/60 bg-foreground/[0.03] rounded-lg p-3 font-mono whitespace-pre-wrap max-h-64 overflow-y-auto border border-foreground/[0.05]">
                           {prop?.old_content?.slice(0, 1200) || "(leer)"}
                         </div>
                       </div>
                       <div>
-                        <p className="text-[10px] uppercase text-emerald-400/70 mb-1">Vorgeschlagen</p>
+                        <p className="text-[11px] uppercase text-emerald-400/70 mb-1">Vorgeschlagen</p>
                         <div className="text-xs text-foreground/80 bg-emerald-500/[0.04] rounded-lg p-3 font-mono whitespace-pre-wrap max-h-64 overflow-y-auto border border-emerald-500/15">
                           {prop?.suggested_content?.slice(0, 1200) || ""}
                         </div>
@@ -1333,7 +1333,7 @@ export default function SkillsPage() {
                       </div>
                       <div>
                         <p className="text-sm font-semibold">{skill.name}</p>
-                        <p className="text-[10px] text-muted-foreground">Eigener Skill</p>
+                        <p className="text-[11px] text-muted-foreground">Eigener Skill</p>
                       </div>
                     </div>
                   </div>

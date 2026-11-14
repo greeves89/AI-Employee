@@ -323,43 +323,43 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">Name</label>
+                <label className="block text-xs font-medium text-muted-foreground/70 mb-1">Name</label>
                 <input className={inputCls} value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   placeholder="z.B. Azure GPT-4o Prod" />
               </div>
               <div>
-                <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">Anbieter</label>
+                <label className="block text-xs font-medium text-muted-foreground/70 mb-1">Anbieter</label>
                 <select className={inputCls} value={form.provider_type}
                   onChange={(e) => setForm({ ...form, provider_type: e.target.value })}>
                   {PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">API-Endpoint</label>
+                <label className="block text-xs font-medium text-muted-foreground/70 mb-1">API-Endpoint</label>
                 <input className={inputCls} value={form.api_endpoint}
                   onChange={(e) => setForm({ ...form, api_endpoint: e.target.value })}
                   placeholder="https://…" />
               </div>
               <div className="col-span-2">
-                <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">
+                <label className="block text-xs font-medium text-muted-foreground/70 mb-1.5">
                   Modelle <span className="text-muted-foreground">— jedes mit eigenem Endpoint</span>
                 </label>
 
                 {/* already-added models, each with its own surface */}
                 <div className="space-y-1.5 mb-2">
                   {form.models.length === 0 && (
-                    <span className="text-[11px] text-muted-foreground italic">Noch keine Modelle hinzugefügt</span>
+                    <span className="text-xs text-muted-foreground italic">Noch keine Modelle hinzugefügt</span>
                   )}
                   {form.models.map((m) => (
                     <div key={m.name} className="flex items-center gap-2 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2">
                       <span className="text-sm font-medium shrink-0">{m.name}</span>
-                      <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-medium shrink-0", PROVIDER_COLORS[m.provider_type] || "")}>
+                      <span className={cn("rounded-full border px-2 py-0.5 text-[11px] font-medium shrink-0", PROVIDER_COLORS[m.provider_type] || "")}>
                         {m.provider_type}
                       </span>
-                      <span className="text-[10px] text-muted-foreground truncate flex-1">{m.api_endpoint || "— Endpoint fehlt —"}</span>
+                      <span className="text-[11px] text-muted-foreground truncate flex-1">{m.api_endpoint || "— Endpoint fehlt —"}</span>
                       {discovered && discovered.length > 0 && !discovered.some((d) => d.id === m.name) && (
-                        <span className="shrink-0 rounded-full border border-amber-500/20 bg-amber-500/[0.06] px-2 py-0.5 text-[10px] text-amber-700 dark:text-amber-400" title="Nicht in der vom Anbieter abgerufenen Liste">
+                        <span className="shrink-0 rounded-full border border-amber-500/20 bg-amber-500/[0.06] px-2 py-0.5 text-[11px] text-amber-700 dark:text-amber-400" title="Nicht in der vom Anbieter abgerufenen Liste">
                           nicht in Liste
                         </span>
                       )}
@@ -367,7 +367,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                         type="button"
                         onClick={() => setForm((f) => ({ ...f, models: f.models.map((x) => x.name === m.name ? { ...x, enabled: !(x.enabled !== false) } : x) }))}
                         className={cn(
-                          "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors",
+                          "shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors",
                           m.enabled !== false
                             ? "border-emerald-500/25 bg-emerald-500/[0.08] text-emerald-400 hover:bg-emerald-500/[0.15]"
                             : "border-foreground/[0.12] bg-foreground/[0.04] text-muted-foreground hover:text-foreground"
@@ -376,13 +376,13 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                       >
                         {m.enabled !== false ? "freigegeben" : "gesperrt"}
                       </button>
-                      <span className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground" title="Preis je 1 Mio. Token in USD (Eingabe / Ausgabe). Leer = unbekannt, dann zählen diese Läufe 0 USD.">
+                      <span className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground" title="Preis je 1 Mio. Token in USD (Eingabe / Ausgabe). Leer = unbekannt, dann zählen diese Läufe 0 USD.">
                         <input inputMode="decimal" aria-label={`Preis Eingabe ${m.name}`} placeholder="Ein $/1M"
-                          className="w-16 rounded border border-foreground/[0.12] bg-transparent px-1.5 py-0.5 text-[11px]"
+                          className="w-16 rounded border border-foreground/[0.12] bg-transparent px-1.5 py-0.5 text-xs"
                           value={m.preis_eingabe_usd_1m ?? ""}
                           onChange={(e) => setForm((f) => ({ ...f, models: f.models.map((x) => x.name === m.name ? { ...x, preis_eingabe_usd_1m: e.target.value } : x) }))} />
                         <input inputMode="decimal" aria-label={`Preis Ausgabe ${m.name}`} placeholder="Aus $/1M"
-                          className="w-16 rounded border border-foreground/[0.12] bg-transparent px-1.5 py-0.5 text-[11px]"
+                          className="w-16 rounded border border-foreground/[0.12] bg-transparent px-1.5 py-0.5 text-xs"
                           value={m.preis_ausgabe_usd_1m ?? ""}
                           onChange={(e) => setForm((f) => ({ ...f, models: f.models.map((x) => x.name === m.name ? { ...x, preis_ausgabe_usd_1m: e.target.value } : x) }))} />
                       </span>
@@ -396,7 +396,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                 {/* discovery: fetch the real model list from the provider (#435) */}
                 <div className="mb-2 rounded-lg border border-primary/20 bg-primary/[0.03] p-2.5 space-y-2">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] text-muted-foreground/70">
+                    <span className="text-xs text-muted-foreground/70">
                       Modelle direkt vom Anbieter abrufen (prüft zugleich die Verbindung)
                     </span>
                     <button type="button" onClick={runDiscovery} disabled={discovering}
@@ -406,7 +406,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                     </button>
                   </div>
                   {discoverMsg && (
-                    <p className={cn("text-[11px]", discoverMsg.ok ? "text-emerald-400" : "text-amber-700 dark:text-amber-400")}>
+                    <p className={cn("text-xs", discoverMsg.ok ? "text-emerald-400" : "text-amber-700 dark:text-amber-400")}>
                       {discoverMsg.text}
                     </p>
                   )}
@@ -446,24 +446,24 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                   </button>
                 </div>
 
-                <p className="text-[10px] text-muted-foreground mt-1.5">
+                <p className="text-[11px] text-muted-foreground mt-1.5">
                   Jedes Modell hat seinen eigenen Endpoint/API-Typ — so deckt <b>ein</b> KI-Konto
                   mehrere Azure-Zugänge ab (Chat, Responses/Codex, Anthropic/Claude).
                 </p>
               </div>
               {form.provider_type === "bedrock" && (
                 <div className="col-span-2 grid grid-cols-2 gap-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.04] p-3">
-                  <div className="col-span-2 text-[11px] text-amber-700 dark:text-amber-400/80">
+                  <div className="col-span-2 text-xs text-amber-700 dark:text-amber-400/80">
                     AWS Bedrock für Realtime-Sprache (Nova Sonic). Modelle wählst du danach im Sprach-Setup pro Agent aus.
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">AWS Access Key ID</label>
+                    <label className="block text-xs font-medium text-muted-foreground/70 mb-1">AWS Access Key ID</label>
                     <input className={inputCls} value={form.aws_access_key_id}
                       onChange={(e) => setForm({ ...form, aws_access_key_id: e.target.value })}
                       placeholder="AKIA…" />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">AWS Region</label>
+                    <label className="block text-xs font-medium text-muted-foreground/70 mb-1">AWS Region</label>
                     <input className={inputCls} value={form.aws_region}
                       onChange={(e) => setForm({ ...form, aws_region: e.target.value })}
                       placeholder="us-east-1" />
@@ -471,7 +471,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                 </div>
               )}
               <div className="col-span-2">
-                <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">
+                <label className="block text-xs font-medium text-muted-foreground/70 mb-1">
                   {form.provider_type === "bedrock" ? "AWS Secret Access Key"
                     : form.provider_type === "brave-search" ? "Brave API-Key" : "API-Key"}
                   {editingId && <span className="text-muted-foreground"> (leer = unverändert)</span>}
@@ -482,7 +482,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
               </div>
               {form.provider_type === "azure-openai" && (
                 <div className="col-span-2">
-                  <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">Azure api-version</label>
+                  <label className="block text-xs font-medium text-muted-foreground/70 mb-1">Azure api-version</label>
                   <input className={inputCls} value={form.api_version}
                     onChange={(e) => setForm({ ...form, api_version: e.target.value })}
                     placeholder="2024-08-01-preview" />
@@ -519,18 +519,18 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium truncate">{a.name}</span>
-                    <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium", PROVIDER_COLORS[a.provider_type])}>
+                    <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium", PROVIDER_COLORS[a.provider_type])}>
                       {a.provider_type}
                     </span>
                     {!a.has_key && a.provider_type !== "ollama" && a.provider_type !== "lm-studio" && (
-                      <span className="text-[10px] text-amber-700 dark:text-amber-400">kein Key</span>
+                      <span className="text-[11px] text-amber-700 dark:text-amber-400">kein Key</span>
                     )}
                     {(() => {
                       const h = accountHealthBadge(a);
-                      return h ? <span className={cn("text-[10px] font-medium", h.className)}>· {h.label}</span> : null;
+                      return h ? <span className={cn("text-[11px] font-medium", h.className)}>· {h.label}</span> : null;
                     })()}
                   </div>
-                  <p className="text-[11px] text-muted-foreground/60 mt-0.5 truncate">
+                  <p className="text-xs text-muted-foreground/60 mt-0.5 truncate">
                     {(a.models || []).map((m) => m.enabled === false ? `${m.name} (gesperrt)` : m.name).join(", ") || "— keine Modelle —"}
                     {a.last_status && a.last_status !== "ok" && a.last_error && (
                       <span className="text-red-400/70"> — {a.last_error}</span>

@@ -49,7 +49,7 @@ export function PermissionPackagesPanel({
         <button
           type="button"
           onClick={() => onPermissionsModeChange(permissionsMode === "auto" ? "manual" : "auto")}
-          className="ml-auto mr-3 text-[11px] text-primary hover:underline"
+          className="ml-auto mr-3 text-xs text-primary hover:underline"
         >
           {permissionsMode === "auto" ? "Selbst festlegen" : "Wieder an Stufe koppeln"}
         </button>
@@ -57,7 +57,7 @@ export function PermissionPackagesPanel({
       </div>
 
       {permissionsMode === "auto" && (
-        <p className="px-5 pt-4 text-[11px] text-muted-foreground">
+        <p className="px-5 pt-4 text-xs text-muted-foreground">
           Folgt der Autonomiestufe {autonomyLevel.toUpperCase()}.{" "}
           {(derivedPermissions[autonomyLevel] || []).length === 0
             ? "Der Container bekommt keine sudo-Rechte."
@@ -113,7 +113,7 @@ export function PermissionPackagesPanel({
                     {pkg.label}
                   </span>
                   {pkg.default && !isFullAccess && (
-                    <span className="text-[10px] font-medium uppercase tracking-wider text-primary/60 bg-primary/10 px-1.5 py-0.5 rounded">
+                    <span className="text-[11px] font-medium uppercase tracking-wider text-primary/60 bg-primary/10 px-1.5 py-0.5 rounded">
                       Default
                     </span>
                   )}
@@ -147,7 +147,7 @@ export function PermissionPackagesPanel({
       </div>
 
       <div className="px-5 pb-4">
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           Ohne Auswahl: nur pip/npm install (kein sudo). Basis-Werkzeuge (git, curl, node) sind immer verfügbar.
         </p>
       </div>

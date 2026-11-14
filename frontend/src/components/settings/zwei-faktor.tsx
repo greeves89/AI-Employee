@@ -71,7 +71,7 @@ export function MfaQrSchritt({
           className="rounded-lg bg-white p-2"
         />
         <div className="w-full rounded-lg border border-border bg-card/60 px-3 py-2 text-center">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70">Schlüssel zum Abtippen</p>
+          <p className="text-[11px] uppercase tracking-wider text-muted-foreground/70">Schlüssel zum Abtippen</p>
           <p className="mt-0.5 break-all font-mono text-[12px] select-all">{gruppiert(daten.secret)}</p>
         </div>
       </div>
@@ -246,7 +246,7 @@ export function ZweiFaktorEinstellungen() {
           </div>
           <div>
             <p className="text-sm font-semibold">Zwei-Faktor-Anmeldung</p>
-            <p className="mt-0.5 text-[11px] text-muted-foreground/70">
+            <p className="mt-0.5 text-xs text-muted-foreground/70">
               {!status.password_account
                 ? "Du meldest dich über SSO an — den zweiten Faktor verwaltet dein Identitätsanbieter."
                 : status.enabled
@@ -260,7 +260,7 @@ export function ZweiFaktorEinstellungen() {
         {status.password_account && (
           <span
             className={cn(
-              "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium",
+              "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium",
               status.enabled ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-foreground/[0.06] text-muted-foreground",
             )}
           >
@@ -388,7 +388,7 @@ export function ZweiFaktorPflichtToggle() {
             <KeyRound className="h-3.5 w-3.5 text-blue-400" />
             Zwei-Faktor für alle Passwort-Konten erzwingen
           </div>
-          <p className="mt-0.5 text-[10px] text-muted-foreground/60">
+          <p className="mt-0.5 text-[11px] text-muted-foreground/60">
             Wer sich mit Passwort anmeldet und noch keinen zweiten Faktor hat, richtet ihn direkt nach dem
             Passwort ein — vorher gibt es keinen Zugang. SSO-Anmeldungen sind ausgenommen, dort gilt die
             Mehrfaktor-Regel des Identitätsanbieters. Beim Einschalten werden alle Passwort-Konten ohne

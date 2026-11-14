@@ -71,7 +71,9 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 Mit diesen Schritten nutzt du AI-Employee sauber. Auf **Start** steht dafür die
 Karte **„In 6 Schritten startklar“**: Sie zeigt, was erledigt ist, und hakt jeden Schritt
 **von selbst** ab, sobald er eingerichtet ist. Der nächste offene Schritt hat den Knopf
-**Jetzt machen**, der direkt auf die richtige Seite führt.
+**Jetzt machen**, der direkt auf die richtige Seite führt. *Seit 1.468.5* zeigt die Karte
+oben auf Start zunächst nur diesen nächsten Schritt; **Alle 6 Schritte zeigen** klappt die
+ganze Liste auf.
 
 ![Karte „In 6 Schritten startklar“: drei Schritte abgehakt, der nächste mit „Jetzt machen“, iPhone-App und Bridge mit „Anzeigen“](screenshots/00-erste-schritte.png)
 
@@ -633,12 +635,12 @@ Darunter die **Tabs**: **Chat · Todos · Activity · Workspace · Wissen · Set
 
 ### 5.1 Chat — mit dem Agenten sprechen
 Tab **Chat**. Das ist das direkte Gespräch (wie ein Messenger).
-- **Werkzeuge** *(seit 1.468.4)* — unten im Eingabefeld stehen nur **Anhängen** und **Sprechen** als
-  Symbole. Alles Weitere (Konnektoren, Computer, Modell, Rechte, Dateien, Wissen) öffnet der Knopf
-  **Werkzeuge**, jeweils mit kurzer Erklärung. **Gespräche** oben links blendet die Gesprächsliste ein.
+- **Einstellungen** *(seit 1.468.5, vorher „Werkzeuge“)* — unten im Eingabefeld stehen nur **Anhängen** und **Sprechen** als
+  Symbole. Alles Weitere (Konten & Dienste, Computer, Modell, Rechte, Dateien, Wissen) öffnet der Knopf
+  **Einstellungen**, jeweils mit kurzer Erklärung. **Gespräche** oben links blendet die Gesprächsliste ein.
 - **Gestoppter Agent** *(seit 1.467.0)* — Öffnen startet ihn nicht. Über dem Eingabefeld steht
   „Der Agent ist gestoppt. Er startet, sobald du schreibst.“ Mit deiner ersten Nachricht startet er
-  („Agent startet …“) und antwortet dann. Hat der Besitzer den Agenten angehalten und du nutzt ihn
+  („Agent wird gestartet. Das dauert beim ersten Mal bis zu einer Minute.“) und antwortet dann. Hat der Besitzer den Agenten angehalten und du nutzt ihn
   nur, wartet deine Nachricht, bis er wieder gestartet wird.
 
   ![Gestoppter Agent: Hinweis über dem Eingabefeld](screenshots/31-chat-gestoppt.png)
@@ -1522,7 +1524,7 @@ Spalte **Review** mit dem Stand der jüngsten **Pipeline** (CI läuft, CI grün,
 
 1. Seitenleiste → **Secrets** → **+ Neues Secret**: Schlüsselname `GITLAB_TOKEN`, Wert = das Token,
    **Speichern**.
-2. Den Key den Agenten zuweisen, die Merge Requests stellen sollen: Agent öffnen → **Konnektoren**
+2. Den Key den Agenten zuweisen, die Merge Requests stellen sollen: Agent öffnen → **Einstellungen** → **Konten & Dienste**
    → *API Keys & Secrets* → **Zuweisen**.
 3. Beim Key auf das **Globus-Symbol** klicken und unter **Erlaubte Ziele** den Servernamen eintragen,
    z. B. `gitlab.example.com` (bei gitlab.com schlägt das Feld `gitlab.com` vor) → **Ziele
@@ -2295,9 +2297,11 @@ Agenten** an; ein Zeitplan eines Mitglieds läuft nur auf dessen Agenten.
 
 ![Formular „Neuer Zeitplan“ mit Wöchentlich, Mo+Mi, 07:30 und Vorschau](screenshots/66-zeitplan-neu-woechentlich.png)
 
-**In der Liste** stehen die Zeitpläne nach Agent gruppiert (**Alle aufklappen / zuklappen**).
-Jede Zeile zeigt den Takt, die **nächste** und die **letzte** Ausführung. Die Knöpfe rechts:
-**Jetzt ausführen**, **Pausieren** und **Zeitplan löschen**.
+**In der Liste** stehen die Zeitpläne nach Agent gruppiert (**Alle aufklappen / zuklappen**;
+bei bis zu vier Agenten sind sie gleich aufgeklappt). Jede Zeile zeigt den Takt, die **nächste**
+und die **letzte** Ausführung. Die Knöpfe rechts sind beschriftet: **Jetzt ausführen**,
+**Pausieren** bzw. **Fortsetzen**, dazu das Papierkorb-Symbol **Zeitplan löschen**. Pausierte
+Pläne sind bernsteinfarben markiert.
 
 **Löschen mit Rückfrage:** Ein Klick auf **Zeitplan löschen** öffnet die Frage *„Zeitplan
 ‚…‘ löschen?“* mit dem Hinweis, dass der Zeitplan danach nicht mehr läuft und bereits
@@ -2565,7 +2569,7 @@ löschen oder weitergeben kann er ihn nicht.
 
 #### Einen Key an Personen freigeben
 
-1. Öffne einen deiner Agenten und klick unten auf **Konnektoren**. Unter *API Keys &
+1. Öffne einen deiner Agenten und klick unten auf **Einstellungen** → **Konten & Dienste**. Unter *API Keys &
    Secrets* steht dein Key mit dem Hinweis **eigen**. Klick rechts daneben auf das
    **Personen-Symbol**.
 
@@ -2601,7 +2605,7 @@ nur der wertlose Platzhalter. Verweigert die Plattform den Wert, steht das im Au
 (*egress_key_verweigert*). Voraussetzung:
 Die IT hat den Egress-Proxy eingeschaltet (Kap. 37.10).
 
-1. Öffne deinen Agenten und klick unten auf **Konnektoren**. Unter **Schlüssel** klickst du
+1. Öffne deinen Agenten und klick unten auf **Einstellungen** → **Konten & Dienste**. Unter **Schlüssel** klickst du
    beim Key auf das **Globus-Symbol**. Legst du einen Key neu an (**Schlüssel hinzufügen**),
    steht das Feld gleich im Formular. Admins finden dasselbe unter **Admin → Compliance →
    Schlüssel & Zugangsdaten** beim **Stift**.
@@ -3073,12 +3077,14 @@ Bereich **Nutzer** — die Benutzerverwaltung. Die Liste zeigt alle Benutzer mit
   22.4). Optional — ohne Rolle gelten die Standardrechte.
 - **Create User** — legt den Benutzer an.
 
-**Bestehende Benutzer** verwalten: pro Benutzer **Bearbeiten** (Rolle/Status ändern),
-**Passwort zurücksetzen**, **Aktiv/Inaktiv** schalten und **Mount-Rechte** setzen (welche
-Second Brains der Benutzer **lesen/schreiben** darf).
+**Bestehende Benutzer** verwalten: In jeder Zeile öffnet **Aktionen** *(seit 1.468.5)* ein
+Menü mit **Rolle wechseln**, **Aktivieren/Deaktivieren**, **Freigegebene Ordner** (welche
+Second Brains der Benutzer **lesen/schreiben** darf), **Passwort zurücksetzen** und – falls
+eingerichtet – **Zwei-Faktor zurücksetzen**. **Nutzer löschen** steht abgesetzt ganz unten im
+Menü und fragt vorher nach.
 
 Hat eine Person den zweiten Faktor eingerichtet, trägt ihre Zeile das Abzeichen
-**Zwei-Faktor aktiv**. Hat sie ihr Telefon verloren, klickst du in ihrer Zeile auf **Zwei-Faktor
+**Zwei-Faktor aktiv**. Hat sie ihr Telefon verloren, klickst du in ihrer Zeile auf **Aktionen** → **Zwei-Faktor
 zurücksetzen**: Der zweite Faktor wird abgeschaltet und alle ihre Sitzungen enden. Die Person
 meldet sich mit dem Passwort an und richtet ihn neu ein (Kap. 20.4). Der Vorgang steht im
 Prüfprotokoll (*Zwei-Faktor zurückgesetzt*).
@@ -4432,7 +4438,7 @@ derselbe: Nachricht aufnehmen, ins Gedächtnis legen, Agent antworten lassen.
 Teams, Slack, Discord und WhatsApp stehen auf der Karte **Kanäle** (Besitzer des Agenten oder
 Administrator). Telegram richtet ein Administrator unter Einstellungen → Verbindungen ein.
 
-1. Agent öffnen und unten auf **Konnektoren** klicken.
+1. Agent öffnen und unten auf **Einstellungen** → **Konten & Dienste** klicken.
 2. Auf der Karte **Kanäle** den gewünschten Kanal aufklappen (Pfeil vor dem Namen).
 3. **Slack/Discord:** die **Kanal-IDs** eintragen (eine je Zeile), dazu die **Bot-Kennung** und das
    **Bot-Token**.
@@ -4467,7 +4473,7 @@ Ein Agent kann in Teams-Terminen dabei sein, zu denen er eingeladen ist. Nach de
 unter **Besprechungen** (Seitenleiste) ein Protokoll mit Aufgaben und dem Transkript.
 
 **So schaltest du es ein** (Besitzer des Agenten oder Administrator):
-1. Agent öffnen → **Konnektoren** → **Microsoft Teams** aufklappen.
+1. Agent öffnen → **Einstellungen** → **Konten & Dienste** → **Microsoft Teams** aufklappen.
 2. Bei **Teams-Besprechungen** den Schalter einschalten.
 3. Die **Rolle** wählen:
    - **Mitschreiber:** Nach dem Termin holt der Agent das Teams-Transkript und schreibt Protokoll
@@ -5327,7 +5333,7 @@ Eine Regel, die regelmäßig eine neue Anmeldung erzwingt, beendet den Zugang. D
 zu verbinden.
 
 **So verbindest du das Konto** (Besitzer des Agenten oder Administrator):
-1. Agent öffnen und unten auf **Konnektoren** klicken.
+1. Agent öffnen und unten auf **Einstellungen** → **Konten & Dienste** klicken.
 2. Bei **Microsoft-Konto des Agenten** auf **Konto verbinden** klicken.
 3. Microsoft fragt nach dem Konto: **mit dem Konto des Agenten** anmelden, nicht mit deinem.
 4. Danach bist du zurück beim Agenten. Die Karte zeigt das Konto und „Verbunden“.
@@ -5389,8 +5395,8 @@ Liste verbindlich: Der Agent erreicht dann nur noch
 Hat die Rolle des Besitzers eine eigene Adressliste, muss eine Adresse auf beiden Listen stehen.
 
 **So schaltest du es ein** (Besitzer des Agenten oder Administrator):
-1. Agent öffnen → **Einstellungen → Verbindungen**. In der einfachen Ansicht: Symbol
-   **Konnektoren** neben dem Chat.
+1. Agent öffnen → **Einstellungen → Verbindungen**. In der einfachen Ansicht: unten
+   **Einstellungen** → **Konten & Dienste**.
 2. Bei **Erlaubte Adressen** die Adressen eintragen, etwa `api.example.com` oder
    `*.github.com`. `*.github.com` gilt auch für `github.com` selbst.
 3. Den Schalter **Am Ausgang erzwingen** einschalten.

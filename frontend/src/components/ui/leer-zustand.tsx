@@ -21,7 +21,7 @@ export function LeerZustand({
   return (
     <div className="mx-auto max-w-md py-16 text-center">
       <Icon className="mx-auto h-10 w-10 text-muted-foreground/50" aria-hidden="true" />
-      <h2 className="mt-3 font-semibold">{titel}</h2>
+      <h2 className="mt-3 font-display text-lg font-semibold">{titel}</h2>
       {text && <p className="mt-1 text-sm text-muted-foreground">{text}</p>}
       {children && <div className="mt-4">{children}</div>}
     </div>

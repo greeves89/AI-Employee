@@ -61,7 +61,7 @@ function KoordinationsBilanz({ daten }: { daten: Produktivitaet }) {
         <h2 className="text-sm font-semibold text-muted-foreground">
           Koordination gegen Fortschritt
         </h2>
-        <span className="text-[11px] text-muted-foreground/60">
+        <span className="text-xs text-muted-foreground/60">
           letzte {daten.fenster_stunden} h
           {daten.schwellen
             ? ` · Warnschwelle ${daten.schwellen.verhaeltnis} Schritte je Ergebnis, ab ${daten.schwellen.min_koordination} Ereignissen`
@@ -95,7 +95,7 @@ function KoordinationsBilanz({ daten }: { daten: Produktivitaet }) {
                   <p className="text-sm font-medium truncate flex items-center gap-1.5">
                     {g.gruppe_name}
                     {g.nur_kennzahlen && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-normal text-muted-foreground/70">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-normal text-muted-foreground/70">
                         <Lock className="w-3 h-3" />
                         anderer Nutzer
                       </span>
@@ -106,11 +106,11 @@ function KoordinationsBilanz({ daten }: { daten: Produktivitaet }) {
                 <div className="flex items-center gap-4 shrink-0 text-right">
                   <div>
                     <p className="text-lg font-bold leading-none">{g.koordination}</p>
-                    <p className="text-[10px] text-muted-foreground/60">Koordination</p>
+                    <p className="text-[11px] text-muted-foreground/60">Koordination</p>
                   </div>
                   <div>
                     <p className="text-lg font-bold leading-none">{g.fortschritt}</p>
-                    <p className="text-[10px] text-muted-foreground/60">Ergebnisse</p>
+                    <p className="text-[11px] text-muted-foreground/60">Ergebnisse</p>
                   </div>
                   <div>
                     <p
@@ -121,7 +121,7 @@ function KoordinationsBilanz({ daten }: { daten: Produktivitaet }) {
                     >
                       {g.verhaeltnis}
                     </p>
-                    <p className="text-[10px] text-muted-foreground/60">je Ergebnis</p>
+                    <p className="text-[11px] text-muted-foreground/60">je Ergebnis</p>
                   </div>
                   {auf ? (
                     <ChevronDown className="w-4 h-4 text-muted-foreground" />
@@ -134,7 +134,7 @@ function KoordinationsBilanz({ daten }: { daten: Produktivitaet }) {
               {auf && (
                 <div className="border-t border-foreground/[0.06] p-4 space-y-4">
                   <div>
-                    <p className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
+                    <p className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
                       Art der Aktivität
                     </p>
                     <div className="flex flex-wrap gap-2">
@@ -164,7 +164,7 @@ function KoordinationsBilanz({ daten }: { daten: Produktivitaet }) {
 
                   {(g.je_agent ?? []).length > 0 && (
                     <div>
-                      <p className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
+                      <p className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
                         Welche Agenten
                       </p>
                       <div className="space-y-1">
@@ -186,7 +186,7 @@ function KoordinationsBilanz({ daten }: { daten: Produktivitaet }) {
 
                   {(g.beispiele ?? []).length > 0 && (
                     <div>
-                      <p className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
+                      <p className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
                         Beispiele
                       </p>
                       <ul className="space-y-1">
@@ -233,7 +233,7 @@ function StatusBadge({ status, label }: { status: string; label?: string }) {
   };
   return (
     <span className={cn(
-      "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium",
+      "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium",
       colors[status?.toLowerCase()] || "bg-gray-500/10 text-gray-400 border-gray-500/20"
     )}>
       {label ?? status}
@@ -488,15 +488,15 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
               <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <Activity className="w-4 h-4 text-blue-400" />
-                  <span className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">Aufgaben</span>
+                  <span className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">Aufgaben</span>
                 </div>
                 <p className="text-2xl font-bold">{autoMetrics.total_tasks}</p>
-                <p className="text-[10px] text-muted-foreground/60 mt-1">letzte {days} Tage</p>
+                <p className="text-[11px] text-muted-foreground/60 mt-1">letzte {days} Tage</p>
               </div>
               <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  <span className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">Erfolgsquote</span>
+                  <span className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">Erfolgsquote</span>
                 </div>
                 <p className="text-2xl font-bold text-emerald-400">{autoMetrics.success_rate}%</p>
                 <div className="mt-2 h-1 rounded-full bg-foreground/[0.06] overflow-hidden">
@@ -506,20 +506,20 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
               <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <DollarSign className="w-4 h-4 text-amber-700 dark:text-amber-400" />
-                  <span className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">Kosten</span>
+                  <span className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">Kosten</span>
                 </div>
                 <p className="text-2xl font-bold">{formatMoney(autoMetrics.total_cost_usd)}</p>
-                <p className="text-[10px] text-muted-foreground/60 mt-1">
+                <p className="text-[11px] text-muted-foreground/60 mt-1">
                   inkl. Chat {formatMoney(autoMetrics.chat_cost_usd ?? 0)} · letzte {days} Tage
                 </p>
               </div>
               <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <Bot className="w-4 h-4 text-violet-400" />
-                  <span className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">Aktive Agenten</span>
+                  <span className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">Aktive Agenten</span>
                 </div>
                 <p className="text-2xl font-bold">{autoMetrics.agents.length}</p>
-                <p className="text-[10px] text-muted-foreground/60 mt-1">mit Aufgaben</p>
+                <p className="text-[11px] text-muted-foreground/60 mt-1">mit Aufgaben</p>
               </div>
             </div>
 
@@ -531,7 +531,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                   <Activity className="w-5 h-5 text-blue-400" />
                   Aufgaben pro Tag
                 </h3>
-                <p className="text-[11px] text-muted-foreground/60 mb-4">Gesamt und erfolgreich</p>
+                <p className="text-xs text-muted-foreground/60 mb-4">Gesamt und erfolgreich</p>
                 <div className="h-52">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={(() => {
@@ -565,7 +565,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                   <DollarSign className="w-5 h-5 text-amber-700 dark:text-amber-400" />
                   Kosten pro Tag
                 </h3>
-                <p className="text-[11px] text-muted-foreground/60 mb-4">{money.code} je Tag, Aufgaben und Chat</p>
+                <p className="text-xs text-muted-foreground/60 mb-4">{money.code} je Tag, Aufgaben und Chat</p>
                 <div className="h-52">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={(autoMetrics.daily_cost ?? []).map((d) => ({
@@ -594,7 +594,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                   <CheckCircle2 className="w-5 h-5 text-emerald-400" />
                   Erfolgsquote-Verlauf
                 </h3>
-                <p className="text-[11px] text-muted-foreground/60 mb-4">% pro Tag</p>
+                <p className="text-xs text-muted-foreground/60 mb-4">% pro Tag</p>
                 <div className="h-52">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={(() => {
@@ -625,7 +625,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                   <Timer className="w-5 h-5 text-blue-400" />
                   Dauer pro Tag
                 </h3>
-                <p className="text-[11px] text-muted-foreground/60 mb-4">Durchschnitt in Sekunden</p>
+                <p className="text-xs text-muted-foreground/60 mb-4">Durchschnitt in Sekunden</p>
                 <div className="h-52">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={(() => {
@@ -699,13 +699,13 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                       </div>
                       {a.top_errors.length > 0 && (
                         <details className="mt-2">
-                          <summary className="text-[10px] text-red-400/80 cursor-pointer flex items-center gap-1 hover:text-red-400">
+                          <summary className="text-[11px] text-red-400/80 cursor-pointer flex items-center gap-1 hover:text-red-400">
                             <AlertOctagon className="w-3 h-3" />
                             {a.top_errors.length} Fehler-Pattern
                           </summary>
                           <div className="mt-1.5 space-y-1 pl-4">
                             {a.top_errors.map((err, idx) => (
-                              <div key={idx} className="text-[10px] text-muted-foreground/70 flex items-start gap-2">
+                              <div key={idx} className="text-[11px] text-muted-foreground/70 flex items-start gap-2">
                                 <span className="text-red-400/60 font-mono">{err.count}x</span>
                                 <span className="truncate flex-1">{err.error}</span>
                               </div>
@@ -730,7 +730,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                 <Star className="w-5 h-5 text-amber-700 dark:text-amber-400" />
                 Verlauf der Bewertungen
               </h3>
-              <p className="text-[11px] text-muted-foreground/60 mb-4">Durchschnitt je 5 Aufgaben</p>
+              <p className="text-xs text-muted-foreground/60 mb-4">Durchschnitt je 5 Aufgaben</p>
               <div className="h-52">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={combinedRatingData}>
@@ -812,7 +812,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                       />
                     </div>
                     {report.top_issues.length > 0 && (
-                      <div className="mt-2 text-[10px] text-red-400/80">
+                      <div className="mt-2 text-[11px] text-red-400/80">
                         Probleme: {report.top_issues.slice(0, 2).join(", ")}
                       </div>
                     )}
@@ -828,7 +828,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                   <DollarSign className="w-5 h-5 text-emerald-400" />
                   Kosten-Verlauf
                 </h3>
-                <p className="text-[11px] text-muted-foreground/60 mb-4">Durchschnittliche Kosten je Aufgabe ({money.code})</p>
+                <p className="text-xs text-muted-foreground/60 mb-4">Durchschnittliche Kosten je Aufgabe ({money.code})</p>
                 <div className="h-52">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={reports[0].cost_trend.map((_, i) => {
@@ -865,7 +865,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                   <Timer className="w-5 h-5 text-blue-400" />
                   Dauer-Verlauf
                 </h3>
-                <p className="text-[11px] text-muted-foreground/60 mb-4">Durchschnittliche Dauer einer Aufgabe (Sekunden)</p>
+                <p className="text-xs text-muted-foreground/60 mb-4">Durchschnittliche Dauer einer Aufgabe (Sekunden)</p>
                 <div className="h-52">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={reports[0].duration_trend.map((_, i) => {
@@ -904,7 +904,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
           <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-8 text-center">
             <Star className="w-8 h-8 text-amber-700 dark:text-amber-400/40 mx-auto mb-3" />
             <p className="text-sm text-muted-foreground mb-1">Noch keine Leistungsdaten</p>
-            <p className="text-[11px] text-muted-foreground/60">
+            <p className="text-xs text-muted-foreground/60">
               Bewerte abgeschlossene Aufgaben per Telegram (1–5 Sterne), um hier Diagramme zu sehen.
             </p>
           </div>
@@ -929,7 +929,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                       <StatusIcon status={agent.health || agent.state} />
                       <div>
                         <p className="text-sm font-medium">{agent.name}</p>
-                        <p className="text-[11px] text-muted-foreground/70">{agent.id}</p>
+                        <p className="text-xs text-muted-foreground/70">{agent.id}</p>
                       </div>
                     </div>
                     <span title={agent.state}>
@@ -952,7 +952,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
               </h3>
               <button
                 onClick={() => { setShowHistory(true); loadTestRunHistory(); }}
-                className="text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+                className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
               >
                 Alle Läufe anzeigen
               </button>
@@ -965,7 +965,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <StatusBadge status={latestRun.status} />
-                  <span className="text-[11px] text-muted-foreground/70 flex items-center gap-1">
+                  <span className="text-xs text-muted-foreground/70 flex items-center gap-1">
                     <Clock className="w-3 h-3" />
                     {latestRun.started_at ? new Date(latestRun.started_at).toLocaleString("de-DE") : "—"}
                   </span>
@@ -973,15 +973,15 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                 <div className="grid grid-cols-3 gap-3">
                   <div className="text-center p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/10">
                     <p className="text-2xl font-bold text-emerald-400">{latestRun.passed}</p>
-                    <p className="text-[11px] text-muted-foreground/70">Bestanden</p>
+                    <p className="text-xs text-muted-foreground/70">Bestanden</p>
                   </div>
                   <div className="text-center p-3 rounded-lg bg-red-500/5 border border-red-500/10">
                     <p className="text-2xl font-bold text-red-400">{latestRun.failed}</p>
-                    <p className="text-[11px] text-muted-foreground/70">Fehlgeschlagen</p>
+                    <p className="text-xs text-muted-foreground/70">Fehlgeschlagen</p>
                   </div>
                   <div className="text-center p-3 rounded-lg bg-gray-500/5 border border-gray-500/10">
                     <p className="text-2xl font-bold text-gray-400">{latestRun.skipped}</p>
-                    <p className="text-[11px] text-muted-foreground/70">Übersprungen</p>
+                    <p className="text-xs text-muted-foreground/70">Übersprungen</p>
                   </div>
                 </div>
                 {(latestRun.results?.length ?? 0) > 0 && latestRun.results && (
@@ -994,7 +994,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                            <AlertTriangle className="w-4 h-4 text-gray-400" />}
                           <span>{r.name}</span>
                         </div>
-                        {r.message && <span className="text-[11px] text-muted-foreground/70 truncate max-w-[200px]">{r.message}</span>}
+                        {r.message && <span className="text-xs text-muted-foreground/70 truncate max-w-[200px]">{r.message}</span>}
                       </div>
                     ))}
                   </div>
@@ -1024,7 +1024,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                   )} />
                   <div>
                     <p className="text-sm">{imp.suggestion}</p>
-                    <p className="text-[11px] text-muted-foreground/70 mt-1">Agent: {imp.agent_id}</p>
+                    <p className="text-xs text-muted-foreground/70 mt-1">Agent: {imp.agent_id}</p>
                   </div>
                 </div>
               ))}
@@ -1046,7 +1046,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
             <div className="flex items-center justify-between px-6 py-4 border-b border-foreground/[0.06]">
               <div>
                 <h2 className="text-lg font-semibold">Verlauf der Selbsttests</h2>
-                <p className="text-[11px] text-muted-foreground/70">Alle bisherigen Test-Durchläufe</p>
+                <p className="text-xs text-muted-foreground/70">Alle bisherigen Test-Durchläufe</p>
               </div>
               <button
                 onClick={() => setShowHistory(false)}
@@ -1076,7 +1076,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                             <p className="text-sm font-medium">
                               {run.passed}/{run.passed + run.failed + run.skipped} passed
                             </p>
-                            <p className="text-[10px] text-muted-foreground/60">
+                            <p className="text-[11px] text-muted-foreground/60">
                               {run.started_at ? new Date(run.started_at).toLocaleString("de-DE") : "—"}
                               {run.duration_ms && ` · ${run.duration_ms}ms`}
                             </p>
@@ -1097,7 +1097,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                                <AlertTriangle className="w-3.5 h-3.5 text-gray-400 shrink-0 mt-0.5" />}
                               <div className="flex-1 min-w-0">
                                 <p className="font-medium">{r.name}</p>
-                                {r.message && <p className="text-[10px] text-muted-foreground/70 mt-0.5">{r.message}</p>}
+                                {r.message && <p className="text-[11px] text-muted-foreground/70 mt-0.5">{r.message}</p>}
                               </div>
                             </div>
                           ))}

@@ -296,7 +296,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
           </span>
           <Link
             href="/skills"
-            className="text-[10px] text-muted-foreground hover:text-primary hover:underline"
+            className="text-[11px] text-muted-foreground hover:text-primary hover:underline"
           >
             globaler Marktplatz →
           </Link>
@@ -349,7 +349,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
       {/* Description */}
       <p className="text-xs text-muted-foreground/70">
         Skills sind eigene Anleitungen, abgelegt als{" "}
-        <code className="text-[11px] px-1 py-0.5 rounded bg-foreground/[0.04] font-mono">
+        <code className="text-xs px-1 py-0.5 rounded bg-foreground/[0.04] font-mono">
           .claude/skills/&lt;name&gt;/SKILL.md
         </code>{" "}
         — der Agent ruft sie als Schrägstrich-Befehl auf.
@@ -380,7 +380,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[11px] font-medium text-muted-foreground/70 block mb-1.5">
+                  <label className="text-xs font-medium text-muted-foreground/70 block mb-1.5">
                     Adresse des GitHub-Repositorys
                   </label>
                   <input
@@ -392,7 +392,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-medium text-muted-foreground/70 block mb-1.5">
+                  <label className="text-xs font-medium text-muted-foreground/70 block mb-1.5">
                     Name des Skills
                   </label>
                   <input
@@ -407,7 +407,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
 
               {/* Quick-install suggestions */}
               <div>
-                <label className="text-[11px] font-medium text-muted-foreground/70 block mb-2">
+                <label className="text-xs font-medium text-muted-foreground/70 block mb-2">
                   Beliebte Skills
                 </label>
                 <div className="flex flex-wrap gap-2">
@@ -480,12 +480,12 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                 <div className="flex items-center gap-2">
                   <Store className="h-4 w-4 text-amber-700 dark:text-amber-400" />
                   <h3 className="text-sm font-medium">Skill-Katalog</h3>
-                  <span className="text-[11px] text-muted-foreground/60">von skills.sh</span>
-                  <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
+                  <span className="text-xs text-muted-foreground/60">von skills.sh</span>
+                  <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
                     {catalog.length} Skills
                   </span>
                   {catalogCrawledAt && (
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-[11px] text-muted-foreground">
                       aktualisiert am {new Date(catalogCrawledAt).toLocaleDateString("de-DE")}
                     </span>
                   )}
@@ -526,7 +526,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                       key={key}
                       onClick={() => setCatalogFilter(key)}
                       className={cn(
-                        "rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors",
+                        "rounded-full px-2.5 py-1 text-xs font-medium border transition-colors",
                         catalogFilter === key
                           ? "bg-foreground/[0.08] text-foreground border-foreground/[0.15]"
                           : "border-foreground/[0.06] text-muted-foreground/60 hover:text-muted-foreground hover:border-foreground/[0.1]"
@@ -562,15 +562,15 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium">{cat.name}</span>
                           <span className={cn(
-                            "inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium",
+                            "inline-flex items-center rounded-full border px-1.5 py-0.5 text-[11px] font-medium",
                             CATEGORY_COLORS[cat.category] || "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
                           )}>
                             {CATALOG_CATEGORIES[cat.category]}
                           </span>
                         </div>
-                        <p className="text-[11px] text-muted-foreground/70 mt-0.5 line-clamp-1">{cat.description}</p>
-                        {cat.installs && <p className="text-[10px] text-muted-foreground mt-0.5">{cat.installs} installs</p>}
-                        {!cat.installs && <p className="text-[10px] text-muted-foreground mt-0.5">{cat.repo}</p>}
+                        <p className="text-xs text-muted-foreground/70 mt-0.5 line-clamp-1">{cat.description}</p>
+                        {cat.installs && <p className="text-[11px] text-muted-foreground mt-0.5">{cat.installs} installs</p>}
+                        {!cat.installs && <p className="text-[11px] text-muted-foreground mt-0.5">{cat.repo}</p>}
                       </div>
                       <button
                         onClick={() => !isInstalled && !isInstalling && handleInstallFromCatalog(cat)}
@@ -625,7 +625,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
 
               <div className="space-y-3">
                 <div>
-                  <label className="text-[11px] font-medium text-muted-foreground/70 block mb-1.5">
+                  <label className="text-xs font-medium text-muted-foreground/70 block mb-1.5">
                     Name
                   </label>
                   <input
@@ -635,13 +635,13 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                     placeholder="z. B. auf-produktion-ausrollen"
                     className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   />
-                  <p className="text-[10px] text-muted-foreground mt-1">
+                  <p className="text-[11px] text-muted-foreground mt-1">
                     Kleinbuchstaben mit Bindestrichen — daraus wird der Ordnername.
                   </p>
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-medium text-muted-foreground/70 block mb-1.5">
+                  <label className="text-xs font-medium text-muted-foreground/70 block mb-1.5">
                     Beschreibung
                   </label>
                   <input
@@ -654,7 +654,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-medium text-muted-foreground/70 block mb-1.5">
+                  <label className="text-xs font-medium text-muted-foreground/70 block mb-1.5">
                     Anleitung (Markdown)
                   </label>
                   <textarea
@@ -725,7 +725,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium">{skill.name}</span>
-                      <span className="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
+                      <span className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
                         skill
                       </span>
                     </div>

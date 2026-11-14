@@ -125,7 +125,7 @@ export function AppearancePicker({
               );
             })}
             {query.trim() && catalog && results.length === 0 && (
-              <span className="py-2 text-[11px] text-muted-foreground/60">
+              <span className="py-2 text-xs text-muted-foreground/60">
                 Kein passendes Symbol. Versuch ein anderes Wort — englische
                 Namen wie „truck“ gehen auch.
               </span>
@@ -181,7 +181,7 @@ export function AppearancePicker({
           }}
           placeholder="#4f46e5"
           spellCheck={false}
-          className="w-[5.5rem] rounded-md border border-foreground/[0.1] bg-background/80 px-2 py-1 font-mono text-[11px] outline-none focus:border-primary/50"
+          className="w-[5.5rem] rounded-md border border-foreground/[0.1] bg-background/80 px-2 py-1 font-mono text-xs outline-none focus:border-primary/50"
         />
       </div>
     </div>

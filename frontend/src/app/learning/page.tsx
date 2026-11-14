@@ -53,10 +53,10 @@ function Kennzahl({
     <div className="rounded-xl border border-foreground/[0.06] bg-card/80 p-4 backdrop-blur-sm">
       <div className="flex items-center gap-2">
         <Icon className="h-3.5 w-3.5 text-primary" />
-        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
+        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</span>
       </div>
       <div className="mt-1 text-2xl font-semibold">{value}</div>
-      <div className="mt-0.5 text-[11px] text-muted-foreground/60">{hint}</div>
+      <div className="mt-0.5 text-xs text-muted-foreground/60">{hint}</div>
     </div>
   );
 }
@@ -69,27 +69,27 @@ function SkillRow({ skill }: { skill: LearnedSkill }) {
           <span className="text-[13px] font-medium">{skill.name}</span>
           <span
             className={cn(
-              "rounded-full border px-2 py-0.5 text-[10px] font-medium",
+              "rounded-full border px-2 py-0.5 text-[11px] font-medium",
               STATUS_STYLE[skill.status] ?? "border-zinc-500/20 bg-zinc-500/10 text-zinc-400"
             )}
           >
             {skill.status === "draft" ? "Entwurf" : skill.status}
           </span>
           {skill.version > 1 && (
-            <span className="text-[10px] text-muted-foreground">v{skill.version}</span>
+            <span className="text-[11px] text-muted-foreground">v{skill.version}</span>
           )}
         </div>
         {skill.description && (
-          <p className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground/60">
+          <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground/60">
             {skill.description}
           </p>
         )}
       </div>
       <div className="shrink-0 text-right">
-        <div className="text-[11px] text-muted-foreground/60">
+        <div className="text-xs text-muted-foreground/60">
           {ORIGIN_LABEL[skill.origin] ?? skill.origin}
         </div>
-        <div className="text-[10px] text-muted-foreground">
+        <div className="text-[11px] text-muted-foreground">
           {skill.usage_count}× genutzt
           {skill.avg_rating !== null ? ` · ${skill.avg_rating} ★` : ""}
         </div>
@@ -112,7 +112,7 @@ function Abschnitt({
   return (
     <section className="rounded-xl border border-foreground/[0.06] bg-card/80 p-5 backdrop-blur-sm">
       <h2 className="text-sm font-semibold">{title}</h2>
-      <p className="mt-0.5 mb-3 text-[11px] text-muted-foreground/60">{hint}</p>
+      <p className="mt-0.5 mb-3 text-xs text-muted-foreground/60">{hint}</p>
       {skills.length === 0 ? (
         <p className="py-4 text-center text-[12px] text-muted-foreground">{empty}</p>
       ) : (
@@ -238,13 +238,13 @@ export default function LearningPage() {
           {data.runs.length > 0 && (
             <section className="rounded-xl border border-foreground/[0.06] bg-card/80 p-5 backdrop-blur-sm">
               <h2 className="text-sm font-semibold">Nachtläufe</h2>
-              <p className="mt-0.5 mb-3 text-[11px] text-muted-foreground/60">
+              <p className="mt-0.5 mb-3 text-xs text-muted-foreground/60">
                 Was jede Nacht dabei herauskam.
               </p>
               <div className="overflow-x-auto">
                 <table className="w-full text-[12px]">
                   <thead>
-                    <tr className="border-b border-foreground/[0.06] text-[10px] uppercase tracking-wide text-muted-foreground">
+                    <tr className="border-b border-foreground/[0.06] text-[11px] uppercase tracking-wide text-muted-foreground">
                       <th className="pb-2 text-left">Lauf</th>
                       <th className="pb-2 text-right">Gemerkt</th>
                       <th className="pb-2 text-right">Entwürfe</th>

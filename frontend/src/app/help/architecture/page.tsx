@@ -94,7 +94,7 @@ function Ref({ groups }: { groups: Group[] }) {
         <details key={g.title} className="group rounded-lg border border-foreground/[0.08] bg-card/60">
           <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-2.5 text-sm font-medium hover:bg-foreground/[0.03]">
             <span>{g.title}</span>
-            <span className="text-[11px] text-muted-foreground">{g.items.length}</span>
+            <span className="text-xs text-muted-foreground">{g.items.length}</span>
           </summary>
           <ul className="space-y-1 border-t border-foreground/[0.06] px-4 py-3">
             {g.items.map((it, i) => {
@@ -124,7 +124,7 @@ function SectionTitle({ icon: Icon, children, hint }: { icon: typeof Network; ch
       </div>
       <div>
         <h3 className="text-base font-semibold">{children}</h3>
-        {hint && <p className="text-[11px] text-muted-foreground/60">{hint}</p>}
+        {hint && <p className="text-xs text-muted-foreground/60">{hint}</p>}
       </div>
     </div>
   );
@@ -173,7 +173,7 @@ export default function ArchitecturePage() {
         {/* API */}
         <section className="space-y-3">
           <SectionTitle icon={Server} hint="~330 Endpunkte, Basis-Prefix /api/v1">HTTP-API</SectionTitle>
-          <p className="text-[11px] text-muted-foreground/70">
+          <p className="text-xs text-muted-foreground/70">
             Auth-Legende: <b>[auth]</b> Session/JWT · <b>[admin]</b> Admin · <b>[auth|agent]</b> User oder Agent-Token ·
             <b> [agent]</b> agent-facing (Agent-Token) · <b>[public]</b> kein FastAPI-Dependency (meist Ticket/Bearer/Webhook-Token).
           </p>
@@ -223,7 +223,7 @@ export default function ArchitecturePage() {
           </ul>
         </section>
 
-        <p className="pt-2 text-center text-[11px] text-muted-foreground">
+        <p className="pt-2 text-center text-xs text-muted-foreground">
           Faktenbasiert aus dem Code inventarisiert. Bei neuen Endpunkten/Tools die Referenz in <span className="font-mono">help/architecture/data.ts</span> ergänzen.
         </p>
       </div>

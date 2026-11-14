@@ -23,9 +23,9 @@ const TREND_STYLE: Record<string, { icon: typeof TrendingUp; className: string }
 function Kennzahl({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="rounded-lg border border-foreground/[0.06] bg-background/60 p-2.5">
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className="mt-0.5 text-sm font-medium text-foreground">{value}</div>
-      {hint && <div className="mt-0.5 text-[10px] text-muted-foreground">{hint}</div>}
+      {hint && <div className="mt-0.5 text-[11px] text-muted-foreground">{hint}</div>}
     </div>
   );
 }
@@ -59,7 +59,7 @@ export function DevelopmentCard({ agentId }: { agentId: string }) {
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <div className="text-sm font-medium">Entwicklung &amp; Probezeit</div>
-          <div className="text-[11px] text-muted-foreground/60">
+          <div className="text-xs text-muted-foreground/60">
             Wird er besser? Aus Bewertungen, Fehlerquote und Plan-Treue — nichts davon
             wird zusätzlich erhoben.
           </div>
@@ -67,7 +67,7 @@ export function DevelopmentCard({ agentId }: { agentId: string }) {
         <select
           value={days}
           onChange={(e) => setDays(parseInt(e.target.value, 10))}
-          className="rounded-lg border border-foreground/[0.08] bg-background/60 px-2 py-1 text-[11px]"
+          className="rounded-lg border border-foreground/[0.08] bg-background/60 px-2 py-1 text-xs"
         >
           <option value={7}>7 Tage</option>
           <option value={30}>30 Tage</option>
@@ -76,12 +76,12 @@ export function DevelopmentCard({ agentId }: { agentId: string }) {
       </div>
 
       {loading ? (
-        <div className="flex items-center gap-2 py-4 text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-2 py-4 text-xs text-muted-foreground">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
           Zahlen werden geholt
         </div>
       ) : !data ? (
-        <div className="py-4 text-[11px] text-muted-foreground">
+        <div className="py-4 text-xs text-muted-foreground">
           Für diesen Agenten liegen keine Zahlen vor.
         </div>
       ) : (
@@ -124,7 +124,7 @@ export function DevelopmentCard({ agentId }: { agentId: string }) {
           </div>
 
           {(!data.probation.onboarded || !data.probation.has_responsibilities) && (
-            <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/[0.07] p-2.5 text-[11px] text-amber-700 dark:text-amber-300">
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/[0.07] p-2.5 text-xs text-amber-700 dark:text-amber-300">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               <span>
                 {!data.probation.onboarded
@@ -135,7 +135,7 @@ export function DevelopmentCard({ agentId }: { agentId: string }) {
           )}
 
           {data.probation.review_due && data.probation.onboarded && data.probation.has_responsibilities && (
-            <div className="mt-3 text-[11px] text-muted-foreground/60">
+            <div className="mt-3 text-xs text-muted-foreground/60">
               Probezeit-Bilanz möglich: er ist seit {data.probation.days_active} Tagen im Dienst.
               Taugt die Arbeit nicht, sind die Verantwortungsbereiche der erste Hebel — nicht das Modell.
             </div>

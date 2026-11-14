@@ -77,7 +77,7 @@ export function KontoVerbindungen({ agentId }: { agentId: string }) {
         </div>
         <div>
           <h3 className="text-sm font-medium">Deine Konten</h3>
-          <p className="mt-0.5 text-[11px] text-muted-foreground/60">Verbinde sie einmal — danach kannst du sie deinen Agenten freigeben.</p>
+          <p className="mt-0.5 text-xs text-muted-foreground/60">Verbinde sie einmal — danach kannst du sie deinen Agenten freigeben.</p>
         </div>
       </div>
       <div className="divide-y divide-foreground/[0.04]">
@@ -91,7 +91,7 @@ export function KontoVerbindungen({ agentId }: { agentId: string }) {
               <Icon className={cn("h-4 w-4 shrink-0", gesund ? "text-emerald-500" : neuNoetig ? "text-amber-500" : "text-muted-foreground")} />
               <div className="min-w-0 flex-1">
                 <p className="text-[13px] font-medium">{k.display_name}</p>
-                <p className="truncate text-[11px] text-muted-foreground/70">
+                <p className="truncate text-xs text-muted-foreground/70">
                   {gesund
                     ? `Verbunden${k.account_label ? ` als ${k.account_label}` : ""}`
                     : neuNoetig
@@ -105,7 +105,7 @@ export function KontoVerbindungen({ agentId }: { agentId: string }) {
                 <button
                   onClick={() => trennen(k)}
                   disabled={laeuft}
-                  className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] text-muted-foreground hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
+                  className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs text-muted-foreground hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
                 >
                   {laeuft ? <Loader2 className="h-3 w-3 animate-spin" /> : <Unplug className="h-3 w-3" />}
                   Trennen
@@ -114,7 +114,7 @@ export function KontoVerbindungen({ agentId }: { agentId: string }) {
                 <button
                   onClick={() => verbinden(k.provider)}
                   disabled={laeuft}
-                  className="flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+                  className="flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
                 >
                   {laeuft ? <Loader2 className="h-3 w-3 animate-spin" /> : neuNoetig ? <RefreshCw className="h-3 w-3" /> : <ExternalLink className="h-3 w-3" />}
                   {neuNoetig ? "Neu verbinden" : "Verbinden"}
@@ -124,7 +124,7 @@ export function KontoVerbindungen({ agentId }: { agentId: string }) {
           );
         })}
       </div>
-      {fehler && <p className="px-5 pb-3 text-[11px] text-red-400">{fehler}</p>}
+      {fehler && <p className="px-5 pb-3 text-xs text-red-400">{fehler}</p>}
     </div>
   );
 }

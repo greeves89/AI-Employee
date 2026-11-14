@@ -254,17 +254,17 @@ export function TemplateManager({ isAdmin }: TemplateManagerProps) {
                   <span className="text-sm font-medium">{t.display_name}</span>
                   {t.is_builtin && <Lock className="h-3 w-3 text-muted-foreground/40" />}
                   <span className={cn(
-                    "text-[10px] px-1.5 py-0.5 rounded-full border",
+                    "text-[11px] px-1.5 py-0.5 rounded-full border",
                     CATEGORY_COLORS[t.category] || CATEGORY_COLORS.general,
                   )}>
                     {CATEGORY_LABELS[t.category] || t.category}
                   </span>
                   {t.is_published ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
+                    <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full border bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
                       <Eye className="h-2.5 w-2.5" /> Freigegeben
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border bg-foreground/[0.04] text-muted-foreground border-foreground/[0.06]">
+                    <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full border bg-foreground/[0.04] text-muted-foreground border-foreground/[0.06]">
                       <EyeOff className="h-2.5 w-2.5" /> Entwurf
                     </span>
                   )}

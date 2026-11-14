@@ -61,6 +61,9 @@ export function ErsteSchritteKarte({ platz }: { platz?: "oben" | "unten" } = {})
   // Erledigte Schritte standen durchgestrichen in voller Höhe da und schoben das
   // Offene nach unten (UI-Bewertung 14.11.2026) — jetzt eine Zeile, aufklappbar.
   const [erledigteZeigen, setErledigteZeigen] = useState(false);
+  // Oben auf Start nur der nächste Schritt: die volle Liste (6 Schritte, ~1.300 px
+  // am Handy) schob den Tag unter die Falz (Personas Runde 4, 14.11.2026).
+  const [alleZeigen, setAlleZeigen] = useState(platz !== "oben");
 
   useEffect(() => {
     setZu(ausgeblendet(uid));
@@ -117,11 +120,11 @@ export function ErsteSchritteKarte({ platz }: { platz?: "oben" | "unten" } = {})
   return (
     <section
       aria-labelledby="erste-schritte-titel"
-      className="rounded-xl border border-border bg-card p-6"
+      className="rounded-xl border border-border bg-card p-4 sm:p-6"
     >
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 id="erste-schritte-titel" className="text-lg font-semibold tracking-tight">
+          <h3 id="erste-schritte-titel" className="font-display text-lg font-semibold tracking-tight">
             In {stand.gesamt} Schritten startklar
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -167,6 +170,7 @@ export function ErsteSchritteKarte({ platz }: { platz?: "oben" | "unten" } = {})
           if (s.erledigt && !erledigteZeigen) return null;
           const Symbol = SYMBOL[s.id] ?? Bot;
           const istNaechster = s.id === naechster?.id;
+          if (!alleZeigen && !istNaechster) return null;
           return (
             <li
               key={s.id}
@@ -233,6 +237,15 @@ export function ErsteSchritteKarte({ platz }: { platz?: "oben" | "unten" } = {})
           );
         })}
       </ol>
+      {!alleZeigen && (
+        <button
+          type="button"
+          onClick={() => setAlleZeigen(true)}
+          className="mt-2 inline-flex h-9 items-center rounded-lg px-3 text-[13px] font-medium text-primary hover:bg-primary/10"
+        >
+          Alle {stand.gesamt} Schritte zeigen
+        </button>
+      )}
     </section>
   );
 }

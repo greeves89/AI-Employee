@@ -97,7 +97,7 @@ function ZugangZeile({
               aria-checked={entwurf.modus === m.modus}
               onClick={() => setEntwurf((e) => ({ ...e, modus: m.modus }))}
               className={cn(
-                "rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors",
+                "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
                 entwurf.modus === m.modus
                   ? "bg-primary/10 text-primary"
                   : "text-muted-foreground hover:text-foreground",
@@ -123,7 +123,7 @@ function ZugangZeile({
                 className="h-3.5 w-3.5 accent-primary"
               />
               <span className="truncate">{a.name}</span>
-              {a.veraltet && <span className="text-[10px] text-amber-600 dark:text-amber-400">Aktualisieren</span>}
+              {a.veraltet && <span className="text-[11px] text-amber-600 dark:text-amber-400">Aktualisieren</span>}
             </label>
           ))}
         </div>
@@ -135,18 +135,18 @@ function ZugangZeile({
             type="button"
             disabled={speichert || auswahlLeer}
             onClick={() => onSpeichern(entwurf)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
           >
             {speichert && <Loader2 className="h-3 w-3 animate-spin" />} Speichern
           </button>
           <button
             type="button"
             onClick={() => setEntwurf(stufe)}
-            className="rounded-lg px-3 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+            className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
           >
             Verwerfen
           </button>
-          {auswahlLeer && <span className="text-[11px] text-muted-foreground">Mindestens einen Agenten wählen.</span>}
+          {auswahlLeer && <span className="text-xs text-muted-foreground">Mindestens einen Agenten wählen.</span>}
         </div>
       )}
     </div>
@@ -336,7 +336,7 @@ export function EgressStufenKarte() {
                 type="button"
                 disabled={aktualisiert !== null}
                 onClick={alleAktualisieren}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 px-2.5 py-1 text-[11px] font-medium text-amber-700 hover:bg-amber-500/10 disabled:opacity-50 dark:text-amber-300"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 px-2.5 py-1 text-xs font-medium text-amber-700 hover:bg-amber-500/10 disabled:opacity-50 dark:text-amber-300"
               >
                 <RefreshCw className={cn("h-3 w-3", aktualisiert && "animate-spin")} /> Jetzt aktualisieren
               </button>

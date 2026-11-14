@@ -193,7 +193,7 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
               key={cat.key}
               onClick={() => setActiveCategory(cat.key)}
               className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors",
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors",
                 activeCategory === cat.key
                   ? "bg-accent text-foreground shadow-sm"
                   : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
@@ -202,7 +202,7 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
               <div className={cn("h-1.5 w-1.5 rounded-full", cat.color)} />
               {cat.label}
               {count > 0 && (
-                <span className="text-[10px] text-muted-foreground/60">({count})</span>
+                <span className="text-[11px] text-muted-foreground/60">({count})</span>
               )}
             </button>
           );
@@ -210,7 +210,7 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
         <button
           onClick={() => setReflectionOnly((v) => !v)}
           className={cn(
-            "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors",
+            "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors",
             reflectionOnly
               ? "bg-violet-500/10 text-violet-400 shadow-sm"
               : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
@@ -268,13 +268,13 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-xs font-semibold text-foreground">{mem.key}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground">
+                      <span className="text-[11px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground">
                         {mem.category}
                       </span>
                       {source && (
                         <span
                           className={cn(
-                            "inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border",
+                            "inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded border",
                             source.className
                           )}
                         >
@@ -313,18 +313,18 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
                     )}
 
                     <div className="flex items-center gap-3 mt-1.5">
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="text-[11px] text-muted-foreground">
                         {new Date(mem.updated_at).toLocaleDateString()}
                       </span>
                       {mem.access_count > 0 && (
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="text-[11px] text-muted-foreground">
                           accessed {mem.access_count}x
                         </span>
                       )}
                       <button
                         onClick={() => toggleHistory(mem.id)}
                         className={cn(
-                          "flex items-center gap-1 text-[10px] transition-colors",
+                          "flex items-center gap-1 text-[11px] transition-colors",
                           isHistoryOpen
                             ? "text-foreground"
                             : "text-muted-foreground hover:text-foreground"
@@ -341,7 +341,7 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
                       <button
                         onClick={() => toggleRelated(mem.id)}
                         className={cn(
-                          "flex items-center gap-1 text-[10px] transition-colors",
+                          "flex items-center gap-1 text-[11px] transition-colors",
                           isRelatedOpen ? "text-foreground" : "text-muted-foreground hover:text-foreground",
                         )}
                       >
@@ -359,23 +359,23 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
                     {isRelatedOpen && (
                       <div className="mt-2 border-t border-border/50 pt-2 space-y-2">
                         {relatedLoadingId === mem.id ? (
-                          <div className="flex items-center gap-2 py-1 text-[11px] text-muted-foreground">
+                          <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
                             <Loader2 className="h-3 w-3 animate-spin" /> Suche Verknüpfungen...
                           </div>
                         ) : !related || (related.related_memories.length === 0 && related.related_knowledge.length === 0) ? (
-                          <p className="py-1 text-[11px] text-muted-foreground">
+                          <p className="py-1 text-xs text-muted-foreground">
                             Keine semantisch ähnlichen Einträge gefunden.
                           </p>
                         ) : (
                           <>
                             {related.related_memories.length > 0 && (
                               <div>
-                                <p className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                                <p className="mb-1 flex items-center gap-1 text-[11px] uppercase tracking-wide text-muted-foreground">
                                   <Brain className="h-2.5 w-2.5 text-emerald-400" /> Memories
                                 </p>
                                 <div className="space-y-1">
                                   {related.related_memories.map((r) => (
-                                    <div key={`m${r.id}`} className="flex items-center gap-2 text-[11px]">
+                                    <div key={`m${r.id}`} className="flex items-center gap-2 text-xs">
                                       <span className="w-8 shrink-0 text-right text-emerald-400/80">{Math.round(r.similarity * 100)}%</span>
                                       <span className="font-medium">{r.key}</span>
                                       <span className="truncate text-muted-foreground/70">— {r.snippet}</span>
@@ -386,12 +386,12 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
                             )}
                             {related.related_knowledge.length > 0 && (
                               <div>
-                                <p className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                                <p className="mb-1 flex items-center gap-1 text-[11px] uppercase tracking-wide text-muted-foreground">
                                   <Link2 className="h-2.5 w-2.5 text-sky-400" /> Wissen (Second Brain)
                                 </p>
                                 <div className="space-y-1">
                                   {related.related_knowledge.map((r) => (
-                                    <div key={`k${r.id}`} className="flex items-center gap-2 text-[11px]">
+                                    <div key={`k${r.id}`} className="flex items-center gap-2 text-xs">
                                       <span className="w-8 shrink-0 text-right text-sky-400/80">{Math.round(r.similarity * 100)}%</span>
                                       <span className="truncate">{r.title}</span>
                                     </div>
@@ -408,12 +408,12 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
                     {isHistoryOpen && (
                       <div className="mt-2 border-t border-border/50 pt-2">
                         {historyLoadingId === mem.id ? (
-                          <div className="flex items-center gap-2 py-1 text-[11px] text-muted-foreground">
+                          <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
                             <Loader2 className="h-3 w-3 animate-spin" />
                             Lade Verlauf...
                           </div>
                         ) : !history || history.length <= 1 ? (
-                          <p className="py-1 text-[11px] text-muted-foreground">
+                          <p className="py-1 text-xs text-muted-foreground">
                             Kein früherer Stand — dieser Eintrag wurde noch nie überschrieben.
                           </p>
                         ) : (
@@ -427,21 +427,21 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
                                 )}
                               >
                                 <div className="flex items-center gap-2">
-                                  <span className="text-[10px] text-muted-foreground/60">
+                                  <span className="text-[11px] text-muted-foreground/60">
                                     {new Date(entry.updated_at).toLocaleString("de-DE", {
                                       dateStyle: "medium",
                                       timeStyle: "short",
                                     })}
                                   </span>
                                   {i === 0 && (
-                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-400 border border-violet-500/20">
+                                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-400 border border-violet-500/20">
                                       Aktuell
                                     </span>
                                   )}
                                 </div>
                                 <p
                                   className={cn(
-                                    "text-[11px] whitespace-pre-wrap mt-0.5",
+                                    "text-xs whitespace-pre-wrap mt-0.5",
                                     i === 0 ? "text-foreground/90" : "text-muted-foreground/70"
                                   )}
                                 >

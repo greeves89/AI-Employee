@@ -92,7 +92,7 @@ export function AgentenKonto({ agentId }: { agentId: string }) {
         </div>
         <div>
           <h3 className="text-sm font-medium">Microsoft-Konto des Agenten</h3>
-          <p className="mt-0.5 text-[11px] text-muted-foreground/60">
+          <p className="mt-0.5 text-xs text-muted-foreground/60">
             Eigenes Postfach statt deinem: Der Agent liest und sendet dann als er selbst.
           </p>
         </div>
@@ -103,7 +103,7 @@ export function AgentenKonto({ agentId }: { agentId: string }) {
           <p className="truncate text-[13px] font-medium">
             {stand.verbunden ? (stand.konto || "Verbunden") : "Kein eigenes Konto"}
           </p>
-          <p className="text-[11px] text-muted-foreground/70">
+          <p className="text-xs text-muted-foreground/70">
             {gesund
               ? "Verbunden — der Agent arbeitet mit diesem Konto"
               : neuNoetig
@@ -118,7 +118,7 @@ export function AgentenKonto({ agentId }: { agentId: string }) {
             <button
               onClick={trennen}
               disabled={laeuft}
-              className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] text-muted-foreground hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
+              className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs text-muted-foreground hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
             >
               {laeuft ? <Loader2 className="h-3 w-3 animate-spin" /> : <Unplug className="h-3 w-3" />}
               Trennen
@@ -127,7 +127,7 @@ export function AgentenKonto({ agentId }: { agentId: string }) {
             <button
               onClick={verbinden}
               disabled={laeuft || !stand.verfuegbar}
-              className="flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+              className="flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
             >
               {laeuft ? <Loader2 className="h-3 w-3 animate-spin" /> : neuNoetig ? <RefreshCw className="h-3 w-3" /> : <ExternalLink className="h-3 w-3" />}
               {neuNoetig ? "Neu verbinden" : "Konto verbinden"}
@@ -140,7 +140,7 @@ export function AgentenKonto({ agentId }: { agentId: string }) {
           <BellRing className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
           <div className="min-w-0 flex-1">
             <p className="text-[13px] font-medium">Bei neuer Mail wecken</p>
-            <p className="text-[11px] text-muted-foreground/70">
+            <p className="text-xs text-muted-foreground/70">
               {stand.mail_wecken
                 ? stand.wecken_weg === "benachrichtigung"
                   ? "An — Microsoft meldet neue Mails sofort."
@@ -148,7 +148,7 @@ export function AgentenKonto({ agentId }: { agentId: string }) {
                 : "Jede neue Mail im Postfach des Agenten startet einen Auftrag. Höchstens 20 je Stunde."}
             </p>
             {stand.mail_wecken && (
-              <label className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
+              <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                 <input
                   type="checkbox"
                   checked={!!stand.alle_absender}
@@ -160,7 +160,7 @@ export function AgentenKonto({ agentId }: { agentId: string }) {
               </label>
             )}
             {stand.mail_wecken && stand.wecken_fehler && (
-              <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">{stand.wecken_fehler}</p>
+              <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">{stand.wecken_fehler}</p>
             )}
           </div>
           <button
@@ -181,11 +181,11 @@ export function AgentenKonto({ agentId }: { agentId: string }) {
         </div>
       )}
       {!stand.verbunden && stand.darf_verbinden && (
-        <p className="px-5 pb-3 text-[11px] text-muted-foreground/60">
+        <p className="px-5 pb-3 text-xs text-muted-foreground/60">
           Bei Microsoft mit dem Konto des Agenten anmelden, nicht mit deinem eigenen.
         </p>
       )}
-      {fehler && <p className="px-5 pb-3 text-[11px] text-red-400">{fehler}</p>}
+      {fehler && <p className="px-5 pb-3 text-xs text-red-400">{fehler}</p>}
     </div>
   );
 }

@@ -139,7 +139,7 @@ export function VoiceSettings() {
     <section>
       <div className="mb-3 flex items-center gap-2">
         <Mic className="h-4 w-4 text-muted-foreground/60" />
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+        <h2 className="text-sm font-semibold text-foreground">
           Voice Live-Sessions
         </h2>
       </div>
@@ -148,17 +148,17 @@ export function VoiceSettings() {
         <div className="flex items-center justify-between border-b border-foreground/[0.04] px-5 py-3.5">
           <div>
             <h3 className="text-sm font-semibold">Sprach-Interaktion</h3>
-            <p className="text-[11px] text-muted-foreground/60">
+            <p className="text-xs text-muted-foreground/60">
               Wähle das Echtzeit-Sprachmodell (empfohlen) — oder die klassische Pipeline als Fallback.
             </p>
           </div>
-          {msg && <span className="text-[11px] text-emerald-400">{msg}</span>}
+          {msg && <span className="text-xs text-emerald-400">{msg}</span>}
         </div>
 
         <div className="space-y-5 p-5">
           {/* ── Realtime models (primary) ─────────────────────────── */}
           <div>
-            <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
+            <div className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground/70">
               <Sparkles className="h-3.5 w-3.5 text-fuchsia-400" /> Echtzeit-Sprachmodell
             </div>
             <div className="space-y-2">
@@ -178,13 +178,13 @@ export function VoiceSettings() {
                     <Radio className={`h-4 w-4 shrink-0 ${active ? "text-fuchsia-400" : "text-muted-foreground/50"}`} />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-medium">{o.model_label}</div>
-                      <div className="truncate text-[11px] text-muted-foreground/60">
+                      <div className="truncate text-xs text-muted-foreground/60">
                         {o.provider_label} · {o.account_name}
                         {!o.implemented && " · noch nicht verfügbar"}
                       </div>
                     </div>
                     {active && (
-                      <span className="shrink-0 rounded-full bg-fuchsia-500/20 px-2 py-0.5 text-[10px] font-medium text-fuchsia-300">
+                      <span className="shrink-0 rounded-full bg-fuchsia-500/20 px-2 py-0.5 text-[11px] font-medium text-fuchsia-300">
                         Aktiv
                       </span>
                     )}
@@ -192,7 +192,7 @@ export function VoiceSettings() {
                 );
               })}
               {models.length === 0 && (
-                <div className="rounded-lg border border-dashed border-border px-3.5 py-3 text-[11px] text-muted-foreground/60">
+                <div className="rounded-lg border border-dashed border-border px-3.5 py-3 text-xs text-muted-foreground/60">
                   Noch kein Echtzeit-Provider eingerichtet. Lege unter{" "}
                   <a href="/admin?tab=ai-accounts" className="text-fuchsia-400 hover:underline">
                     KI-Konten
@@ -218,7 +218,7 @@ export function VoiceSettings() {
                   ))}
                 </select>
               </Field>
-              <div className="mt-1.5 text-[11px] text-muted-foreground/60">
+              <div className="mt-1.5 text-xs text-muted-foreground/60">
                 Nur „matthew&ldquo; und „tiffany&ldquo; sind polyglott und sprechen auch Deutsch.
                 Die übrigen Stimmen sind auf ihre jeweilige Sprache ausgelegt. Die neue Stimme
                 gilt ab dem nächsten Gespräch.
@@ -239,7 +239,7 @@ export function VoiceSettings() {
                 />
                 <div>
                   <div className="text-sm font-medium">Alles an den Agenten weiterreichen</div>
-                  <div className="mt-0.5 text-[11px] text-muted-foreground/60">
+                  <div className="mt-0.5 text-xs text-muted-foreground/60">
                     Die Echtzeit-Stimme hört zu und spricht, beantwortet aber nichts selbst: jede
                     Frage geht an den Agenten mit seinem Modell, seinem Wissen und seinen
                     MCP-Rechten. Gründlicher, dafür einige Sekunden Wartezeit pro Antwort. Aus:
@@ -266,14 +266,14 @@ export function VoiceSettings() {
                 )}
                 <div>
                   <div className="text-sm font-medium">Klassische Pipeline (Fallback)</div>
-                  <div className="text-[11px] text-muted-foreground/60">
+                  <div className="text-xs text-muted-foreground/60">
                     STT → LLM → TTS. Wird genutzt, wenn kein Echtzeit-Modell aktiv ist
                     {classicActive ? " — derzeit aktiv." : "."}
                   </div>
                 </div>
               </div>
               {classicActive && (
-                <span className="shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
+                <span className="shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
                   Aktiv
                 </span>
               )}
@@ -445,7 +445,7 @@ export function VoiceSettings() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="mb-1.5 block text-[11px] font-medium text-muted-foreground/80">{label}</label>
+      <label className="mb-1.5 block text-xs font-medium text-muted-foreground/80">{label}</label>
       {children}
     </div>
   );

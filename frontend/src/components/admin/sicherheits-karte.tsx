@@ -85,7 +85,7 @@ export function SicherheitsKarte() {
               type="button"
               onClick={laden}
               disabled={laedt}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-foreground/[0.08] px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground disabled:opacity-50"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-foreground/[0.08] px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground disabled:opacity-50"
             >
               <RefreshCw className={cn("h-3 w-3", laedt && "animate-spin")} /> Neu prüfen
             </button>

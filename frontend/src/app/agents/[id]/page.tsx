@@ -576,7 +576,7 @@ export default function AgentDetailPage() {
                     className={cn(pill, "hover:bg-blue-500/10 transition-colors cursor-pointer")}
                   >
                     <Loader2 className="h-3 w-3 text-blue-400 animate-spin shrink-0" />
-                    <p className="text-[11px] font-medium text-blue-400 truncate">Aktiver Chat</p>
+                    <p className="text-xs font-medium text-blue-400 truncate">Aktiver Chat</p>
                     <ArrowUpRight className="h-3 w-3 text-blue-400/70 shrink-0" />
                   </button>
                 );
@@ -584,7 +584,7 @@ export default function AgentDetailPage() {
               return (
                 <motion.div initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} className={pill}>
                   <Loader2 className="h-3 w-3 text-blue-400 animate-spin shrink-0" />
-                  <p className="text-[11px] font-medium text-blue-400 truncate">{ct}</p>
+                  <p className="text-xs font-medium text-blue-400 truncate">{ct}</p>
                 </motion.div>
               );
             })()}
@@ -737,7 +737,7 @@ function InfoCard({
         <div className={cn("flex h-7 w-7 items-center justify-center rounded-lg", iconBg)}>
           <Icon className={cn("h-3.5 w-3.5", color)} />
         </div>
-        <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
+        <span className="text-xs font-medium text-muted-foreground">{label}</span>
       </div>
       <p className={cn("text-lg font-bold tabular-nums tracking-tight", color)}>{value}</p>
       {bar && (
@@ -768,7 +768,7 @@ function BudgetBar({ spent, budget, action }: { spent: number; budget: number; a
       className="flex items-center gap-2.5 rounded-lg border border-foreground/[0.06] bg-card/60 px-3 py-1.5"
     >
       <DollarSign className="h-3.5 w-3.5 shrink-0 text-amber-700 dark:text-amber-400" />
-      <span className="shrink-0 text-[11px] text-muted-foreground">Budget</span>
+      <span className="shrink-0 text-xs text-muted-foreground">Budget</span>
       <div className="h-1 min-w-[3rem] flex-1 rounded-full bg-foreground/[0.08]">
         <div className={cn("h-1 rounded-full transition-all duration-700", fill)} style={{ width: `${pct}%` }} />
       </div>
@@ -784,7 +784,7 @@ function BudgetBar({ spent, budget, action }: { spent: number; budget: number; a
  *  Chat-Leiste als Icon — je ein Fenster mit der bestehenden Verwaltung. */
 type SchnellKey = "konnektoren" | "computer" | "modell" | "rechte" | "dateien" | "wissen";
 const SCHNELL: { key: SchnellKey; titel: string; hinweis: string; icon: typeof CheckCircle2 }[] = [
-  { key: "konnektoren", titel: "Konnektoren", hinweis: "Mail, Kalender, Teams und andere Dienste verbinden", icon: Plug },
+  { key: "konnektoren", titel: "Konten & Dienste", hinweis: "Mail, Kalender, Teams und andere Dienste verbinden", icon: Plug },
   // Bridge auf dem eigenen Rechner: Sitzung, Berechtigungen, Mitsehen und Regeln
   // (#1019) — dieselbe Verwaltung wie der Admin-Reiter „Computer-Steuerung".
   { key: "computer", titel: "Computer", hinweis: "Auf deinem Rechner mithelfen lassen", icon: Monitor },
@@ -828,11 +828,12 @@ function Schnellzugriff({ agent, setAgent }: { agent: Agent; setAgent: (a: Agent
           className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-[13px] text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
         >
           <SlidersHorizontal className="h-4 w-4" />
-          Werkzeuge
+          {/* „Werkzeuge“ verriet nicht, dass hier Rechte und Konten liegen (Personas Runde 4). */}
+          Einstellungen
           <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", menue && "rotate-180")} />
         </button>
         {menue && (
-          <div role="menu" className="absolute bottom-full left-0 z-40 mb-1.5 w-64 rounded-xl border border-border bg-card p-1 shadow-xl">
+          <div role="menu" className="fixed inset-x-3 bottom-24 z-40 rounded-xl border border-border bg-card p-1 shadow-xl sm:absolute sm:inset-x-auto sm:bottom-full sm:left-0 sm:mb-1.5 sm:w-72">
             {SCHNELL.map(({ key, titel, hinweis, icon: Icon }) => (
               <button
                 key={key}
@@ -1036,7 +1037,7 @@ function AufgabenSpalte({
       >
         <PanelRightOpen className="h-4 w-4" />
         <ListTodo className="h-4 w-4 text-primary" />
-        <span className="text-[11px] tabular-nums">{anzahl}</span>
+        <span className="text-xs tabular-nums">{anzahl}</span>
         {aktiv && <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />}
       </button>
     );
@@ -1084,7 +1085,7 @@ function AufgabenSpalte({
         {icon}
         <div className="min-w-0 flex-1">
           <p className="text-[13px] leading-snug line-clamp-2">{titel}</p>
-          <p className="text-[11px] text-muted-foreground/70">{unter}</p>
+          <p className="text-xs text-muted-foreground/70">{unter}</p>
         </div>
       </>
     );
@@ -1100,7 +1101,7 @@ function AufgabenSpalte({
       <div className="flex items-center gap-2 px-4 py-3 border-b border-foreground/[0.06]">
         <ListTodo className="h-4 w-4 text-primary" />
         <h3 className="text-sm font-semibold">Aufgaben</h3>
-        <span className="ml-auto text-[11px] text-muted-foreground/60 tabular-nums">{anzahl}</span>
+        <span className="ml-auto text-xs text-muted-foreground/60 tabular-nums">{anzahl}</span>
         {!imFenster && <button
           onClick={umschalten}
           title="Aufgaben ausblenden"
@@ -1117,7 +1118,8 @@ function AufgabenSpalte({
             key={key}
             onClick={() => { setReiter(key); setSuche(""); }}
             className={cn(
-              "flex-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
+              // 25 px waren am Handy zu klein zum Tippen (Persona Mobil, Runde 4).
+              "flex-1 min-h-10 rounded-md px-2 py-1.5 text-sm font-medium transition-colors sm:min-h-8 sm:text-xs",
               reiter === key ? "bg-foreground/[0.08] text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]",
             )}
           >
@@ -1231,7 +1233,7 @@ function TaskHistory({ tasks }: { tasks: ReturnType<typeof useTasks>["tasks"] })
                 <div className="flex items-center gap-2.5">
                   <h4 className="font-medium text-sm truncate">{task.title}</h4>
                   <span className={cn(
-                    "shrink-0 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                    "shrink-0 inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium",
                     cfg.badge
                   )}>
                     {task.status}
@@ -1241,14 +1243,14 @@ function TaskHistory({ tasks }: { tasks: ReturnType<typeof useTasks>["tasks"] })
               {task.status === "failed" && (
                 <button
                   onClick={(e) => { e.preventDefault(); retryTask(task); }}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500/10 border border-orange-500/20 px-3 py-1.5 text-[11px] font-medium text-orange-400 hover:bg-orange-500/20 transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500/10 border border-orange-500/20 px-3 py-1.5 text-xs font-medium text-orange-400 hover:bg-orange-500/20 transition-colors"
                 >
                   <RotateCcw className="h-3 w-3" />
                   Erneut versuchen
                 </button>
               )}
             </div>
-            <div className="mt-2 ml-7 flex items-center gap-4 text-[11px] text-muted-foreground/60">
+            <div className="mt-2 ml-7 flex items-center gap-4 text-xs text-muted-foreground/60">
               {task.duration_ms && (
                 <span className="flex items-center gap-1 tabular-nums">
                   <Timer className="h-3 w-3" />{formatDuration(task.duration_ms)}
@@ -1263,7 +1265,7 @@ function TaskHistory({ tasks }: { tasks: ReturnType<typeof useTasks>["tasks"] })
               <span>{timeAgo(task.created_at)}</span>
             </div>
             {task.error && (
-              <div className="mt-2 ml-7 rounded-lg bg-red-500/5 border border-red-500/10 px-3 py-2 text-[11px] text-red-400/80">
+              <div className="mt-2 ml-7 rounded-lg bg-red-500/5 border border-red-500/10 px-3 py-2 text-xs text-red-400/80">
                 {task.error}
               </div>
             )}
@@ -1331,7 +1333,7 @@ function AgentSecondBrains({ agentId }: { agentId: string }) {
         <button
           onClick={save}
           disabled={saving}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
         >
           {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : saved ? <Check className="h-3 w-3" /> : null}
           {saved ? "Gespeichert & Neustart" : "Speichern & Neu starten"}
@@ -1360,13 +1362,13 @@ function AgentSecondBrains({ agentId }: { agentId: string }) {
                 <Brain className={cn("h-4 w-4 shrink-0", enabled ? "text-blue-400" : "text-muted-foreground/50")} />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{b?.name ?? entry.label}</p>
-                  <p className="truncate text-[11px] text-muted-foreground/60 font-mono">{entry.container_path} · {entry.mode}</p>
+                  <p className="truncate text-xs text-muted-foreground/60 font-mono">{entry.container_path} · {entry.mode}</p>
                 </div>
               </button>
               {b && (
                 <button
                   onClick={() => setBrowsing(b)}
-                  className="shrink-0 rounded-lg border border-foreground/[0.1] px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]"
+                  className="shrink-0 rounded-lg border border-foreground/[0.1] px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]"
                 >
                   Inhalt
                 </button>
@@ -1472,12 +1474,12 @@ function KnowledgePanel({ agentId }: { agentId: string }) {
           <div className="flex items-center gap-2">
             <Brain className="h-4 w-4 text-violet-400" />
             <span className="text-sm font-medium">knowledge.md</span>
-            <span className="text-[10px] text-muted-foreground/60">Wissensbasis des Agenten</span>
+            <span className="text-[11px] text-muted-foreground/60">Wissensbasis des Agenten</span>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={loadKnowledge}
-              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
             >
               <RefreshCw className="h-3 w-3" />
               Aktualisieren
@@ -1487,14 +1489,14 @@ function KnowledgePanel({ agentId }: { agentId: string }) {
                 <button
                   onClick={handleSave}
                   disabled={saving}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
                 >
                   {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
                   Speichern
                 </button>
                 <button
                   onClick={() => setEditing(false)}
-                  className="rounded-lg px-3 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+                  className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
                 >
                   Abbrechen
                 </button>
@@ -1502,7 +1504,7 @@ function KnowledgePanel({ agentId }: { agentId: string }) {
             ) : (
               <button
                 onClick={() => { setEditContent(knowledge); setEditing(true); }}
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
               >
                 <Edit3 className="h-3 w-3" />
                 Bearbeiten
@@ -1623,7 +1625,7 @@ function TelegramAgentSection({ agentId }: { agentId: string }) {
           <span className="text-sm font-medium">Telegram Bot</span>
           {hasToken && (
             <span className={cn(
-              "text-[10px] px-2 py-0.5 rounded-full border font-medium",
+              "text-[11px] px-2 py-0.5 rounded-full border font-medium",
               botRunning
                 ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                 : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20"
@@ -1636,14 +1638,14 @@ function TelegramAgentSection({ agentId }: { agentId: string }) {
           <button
             onClick={handleRemove}
             disabled={saving}
-            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-red-400 hover:bg-red-500/10 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/10 transition-colors"
           >
             <Trash2 className="h-3 w-3" />
             Entfernen
           </button>
         )}
       </div>
-      <p className="px-5 pt-3 text-[11px] text-muted-foreground/60">
+      <p className="px-5 pt-3 text-xs text-muted-foreground/60">
         Eigener Bot NUR für diesen Agenten — nicht zu verwechseln mit dem
         Telegram-Bot der Anlage, den die Administration einrichtet.
       </p>
@@ -1677,7 +1679,7 @@ function TelegramAgentSection({ agentId }: { agentId: string }) {
           <>
             {/* Auth Key display */}
             <div>
-              <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">
+              <label className="block text-xs font-medium text-muted-foreground/70 mb-1.5">
                 Auth-Key (zum Teilen mit Nutzern)
               </label>
               <div className="flex items-center gap-2">
@@ -1705,14 +1707,14 @@ function TelegramAgentSection({ agentId }: { agentId: string }) {
                   <RefreshCcw className="h-4 w-4" />
                 </button>
               </div>
-              <p className="text-[10px] text-muted-foreground mt-1.5">
+              <p className="text-[11px] text-muted-foreground mt-1.5">
                 Nutzer senden <code className="text-sky-400/80">/auth {authKey}</code> im Telegram-Chat um sich zu autorisieren.
               </p>
             </div>
 
             {/* Change token */}
             <div>
-              <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">
+              <label className="block text-xs font-medium text-muted-foreground/70 mb-1.5">
                 Bot Token ändern
               </label>
               <div className="flex gap-2">
@@ -1782,7 +1784,7 @@ function SettingsAccordionSection({
           <Icon className={cn("h-4 w-4", secretsWarning ? "text-amber-700 dark:text-amber-400" : "text-primary")} />
           <span className="text-sm font-semibold">{title}</span>
           {secretsWarning && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full border font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
+            <span className="text-[11px] px-2 py-0.5 rounded-full border font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
               API-Keys &amp; Tokens
             </span>
           )}
@@ -2265,7 +2267,7 @@ function AgentSettings({
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
         <div className="mb-3">
           <div className="text-sm font-medium">Symbol &amp; Farbe</div>
-          <div className="text-[11px] text-muted-foreground/60">Eigenes Icon + Farbe für diesen Agent (Anzeige auf den Karten).</div>
+          <div className="text-xs text-muted-foreground/60">Eigenes Icon + Farbe für diesen Agent (Anzeige auf den Karten).</div>
         </div>
         <AgentAppearanceInline agentId={agentId} config={agent.config} />
       </div>
@@ -2284,7 +2286,7 @@ function AgentSettings({
         <div className="flex items-center justify-between gap-4">
           <div>
             <div className="text-sm font-medium">Immer an</div>
-            <div className="text-[11px] text-muted-foreground/60">
+            <div className="text-xs text-muted-foreground/60">
               Agent wird NICHT automatisch gestoppt, wenn du inaktiv bist (Ausnahme von beiden Idle-Sweeps). Für Agenten, die dauerhaft laufen sollen.
             </div>
           </div>
@@ -2310,7 +2312,7 @@ function AgentSettings({
         <div className="flex items-center justify-between gap-4">
           <div>
             <div className="text-sm font-medium">Modell-Router</div>
-            <div className="text-[11px] text-muted-foreground/60">
+            <div className="text-xs text-muted-foreground/60">
               Wählt je Aufgabe ein passendes Modell nach Schwierigkeit.
             </div>
           </div>
@@ -2330,7 +2332,7 @@ function AgentSettings({
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
             {(["simple", "standard", "complex"] as const).map((tier) => (
               <div key={tier}>
-                <label className="block text-[11px] font-medium text-muted-foreground mb-1">{ROUTER_STUFEN[tier]}</label>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">{ROUTER_STUFEN[tier]}</label>
                 <select
                   value={routerRules[tier]}
                   onChange={(e) => {
@@ -2375,7 +2377,7 @@ function AgentSettings({
               <Layers className="h-4 w-4 text-primary" />
               Gleichzeitige Sitzungen
             </div>
-            <p className="mt-0.5 text-[11px] text-muted-foreground/70">
+            <p className="mt-0.5 text-xs text-muted-foreground/70">
               Aufgaben und Chats zugleich; der Rest wartet. Mehr braucht mehr Speicher.
             </p>
           </div>
@@ -2411,7 +2413,7 @@ function AgentSettings({
             <div className="flex items-center gap-2">
               <Cpu className="h-4 w-4 text-blue-400" />
               <span className="text-sm font-medium">Modell</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">
                 {PROVIDER_LABELS[activeProvider] || activeProvider}
               </span>
             </div>
@@ -2419,7 +2421,7 @@ function AgentSettings({
               <button
                 onClick={handleModelSave}
                 disabled={modelSaving}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-1.5 text-[11px] font-medium text-white hover:bg-blue-500 disabled:opacity-40 transition-all"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-40 transition-all"
               >
                 {modelSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
                 Speichern
@@ -2431,7 +2433,7 @@ function AgentSettings({
                 (Claude runs on anthropic/bedrock/vertex/foundry; Codex only OpenAI). */}
             {providerKeys.length > 1 && (
               <div className="space-y-1.5">
-                <label className="text-[11px] font-medium text-muted-foreground/70">Provider</label>
+                <label className="text-xs font-medium text-muted-foreground/70">Provider</label>
                 <div className="flex gap-1.5">
                   {providerKeys.map((key) => (
                     <button
@@ -2452,7 +2454,7 @@ function AgentSettings({
             )}
             {/* Model */}
             <div className="space-y-1.5">
-              <label className="text-[11px] font-medium text-muted-foreground/70">Modell</label>
+              <label className="text-xs font-medium text-muted-foreground/70">Modell</label>
               <div className="flex gap-1.5">
                 {modelOptions.map((m) => (
                   <button
@@ -2522,7 +2524,7 @@ function AgentSettings({
               </button>
             ))}
           </div>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Gilt für Aufgaben, Zeitpläne, delegierte Aufträge, Agent-zu-Agent-Nachrichten und Chats ohne gewählte Stufe. Eine im Chat gewählte Denktiefe gewinnt weiterhin. Vollständig wirksam ab dem nächsten Neuerstellen/Update des Agenten.
           </p>
         </div>
@@ -2536,7 +2538,7 @@ function AgentSettings({
               <Plug className="h-4 w-4 text-violet-400" />
               <span className="text-sm font-medium">KI-Konto</span>
               {agent.ai_account_id && (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
                   verbunden
                 </span>
               )}
@@ -2544,7 +2546,7 @@ function AgentSettings({
             <button
               onClick={handleAiAccountSave}
               disabled={aiAcctSel === null || aiAcctSaving}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-1.5 text-[11px] font-medium text-white hover:bg-violet-500 disabled:opacity-40 transition-all"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-40 transition-all"
             >
               {aiAcctSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
               Verbinden &amp; neu starten
@@ -2561,7 +2563,7 @@ function AgentSettings({
             ) : (
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">KI-Konto</label>
+                  <label className="block text-xs font-medium text-muted-foreground/70 mb-1.5">KI-Konto</label>
                   <select
                     value={aiAcctSel ?? ""}
                     onChange={(e) => {
@@ -2579,7 +2581,7 @@ function AgentSettings({
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">Modell</label>
+                  <label className="block text-xs font-medium text-muted-foreground/70 mb-1.5">Modell</label>
                   <select
                     value={aiAcctModel}
                     onChange={(e) => setAiAcctModel(e.target.value)}
@@ -2595,7 +2597,7 @@ function AgentSettings({
                 </div>
               </div>
             )}
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               {!agent.ai_account_id && agent.llm_config
                 ? "Dieser Agent nutzt aktuell die manuelle LLM-Konfiguration (Karte unten). Wähle einen Account, um auf einen zentral verwalteten Zugang umzustellen — die manuelle Karte verschwindet dann."
                 : "Verbindet den Agent mit einem zentral verwalteten Modell-Zugang. Beim Speichern wird der Container neu erstellt."}
@@ -2610,7 +2612,7 @@ function AgentSettings({
             <div className="flex items-center gap-2">
               <Plug className="h-4 w-4 text-violet-400" />
               <span className="text-sm font-medium">Modell-Einstellungen</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20 font-medium">
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20 font-medium">
                 {providerLabel}
               </span>
             </div>
@@ -2619,7 +2621,7 @@ function AgentSettings({
                 <button
                   onClick={handleLlmSave}
                   disabled={llmSaving}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-1.5 text-[11px] font-medium text-white hover:bg-violet-500 disabled:opacity-40 transition-all"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-40 transition-all"
                 >
                   {llmSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
                   Speichern
@@ -2638,7 +2640,7 @@ function AgentSettings({
                       setLlmToolsEnabled(agent.llm_config.tools_enabled);
                     }
                   }}
-                  className="rounded-lg px-3 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+                  className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
                 >
                   Abbrechen
                 </button>
@@ -2646,7 +2648,7 @@ function AgentSettings({
             ) : (
               <button
                 onClick={() => setLlmEditing(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
               >
                 <Edit3 className="h-3 w-3" />
                 Bearbeiten
@@ -2660,7 +2662,7 @@ function AgentSettings({
                 {/* Editable fields */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">API-Endpunkt</label>
+                    <label className="block text-xs font-medium text-muted-foreground/70 mb-1.5">API-Endpunkt</label>
                     <input
                       type="text"
                       value={llmEndpoint}
@@ -2669,7 +2671,7 @@ function AgentSettings({
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">Modell</label>
+                    <label className="block text-xs font-medium text-muted-foreground/70 mb-1.5">Modell</label>
                     <input
                       type="text"
                       value={llmModel}
@@ -2680,7 +2682,7 @@ function AgentSettings({
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">Temperature</label>
+                  <label className="block text-xs font-medium text-muted-foreground/70 mb-1.5">Temperature</label>
                   <input
                     type="number"
                     step="0.1"
@@ -2690,12 +2692,12 @@ function AgentSettings({
                     onChange={(e) => setLlmTemp(e.target.value)}
                     className="w-full max-w-[200px] rounded-lg border border-foreground/[0.1] bg-background/80 px-3.5 py-2 text-sm outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all tabular-nums"
                   />
-                  <p className="text-[10px] text-muted-foreground mt-1">0 = präzise, 1 = kreativ</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">0 = präzise, 1 = kreativ</p>
                 </div>
 
                 {/* API Key (change) */}
                 <div>
-                  <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">
+                  <label className="block text-xs font-medium text-muted-foreground/70 mb-1.5">
                     API Key{" "}
                     <span className="text-muted-foreground">(leer lassen = beibehalten)</span>
                   </label>
@@ -2719,7 +2721,7 @@ function AgentSettings({
 
                 {/* System Prompt */}
                 <div>
-                  <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">Systemanweisung</label>
+                  <label className="block text-xs font-medium text-muted-foreground/70 mb-1.5">Systemanweisung</label>
                   <textarea
                     value={llmSystemPrompt}
                     onChange={(e) => setLlmSystemPrompt(e.target.value)}
@@ -2732,7 +2734,7 @@ function AgentSettings({
                 <div className="flex items-center justify-between rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-4 py-3">
                   <div>
                     <p className="text-sm font-medium">Werkzeuge nutzen</p>
-                    <p className="text-[11px] text-muted-foreground/70 mt-0.5">
+                    <p className="text-xs text-muted-foreground/70 mt-0.5">
                       Kommandozeile, Dateien, Gedächtnis, To-dos, Benachrichtigungen, Abstimmung im Team
                     </p>
                   </div>
@@ -2758,27 +2760,27 @@ function AgentSettings({
                 {/* Read-only view */}
                 <div className="grid grid-cols-2 gap-x-6 gap-y-3">
                   <div>
-                    <span className="text-[11px] font-medium text-muted-foreground/60">Provider</span>
+                    <span className="text-xs font-medium text-muted-foreground/60">Provider</span>
                     <p className="text-sm font-medium mt-0.5">{providerLabel}</p>
                   </div>
                   <div>
-                    <span className="text-[11px] font-medium text-muted-foreground/60">Modell</span>
+                    <span className="text-xs font-medium text-muted-foreground/60">Modell</span>
                     <p className="text-sm font-medium mt-0.5 font-mono">{agent.llm_config.model_name}</p>
                   </div>
                   <div>
-                    <span className="text-[11px] font-medium text-muted-foreground/60">API-Endpunkt</span>
+                    <span className="text-xs font-medium text-muted-foreground/60">API-Endpunkt</span>
                     <p className="text-sm font-mono text-muted-foreground mt-0.5 truncate">{agent.llm_config.api_endpoint}</p>
                   </div>
                   <div>
-                    <span className="text-[11px] font-medium text-muted-foreground/60">API-Key</span>
+                    <span className="text-xs font-medium text-muted-foreground/60">API-Key</span>
                     <p className="text-sm text-muted-foreground mt-0.5 font-mono">********</p>
                   </div>
                   <div>
-                    <span className="text-[11px] font-medium text-muted-foreground/60">Temperatur</span>
+                    <span className="text-xs font-medium text-muted-foreground/60">Temperatur</span>
                     <p className="text-sm tabular-nums mt-0.5">{agent.llm_config.temperature}</p>
                   </div>
                   <div>
-                    <span className="text-[11px] font-medium text-muted-foreground/60">Werkzeuge</span>
+                    <span className="text-xs font-medium text-muted-foreground/60">Werkzeuge</span>
                     <p className="text-sm mt-0.5">
                       {agent.llm_config.tools_enabled ? (
                         <span className="inline-flex items-center gap-1 text-emerald-400">
@@ -2792,7 +2794,7 @@ function AgentSettings({
                 </div>
                 {agent.llm_config.system_prompt && (
                   <div className="mt-2 pt-3 border-t border-foreground/[0.06]">
-                    <span className="text-[11px] font-medium text-muted-foreground/60">Systemanweisung</span>
+                    <span className="text-xs font-medium text-muted-foreground/60">Systemanweisung</span>
                     <pre className="mt-1.5 text-xs font-mono text-muted-foreground/80 whitespace-pre-wrap bg-foreground/[0.02] rounded-lg p-3 max-h-32 overflow-auto">
                       {agent.llm_config.system_prompt}
                     </pre>
@@ -2901,9 +2903,9 @@ function AgentSettings({
             <>
               {/* Webhook URL */}
               <div>
-                <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">Webhook-Adresse</label>
+                <label className="block text-xs font-medium text-muted-foreground/70 mb-1.5">Webhook-Adresse</label>
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-[11px] font-mono text-muted-foreground truncate">
+                  <code className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-xs font-mono text-muted-foreground truncate">
                     {webhookUrl}
                   </code>
                   <button
@@ -2918,18 +2920,18 @@ function AgentSettings({
               {/* Bearer Token */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-[11px] font-medium text-muted-foreground/70">Bearer Token</label>
+                  <label className="text-xs font-medium text-muted-foreground/70">Bearer Token</label>
                   <button
                     onClick={handleRegenerateToken}
                     disabled={webhookLoading}
-                    className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
+                    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
                   >
                     <RefreshCcw className="h-3 w-3" />
                     Neu generieren
                   </button>
                 </div>
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-[11px] font-mono text-muted-foreground truncate">
+                  <code className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-xs font-mono text-muted-foreground truncate">
                     {webhookToken
                       ? webhookTokenVisible ? webhookToken : "•".repeat(32)
                       : "—"}
@@ -2952,7 +2954,7 @@ function AgentSettings({
 
               {/* n8n hint */}
               <div className="rounded-lg border border-sky-500/10 bg-sky-500/5 px-3.5 py-2.5">
-                <p className="text-[11px] text-sky-400/80 font-mono">
+                <p className="text-xs text-sky-400/80 font-mono">
                   <span className="font-semibold">n8n HTTP Request Node:</span><br />
                   Method: POST &nbsp;·&nbsp; URL: (oben)<br />
                   Header: <span className="text-sky-300">Authorization: Bearer &lt;token&gt;</span>
@@ -2972,7 +2974,7 @@ function AgentSettings({
             </svg>
             <span className="text-sm font-medium">MCP-Endpunkt</span>
             <InfoHint text="MCP (Model Context Protocol) ist eine offene Schnittstelle, über die externe Programme — z. B. ein eigenes Tool oder ein anderer KI-Assistent — mit diesem Agenten sprechen können. Nur relevant, wenn du eine solche Anbindung selbst einrichtest." />
-            <span className="ml-auto inline-flex items-center rounded-full border border-violet-500/20 bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-400">
+            <span className="ml-auto inline-flex items-center rounded-full border border-violet-500/20 bg-violet-500/10 px-2 py-0.5 text-[11px] font-medium text-violet-400">
               2025-06-18
             </span>
           </div>
@@ -2980,9 +2982,9 @@ function AgentSettings({
           <div className="p-5 space-y-3">
             {/* MCP URL */}
             <div>
-              <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">MCP-Adresse</label>
+              <label className="block text-xs font-medium text-muted-foreground/70 mb-1.5">MCP-Adresse</label>
               <div className="flex items-center gap-2">
-                <code className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-[11px] font-mono text-muted-foreground truncate">
+                <code className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-xs font-mono text-muted-foreground truncate">
                   {mcpUrl}
                 </code>
                 <button onClick={copyMcpUrl} className="shrink-0 rounded-lg border border-foreground/[0.08] p-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors">
@@ -2993,9 +2995,9 @@ function AgentSettings({
 
             {/* Bearer Token */}
             <div>
-              <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">Bearer Token <span className="text-muted-foreground font-normal">(gleicher wie Webhook)</span></label>
+              <label className="block text-xs font-medium text-muted-foreground/70 mb-1.5">Bearer Token <span className="text-muted-foreground font-normal">(gleicher wie Webhook)</span></label>
               <div className="flex items-center gap-2">
-                <code className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-[11px] font-mono text-muted-foreground truncate">
+                <code className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-xs font-mono text-muted-foreground truncate">
                   {webhookToken ? (webhookTokenVisible ? webhookToken : "•".repeat(32)) : "—"}
                 </code>
                 <button onClick={() => setWebhookTokenVisible((v) => !v)} className="shrink-0 rounded-lg border border-foreground/[0.08] p-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors">
@@ -3010,17 +3012,17 @@ function AgentSettings({
             {/* Tools + hint in one row */}
             <div className="flex items-start gap-3">
               <div className="flex-1">
-                <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">Werkzeuge</label>
+                <label className="block text-xs font-medium text-muted-foreground/70 mb-1.5">Werkzeuge</label>
                 <div className="flex flex-wrap gap-1">
                   {["send_task", "get_task_status", "get_agent_status", "list_recent_tasks"].map((tool) => (
-                    <code key={tool} className="rounded-md border border-violet-500/20 bg-violet-500/5 px-2 py-0.5 text-[10px] font-mono text-violet-400">{tool}</code>
+                    <code key={tool} className="rounded-md border border-violet-500/20 bg-violet-500/5 px-2 py-0.5 text-[11px] font-mono text-violet-400">{tool}</code>
                   ))}
                 </div>
               </div>
             </div>
 
             <div className="rounded-lg border border-violet-500/10 bg-violet-500/5 px-3 py-2">
-              <p className="text-[11px] text-violet-400/70 font-mono">
+              <p className="text-xs text-violet-400/70 font-mono">
                 n8n: HTTP Streamable · Bearer Token · URL oben
               </p>
             </div>
@@ -3037,7 +3039,7 @@ function AgentSettings({
             <ShieldAlert className="h-4 w-4 text-amber-700 dark:text-amber-400" />
             <span className="text-sm font-medium">Was darf der Agent?</span>
             <span className={cn(
-              "text-[10px] px-2 py-0.5 rounded-full border font-medium",
+              "text-[11px] px-2 py-0.5 rounded-full border font-medium",
               autonomyLevel === "l1" && "bg-blue-500/10 text-blue-400 border-blue-500/20",
               autonomyLevel === "l2" && "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
               autonomyLevel === "l3" && "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
@@ -3073,7 +3075,7 @@ function AgentSettings({
           <button
             onClick={handleSave}
             disabled={saving || !hasChanges}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-all"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-all"
           >
             {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
             Speichern
@@ -3178,7 +3180,7 @@ function ResourceLimitsSection({ agentId, agent, onUpdated }: { agentId: string;
       <div className="p-5 space-y-5">
         {/* Idle Timeout */}
         <div className="space-y-2">
-          <label className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wide">
+          <label className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wide">
             Auto-Stop nach Inaktivität
           </label>
           <div className="flex items-center gap-3">
@@ -3203,7 +3205,7 @@ function ResourceLimitsSection({ agentId, agent, onUpdated }: { agentId: string;
 
         {/* Workspace Quota */}
         <div className="space-y-2">
-          <label className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wide">
+          <label className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wide">
             Workspace-Größe (Disk-Quota)
           </label>
           <div className="flex items-center gap-3">
@@ -3228,7 +3230,7 @@ function ResourceLimitsSection({ agentId, agent, onUpdated }: { agentId: string;
 
         {/* Budget — admin sets the cap; non-admin users see it read-only */}
         <div className="space-y-2">
-          <label className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wide">
+          <label className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wide">
             Budget / Monat {!isAdmin && <span className="normal-case text-muted-foreground">(nur Admin änderbar)</span>}
           </label>
           {isAdmin ? (
@@ -3359,7 +3361,7 @@ function MountSelectorSection({ agentId }: { agentId: string }) {
                         <p className={cn("text-xs font-medium", enabled ? "text-foreground" : "text-muted-foreground/70")}>
                           {entry.label}
                         </p>
-                        <p className="text-[10px] text-muted-foreground font-mono truncate">
+                        <p className="text-[11px] text-muted-foreground font-mono truncate">
                           → {entry.container_path}
                         </p>
                       </div>
@@ -3384,7 +3386,7 @@ function MountSelectorSection({ agentId }: { agentId: string }) {
                 );
               })}
             </div>
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-[11px] text-muted-foreground">
               Mounts werden in <code className="text-blue-400/70">docker-compose.yml → AGENT_MOUNT_CATALOG</code> vom Admin konfiguriert.
             </p>
           </>
@@ -3571,12 +3573,12 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
             )}
             <span className="text-[12px] truncate flex-1 min-w-0" title={entry.path}>{dateiAnzeigeName(entry)}</span>
             {!isDir && entry.modified > 0 && (
-              <span className="text-[10px] text-muted-foreground tabular-nums shrink-0" title={formatModifiedFull(entry.modified)}>
+              <span className="text-[11px] text-muted-foreground tabular-nums shrink-0" title={formatModifiedFull(entry.modified)}>
                 {formatModified(entry.modified)}
               </span>
             )}
             {!isDir && (
-              <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 w-12 text-right">
+              <span className="text-[11px] text-muted-foreground tabular-nums shrink-0 w-12 text-right">
                 {formatFileSize(entry.size)}
               </span>
             )}
@@ -3640,7 +3642,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
         {/* Disk usage bar */}
         {diskLimitMb > 0 && (
           <div className="border-b border-foreground/[0.06] px-3 py-2 space-y-1">
-            <div className="flex items-center justify-between text-[10px]">
+            <div className="flex items-center justify-between text-[11px]">
               <div className="flex items-center gap-1 text-muted-foreground/60">
                 <HardDrive className="h-3 w-3" />
                 <span>Workspace</span>
@@ -3656,7 +3658,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
               />
             </div>
             {diskPercent >= 80 && (
-              <p className={cn("text-[10px]", diskTextColor)}>
+              <p className={cn("text-[11px]", diskTextColor)}>
                 {diskPercent >= 95 ? "⚠ Kritisch: Agent wird gestoppt bei 95%" : "⚠ Speicher wird knapp"}
               </p>
             )}
@@ -3692,7 +3694,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
             </button>
             <button
               onClick={() => setUploadTarget("/workspace")}
-              className="flex h-7 items-center gap-1 rounded-lg bg-primary px-2.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 transition-colors shrink-0"
+              className="flex h-7 items-center gap-1 rounded-lg bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors shrink-0"
               title="Ziel im nächsten Schritt wählbar"
             >
               <Upload className="h-3 w-3" />
@@ -3705,7 +3707,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
                 key={mode}
                 onClick={() => setSortMode(mode)}
                 className={cn(
-                  "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors",
+                  "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors",
                   sortMode === mode
                     ? "bg-primary/10 text-primary"
                     : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
@@ -3740,11 +3742,11 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
             searchResults.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
                 <Search className="h-5 w-5 mb-2" />
-                <span className="text-[11px]">Keine Treffer</span>
+                <span className="text-xs">Keine Treffer</span>
               </div>
             ) : (
               <div className="py-1">
-                <div className="px-3 py-1 text-[10px] text-muted-foreground font-sans">
+                <div className="px-3 py-1 text-[11px] text-muted-foreground font-sans">
                   {searchResults.length} Treffer
                 </div>
                 {searchResults.map((entry) => {
@@ -3761,14 +3763,14 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
                       <File className={cn("h-3.5 w-3.5 shrink-0", getFileColor(entry.name))} />
                       <div className="flex flex-col flex-1 min-w-0">
                         <span className="text-[12px] truncate">{entry.name}</span>
-                        <span className="text-[10px] text-muted-foreground truncate font-sans">{entry.path}</span>
+                        <span className="text-[11px] text-muted-foreground truncate font-sans">{entry.path}</span>
                       </div>
                       {entry.modified > 0 && (
-                        <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                        <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">
                           {formatModified(entry.modified)}
                         </span>
                       )}
-                      <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 w-12 text-right">
+                      <span className="text-[11px] text-muted-foreground tabular-nums shrink-0 w-12 text-right">
                         {formatFileSize(entry.size)}
                       </span>
                     </div>

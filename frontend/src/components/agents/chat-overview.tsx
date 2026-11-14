@@ -112,7 +112,7 @@ export function ChatOverview({
               <p className="line-clamp-2 min-h-[2rem] break-words text-xs leading-relaxed text-muted-foreground/80">
                 {s.title ? (s.preview || "—") : "Chat öffnen für den Verlauf"}
               </p>
-              <div className="mt-auto flex items-center gap-2 pt-1 text-[10px] text-muted-foreground/60">
+              <div className="mt-auto flex items-center gap-2 pt-1 text-[11px] text-muted-foreground/60">
                 {recent && (
                   <span className="flex items-center gap-1 text-emerald-500" title="gerade aktiv">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> aktiv
@@ -180,7 +180,7 @@ function ChatViewModal({
             {onOpenSession && (
               <button
                 onClick={() => { onOpenSession(sessionId); onClose(); }}
-                className="inline-flex items-center gap-1 rounded-lg bg-foreground/[0.06] px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.1]"
+                className="inline-flex items-center gap-1 rounded-lg bg-foreground/[0.06] px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.1]"
                 title="Als Haupt-Chat öffnen"
               >
                 Vollbild <ArrowRight className="h-3 w-3" />

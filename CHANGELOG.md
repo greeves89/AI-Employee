@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.468.5] - 2026-11-14
+
+### Geändert (UI-Runde 5, nach Tests mit vier Personas und Gestaltungsprüfung)
+- **Eigene Handschrift:** Seitentitel in der Schrift Bricolage Grotesque (beim Bauen eingebettet, kein Abruf zur Laufzeit). Jeder Agent ohne eigene Farbe bekommt eine feste Farbe aus seiner Kennung – gleich in Liste, Start, Projekten und Raum. Eigene Chat-Nachrichten stehen auf einer getönten Fläche.
+- **Lesbarkeit:** Dunklere Grautöne für Nebentext, Kleinschrift eine Stufe größer, Abschnittsüberschriften normal statt in grauen Großbuchstaben.
+- **Start:** Die Einführung zeigt oben nur noch den nächsten Schritt („Alle 6 Schritte zeigen“ klappt auf), damit „Wartet auf dich“ und „Aufgaben heute“ im Blick bleiben. „Wartet auf dich“ ist hervorgehoben, wenn etwas offen ist.
+- **Chat:** Das Menü „Werkzeuge“ heißt **Einstellungen**, „Konnektoren“ heißt dort **Konten & Dienste**. Am Handy passt das Menü auf den Bildschirm. Die Gesprächsliste hat einen Schließen-Knopf und nur noch einen Knopf für ein neues Gespräch. Beim Start eines gestoppten Agenten steht „Agent wird gestartet. Das dauert beim ersten Mal bis zu einer Minute.“
+- **Agenten-Liste:** Unter dem Namen steht, wofür der Agent da ist. Spalten ohne Inhalt („Aufgabe“, „Gruppe“) sind ausgeblendet; „Keine Zuständigkeit beschrieben“ sehen nur Admins.
+- **Zeitpläne:** Knöpfe „Jetzt ausführen“ und „Pausieren/Fortsetzen“ mit Text, pausierte Pläne bernsteinfarben, bei bis zu vier Agenten gleich aufgeklappt. Größere Tippflächen am Handy, auch bei den Reitern im Aufgaben-Fenster.
+- **Dateien:** Leerer Arbeitsordner: „Noch keine Dateien. Antworten des Agenten stehen im Chat.“ Gestoppte Agenten stehen mit eigenem „Starten“ in normaler Schrift darunter.
+- **Admin:** Aktionen je Nutzer in einem beschrifteten Menü, „Nutzer löschen“ abgesetzt. „Lizenz entfernen“ in einer eigenen Zeile abseits der Anzeige. Protokoll mit deutschen Ereignisnamen. Mein Konto: Abschnittsleiste markiert den aktiven Abschnitt.
+- **Hilfe:** „Rechte eines Agenten einstellen“ in Alltagssprache und mit dem richtigen Weg.
+
 ## [1.468.4] - 2026-11-14
 
 ### Geändert (UI-Runde 4, nach Tests mit vier Personas)

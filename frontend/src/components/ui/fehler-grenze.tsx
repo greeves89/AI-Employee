@@ -54,17 +54,17 @@ export class FehlerGrenze extends React.Component<Props, State> {
         <p className="text-sm font-medium">
           {this.props.bereich ?? "Dieser Bereich"} konnte nicht angezeigt werden
         </p>
-        <p className="max-w-md text-[11px] text-muted-foreground/60">
+        <p className="max-w-md text-xs text-muted-foreground/60">
           {this.state.fehler.message}
         </p>
         <button
           onClick={() => this.setState({ fehler: null })}
-          className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] px-3 py-1.5 text-[11px] font-medium hover:bg-foreground/[0.04] transition-colors"
+          className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] px-3 py-1.5 text-xs font-medium hover:bg-foreground/[0.04] transition-colors"
         >
           <RotateCcw className="h-3 w-3" />
           Nochmal versuchen
         </button>
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-[11px] text-muted-foreground">
           Der Rest der Seite läuft weiter.
         </p>
       </div>

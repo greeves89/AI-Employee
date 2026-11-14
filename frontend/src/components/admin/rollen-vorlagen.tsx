@@ -55,7 +55,7 @@ export function RollenVorlagen({ onAngelegt }: { onAngelegt: () => void }) {
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium">
                 {v.name}
-                <span className="ml-2 text-[11px] font-normal text-muted-foreground">Grundrolle: {GRUNDROLLE[v.grundrolle]}</span>
+                <span className="ml-2 text-xs font-normal text-muted-foreground">Grundrolle: {GRUNDROLLE[v.grundrolle]}</span>
               </p>
               <p className="text-xs text-muted-foreground">{v.beschreibung}</p>
             </div>

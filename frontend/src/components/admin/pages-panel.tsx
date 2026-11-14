@@ -356,7 +356,7 @@ export function PagesPanel() {
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
-              <p className="mt-1 text-[11px] text-muted-foreground/70">
+              <p className="mt-1 text-xs text-muted-foreground/70">
                 {SICHTBAR_OPTIONEN.find((o) => o.value === (draft.sichtbar_fuer ?? "admins"))?.hilfe}
                 {draft.sichtbar_fuer === "rollen" && draft.slug ? ` Pfad: /p/${draft.slug}` : ""}
               </p>
@@ -386,7 +386,7 @@ export function PagesPanel() {
           </div>
 
           {draft.open_mode === "iframe" && (
-            <p className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.07] px-3 py-2 text-[11px] text-muted-foreground">
+            <p className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.07] px-3 py-2 text-xs text-muted-foreground">
               Ob sich eine Seite einbetten lässt, entscheidet sie selbst. Sendet sie
               <span className="mx-1 font-mono">X-Frame-Options: DENY</span> oder ein
               <span className="mx-1 font-mono">frame-ancestors</span>-CSP ohne unsere Domain,
@@ -412,7 +412,7 @@ export function PagesPanel() {
               Abbrechen
             </button>
             {!formValid && (
-              <span className="text-[11px] text-muted-foreground/60">
+              <span className="text-xs text-muted-foreground/60">
                 Titel, Kurzname und eine http(s)-Adresse werden gebraucht.
               </span>
             )}
@@ -447,17 +447,17 @@ export function PagesPanel() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-[13px] font-medium">{page.title}</span>
-                    <span className="rounded-full bg-foreground/[0.06] px-2 py-0.5 text-[10px] font-mono text-muted-foreground">
+                    <span className="rounded-full bg-foreground/[0.06] px-2 py-0.5 text-[11px] font-mono text-muted-foreground">
                       {page.menu_path}
                     </span>
-                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground/60">
+                    <span className="text-[11px] uppercase tracking-wide text-muted-foreground/60">
                       {group?.label ?? page.group_key} · {page.open_mode === "iframe" ? "eingebettet" : "neuer Tab"}
                     </span>
-                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
                       {sichtbarLabel(page.sichtbar_fuer)}
                     </span>
                   </div>
-                  <p className="mt-0.5 truncate text-[11px] font-mono text-muted-foreground/70">{page.url}</p>
+                  <p className="mt-0.5 truncate text-xs font-mono text-muted-foreground/70">{page.url}</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   <a
@@ -513,7 +513,7 @@ function Field({
 }) {
   return (
     <div className={className}>
-      <label className="mb-1 block text-[11px] font-medium text-muted-foreground">{label}</label>
+      <label className="mb-1 block text-xs font-medium text-muted-foreground">{label}</label>
       {children}
     </div>
   );

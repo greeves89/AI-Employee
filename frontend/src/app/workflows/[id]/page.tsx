@@ -60,7 +60,7 @@ function AgentTaskNode({ data, selected }: NodeProps) {
     <>
       <Handle type="target" position={Position.Top} className="!bg-primary" />
       <NodeShell selected={selected} active={d.active} color="bg-blue-500/15 text-blue-700 dark:text-blue-400" icon={<Bot className="h-3.5 w-3.5" />} title={d.title || "Agenten-Aufgabe"}>
-        <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground/70">{d.prompt || "kein Prompt"}</p>
+        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground/70">{d.prompt || "kein Prompt"}</p>
       </NodeShell>
       <Handle type="source" position={Position.Bottom} className="!bg-primary" />
     </>
@@ -74,12 +74,12 @@ function ConditionNode({ data, selected }: NodeProps) {
     <>
       <Handle type="target" position={Position.Top} className="!bg-amber-400" />
       <NodeShell selected={selected} active={d.active} color="bg-amber-500/15 text-amber-700 dark:text-amber-400" icon={<GitBranch className="h-3.5 w-3.5" />} title={d.title || "Bedingung"}>
-        <p className="mt-1 text-[11px] text-muted-foreground/70">
+        <p className="mt-1 text-xs text-muted-foreground/70">
           {c && c.step
             ? `${d.stepTitles?.[c.step] ?? c.step} ${OPS.find((o) => o.v === c.op)?.l ?? c.op}${c.value ? ` „${c.value}"` : ""}`
             : "keine Bedingung"}
         </p>
-        <div className="mt-1 flex justify-between text-[10px]"><span className="text-emerald-700 dark:text-emerald-400">ja ↙</span><span className="text-red-700 dark:text-red-400">nein ↘</span></div>
+        <div className="mt-1 flex justify-between text-[11px]"><span className="text-emerald-700 dark:text-emerald-400">ja ↙</span><span className="text-red-700 dark:text-red-400">nein ↘</span></div>
       </NodeShell>
       <Handle id="true" type="source" position={Position.Bottom} style={{ left: "25%" }} className="!bg-emerald-400" />
       <Handle id="false" type="source" position={Position.Bottom} style={{ left: "75%" }} className="!bg-red-400" />
@@ -93,7 +93,7 @@ function WaitNode({ data, selected }: NodeProps) {
     <>
       <Handle type="target" position={Position.Top} className="!bg-zinc-400" />
       <NodeShell selected={selected} active={d.active} color="bg-zinc-500/20 text-zinc-700 dark:text-zinc-300" icon={<Clock className="h-3.5 w-3.5" />} title={d.title || "Warten"}>
-        <p className="mt-1 text-[11px] text-muted-foreground/70">{d.seconds ?? 0}s warten</p>
+        <p className="mt-1 text-xs text-muted-foreground/70">{d.seconds ?? 0}s warten</p>
       </NodeShell>
       <Handle type="source" position={Position.Bottom} className="!bg-zinc-400" />
     </>
@@ -334,7 +334,7 @@ export default function WorkflowEditorPage() {
 
 function PaletteBtn({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="inline-flex items-center gap-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-2 py-1.5 text-[11px] hover:bg-foreground/[0.06]">
+    <button onClick={onClick} className="inline-flex items-center gap-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-2 py-1.5 text-xs hover:bg-foreground/[0.06]">
       <Plus className="h-3 w-3" />{icon}{label}
     </button>
   );
@@ -345,7 +345,7 @@ function NodeConfig({ node, agents, stepOptions, onChange, onDelete, onClose }: 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">
+        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground/60">
           {d.kind === "agent_task" ? "Agenten-Aufgabe" : d.kind === "condition" ? "Bedingung" : "Warten"}
         </span>
         <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
@@ -386,7 +386,7 @@ function NodeConfig({ node, agents, stepOptions, onChange, onDelete, onClose }: 
           {["contains", "equals", "not_equals"].includes(d.check?.op ?? "") && (
             <Field label="Wert"><input value={d.check?.value ?? ""} onChange={(e) => onChange({ check: { step: d.check?.step ?? "", op: d.check?.op ?? "contains", value: e.target.value } })} className={inp} /></Field>
           )}
-          <p className="text-[11px] text-muted-foreground">Grüner Punkt = „ja"-Zweig, roter = „nein". Ziehe von ihnen zum nächsten Baustein.</p>
+          <p className="text-xs text-muted-foreground">Grüner Punkt = „ja"-Zweig, roter = „nein". Ziehe von ihnen zum nächsten Baustein.</p>
         </>
       )}
 
@@ -410,11 +410,11 @@ function RunPanel({ run, stepTitles }: { run: api.WorkflowRun; stepTitles: Recor
       {run.error && <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-2 text-[12px] text-red-700 dark:text-red-400">{run.error}</div>}
       {Object.keys(run.context || {}).length > 0 && (
         <div className="space-y-1.5">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">Ergebnisse</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground/60">Ergebnisse</p>
           {Object.entries(run.context).map(([sid, v]) => (
             <div key={sid} className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-2">
-              <p className="text-[11px] font-medium text-foreground/80">{stepTitles[sid] ?? sid}</p>
-              <p className="mt-0.5 line-clamp-4 text-[11px] text-muted-foreground/70">{v.result || "—"}</p>
+              <p className="text-xs font-medium text-foreground/80">{stepTitles[sid] ?? sid}</p>
+              <p className="mt-0.5 line-clamp-4 text-xs text-muted-foreground/70">{v.result || "—"}</p>
             </div>
           ))}
         </div>
@@ -425,5 +425,5 @@ function RunPanel({ run, stepTitles }: { run: api.WorkflowRun; stepTitles: Recor
 
 const inp = "w-full rounded-lg border border-foreground/[0.1] bg-foreground/[0.03] px-2.5 py-1.5 text-[13px] outline-none focus:border-primary/40";
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label className="block"><span className="mb-1 block text-[11px] text-muted-foreground/60">{label}</span>{children}</label>;
+  return <label className="block"><span className="mb-1 block text-xs text-muted-foreground/60">{label}</span>{children}</label>;
 }

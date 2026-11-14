@@ -80,7 +80,7 @@ export function AvailableModels() {
                 <Cpu className="h-4 w-4 shrink-0 text-muted-foreground/60" />
                 <div className="min-w-0">
                   <p className="text-sm font-medium">{k.name}</p>
-                  <p className="text-[11px] text-muted-foreground">{k.provider_type}</p>
+                  <p className="text-xs text-muted-foreground">{k.provider_type}</p>
                 </div>
               </div>
               {modelle.length > 0 && (
@@ -88,7 +88,7 @@ export function AvailableModels() {
                   {modelle.map((m, i) => (
                     <span
                       key={i}
-                      className="rounded-md bg-foreground/[0.06] px-2 py-0.5 font-mono text-[10px]"
+                      className="rounded-md bg-foreground/[0.06] px-2 py-0.5 font-mono text-[11px]"
                     >
                       {typeof m === "string" ? m : m.name || "?"}
                     </span>

@@ -61,12 +61,12 @@ export function RecentTasks({ tasks }: RecentTasksProps) {
 
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{task.title}</p>
-                  <p className="text-[11px] text-muted-foreground/70 truncate">
+                  <p className="text-xs text-muted-foreground/70 truncate">
                     {task.prompt.slice(0, 80)}
                   </p>
                 </div>
 
-                <div className="shrink-0 flex items-center gap-4 text-[11px] text-muted-foreground tabular-nums">
+                <div className="shrink-0 flex items-center gap-4 text-xs text-muted-foreground tabular-nums">
                   {!simpleMode && task.duration_ms && (
                     <span>{formatDuration(task.duration_ms)}</span>
                   )}

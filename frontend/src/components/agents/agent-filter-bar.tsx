@@ -115,7 +115,7 @@ export function AgentFilterBar({
               // keinen Weg zurück ausser einem zusaetzlichen „alle"-Knopf.
               onClick={() => onTagFilter(tagFilter === t ? null : t)}
               className={cn(
-                "rounded-full border px-2.5 py-1 text-[11px] transition-colors",
+                "rounded-full border px-2.5 py-1 text-xs transition-colors",
                 tagFilter === t
                   ? "border-primary/40 bg-primary/10 text-primary"
                   : "border-foreground/[0.08] text-muted-foreground hover:bg-foreground/[0.05]",
@@ -129,7 +129,7 @@ export function AgentFilterBar({
 
       <div className="ml-auto flex items-center gap-2">
         {shown !== total && (
-          <span className="text-[11px] text-muted-foreground/60">
+          <span className="text-xs text-muted-foreground/60">
             {shown} von {total}
           </span>
         )}
@@ -139,7 +139,7 @@ export function AgentFilterBar({
               key={g}
               onClick={() => onGroupBy(g)}
               className={cn(
-                "rounded-md px-2.5 py-1.5 text-[11px] text-muted-foreground transition-all hover:text-foreground",
+                "rounded-md px-2.5 py-1.5 text-xs text-muted-foreground transition-all hover:text-foreground",
                 groupBy === g && "bg-foreground/[0.08] text-foreground",
               )}
               title={g === "team" ? "Nach Team gruppieren" : g === "tag" ? "Nach Schlagwort gruppieren" : "Nicht gruppieren"}
@@ -154,7 +154,7 @@ export function AgentFilterBar({
           <select
             value={sortBy}
             onChange={(e) => onSortBy(e.target.value as SortBy)}
-            className="bg-transparent text-[11px] text-muted-foreground outline-none"
+            className="bg-transparent text-xs text-muted-foreground outline-none"
           >
             <option value="name">Name</option>
             <option value="state">Zustand</option>
@@ -175,7 +175,7 @@ export function AgentFilterBar({
             aria-pressed={on}
             onClick={() => toggleStatus(s)}
             className={cn(
-              "rounded-full border px-2.5 py-1 text-[11px] transition-colors",
+              "rounded-full border px-2.5 py-1 text-xs transition-colors",
               on
                 ? "border-primary/40 bg-primary/10 text-primary"
                 : "border-foreground/[0.08] text-muted-foreground hover:bg-foreground/[0.05]",
@@ -190,7 +190,7 @@ export function AgentFilterBar({
       {presets.map((f) => (
         <span
           key={f.id}
-          className="inline-flex items-center rounded-full border border-violet-500/25 bg-violet-500/[0.06] text-[11px] text-violet-700 dark:text-violet-300"
+          className="inline-flex items-center rounded-full border border-violet-500/25 bg-violet-500/[0.06] text-xs text-violet-700 dark:text-violet-300"
         >
           <button
             data-testid="filter-preset"
@@ -218,7 +218,7 @@ export function AgentFilterBar({
           onClick={() => setNaming(true)}
           disabled={presetsFull}
           title={presetsFull ? `Höchstens ${MAX_SAVED_FILTERS} gespeicherte Filter` : "Aktuellen Filter unter einem Namen speichern"}
-          className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-50"
+          className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
         >
           <Bookmark className="h-3 w-3" />
           Filter speichern
@@ -237,7 +237,7 @@ export function AgentFilterBar({
             onKeyDown={(e) => e.key === "Escape" && setNaming(false)}
             maxLength={60}
             placeholder="Name des Filters"
-            className="w-40 rounded-full border border-foreground/[0.1] bg-card/50 px-2.5 py-1 text-[11px] outline-none focus:border-primary/40"
+            className="w-40 rounded-full border border-foreground/[0.1] bg-card/50 px-2.5 py-1 text-xs outline-none focus:border-primary/40"
           />
           <button
             type="submit"

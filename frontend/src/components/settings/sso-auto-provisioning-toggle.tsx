@@ -48,7 +48,7 @@ export function SsoAutoProvisioningToggle() {
         </div>
         <div>
           <p className="text-sm font-semibold">Konten bei SSO-Anmeldung anlegen</p>
-          <p className="text-[11px] text-muted-foreground/60">
+          <p className="text-xs text-muted-foreground/60">
             {enabled
               ? "Wer sich zum ersten Mal per SSO anmeldet, bekommt ein Konto — ohne Rolle bzw. mit der Rolle aus den SSO-Gruppen."
               : "Per SSO kommen nur Personen herein, für die bereits ein Konto besteht."}

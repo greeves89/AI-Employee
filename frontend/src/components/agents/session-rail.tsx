@@ -31,6 +31,7 @@ export function SessionRail({
   newDisabled = false,
   busyIds,
   className,
+  onClose,
 }: {
   sessions: RailSession[];
   selectedId: string | null;
@@ -44,6 +45,8 @@ export function SessionRail({
   /** Session ids the agent is actively processing right now → marked orange. */
   busyIds?: string[];
   className?: string;
+  /** Schließen-Knopf im Kopf (Handy, wo die Liste über dem Chat liegt). */
+  onClose?: () => void;
 }) {
   const busy = new Set(busyIds || []);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -62,17 +65,21 @@ export function SessionRail({
   return (
     <div className={cn("flex w-56 shrink-0 flex-col", className)}>
       <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
-        <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
-          Gespräche
-        </span>
-        <button
-          onClick={onNew}
-          disabled={newDisabled}
-          className="inline-flex items-center justify-center rounded-lg bg-primary p-1.5 text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-40 transition-all"
-          title="Neues Gespräch"
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </button>
+        <span className="text-sm font-semibold">Gespräche</span>
+        {/* Ein „Neu“-Knopf statt zwei (Kopf-Plus und Zeile „Neues Gespräch“ doppelten
+            sich, Persona Mobil Runde 4); dafür hier Schließen, wenn die Liste über dem
+            Chat liegt. */}
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground md:hidden"
+            aria-label="Gesprächsliste schließen"
+            title="Schließen"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
       <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2">
         {loading ? (
@@ -138,7 +145,7 @@ export function SessionRail({
                     )}
                   </span>
                   {s.last_message_at && (
-                    <span className="pl-4 text-[10px] text-muted-foreground">
+                    <span className="pl-4 text-[11px] text-muted-foreground">
                       {timeAgo(s.last_message_at)}
                       {s.message_count !== undefined && ` · ${s.message_count}`}
                     </span>
@@ -172,7 +179,7 @@ export function SessionRail({
               );
             })}
             {sessions.length === 0 && (
-              <p className="px-2.5 py-4 text-center text-[11px] text-muted-foreground">
+              <p className="px-2.5 py-4 text-center text-xs text-muted-foreground">
                 Noch keine Gespräche
               </p>
             )}

@@ -104,18 +104,36 @@ export function getAgentTag(config?: Record<string, unknown> | null): string {
   return String(config?.tag ?? "").trim();
 }
 
+/** Farbe eines Agenten ohne eigene Wahl: fest aus seiner Kennung abgeleitet, damit
+ *  jeder Agent überall gleich aussieht und man ihn in Liste, Start und Chat
+ *  wiedererkennt. Vorher trugen alle dasselbe Blau (Gestaltungsprüfung 14.11.2026,
+ *  Entscheidung Daniel: Agenten-Farben, Blau bleibt Akzent der Oberfläche). */
+const STANDARD_FARBEN = ["violet", "emerald", "amber", "rose", "cyan", "fuchsia", "orange", "blue"];
+
+export function agentFarbe(config?: Record<string, unknown> | null, seed?: string | null): string | undefined {
+  const eigene = getAgentAvatar(config).color;
+  if (eigene) return eigene;
+  if (!seed) return undefined;
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return STANDARD_FARBEN[h % STANDARD_FARBEN.length];
+}
+
 export function AgentAvatar({
   config,
+  seed,
   active = true,
   size = "md",
   className,
 }: {
   config?: Record<string, unknown> | null;
+  /** Kennung des Agenten: gibt ihm eine feste Farbe, wenn keine gewählt ist. */
+  seed?: string | null;
   active?: boolean;
   size?: "sm" | "md" | "lg";
   className?: string;
 }) {
-  const av = getAgentAvatar(config);
+  const av = { ...getAgentAvatar(config), color: agentFarbe(config, seed) };
   const Curated = av.icon ? AVATAR_ICONS[av.icon] : null;
   const { bgClass, fgClass, style } = avatarColorStyle(av.color);
 

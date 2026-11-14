@@ -757,7 +757,7 @@ export function CreateAgentModal({
                         <section key={kategorie} aria-label={kategorieName(kategorie)}>
                           <h3 className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
                             <span className={cn(
-                              "rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                              "rounded border px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider",
                               VORLAGEN_KATEGORIE_FARBEN[kategorie] || VORLAGEN_KATEGORIE_FARBEN.general,
                             )}>
                               {kategorieName(kategorie)}
@@ -786,7 +786,7 @@ export function CreateAgentModal({
                                     </p>
                                     {skills.length > 0 && (
                                       <p
-                                        className="mt-2 flex items-start gap-1 text-[11px] text-foreground/75"
+                                        className="mt-2 flex items-start gap-1 text-xs text-foreground/75"
                                         title={skills.map(skillTitel).join(", ")}
                                       >
                                         <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-primary" />
@@ -915,14 +915,14 @@ export function CreateAgentModal({
                           {/* Was die Vorlage mitbringt, steht hier beim Namen (#903). */}
                           {(selectedTemplate.skills?.length ?? 0) > 0 && (
                             <div className="mt-2 border-t border-primary/10 pt-2">
-                              <p className="flex items-center gap-1 text-[11px] font-medium text-foreground/80">
+                              <p className="flex items-center gap-1 text-xs font-medium text-foreground/80">
                                 <Sparkles className="h-3 w-3 text-primary" />
                                 Bringt {selectedTemplate.skills!.length}{" "}
                                 {selectedTemplate.skills!.length === 1 ? "Fach-Skill" : "Fach-Skills"} mit
                               </p>
                               <ul className="mt-1 space-y-1">
                                 {selectedTemplate.skills!.map((sk) => (
-                                  <li key={sk.id} className="text-[11px] leading-snug">
+                                  <li key={sk.id} className="text-xs leading-snug">
                                     <span className="font-medium text-foreground/90">{skillTitel(sk)}</span>
                                     {(sk.beschreibung || sk.description) && (
                                       <span className="line-clamp-2 text-muted-foreground">{sk.beschreibung || sk.description}</span>
@@ -985,8 +985,8 @@ export function CreateAgentModal({
                                         {option.connected ? "bereit" : "einrichten"}
                                       </span>
                                     </div>
-                                    <p className="mt-0.5 text-[11px] text-muted-foreground/70">{option.subtitle}</p>
-                                    <p className="mt-2 text-[10px] font-medium text-muted-foreground/60">
+                                    <p className="mt-0.5 text-xs text-muted-foreground/70">{option.subtitle}</p>
+                                    <p className="mt-2 text-[11px] font-medium text-muted-foreground/60">
                                       {option.harness}
                                     </p>
                                   </div>
@@ -1013,14 +1013,14 @@ export function CreateAgentModal({
                               </div>
                               <div>
                                 <p className="text-sm font-medium">Einmalig manuell</p>
-                                <p className="mt-0.5 text-[11px] text-muted-foreground/70">
+                                <p className="mt-0.5 text-xs text-muted-foreground/70">
                                   Nur für Tests. Besser dauerhaft unter KI-Konten speichern.
                                 </p>
-                                <p className="mt-2 text-[10px] font-medium text-muted-foreground/60">Eigene Laufzeit</p>
+                                <p className="mt-2 text-[11px] font-medium text-muted-foreground/60">Eigene Laufzeit</p>
                               </div>
                             </button>
                           </div>
-                          <p className="mt-2 text-[11px] text-muted-foreground/55">
+                          <p className="mt-2 text-xs text-muted-foreground/55">
                             Claude und OpenAI laufen automatisch in ihrer eigenen Kommandozeile (Claude Code, Codex CLI). Google, Ollama und LM Studio laufen über die eigene Laufzeit der Plattform.
                           </p>
                         </div>
@@ -1102,7 +1102,7 @@ export function CreateAgentModal({
                                 </button>
                               ))}
                             </div>
-                            <p className="text-[11px] text-muted-foreground mt-1">
+                            <p className="text-xs text-muted-foreground mt-1">
                               OpenAI-kompatible APIs (Together, Groq, Ollama, etc.) nutzen &quot;OpenAI&quot;.
                             </p>
                           </div>
@@ -1147,7 +1147,7 @@ export function CreateAgentModal({
                                 {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                               </button>
                             </div>
-                            <p className="text-[11px] text-muted-foreground mt-1">
+                            <p className="text-xs text-muted-foreground mt-1">
                               Wird verschlüsselt gespeichert. Nie in API-Responses sichtbar.
                             </p>
                           </div>
@@ -1173,7 +1173,7 @@ export function CreateAgentModal({
                               onChange={(e) => setLlmTemperature(e.target.value)}
                               className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all tabular-nums"
                             />
-                            <p className="text-[11px] text-muted-foreground mt-1">
+                            <p className="text-xs text-muted-foreground mt-1">
                               0 = praezise, 1 = kreativ. Für Coding: 0.2-0.5 empfohlen.
                             </p>
                           </div>
@@ -1195,7 +1195,7 @@ export function CreateAgentModal({
                                 <option value="medium">Mittel</option>
                                 <option value="high">Hoch — gründlich, langsamer</option>
                               </select>
-                              <p className="text-[11px] text-muted-foreground mt-1">
+                              <p className="text-xs text-muted-foreground mt-1">
                                 Wird von allen anderen Modellen ignoriert.
                               </p>
                             </div>
@@ -1220,7 +1220,7 @@ export function CreateAgentModal({
                           <div className="flex items-center justify-between rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-4 py-3">
                             <div>
                               <p className="text-sm font-medium">Werkzeuge nutzen</p>
-                              <p className="text-[11px] text-muted-foreground/70 mt-0.5">
+                              <p className="text-xs text-muted-foreground/70 mt-0.5">
                                 Kommandozeile, Dateien, Gedächtnis, To-dos, Benachrichtigungen, Abstimmung im Team
                               </p>
                             </div>
@@ -1295,7 +1295,7 @@ export function CreateAgentModal({
                               <Key className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
                               <div>
                                 <p className="text-xs font-medium text-emerald-300">Nutzt OpenAI Codex</p>
-                                <p className="mt-0.5 text-[11px] text-emerald-200/70">
+                                <p className="mt-0.5 text-xs text-emerald-200/70">
                                   Voraussetzung: In Settings ist OpenAI Codex verbunden. Der Agent startet im Modus codex_cli.
                                 </p>
                               </div>
@@ -1310,7 +1310,7 @@ export function CreateAgentModal({
                             </label>
                             <RechteStufen wert={autonomyLevel} setWert={setAutonomyLevel} gesperrt={ueber} />
                             {grenze && (
-                              <p className="mt-1.5 flex items-center gap-1 text-[11px] text-muted-foreground/60">
+                              <p className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground/60">
                                 <Lock className="h-3 w-3" />
                                 Deine Rolle begrenzt, wie viel ein Agent selbst darf.
                               </p>
@@ -1330,7 +1330,7 @@ export function CreateAgentModal({
                               onTogglePermission={togglePermission}
                             />
                           ) : (
-                            <p className="text-[11px] text-muted-foreground/60">
+                            <p className="text-xs text-muted-foreground/60">
                               Die Rechte im Container folgen der Autonomiestufe. Sudo-Pakete setzt ein Administrator.
                             </p>
                           )}
@@ -1361,7 +1361,7 @@ export function CreateAgentModal({
                               )}
                             />
                           </div>
-                          <p className="text-[11px] text-muted-foreground mt-1">
+                          <p className="text-xs text-muted-foreground mt-1">
                             Höchstkosten pro Monat. Ohne Angabe: unbegrenzt. Der Zähler beginnt am 1. jedes Monats neu.
                           </p>
 
@@ -1378,7 +1378,7 @@ export function CreateAgentModal({
                                 <option value="stop">Stoppen — Agent pausieren</option>
                                 <option value="haiku">Sparmodus — günstigeres Modell</option>
                               </select>
-                              <p className="mt-1 text-[11px] text-muted-foreground/60">
+                              <p className="mt-1 text-xs text-muted-foreground/60">
                                 {budgetExceededAction === "haiku"
                                   ? mode === "claude_code"
                                     ? "Agent arbeitet weiter, aber mit dem günstigeren Modell seiner Laufzeit."
@@ -1395,7 +1395,7 @@ export function CreateAgentModal({
                       {selectedTemplate && ((selectedTemplate.responsibilities?.length ?? 0) > 0 || !simpleMode) && (
                         <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-3 space-y-2">
                           {(selectedTemplate.responsibilities?.length ?? 0) > 0 && (
-                            <p className="flex items-center gap-1.5 text-[11px] text-sky-700 dark:text-sky-400">
+                            <p className="flex items-center gap-1.5 text-xs text-sky-700 dark:text-sky-400">
                               <CalendarClock className="h-3.5 w-3.5 shrink-0" />
                               Arbeitet selbstständig (stündlich + 21:30 + 07:00)
                             </p>
@@ -1412,7 +1412,7 @@ export function CreateAgentModal({
                                   .map((p, i) => ({ id: p, name: selectedTemplate.permissions_anzeige?.[i] ?? p }))
                                   .filter((r) => r.id !== "full-access" || rootBestaetigt);
                                 return (
-                                  <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[11px]">
+                                  <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
                                     <dt className="text-muted-foreground/70">Laufzeit</dt>
                                     <dd className="break-words">{effectiveHarnessLabel}</dd>
                                     <dt className="text-muted-foreground/70">Modell</dt>
@@ -1463,11 +1463,11 @@ export function CreateAgentModal({
                                 <ShieldOff className="h-3.5 w-3.5" />
                                 Vollen Root-Zugriff gewähren (von der Vorlage vorgeschlagen)
                               </span>
-                              <span className="mt-0.5 block text-[11px] text-muted-foreground">{ROOT_WARNUNG}</span>
+                              <span className="mt-0.5 block text-xs text-muted-foreground">{ROOT_WARNUNG}</span>
                             </span>
                           </label>
                         ) : (
-                          <p className="text-[11px] text-muted-foreground/60">
+                          <p className="text-xs text-muted-foreground/60">
                             Die Vorlage schlägt Sudo-Rechte vor. Für deine Rolle folgen die Rechte im Container der Autonomiestufe.
                           </p>
                         )

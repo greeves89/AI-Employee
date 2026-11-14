@@ -145,7 +145,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
     if (items.length === 0) return null;
     return (
       <div className="mb-3">
-        <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+        <p className="px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
           {title}
         </p>
         {items.map((conv) => {
@@ -166,7 +166,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
                 <p className="text-[13px] font-medium truncate leading-tight">
                   {conv.preview.length > 40 ? conv.preview.slice(0, 40) + "..." : conv.preview}
                 </p>
-                <p className="text-[10px] text-muted-foreground/60 mt-0.5 flex items-center gap-1.5">
+                <p className="text-[11px] text-muted-foreground/60 mt-0.5 flex items-center gap-1.5">
                   <Bot className="h-2.5 w-2.5" />
                   {conv.agentName}
                 </p>
@@ -206,7 +206,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                   <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
                 </span>
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-[11px] text-muted-foreground">
                   {agents.length} Agent{agents.length !== 1 ? "s" : ""} online
                 </span>
               </div>
@@ -242,13 +242,13 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
             {loading && conversations.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
                 <Sparkles className="h-5 w-5 mb-2 animate-pulse" />
-                <p className="text-[11px]">Lade Unterhaltungen...</p>
+                <p className="text-xs">Lade Unterhaltungen...</p>
               </div>
             ) : filteredConversations.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
                 <MessageSquare className="h-5 w-5 mb-2" />
-                <p className="text-[11px]">Noch keine Unterhaltungen</p>
-                <p className="text-[10px] mt-1">Starte einen neuen Chat!</p>
+                <p className="text-xs">Noch keine Unterhaltungen</p>
+                <p className="text-[11px] mt-1">Starte einen neuen Chat!</p>
               </div>
             ) : (
               <>
