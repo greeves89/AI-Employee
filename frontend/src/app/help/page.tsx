@@ -281,6 +281,16 @@ export default function HelpPage() {
   }, [query, simpleMode]);
 
   const byCategory = useMemo(() => {
+    // Beim Suchen eine Trefferliste: Einträge, deren Titel die Suchwörter enthält,
+    // zuerst. Nach Kategorie sortiert stand der passende Eintrag ganz unten unter
+    // „Problemlösung“ (Persona Einsteigerin, Runde 4 und 5).
+    if (query.trim()) {
+      const normal = (t: string) => t.toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss");
+      const woerter = normal(query.trim()).split(/\s+/).filter(Boolean);
+      const punkte = (t: HelpTopic) => woerter.filter((w) => normal(t.title).includes(w)).length;
+      const sortiert = [...filtered].sort((a, b) => punkte(b) - punkte(a));
+      return sortiert.length ? [["Treffer", sortiert] as const] : [];
+    }
     const map = new Map<string, HelpTopic[]>();
     for (const t of filtered) {
       const arr = map.get(t.category) || [];
@@ -288,7 +298,7 @@ export default function HelpPage() {
       map.set(t.category, arr);
     }
     return CATEGORY_ORDER.filter((c) => map.has(c)).map((c) => [c, map.get(c)!] as const);
-  }, [filtered]);
+  }, [filtered, query]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">

@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.468.7] - 2026-11-14
+
+### Geändert (UI-Runde 7)
+- **Agent:** Startet die erste Nachricht einen gestoppten Agenten, zeigt der Kopf „Startet“ statt zu früh „Bereit“. Im Aufgaben-Fenster heißt der Reiter „Abgeschlossen“, weil dort auch abgebrochene Aufgaben stehen.
+- **Hilfe:** Bei einer Suche eine Trefferliste, Einträge mit dem Suchwort im Titel zuerst.
+- **Freigaben:** Reiter am Handy seitlich wischbar statt umgebrochen.
+- **Kosten:** Diagramm-Legende in Vordergrundfarbe, Chat-Balken kräftiger.
+
 ## [1.468.6] - 2026-11-14
 
 ### Geändert (UI-Runde 6, nach Persona-Runde 5)
