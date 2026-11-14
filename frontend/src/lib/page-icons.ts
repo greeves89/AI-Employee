@@ -80,6 +80,7 @@ export const PAGE_GROUPS: { key: string; label: string }[] = [
   { key: "overview", label: "Arbeiten" },
   { key: "collab", label: "Ablage" },
   { key: "automation", label: "Automatisieren" },
+  { key: "apps", label: "Anwendungen" },
 ];
 
 /** Gruppen von vor dem Redesign (2026-10): ihre Seiten landen in der nächsten

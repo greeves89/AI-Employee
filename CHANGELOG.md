@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.467.1] - 2026-11-14
+
+### Geändert
+- **Eigene Menüpunkte bekommen eine eigene Gruppe „Anwendungen“** in der Seitenleiste, z. B. für eine eingebundene OpenWebUI. Die Gruppe erscheint nur, wenn es solche Menüpunkte gibt, und ist für alle sichtbar, die den Menüpunkt sehen dürfen. Neue Menüpunkte landen standardmäßig dort; bestehende behalten ihre Gruppe und lassen sich im Admin-Bereich unter **Eigene Menüpunkte** umstellen.
+
 ## [1.467.0] - 2026-11-14
 
 ### Neu

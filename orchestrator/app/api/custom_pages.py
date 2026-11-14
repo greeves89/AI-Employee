@@ -110,7 +110,7 @@ class CustomPageCreate(BaseModel):
     url: str
     description: str | None = None
     icon: str = "Globe"
-    group_key: str = "collab"
+    group_key: str = "apps"
     open_mode: str = "iframe"
     sort_order: int = 0
     enabled: bool = True

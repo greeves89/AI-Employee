@@ -187,13 +187,16 @@ Die **Seitenleiste links** ist auf jeder Seite dein Hauptmenü. Sie hat
 drei Gruppen. Alles, was nur dich betrifft, liegt unten am Konto. Alles, was die
 ganze Anlage betrifft, steht in einem eigenen **Admin-Bereich** (Kap. 1.5).
 
-![Seitenleiste und Startseite](screenshots/01-dashboard.png)
+![Seitenleiste mit den Gruppen Arbeiten und Ablage](screenshots/01-dashboard.png)
 
 - **Arbeiten** — **Start** (dein Tag: Termine, Mails, Entwürfe zur Freigabe),
   **Agenten**, **Aufgaben**, **Projekte** (Kap. 6a), **Freigaben** (die Zahl zeigt,
   wie viele warten).
 - **Ablage** — **Dateien** und **Wissen**.
 - **Automatisieren** — **Abläufe** und **Skills**.
+- **Anwendungen** *(seit 1.467.1)* — Anwendungen, die deine Firma eingebunden hat (z. B. OpenWebUI).
+  Die Gruppe erscheint nur, wenn ein Admin solche Menüpunkte angelegt hat (Admin-Bereich →
+  **Eigene Menüpunkte**). Neue Menüpunkte landen hier; die Gruppe lässt sich je Menüpunkt ändern.
 - **Weitere Bereiche** (aufklappbar) — Übersicht, Kosten, Aktivität (Kap. 33),
   Auswertung, Gelerntes, Verbindungen, Apps, Agenten-Runden, Auslöser und
   Prüfaufgaben. Der Bereich bleibt zugeklappt, bis du ihn öffnest; die Leiste merkt sich das.
