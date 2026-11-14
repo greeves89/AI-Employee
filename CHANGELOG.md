@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.463.0] - 2026-11-14
+
+### Sicherheit
+- **Anmelden weckt keine angehaltenen Agenten mehr.** Beim Anmelden startet die Plattform die gestoppten Agenten des Nutzers, damit sie bereitstehen. Dabei liefen bisher auch die an, die der Nutzer bewusst angehalten hatte. Das war die eigentliche Ursache dafür, dass am 13.11. sieben angehaltene Agenten wieder liefen. Bei der Live-Probe der Freigabe am 14.11. ist es mit zwei Demo-Agenten erneut aufgetreten. `wake_user_agents` lässt angehaltene Agenten jetzt aus.
+
+### Geprüft
+- **Freigabe „nur nutzen“ live auf dem Pi** mit zwei Konten. Das Testkonto sieht den Agenten nur gekürzt (ohne Webhook-Token, Budget und Aufgabe).
+  - Für das Testkonto gesperrt (403): Freigaben, Wissen, Dateiliste, Integrationen, MCP, Skills, Telegram, Statistik, Rechte, Zielliste, Löschen, Start und Freigeben.
+  - Nicht sichtbar (404): Anweisungsdatei und fremdes Gespräch. Gespräche: 0 statt 7.
+  - Hochladen landet in `geteilt/<Person>`, die eigene Datei lässt sich abholen.
+
 ## [1.462.0] - 2026-11-14
 
 ### Sicherheit

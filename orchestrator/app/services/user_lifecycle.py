@@ -425,6 +425,8 @@ class UserLifecycleService:
 async def wake_user_agents(db: AsyncSession, docker_service, user_id: str) -> list[str]:
     """Start all stopped containers for a user's agents. Returns list of agent IDs woken.
 
+    Vom Nutzer angehaltene Agenten bleiben aus (``agent_duty.vom_nutzer_angehalten``).
+
     Non-blocking: starts containers but does NOT wait for them to be healthy.
     Callers that need the agent ready should use wake_agent() with wait=True.
     """
@@ -435,7 +437,13 @@ async def wake_user_agents(db: AsyncSession, docker_service, user_id: str) -> li
     )
     agents = list(result.scalars().all())
     woken: list[str] = []
+    from app.core.agent_duty import vom_nutzer_angehalten
     for agent in agents:
+        # Anmelden ist keine Ansage, einen angehaltenen Agenten wieder zu starten.
+        # Genau so liefen am 13.11.2026 sieben angehaltene Agenten wieder an
+        # (Anmeldung 20:42) — und am 14.11. zwei Demo-Agenten mitten in der Probe.
+        if vom_nutzer_angehalten(agent):
+            continue
         try:
             if agent.container_id:
                 docker_service.start_container(agent.container_id)
