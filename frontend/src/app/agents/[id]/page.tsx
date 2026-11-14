@@ -1074,7 +1074,9 @@ function AufgabenSpalte({
     }),
   };
   const zahl = { offen: eintraege.offen.length, geplant: eintraege.geplant.length, erledigt: eintraege.erledigt.length };
-  const reiter = gewaehlterReiter ?? (zahl.offen ? "offen" : zahl.geplant ? "geplant" : zahl.erledigt ? "erledigt" : "offen");
+  // Ohne Offenes zuerst das Erledigte: wer reinschaut, will meist ein Ergebnis
+  // lesen, nicht pausierte Pläne (Persona Mobil, Runde 4 und 5).
+  const reiter = gewaehlterReiter ?? (zahl.offen ? "offen" : zahl.erledigt ? "erledigt" : zahl.geplant ? "geplant" : "offen");
   const begriff = suche.trim().toLowerCase();
   const sichtbar = begriff
     ? eintraege[reiter].filter((z) => `${z.titel} ${z.unter}`.toLowerCase().includes(begriff))

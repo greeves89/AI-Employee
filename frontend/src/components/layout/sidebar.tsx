@@ -147,6 +147,9 @@ const navGroups: NavGroup[] = [
       { href: "/tasks", label: "Aufgaben", icon: ListTodo, simpleVisible: true },
       { href: "/projekte", label: "Projekte", icon: FolderKanban, simpleVisible: true },
       { href: "/approvals", label: "Freigaben", icon: ShieldCheck, simpleVisible: true },
+      // Unter „Arbeiten“ statt „Ablage“: einen Agenten in eine Besprechung schicken
+      // ist Arbeit, dort suchte ihn die Persona Teamleitung (Runde 4 und 5).
+      { href: "/besprechungen", label: "Teams-Besprechungen", icon: CalendarClock, simpleVisible: true, tooltip: "Teams-Termine deiner Agenten und Mitschnitte: Protokoll, Aufgaben, Transkript." },
       // Übersicht = Kennzahlen der Anlage für Admins. Für Mitglieder wiederholte sie
       // „Start“ (UI-Bewertung 14.11.2026) — dort steht jetzt auch der Einstieg.
       { href: "/dashboard", label: "Übersicht", icon: LayoutDashboard, simpleVisible: false, weitere: true },
@@ -162,7 +165,6 @@ const navGroups: NavGroup[] = [
     items: [
       { href: "/files", label: "Dateien", icon: FolderOpen, simpleVisible: true },
       { href: "/knowledge", label: "Wissen", icon: BookOpen, simpleVisible: false },
-      { href: "/besprechungen", label: "Teams-Besprechungen", icon: CalendarClock, simpleVisible: true, tooltip: "Teams-Termine deiner Agenten und Mitschnitte: Protokoll, Aufgaben, Transkript." },
       { href: "/integrations", label: "Verbindungen", icon: Plug, simpleVisible: false, weitere: true },
     ],
   },

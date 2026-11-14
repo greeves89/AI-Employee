@@ -71,7 +71,7 @@ export function RechteStufen({
               aktiv
                 ? "border-primary/40 bg-primary/[0.08]"
                 : "border-foreground/[0.08] hover:bg-foreground/[0.04]",
-              zu && "opacity-40",
+              zu && "opacity-60",
             )}
           >
             <span className="flex w-full items-center gap-2">
@@ -86,6 +86,13 @@ export function RechteStufen({
               ) : null}
             </span>
             <span className="text-[12px] leading-snug text-muted-foreground">{s.text}</span>
+            {/* Sichtbar statt nur im Tooltip: warum gesperrt und wer es ändert
+                (Persona Teamleitung, Runde 4 und 5). */}
+            {zu && (
+              <span className="text-[12px] font-medium leading-snug text-foreground/80">
+                Für deine Rolle gesperrt — freischalten kann ein Administrator.
+              </span>
+            )}
           </button>
         );
       })}

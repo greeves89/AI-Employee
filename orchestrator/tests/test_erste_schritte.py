@@ -37,9 +37,11 @@ _zaehler = iter(range(10**6))
 def _sid():
     return f"s{next(_zaehler)}"
 
+from app.models.agent_access import AgentAccess  # noqa: E402
+
 TABELLEN = [User.__table__, Agent.__table__, AIAccount.__table__, KnowledgeEntry.__table__,
             OAuthIntegration.__table__, Schedule.__table__, UserAiCredential.__table__,
-            DeviceToken.__table__]
+            DeviceToken.__table__, AgentAccess.__table__]
 
 
 class _Redis:
@@ -100,6 +102,21 @@ class ErsteSchritte(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any(erledigt.values()))
         self.assertEqual([x["id"] for x in s["schritte"]][-2:], ["iphone_app", "bridge"],
                          "iPhone-App vor der Bridge, die Bridge zuletzt")
+
+    async def test_mitverwalteter_agent_zaehlt_nur_nutzen_nicht(self):
+        """Wer einen freigegebenen Agenten mitverwaltet, arbeitet schon mit Agenten —
+        „Agenten anlegen“ als offener Schritt war falsch (Personas Runde 5). Eine
+        Freigabe nur zum Nutzen zählt weiterhin nicht."""
+        from app.models.agent_access import ROLLE_NUTZEN
+
+        await self._add(Agent(id="geteilt", name="Geteilt", user_id=ANDERE),
+                        Agent(id="nur-nutzen", name="Nutzen", user_id=ANDERE))
+        await self._add(AgentAccess(agent_id="nur-nutzen", user_id=ICH.id, rolle=ROLLE_NUTZEN))
+        erledigt, _ = await self._stand()
+        self.assertFalse(erledigt["agent"], "Nutzen allein ist keine Verwaltung")
+        await self._add(AgentAccess(agent_id="geteilt", user_id=ICH.id))
+        erledigt, _ = await self._stand()
+        self.assertTrue(erledigt["agent"])
 
     async def test_fremde_belege_zaehlen_nicht(self):
         await self._add(

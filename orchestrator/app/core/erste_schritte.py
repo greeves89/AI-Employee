@@ -64,11 +64,16 @@ async def _ki_zugang(db: AsyncSession, user) -> bool:
 
 
 def _eigene_agenten(uid: str):
-    return select(Agent.id).where(Agent.user_id == uid)
+    """Eigene Agenten und solche, die man mitverwaltet. Wer einen freigegebenen
+    Agenten betreut, sah sonst „0 von 6“ und „Agenten anlegen“, obwohl er längst
+    mit Agenten arbeitet (Personas Runde 5). Freigaben nur zum Nutzen zählen nicht."""
+    from app.core.ownership import verwaltende_freigaben
+
+    return select(Agent.id).where(or_(Agent.user_id == uid, Agent.id.in_(verwaltende_freigaben(uid))))
 
 
 async def _agent(db: AsyncSession, uid: str) -> bool:
-    return bool(await db.scalar(select(exists().where(Agent.user_id == uid))))
+    return bool(await db.scalar(select(exists().where(Agent.id.in_(_eigene_agenten(uid))))))
 
 
 async def _gedaechtnis(db: AsyncSession, uid: str) -> bool:

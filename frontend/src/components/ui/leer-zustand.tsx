@@ -20,7 +20,11 @@ export function LeerZustand({
 }) {
   return (
     <div className="mx-auto max-w-md py-16 text-center">
-      <Icon className="mx-auto h-10 w-10 text-muted-foreground/50" aria-hidden="true" />
+      {/* Getönte Kachel statt blassem Grau: leere Seiten wirkten leblos
+          (Gestaltungsprüfung Runde 5). */}
+      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+        <Icon className="h-7 w-7" aria-hidden="true" />
+      </div>
       <h2 className="mt-3 font-display text-lg font-semibold">{titel}</h2>
       {text && <p className="mt-1 text-sm text-muted-foreground">{text}</p>}
       {children && <div className="mt-4">{children}</div>}

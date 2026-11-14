@@ -2093,7 +2093,7 @@ Seitenleiste → **Knowledge**. Aufbau der Seite:
 
 In einer **Agenten-Runde** arbeiten **mehrere Agenten gemeinsam** an einem Thema — moderiert
 und in Phasen (Stages). Sinnvoll, wenn unterschiedliche „Rollen" (z. B. ein Analyst und ein
-Reviewer) zusammen ein Ergebnis erarbeiten sollen. Seitenleiste → **Weitere Bereiche → Agenten-Runden** (früher „Besprechungsräume“). Termine in Microsoft Teams stehen dagegen unter **Teams-Besprechungen** (Kap. 34).
+Reviewer) zusammen ein Ergebnis erarbeiten sollen. Seitenleiste → **Weitere Bereiche → Agenten-Runden** (früher „Besprechungsräume“). Termine in Microsoft Teams stehen dagegen unter **Teams-Besprechungen** (seit 1.468.6 in der Gruppe **Arbeiten**, Kap. 34).
 
 ![Agenten-Runden](screenshots/07-meeting-rooms.png)
 
@@ -2670,6 +2670,9 @@ Seitenleiste → **Audit** (Admin).
    betroffene Objekt und das **Ergebnis** (success/…).
 2. Über **Filter/Suche** gezielt Ereignisse finden — z. B. **Löschungen** von Agenten,
    **Rechte-/Rollenänderungen**, Anlegen/Ändern von Accounts oder Brains.
+3. **Routine ausblenden** *(seit 1.468.6, Standard an)* blendet häufige Routine-Einträge aus:
+   nächtliche Reflexion, gelesene Logs und erfolgreiche Anmeldungen. Haken entfernen, um sie
+   wieder zu sehen. Wer gezielt nach einer Ereignisart filtert, sieht sie immer.
 
 > Beispiel: Wurde ein Agent gelöscht, steht hier, *wann* und *durch wen* — hilfreich bei
 > „wo ist mein Agent hin?".
@@ -3468,7 +3471,7 @@ Nutzer bekommt einen Hinweis, Administratoren eine Benachrichtigung. Gezählt we
 Kosten gelöschter Agenten dieses Nutzers.
 
 1. Im Admin-Bereich **Kosten & Budget** öffnen (oder in der Suche `budget` eingeben und
-   **Budget je Nutzer** wählen).
+   **Budget je Nutzer** wählen). *Seit 1.468.6* steht der Abschnitt ganz oben auf der Seite.
 2. **Standard für alle Nutzer:** im Feld **Standard** rechts oben den Betrag eintragen und
    auf **Speichern** klicken. Leer lassen = keine Grenze.
 3. **Abweichende Grenze für einen Nutzer:** in seiner Zeile auf den **Stift** klicken, dann
@@ -3496,7 +3499,7 @@ stand, hat jetzt je einen eigenen Bereich:
 
 | Bereich | Gruppe | Inhalt |
 |---|---|---|
-| **Modelle & Anbieter** | KI & Wissen | Modell-Anbieter, Anmeldung der Plattform, Standards für Agenten, Anzeigewährung, Modelle freischalten |
+| **Modelle & Anbieter** | KI & Wissen | Modelle freischalten (seit 1.468.6 ganz oben; Schalter „Für alle frei“), Modell-Anbieter, Anmeldung der Plattform, Standards für Agenten, Anzeigewährung |
 | **Sprache** | KI & Wissen | Live-Sprachsitzungen, Stimmen, Azure-Speech |
 | **Dienste & Konten** | Anlage | SAML, Teams-Telefonie, Telegram-Bot der Anlage, Google/Microsoft/Apple-Anmeldung, Microsoft nur lesend, Exchange (on-prem), SMTP-Versand |
 | **System & Lizenz** | Anlage | Lizenz (ganz oben), Fernwartung, Automatisierung, Nachtschicht, Zugang und Registrierung, Anmeldung und Sicherheit |

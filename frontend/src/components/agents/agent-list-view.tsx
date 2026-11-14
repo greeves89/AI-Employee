@@ -459,7 +459,7 @@ function AgentRow({
               </Link>
               {/* Was der Agent tut, stand nur im Chat-Kopf (Persona Teamleitung, Runde 4). */}
               {agent.role?.trim() && (
-                <span className="block max-w-[22rem] truncate text-xs text-muted-foreground" title={agent.role}>
+                <span className="hidden max-w-[22rem] truncate text-xs text-muted-foreground sm:block" title={agent.role}>
                   {agent.role}
                 </span>
               )}

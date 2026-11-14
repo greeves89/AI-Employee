@@ -90,6 +90,9 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
   const [agentFilter, setAgentFilter] = useState("");
   const [eventTypeFilter, setEventTypeFilter] = useState("");
   const [outcomeFilter, setOutcomeFilter] = useState("");
+  // Standard an: Reflexion, Log-Lesen und Anmeldungen überdeckten die wichtigen
+  // Ereignisse (Persona Admin, Runde 4 und 5).
+  const [ohneRoutine, setOhneRoutine] = useState(true);
   const [selected, setSelected] = useState<AuditLog | null>(null);
 
   const { agents } = useAgents();
@@ -122,6 +125,7 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
           agent_id: agentFilter || undefined,
           event_type: eventTypeFilter || undefined,
           outcome: outcomeFilter || undefined,
+          ohne_routine: ohneRoutine,
           limit: PAGE_SIZE,
           offset: off,
         }),
@@ -136,9 +140,9 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [agentFilter, eventTypeFilter, outcomeFilter, offset]);
+  }, [agentFilter, eventTypeFilter, outcomeFilter, ohneRoutine, offset]);
 
-  useEffect(() => { load(true); }, [agentFilter, eventTypeFilter, outcomeFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(true); }, [agentFilter, eventTypeFilter, outcomeFilter, ohneRoutine]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [offset]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRefresh = () => {
@@ -297,6 +301,10 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
             <option value="failure">{OUTCOME_LABEL.failure}</option>
             <option value="blocked">{OUTCOME_LABEL.blocked}</option>
           </select>
+          <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" title="Reflexion, gelesene Logs und erfolgreiche Anmeldungen">
+            <input type="checkbox" checked={ohneRoutine} onChange={(e) => setOhneRoutine(e.target.checked)} />
+            Routine ausblenden
+          </label>
           {(agentFilter || eventTypeFilter || outcomeFilter) && (
             <button
               onClick={() => { setAgentFilter(""); setEventTypeFilter(""); setOutcomeFilter(""); }}
@@ -461,6 +469,8 @@ function ereignisLesbar(typ: string): string {
 
 const EVENT_INFO: Record<string, { label: string; desc: string }> = {
   agent_updated: { label: "Agent geändert", desc: "Einstellungen eines Agenten wurden geändert." },
+  agent_rechte_geaendert: { label: "Agenten-Rechte geändert", desc: "Was ein Agent selbst darf, wurde geändert." },
+  secret_ziele_geaendert: { label: "Schlüssel-Freigabe geändert", desc: "Für welche Adressen ein Schlüssel verwendet werden darf, wurde geändert." },
   budget_changed: { label: "Budget geändert", desc: "Ein Budget wurde gesetzt oder geändert." },
   agent_started: { label: "Agent gestartet", desc: "Der Container eines Agenten wurde gestartet." },
   agent_stopped: { label: "Agent gestoppt", desc: "Der Container eines Agenten wurde gestoppt." },

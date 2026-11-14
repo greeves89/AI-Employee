@@ -114,6 +114,11 @@ export function ModelCatalogAdmin() {
           Modelle freischalten
         </h2>
       </div>
+      {/* Was der Schalter bedeutet und was die Abzeichen heißen (Persona Admin, Runde 4). */}
+      <p className="mb-3 text-xs text-muted-foreground">
+        Eingeschaltete Modelle können alle Nutzer für ihre Agenten wählen. <b className="font-medium text-foreground">Basis</b> = bringt
+        AI Employee mit; <b className="font-medium text-foreground">Erkannt</b> = hat der Anbieter beim letzten Abgleich zusätzlich gemeldet.
+      </p>
 
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
         <div className="flex items-center justify-between gap-3 px-5 py-3.5 border-b border-foreground/[0.04]">
@@ -207,9 +212,14 @@ export function ModelCatalogAdmin() {
                               </div>
                               <div className="text-[11px] text-muted-foreground font-mono truncate">{m.value}</div>
                             </div>
+                            <span className="flex shrink-0 items-center gap-2">
+                            <span className={cn("hidden text-xs sm:inline", m.enabled ? "text-foreground" : "text-muted-foreground")}>
+                              {m.enabled ? "Für alle frei" : "Aus"}
+                            </span>
                             <button
                               role="switch"
                               aria-checked={m.enabled}
+                              aria-label={`${m.label} für alle freigeben`}
                               disabled={busyValue === m.value}
                               onClick={() => toggle(m.value, !m.enabled)}
                               className={cn(
@@ -228,6 +238,7 @@ export function ModelCatalogAdmin() {
                                 />
                               )}
                             </button>
+                            </span>
                           </div>
                         ))}
                       </div>

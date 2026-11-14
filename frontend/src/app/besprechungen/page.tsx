@@ -137,7 +137,7 @@ export default function BesprechungenPage() {
         {liste === null && !fehler && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
         {liste && liste.length === 0 && (
           <div className="rounded-xl border border-foreground/10 p-5 text-sm text-muted-foreground">
-            Noch keine Besprechungen. Schalte bei einem Agenten unter <b>Konnektoren → Microsoft Teams →
+            Noch keine Besprechungen. Schalte im Chat eines Agenten unter <b>Einstellungen → Konten &amp; Dienste → Microsoft Teams →
             Teams-Besprechungen</b> die Teilnahme ein und lade ihn zu einem Teams-Termin ein. Nach dem Termin
             steht hier sein Protokoll.
           </div>

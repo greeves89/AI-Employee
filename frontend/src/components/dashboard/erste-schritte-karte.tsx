@@ -96,7 +96,9 @@ export function ErsteSchritteKarte({ platz }: { platz?: "oben" | "unten" } = {})
   if (!aufgeklappt) {
     return (
       <section aria-label="Erste Schritte" className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-border bg-card px-4 py-3">
-        <div className="min-w-0 flex-1">
+        {/* Am Handy volle Breite, Knöpfe darunter: daneben brach der Text in eine
+            schmale Spalte um (Gestaltungsprüfung Runde 5). */}
+        <div className="min-w-0 flex-1 basis-full sm:basis-0">
           <p className="text-sm font-medium">
             Einstieg: {stand.erledigt} von {stand.gesamt} erledigt
             {naechster && <span className="font-normal text-muted-foreground"> · Als Nächstes: {naechster.titel}</span>}

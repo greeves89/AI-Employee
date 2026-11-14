@@ -190,14 +190,14 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
                 Claude-/Codex-Abo verbindet. */}
             <button
               onClick={() => { setIsOpen(false); setMobileOpen(false); router.push("/settings"); }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
+              className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-accent/50 transition-colors"
             >
               <Settings className="h-3.5 w-3.5" />
               Mein Konto
             </button>
             <button
               onClick={handleLogout}
-              className="flex w-full items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-accent/50 transition-colors"
+              className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-accent/50 transition-colors"
             >
               <LogOut className="h-3.5 w-3.5" />
               Abmelden

@@ -210,6 +210,12 @@ async def _anreichern(db: AsyncSession, logs) -> list[dict]:
     return out
 
 
+#: Häufige Routine-Einträge, die wichtige Ereignisse überdecken: über 1.000
+#: Reflexions- und fast 1.000 Log-Lese-Einträge neben einer Handvoll Nutzer- und
+#: Rechteänderungen (Persona Admin, Runde 5). Ausgeblendet nur auf Wunsch.
+ROUTINE_EREIGNISSE = ("reflection_change", "reflection_run", "logs_read", "login_succeeded")
+
+
 @router.get("/logs")
 async def list_audit_logs(
     agent_id: Optional[str] = Query(None, description="Filter by agent ID"),
@@ -220,6 +226,7 @@ async def list_audit_logs(
     until: Optional[datetime] = Query(None, description="Return entries up to this timestamp"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
+    ohne_routine: bool = Query(False, description="Reflexion, Log-Lesen und erfolgreiche Anmeldungen ausblenden"),
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
@@ -228,6 +235,8 @@ async def list_audit_logs(
     """
     base = await _gefiltert(user, db, agent_id=agent_id, task_id=task_id, event_type=event_type,
                             outcome=outcome, since=since, until=until)
+    if ohne_routine is True and not event_type:  # direkt aufgerufen ist der Standard ein Query-Objekt
+        base = base.where(AuditLog.event_type.notin_(ROUTINE_EREIGNISSE))
     total = await db.scalar(select(func.count()).select_from(base.subquery()))
     result = await db.execute(base.order_by(desc(AuditLog.created_at), desc(AuditLog.id))
                               .offset(offset).limit(limit))
