@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSimpleMode } from "@/hooks/use-simple-mode";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, BookOpen, Box, CalendarClock, Crown, GitBranch, KanbanSquare, Loader2, MessageCircleQuestion, MessageSquare, MessagesSquare, Pencil, Send, Trash2, TriangleAlert, Users } from "lucide-react";
@@ -127,7 +128,10 @@ export default function ProjektPage() {
   const lead = projekt?.lead_agent_id ? agentById.get(projekt.lead_agent_id) : undefined;
   const brauchtWahl = !projekt?.lead_agent_id && mitglieder.length > 1;
   // Agenten auf altem Abbild kennen die Projekt-Werkzeuge nicht (projekt_board …).
-  const veraltet = mitglieder.filter((m) => m.agent?.update_available || m.agent?.image_outdated);
+  // Aktualisieren kann nur ein Admin; Mitgliedern sagte der Hinweis nur, dass etwas
+  // nicht stimmt, ohne Weg zum Beheben (Persona Teamleitung, Runde 4 und 7).
+  const { simpleMode } = useSimpleMode();
+  const veraltet = simpleMode ? [] : mitglieder.filter((m) => m.agent?.update_available || m.agent?.image_outdated);
 
   const ausfuehren = async (titel: string, fn: () => Promise<unknown>) => {
     try {

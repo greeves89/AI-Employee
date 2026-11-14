@@ -206,14 +206,15 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
               "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium",
               config.badge
             )}>
-              {/* Green/red dot = online/offline */}
+              {/* Grün = läuft, Rot nur bei Fehler, sonst grau — wie auf Start und in der
+                  Liste (vorher Rot für jeden gestoppten Agenten, Gestaltungsprüfung Runde 7). */}
               <span className="relative flex h-1.5 w-1.5">
                 {config.online && (
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
                 )}
                 <span className={cn(
                   "relative inline-flex h-1.5 w-1.5 rounded-full",
-                  config.online ? "bg-emerald-500" : "bg-red-500"
+                  config.online ? "bg-emerald-500" : agent.state === "error" ? "bg-red-500" : "bg-foreground/40"
                 )} />
               </span>
               {config.label}

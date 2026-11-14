@@ -8,6 +8,7 @@
  */
 
 import Link from "next/link";
+import { useSimpleMode } from "@/hooks/use-simple-mode";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Bar, CartesianGrid, ComposedChart, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -110,6 +111,7 @@ function ProjektBudget({ projekt, onGespeichert }: { projekt: api.FinanzenProjek
 }
 
 function FinanzenSeite() {
+  const { simpleMode } = useSimpleMode();
   const money = useMoney();
   const toast = useToast();
   const toastRef = useRef(toast);
@@ -218,7 +220,7 @@ function FinanzenSeite() {
                     <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }}
                       formatter={(v: string) => <span style={{ color: "hsl(var(--foreground))" }}>{v}</span>} />
                     <Bar dataKey="Aufgaben" stackId="k" fill="hsl(var(--primary))" radius={[0, 0, 0, 0]} />
-                    <Bar dataKey="Chat" stackId="k" fill="hsl(var(--primary) / 0.55)" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Chat" stackId="k" fill="#38bdf8" radius={[4, 4, 0, 0]} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -242,7 +244,7 @@ function FinanzenSeite() {
                         <th className="pb-2 text-right font-medium">Dieser Monat</th>
                         <th className="pb-2 text-right font-medium">Vormonat</th>
                         <th className="pb-2 text-right font-medium">Insgesamt</th>
-                        <th className="pb-2 text-right font-medium">Tokens</th>
+                        <th className="pb-2 text-right font-medium" title="Tokens: die Textmenge, die die KI gelesen und geschrieben hat — danach wird abgerechnet">Tokens</th>
                         <th className="pb-2 pl-4 font-medium">Monatsbudget</th>
                       </tr>
                     </thead>
@@ -284,7 +286,7 @@ function FinanzenSeite() {
                         <th className="pb-2 text-right font-medium">Chat</th>
                         <th className="pb-2 text-right font-medium">Dieser Monat</th>
                         <th className="pb-2 text-right font-medium">Vormonat</th>
-                        <th className="pb-2 text-right font-medium">Tokens</th>
+                        <th className="pb-2 text-right font-medium" title="Tokens: die Textmenge, die die KI gelesen und geschrieben hat — danach wird abgerechnet">Tokens</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -312,7 +314,8 @@ function FinanzenSeite() {
             </section>
 
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Wallet className="h-3 w-3" /> Abgerechnet wird in US-Dollar; angezeigt in der Währung der Anlage.
+              {/* Für Mitglieder ohne Belang und verwirrend (Persona Einsteigerin, Runde 5 und 7). */}
+              {!simpleMode && <><Wallet className="h-3 w-3" /> Abgerechnet wird in US-Dollar; angezeigt in der Währung der Anlage.</>}
               <FolderKanban className="ml-2 h-3 w-3" /> Ist ein Projektbudget aufgebraucht, starten bis Monatsende keine neuen Läufe des Projekts.
             </p>
           </>

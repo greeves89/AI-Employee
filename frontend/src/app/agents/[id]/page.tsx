@@ -876,7 +876,17 @@ function Schnellzugriff({ agent, setAgent }: { agent: Agent; setAgent: (a: Agent
                   dieses Fenster an die Einstellungen ihres Agenten kommen. */}
               <KanaeleCard agentId={agent.id} />
               <BridgeDownload />
-              <IntegrationSelector agentId={agent.id} />
+              {/* Technik eingeklappt: MCP-Werkzeuge, erlaubte Adressen und Schlüssel
+                  verstellten den Weg zu Mail und Kalender (Persona Einsteigerin, Runde 7). */}
+              <details className="group rounded-xl border border-border">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 text-sm font-medium">
+                  Erweitert: Werkzeuge, erlaubte Adressen und Schlüssel
+                  <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="border-t border-border p-4">
+                  <IntegrationSelector agentId={agent.id} />
+                </div>
+              </details>
             </div>
           )}
           {offen === "computer" && (
@@ -913,9 +923,9 @@ const AUFGABEN_OFFEN_SCHLUESSEL = "agent_aufgaben_offen";
 const REITER = [
   { key: "offen", titel: "Offen" },
   { key: "geplant", titel: "Geplant" },
-  // „Abgeschlossen“ statt „Erledigt“: hier stehen auch abgebrochene und fehlgeschlagene
+  // „Fertig“ statt „Erledigt“ (auch Abgebrochenes) und kurz genug für eine Zeile am Handy
   // Aufgaben (Persona Mobil, Runde 5).
-  { key: "erledigt", titel: "Abgeschlossen" },
+  { key: "erledigt", titel: "Fertig" },
 ] as const;
 const LEER = {
   offen: "Nichts offen. Was du dem Agenten im Chat aufträgst, steht hier.",

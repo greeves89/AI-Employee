@@ -11,6 +11,7 @@
  */
 
 import Link from "next/link";
+import { UhrzeitFeld } from "@/components/ui/uhrzeit-feld";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlarmClock, Archive, Bell, BellPlus, CalendarDays, Check, ChevronRight, Clock, ExternalLink, Inbox, Lightbulb, Loader2,
@@ -183,8 +184,7 @@ function Einrichten({ onFertig, entwurfFrei }: { onFertig: () => void; entwurfFr
         </label>
         <label className="text-xs font-medium text-muted-foreground">
           3. Tagesbriefing (Mo–Fr)
-          <input type="time" value={briefing} onChange={(e) => setBriefing(e.target.value)}
-            className="mt-1 block rounded-lg border border-foreground/[0.1] bg-background/80 px-2 py-1.5 text-sm text-foreground" />
+          <UhrzeitFeld value={briefing} onChange={setBriefing} className="mt-1 flex" ariaLabel="Tagesbriefing" />
         </label>
         <button type="button" onClick={anlegen} disabled={!gewaehlt.length || laeuft}
           className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
@@ -899,10 +899,31 @@ function MeinTag({ onSekretariatFertig, entwurfFrei }: { onSekretariatFertig: ()
     .slice(0, 5);
   // „Nichts geplant“ verschwieg pausierte Zeitpläne (Persona Teamleitung, Runde 5).
   const pausiert = (zeitplaene ?? []).filter((z) => !z.enabled && !(simpleMode && istSystemZeitplan(z))).length;
+  const ruhig = freigaben !== null && freigaben.length === 0 && zeitplaene !== null && geplant.length === 0
+    && laufend.length === 0 && fertig.length === 0;
 
   return (
     <div className="space-y-4">
       <div className="grid items-start gap-4 lg:grid-cols-2">
+        {/* Nichts offen, nichts gelaufen, nichts geplant: eine Karte statt drei leerer
+            (am Handy füllten sie den ganzen ersten Bildschirm; Personas und
+            Gestaltungsprüfung Runde 5 und 7). */}
+        {ruhig ? (
+          <Kasten titel="Dein Tag" icon={Sun}>
+            <p className="text-sm font-medium">Heute ist nichts für dich zu tun.</p>
+            <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+              <li>Keine offenen Freigaben</li>
+              <li>Heute ist noch keine Aufgabe gelaufen</li>
+              <li>{pausiert > 0 ? `Nichts geplant — ${pausiert} ${pausiert === 1 ? "Zeitplan ist" : "Zeitpläne sind"} pausiert` : "Nichts geplant"}</li>
+            </ul>
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
+              <MehrLink href="/approvals">Freigaben</MehrLink>
+              <MehrLink href="/tasks">Aufgaben</MehrLink>
+              <MehrLink href="/tasks?ansicht=zeitplaene">Zeitpläne</MehrLink>
+            </div>
+          </Kasten>
+        ) : (
+        <>
         {/* Was auf dich wartet, ist das Wichtigste des Tages: hervorgehoben und über
             die ganze Breite, sobald etwas offen ist (UI-Bewertung 14.11.2026). */}
         <Kasten titel="Wartet auf dich" icon={ShieldCheck}
@@ -962,6 +983,8 @@ function MeinTag({ onSekretariatFertig, entwurfFrei }: { onSekretariatFertig: ()
           )}
           <div className="mt-3"><MehrLink href="/tasks?ansicht=zeitplaene">Alle Zeitpläne</MehrLink></div>
         </Kasten>
+        </>
+        )}
 
         <Kasten titel="Meine Agenten" icon={Bot}>
           {agents.length === 0 ? (

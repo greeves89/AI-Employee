@@ -958,8 +958,11 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
                     <button
                       onClick={() => handleDelete(server.id)}
                       disabled={deleting === server.id}
-                      className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/15 transition-colors"
-                      title="Entfernen"
+                      // Abgesetzt hinter einem Strich: lag direkt neben harmlosen Knöpfen
+                      // (Persona Admin, Runde 7).
+                      className="ml-1.5 flex h-7 w-7 items-center justify-center rounded-lg border-l border-border pl-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-500/15 transition-colors"
+                      title="Server entfernen"
+                      aria-label="Server entfernen"
                     >
                       {deleting === server.id ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />

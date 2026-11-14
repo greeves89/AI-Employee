@@ -693,7 +693,9 @@ export default function AdminPage() {
                                 steht abgesetzt unten (Persona Admin, Runde 4). */}
                             <NutzerAktionen
                               eintraege={[
-                                { titel: `Rolle wechseln (derzeit ${rollenName(u.role)})`, icon: Shield, aktion: () => handleCycleRole(u) },
+                                // Sagt, wohin gewechselt wird: „Rolle wechseln“ verriet nicht, dass dort
+                                // auch Administrator liegt (Persona Admin, Runde 7).
+                                { titel: `Rolle ändern zu ${rollenName(ROLE_CYCLE[((ROLE_CYCLE as readonly string[]).indexOf(u.role) + 1) % ROLE_CYCLE.length])} (derzeit ${rollenName(u.role)})`, icon: Shield, aktion: () => handleCycleRole(u) },
                                 { titel: u.is_active ? "Deaktivieren" : "Aktivieren", icon: u.is_active ? ToggleRight : ToggleLeft, aktion: () => handleToggleActive(u) },
                                 { titel: "Freigegebene Ordner", icon: Box, aktion: () => setMountUserId(u.id) },
                                 { titel: "Passwort zurücksetzen", icon: KeyRound, aktion: () => handleResetPassword(u) },

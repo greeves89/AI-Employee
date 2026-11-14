@@ -114,7 +114,7 @@ export function SessionRail({
                     isBusy && "ring-1 ring-inset ring-amber-500/40 bg-amber-500/[0.06]",
                     selectedId === s.id
                       ? "bg-primary/10 text-foreground"
-                      : "text-muted-foreground/70 hover:bg-foreground/[0.04]",
+                      : "text-foreground/80 hover:bg-foreground/[0.04]",
                   )}
                 >
                   <span className="flex items-center gap-1.5 text-xs">
@@ -145,8 +145,10 @@ export function SessionRail({
                     )}
                   </span>
                   {s.last_message_at && (
-                    <span className="pl-4 text-[11px] text-muted-foreground">
-                      {timeAgo(s.last_message_at)}
+                    // Datum und Uhrzeit statt nur „vor 3 Min.“: gleichnamige Gespräche
+                    // ließen sich sonst nicht unterscheiden (Persona Einsteigerin, Runde 7).
+                    <span className="pl-4 text-[11px] text-muted-foreground" title={timeAgo(s.last_message_at)}>
+                      {new Date(s.last_message_at).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                       {s.message_count !== undefined && ` · ${s.message_count}`}
                     </span>
                   )}

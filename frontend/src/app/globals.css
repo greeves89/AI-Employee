@@ -51,7 +51,9 @@
   color-scheme: dark;
   --background: 222 47% 5%;
   --foreground: 210 40% 98%;
-  --card: 222 47% 7%;
+  /* Karten zwei Stufen über der Fläche, Ränder sichtbarer: vorher lagen Karte,
+     Seitenleiste und Fläche fast im selben Ton (Gestaltungsprüfung Runde 7). */
+  --card: 222 40% 9.5%;
   --card-foreground: 210 40% 98%;
   --primary: 217 91% 60%;
   --primary-foreground: 210 40% 98%;
@@ -63,8 +65,8 @@
   --accent-foreground: 210 40% 98%;
   --destructive: 0 72% 51%;
   --destructive-foreground: 210 40% 98%;
-  --border: 217 33% 15%;
-  --input: 217 33% 15%;
+  --border: 217 25% 20%;
+  --input: 217 25% 20%;
   --ring: 217 91% 60%;
   --success: 142 71% 45%;
   --warning: 38 92% 50%;

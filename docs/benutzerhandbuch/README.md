@@ -185,6 +185,10 @@ Administratoren mit dem Schalter **Mitglieder-Ansicht** im Benutzermenü.
 > aktivem zweiten Faktor, und dessen Einrichtung bleibt der Person selbst vorbehalten.
 
 ### 1.2 Die Seitenleiste — dein Hauptmenü *(neu gestaltet in 1.391.0)*
+
+**Am Handy** *(seit 1.468.8)* steht unten eine Leiste mit **Start**, **Agenten**, **Aufgaben**,
+**Freigaben** und **Mehr**. **Mehr** öffnet das vollständige Menü (dasselbe wie das Symbol oben
+links). Im Chat eines Agenten und im Admin-Bereich ist die Leiste ausgeblendet.
 Die **Seitenleiste links** ist auf jeder Seite dein Hauptmenü. Sie hat
 drei Gruppen. Alles, was nur dich betrifft, liegt unten am Konto. Alles, was die
 ganze Anlage betrifft, steht in einem eigenen **Admin-Bereich** (Kap. 1.5).
@@ -637,7 +641,7 @@ Darunter die **Tabs**: **Chat · Todos · Activity · Workspace · Wissen · Set
 Tab **Chat**. Das ist das direkte Gespräch (wie ein Messenger).
 - **Einstellungen** *(seit 1.468.5, vorher „Werkzeuge“)* — unten im Eingabefeld stehen nur **Anhängen** und **Sprechen** als
   Symbole. Alles Weitere (Konten & Dienste, Computer, Modell, Rechte, Dateien, Wissen) öffnet der Knopf
-  **Einstellungen**, jeweils mit kurzer Erklärung. **Gespräche** oben links blendet die Gesprächsliste ein. Im Aufgaben-Fenster heißen die Reiter *(seit 1.468.7)* **Offen**, **Geplant** und **Abgeschlossen** (auch abgebrochene Aufgaben).
+  **Einstellungen**, jeweils mit kurzer Erklärung. **Gespräche** oben links blendet die Gesprächsliste ein. Im Aufgaben-Fenster heißen die Reiter *(seit 1.468.7)* **Offen**, **Geplant** und **Fertig** (auch abgebrochene Aufgaben).
 - **Gestoppter Agent** *(seit 1.467.0)* — Öffnen startet ihn nicht. Über dem Eingabefeld steht
   „Der Agent ist gestoppt. Er startet, sobald du schreibst.“ Mit deiner ersten Nachricht startet er
   („Agent wird gestartet. Das dauert beim ersten Mal bis zu einer Minute.“) und antwortet dann. Hat der Besitzer den Agenten angehalten und du nutzt ihn
@@ -2671,7 +2675,8 @@ Seitenleiste → **Audit** (Admin).
 2. Über **Filter/Suche** gezielt Ereignisse finden — z. B. **Löschungen** von Agenten,
    **Rechte-/Rollenänderungen**, Anlegen/Ändern von Accounts oder Brains.
 3. **Routine ausblenden** *(seit 1.468.6, Standard an)* blendet häufige Routine-Einträge aus:
-   nächtliche Reflexion, gelesene Logs und erfolgreiche Anmeldungen. Haken entfernen, um sie
+   nächtliche Reflexion, gelesene Logs, erfolgreiche Anmeldungen und *(seit 1.468.8)* automatische
+   Agenten-Updates. Haken entfernen, um sie
    wieder zu sehen. Wer gezielt nach einer Ereignisart filtert, sieht sie immer.
 
 > Beispiel: Wurde ein Agent gelöscht, steht hier, *wann* und *durch wen* — hilfreich bei

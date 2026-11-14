@@ -7,6 +7,7 @@
  */
 
 import Link from "next/link";
+import { UhrzeitFeld } from "@/components/ui/uhrzeit-feld";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CalendarClock, ExternalLink, Loader2, Plus, Trash2 } from "lucide-react";
 import * as api from "@/lib/api";
@@ -137,8 +138,7 @@ export function ProjektTermine({ projektId, darfVerwalten, anzahlAgenten }: { pr
                     <input type="date" value={datum} onChange={(e) => setDatum(e.target.value)} aria-label="Datum"
                       className="rounded-lg border border-foreground/[0.1] bg-background/80 px-2 py-1.5 text-sm" />
                   )}
-                  <input type="time" value={uhrzeit} onChange={(e) => setUhrzeit(e.target.value)} aria-label="Uhrzeit"
-                    className="rounded-lg border border-foreground/[0.1] bg-background/80 px-2 py-1.5 text-sm" />
+                  <UhrzeitFeld value={uhrzeit} onChange={setUhrzeit} />
                 </div>
                 <input value={thema} onChange={(e) => setThema(e.target.value)} placeholder="Thema (optional) — sonst Stand, Hindernisse, nächste Schritte"
                   className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-1.5 text-sm" />

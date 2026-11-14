@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.468.8] - 2026-11-14
+
+### Geändert (UI-Runde 8, nach Persona-Runde 7)
+- **Handy:** Neue Leiste unten mit Start, Agenten, Aufgaben, Freigaben und „Mehr“ (öffnet das Menü); im Agenten-Chat und im Admin-Bereich ausgeblendet. Kopfzeile mindestens 56 px hoch, Menüknopf 44 px ohne eigene Fläche.
+- **Start:** Ist nichts offen, gelaufen oder geplant, steht eine Karte „Dein Tag“ statt drei leerer.
+- **Leere Seiten:** Projekte und Freigaben zeigen einen kurzen Ablauf in drei Schritten.
+- **Dunkelmodus:** Karten heben sich deutlicher von der Fläche ab, Ränder sichtbarer.
+- **Uhrzeit:** Zeitplan, Tagesbriefing und Projekttermine wählen die Uhrzeit im 24-Stunden-Format (Stunde und Minute), unabhängig von der Systemsprache.
+- **Chat:** „Planen“ neutral statt orange, deaktiviertes Senden gut erkennbar. Gesprächsliste mit Datum und Uhrzeit und kräftigerer Schrift. Im Aufgaben-Fenster heißt der Reiter „Fertig“. „Konten & Dienste“: Werkzeuge, erlaubte Adressen und Schlüssel unter „Erweitert“ eingeklappt.
+- **Projekte:** Karten nennen die zugewiesenen Agenten; im Dialog steht die Agenten-Auswahl gleich unter der Beschreibung. Den Hinweis auf veraltete Agenten sehen nur Admins.
+- **Kosten:** Zweite Diagrammreihe in hellem Blau; Hinweis zur Dollar-Abrechnung nur für Admins; Erklärung zu „Tokens“ als Tooltip.
+- **Übersicht:** Grauer statt roter Punkt bei gestoppten Agenten (Rot nur bei Fehler).
+- **Admin:** „Rolle ändern zu …“ nennt die Zielrolle. Protokoll blendet mit „Routine ausblenden“ auch automatische Agenten-Updates aus. MCP-Server: Entfernen abgesetzt.
+
 ## [1.468.7] - 2026-11-14
 
 ### Geändert (UI-Runde 7)

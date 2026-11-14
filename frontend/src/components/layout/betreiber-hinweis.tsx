@@ -108,9 +108,10 @@ export function BetreiberHinweis() {
   return (
     <div
       role="status"
-      style={{ height: HOEHE }}
+      // Über der Handy-Leiste unten, nicht dahinter.
+      style={{ height: HOEHE, bottom: "var(--handy-leiste-h, 0px)" }}
       className={cn(
-        "fixed bottom-0 right-0 left-0 z-20 flex items-center gap-2.5 px-4",
+        "fixed right-0 left-0 z-20 flex items-center gap-2.5 px-4",
         "border-t border-amber-200 bg-amber-50 text-amber-900",
         "dark:border-amber-500/25 dark:bg-amber-950/70 dark:text-amber-200",
         "backdrop-blur-sm transition-[left] duration-300",
