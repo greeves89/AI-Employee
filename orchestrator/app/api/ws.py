@@ -333,7 +333,10 @@ async def _chat_sitzung_erlaubt(agent_id: str, user, sitzung: str, *,
 
 #: Ereignisse ohne Gespraech, die Inhalte eines Gespraechs tragen — an freigegebene
 #: Nutzer nur mit Gespraechskennung (sonst wuesste niemand, wessen es ist).
-_INHALT_OHNE_GESPRAECH = frozenset({"task_card", "sentinel", "goal", "ankuendigung", "stillstand"})
+_INHALT_OHNE_GESPRAECH = frozenset({"task_card", "sentinel", "goal", "ankuendigung", "stillstand",
+                                    # Freigabe-Anfragen tragen Frage und Begruendung und
+                                    # gehen den Besitzer an, nicht freigegebene Kollegen.
+                                    "approval_request"})
 
 
 async def _ereignis_fuer_verbindung(ereignis: dict, agent_id: str, user, cache: dict) -> bool:
@@ -345,7 +348,7 @@ async def _ereignis_fuer_verbindung(ereignis: dict, agent_id: str, user, cache: 
     1.455). Besitzer und Admins bekommen weiter alles, ihr Browser sortiert selbst."""
     sitzung = ereignis.get("session_id")
     if sitzung is None and ereignis.get("type") not in _INHALT_OHNE_GESPRAECH:
-        return True  # Steuerereignisse (ready, cancelled, approval_request …)
+        return True  # Steuerereignisse (ready, cancelled, queued …)
     schluessel = sitzung if isinstance(sitzung, str) else ""
     if schluessel not in cache:
         from app.core import chat_besitz
