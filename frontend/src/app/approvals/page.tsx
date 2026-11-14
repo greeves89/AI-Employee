@@ -1,6 +1,7 @@
 "use client";
 
 import { Header } from "@/components/layout/header";
+import { LeerZustand } from "@/components/ui/leer-zustand";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ApprovalModal } from "@/components/agents/approval-modal";
@@ -632,13 +633,8 @@ export default function ApprovalsPage() {
               <span className="text-sm">Lade Regeln...</span>
             </div>
           ) : ownRules.length === 0 && autoRules.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border bg-card/30 p-16 text-center">
-              <ShieldCheck className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground">Noch keine Regeln definiert</p>
-              <p className="text-[11px] text-muted-foreground mt-1">
-                Lege Regeln an, damit Agents wissen wann sie fragen müssen.
-              </p>
-            </div>
+            <LeerZustand icon={ShieldCheck} titel="Noch keine Regeln"
+              text="Lege Regeln an, damit deine Agenten wissen, wann sie fragen müssen." />
           ) : (
             <div className="space-y-2">
               {[...ownRules, ...(showAutoRules ? autoRuleGroups.flatMap(([, list]) => list) : [])].map((rule, idx, all) => {
@@ -737,29 +733,13 @@ export default function ApprovalsPage() {
           <span className="text-sm">Freigaben werden geladen …</span>
         </div>
       ) : shownApprovals.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border bg-card/30 p-16 text-center">
-          {activeTab === "reflection" ? (
-            <>
-              <Moon className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground">
-                Keine offenen Nachtschicht-Freigaben
-              </p>
-              <p className="text-[11px] text-muted-foreground mt-1">
-                Vorschläge aus dem nächtlichen Reflexions-Lauf erscheinen hier
-              </p>
-            </>
-          ) : (
-            <>
-              <ShieldCheck className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground">
-                Keine offenen Anfragen
-              </p>
-              <p className="text-[11px] text-muted-foreground mt-1">
-                Wenn ein Agent um Erlaubnis fragt, erscheint das hier
-              </p>
-            </>
-          )}
-        </div>
+        activeTab === "reflection" ? (
+          <LeerZustand icon={Moon} titel="Nichts über Nacht gelernt"
+            text="Vorschläge aus dem nächtlichen Rückblick deiner Agenten erscheinen hier." />
+        ) : (
+          <LeerZustand icon={ShieldCheck} titel="Keine offenen Anfragen"
+            text="Fragt ein Agent um Erlaubnis, bevor er etwas Heikles tut, steht es hier." />
+        )
       ) : (
         <motion.div
           className="space-y-3"

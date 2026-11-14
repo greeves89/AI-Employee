@@ -9,10 +9,12 @@ import {
   Plus, CheckCircle2, XCircle, Clock, Loader2, RotateCcw, Timer,
   Hash, Cpu, Trash2, Ban, Pause, Play, PlayCircle, CalendarClock,
   GitBranch, ChevronRight, Bot,
+  ListTodo,
 } from "lucide-react";
 import { useTasks } from "@/hooks/use-tasks";
 import { useAgents } from "@/hooks/use-agents";
 import { Header } from "@/components/layout/header";
+import { LeerZustand } from "@/components/ui/leer-zustand";
 import { formatDuration, formatCost, timeAgo } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
@@ -277,13 +279,9 @@ function SingleTasksView() {
           ))}
         </div>
       ) : filteredTasks.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border bg-card/30 p-12 text-center text-muted-foreground">
-          {filter === "active"
-            ? "Keine aktiven Aufgaben."
-            : filter === "all"
-            ? "Noch keine Aufgaben."
-            : "Keine Aufgaben in dieser Ansicht."}
-        </div>
+        <LeerZustand icon={ListTodo}
+          titel={filter === "active" ? "Gerade läuft nichts" : filter === "all" ? "Noch keine Aufgaben" : "Keine Aufgaben in dieser Ansicht"}
+          text={filter === "all" ? "Gib einem Agenten eine Aufgabe, dann steht sie hier." : undefined} />
       ) : (
         <div className="space-y-2">
           {filteredTasks.map((task, i) => {
