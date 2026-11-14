@@ -206,6 +206,7 @@ interface ChatEvent {
   session_id?: string;  // owning session (set by the server) — used to isolate chat tabs
   type: "text" | "tool_call" | "tool_result" | "error" | "system" | "done" | "session" | "cancelled" | "queued" | "image" | "file" | "task_card" | "context"
     | "approval_request"  // Freigabe angelegt (approvals.py) — Anstoss fuer den Banner-Abgleich
+    | "approval_wait"  // Nur-Nutzer: die eigene Anfrage wartet auf den Besitzer (ws.py, ohne Inhalt)
     | "attached"  // Quittung auf {action: "attach"} (ws.py)
     | "goal"  // /goal gesetzt oder beendet (ws.py) — Anstoß, den Ziel-Stand neu zu laden
     | "stillstand"  // #891: Zug endete mit einer Ankündigung, danach lief nichts (app/core/ankuendigung.py)
@@ -1360,6 +1361,18 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         if (chatEvent.type === "approval_request") {
           // Live-Signal: sofort abgleichen statt auf den naechsten Takt zu warten.
           approvalRecheckRef.current();
+        }
+        if (chatEvent.type === "approval_wait") {
+          // Wer den Agenten nur nutzt, entscheidet nicht selbst — er sieht nur, dass
+          // seine Anfrage auf den Besitzer wartet (ohne Frage und Begründung).
+          if (!chatEvent.session_id || chatEvent.session_id === activeSessionIdRef.current) {
+            setMessages((prev) => prev.some((m) => m.id === "freigabe-wartet") ? prev : [...prev, {
+              id: "freigabe-wartet", role: "system",
+              content: String(chatEvent.data?.message || "Wartet auf eine Freigabe durch den Besitzer des Agenten."),
+              timestamp: new Date().toISOString(),
+            }]);
+          }
+          return;
         }
         if (chatEvent.type === "session") {
           const sid = String(chatEvent.data.session_id || "");

@@ -60,5 +60,5 @@ gilt das als abgewiesen.
 | 6 Sicherung | Erledigt (1.461 + 1.464). Live: Ausweichen ohne root, Ziel aus der `.env` (NAS), Update verweigert während einer Sicherung. |
 | 7 Alte Agenten-Abbilder | Offen, Besitzer entscheidet über das Aktualisieren seiner Agenten. |
 | 8 DNS-Rebinding IdP | Erledigt (1.462). |
-| 9 Freigabe-Anfragen | Leck behoben (1.462). Offen: Statuszeile für Nur-Nutzer (Komfort). |
+| 9 Freigabe-Anfragen | Leck behoben (1.462), Statuszeile „wartet auf Freigabe“ für Nur-Nutzer ohne Inhalt (1.465). Erledigt. |
 

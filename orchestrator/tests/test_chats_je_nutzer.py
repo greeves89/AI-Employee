@@ -233,6 +233,33 @@ class ChatsJeNutzerTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(await ws._ereignis_fuer_verbindung(anfrage, "a1", BESITZER, {}))
             self.assertTrue(await ws._ereignis_fuer_verbindung(anfrage, "a1", ADMIN, {}))
 
+    async def test_freigabe_anfrage_gekuerzt_fuer_gespraechsbesitzer(self):
+        """Punkt 9: Wer den Agenten nicht verwaltet, erfaehrt im eigenen Gespraech nur,
+        DASS gewartet wird — Frage und Begruendung gehen an den Besitzer."""
+        from app.api import ws
+
+        anfrage = {"type": "approval_request", "session_id": "s-anna",
+                   "data": {"question": "Mail an Kunden?", "reasoning": "vertraulich"}}
+        with patch.object(ws, "async_session_factory", lambda: _Kontext(self.db)):
+            voll = await ws._freigabe_kuerzen(anfrage, "a1", BESITZER, {})
+            self.assertIs(voll, anfrage)
+            kurz = await ws._freigabe_kuerzen(anfrage, "a1", ANNA, {})
+            self.assertEqual(kurz["type"], "approval_wait")
+            self.assertEqual(kurz["session_id"], "s-anna")
+            self.assertNotIn("vertraulich", str(kurz))
+            self.assertNotIn("Mail an Kunden", str(kurz))
+            self.assertIsNone(await ws._freigabe_kuerzen(anfrage, "a1", BEN, {}))
+            ohne = {"type": "approval_request", "data": {"question": "x"}}
+            self.assertIsNone(await ws._freigabe_kuerzen(ohne, "a1", ANNA, {}))
+
+    def test_freigabe_anfrage_traegt_das_gespraech_der_aufgabe(self):
+        import inspect
+
+        from app.api import approvals
+
+        quelle = inspect.getsource(approvals)
+        self.assertIn('**({"session_id": sitzung} if isinstance(sitzung, str) and sitzung else {})', quelle)
+
     async def test_aufgabe_liefert_nur_ins_eigene_gespraech(self):
         from app.api import tasks
 
