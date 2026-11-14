@@ -64,7 +64,7 @@ export class FehlerGrenze extends React.Component<Props, State> {
           <RotateCcw className="h-3 w-3" />
           Nochmal versuchen
         </button>
-        <p className="text-[10px] text-muted-foreground/40">
+        <p className="text-[10px] text-muted-foreground">
           Der Rest der Seite läuft weiter.
         </p>
       </div>

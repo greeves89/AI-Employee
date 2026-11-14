@@ -68,7 +68,7 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 
 ## In 6 Schritten startklar
 
-Mit diesen Schritten nutzt du AI-Employee sauber. Auf dem **Dashboard** steht dafür die
+Mit diesen Schritten nutzt du AI-Employee sauber. Auf der **Übersicht** steht dafür die
 Karte **„In 6 Schritten startklar“**: Sie zeigt, was erledigt ist, und hakt jeden Schritt
 **von selbst** ab, sobald er eingerichtet ist. Der nächste offene Schritt hat den Knopf
 **Jetzt machen**, der direkt auf die richtige Seite führt.
@@ -111,14 +111,14 @@ Administratoren mit dem Schalter **Mitglieder-Ansicht** im Benutzermenü.
 ## Inhalt
 1. [Grundlagen: Navigation & Login](#1-grundlagen-navigation--login)
 2. [Onboarding](#2-onboarding)
-3. [Dashboard](#3-dashboard)
+3. [Übersicht](#3-übersicht)
 4. [Agenten](#4-agenten)
 5. [Agent-Detailseite (Chat, Todos, Activity, Workspace, Wissen, Settings)](#5-agent-detailseite)
 6. [Tasks](#6-tasks)
 6a. [Projekte: Agenten im Raum, Aufträge, Abnahme](#6a-projekte-agenten-im-raum-aufträge-abnahme)
 7. [Analytics](#7-analytics)
 8. [Knowledge Base](#8-knowledge-base)
-9. [Meeting Rooms](#9-meeting-rooms)
+9. [Agenten-Runden](#9-agenten-runden)
 10. [Skill Marketplace](#10-skill-marketplace)
 11. [Triggers](#11-triggers)
 12. [Schedules](#12-schedules)
@@ -165,7 +165,7 @@ Administratoren mit dem Schalter **Mitglieder-Ansicht** im Benutzermenü.
 ### 1.1 Anmelden
 1. Öffne die Plattform-URL im Browser.
 2. **E-Mail** und **Passwort** eingeben.
-3. Auf **Anmelden** klicken. Du landest auf dem **Dashboard**. Die Sitzung bleibt sicher
+3. Auf **Anmelden** klicken. Du landest auf der **Übersicht**. Die Sitzung bleibt sicher
    aktiv (verschlüsseltes Cookie), bis du dich abmeldest oder sie abläuft.
 4. **Hast du die Zwei-Faktor-Anmeldung eingerichtet** (Kap. 20.4) oder verlangt die Anlage
    sie *(seit 1.362.0)*, folgt nach dem Passwort ein zweiter Schritt **Bestätigungscode**:
@@ -187,15 +187,18 @@ Die **Seitenleiste links** ist auf jeder Seite dein Hauptmenü. Sie hat
 drei Gruppen. Alles, was nur dich betrifft, liegt unten am Konto. Alles, was die
 ganze Anlage betrifft, steht in einem eigenen **Admin-Bereich** (Kap. 1.5).
 
-![Seitenleiste und Startseite](screenshots/01-dashboard.png)
+![Seitenleiste mit den Gruppen Arbeiten und Ablage](screenshots/01-dashboard.png)
 
 - **Arbeiten** — **Start** (dein Tag: Termine, Mails, Entwürfe zur Freigabe),
   **Agenten**, **Aufgaben**, **Projekte** (Kap. 6a), **Freigaben** (die Zahl zeigt,
   wie viele warten).
 - **Ablage** — **Dateien** und **Wissen**.
 - **Automatisieren** — **Abläufe** und **Skills**.
+- **Anwendungen** *(seit 1.467.1)* — Anwendungen, die deine Firma eingebunden hat (z. B. OpenWebUI).
+  Die Gruppe erscheint nur, wenn ein Admin solche Menüpunkte angelegt hat (Admin-Bereich →
+  **Eigene Menüpunkte**). Neue Menüpunkte landen hier; die Gruppe lässt sich je Menüpunkt ändern.
 - **Weitere Bereiche** (aufklappbar) — Übersicht, Kosten, Aktivität (Kap. 33),
-  Auswertung, Gelerntes, Verbindungen, Apps, Besprechungsräume, Auslöser und
+  Auswertung, Gelerntes, Verbindungen, Apps, Agenten-Runden, Auslöser und
   Prüfaufgaben. Der Bereich bleibt zugeklappt, bis du ihn öffnest; die Leiste merkt sich das.
 
 **Bedienung:**
@@ -363,12 +366,12 @@ Danach findest du die neuen Agenten unter **Agents** und kannst sofort loslegen.
 
 ---
 
-## 3. Dashboard
+## 3. Übersicht
 
-Das **Dashboard** ist deine Startseite nach dem Login — der Gesamtüberblick über deine
-Agenten, ihre Auslastung, Kosten und letzte Aktivität. Seitenleiste → **Dashboard**.
+Die **Übersicht** (früher „Dashboard“) ist der Gesamtüberblick über deine
+Agenten, ihre Auslastung, Kosten und letzte Aktivität. Seitenleiste → **Übersicht**.
 
-![Dashboard](screenshots/01-dashboard.png)
+![Übersicht](screenshots/01-dashboard.png)
 
 **Aufbau der Seite, Element für Element:**
 
@@ -427,6 +430,8 @@ Seitenleiste → **Agents**. Jeder Agent erscheint als **Kachel**. Was du darauf
 > **Admin-Bereich → Alle Agenten**.
 
 ### 4.1a Ansicht „Büro“: alle Agenten an ihrem Platz *(seit 1.367.0)*
+
+Seit 1.467.0 öffnet die Seite zuerst die **Liste**. Wählst du eine andere Ansicht, merkt sich die Seite deine Wahl.
 
 Neben Kachel- und Listenansicht gibt es das **Büro**: alle deine Agenten an ihren
 Schreibtischen, aufgeteilt in Bereiche (Werkstatt, Bibliothek, Lounge, Fensterfront —
@@ -623,6 +628,12 @@ Darunter die **Tabs**: **Chat · Todos · Activity · Workspace · Wissen · Set
 
 ### 5.1 Chat — mit dem Agenten sprechen
 Tab **Chat**. Das ist das direkte Gespräch (wie ein Messenger).
+- **Gestoppter Agent** *(seit 1.467.0)* — Öffnen startet ihn nicht. Über dem Eingabefeld steht
+  „Der Agent ist gestoppt. Er startet, sobald du schreibst.“ Mit deiner ersten Nachricht startet er
+  („Agent startet …“) und antwortet dann. Hat der Besitzer den Agenten angehalten und du nutzt ihn
+  nur, wartet deine Nachricht, bis er wieder gestartet wird.
+
+  ![Gestoppter Agent: Hinweis über dem Eingabefeld](screenshots/31-chat-gestoppt.png)
 - **Eingabefeld unten** — Nachricht/Anweisung tippen, **Enter** oder **Senden** (Pfeil).
   Mit **Shift+Enter** fügst du einen Zeilenumbruch ein — das Feld wächst automatisch mit
   (bis ca. 8 Zeilen, danach scrollt es), und die Umbrüche bleiben in der gesendeten
@@ -1452,8 +1463,9 @@ bleiben dir vorbehalten.
 
 ### 6a.9 Git-Projekte: Issues und Pull Requests auf dem Board *(seit 1.369.0)*
 
-Ein Projekt kann mit einem **Git-Repo** verbunden werden — auf **GitHub** oder auf einem eigenen
-**Forgejo- oder Gitea-Server** (seit 1.384.0). Dann kommt die Arbeit von selbst aufs Board. Das Repo
+Ein Projekt kann mit einem **Git-Repo** verbunden werden — auf **GitHub**, auf **GitLab** (gitlab.com
+oder ein eigener GitLab-Server, siehe 6a.9a) oder auf einem eigenen **Forgejo- oder Gitea-Server**
+(seit 1.384.0). Dann kommt die Arbeit von selbst aufs Board. Das Repo
 trägt ein, wer das Projekt angelegt hat. **Öffentliche Repos** gehen ohne weitere Einrichtung
 (abgeglichen alle 30 Minuten). **Private Repos** brauchen einen **Schlüssel**: Lege in der
 Schlüsselverwaltung (Keys) einen Zugangsschlüssel mit Leserecht an (bei GitHub ein GitHub-Token, bei
@@ -1478,11 +1490,93 @@ einen Schlüssel. Den CI-Stand eines Pull Requests liest sie aus dem Commit-Stat
 Actions (bzw. Gitea Actions) setzen.
 
 1. Projekt anlegen oder **Bearbeiten** öffnen.
-2. Unter **Git-Repo** eintragen:
+2. Unter **Git-Repo** den Anbieter wählen (**GitHub**, **GitLab** oder **Forgejo/Gitea**) und eintragen:
    - GitHub: `owner/name`, z. B. `beispiel-org/beispiel-repo` (eine kopierte GitHub-Adresse geht auch),
+   - GitLab: die volle Adresse des Projekts, z. B. `https://gitlab.example.com/gruppe/repo` (siehe 6a.9a),
    - Forgejo/Gitea: die volle Adresse des Repos, z. B. `https://git.example.com/team/repo`.
 3. Bei einem privaten Repo unter **Schlüssel für das Repo** den passenden Schlüssel wählen.
 4. **Speichern**.
+
+#### 6a.9a GitLab-Projekte (gitlab.com und eigener GitLab-Server) *(neu, #1194)*
+
+GitLab ist ein Anbieter wie GitHub: Board, Triage, Übernahme, Rückfragen und der Rückkanal
+funktionieren gleich. Statt Pull Requests gibt es **Merge Requests**; das Board zeigt sie in der
+Spalte **Review** mit dem Stand der jüngsten **Pipeline** (CI läuft, CI grün, CI rot).
+
+**Token anlegen (in GitLab):**
+
+1. Im GitLab-Projekt **Einstellungen → Zugriffstoken** öffnen (oder ein Gruppen- bzw. persönliches
+   Token anlegen).
+2. Rolle **Developer**, Bereich **api** wählen, Ablaufdatum setzen, **Projekt-Zugriffstoken erstellen**.
+3. Token kopieren.
+
+**Token in AI Employee hinterlegen:**
+
+1. Seitenleiste → **Secrets** → **+ Neues Secret**: Schlüsselname `GITLAB_TOKEN`, Wert = das Token,
+   **Speichern**.
+2. Den Key den Agenten zuweisen, die Merge Requests stellen sollen: Agent öffnen → **Konnektoren**
+   → *API Keys & Secrets* → **Zuweisen**.
+3. Beim Key auf das **Globus-Symbol** klicken und unter **Erlaubte Ziele** den Servernamen eintragen,
+   z. B. `gitlab.example.com` (bei gitlab.com schlägt das Feld `gitlab.com` vor) → **Ziele
+   speichern**. Mit eingeschaltetem Egress-Proxy (Kap. 37.10) sieht der Agent dann nur einen
+   Platzhalter; der Proxy setzt das Token erst auf dem Weg zu diesem Server ein (Kap. 16).
+
+**Projekt verbinden:**
+
+1. Projekt **Bearbeiten** → unter **Git-Repo** auf **GitLab** klicken.
+2. Die Adresse des GitLab-Projekts eintragen, z. B. `https://gitlab.example.com/gruppe/untergruppe/repo`.
+   Untergruppen gehen; eine kopierte Adresse wie `…/repo/-/issues/12` wird auf das Projekt gekürzt.
+   Bei `https://gitlab.com/…` wählt das Fenster GitLab von selbst.
+3. Unter **Schlüssel für das Repo** den eben angelegten Key wählen. Bei GitLab geht nur ein
+   **eigener** Schlüssel — ein dir nur geteilter wird nicht an einen selbst eingetragenen Server
+   geschickt.
+4. **Speichern**. Die Fehlerzeile im Projekt nennt fehlende Rechte („verweigert … fehlt dem Token das
+   Recht api oder die Rolle Developer?“).
+
+So läuft ein Ticket:
+
+- Offene Issues kommen in die **Inbox**. Labels wie `status/ready` oder `status/triage` ziehen die
+  Karte in die passende Spalte; das Board setzt und entfernt diese Labels auch selbst (GitLab legt
+  fehlende Labels beim Setzen an).
+- Vergibt das Board ein Ticket, setzt es `status/in-arbeit` und schreibt den Übernahme-Kommentar
+  ins Issue. Der Agent arbeitet auf einem Branch `<nr>-…` und stellt einen **Merge Request** mit
+  `Closes #<nr>` — nie direkt auf den Standard-Branch.
+- **Rückfrage (Triage):** Der Agent schreibt seine Frage als Kommentar ins Issue, das Board setzt
+  `status/triage`. Antwortet jemand mit Rolle **Developer** oder höher im Issue mit
+  `@ai-employee <Agent>: …`, landet die Antwort im Projektgespräch und weckt den Agenten. Kommentare
+  von Gästen oder Reportern wecken niemanden.
+- Geschlossene Issues wandern nach **Erledigt**; GitLab nennt keinen Abschlussgrund.
+- **Regeln für Agenten** stellt den Abschnitt für die `AGENTS.md` als Merge Request.
+
+**Eigener Server im Firmennetz oder mit eigenem Zertifikat** (nur Administratoren):
+
+1. **Admin → Betrieb** öffnen, Karte **Eigene Git-Server**.
+2. Unter **Freigegebene Git-Server** den Namen des Servers eintragen, z. B.
+   `gitlab.intern.example.com` (ein Name je Zeile). Ein Name gilt für Port 443. Läuft der Server
+   auf einem anderen Port, `name:port` eintragen (z. B. `gitlab.intern.example.com:8443`) — das gilt
+   dann nur für die Plattform; Agenten erreichen über den Egress-Proxy nur Port 443.
+   - **Achtung:** Liegt der Server im Firmennetz, erreichen ihn danach **alle Nutzer und alle
+     Agenten** der Anlage über Port 443, nicht nur das Projekt, das ihn braucht.
+   - Ohne Eintrag fragt die Plattform keine internen Adressen ab. Auch mit Eintrag nie: die Anlage
+     selbst, Link-Local- oder Metadaten-Adressen. Verbunden wird nur mit einer Adresse, die bei
+     derselben Abfrage geprüft wurde (Schutz gegen umgebogene DNS-Antworten).
+3. Hat der Server ein Zertifikat der Firmen-CA: unter **Zertifizierungsstelle der Firma (PEM)** das
+   Zertifikat der CA einfügen (`-----BEGIN CERTIFICATE-----` …). Die Plattform nimmt nur gültige
+   CA-Zertifikate (CA:TRUE) — kein Server-Zertifikat, kein abgelaufenes, keinen privaten Schlüssel.
+   Die CA gilt **nur für die freigegebenen Server** aus Schritt 2: in der Plattform, im Egress-Proxy
+   und in `git` der Agenten. Für andere Ziele, auch die Modellanbieter, gilt sie nicht. Wer den
+   Schlüssel dieser CA besitzt, kann sich als einer der freigegebenen Server ausgeben.
+4. **Speichern**. Plattform und Egress-Proxy nutzen die Änderung sofort, die Agenten erst, wenn sie
+   aktualisiert (neu erstellt) werden. Das gilt auch, wenn du die CA wieder entfernst: Erst nach dem
+   Aktualisieren ist sie aus den Agenten verschwunden.
+
+Fehlermeldungen am Projekt nennen bei eigenen Servern bewusst keinen Grund („nicht erreichbar oder
+nicht freigegeben“, „antwortet nicht“) — sonst ließe sich damit das Firmennetz abtasten. Die
+Einzelheiten stehen im Protokoll der Anlage.
+
+Grenzen: Kommentare in Merge Requests liest der Rückkanal nicht — Fragen und Antworten laufen über
+das Issue. `gh` funktioniert auf GitLab nicht; Agenten legen Merge Requests mit `glab` (falls im
+Abbild vorhanden) oder über die GitLab-API an.
 
 Ab dann, beim Öffnen des Projekts und regelmäßig (siehe oben):
 - Jedes **offene Issue** erscheint als Karte in der **Inbox** (mit Nummer `#12` und Link). Ändert
@@ -1722,15 +1816,15 @@ die Agenten nicht steuern.
 
 ---
 
-## 6b. Finanzen: was die Agenten kosten *(seit 1.373.0)*
+## 6b. Kosten: was die Agenten kosten *(seit 1.373.0)*
 
-Seitenleiste → **Finanzen**. Die Seite zeigt, was deine Agenten kosten — **je Monat, je Projekt
+Seitenleiste → **Kosten** (Seite „Kosten“, früher „Finanzen“). Die Seite zeigt, was deine Agenten kosten — **je Monat, je Projekt
 und je Agent**.
 
 Jeder sieht hier nur seine eigenen (und ihm freigegebenen) Agenten und Projekte — **auch
 Administratoren**. Die Kosten der ganzen Anlage stehen für Administratoren im Admin-Bereich.
 
-![Seite „Finanzen“: Kacheln, Verlauf je Monat, Projekte und Agenten](screenshots/80-finanzen.png)
+![Seite „Kosten“: Kacheln, Verlauf je Monat, Projekte und Agenten](screenshots/80-finanzen.png)
 
 **Oben vier Kacheln:**
 - **Dieser Monat** — alles zusammen, darunter der Vormonat zum Vergleich.
@@ -1781,9 +1875,22 @@ Fristen im Blick und schreiben dir morgens ein Tagesbriefing. **Gesendet wird ni
 die Anlage ist nicht auf **Microsoft nur lesend** gesperrt (Kap. 20.1). Ist sie gesperrt, liest das
 Sekretariat nur.
 
+### 6c.0 Start ohne Sekretariat: „Mein Tag“ *(seit 1.467.0)*
+
+Solange du kein Sekretariat eingerichtet hast, zeigt **Start** deinen Tag:
+
+- **Wartet auf dich** — offene Freigaben deiner Agenten; **Zu den Freigaben** öffnet die Liste.
+- **Aufgaben heute** — was gerade läuft und was heute fertig wurde.
+- **Als Nächstes geplant** — die nächsten Zeitpläne mit Uhrzeit und Agent.
+- **Meine Agenten** — mit Zustand; ein Klick öffnet den Chat.
+
+Darunter steht die Karte **Sekretariat einrichten**. Erst **Einrichten** öffnet das Formular aus 6c.1.
+
+![Start ohne Sekretariat: Wartet auf dich, Aufgaben heute, Als Nächstes geplant, Meine Agenten und die Karte Sekretariat einrichten](screenshots/84-mein-tag.png)
+
 ### 6c.1 Einrichten
 
-1. Seitenleiste → **Heute**.
+1. Seitenleiste → **Start** → Karte **Sekretariat einrichten** → **Einrichten**.
 2. Unter **1. Agenten wählen** ein bis vier deiner Agenten anklicken. Der **erste** ist der Lead —
    er sichtet das Postfach; die weiteren übernehmen Entwerfen, Prüfen, Ablegen.
 3. Unter **2.** wählen, wie oft das Postfach gesichtet wird (werktags 7–18 Uhr).
@@ -1968,13 +2075,13 @@ Seitenleiste → **Knowledge**. Aufbau der Seite:
 
 ---
 
-## 9. Meeting Rooms
+## 9. Agenten-Runden
 
-In einem **Meeting Room** arbeiten **mehrere Agenten gemeinsam** an einem Thema — moderiert
+In einer **Agenten-Runde** arbeiten **mehrere Agenten gemeinsam** an einem Thema — moderiert
 und in Phasen (Stages). Sinnvoll, wenn unterschiedliche „Rollen" (z. B. ein Analyst und ein
-Reviewer) zusammen ein Ergebnis erarbeiten sollen. Seitenleiste → **Meeting Rooms**.
+Reviewer) zusammen ein Ergebnis erarbeiten sollen. Seitenleiste → **Weitere Bereiche → Agenten-Runden** (früher „Besprechungsräume“). Termine in Microsoft Teams stehen dagegen unter **Teams-Besprechungen** (Kap. 34).
 
-![Meeting Rooms](screenshots/07-meeting-rooms.png)
+![Agenten-Runden](screenshots/07-meeting-rooms.png)
 
 **Einen Raum erstellen und nutzen:**
 1. **+ Neuer Raum** (bzw. **New Room**) klicken.
@@ -2524,6 +2631,11 @@ hier holst du **Ergebnisse** ab (Dokumente, Bilder, Videos, Auswertungen). Seite
 2. Durch die **Ordnerstruktur** klicken (z. B. `transfer/` für fertige Ergebnisse).
 3. Auf eine **Datei** klicken → **Vorschau** (bei Bildern/Text/PDF) bzw. **Herunterladen**.
 
+**Läuft keiner deiner Agenten** *(seit 1.467.0)*, steht je gestopptem Agent ein Knopf **Agent starten**.
+Nach dem Start erscheinen seine Dateien. Agenten, die du nur nutzen darfst, startet ihr Besitzer.
+
+![Dateien ohne laufenden Agenten: je Agent ein Knopf Agent starten](screenshots/14b-files-agent-starten.png)
+
 > Dieselben Dateien siehst du auch direkt am Agenten unter **Workspace** (Kap. 5.4) — der
 > Explorer bündelt sie zentral.
 
@@ -2978,6 +3090,34 @@ rechts zwei Buttons:
 
 ![Zuweisungen](screenshots/21-admin-zuweisungen.png)
 
+#### Einen Agenten für Kollegen freigeben (nur nutzen)
+
+So arbeiten viele Menschen mit einem Agenten, ohne dass jeder einen eigenen braucht. In der
+Oberfläche gibt ein **Admin** frei, denn Mitglieder sehen die einfache Ansicht ohne Einstellungen:
+
+1. Agent öffnen und auf **Einstellungen** klicken.
+2. Den Abschnitt **Zugriff & Rechte** aufklappen.
+3. Unter **Freigeben für** die Kollegen anhaken. Ab acht Personen erscheint ein Suchfeld.
+4. Auf **Speichern** klicken.
+
+![Freigeben für](screenshots/22-freigeben-fuer.png)
+
+Braucht eine Aufgabe aus dem Gespräch einer freigegebenen Person eine Freigabe, steht dort
+„Wartet auf eine Freigabe durch den Besitzer des Agenten.“ Entscheiden können Besitzer und Admin.
+
+Freigegebene sehen den Agenten in ihrer Liste und bekommen die einfache Ansicht mit Chat und
+Sprache. Sie dürfen chatten, sprechen und Dateien schicken und abholen. Einstellungen,
+Gedächtnis, Zeitpläne, Auswertungen und Löschen bleiben beim Besitzer und beim Admin. Um eine
+Freigabe zu entfernen, nimmst du den Haken heraus und speicherst.
+
+> **Ein Agent, mehrere Menschen: Jeder sieht nur seine Gespräche.** Arbeiten mehrere
+> Personen mit demselben Agenten, sieht jede nur die Gespräche, die sie selbst begonnen hat.
+> Das gilt für die Liste, den Verlauf, die Sprache und die Benachrichtigungen. Der Besitzer
+> des Agenten und Admins sehen alle Gespräche. Ältere Gespräche sowie solche aus Zeitplänen
+> und Telegram gehören dem Besitzer. Wichtig: Der Agent selbst kennt alles, was er in seinem
+> Gedächtnis und seinen Dateien abgelegt hat. Getrennt sind die Gespräche, nicht sein Wissen.
+> Für vertrauliche Themen bekommt deshalb jeder eine eigene Kopie (Variante B).
+
 #### Variante A — Agent aus einer Vorlage zuweisen
 Erzeugt für **einen** User einen Agenten aus einem **Template** (Blueprint):
 1. **Agent zuweisen** klicken.
@@ -3036,6 +3176,27 @@ Rechte zu geben, definierst du einmal eine Rolle und weist sie zu — alle Mitgl
 das ganze Bündel. Tab **Rollen**:
 
 ![Rollen](screenshots/23-admin-rollen.png)
+
+**Rollen-Vorlagen und „Wer darf was“** *(seit 1.456.0)*: Oben im Tab **Rollen** stehen fertige
+Vorlagen für typische Aufgaben. **Gruppe anlegen** legt daraus eine normale Rolle an, die du
+danach anpasst und unter **SSO-Gruppen** einer Entra-Gruppe zuordnest.
+
+| Vorlage | Empfohlene Grundrolle | Kern |
+|---|---|---|
+| **Plattform-Admin** | Admin | alles; keine Gruppe, sondern die Grundrolle „Admin“ |
+| **Teamleitung** | Mitglied | bis 20 Agenten, L3; fremde Agenten nur, wenn freigegeben |
+| **Mitarbeiter** | Mitglied | bis 3 Agenten, L3, nur Arbeitsbereiche im Menü |
+| **Entwickler** | Mitglied | bis 10 Agenten, Agenten dürfen selbst handeln (L4), dazu Apps, Skills, Abläufe |
+| **Betrachter** | Betrachter | nur lesen, keine Agenten, keine Integrationen, MCP-Server, Secrets oder KI-Konten |
+| **Gast** | Mitglied | keine eigenen Agenten und Zugänge, arbeitet nur mit freigegebenen Agenten (L1) |
+
+**Achtung Grundrolle „Manager“:** Manager sehen und steuern **alle** Agenten aller Nutzer (wie
+Admins, nur ohne Plattform-Einstellungen). Für Teamleitungen deshalb die Vorlage „Teamleitung“
+(Grundrolle Mitglied) nehmen.
+
+Darunter zeigt **Wer darf was** je Person die Grundrolle, die Gruppe, die Anmeldung (lokal oder
+SSO) und die wirksamen Rechte: Anzahl Agenten, Autonomie, Modelle, MCP-Server, KI-Konten und
+Secrets. So, wie der Server sie prüft.
 
 **Links**: Liste der Rollen + **+ Neue Rolle**. **Rechts**: oben Name, Max Agents und
 Beschreibung, darunter die Rechte in vier Gruppen *(seit 1.358.3)*:
@@ -3171,6 +3332,83 @@ unter **Wissen** (Kap. 5.5).
 3. **Rollen → IT-Abteilung → Mountshares** → `brain-it_operations` erlauben.
 4. Die Mitarbeiter binden es im Agenten (**Wissen**-Tab) an und können darin suchen.
 5. Optional **Stecker-Symbol** → MCP aktivieren, um den Vault auch in n8n/Cursor zu nutzen.
+
+### 22.5.2 MCP-Zugang mit Firmenanmeldung (OAuth)
+Statt eines geteilten Brain-Schlüssels melden sich Mitarbeiter mit ihrem Firmenkonto an
+(Microsoft Entra ID oder ein anderer OIDC-Anbieter). Der MCP-Client bekommt vom Anbieter ein
+Token **im Namen der Person**; AI Employee prüft es und zeigt nur die Second Brains, die
+dieser Person freigegeben sind. Zweiter Faktor und Conditional Access der Firma greifen
+automatisch. Der Brain-Schlüssel gilt daneben weiter (Dienstkonten, n8n). Dasselbe gilt
+für den MCP-Zugang zu Agenten (`/api/v1/mcp/agents/<id>`): wer den Agenten in der Oberfläche
+sieht, kommt auch per Firmenanmeldung an ihn heran.
+
+**Voraussetzung:** Die Person hat ein Konto in AI Employee und hat sich mindestens einmal
+per Microsoft-SSO angemeldet. Dabei merkt sich AI Employee ihre Objekt-ID im Verzeichnis.
+Ohne diese Anmeldung zählt die E-Mail-Adresse (Claim `email`, nicht der Anmeldename), aber
+nur für Konten, die per Microsoft-SSO angelegt oder verknüpft sind, und nur unter derselben
+Bedingung wie beim SSO-Login (Anwendung auf ein Verzeichnis festgelegt bzw. Adresse vom Anbieter
+bestätigt). Diese erste Verknüpfung steht im Prüfprotokoll. Gastkonten (B2B) und Tokens einer
+Anwendung ohne Person werden immer abgewiesen. Unbekannte Personen ebenso; es wird nie ein
+Konto angelegt.
+
+**Schritt 1: App-Registrierung beim Anbieter (Beispiel Entra ID)**
+1. Im Entra-Portal unter **App-Registrierungen** eine **eigene** Registrierung für die
+   Ressource (die MCP-API) anlegen. Nicht die SSO-Registrierung nehmen: Deren Client-ID steht
+   in jedem Anmelde-Token des SSO-Logins und darf nicht der Empfänger sein.
+2. **API verfügbar machen** → Anwendungs-ID-URI setzen (z. B. `api://<Anwendungs-ID>`) →
+   Bereich `mcp.access` hinzufügen.
+3. Im **Manifest** `requestedAccessTokenVersion` auf `2` stellen. Dann steht im Token als
+   Aussteller `https://login.microsoftonline.com/<Verzeichnis-ID>/v2.0` und als Empfänger die
+   Anwendungs-ID.
+4. Für den MCP-Client eine Registrierung als **öffentlicher Client** anlegen, Umleitungs-URI
+   des Clients eintragen (bei Claude Code `http://localhost:<Port>/callback`) und unter
+   **API-Berechtigungen** den Bereich `mcp.access` freigeben. Die **Anwendungs-ID** dieser
+   Client-Registrierung kommt in AI Employee unter **Erlaubte Anwendungen**.
+5. Unter **Unternehmensanwendungen** → die Ressource aus Schritt 1 → **Eigenschaften** →
+   **Zuweisung erforderlich** auf **Ja** stellen und unter **Benutzer und Gruppen** nur die
+   Personen bzw. Gruppen zuweisen, die per MCP zugreifen sollen. Sonst bekommt jedes Konto im
+   Verzeichnis ein Token für die Ressource.
+6. Optional unter **Tokenkonfiguration** den Claim `email` hinzufügen. Ohne ihn erkennt
+   AI Employee eine Person nur an ihrer Objekt-ID, also erst nach einer SSO-Anmeldung.
+
+**Schritt 2: in AI Employee einschalten**
+1. **Admin-Bereich → Dienste & Konten** öffnen.
+2. Zur Karte **MCP-Zugang mit Firmenanmeldung** scrollen (unter SAML 2.0).
+3. Felder ausfüllen:
+   - **Aussteller (Issuer)** — leer lassen, wenn oben bei Microsoft eine Verzeichnis-ID (GUID)
+     steht; sonst die Adresse aus dem Token (`iss`).
+   - **Empfänger (Audience)** — die Anwendungs-ID der eigenen API-Registrierung aus Schritt 1
+     (das `aud` im Token), **nicht** die Client-ID des SSO-Logins.
+   - **Erlaubte Anwendungen** — die Anwendungs-ID(s) der MCP-Clients aus Schritt 1.4, mehrere
+     mit Komma. Tokens anderer Anwendungen werden abgewiesen.
+   - **Erforderliche Berechtigung** — `api://<Anwendungs-ID>/mcp.access`.
+   - **Schlüsseladresse** — leer lassen; sie wird aus dem Aussteller ermittelt und muss dann auf
+     demselben Host liegen.
+4. Auf den **Schalter** oben rechts in der Karte klicken. Grün = an. Ohne Aussteller, ohne
+   Empfänger oder ohne **Erlaubte Anwendungen** bzw. **Erforderliche Berechtigung** lehnt
+   AI Employee das Einschalten mit einer Meldung ab, ebenso bei Adressen, die ins interne Netz
+   zeigen. Ändert sich der Aussteller, erscheint ein gelber Warnhinweis: Danach müssen sich alle
+   MCP-Clients neu anmelden. Jede Änderung steht mit altem und neuem Wert im Prüfprotokoll.
+5. Der grüne Kasten zeigt danach die Adresse für den MCP-Client.
+
+Am Brain muss MCP eingeschaltet sein (**Second Brains → Stecker-Symbol**, Kap. 22.5).
+
+**Schritt 3: MCP-Client verbinden**
+- **Claude Code:** Server mit der Brain-Adresse und der Client-ID aus Schritt 1.4 eintragen,
+  z. B. `claude mcp add --transport http --client-id <Client-ID> --callback-port 8080 wissen
+  https://ai.example.com/api/v1/mcp/brains/<slug>`. Beim ersten Aufruf `/mcp` → **Authenticate**:
+  Der Browser öffnet die Firmenanmeldung.
+- **Open WebUI:** **Admin Settings → External Tools → Add Server**, Typ **MCP (Streamable
+  HTTP)**, Adresse wie oben, Anmeldung **OAuth 2.1**, Client-ID aus Schritt 1.4.
+
+Der Client findet den Anbieter selbst: Ein Aufruf ohne Token bekommt `401` mit einem
+Verweis auf `/.well-known/oauth-protected-resource/api/v1/mcp/brains/<slug>`.
+
+**Was abgewiesen wird:** Tokens für eine andere Anwendung (falsches `aud`), abgelaufene
+Tokens, Tokens eines anderen Ausstellers oder mit fremdem Schlüssel signiert, Tokens ohne die
+erforderliche Berechtigung, Tokens einer nicht erlaubten Anwendung, Anmelde-Tokens (ID-Tokens)
+statt Zugriffstokens, Gastkonten, Personen ohne Konto oder mit gesperrtem Konto. Brains ohne
+Freigabe für die Person antworten mit „nicht gefunden".
 
 ### 22.6 KI-Konten
 ![KI-Konten](screenshots/25-admin-ai-accounts.png)
@@ -3839,7 +4077,7 @@ beginnen wolltest).
 
 Aus aufgezeichneten Meetings erkannte **Action-Items** werden automatisch als Aufgaben in einen **MS-Planner-Plan** übertragen (über das M365-Konto des Meeting-Owners).
 
-1. **Meeting Rooms** → Meeting durchführen/aufzeichnen.
+1. **Agenten-Runden** → Runde durchführen/aufzeichnen.
 2. Nach der Auswertung erscheinen erkannte Aufgaben — sofern der Admin eine **Planner-Plan-ID** hinterlegt hat (Abschnitt 30), landen sie automatisch im Plan.
 
 > _[Screenshot folgt: erkannte Action-Items im Meeting-Ergebnis]_
@@ -4224,6 +4462,8 @@ unter **Besprechungen** (Seitenleiste) ein Protokoll mit Aufgaben und dem Transk
    Domänen (z. B. `@example.com`).
 5. Den Agenten wie eine Kollegin in Outlook oder Teams zum Termin einladen.
 
+![Teams-Besprechungen in den Kanal-Einstellungen des Agenten](screenshots/f30-teams-besprechungen.png)
+
 Was dann passiert:
 - Zu jedem Termin legt die Anlage eine Seite unter **Besprechungen** an. Sie zeigt Zeit, Stand
   und Teilnehmende.
@@ -4231,8 +4471,11 @@ Was dann passiert:
   für jede Teams-Nachricht des Agenten: Im Modus **Entwurf** wartet der Hinweis auf deine
   Freigabe. Im Modus **Lesen** schreibt er nichts, die Seite zeigt das an.
 - Nach dem Termin (sobald Teams das Transkript bereitstellt) schreibt der Agent das Protokoll:
-  Zusammenfassung, Entscheidungen, Aufgaben mit Verantwortlichen. Das Transkript liegt
+  Zusammenfassung, Entscheidungen, Aufgaben mit Verantwortlichen. Dafür hat er keine Werkzeuge:
+  Was im Transkript steht, kann ihn zu nichts bringen außer Text *(seit 1.452.0)*. Das Transkript liegt
   zusätzlich im Wissen.
+
+![Seite „Besprechungen“ mit Protokoll und Aufgaben (Demodaten)](screenshots/f31-besprechungen.png)
 
 **Gäste von außen:** Ist jemand außerhalb deiner Organisation eingeladen, hält sich der Agent
 heraus: kein Chat, kein Hinweis, kein Protokoll. Die Seite zeigt „Gäste von außen“. Mit dem Haken
@@ -4245,7 +4488,25 @@ heraus: kein Chat, kein Hinweis, kein Protokoll. Die Seite zeigt „Gäste von a
   `OnlineMeetingTranscript.Read.All`, dazu `Calendars.ReadWrite` (Annehmen) und
   `Chat.ReadWrite` (Hinweis, Beisitzer).
 
-Der Agent hört noch nicht zu und spricht nicht. Er arbeitet über Chat und Transkript.
+**Welche Termine der Agent sieht:**
+- Hat er ein **eigenes Microsoft-Konto** (Kap. 37.16), sind es die Termine, zu denen du ihn einlädst.
+- Arbeitet er mit **deinem Konto**, sieht er deinen ganzen Kalender. Dann geht er nur in Termine,
+  die du für ihn markierst: in Outlook oder Teams die **Kategorie mit seinem Namen** vergeben
+  (z. B. „Marketing“) oder „KI-Agent“ für alle Agenten. Ohne Markierung bleibt er weg.
+
+**Agent per Link schicken (ohne Einladung):** Seite **Besprechungen** → oben bei „Agent in eine
+Teams-Besprechung schicken“ den Agenten wählen, den Link aus Teams („Jetzt an der Besprechung
+teilnehmen“) einfügen, **Schicken**. Er tritt kurz darauf als Gast bei; lass ihn in Teams aus dem
+Wartebereich herein. Der Agent muss dafür laufen.
+
+**Rolle „Teilnehmer“ (Vorschau, seit 1.453.0):** Der Agent tritt dem Termin selbst bei und steht
+als „<Name> - KI“ in der Teilnehmerliste. Wer den Termin leitet, lässt ihn aus dem Wartebereich
+herein. Er hört zu: Was gesagt wird, landet als Transkript auf der Besprechungsseite, daraus
+entsteht das Protokoll. Ist die Echtzeit-Sprache eingerichtet (Admin → Sprache), antwortet er
+auch mit Stimme, aber nur, wenn man ihn beim Namen anspricht. In der Besprechung hat er dabei
+keine Werkzeuge: Er schickt nichts, ändert nichts und gibt nichts an den Agenten weiter, denn
+mitsprechen kann jeder Teilnehmer. Aufträge nimmt er danach von seinem Besitzer entgegen. Dafür braucht er Zugang zu
+Teams im Netz (bei eingeschalteter Zielliste `*.teams.microsoft.com` und `*.microsoft.com`).
 
 ### Discord einrichten
 
@@ -4453,7 +4714,20 @@ Installationsordners in Kleinbuchstaben (z. B. `ai-employee`).
 ### 37.2 Sichern
 
 1. Einmal von Hand ausprobieren: `sudo ./scripts/backup.sh`
-   (Ziel: `/var/backups/ai-employee`, anderes Ziel mit `--dest /pfad`).
+   (Ziel: `/var/backups/ai-employee`, anderes Ziel mit `--dest /pfad`). Läuft die Sicherung
+   ohne root und ist dieser Ordner nicht beschreibbar (etwa weil ein früheres `sudo update.sh`
+   ihn angelegt hat), sichert sie nach `~/ai-employee-sicherungen` und nennt das in der Ausgabe.
+   Dauerhaft beheben: `sudo chown -R <nutzer> /var/backups/ai-employee`. Liegt die nächtliche
+   Sicherung auf einem NAS, `BACKUP_DIR` und `BACKUP_MOUNT` auch in die `.env` eintragen. Dann sichert
+   auch jedes Update dorthin und nicht auf die Platte der Anlage.
+
+**Kiosk-Anzeige anmelden** *(seit 1.461.0, nur mit `KIOSK_ENABLED`)*: Der Kiosk antwortet nur
+Geräten mit Zugang.
+1. **Admin-Bereich → Betrieb** öffnen.
+2. In der Karte **Kiosk-Anzeige** auf **Link erzeugen** klicken.
+3. Den Link einmal auf dem Kiosk-Gerät öffnen. Er wird nur einmal angezeigt.
+
+Ein neuer Link macht den alten ungültig. **Zugang entfernen** sperrt den Kiosk.
 2. Täglich einplanen: `sudo ./scripts/install-backup-cron.sh` (Cron, 02:00 Uhr) oder
    `sudo ./scripts/install-backup-cron.sh --systemd` (systemd-Timer).
 3. Kontrolle: **Admin-Bereich → Betrieb → Health**. Oben steht die Karte
@@ -4746,6 +5020,7 @@ eingeschaltet, gehen Agenten für HTTPS über ihn hinaus:
 | Zugang zu externen MCP-Servern (Token und eigene Kopfzeilen, Kap. 14) | ebenso: Platzhalter, eingesetzt nur am Host des Servers; ein erneuertes OAuth-Token gilt sofort *(seit 1.417.0)* |
 | Claude-Zugang (Abo-Token oder API-Schlüssel, Anthropic direkt) | Platzhalter, eingesetzt nur an `api.anthropic.com` — stufenweise, siehe unten *(seit 1.418.0)*; eingesetzt wird immer das aktuelle, erneuerte Token, und die Token-Datei der Teamlizenz bekommt ein solcher Agent nicht mehr *(seit 1.421.0)* |
 | Codex-Zugang (ChatGPT-Anmeldung) | Zugangs-Token als Platzhalter, eingesetzt nur an `chatgpt.com` (immer das aktuelle, zentral erneuerte); das Erneuerungs-Token erreicht den Agenten gar nicht mehr — stufenweise, siehe unten *(seit 1.428.0, in Erprobung)* |
+| Freigegebener Git-Server (z. B. GitLab, **Admin → Betrieb → Eigene Git-Server**) | nur für diese Server prüft der Proxy die Gegenseite zusätzlich mit der Firmen-CA; liegen sie im Firmennetz, erreicht er sie über Port 443 — für alle Agenten (Kap. 6a.9a) |
 | Alle anderen HTTPS-Ziele | laufen unverändert als Tunnel durch, der Proxy sieht keine Inhalte |
 | Klartext-HTTP (z. B. eigene Apps des Agenten) | geht wie bisher direkt |
 | Adressen im Firmen- oder Docker-Netz | über den Proxy gesperrt |
@@ -5104,6 +5379,8 @@ Hat die Rolle des Besitzers eine eigene Adressliste, muss eine Adresse auf beide
    `*.github.com`. `*.github.com` gilt auch für `github.com` selbst.
 3. Den Schalter **Am Ausgang erzwingen** einschalten.
 
+![Karte „Erlaubte Adressen“ mit eingeschaltetem „Am Ausgang erzwingen“](screenshots/f29-zielliste.png)
+
 Die Anlage startet den Agenten dann neu. Ein laufender Zug wird dabei abgebrochen. Das Ein- und
 Ausschalten steht im Audit-Log.
 
@@ -5207,7 +5484,7 @@ Damit klar wird, **wofür** du Agenten nutzt — ein paar Beispiele, die du einf
 | Tasks | `/tasks` | `04-tasks.png` |
 | Analytics | `/analytics` | `05-analytics.png` |
 | Knowledge | `/knowledge` | `06-knowledge.png` |
-| Meeting Rooms | `/meeting-rooms` | `07-meeting-rooms.png` |
+| Agenten-Runden | `/meeting-rooms` | `07-meeting-rooms.png` |
 | Skill Marketplace | `/skills` | `08-skill-marketplace.png` |
 | Triggers | `/triggers` | `09-triggers.png` |
 | Schedules | `/schedules` | `10-schedules.png` |

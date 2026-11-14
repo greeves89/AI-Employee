@@ -5,10 +5,269 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.451.1] - 2026-11-13
+## [1.467.2] - 2026-11-14
 
 ### Behoben
 - Sentinel: Ein Agent wurde angehalten, sobald er eine Datei aus diesem Repository mit einem schlüsselförmigen Testwert las, und mit ihm fielen alle seine Zeitpläne aus (beim Betreiber gut 21 Stunden, ohne echtes Leck). Betroffen waren 13 Dateien, darunter die Beispiel-Konfiguration und die Installationsanleitung. Die Testwerte sind jetzt im Quelltext geteilt, die Platzhalter ersetzt, und ein Wächter-Test verhindert neue (er fängt auch echte Schlüssel, die versehentlich eingecheckt werden). Öffentliche Schlüssel und Zertifikate lösen keinen Stopp mehr aus, geschwärzt werden sie weiter; Tokens und als privat gekennzeichnete Schlüssel stoppen wie bisher. Fremde Repositories schützt das nicht, das bleibt in #1198 offen.
+
+## [1.467.1] - 2026-11-14
+
+### Geändert
+- **Eigene Menüpunkte bekommen eine eigene Gruppe „Anwendungen“** in der Seitenleiste, z. B. für eine eingebundene OpenWebUI. Die Gruppe erscheint nur, wenn es solche Menüpunkte gibt, und ist für alle sichtbar, die den Menüpunkt sehen dürfen. Neue Menüpunkte landen standardmäßig dort; bestehende behalten ihre Gruppe und lassen sich im Admin-Bereich unter **Eigene Menüpunkte** umstellen.
+
+## [1.467.0] - 2026-11-14
+
+### Neu
+- **„Mein Tag“ auf der Startseite.** Solange kein Sekretariat eingerichtet ist, zeigt **Start** offene Freigaben, die Aufgaben von heute, die nächsten Zeitpläne und die eigenen Agenten. Das Sekretariat ist eine schmale Karte, das Formular öffnet sich erst mit **Einrichten**. Bisher sahen Nutzer hier nur das Einrichtungsformular.
+- **Dateien: Knopf „Agent starten“.** Läuft keiner der eigenen Agenten, lässt sich jeder gestoppte direkt auf der Seite starten. Agenten, die man nur nutzt, sind ausgenommen.
+
+### Geändert
+- **Der Chat startet einen gestoppten Agenten erst mit der ersten Nachricht**, nicht schon beim Öffnen. Reines Nachsehen kostet keine Rechenzeit mehr. Über dem Eingabefeld steht, was passiert („startet, sobald du schreibst“, „Agent startet …“). Die Regel bleibt: Einen vom Besitzer angehaltenen Agenten weckt nur, wer ihn verwaltet. Bei Nur-Nutzern wartet die Nachricht.
+- **Die Agenten-Seite öffnet zuerst die Liste** statt der Kacheln. Eine gespeicherte Wahl gilt weiter.
+
+## [1.466.2] - 2026-11-14
+
+### Behoben
+- **Aufgaben öffnen auf „Alle“, wenn gerade nichts läuft**, statt mit einem leeren Reiter „Aktiv 0“. Eine eigene Wahl bleibt erhalten.
+- **Chat zeigt „Verbunden“ statt „Online“.** Die Anzeige betrifft die Verbindung zur Plattform, nicht den Agenten. „Online“ stand bisher neben „Gestoppt“ im Seitenkopf.
+- **„Mein Konto“ ohne freigegebenes Modell** sagt jetzt, dass Agenten dann über den Standard-Zugang der Anlage laufen, statt „Noch kein Modell freigegeben“ wie einen Fehler zu melden.
+- **Handbuch:** Bilder zu „Übersicht“ (Kap. 3) und „Kosten“ (Kap. 6b) neu aus dem Demokonto, PDF neu erzeugt.
+
+## [1.466.1] - 2026-11-14
+
+### Behoben
+- **Grauer Text ist wieder lesbar.** An rund 540 Stellen war grauer Text zusätzlich auf 20 bis 50 % Deckkraft gesetzt, etwa bei leeren Zuständen und Untertiteln. Er nutzt jetzt das normale Grau. Rein schmückende Symbole bleiben blass, Knöpfe, die dadurch keinen Hover-Effekt mehr hatten, werden beim Darüberfahren dunkler.
+- **Menü und Seitentitel stimmen überein:** „Übersicht“ öffnet die Seite „Übersicht“ (früher „Dashboard“), „Kosten“ die Seite „Kosten“ (früher „Finanzen“).
+- **Jede Seite hat eine echte Überschrift** (`h1`) für Screenreader. „Freigaben“ nutzt denselben Seitenkopf wie die anderen Seiten.
+- **Handy:**
+  - Die Schritte „In 6 Schritten startklar“ setzen den Knopf unter den Text, statt den Text in eine Wortspalte zu quetschen.
+  - Die Reiter bei Aufgaben und „Mein Konto“ brechen um, statt abgeschnitten zu werden.
+  - Im Agenten-Chat liegt der Aufgaben-Knopf oben rechts statt auf dem Senden-Knopf. Der Hinweis zum Einfügen von Bildern entfällt im schmalen Eingabefeld.
+
+## [1.466.0] - 2026-11-14
+
+### Behoben
+- **Die Sicherung vor einem Update räumt keine alten Sicherungen mehr weg.** Seit 1.464.0 sichert das Update in dieselbe Ablage wie die nächtliche Sicherung. Es hat dort aber mit seiner eigenen Standard-Aufbewahrung (7) aufgeräumt statt mit der der nächtlichen Sicherung (z. B. 14). Auf dem Pi hat das am 14.11. acht Tagessicherungen gelöscht.
+  - Jetzt räumt nur noch die planmäßige Sicherung auf (`BACKUP_NICHT_AUFRAEUMEN=1` aus `update.sh`).
+  - `BACKUP_KEEP_DAILY` und `BACKUP_KEEP_WEEKLY` werden auch aus der `.env` gelesen.
+
+## [1.465.0] - 2026-11-14
+
+### Neu
+- **„Wartet auf Freigabe“ für Kollegen, die einen Agenten nur nutzen.** Braucht eine Aufgabe aus ihrem Gespräch eine Freigabe, steht dort jetzt „Wartet auf eine Freigabe durch den Besitzer des Agenten.“ Frage, Werkzeug und Begründung bekommen weiter nur Besitzer und Admin, die auch entscheiden. Die Freigabe-Anfrage trägt dafür das Gespräch ihrer Aufgabe.
+
+## [1.464.0] - 2026-11-14
+
+### Behoben
+- **Die Sicherung vor einem Update landet dort, wo auch die nächtliche liegt.** `backup.sh` liest `BACKUP_DIR` und `BACKUP_MOUNT` jetzt auch aus der `.env`. Bisher kannte nur die systemd-Unit der nächtlichen Sicherung das Ziel, etwa ein NAS. Das Update schrieb seine Sicherung auf die lokale Platte (auf dem Pi 21 GB je Update, Platte danach zu 91 % voll). Eintrag in `.env.example`.
+- **Ein Update bricht keine laufende Sicherung mehr ab.** `update.sh` verweigert, solange ein `backup.sh` läuft, etwa die nächtliche Sicherung, und sagt warum. Am 14.11. hatte der Neustart der Dienste die nächtliche Sicherung auf dem Pi im Datenbank-Schritt abgebrochen.
+
+## [1.463.0] - 2026-11-14
+
+### Sicherheit
+- **Anmelden weckt keine angehaltenen Agenten mehr.** Beim Anmelden startet die Plattform die gestoppten Agenten des Nutzers, damit sie bereitstehen. Dabei liefen bisher auch die an, die der Nutzer bewusst angehalten hatte. Das war die eigentliche Ursache dafür, dass am 13.11. sieben angehaltene Agenten wieder liefen. Bei der Live-Probe der Freigabe am 14.11. ist es mit zwei Demo-Agenten erneut aufgetreten. `wake_user_agents` lässt angehaltene Agenten jetzt aus.
+
+### Geprüft
+- **Freigabe „nur nutzen“ live auf dem Pi** mit zwei Konten. Das Testkonto sieht den Agenten nur gekürzt (ohne Webhook-Token, Budget und Aufgabe).
+  - Für das Testkonto gesperrt (403): Freigaben, Wissen, Dateiliste, Integrationen, MCP, Skills, Telegram, Statistik, Rechte, Zielliste, Löschen, Start und Freigeben.
+  - Nicht sichtbar (404): Anweisungsdatei und fremdes Gespräch. Gespräche: 0 statt 7.
+  - Hochladen landet in `geteilt/<Person>`, die eigene Datei lässt sich abholen.
+
+## [1.462.0] - 2026-11-14
+
+### Sicherheit
+- **Freigabe-Anfragen nur an Besitzer und Admin.** Im Live-Chat gingen Freigabe-Anfragen (`approval_request`) samt Frage und Begründung an jedes offene Fenster des Agenten, auch an Kollegen mit Freigabe „nur nutzen“. Jetzt bekommen sie nur Besitzer und Admin.
+- **DNS-Rebinding beim Identitätsanbieter:** Der Schlüsselabruf der MCP-Anmeldung verbindet jetzt per einmal geprüfter Adresse, wie die Git-Server der Projekte. Bisher löste httpx den Namen nach der SSRF-Prüfung ein zweites Mal auf.
+  - Eine Klasse für beide Fälle (`core/feste_verbindung.FesteAdresse`).
+  - Der Identitätsanbieter darf nie im Firmennetz liegen, Git-Server nur, wenn sie freigegeben sind.
+
+## [1.461.0] - 2026-11-14
+
+### Sicherheit
+- **Angehaltene Agenten bleiben angehalten.** Hat der Nutzer einen Agenten gestoppt, weckt ihn kein automatischer Weg mehr: Aufgaben, Delegationen, Projekt-Takt, Kanäle, Produktivitätswächter. Ihre Nachrichten bleiben in der Warteschlange. Die Prüfung sitzt zentral in `user_lifecycle.wake_agent`.
+  - Wecken darf nur ein Mensch selbst: der Besitzer oder Admin im Chat oder eine Telegram-Nachricht an den eigenen Agenten des Bots. Wer den Agenten nur nutzen darf, hebt den Halt des Besitzers nicht auf.
+  - Am 13.11. liefen angehaltene Agenten wieder, dazu 1.458.0 für „Alle aktualisieren“.
+- **Kiosk nur mit Gerätezugang.** Mit `KIOSK_ENABLED` (Standard aus) antwortete der Kiosk ohne Anmeldung im ganzen lokalen Netz, und Agenten erreichten ihn direkt am Orchestrator. Betroffen waren Status, Chat mit den Agenten, Strompreis und, mit `KIOSK_VOICE_ENABLED`, ein Sprach-Ticket für den Besitzer.
+  - Jetzt braucht jedes Kiosk-Gerät einen Zugang. Ein Admin erzeugt unter **Admin-Bereich → Betrieb → Kiosk-Anzeige** einen Link und öffnet ihn einmal auf dem Gerät. Daraus wird ein Cookie, das nur für die Kiosk-Pfade gilt.
+  - Gespeichert wird nur der Prüfwert des Zugangs. Ohne Zugang antwortet jeder Kiosk-Endpunkt mit 404.
+  - Eine Netzregel in Caddy (nur lokal) hätte Firmennetze mit 172.x-Adressen und Agenten durchgelassen. Sie ist deshalb nicht Teil dieser Lösung.
+- **Weitere Startwege beachten den Halt:** Über `AgentManager.start_agent` laufen die Zustellung, die Agenten-Runden und die Nachrichten zwischen Agenten. Dort startet ein angehaltener Agent nur noch auf menschlichen Wunsch: Start-Knopf, Fortsetzen, Concierge, Browser-Reiter.
+  - Anonymisierer und Zielliste bauen einen gestoppten Agenten nur neu und lassen ihn gestoppt.
+  - Ein App-Bericht weckt nur über `wake_agent`.
+
+### Behoben
+- **Sicherung vor dem Update ohne root.** War `/var/backups/ai-employee` oder einer seiner Unterordner nicht beschreibbar (etwa nach einem früheren `sudo update.sh`), brach das Update ab und niemand sicherte. Jetzt sichert `backup.sh` nach `~/ai-employee-sicherungen` und nennt den Befehl, mit dem man es dauerhaft behebt.
+  - Kein Ausweichen, wenn ein Ziel ausdrücklich gesetzt ist (`BACKUP_DIR`, `--dest`).
+  - Kein Ausweichen, wenn eine eigene Sicherungsplatte eingehängt ist (`BACKUP_MOUNT`).
+
+## [1.460.0] - 2026-11-14
+
+### Neu
+- **GitLab für Projekte (#1194).** Projekte können ein GitLab-Repo haben, auf gitlab.com oder einem eigenen GitLab-Server, auch mit Untergruppen.
+  - Issues kommen aufs Board, Merge Requests mit Pipeline-Stand ins Review.
+  - Übernahme, Rückfragen in der Triage und Antworten per `@ai-employee` im Issue laufen wie bei GitHub. Als vertraut gilt ein Kommentar ab der Rolle Developer.
+  - Die Agenten stellen Merge Requests, nie direkt auf main.
+  - GitHub, GitLab und Forgejo laufen über denselben Code (`core/githost`).
+- **Eigene Git-Server** (Admin → Betrieb): die Zertifizierungsstelle der Firma (nur CA:TRUE und gültig) und namentlich freigegebene Server im Firmennetz.
+  - Die CA gilt nur für die freigegebenen Git-Server, nicht für den übrigen Verkehr. Das gilt für die Plattform, den Egress-Proxy und die Agenten.
+  - Ein freigegebener interner Server ist für alle Nutzer und Agenten über Port 443 erreichbar.
+
+### Sicherheit
+- Der Token liegt in der Schlüsselverwaltung. Mit Egress-Proxy sehen Agenten nur den Platzhalter, der Proxy setzt den echten Token nur am freigegebenen Host ein. Das ist live mit mitmproxy geprüft.
+- Eigene Server werden genau einmal aufgelöst und dann per geprüfter IP verbunden (Schutz vor DNS-Rebinding). Andere Ports gelten nur mit ausdrücklichem `name:port`.
+- Fehlermeldungen sind einheitlich, damit sie nicht als Portscan taugen.
+- Das Konto des Projektschlüssels wird über die numerische ID erkannt, nicht über den Namen.
+
+### Betrieb
+- Spalte `teams.repo_anbieter`, Migration `m2gitlab1194`.
+## [1.459.0] - 2026-11-14
+
+### Neu
+- **MCP mit der Firmenanmeldung (OAuth 2.1, #1195).** Second Brains (`/api/v1/mcp/brains/{slug}`) und der Agenten-MCP (`/api/v1/mcp/agents/{id}`) nehmen Zugriffstoken des Firmen-IdP an, etwa Microsoft Entra ID. Der MCP-Client meldet sich dort an, AI Employee prüft das Token und zeigt nur, was der Person freigegeben ist.
+  - Geprüft werden Signatur (feste Algorithmenliste, kein `none`/HS*), Aussteller, Empfänger (`aud`) und Laufzeit.
+  - Zugelassen sind nur ausdrücklich erlaubte Client-Anwendungen (`azp`/`appid`) oder Tokens mit Pflicht-Berechtigung.
+  - Unbekannte Personen, Gastkonten, App-Tokens und ID-Tokens werden abgewiesen.
+  - Brain-Schlüssel und Webhook-Token gelten weiter, beide Wege enden in derselben Rechteprüfung. Eine Freigabe nur zum Nutzen (1.457.0) gibt keinen Agenten-MCP-Zugang.
+  - Protected Resource Metadata (RFC 9728) unter `/.well-known/oauth-protected-resource/…`. Eine 401 verweist per `WWW-Authenticate` darauf.
+  - Einrichtung unter **Admin-Bereich → Dienste & Konten → MCP-Zugang mit Firmenanmeldung**. Ohne Einrichtung bleibt der Zugang aus. Änderungen landen mit altem und neuem Wert im Prüfprotokoll. Handbuch Kap. 22.5.2.
+
+### Sicherheit
+- Schlüsselabruf beim IdP mit Negativ-Speicher, gemeinsamem Abruf und 4 s Zeitlimit. Adressen werden nach DNS-Auflösung geprüft, interne Ziele sind gesperrt.
+- Der E-Mail-Rückfall bei der Personenzuordnung gilt nur für Microsoft-SSO-Konten. Die erste Bindung landet im Prüfprotokoll.
+
+### Betrieb
+- Spalte `users.idp_object_id`, Migration `o3p4q5r6s7t8`. Der Microsoft-SSO-Login trägt sie künftig ein.
+## [1.458.0] - 2026-11-13
+
+### Behoben
+- **„Alle aktualisieren“ startet gestoppte Agenten nicht mehr.** Ein Agent, der vor dem Aktualisieren nicht lief, bleibt danach gestoppt, egal ob er vom Nutzer angehalten oder im Leerlauf gestoppt war. Er ist dann auf dem neuen Stand und startet beim nächsten Öffnen oder Start. Bisher lief nach dem Aktualisieren jeder Agent wieder.
+
+### Geändert
+- **Besprechungen neu benannt:** „Besprechungen“ heißt jetzt **Teams-Besprechungen** (Termine in Microsoft Teams). Die bisherigen „Besprechungsräume“ heißen **Agenten-Runden** (mehrere Agenten arbeiten gemeinsam an einem Thema). Handbuch Kap. 9 angepasst.
+
+### Entfernt
+- **„Agent mit Stimme im Termin“** (Teams-Anrufe über einen Azure-Bot, `/teams/calling`). Die Funktion war nirgends eingerichtet, hatte keinen Knopf, und der Rückruf tat nichts. Teams-Termine laufen über die Teams-Besprechungen (seit 1.451.0) und den Agenten als Teilnehmer (1.453.0). Ein gespeichertes Bot-Geheimnis bleibt verschlüsselt und wird nie ausgeliefert.
+
+## [1.457.0] - 2026-11-13
+
+### Neu
+- **Agent freigeben, nur zum Nutzen.** In den Agenten-Einstellungen unter **Zugriff & Rechte → Freigeben für** wählt der Besitzer oder ein Admin Kollegen aus. Damit lässt sich ein Agent für viele Menschen nutzen:
+  - Freigegebene dürfen chatten, sprechen und Dateien schicken und abholen. Jeder sieht nur seine eigenen Gespräche (1.455.0).
+  - Einstellungen, Gedächtnis, Zeitpläne, Auswertungen, Protokolle, Apps, Freigabe-Anfragen und Löschen bleiben beim Besitzer und beim Admin.
+  - Freigegebene sehen die einfache Ansicht mit Chat und Sprache. Die Agentendaten kommen gekürzt an, ohne Webhook-Token, Konfiguration, Konten und Kosten.
+  - Meldungen eines freigegebenen Agenten bekommen sie nur, wenn sie an sie gerichtet sind (Antworten in ihren Gesprächen).
+
+### Sicherheit
+- **Standard jeder Agenten-Zugriffsprüfung ist jetzt „verwalten“.** `require_agent_access` lässt eine Freigabe nur zum Nutzen nur dort durch, wo die Schnittstelle sich ausdrücklich als Nutzen ausweist (`nutzen=True`): Chat, Sprache, Dateien senden und abholen, Agent ansehen. Neue Schnittstellen sind für Nur-Nutzer also zu, bis jemand es anders entscheidet.
+- Auch Stellen, die Freigaben direkt abfragen (Aufgaben, Zeitpläne, Freigabe-Anfragen, Finanzen, Sichtbarkeit in rund 25 Bereichen über `core/ownership`), zählen eine Freigabe nur zum Nutzen nicht.
+- Ältere Freigaben ohne Rolle (Zuweisen, Verteilen) behalten ihre Wirkung.
+- **Sprache für Nur-Nutzer:** nur Gesprächswerkzeuge (an den Agenten weitergeben, Websuche, Anzeigen, Umbenennen). Nicht dabei sind Mail, Kalender, MCP, Dateien, Gedächtnis, Zeitpläne, Apps und Einstellungen. Das Gedächtnis kommt nicht in den Prompt. Zweite Sperre beim Ausführen.
+- **Dateien für Nur-Nutzer:** Hochladen nur in `/workspace/geteilt/<Person>`. Abholen nur von dort oder Dateien, die der Agent in einem eigenen Gespräch vorgelegt hat.
+- **Stopp je Gespräch:** „Stopp“ im Chat hält nur den Zug dieses Gesprächs an, nicht die Antworten anderer. Der Agent versteht das ab diesem Abbild, ältere halten weiter alles an.
+- **Chat:** Ein Fenster kann sich nicht als Zeitplan oder Kanal ausgeben (`source`). Nur-Nutzer wählen weder Modell noch Denktiefe. Beim Entziehen der Freigabe werden offene Chat-Fenster geschlossen.
+- **Gekürzte Agentendaten** ohne laufende Aufgabe, fremde Gesprächskennungen und Besitzer.
+
+### Betrieb
+- Spalte `agent_access.rolle`, Migration `n2o3p4q5r6s7` (idempotent). Die Spalte legt zusätzlich der Start an.
+
+
+## [1.456.0] - 2026-11-13
+
+### Neu
+- **Rollen-Vorlagen (Enterprise-Rollenmodell)** (`core/rollen_vorlagen.py`, Handbuch Kap. 22.4).
+  - Fertige Rechtebündel: Teamleitung, Mitarbeiter, Entwickler, Betrachter, Gast. Dazu der Hinweis, dass Plattform-Admin die Grundrolle ist.
+  - **Gruppe anlegen** (`POST /roles/vorlagen/{schlüssel}`, nur Admins) legt daraus eine normale Gruppe an. Prüfung der Autonomie-Grenze und Prüfprotokoll wie beim Anlegen von Hand.
+  - Die Vorlagen nutzen nur Rechte, die `core/permissions` schon durchsetzt. Es gibt kein zweites Rechtesystem.
+- **Rechte-Übersicht „Wer darf was“** (`GET /roles/uebersicht`, nur Admins): je Person Grundrolle, Gruppe, Anmeldung (lokal oder SSO) und die wirksamen Rechte aus derselben Auswertung wie überall.
+- Rollen-Bearbeitung: Die Menüpfade kennen jetzt auch Besprechungen, Chat, Apps, Abläufe und Hilfe.
+- **Hinweis:** Die Grundrolle „Manager“ sieht und steuert alle Agenten aller Nutzer (`require_agent_access`). Die Vorlage „Teamleitung“ nutzt deshalb die Grundrolle Mitglied. Eine echte Begrenzung auf das eigene Team braucht Teams bzw. Abteilungen und kommt später.
+
+### Tests
+- `test_rollen_vorlagen.py`:
+  - Vorlagen nur mit bekannten Rechten und gültigen Werten bzw. Menüpunkten.
+  - Eine Gruppe aus der Vorlage wirkt am Nutzer.
+  - Prüfprotokoll, doppelter Name, unbekannte Vorlage, nur Admins.
+  - Übersicht.
+## [1.455.0] - 2026-11-13
+
+### Sicherheit
+- **Chats je Nutzer an freigegebenen Agenten.** Ist ein Agent mehreren Menschen freigegeben, sieht jeder nur seine eigenen Gespräche. Eine Regel an einer Stelle (`core/chat_besitz`):
+  - Ein Gespräch gehört dem, der darin zuerst schreibt (`chat_sessions.user_id`).
+  - Gespräche ohne eingetragenen Besitzer gehören dem Besitzer des Agenten: ältere Gespräche, Zeitpläne, Telegram, Bridge.
+  - Besitzer des Agenten und Admins sehen alle Gespräche, der Agent selbst ebenfalls. Freigegebene Nutzer und Manager sehen nur ihre eigenen.
+  - Fremde Gespräche liefern 404. Das gilt für Liste, Verlauf, Löschen, „Alle löschen“, Umbenennen, Abzweig, Zurückspulen, Fortsetzung, Verdichten, Kontext und Ziel.
+  - Im Live-Chat lassen sich fremde Gespräche weder anhängen noch fortsetzen.
+  - Abzweig, Sicherung und Fortsetzung gehören dem Besitzer des Originals.
+  - Sprache: Ein fremdes Gespräch lässt sich nicht fortsetzen, und beim Anruf wird kein fremdes „letztes Gespräch“ mehr vorgelesen.
+- **Chat-Benachrichtigungen nur an den Besitzer des Gesprächs.** Sie zeigen den Antworttext und gingen bisher an alle, die den Agenten sehen. Die Push-Nachricht ging an den Besitzer des Agenten. Neue Spalte `notifications.empfaenger_id`. Liste, Zähler, „alle gelesen“ und der Live-Kanal filtern danach.
+
+- **Live-Chat:** Aufgaben-Kacheln, Ziele, Stillstands- und Sentinel-Hinweise ohne Nachrichtenkennung gingen an jedes offene Fenster des Agenten. Jetzt gehen sie nur an Fenster, die das Gespräch sehen dürfen.
+- **Aufgaben:** Eine Aufgabe liefert ihre Kachel nur in ein Gespräch, das der Anleger sehen darf (`chat_session_id` wird geprüft).
+- **Meldungen per Nummer** (beantworten, gelesen, löschen) nur für ihren Empfänger.
+- **Systemgespräche** (Zeitplan, Meldungen, Bridge, Kanäle wie Telegram) gehören immer dem Besitzer des Agenten und lassen sich nicht vorab beanspruchen. Eine Gesprächszeile ohne Besitzer gilt nicht als frei.
+- **Kiosk:** Lesen und Schreiben nur noch in eigenen Kiosk-Gesprächen (`kiosk-…`). Vorher ging das ohne Anmeldung in jedes Gespräch, dessen Kennung bekannt war.
+
+### Betrieb
+- Migration `m1n2o3p4q5r6` (idempotent). Die Spalten legt zusätzlich der Start an.
+## [1.453.0] - 2026-11-13
+
+### Neu (Vorschau)
+- **Agent als Teilnehmer in Teams-Besprechungen** (Plan und Live-Tests: `docs/plaene/teams-teilnehmer.md`). Neue Rolle „Teilnehmer“ unter Konnektoren → Teams-Besprechungen.
+  - **Beitritt:** Zum Termin tritt der Agent mit dem Chromium seines Behälters über den Link der Einladung bei, als „<Agent> - KI“. Die Gäste-Regel und der Hinweis „schreibt mit“ gelten wie bisher.
+  - **Zuhören:** Der Ton der Besprechung geht in 30-Sekunden-Stücken an `POST /meetings/{id}/teilnehmer-ton`. Er wird transkribiert (gemeinsame Funktion `transkribieren`, Sprache Deutsch) und an die Besprechungsseite gehängt. Das Protokoll entsteht wie bisher ohne Werkzeuge, auch ohne Teams-Transkriptionslizenz.
+  - **Sprechen:** `ws /agents/{id}/teams-stimme` verbindet den Teilnehmer mit der Echtzeit-Sprachfront, im Besprechungsmodus (spricht nur, wenn er beim Namen genannt wird). Die Antwort geht über das ersetzte Mikrofon in Teams. Ohne Echtzeit-Sprache hört er nur zu.
+  - **Sicherheit (Review vor dem Release):**
+    - Aus der Besprechung wird nichts in den Chat-Verlauf oder ins Gedächtnis geschrieben, nur ins Transkript der Seite.
+    - Das Gedächtnis des Besitzers ist im Besprechungs-Prompt nicht enthalten.
+    - Der Browser läuft über den Egress-Proxy, WebRTC nicht per UDP am Proxy vorbei, mit eigener Umgebung ohne Werte des Servers.
+    - Navigation nur zu Teams bzw. Microsoft.
+    - Strengere Link-Prüfung, auf beiden Seiten gleich.
+    - Höchstens 2 Teilnahmen gleichzeitig, höchstens 8 Stunden, begrenzte Warteschlange.
+  - In der Besprechung hat die Stimme **keine Werkzeuge**. Durchgesetzt in der Sitzung, nicht nur im Prompt: Es werden keine angeboten, und ein Aufruf wird ohne Ausführung abgelehnt. Mitsprechen kann jeder Teilnehmer, deshalb kann darüber nichts gesendet, geändert oder an den Agenten delegiert werden. Der Endpunkt nimmt nur Agenten-Token aus dem Agenten-Netz an, nur für den eigenen Termin und nur zwischen 10 min vor Beginn und 30 min nach Ende.
+  - **Live geprüft** in einem echten Teams-Termin:
+    - Beitritt, Wartebereich, Einlassen.
+    - Zuhören mit Transkription („Das ist ein wunderschöner Test, oder Maus?“).
+    - Das Sprechen ist noch nicht live geprüft.
+  - **Wege hinein:**
+    - Einladung, wenn der Agent ein eigenes Konto hat.
+    - Markierung im Kalender des Besitzers (Kategorie = Name des Agenten oder „KI-Agent“).
+    - Per Link: Seite „Besprechungen“, `POST /meetings/teilnehmen`, nur Besitzer bzw. Admin, einmal je Link.
+  - **Kalender des Besitzers:** Ohne eigenes Konto berücksichtigt der Dienst nur noch markierte Termine. Vorher hätte ein Mitschreiber auch alle anderen Termine des Besitzers mitgeschrieben.
+  - **Im Live-Test gefunden und behoben:**
+    - Klammern im Namen sind in Teams verboten.
+    - Eine abgelehnte Kamera hielt Teams für „kein Audio“, jetzt gibt es eine schwarze Ersatzkamera.
+    - Teams meldet Tonspuren nicht über `track`, deshalb werden die Empfänger abgefragt.
+    - Fast stille Stücke ließen Whisper Sätze erfinden.
+
+### Geändert
+- Die Sprachsitzungs-Schleife ist gemeinsam (`ws._sprachsitzung_betreiben`) für die App und den Teams-Teilnehmer.
+
+### Tests
+- `agent/tests/test_teams_teilnehmer.py`: Links, Name, WAV, Stille, Stückelung, Start je Termin, Stimme.
+- `test_teams_besprechungen.py`:
+  - Rolle „Teilnehmer“
+  - Ton-Endpunkt (Zugang, Besitz, Zeitfenster, Größe)
+  - `teams-stimme` (Zugang, Termin, ohne Echtzeit-Sprache)
+  - Besprechungsregeln
+- Bestehende Sprach- und WebSocket-Tests: 460 grün.
+
+## [1.452.0] - 2026-11-13
+
+### Sicherheit
+- **Protokoll aus dem Teams-Transkript ohne Werkzeuge** (letzter offener Punkt aus dem Review von 1.451.0). Steht im Transkript eine Anweisung, kann sie nichts mehr ausführen, lesen oder wegschicken. Das gilt in jeder Laufzeit:
+  - **Claude Code:** `--tools "" --strict-mcp-config`. Keine eingebauten Werkzeuge, keine MCP-Server.
+  - **Codex:** `--sandbox read-only -c mcp_servers={} -c web_search="disabled"` statt Sandbox und Freigaben zu umgehen. Die Sandbox startet im Behälter nicht (bwrap), also läuft kein Befehl. Das blockiert im Fehlerfall.
+  - **Eigenes Modell:** war schon ohne Werkzeuge.
+- Das Feld `ohne_werkzeuge` steht in der Nachricht `type=meeting`. Es entfällt der Vorspann, der den Agenten erst `knowledge.md` lesen lässt. Besprechungsräume bleiben unverändert mit Werkzeugen.
+- Live im Agenten-Abbild geprüft (Claude Code 2.1.323, Codex 0.169): Eine Aufforderung, `ls` bzw. `touch` auszuführen, bleibt ohne Wirkung.
+- Wirksam, sobald ein Agent mit dem neuen Abbild läuft. Ältere Abbilder ignorieren das Feld und schreiben das Protokoll wie bisher.
+
+### Geändert
+- Der Besprechungszug im Agenten ist eine eigene Methode (`MessageConsumer._besprechungs_zug`), statt im Verbraucher-Loop zu stecken.
+
+### Tests
+- `agent/tests/test_besprechung_ohne_werkzeuge.py`: Befehlszeile je Laufzeit mit und ohne Werkzeuge, Besprechungszug mit Feld (ohne Vorspann) und ohne Feld (unverändert). Gegenprobe: 4 von 4 Schutzmechanismen gefangen.
+- `test_teams_besprechungen.py`: Der Protokoll-Auftrag trägt `ohne_werkzeuge`.
 
 ## [1.451.0] - 2026-11-13
 

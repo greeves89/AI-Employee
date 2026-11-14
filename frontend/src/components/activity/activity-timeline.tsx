@@ -298,7 +298,7 @@ function MultiAgentStrip({
 
   return (
     <>
-      <div className="flex pl-[calc(11rem+0.75rem)] pr-1 text-[10px] text-muted-foreground/40">
+      <div className="flex pl-[calc(11rem+0.75rem)] pr-1 text-[10px] text-muted-foreground">
         {HOUR_MARKS.map((h, i) => (
           <div key={h} className={cn("flex-1", i === HOUR_MARKS.length - 1 ? "text-right" : "text-left")}>
             {String(h).padStart(2, "0")}:00
@@ -316,11 +316,11 @@ function MultiAgentStrip({
                 className="flex w-full items-center gap-1.5 rounded-lg px-1 py-2 text-left transition-colors hover:bg-foreground/[0.04]"
               >
                 <ChevronRight className={cn(
-                  "h-3.5 w-3.5 shrink-0 text-muted-foreground/50 transition-transform duration-150",
+                  "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-150",
                   isOpen && "rotate-90"
                 )} />
                 <span className="text-sm font-semibold">{g.label}</span>
-                <span className="text-[11px] text-muted-foreground/50">
+                <span className="text-[11px] text-muted-foreground">
                   {g.agents.length} Agent{g.agents.length !== 1 ? "en" : ""}
                 </span>
               </button>
@@ -613,7 +613,7 @@ function DayAgenda({
           {Array.from({ length: 24 }).map((_, h) => (
             <div
               key={h}
-              className="relative text-right text-[11px] text-muted-foreground/50"
+              className="relative text-right text-[11px] text-muted-foreground"
               style={{ height: HOUR_PX }}
             >
               <span className="absolute -top-2 right-2">{String(h).padStart(2, "0")}:00</span>
@@ -694,7 +694,7 @@ function DayAgenda({
                     dropBlock(item);
                   }}
                   title={dropped ? "Wieder einplanen" : "Streichen — der Agent lässt es dann liegen"}
-                  className="absolute right-1 top-1 block can-hover:hidden rounded p-0.5 text-muted-foreground/50 hover:bg-foreground/10 hover:text-foreground can-hover:group-hover:block"
+                  className="absolute right-1 top-1 block can-hover:hidden rounded p-0.5 text-muted-foreground hover:bg-foreground/10 hover:text-foreground can-hover:group-hover:block"
                 >
                   <X className="h-3 w-3" />
                 </button>
@@ -814,7 +814,7 @@ function DayAgenda({
           "heute noch" erledigen wollte. */}
       {undatedPlan.length > 0 && (
         <div className="border-t border-foreground/[0.06] px-3 py-2">
-          <div className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground/40">
+          <div className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
             <CalendarClock className="h-3 w-3" />
             Heute vorgenommen, ohne feste Zeit
           </div>
@@ -827,19 +827,19 @@ function DayAgenda({
                   title="Bearbeiten — hier kannst du ihm auch eine Uhrzeit geben, damit er von allein läuft"
                   className={cn(
                     "flex-1 truncate text-left hover:underline",
-                    item.status === "dropped" ? "text-muted-foreground/50 line-through" : "text-foreground/80"
+                    item.status === "dropped" ? "text-muted-foreground line-through" : "text-foreground/80"
                   )}
                 >
                   {item.title}
                 </button>
-                <span className="shrink-0 text-[10px] text-muted-foreground/40">
+                <span className="shrink-0 text-[10px] text-muted-foreground">
                   {item.estimated_minutes} Min
                 </span>
                 <button
                   type="button"
                   onClick={() => dropBlock(item)}
                   title={item.status === "dropped" ? "Wieder einplanen" : "Streichen"}
-                  className="shrink-0 rounded p-0.5 text-muted-foreground/40 can-hover:opacity-0 transition-opacity hover:bg-foreground/10 hover:text-foreground can-hover:group-hover:opacity-100"
+                  className="shrink-0 rounded p-0.5 text-muted-foreground can-hover:opacity-0 transition-opacity hover:bg-foreground/10 hover:text-foreground can-hover:group-hover:opacity-100"
                 >
                   <X className="h-3 w-3" />
                 </button>

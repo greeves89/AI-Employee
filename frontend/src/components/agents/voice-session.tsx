@@ -24,7 +24,7 @@ const NAV_ROUTES: Record<string, string> = {
 
 /** Anzeigename fürs Panel — der rohe Routenname stünde sonst als Überschrift da. */
 const NAV_LABELS: Record<string, string> = {
-  dashboard: "Dashboard", tasks: "Aufgaben", agents: "Agenten", meeting_rooms: "Besprechungsräume",
+  dashboard: "Dashboard", tasks: "Aufgaben", agents: "Agenten", meeting_rooms: "Agenten-Runden",
   knowledge: "Wissen", skills: "Skill-Marktplatz", triggers: "Auslöser",
   approvals: "Freigaben", integrations: "Integrationen", settings: "Einstellungen",
   analytics: "Auswertung", apps: "Apps", audit: "Audit-Log", health: "Systemzustand",
@@ -1438,7 +1438,7 @@ export function VoiceSessionModal({
           <div
             onMouseDown={startResize}
             title="Ziehen zum Vergrössern — Doppelklick auf die Kopfzeile für Vollbild"
-            className="absolute bottom-0 right-0 z-20 hidden h-5 w-5 cursor-nwse-resize items-end justify-end p-1 text-muted-foreground/40 hover:text-foreground sm:flex"
+            className="absolute bottom-0 right-0 z-20 hidden h-5 w-5 cursor-nwse-resize items-end justify-end p-1 text-muted-foreground hover:text-foreground sm:flex"
           >
             <svg viewBox="0 0 10 10" className="h-3 w-3 fill-current">
               <path d="M9 1v8H1z" opacity=".35" />
@@ -1565,7 +1565,7 @@ export function VoiceSessionModal({
                 </div>
                 <div ref={transcriptRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
                   {turns.length === 0 ? (
-                    <p className="text-xs text-muted-foreground/50">Sprich einfach los …</p>
+                    <p className="text-xs text-muted-foreground">Sprich einfach los …</p>
                   ) : (
                     turns.map((t, i) => (
                       <div key={i} className={t.role === "user" ? "text-right" : "text-left"}>
@@ -1686,7 +1686,7 @@ export function VoiceSessionModal({
                       />
                     )}
                   </div>
-                  <p className="pl-[22px] text-[10px] leading-tight text-muted-foreground/50">
+                  <p className="pl-[22px] text-[10px] leading-tight text-muted-foreground">
                     {empfindlichkeit === 0
                       ? "Nimmt jedes Geräusch auf"
                       : empfindlichkeit >= 70
@@ -1723,7 +1723,7 @@ export function VoiceSessionModal({
                 {alleAnzeigen.length > stageItems.length && (
                   /* Stillschweigend abschneiden wäre gelogen — es sieht dann so
                      aus, als haette der Agent nur vier Bilder geliefert. */
-                  <p className="text-center text-[11px] text-muted-foreground/50">
+                  <p className="text-center text-[11px] text-muted-foreground">
                     {alleAnzeigen.length - stageItems.length} ältere Anzeige
                     {alleAnzeigen.length - stageItems.length === 1 ? "" : "n"} ausgeblendet —
                     schliesse eine, um sie zu sehen.
@@ -1746,7 +1746,7 @@ export function VoiceSessionModal({
                       <Radio className="h-3 w-3" />
                       Neu verbinden
                     </button>
-                    <span className="text-[10px] text-muted-foreground/50">
+                    <span className="text-[10px] text-muted-foreground">
                       Das Gespräch wird fortgesetzt, nicht neu begonnen.
                     </span>
                   </div>
@@ -1825,7 +1825,7 @@ export function VoiceSessionModal({
                                     : it.status === "running"
                                     ? "border-l-sky-500 bg-sky-500/[0.10] text-foreground dark:border-l-sky-400 dark:bg-sky-400/[0.08]"
                                     : it.status === "dropped"
-                                    ? "border-l-foreground/20 bg-foreground/[0.02] text-muted-foreground/50 line-through"
+                                    ? "border-l-foreground/20 bg-foreground/[0.02] text-muted-foreground line-through"
                                     : "border-l-sky-500/40 bg-sky-500/[0.06] text-foreground/90 dark:border-l-sky-400/40 dark:bg-sky-400/[0.04]"
                                 }`}
                               >
@@ -1834,7 +1834,7 @@ export function VoiceSessionModal({
                                 </span>
                                 <span className="min-w-0 flex-1">
                                   <span className="block truncate">{it.title}</span>
-                                  <span className="text-[10px] text-muted-foreground/50">
+                                  <span className="text-[10px] text-muted-foreground">
                                     {it.status === "done"
                                       ? "erledigt"
                                       : it.status === "running"
@@ -1934,7 +1934,7 @@ export function VoiceSessionModal({
                           {t.done && (
                             <button
                               onClick={() => setTasks((prev) => prev.filter((x) => (x.id || x.instruction) !== key))}
-                              className="shrink-0 rounded p-0.5 text-muted-foreground/40 hover:text-foreground hover:bg-foreground/[0.08]"
+                              className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.08]"
                               title="Aufgabe ausblenden"
                             >
                               <X className="h-3 w-3" />
@@ -2025,7 +2025,7 @@ export function VoiceSessionModal({
                           onClick={() => setWebResults((prev) => prev.filter((_, i) => i !== wi))}
                           title="Ausblenden"
                           aria-label="Suchergebnisse ausblenden"
-                          className="shrink-0 rounded p-0.5 text-muted-foreground/50 hover:bg-foreground/[0.06] hover:text-foreground"
+                          className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
                         >
                           <X className="h-3 w-3" />
                         </button>
@@ -2055,7 +2055,7 @@ export function VoiceSessionModal({
                     </button>
                   )}
                   {tasks.length === 0 && activity.length === 0 && webResults.length === 0 && media.length === 0 && (
-                    <p className="text-xs text-muted-foreground/50">
+                    <p className="text-xs text-muted-foreground">
                       Hier erscheint live, was der Agent tut — und Web-Ergebnisse, wenn ich etwas nachschlage.
                     </p>
                   )}
@@ -2071,7 +2071,7 @@ export function VoiceSessionModal({
                 <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
                   <Network className="h-4 w-4 text-primary" />
                   <span className="text-sm font-medium">Wissensgraph</span>
-                  <span className="text-[11px] text-muted-foreground/50">— per Sprache steuerbar („mach den Graphen wieder zu")</span>
+                  <span className="text-[11px] text-muted-foreground">— per Sprache steuerbar („mach den Graphen wieder zu")</span>
                   <button
                     onClick={() => setGraphOverlay(null)}
                     className="ml-auto rounded-md p-1 text-muted-foreground hover:bg-foreground/[0.06]"
@@ -2096,7 +2096,7 @@ export function VoiceSessionModal({
                 <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
                   <LayoutGrid className="h-4 w-4 text-primary" />
                   <span className="text-sm font-medium">{pageOverlay.label}</span>
-                  <span className="hidden text-[11px] text-muted-foreground/50 sm:inline">
+                  <span className="hidden text-[11px] text-muted-foreground sm:inline">
                     — sprich einfach weiter („mach das wieder zu")
                   </span>
                   <a

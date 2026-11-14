@@ -426,7 +426,7 @@ async def concierge_action(
         agent_duty.nutzerhalt_setzen(agent, True)
         await manager.stop_agent(body.agent_id)
     elif body.action == "start_agent":
-        agent_duty.nutzerhalt_setzen(await manager.start_agent(body.agent_id), False)
+        agent_duty.nutzerhalt_setzen(await manager.start_agent(body.agent_id, durch_mensch=True), False)
     await db.commit()
 
     logger.info("[Concierge] %s auf %s durch %s",

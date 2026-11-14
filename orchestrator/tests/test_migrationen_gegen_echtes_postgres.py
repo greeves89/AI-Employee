@@ -82,11 +82,19 @@ _TABELLEN_NACH_DER_MARKE = ("app_favorites", "projekt_karten", "projekt_nachrich
 #: ``DROP COLUMN`` nimmt seine Indizes mit, das ``CREATE INDEX`` der Migration
 #: laeuft danach wirklich.)
 _SPALTEN_NACH_DER_MARKE = (
+    # Chats je Nutzer (m1n2o3p4q5r6)
+    ("chat_sessions", "user_id"), ("notifications", "empfaenger_id"),
+    # Freigabe nur zum Nutzen (n2o3p4q5r6s7)
+    ("agent_access", "rolle"),
+    # GitLab als Anbieter der Projekt-Repos (m2gitlab1194)
+    ("teams", "repo_anbieter"),
     # Teams-Besprechungen (l0m1n2o3p4q5)
     ("meetings", "quelle"), ("meetings", "agent_id"), ("meetings", "teams_event_id"),
     ("meetings", "beginn"), ("meetings", "ende"), ("meetings", "status"),
     ("meetings", "gaeste_extern"), ("meetings", "hinweis"), ("meetings", "protokoll"),
     ("schedules", "chat_session_id"),
+    # MCP per OAuth über den Firmen-IdP (o3p4q5r6s7t8, #1195)
+    ("users", "idp_object_id"),
     ("agent_secrets", "owner_id"),
     ("agent_secrets", "erlaubte_hosts"),
     ("agent_templates", "build_tools"),

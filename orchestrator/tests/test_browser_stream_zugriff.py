@@ -207,7 +207,7 @@ class SchlafenderAgent(unittest.TestCase):
 
         reihenfolge = []
 
-        async def _wecken(agent_id, docker, redis):
+        async def _wecken(agent_id, docker, redis, **_):
             reihenfolge.append("wecken")
             return True
 

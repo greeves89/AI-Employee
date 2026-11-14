@@ -239,7 +239,7 @@ export function ConciergeWidget() {
 
                 {/* Die Zahlen bleiben — aber als Fussnote. Sie verlangen keine
                     Handlung, und als vier Kacheln haben sie die Liste verdraengt. */}
-                <p className="border-t border-foreground/[0.06] pt-2.5 text-[10px] text-muted-foreground/50">
+                <p className="border-t border-foreground/[0.06] pt-2.5 text-[10px] text-muted-foreground">
                   {stats.agents} Agent{stats.agents !== 1 ? "en" : ""}
                   {stats.resting > 0 && ` · ${stats.resting} ruhen`}
                   {" · "}
@@ -249,7 +249,7 @@ export function ConciergeWidget() {
                 </p>
 
                 <div>
-                  <div className="mb-1.5 text-[10px] uppercase tracking-wide text-muted-foreground/50">
+                  <div className="mb-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
                     Plattform
                   </div>
                   {data.actions

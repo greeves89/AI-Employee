@@ -88,6 +88,31 @@ jobs:
           KIOSK_ENABLED: "false"
         run: pytest -q
 
+  # ── MCP-Anmeldung gegen einen ECHTEN Aussteller: GitHub Actions stellt ein
+  #    signiertes Token aus, der Orchestrator prueft es ueber Discovery, JWKS und
+  #    die feste Verbindung wie im Betrieb (Plan Sicherheit 2026-11, Punkt 4).
+  #    Eigener Job, damit nur diese eine Testdatei ein Token holen darf. ──
+  idp-echter-aussteller:
+    name: MCP-IdP gegen echten Aussteller
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install orchestrator
+        working-directory: orchestrator
+        run: pip install --no-cache-dir -e . pytest pytest-asyncio
+      - name: Echtes Token pruefen
+        working-directory: orchestrator
+        env:
+          KIOSK_ENABLED: "false"
+        run: pytest -q -rs tests/test_idp_echter_aussteller.py
+
   # ── Agenten-Testlauf. Frueher liefen hier DREI namentlich genannte Dateien,
   #    und der Rest der Suite gar nicht: jeder neue Agenten-Test war damit ab
   #    dem Tag seiner Entstehung tot. Jetzt die ganze Suite; die Dateien, die

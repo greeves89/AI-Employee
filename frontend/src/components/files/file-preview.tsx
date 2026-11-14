@@ -236,12 +236,12 @@ function FilePreviewInner({
         {filePath}
       </span>
       {fileSize != null && (
-        <span className="text-[10px] text-muted-foreground/40 tabular-nums shrink-0 ml-2">
+        <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 ml-2">
           {formatFileSize(fileSize)}
         </span>
       )}
       {fileModified != null && fileModified > 0 && (
-        <span className="text-[10px] text-muted-foreground/40 tabular-nums shrink-0" title={formatModifiedFull(fileModified)}>
+        <span className="text-[10px] text-muted-foreground tabular-nums shrink-0" title={formatModifiedFull(fileModified)}>
           {formatModifiedFull(fileModified)}
         </span>
       )}
@@ -253,7 +253,7 @@ function FilePreviewInner({
             onClick={() => setHtmlTab("rendered")}
             className={cn(
               "inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors",
-              htmlTab === "rendered" ? "bg-primary/10 text-primary" : "text-muted-foreground/50 hover:text-muted-foreground"
+              htmlTab === "rendered" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
             )}
           >
             <Eye className="h-2.5 w-2.5" /> Rendered
@@ -262,7 +262,7 @@ function FilePreviewInner({
             onClick={() => setHtmlTab("source")}
             className={cn(
               "inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors",
-              htmlTab === "source" ? "bg-primary/10 text-primary" : "text-muted-foreground/50 hover:text-muted-foreground"
+              htmlTab === "source" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
             )}
           >
             <FileCode className="h-2.5 w-2.5" /> HTML
@@ -332,7 +332,7 @@ function FilePreviewInner({
     </div>
   ) : binaryExtensions.has(ext) ? (
     // Binary file - download only
-    <div className="flex flex-col items-center justify-center h-full text-muted-foreground/40 gap-3">
+    <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
       <File className="h-12 w-12" />
       <span className="text-sm font-medium">{fileName}</span>
       <span className="text-[11px]">
@@ -419,9 +419,9 @@ export function FilePreviewEmpty() {
     <>
       <div className="border-b border-foreground/[0.06] px-4 py-2.5 flex items-center gap-2">
         <FileText className="h-3.5 w-3.5 text-muted-foreground/50" />
-        <span className="text-xs text-muted-foreground/50">Dateivorschau</span>
+        <span className="text-xs text-muted-foreground">Dateivorschau</span>
       </div>
-      <div className="flex flex-col items-center justify-center flex-1 text-muted-foreground/40 px-6 text-center">
+      <div className="flex flex-col items-center justify-center flex-1 text-muted-foreground px-6 text-center">
         <FileText className="h-10 w-10 mb-3" />
         <p className="text-sm font-medium text-muted-foreground/60">Vorschau-Bereich</p>
         <p className="text-xs mt-1.5 max-w-xs leading-relaxed">

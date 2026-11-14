@@ -41,6 +41,9 @@ class Team(Base, TimestampMixin):
     # Schlüssel aus der Schlüsselverwaltung (agent_secrets.id) für private Repos; leer =
     # GitHub-Verbindung der Anlage (nur bei Projekten von Admins) bzw. anonym.
     repo_secret_id: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    # Anbieter des Repos, wenn die Adresse ihn nicht verrät: "gitlab" (#1194, auch
+    # selbst betrieben). Leer = GitHub (owner/name) bzw. Forgejo/Gitea (volle Adresse).
+    repo_anbieter: Mapped[str | None] = mapped_column(String(20), nullable=True, default=None)
     # Art: None/"projekt" = Projekt (Seite Projekte), "sekretariat" = persönliches
     # Sekretariat eines Nutzers (Seite Heute, core/sekretariat.py).
     art: Mapped[str | None] = mapped_column(String(20), nullable=True, default=None)

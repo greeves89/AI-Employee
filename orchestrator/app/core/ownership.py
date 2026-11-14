@@ -44,7 +44,39 @@ async def eigene_agent_ids(user, db: AsyncSession) -> set[str]:
     from app.models.agent import Agent
     from app.models.agent_access import AgentAccess
 
+    from app.models.agent_access import ROLLE_NUTZEN
+
     uid = str(getattr(user, "id", "") or "")
     owned = await db.scalars(select(Agent.id).where(Agent.user_id == uid))
-    shared = await db.scalars(select(AgentAccess.agent_id).where(AgentAccess.user_id == uid))
+    # Freigaben nur zum Nutzen zaehlen hier NICHT: diese Menge steuert Gedaechtnis,
+    # Zeitplaene, Auswertungen, Protokolle … — Verwaltung. Nutzen (Chat, Sprache)
+    # fragt ``require_agent_access(..., nutzen=True)`` bzw. ``nur_nutzbare_agent_ids``.
+    shared = await db.scalars(select(AgentAccess.agent_id).where(
+        AgentAccess.user_id == uid,
+        (AgentAccess.rolle.is_(None)) | (AgentAccess.rolle != ROLLE_NUTZEN)))
     return {str(x) for x in owned.all()} | {str(x) for x in shared.all()}
+
+
+def verwaltende_freigaben(uid: str):
+    """``SELECT agent_id`` der Freigaben von ``uid``, die mehr als Nutzen erlauben.
+    Fuer alle Stellen, die Freigaben direkt abfragen (Aufgaben, Zeitplaene,
+    Freigabe-Anfragen, Finanzen): eine Freigabe nur zum Nutzen zaehlt dort nicht."""
+    from app.models.agent_access import ROLLE_NUTZEN, AgentAccess
+
+    return select(AgentAccess.agent_id).where(
+        AgentAccess.user_id == uid,
+        (AgentAccess.rolle.is_(None)) | (AgentAccess.rolle != ROLLE_NUTZEN))
+
+
+async def nur_nutzbare_agent_ids(user, db: AsyncSession) -> set[str]:
+    """Agenten, die ``user`` NUR nutzen darf (Freigabe ``nutzen``, nicht Besitzer)."""
+    from app.models.agent import Agent
+    from app.models.agent_access import ROLLE_NUTZEN, AgentAccess
+
+    uid = str(getattr(user, "id", "") or "")
+    rows = await db.execute(
+        select(AgentAccess.agent_id)
+        .join(Agent, Agent.id == AgentAccess.agent_id)
+        .where(AgentAccess.user_id == uid, AgentAccess.rolle == ROLLE_NUTZEN,
+               (Agent.user_id.is_(None)) | (Agent.user_id != uid)))
+    return {str(x) for x in rows.scalars().all()}

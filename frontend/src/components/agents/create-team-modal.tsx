@@ -6,11 +6,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, Plus, Loader2, Check, Crown, Users } from "lucide-react";
 import * as api from "@/lib/api";
 import type { Agent } from "@/lib/types";
-import type { Team } from "@/lib/api";
+import type { RepoAnbieter, Team } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { useToast } from "@/components/ui/dialog-provider";
-import { PROJEKT_FARBEN, TAKTE, istGithubRepo } from "@/lib/projekte";
+import { PROJEKT_FARBEN, REPO_ANBIETER, TAKTE, anbieterAusRepo, istGithubRepo } from "@/lib/projekte";
 import { useAuthStore } from "@/lib/auth";
 
 interface CreateTeamModalProps {
@@ -44,6 +44,7 @@ export function CreateTeamModal({
   const [takt, setTakt] = useState<number>(0);
   const [geteilt, setGeteilt] = useState<string[]>([]);
   const [repo, setRepo] = useState("");
+  const [anbieter, setAnbieter] = useState<RepoAnbieter>("github");
   const [schluessel, setSchluessel] = useState<number>(0);
   // Zusammenarbeit am Repo: Dauer einer Übernahme, Obergrenze je Bearbeiter, Ablösen erlaubt?
   const [uebernahmeStunden, setUebernahmeStunden] = useState<number>(2);
@@ -70,6 +71,7 @@ export function CreateTeamModal({
       setTakt(team?.takt_minuten ?? 0);
       setGeteilt(team?.geteilt_mit ?? []);
       setRepo(team?.repo ?? "");
+      setAnbieter(team?.repo_anbieter ?? anbieterAusRepo(team?.repo ?? ""));
       setSchluessel(team?.repo_secret_id ?? 0);
       setUebernahmeStunden(team?.uebernahme_stunden ?? 2);
       setMaxUebernahmen(team?.max_uebernahmen ?? 2);
@@ -119,7 +121,7 @@ export function CreateTeamModal({
         member_agent_ids: memberIds,
         lead_agent_id: leadAgentId || null,
         ...(projekt ? { farbe, takt_minuten: takt, geteilt_mit: geteilt, blinder_pruefer: blinderPruefer } : {}),
-        ...(projekt ? { repo: repo.trim(), repo_secret_id: repo.trim() ? schluessel : 0 } : {}),
+        ...(projekt ? { repo: repo.trim(), repo_anbieter: anbieter, repo_secret_id: repo.trim() ? schluessel : 0 } : {}),
         ...(projekt && isEdit && repo.trim() ? {
           uebernahme_stunden: uebernahmeStunden, max_uebernahmen: maxUebernahmen, abgelaufene_uebernehmen: abloesen,
           rueckkanal,
@@ -212,7 +214,7 @@ export function CreateTeamModal({
                     {/* Description */}
                     <div>
                       <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                        Beschreibung <span className="text-muted-foreground/40">(optional)</span>
+                        Beschreibung <span className="text-muted-foreground">(optional)</span>
                       </label>
                       <textarea
                         value={description}
@@ -226,18 +228,46 @@ export function CreateTeamModal({
                     {projekt && (
                       <div>
                         <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                          Git-Repo <span className="text-muted-foreground/40">(optional)</span>
+                          Git-Repo <span className="text-muted-foreground">(optional)</span>
                         </label>
+                        <div className="mb-2 flex gap-1" role="radiogroup" aria-label="Anbieter des Repos">
+                          {REPO_ANBIETER.map((a) => (
+                            <button
+                              key={a.key}
+                              type="button"
+                              role="radio"
+                              aria-checked={anbieter === a.key}
+                              onClick={() => setAnbieter(a.key)}
+                              className={cn(
+                                "flex-1 rounded-lg border px-3 py-1.5 text-xs transition-colors",
+                                anbieter === a.key
+                                  ? "border-primary/50 bg-primary/10 text-foreground"
+                                  : "border-foreground/[0.1] text-muted-foreground hover:bg-foreground/[0.04]",
+                              )}
+                            >
+                              {a.label}
+                            </button>
+                          ))}
+                        </div>
                         <input
                           type="text"
                           value={repo}
-                          onChange={(e) => setRepo(e.target.value)}
-                          placeholder="GitHub: owner/name · Forgejo/Gitea: https://git.example.com/team/repo"
+                          onChange={(e) => {
+                            setRepo(e.target.value);
+                            // gitlab.com erkennt der Server ohnehin — hier gleich anzeigen.
+                            if (/^https:\/\/(www\.)?gitlab\.com\//i.test(e.target.value.trim())) setAnbieter("gitlab");
+                          }}
+                          placeholder={REPO_ANBIETER.find((a) => a.key === anbieter)?.beispiel}
                           className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
                         />
-                        <p className="text-[11px] text-muted-foreground/50 mt-1">
-                          GitHub als owner/name, ein eigener Forgejo- oder Gitea-Server mit voller Adresse. Offene
-                          Issues kommen in die Inbox, Pull Requests mit CI-Stand ins Review („Wartet auf Merge“).
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          {anbieter === "github"
+                            ? "GitHub als owner/name."
+                            : anbieter === "gitlab"
+                              ? "Volle Adresse des Projekts, auch mit Untergruppen. Gilt für gitlab.com und eigene GitLab-Server."
+                              : "Volle Adresse des Repos auf dem eigenen Forgejo- oder Gitea-Server."}{" "}
+                          Offene Issues kommen in die Inbox, {anbieter === "gitlab" ? "Merge Requests" : "Pull Requests"} mit
+                          CI-Stand ins Review („Wartet auf Merge“).
                         </p>
                         {repo.trim() && (
                           <div className="mt-2">
@@ -248,7 +278,7 @@ export function CreateTeamModal({
                               className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
                             >
                               <option value={0}>
-                                {istAdmin && istGithubRepo(repo)
+                                {istAdmin && anbieter === "github" && istGithubRepo(repo)
                                   ? "Kein eigener — GitHub-Verbindung der Anlage bzw. öffentlich"
                                   : "Keiner — nur öffentliche Repos"}
                               </option>
@@ -256,10 +286,11 @@ export function CreateTeamModal({
                                 <option key={k.id} value={k.id}>{k.name} ({k.key_name})</option>
                               ))}
                             </select>
-                            <p className="text-[11px] text-muted-foreground/50 mt-1">
-                              Für private Repos: einen Zugangsschlüssel mit Leserecht aus der Schlüsselverwaltung
-                              wählen, bei GitHub ein GitHub-Token, bei Forgejo/Gitea ein Token dieses Servers.
-                              Öffentliche Repos gehen ohne (abgeglichen alle 30 Min.).
+                            <p className="text-[11px] text-muted-foreground mt-1">
+                              Für private Repos: einen Zugangsschlüssel aus der Schlüsselverwaltung wählen, bei
+                              GitHub ein GitHub-Token, sonst ein Token dieses Servers (GitLab: Bereich „api“, Rolle
+                              Developer). Bei eigenen Servern nur ein eigener Schlüssel. Öffentliche Repos gehen ohne
+                              (abgeglichen alle 30 Min.).
                             </p>
                           </div>
                         )}
@@ -320,7 +351,7 @@ export function CreateTeamModal({
                     {projekt && brainListe.length > 0 && (
                       <div>
                         <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                          Second Brains anbinden <span className="text-muted-foreground/40">(optional)</span>
+                          Second Brains anbinden <span className="text-muted-foreground">(optional)</span>
                         </label>
                         <div className="flex flex-wrap gap-1.5">
                           {brainListe.map((b) => {
@@ -335,7 +366,7 @@ export function CreateTeamModal({
                             );
                           })}
                         </div>
-                        <p className="text-[11px] text-muted-foreground/50 mt-1">
+                        <p className="text-[11px] text-muted-foreground mt-1">
                           Die Suche im Projektwissen — auch die der Agenten — sieht dann dort mit nach. Gelesen wird nur, nichts verändert.
                         </p>
                       </div>
@@ -366,7 +397,7 @@ export function CreateTeamModal({
                     {/* Members */}
                     <div>
                       <label className="block text-xs font-medium text-muted-foreground mb-2.5">
-                        Mitglieder <span className="text-muted-foreground/40">({memberIds.length})</span>
+                        Mitglieder <span className="text-muted-foreground">({memberIds.length})</span>
                       </label>
                       <div className="space-y-2">
                         {agents.map((agent) => {
@@ -405,7 +436,7 @@ export function CreateTeamModal({
                         })}
 
                         {agents.length === 0 && (
-                          <p className="text-xs text-muted-foreground/50 text-center py-3">
+                          <p className="text-xs text-muted-foreground text-center py-3">
                             Keine Agents vorhanden — lege zuerst einen Agent an.
                           </p>
                         )}
@@ -418,7 +449,7 @@ export function CreateTeamModal({
                         <span className="inline-flex items-center gap-1.5">
                           <Crown className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400" /> Lead
                         </span>{" "}
-                        <span className="text-muted-foreground/40">(optional)</span>
+                        <span className="text-muted-foreground">(optional)</span>
                       </label>
                       <select
                         value={leadAgentId}
@@ -433,7 +464,7 @@ export function CreateTeamModal({
                           </option>
                         ))}
                       </select>
-                      <p className="text-[11px] text-muted-foreground/50 mt-1">
+                      <p className="text-[11px] text-muted-foreground mt-1">
                         {projekt
                           ? "Der Lead verteilt Aufträge ans Projekt an die passenden Kollegen. Ohne Lead wählst du je Auftrag selbst."
                           : "Der Lead muss Mitglied des Teams sein und erhält delegierte Tasks."}
@@ -452,7 +483,7 @@ export function CreateTeamModal({
                             <option key={t.minuten} value={t.minuten}>{t.label}</option>
                           ))}
                         </select>
-                        <p className="text-[11px] text-muted-foreground/50 mt-1">
+                        <p className="text-[11px] text-muted-foreground mt-1">
                           Im Takt sichtet der Lead die Inbox und vergibt die nächsten freigegebenen Karten. Ohne offene
                           Karten fällt der Lauf aus — er kostet dann nichts. Braucht einen Lead (oder genau ein Mitglied).
                         </p>
@@ -462,14 +493,14 @@ export function CreateTeamModal({
                     {projekt && (
                       <div>
                         <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                          Freigeben für <span className="text-muted-foreground/40">(optional)</span>
+                          Freigeben für <span className="text-muted-foreground">(optional)</span>
                         </label>
                         <p className="text-[11px] text-muted-foreground/60 mb-2">
                           Ohne Freigabe siehst nur du das Projekt. Freigegebene sehen Board und Wissen und arbeiten mit —
                           ihren eigenen Agenten geben sie Aufträge. Verwalten kannst nur du.
                         </p>
                         {nutzer.length === 0 ? (
-                          <p className="text-xs text-muted-foreground/50">Keine weiteren Nutzer auf dieser Anlage.</p>
+                          <p className="text-xs text-muted-foreground">Keine weiteren Nutzer auf dieser Anlage.</p>
                         ) : (
                           <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-foreground/[0.06] p-1.5">
                             {nutzer.map((n) => {

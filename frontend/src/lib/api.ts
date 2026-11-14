@@ -1,4 +1,4 @@
-import type { ActivityTimelineResponse, AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, FeedbackStatus, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, DayPlanItem, ProactiveResponse, Responsibility, ReflectionRun, ReflectionStatus, Task, Schedule, FileEntry, Settings, SecondBrain, Integration, TodoListResponse, WebhookEvent } from "./types";
+import type { ActivityTimelineResponse, AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, FeedbackStatus, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, McpIdpOAuthConfig, MeetingRoom, Notification, PermissionPackage, DayPlanItem, ProactiveResponse, Responsibility, ReflectionRun, ReflectionStatus, Task, Schedule, FileEntry, Settings, SecondBrain, Integration, TodoListResponse, WebhookEvent } from "./types";
 import { getApiUrl, getBase, getWsUrl } from "./config";
 import type { ProjektBesprechung, ProjektBoard, ProjektKarte, ProjektKennzahlen, ProjektLauf, ProjektNachricht, ProjektStatus, ProjektTakt, ProjektTermin } from "./projekte";
 
@@ -530,6 +530,25 @@ export async function setMsgraphMcpExternal(enabled: boolean): Promise<{ msgraph
   });
 }
 
+// Eigene MCP-Endpunkte per OAuth über den Firmen-IdP (#1195).
+export async function getMcpIdpOAuth(): Promise<McpIdpOAuthConfig> {
+  return fetchJSON(`${getBase()}/settings/mcp-idp-oauth`);
+}
+
+export async function setMcpIdpOAuth(body: {
+  enabled: boolean;
+  issuer: string;
+  audience: string;
+  required_scope: string;
+  allowed_clients: string;
+  jwks_uri: string;
+}): Promise<McpIdpOAuthConfig> {
+  return fetchJSON(`${getBase()}/settings/mcp-idp-oauth`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
 export async function getDayPlan(
   agentId: string,
   date: string,
@@ -705,7 +724,7 @@ export interface TeamsKanal { team_id: string; channel_id: string; name?: string
 /** Teams-Termine eines Agenten (core/kanaele, ``channels.meetings``). */
 export interface BesprechungsEinstellung {
   aktiv: boolean;
-  rolle: "mitschreiber" | "beisitzer";
+  rolle: "mitschreiber" | "beisitzer" | "teilnehmer";
   automatisch_annehmen: boolean;
   annehmen_von: string[];
   mit_gaesten: boolean;
@@ -986,6 +1005,39 @@ export async function updateRole(id: number, body: { name?: string; description?
 
 export async function deleteRole(id: number): Promise<{ deleted: number }> {
   return fetchJSON(`${getBase()}/roles/${id}`, { method: "DELETE" });
+}
+
+export interface RollenVorlage {
+  schluessel: string;
+  name: string;
+  grundrolle: "admin" | "manager" | "member" | "viewer";
+  beschreibung: string;
+  rechte?: RolePermissions;
+}
+
+export async function getRollenVorlagen(): Promise<{ vorlagen: RollenVorlage[] }> {
+  return fetchJSON(`${getBase()}/roles/vorlagen`);
+}
+
+export async function gruppeAusVorlage(schluessel: string, name?: string): Promise<CustomRole & { grundrolle: string }> {
+  return fetchJSON(`${getBase()}/roles/vorlagen/${schluessel}`, {
+    method: "POST",
+    body: JSON.stringify(name ? { name } : {}),
+  });
+}
+
+export interface RechteZeile {
+  id: string;
+  name: string;
+  email: string;
+  grundrolle: string;
+  gruppe: string | null;
+  anmeldung: string;
+  rechte: { alles: true } | Record<string, string | number>;
+}
+
+export async function getRechteUebersicht(): Promise<{ nutzer: RechteZeile[] }> {
+  return fetchJSON(`${getBase()}/roles/uebersicht`);
 }
 
 export async function assignUserRole(userId: string, custom_role_id: number | null): Promise<{ user_id: string; custom_role_id: number | null }> {
@@ -1359,6 +1411,14 @@ export interface Besprechung {
 
 export async function getBesprechungen(): Promise<{ meetings: Besprechung[]; total: number }> {
   return fetchJSON(`${getBase()}/meetings`);
+}
+
+/** Agenten per Teams-Link in eine laufende Besprechung schicken (Weg B, ohne Einladung). */
+export async function agentInBesprechungSchicken(agentId: string, joinUrl: string, titel: string): Promise<Besprechung> {
+  return fetchJSON(`${getBase()}/meetings/teilnehmen`, {
+    method: "POST",
+    body: JSON.stringify({ agent_id: agentId, join_url: joinUrl, titel: titel || "Teams-Besprechung" }),
+  });
 }
 
 export async function loescheBesprechung(id: string): Promise<void> {
@@ -2140,6 +2200,24 @@ export async function setEgressStufe(
   return fetchJSON(`${getBase()}/settings/egress-stufen`, {
     method: "PUT",
     body: JSON.stringify({ art, ...stufe }),
+  });
+}
+
+/** Eigene Git-Server (Admin → Betrieb): Zertifizierungsstelle der Firma, Server im Firmennetz. */
+export interface GitServerStand {
+  ca_zertifikate: string;
+  stellen: { name: string; gueltig_bis: string }[];
+  interne_server: string[];
+}
+
+export async function getGitServer(): Promise<GitServerStand> {
+  return fetchJSON(`${getBase()}/settings/git-server`);
+}
+
+export async function setGitServer(body: { ca_zertifikate?: string; interne_server?: string }): Promise<GitServerStand> {
+  return fetchJSON(`${getBase()}/settings/git-server`, {
+    method: "PUT",
+    body: JSON.stringify(body),
   });
 }
 
@@ -4597,33 +4675,6 @@ export async function setMessageContextExclusion(
   );
 }
 
-// Teams-Anrufe: Agent mit Stimme im Termin (service-hosted media).
-export interface TeamsCallingSetup {
-  callback_url: string;
-  https_ok: boolean;
-  app_id: string;
-  tenant_id: string;
-  has_secret: boolean;
-  configured: boolean;
-  enabled: boolean;
-  permissions: { name: string; why: string }[];
-}
-
-export async function getTeamsCallingSetup(): Promise<TeamsCallingSetup> {
-  return fetchJSON(`${getBase()}/teams/calling/setup`);
-}
-
-export async function testTeamsCalling(): Promise<{ ok: boolean; reason: string }> {
-  return fetchJSON(`${getBase()}/teams/calling/test`, { method: "POST" });
-}
-
-export async function joinTeamsMeeting(joinUrl: string, agentId: string) {
-  return fetchJSON(`${getBase()}/teams/calling/join`, {
-    method: "POST",
-    body: JSON.stringify({ join_url: joinUrl, agent_id: agentId }),
-  });
-}
-
 // Admin-Concierge (#11): setzt vorhandene Abfragen zusammen — bewusst ohne
 // Sprachmodell, ein Concierge der eine Zahl halluziniert ist schlimmer als keiner.
 /** Ein Punkt, der eine Entscheidung oder einen Handgriff braucht. */
@@ -4963,8 +5014,10 @@ export interface Team {
   geteilt_mit?: string[];
   /** Ob der angemeldete Nutzer das Projekt angelegt hat (nur er verwaltet es). */
   darf_verwalten?: boolean;
-  /** Git-Repo: GitHub als owner/name, Forgejo/Gitea als https://server/owner/name. Issues und PRs kommen aufs Board. */
+  /** Git-Repo: GitHub als owner/name, Forgejo/Gitea und GitLab als https://server/owner/name. Issues und PRs kommen aufs Board. */
   repo?: string | null;
+  /** Anbieter des Repos (vom Server bestimmt): github, forgejo (auch Gitea) oder gitlab. */
+  repo_anbieter?: RepoAnbieter | null;
   repo_abgleich_at?: string | null;
   repo_fehler?: string | null;
   /** Schlüssel aus der Schlüsselverwaltung für private Repos. */
@@ -5279,6 +5332,9 @@ export async function listTeams(): Promise<{ teams: Team[] }> {
   return fetchJSON(`${getBase()}/teams/`);
 }
 
+/** Wo das Repo eines Projekts liegt. */
+export type RepoAnbieter = "github" | "forgejo" | "gitlab";
+
 export async function createTeam(body: {
   name: string;
   description?: string;
@@ -5288,6 +5344,7 @@ export async function createTeam(body: {
   takt_minuten?: number | null;
   geteilt_mit?: string[];
   repo?: string;
+  repo_anbieter?: RepoAnbieter;
   repo_secret_id?: number;
   angebundene_brains?: string[];
 }): Promise<Team> {
@@ -5312,6 +5369,7 @@ export async function updateTeam(
     takt_minuten?: number | null;
     geteilt_mit?: string[];
     repo?: string;
+    repo_anbieter?: RepoAnbieter;
     repo_secret_id?: number;
     angebundene_brains?: string[];
     uebernahme_stunden?: number;
@@ -5432,6 +5490,36 @@ export async function projektWissenWiederherstellen(id: string, pfad: string, ve
 
 export async function projektWissenAufbauen(id: string): Promise<ProjektKarte> {
   return fetchJSON(`${getBase()}/teams/${id}/wissen/aufbauen`, { method: "POST" });
+}
+
+/** Wer einen Agenten nur NUTZEN darf (Chat, Sprache, Dateien) — PUT ersetzt die Liste. */
+export async function getAgentFreigaben(agentId: string): Promise<{ nutzer: { id: string; name: string }[] }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/freigaben`);
+}
+
+export async function setAgentFreigaben(
+  agentId: string,
+  nutzerIds: string[],
+): Promise<{ nutzer: { id: string; name: string }[]; neu: number; entfernt: number }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/freigaben`, {
+    method: "PUT",
+    body: JSON.stringify({ nutzer_ids: nutzerIds }),
+  });
+}
+
+export interface KioskZugangStand { kiosk_eingeschaltet: boolean; eingerichtet: boolean }
+
+/** Zugang der Kiosk-Anzeige (core/kiosk_zugang) — nur Admin. */
+export async function getKioskZugang(): Promise<KioskZugangStand> {
+  return fetchJSON(`${getBase()}/admin/kiosk-zugang`);
+}
+
+export async function erzeugeKioskZugang(): Promise<{ link: string }> {
+  return fetchJSON(`${getBase()}/admin/kiosk-zugang`, { method: "POST" });
+}
+
+export async function entferneKioskZugang(): Promise<{ eingerichtet: boolean }> {
+  return fetchJSON(`${getBase()}/admin/kiosk-zugang`, { method: "DELETE" });
 }
 
 export async function getProjektVerzeichnis(): Promise<{ users: { id: string; name: string; email?: string }[] }> {

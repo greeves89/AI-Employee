@@ -393,7 +393,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
           </button>
         ))}
       </div>
-      <span className="text-[10px] text-muted-foreground/50">
+      <span className="text-[10px] text-muted-foreground">
         {messageCount} Nachrichten · {connections.length} Verbindungen{teams.length > 0 ? ` · ${teams.length} Team${teams.length !== 1 ? "s" : ""}` : ""}
       </span>
     </div>
@@ -733,7 +733,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
           <div className="h-12 w-12 rounded-xl bg-foreground/[0.04] flex items-center justify-center">
             <Users className="h-5 w-5 text-muted-foreground/30" />
           </div>
-          <span className="text-[10px] font-medium text-muted-foreground/30">
+          <span className="text-[10px] font-medium text-muted-foreground">
             {agents.length} Agent{agents.length !== 1 ? "s" : ""}
           </span>
           {messageCount > 0 && (
@@ -786,7 +786,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
         <div className="flex items-center gap-2 mb-3">
           <MessageSquare className="h-4 w-4 text-indigo-400" />
           <span className="text-xs font-semibold text-foreground/80">Konversationen</span>
-          <span className="text-[10px] text-muted-foreground/50 ml-auto">{messageCount} Nachrichten gesamt</span>
+          <span className="text-[10px] text-muted-foreground ml-auto">{messageCount} Nachrichten gesamt</span>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
           {connections.map((conn, i) => {
@@ -836,7 +836,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
                 <span className="text-sm font-semibold text-indigo-400">{convoAgents.aName}</span>
                 <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/40" />
                 <span className="text-sm font-semibold text-violet-400">{convoAgents.bName}</span>
-                <span className="text-[10px] text-muted-foreground/50 ml-2">
+                <span className="text-[10px] text-muted-foreground ml-2">
                   {convoMessages.length} Nachrichten
                 </span>
               </div>
@@ -854,7 +854,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
               ) : convoError ? (
                 <p className="text-sm text-red-400/70 text-center py-12">{convoError}</p>
               ) : convoMessages.length === 0 ? (
-                <p className="text-sm text-muted-foreground/50 text-center py-12">Keine Nachrichten</p>
+                <p className="text-sm text-muted-foreground text-center py-12">Keine Nachrichten</p>
               ) : (
                 convoMessages.map((msg, i) => {
                   const isFromA = msg.from_id === convoAgents.a;
@@ -888,12 +888,12 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
                               {msg.message_type}
                             </span>
                           )}
-                          <span className="text-[9px] text-muted-foreground/40">
+                          <span className="text-[9px] text-muted-foreground">
                             {new Date(msg.timestamp).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                           </span>
                         </div>
                         {msg.reply_to && (
-                          <div className="mb-1 text-[9px] text-muted-foreground/40 italic">
+                          <div className="mb-1 text-[9px] text-muted-foreground italic">
                             reply to {msg.reply_to}
                           </div>
                         )}

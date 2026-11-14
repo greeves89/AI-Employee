@@ -253,11 +253,19 @@ async def require_agent_access(
     agent_id: str,
     user,
     db: AsyncSession,
+    *,
+    nutzen: bool = False,
 ) -> None:
     """Verify user has access to a specific agent.
 
     - Admin/Manager: always allowed
     - Member/Viewer: only if they own the agent or have AgentAccess entry
+
+    Eine Freigabe nur zum NUTZEN (``AgentAccess.rolle == "nutzen"``) gilt nur, wo
+    der Aufrufer ``nutzen=True`` sagt: Chat, Sprache, Dateien schicken/abholen.
+    Ueberall sonst (Einstellungen, Gedaechtnis, Loeschen …) ist sie kein Zugang.
+    Standard ist also VERWALTEN — eine neue Schnittstelle ist fuer Nur-Nutzer zu,
+    bis sie sich ausdruecklich als Nutzen ausweist.
     """
     from app.models.agent import Agent
     from app.models.agent_access import AgentAccess
@@ -282,6 +290,12 @@ async def require_agent_access(
         )
     )
     if access:
+        from app.models.agent_access import ROLLE_NUTZEN
+
+        if access.rolle == ROLLE_NUTZEN and not nutzen:
+            raise HTTPException(
+                status_code=403,
+                detail="Dieser Agent ist dir nur zum Nutzen freigegeben.")
         return
 
     raise HTTPException(status_code=403, detail="Access denied to this agent")
@@ -457,8 +471,11 @@ def _abweisung_merken(agent_id: str, request: Request) -> None:
     if jetzt - _abgewiesen_zuletzt.get(agent_id, -_ABGEWIESEN_PAUSE) < _ABGEWIESEN_PAUSE:
         return
     _abgewiesen_zuletzt[agent_id] = jetzt
-    pfad = request.url.path[:200]
-    logger.warning("Agenten-Token über einen Eingang abgewiesen (Agent %s, Pfad %r)", agent_id, pfad)
+    # Pfad und Agent-ID kommen von außen (Log-Injection): Zeilenumbrüche weg (erkennt CodeQL)
+    # und alle übrigen Steuerzeichen, etwa ANSI-Sequenzen.
+    pfad = "".join(c for c in request.url.path[:200].replace("\r", "").replace("\n", "") if c.isprintable())
+    kennung = "".join(c for c in str(agent_id)[:64].replace("\r", "").replace("\n", "") if c.isprintable())
+    logger.warning("Agenten-Token über einen Eingang abgewiesen (Agent %s, Pfad %r)", kennung, pfad)
     try:
         aufgabe = asyncio.get_running_loop().create_task(_abweisung_protokollieren(agent_id, pfad))
     except RuntimeError:

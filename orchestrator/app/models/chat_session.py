@@ -49,3 +49,6 @@ class ChatSession(Base, TimestampMixin):
     #: Warum ein Ziel pausiert, wenn nicht der Agent gefragt hat — z. B. „Budget
     #: aufgebraucht“ (app.core.ziel.GRUND_BUDGET). None → kein besonderer Grund.
     goal_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Wer das Gespraech begonnen hat (core/chat_besitz). Nur er — sowie Besitzer
+    #: des Agenten und Admins — sieht es. None → gehoert dem Besitzer des Agenten.
+    user_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)

@@ -21,16 +21,18 @@ already-transcribed part (it is appended live to the transcript).
 """
 import logging
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import httpx
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db.session import get_db
 from app.dependencies import require_auth
-from app.models.meeting import Meeting
+from app.models.meeting import QUELLE_TEAMS, Meeting
 from app.schemas.meeting import MeetingCreate, MeetingListResponse, MeetingResponse, MeetingUpdate
 from app.services.settings_service import SettingsService
 
@@ -53,7 +55,8 @@ async def _transcribe_local(raw: bytes, filename: str, content_type: str) -> str
     return (resp.json().get("text") or "").strip()
 
 
-async def _transcribe_openai(raw: bytes, filename: str, content_type: str, api_key: str) -> str:
+async def _transcribe_openai(raw: bytes, filename: str, content_type: str, api_key: str,
+                             sprache: str | None = None) -> str:
     """Transcribe via OpenAI Whisper. Raises on failure."""
     if len(raw) > _OPENAI_MAX_BYTES:
         raise HTTPException(
@@ -66,32 +69,23 @@ async def _transcribe_openai(raw: bytes, filename: str, content_type: str, api_k
             "https://api.openai.com/v1/audio/transcriptions",
             headers={"Authorization": f"Bearer {api_key}"},
             files={"file": (filename, raw, content_type)},
-            data={"model": "whisper-1", "response_format": "json"},
+            data={"model": "whisper-1", "response_format": "json", **({"language": sprache} if sprache else {})},
         )
     resp.raise_for_status()
     return (resp.json().get("text") or "").strip()
 
 
-@router.post("/transcribe")
-async def transcribe_chunk(
-    file: UploadFile = File(...),
-    user=Depends(require_auth),
-    db: AsyncSession = Depends(get_db),
-):
-    """Transcribe one recorded audio segment.
+async def transkribieren(raw: bytes, filename: str, content_type: str, db: AsyncSession,
+                         sprache: str | None = None) -> str:
+    """EIN Weg zur Transkription — Mitschnitt im Browser und Teams-Teilnehmer.
 
-    Tries the local STT service first; if it is not configured/reachable, falls
-    back to OpenAI Whisper. Returns ``{"text": "..."}``; empty audio yields an
-    empty string."""
-    raw = await file.read()
+    Erst der lokale STT-Dienst, sonst OpenAI Whisper (Schlüssel aus der Einstellung
+    ``voice_openai_api_key``). Leerer Ton → leerer Text."""
     if not raw:
-        return {"text": ""}
-    filename = file.filename or "chunk.webm"
-    content_type = file.content_type or "audio/webm"
-
+        return ""
     # 1) Local STT service (any host that runs faster-whisper).
     try:
-        return {"text": await _transcribe_local(raw, filename, content_type)}
+        return await _transcribe_local(raw, filename, content_type)
     except httpx.HTTPError as e:
         logger.info("Local STT unavailable, trying OpenAI fallback: %s", e)
 
@@ -104,7 +98,7 @@ async def transcribe_chunk(
                    "OpenAI-Key für den Fallback konfiguriert (Admin-Konsole → Sprache (Voice)).",
         )
     try:
-        return {"text": await _transcribe_openai(raw, filename, content_type, api_key)}
+        return await _transcribe_openai(raw, filename, content_type, api_key, sprache)
     except HTTPException:
         raise
     except httpx.HTTPStatusError as e:
@@ -113,6 +107,118 @@ async def transcribe_chunk(
     except Exception as e:  # noqa: BLE001 — surface a clean error, log the detail
         logger.warning("Meeting transcribe error (fallback): %s", e)
         raise HTTPException(status_code=500, detail="Transkription fehlgeschlagen.")
+
+
+@router.post("/transcribe")
+async def transcribe_chunk(
+    file: UploadFile = File(...),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Transcribe one recorded audio segment (browser recorder)."""
+    raw = await file.read()
+    return {"text": await transkribieren(raw, file.filename or "chunk.webm", file.content_type or "audio/webm", db)}
+
+
+#: Größtes Tonstück vom Teams-Teilnehmer (30 s WAV 16 kHz mono ≈ 1 MB).
+TEILNEHMER_MAX_BYTES = 4 * 1024 * 1024
+#: So lange nach dem Termin nimmt die Seite noch Ton an (Nachlauf, Verzögerung).
+TEILNEHMER_NACHLAUF = timedelta(minutes=30)
+TRANSKRIPT_MAX = 200_000
+
+
+class TeilnehmenAnfrage(BaseModel):
+    agent_id: str = Field(min_length=1, max_length=64)
+    join_url: str = Field(min_length=10, max_length=2000)
+    titel: str = Field(default="Teams-Besprechung", max_length=200)
+
+
+@router.post("/teilnehmen", response_model=MeetingResponse, status_code=201)
+async def agent_in_besprechung_schicken(
+    body: TeilnehmenAnfrage,
+    request: Request,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Den Agenten in eine laufende Teams-Besprechung schicken — per Link, ohne Einladung
+    (docs/plaene/teams-teilnehmer.md, Weg B). Nur Besitzer oder Admin: Der Agent tritt dann
+    bei, hört zu und schreibt das Protokoll für seinen Besitzer."""
+    from app.core.chat_auftrag import nachricht_einreihen
+    from app.core.ownership import is_admin
+    from app.models.agent import Agent
+    from app.models.meeting import STATUS_LAEUFT
+    from app.services.teams_meetings import teams_link_erlaubt
+
+    agent = await db.get(Agent, body.agent_id)
+    if agent is None or (agent.user_id != user.id and not is_admin(user)):
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
+    link = body.join_url.strip()
+    if not teams_link_erlaubt(link):
+        raise HTTPException(status_code=422, detail="Bitte einen Teams-Beitrittslink einfügen "
+                                                    "(https://teams.microsoft.com/…).")
+    import hashlib
+
+    jetzt = datetime.now(timezone.utc)
+    kennung = "link-" + hashlib.sha256(link.encode()).hexdigest()[:24]
+    seite = (await db.execute(select(Meeting).where(
+        Meeting.agent_id == agent.id, Meeting.teams_event_id == kennung))).scalar_one_or_none()
+    if seite is None:
+        seite = Meeting(id=uuid.uuid4().hex[:12], user_id=agent.user_id or user.id, agent_id=agent.id,
+                        teams_event_id=kennung, quelle=QUELLE_TEAMS, title=body.titel.strip() or "Teams-Besprechung",
+                        transcript="", protokoll="", participants=[], status=STATUS_LAEUFT)
+        db.add(seite)
+    seite.beginn, seite.ende = jetzt, jetzt + timedelta(hours=2)
+    await db.commit()
+    await db.refresh(seite)
+    redis = getattr(request.app.state, "redis", None)
+    client = getattr(redis, "client", None)
+    if client is None:
+        raise HTTPException(status_code=503, detail="Nachrichtendienst nicht erreichbar")
+    if await client.set(f"teams-teilnahme:{seite.id}", "1", nx=True, ex=2 * 3600):
+        await nachricht_einreihen(client, agent.id, {
+            "type": "teilnehmen", "meeting_id": seite.id, "join_url": link,
+            "name": f"{agent.name} - KI", "ende": seite.ende.isoformat(),
+        }, vorne=True)
+    return seite
+
+
+@router.post("/{meeting_id}/teilnehmer-ton")
+async def teilnehmer_ton(
+    meeting_id: str,
+    request: Request,
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Der Teams-Teilnehmer eines Agenten liefert ein Tonstück (WAV) aus einem laufenden
+    Termin. Es wird transkribiert und an das Transkript der Besprechungsseite gehängt.
+
+    Nur der Agent, dem die Seite gehört, und nur im Zeitfenster des Termins — ein Token
+    allein reicht nicht, um fremde Besprechungen zu beschreiben."""
+    from app.dependencies import agent_zugang_pruefen
+
+    if not agent_zugang_pruefen(request, agent_id, request.headers.get("X-Agent-Token", "")):
+        raise HTTPException(status_code=403, detail="Kein Zugang")
+    seite = await db.get(Meeting, meeting_id)
+    if seite is None or seite.agent_id != agent_id or seite.quelle != QUELLE_TEAMS:
+        raise HTTPException(status_code=404, detail="Besprechung nicht gefunden")
+    jetzt = datetime.now(timezone.utc)
+    beginn, ende = seite.beginn, seite.ende
+    if beginn and beginn.tzinfo is None:
+        beginn = beginn.replace(tzinfo=timezone.utc)
+    if ende and ende.tzinfo is None:
+        ende = ende.replace(tzinfo=timezone.utc)
+    if not ende or jetzt > ende + TEILNEHMER_NACHLAUF or (beginn and jetzt < beginn - timedelta(minutes=10)):
+        raise HTTPException(status_code=409, detail="Termin läuft nicht")
+    raw = await request.body()
+    if len(raw) > TEILNEHMER_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Tonstück zu groß")
+    # Sprache vorgeben: Ohne sie rät Whisper bei leisen Stücken eine Sprache und erfindet dazu.
+    text = (await transkribieren(raw, "teilnehmer.wav", "audio/wav", db, sprache="de")).strip()
+    if text:
+        zeile = f"[{jetzt.astimezone().strftime('%H:%M')}] {text}"
+        seite.transcript = (((seite.transcript or "") + "\n" + zeile).strip())[-TRANSKRIPT_MAX:]
+        await db.commit()
+    return {"text": text}
 
 
 # ── Saved meetings ────────────────────────────────────────────────────────────

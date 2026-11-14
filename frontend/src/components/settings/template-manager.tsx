@@ -264,7 +264,7 @@ export function TemplateManager({ isAdmin }: TemplateManagerProps) {
                       <Eye className="h-2.5 w-2.5" /> Freigegeben
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border bg-foreground/[0.04] text-muted-foreground/40 border-foreground/[0.06]">
+                    <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border bg-foreground/[0.04] text-muted-foreground border-foreground/[0.06]">
                       <EyeOff className="h-2.5 w-2.5" /> Entwurf
                     </span>
                   )}
@@ -485,7 +485,7 @@ function TemplateEditForm({
                     "flex h-8 w-8 items-center justify-center rounded-lg border transition-colors",
                     state.icon === icon
                       ? "border-blue-500/40 bg-blue-500/10 text-blue-400"
-                      : "border-foreground/[0.08] text-muted-foreground/40 hover:text-muted-foreground",
+                      : "border-foreground/[0.08] text-muted-foreground hover:text-foreground",
                   )}
                 >
                   <I className="h-4 w-4" />
@@ -531,7 +531,7 @@ function TemplateEditForm({
                 "flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-colors",
                 state.permissions.includes(p.id)
                   ? "border-blue-500/30 bg-blue-500/10 text-blue-400"
-                  : "border-foreground/[0.08] text-muted-foreground/50 hover:text-muted-foreground",
+                  : "border-foreground/[0.08] text-muted-foreground hover:text-foreground",
               )}
             >
               {state.permissions.includes(p.id) && <CheckCircle2 className="h-3 w-3" />}
@@ -553,7 +553,7 @@ function TemplateEditForm({
                 "flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-colors",
                 state.integrations.includes(i.id)
                   ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-                  : "border-foreground/[0.08] text-muted-foreground/50 hover:text-muted-foreground",
+                  : "border-foreground/[0.08] text-muted-foreground hover:text-foreground",
               )}
             >
               {state.integrations.includes(i.id) && <CheckCircle2 className="h-3 w-3" />}

@@ -177,12 +177,12 @@ export function ModelCatalogAdmin() {
               <div key={mode.mode} className="px-5 py-4">
                 <div className="flex items-center gap-2 mb-2.5">
                   <span className="text-xs font-semibold">{mode.label}</span>
-                  <span className="text-[10px] text-muted-foreground/40 font-mono">{mode.mode}</span>
+                  <span className="text-[10px] text-muted-foreground font-mono">{mode.mode}</span>
                 </div>
                 <div className="space-y-3">
                   {mode.providers.map((prov) => (
                     <div key={prov.provider}>
-                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground/40 mb-1.5">
+                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">
                         {prov.provider}
                       </div>
                       <div className="space-y-1">
@@ -205,7 +205,7 @@ export function ModelCatalogAdmin() {
                                   {m.source === "discovered" ? "Erkannt" : "Basis"}
                                 </span>
                               </div>
-                              <div className="text-[10px] text-muted-foreground/40 font-mono truncate">{m.value}</div>
+                              <div className="text-[10px] text-muted-foreground font-mono truncate">{m.value}</div>
                             </div>
                             <button
                               role="switch"
@@ -241,7 +241,7 @@ export function ModelCatalogAdmin() {
 
         <div className="flex items-start gap-2 px-5 py-3 border-t border-foreground/[0.04] bg-foreground/[0.01]">
           <Check className="h-3.5 w-3.5 text-emerald-400/70 mt-0.5 shrink-0" />
-          <p className="text-[10px] text-muted-foreground/50">
+          <p className="text-[10px] text-muted-foreground">
             Nur freigeschaltete Modelle erscheinen bei der Agent-Erstellung und in den Agent-Einstellungen.
             Welche Laufzeit ein Modell nutzt (Claude Code / Codex), legt weiterhin der Server fest.
           </p>

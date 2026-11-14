@@ -127,7 +127,8 @@ class EndpunktTests(unittest.IsolatedAsyncioTestCase):
 
     async def _patch(self, agent, user, body):
         from app.api import agents as api
-        manager = SimpleNamespace(_get_agent=AsyncMock(return_value=agent), restart_agent=AsyncMock())
+        manager = SimpleNamespace(_get_agent=AsyncMock(return_value=agent), restart_agent=AsyncMock(),
+                                  update_agent=AsyncMock())
         self.manager = manager
         reihenfolge = self.reihenfolge = []
         db = SimpleNamespace(commit=AsyncMock(side_effect=lambda: reihenfolge.append("commit")))
@@ -162,10 +163,16 @@ class EndpunktTests(unittest.IsolatedAsyncioTestCase):
         """Offene Verbindungen zum Anbieter liefen sonst ungeprüft weiter."""
         from app.models.user import UserRole
         besitzer = SimpleNamespace(id="u1", role=UserRole.MEMBER)
-        laufend = _agent(aktiv=False); laufend.container_id = "c1"
+        from app.models.agent import AgentState
+        laufend = _agent(aktiv=False); laufend.container_id = "c1"; laufend.state = AgentState.RUNNING
         aus, _ = await self._patch(laufend, besitzer, {"aktiv": True})
         self.manager.restart_agent.assert_awaited_once_with("a1")
         self.assertTrue(aus.get("neu_gestartet"))
+        # Gestoppt (etwa vom Nutzer angehalten): nur neu bauen, nicht starten (1.461).
+        gestoppt = _agent(aktiv=False); gestoppt.container_id = "c1"; gestoppt.state = AgentState.STOPPED
+        await self._patch(gestoppt, besitzer, {"aktiv": True})
+        self.manager.restart_agent.assert_not_awaited()
+        self.manager.update_agent.assert_awaited_once_with("a1")
         for agent, body in ((_agent(aktiv=True), {"begriffe": ["Neu Name"]}), (_agent(aktiv=False), {"aktiv": True})):
             agent.container_id = "c1" if agent.config["anonymisierer"]["aktiv"] else None
             await self._patch(agent, besitzer, body)

@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 """Vorschaubild fuer Videos im Gespraech — ohne das Video zu uebertragen.
 
 Am 22.09.2026 gemeldet: Ein Videoanhang war nur eine Kachel mit Dateinamen.
@@ -109,3 +110,33 @@ class VideoStandbildTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StandbildEingabeFestTests(unittest.TestCase):
+    """Eingabeformat fest nach Endung, nur Protokoll ``file`` (Sicherheitsreview 1.457):
+    eine als Video getarnte Playlist/concat-Liste darf keine anderen Dateien einlesen."""
+
+    def test_format_und_protokoll_fest(self):
+        from app.core.file_manager import FileManager
+
+        befehle = []
+
+        def exec_(cid, cmd):
+            befehle.append(cmd)
+            return (0, "OK") if cmd[0] == "bash" else (0, "")
+
+        docker = SimpleNamespace(exec_in_container=exec_, get_file_from_container=lambda c, p: b"jpg")
+        FileManager(docker).video_standbild("c1", "/workspace/a.webm")
+        ff = next(b for b in befehle if b[0] == "ffmpeg")
+        self.assertEqual(ff[ff.index("-protocol_whitelist") + 1], "file")
+        self.assertEqual(ff[ff.index("-f") + 1], "matroska")
+        self.assertLess(ff.index("-f"), ff.index("-i"))
+
+    def test_listen_und_unbekanntes_abgelehnt(self):
+        from app.core.file_manager import FileManager
+
+        docker = SimpleNamespace(exec_in_container=lambda c, cmd: (0, "OK"), get_file_from_container=lambda c, p: b"")
+        for pfad in ("/workspace/x.m3u8", "/workspace/x.txt", "/workspace/x.ffconcat", "/workspace/x"):
+            with self.assertRaises(ValueError, msg=pfad):
+                FileManager(docker).video_standbild("c1", pfad)
+

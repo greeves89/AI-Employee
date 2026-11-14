@@ -128,20 +128,33 @@ def ziel_erlaubt(host: str, ziele: dict | None) -> bool:
     return any(_muster_passt(h, m) for m in (ziele.get("muster") or []))
 
 
-def ziel_adresse(host: str, port: int, aufloesen=socket.getaddrinfo) -> str:
+def _firmennetz(ip) -> bool:
+    """Privates Netz oder CGNAT — aber nie Loopback, Link-Local (Metadaten), Multicast."""
+    if ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified or ip.is_reserved:
+        return False
+    return ip.is_private or ip in ipaddress.ip_network("100.64.0.0/10")
+
+
+def ziel_adresse(host: str, port: int, aufloesen=socket.getaddrinfo, interne: frozenset | set = frozenset()) -> str:
     """Oeffentliche IP fuer ``host`` — oder ``Abgelehnt``.
 
     Der Proxy ist kein Umweg ins Firmennetz: Alle Adressen des Namens muessen
     oeffentlich sein, und verbunden wird mit genau der geprueften (kein zweites
-    Aufloesen, das anders ausfallen koennte).
+    Aufloesen, das anders ausfallen koennte). Ausnahme: ein Git-Server, den der
+    Administrator ausdruecklich freigegeben hat (``interne``, vom Orchestrator) — nur
+    ueber Port 443 und nur ins Firmennetz, nie auf Loopback oder Link-Local.
     """
     try:
         infos = aufloesen(host, port, type=socket.SOCK_STREAM)
     except OSError as e:
         raise Abgelehnt(502, f"Ziel nicht auflösbar: {host}") from e
+    freigegeben = port == KEY_PORT and (host or "").lower().rstrip(".") in interne
     adressen = []
     for info in infos:
         ip = ipaddress.ip_address(info[4][0])
+        if freigegeben and _firmennetz(ip):
+            adressen.append(str(ip))
+            continue
         if not ip.is_global or any(ip in netz for netz in _UEBERSETZT):
             raise Abgelehnt(403, f"Interne Adresse über den Egress-Proxy gesperrt: {host}")
         adressen.append(str(ip))
@@ -150,6 +163,23 @@ def ziel_adresse(host: str, port: int, aufloesen=socket.getaddrinfo) -> str:
     # IPv4 zuerst: Im Container fehlt oft die IPv6-Route.
     adressen.sort(key=lambda a: ":" in a)
     return adressen[0]
+
+
+def git_ca_gilt(ziel: str, port: int, interne: frozenset | set) -> bool:
+    """Gilt die Stelle der Firma für diese Verbindung? Nur für freigegebene Git-Server auf
+    Port 443 — nie für andere Ziele (etwa Modellanbieter)."""
+    return port == KEY_PORT and bool(ziel) and (ziel or "").lower().rstrip(".") in interne
+
+
+def ca_buendel(standard: str, eigene: str) -> str:
+    """Vertrauensliste für die Gegenseite: die üblichen Stellen plus die der Firma.
+
+    Nur Zertifikatsblöcke der eigenen Stelle werden übernommen — sonst nichts aus
+    der Antwort des Orchestrators landet in der Datei."""
+    bloecke = re.findall(r"-----BEGIN CERTIFICATE-----[A-Za-z0-9+/=\s]+?-----END CERTIFICATE-----", eigene or "")
+    if not bloecke:
+        return standard
+    return standard.rstrip("\n") + "\n\n" + "\n".join(bloecke) + "\n"
 
 
 def platzhalter_in(*texte: str) -> set[str]:
@@ -415,6 +445,10 @@ class Orchestrator:
         #: Zielliste am Ausgang je Agent (orchestrator/app/core/zielliste), wie ``_anonym``.
         self._ziele: dict[tuple[str, str], dict | None] = {}
         self._werte: dict[tuple, tuple[float, dict[str, str]]] = {}
+        #: Eigene Git-Server (#1194), für die ganze Anlage: Stelle der Firma (PEM) und
+        #: freigegebene Server im Firmennetz — Stand der letzten Anmeldung.
+        self.git_ca: str = ""
+        self.interne: frozenset[str] = frozenset()
 
     def _http(self, pfad: str, daten: dict) -> tuple[int, dict]:
         anfrage = urllib.request.Request(
@@ -458,6 +492,7 @@ class Orchestrator:
             self._anonym[agent] = anonym if isinstance(anonym, dict) and anonym.get("schluessel") else None
             ziele = antwort.get("zielliste")
             self._ziele[agent] = ziele if isinstance(ziele, dict) else None
+            self._git_server(antwort)
             return hosts
         if status in (401, 422):
             self._anmeldungen.pop(agent, None)
@@ -467,6 +502,14 @@ class Orchestrator:
         if status >= 500 and gemerkt and jetzt - gemerkt[0] < ANMELDUNG_NOTFALL:
             return gemerkt[1]
         raise OrchestratorFehler(f"Antwort {status}")
+
+    def _git_server(self, antwort: dict) -> None:
+        """Stelle der Firma und freigegebene interne Git-Server aus der Antwort übernehmen."""
+        pem = antwort.get("git_ca")
+        self.git_ca = pem if isinstance(pem, str) and pem.startswith("-----BEGIN CERTIFICATE-----") else ""
+        interne = antwort.get("interne_ziele")
+        self.interne = frozenset(str(h).lower().rstrip(".") for h in interne if isinstance(h, str) and h) \
+            if isinstance(interne, list) else frozenset()
 
     def anonym(self, agent: tuple[str, str]) -> dict | None:
         """Anonymisierer-Einstellung des Agenten (Schlüssel, Begriffe, Ziele) — None = aus.

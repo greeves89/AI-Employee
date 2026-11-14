@@ -183,6 +183,20 @@ function SingleTasksView() {
 
   const activeCount = tasks.filter((t) => ACTIVE_STATUSES.includes(t.status)).length;
 
+  // Läuft gerade nichts, aber es gibt Aufgaben: einmal auf „Alle“ springen, statt
+  // mit einem leeren Reiter „Aktiv 0“ zu begrüßen (UI-Durchsicht 14.11.2026).
+  // Nur beim ersten Laden — eine Wahl des Nutzers bleibt unangetastet.
+  // ``loading`` steht anfangs auf false (gemeinsamer Speicher): erst nach dem ersten
+  // echten Laden entscheiden.
+  const startReiter = useRef<"wartet" | "laedt" | "fertig">("wartet");
+  useEffect(() => {
+    if (startReiter.current === "fertig") return;
+    if (loading) { startReiter.current = "laedt"; return; }
+    if (startReiter.current !== "laedt") return;
+    startReiter.current = "fertig";
+    if (activeCount === 0 && tasks.length > 0) setFilter((f) => (f === "active" ? "all" : f));
+  }, [loading, activeCount, tasks.length]);
+
   const retryTask = async (task: { title: string; prompt: string; agent_id: string | null; model: string | null }) => {
     try {
       await api.createTask({
@@ -233,7 +247,7 @@ function SingleTasksView() {
       transition={{ duration: 0.3 }}
     >
       {/* Filter tabs */}
-      <div className="mb-6 flex gap-1 p-1 rounded-xl bg-foreground/[0.03] border border-foreground/[0.06] w-fit max-w-full overflow-x-auto scrollbar-thin">
+      <div className="mb-6 flex gap-1 p-1 rounded-xl bg-foreground/[0.03] border border-foreground/[0.06] w-fit max-w-full flex-wrap">
         {filterTabs.map((tab) => {
           const count = tab.key === "active"
             ? activeCount
@@ -361,7 +375,7 @@ function SingleTasksView() {
                       <button
                         onClick={(e) => handleDelete(e, task.id)}
                         disabled={deleting.has(task.id)}
-                        className="inline-flex items-center rounded-lg p-1.5 text-muted-foreground/40 hover:text-red-400 hover:bg-red-500/10 transition-colors can-hover:opacity-0 can-hover:group-hover:opacity-100 disabled:opacity-50 can-hover:disabled:opacity-50"
+                        className="inline-flex items-center rounded-lg p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors can-hover:opacity-0 can-hover:group-hover:opacity-100 disabled:opacity-50 can-hover:disabled:opacity-50"
                         title="Aufgabe löschen"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -624,7 +638,7 @@ function ScheduledTasksView({ hervorgehoben = "" }: { hervorgehoben?: string }) 
               className="flex w-full items-center gap-2.5 rounded-xl border border-foreground/[0.06] bg-card/50 px-4 py-2.5 text-left transition-colors hover:border-foreground/[0.1] hover:bg-card/80"
             >
               <ChevronRight
-                className={`h-3.5 w-3.5 shrink-0 text-muted-foreground/50 transition-transform duration-150 ${offen ? "rotate-90" : ""}`}
+                className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-150 ${offen ? "rotate-90" : ""}`}
               />
               <Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
               <span className="text-sm font-medium truncate">{gruppe.name}</span>
@@ -757,14 +771,14 @@ function ScheduledTasksView({ hervorgehoben = "" }: { hervorgehoben?: string }) 
                   <XCircle className="h-3.5 w-3.5 text-red-400" />
                   <span>{schedule.fail_count}</span>
                 </div>
-                <div className="text-muted-foreground/50">
+                <div className="text-muted-foreground">
                   {schedule.total_runs} {schedule.total_runs === 1 ? "Lauf" : "Läufe"}
                   {schedule.total_runs > 0 && (
                     <> &middot; {Math.round(schedule.success_rate * 100)} % erfolgreich</>
                   )}
                 </div>
                 {schedule.last_run_at && (
-                  <div className="text-muted-foreground/50">
+                  <div className="text-muted-foreground">
                     Zuletzt: {formatRelative(schedule.last_run_at)}
                   </div>
                 )}

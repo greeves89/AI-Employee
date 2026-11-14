@@ -57,6 +57,11 @@ class User(Base, TimestampMixin):
     approved: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     sso_provider: Mapped[str | None] = mapped_column(String, nullable=True)
     sso_subject: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Unveraenderliche Objekt-ID der Person im Firmen-IdP (Entra ``oid``), beim
+    # Microsoft-SSO-Login hinterlegt. Daran erkennt der MCP-Zugang per IdP-Token
+    # (#1195) das Konto — nicht an der E-Mail, die sich aendern oder neu vergeben
+    # werden kann.
+    idp_object_id: Mapped[str | None] = mapped_column(String, nullable=True, unique=True, index=True)
     # Activity tracking for lifecycle management (auto-stop/start user's agents)
     last_active_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Monthly spend cap across ALL of the user's agents (None = unlimited).

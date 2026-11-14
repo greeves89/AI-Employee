@@ -55,9 +55,8 @@ async def _get_user_agent_ids(user, db: AsyncSession) -> list[str] | None:
             (Agent.user_id == user.id) | (Agent.is_platform_agent.is_(True))
         )
     )
-    shared = await db.execute(
-        select(AgentAccess.agent_id).where(AgentAccess.user_id == user.id)
-    )
+    from app.core.ownership import verwaltende_freigaben
+    shared = await db.execute(verwaltende_freigaben(user.id))
     return list({row[0] for row in owned.all()} | {row[0] for row in shared.all()})
 
 

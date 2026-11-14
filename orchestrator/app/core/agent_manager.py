@@ -2430,9 +2430,17 @@ class AgentManager:
         config.pop("stop_reason", None)
         return config
 
-    async def start_agent(self, agent_id: str) -> Agent:
-        await self._publish_event(agent_id, "system", "Agent starting...")
+    async def start_agent(self, agent_id: str, *, durch_mensch: bool = False) -> Agent:
         agent = await self._get_agent(agent_id)
+        # Vom Nutzer angehalten: nur ein Mensch startet ihn (Start-Knopf, Fortsetzen,
+        # Concierge, Browser-Reiter). Zustellung, Besprechungsraeume und Agenten-
+        # Nachrichten (``agent_wakeup.ensure_agent_running``) nicht — dieselbe Regel
+        # wie ``user_lifecycle.wake_agent`` (Sicherheitsreview 1.461).
+        from app.core.agent_duty import vom_nutzer_angehalten
+        if not durch_mensch and vom_nutzer_angehalten(agent):
+            logger.info(f"Agent {scrub_log(agent_id)} vom Nutzer angehalten — nicht automatisch gestartet")
+            return agent
+        await self._publish_event(agent_id, "system", "Agent starting...")
         if not agent.container_id:
             # No container exists — recreate it (keeps volumes/data)
             logger.info(f"Agent {scrub_log(agent_id)} has no container — recreating via update_agent")
@@ -2576,6 +2584,12 @@ class AgentManager:
                     return agent
             container_name = f"ai-agent-{_container_slug(agent.name)}-{agent_id}"
             alte_id = agent.container_id
+            # Gestoppt bleibt gestoppt: Ein Aktualisieren (Knopf „Alle aktualisieren“,
+            # neue Schlüssel, Apps) bringt den Agenten auf den neuen Stand, startet ihn
+            # aber nicht. Bis 1.457 lief danach jeder gestoppte Agent wieder — auch die,
+            # die der Nutzer bewusst angehalten hatte (13.11.2026). Nur die Start-Wege
+            # (``nur_wenn_noetig``) sollen ihn hochfahren.
+            bleibt_gestoppt = not nur_wenn_noetig and not await self._lief_vor_dem_neubau(agent, alte_id)
             # Zugangstoken VOR dem Neuerstellen auf Stand bringen.
             #
             # Anthropic rotiert beim Erneuern — sobald der neue Token da ist, ist der
@@ -2610,7 +2624,7 @@ class AgentManager:
                 if _festgeschrieben.pop(agent_id, None):
                     self._alte_entfernen(beiseite)
                     raise
-                gestoppt = _gestoppt_seit(agent_id, angefragt)
+                gestoppt = _gestoppt_seit(agent_id, angefragt) or bleibt_gestoppt
                 await self._beiseite_zurueck(agent_id, beiseite, container_name, alte_id,
                                              behalten=wartung, starten=wartung and not gestoppt,
                                              gestoppt=gestoppt)
@@ -2623,8 +2637,9 @@ class AgentManager:
                 _neubau_angefragt.pop(agent_id, None)
             _festgeschrieben.pop(agent_id, None)
             self._alte_entfernen(beiseite)
-            if _gestoppt_seit(agent_id, angefragt):
-                logger.info(f"Agent {scrub_log(agent_id)}: Stopp kam während des Neubaus — jetzt angehalten")
+            if bleibt_gestoppt or _gestoppt_seit(agent_id, angefragt):
+                logger.info(f"Agent {scrub_log(agent_id)}: nach dem Neubau angehalten "
+                            f"({'war vorher gestoppt' if bleibt_gestoppt else 'Stopp kam während des Neubaus'})")
                 try:
                     if neu.container_id:
                         self.docker.stop_container(neu.container_id)
@@ -2633,6 +2648,22 @@ class AgentManager:
                 neu.state = AgentState.STOPPED
                 await self.db.commit()
             return neu
+
+    async def _lief_vor_dem_neubau(self, agent, alte_id: str | None) -> bool:
+        """Lief der Agent, bevor neu gebaut wird? Ohne Behälter oder bei Zweifel am
+        Docker-Zustand gilt der gespeicherte Zustand."""
+        from app.core.agent_duty import vom_nutzer_angehalten
+
+        if vom_nutzer_angehalten(agent):
+            return False
+        if alte_id:
+            try:
+                status = await asyncio.to_thread(self.docker.get_container_status, alte_id)
+            except Exception:  # noqa: BLE001
+                status = None
+            if status is not None:
+                return status in ("running", "restarting")
+        return agent.state not in (AgentState.STOPPED, AgentState.ERROR)
 
     async def _entzug_ohne_neubau(self, agent, agent_id: str) -> None:
         """Ein Neubau, der einen Zugang entziehen kann (Schlüssel entfernt, Rechte gekürzt),

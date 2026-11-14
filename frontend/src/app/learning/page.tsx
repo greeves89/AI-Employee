@@ -53,7 +53,7 @@ function Kennzahl({
     <div className="rounded-xl border border-foreground/[0.06] bg-card/80 p-4 backdrop-blur-sm">
       <div className="flex items-center gap-2">
         <Icon className="h-3.5 w-3.5 text-primary" />
-        <span className="text-[10px] uppercase tracking-wide text-muted-foreground/50">{label}</span>
+        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
       </div>
       <div className="mt-1 text-2xl font-semibold">{value}</div>
       <div className="mt-0.5 text-[11px] text-muted-foreground/60">{hint}</div>
@@ -76,7 +76,7 @@ function SkillRow({ skill }: { skill: LearnedSkill }) {
             {skill.status === "draft" ? "Entwurf" : skill.status}
           </span>
           {skill.version > 1 && (
-            <span className="text-[10px] text-muted-foreground/50">v{skill.version}</span>
+            <span className="text-[10px] text-muted-foreground">v{skill.version}</span>
           )}
         </div>
         {skill.description && (
@@ -89,7 +89,7 @@ function SkillRow({ skill }: { skill: LearnedSkill }) {
         <div className="text-[11px] text-muted-foreground/60">
           {ORIGIN_LABEL[skill.origin] ?? skill.origin}
         </div>
-        <div className="text-[10px] text-muted-foreground/40">
+        <div className="text-[10px] text-muted-foreground">
           {skill.usage_count}× genutzt
           {skill.avg_rating !== null ? ` · ${skill.avg_rating} ★` : ""}
         </div>
@@ -114,7 +114,7 @@ function Abschnitt({
       <h2 className="text-sm font-semibold">{title}</h2>
       <p className="mt-0.5 mb-3 text-[11px] text-muted-foreground/60">{hint}</p>
       {skills.length === 0 ? (
-        <p className="py-4 text-center text-[12px] text-muted-foreground/50">{empty}</p>
+        <p className="py-4 text-center text-[12px] text-muted-foreground">{empty}</p>
       ) : (
         <div>
           {skills.map((s) => (
@@ -244,7 +244,7 @@ export default function LearningPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-[12px]">
                   <thead>
-                    <tr className="border-b border-foreground/[0.06] text-[10px] uppercase tracking-wide text-muted-foreground/50">
+                    <tr className="border-b border-foreground/[0.06] text-[10px] uppercase tracking-wide text-muted-foreground">
                       <th className="pb-2 text-left">Lauf</th>
                       <th className="pb-2 text-right">Gemerkt</th>
                       <th className="pb-2 text-right">Entwürfe</th>

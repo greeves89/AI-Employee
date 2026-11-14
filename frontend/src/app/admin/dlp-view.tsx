@@ -146,7 +146,7 @@ export function DlpView({ embedded = false }: { embedded?: boolean }) {
             </div>
           ))}
         </div>
-        <p className="mt-3 text-[11px] text-muted-foreground/50">Standard: Secrets → blockieren · IBAN/Kreditkarte → maskieren · Steuer-ID → loggen · E-Mail → erlauben.</p>
+        <p className="mt-3 text-[11px] text-muted-foreground">Standard: Secrets → blockieren · IBAN/Kreditkarte → maskieren · Steuer-ID → loggen · E-Mail → erlauben.</p>
       </div>
 
       {/* Test scan */}
@@ -173,7 +173,7 @@ export function DlpView({ embedded = false }: { embedded?: boolean }) {
       <div className="rounded-xl border border-foreground/[0.06] bg-card/60 p-4">
         <p className="mb-3 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60"><ScrollText className="h-3 w-3" /> Letzte DLP-Treffer ({audit.length})</p>
         {audit.length === 0 ? (
-          <p className="text-[12px] text-muted-foreground/50">Keine DLP-Treffer aufgezeichnet.</p>
+          <p className="text-[12px] text-muted-foreground">Keine DLP-Treffer aufgezeichnet.</p>
         ) : (
           <div className="space-y-1">
             {audit.slice(0, 20).map((e) => {
@@ -184,9 +184,9 @@ export function DlpView({ embedded = false }: { embedded?: boolean }) {
                     e.event_type === "dlp_blocked" ? "text-red-400" : e.event_type === "dlp_masked" ? "text-amber-700 dark:text-amber-400" : "text-sky-400")}>
                     {e.event_type.replace("dlp_", "")}
                   </span>
-                  <span className="w-20 shrink-0 text-muted-foreground/50">{e.channel}</span>
+                  <span className="w-20 shrink-0 text-muted-foreground">{e.channel}</span>
                   <span className="truncate text-muted-foreground/70">{Object.keys(classes).map((c) => CLASS_LABEL[c] ?? c).join(", ")}</span>
-                  <span className="ml-auto shrink-0 text-[10px] text-muted-foreground/40">{e.created_at ? new Date(e.created_at).toLocaleString() : ""}</span>
+                  <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">{e.created_at ? new Date(e.created_at).toLocaleString() : ""}</span>
                 </div>
               );
             })}

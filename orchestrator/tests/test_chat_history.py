@@ -148,7 +148,7 @@ class WiringTests(unittest.TestCase):
         for name in ("fork_chat_session", "rewind_chat_session", "summarize_chat_session"):
             with self.subTest(endpoint=name):
                 block = src.split(f"async def {name}")[1].split("\n@router")[0]
-                self.assertIn("_check_owner", block)
+                self.assertRegex(block, r"_check_(owner|nutzen)\(")  # Nutzen: Freigabe (1.457)
 
     # Beide Schreiber (Browser-Verbindung in ws.py und der Lauscher in main.py)
     # gehen seit #911 ueber EINE Zusammenfuehrung — dort entsteht der Titel.

@@ -762,7 +762,7 @@ export function CreateAgentModal({
                             )}>
                               {kategorieName(kategorie)}
                             </span>
-                            <span className="text-muted-foreground/50">{vorlagen.length}</span>
+                            <span className="text-muted-foreground">{vorlagen.length}</span>
                           </h3>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             {vorlagen.map((tmpl) => {
@@ -889,7 +889,7 @@ export function CreateAgentModal({
                     )}
 
                     {vorlagenZustand === "da" && templates.length === 0 && (
-                      <p className="py-6 text-center text-xs text-muted-foreground/50">
+                      <p className="py-6 text-center text-xs text-muted-foreground">
                         Noch keine Vorlagen angelegt.
                       </p>
                     )}
@@ -1066,7 +1066,7 @@ export function CreateAgentModal({
                           }}
                         />
                         <label className="mt-3 block text-xs font-medium text-muted-foreground mb-1.5">
-                          Schlagwort <span className="text-muted-foreground/50">(optional)</span>
+                          Schlagwort <span className="text-muted-foreground">(optional)</span>
                         </label>
                         <input
                           value={avatarTag}
@@ -1102,7 +1102,7 @@ export function CreateAgentModal({
                                 </button>
                               ))}
                             </div>
-                            <p className="text-[11px] text-muted-foreground/50 mt-1">
+                            <p className="text-[11px] text-muted-foreground mt-1">
                               OpenAI-kompatible APIs (Together, Groq, Ollama, etc.) nutzen &quot;OpenAI&quot;.
                             </p>
                           </div>
@@ -1142,12 +1142,12 @@ export function CreateAgentModal({
                               <button
                                 type="button"
                                 onClick={() => setShowApiKey(!showApiKey)}
-                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                               >
                                 {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                               </button>
                             </div>
-                            <p className="text-[11px] text-muted-foreground/50 mt-1">
+                            <p className="text-[11px] text-muted-foreground mt-1">
                               Wird verschlüsselt gespeichert. Nie in API-Responses sichtbar.
                             </p>
                           </div>
@@ -1173,7 +1173,7 @@ export function CreateAgentModal({
                               onChange={(e) => setLlmTemperature(e.target.value)}
                               className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all tabular-nums"
                             />
-                            <p className="text-[11px] text-muted-foreground/50 mt-1">
+                            <p className="text-[11px] text-muted-foreground mt-1">
                               0 = praezise, 1 = kreativ. Für Coding: 0.2-0.5 empfohlen.
                             </p>
                           </div>
@@ -1183,7 +1183,7 @@ export function CreateAgentModal({
                             <div>
                               <label className="block text-xs font-medium text-muted-foreground mb-1.5">
                                 Reasoning-Effort{" "}
-                                <span className="text-muted-foreground/40">(nur o1/o3/o4, GPT-5)</span>
+                                <span className="text-muted-foreground">(nur o1/o3/o4, GPT-5)</span>
                               </label>
                               <select
                                 value={llmReasoningEffort}
@@ -1195,7 +1195,7 @@ export function CreateAgentModal({
                                 <option value="medium">Mittel</option>
                                 <option value="high">Hoch — gründlich, langsamer</option>
                               </select>
-                              <p className="text-[11px] text-muted-foreground/50 mt-1">
+                              <p className="text-[11px] text-muted-foreground mt-1">
                                 Wird von allen anderen Modellen ignoriert.
                               </p>
                             </div>
@@ -1205,7 +1205,7 @@ export function CreateAgentModal({
                           <div>
                             <label className="block text-xs font-medium text-muted-foreground mb-1.5">
                               System Prompt{" "}
-                              <span className="text-muted-foreground/40">(optional)</span>
+                              <span className="text-muted-foreground">(optional)</span>
                             </label>
                             <textarea
                               value={llmSystemPrompt}
@@ -1270,7 +1270,7 @@ export function CreateAgentModal({
                           <div>
                             <label className="block text-xs font-medium text-muted-foreground mb-1.5">
                               Rolle{" "}
-                              <span className="text-muted-foreground/40">
+                              <span className="text-muted-foreground">
                                 (optional)
                               </span>
                             </label>
@@ -1342,10 +1342,10 @@ export function CreateAgentModal({
                         <div>
                           <label className="block text-xs font-medium text-muted-foreground mb-1.5">
                             Budget pro Monat ({money.code}){" "}
-                            <span className="text-muted-foreground/40">(optional)</span>
+                            <span className="text-muted-foreground">(optional)</span>
                           </label>
                           <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground/50">{money.symbol}</span>
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{money.symbol}</span>
                             <input
                               type="number"
                               step="0.01"
@@ -1361,7 +1361,7 @@ export function CreateAgentModal({
                               )}
                             />
                           </div>
-                          <p className="text-[11px] text-muted-foreground/50 mt-1">
+                          <p className="text-[11px] text-muted-foreground mt-1">
                             Höchstkosten pro Monat. Ohne Angabe: unbegrenzt. Der Zähler beginnt am 1. jedes Monats neu.
                           </p>
 

@@ -162,7 +162,9 @@ class AbgleichMitForgejo(Basis):
             with patch("app.core.url_guard.check_outbound_url", return_value=(False, "zeigt auf ein internes Ziel")), \
                  self.assertRaises(projekt_git.GitFehler) as e:
                 await projekt_git.projekt_abgleichen(db, None, await db.get(Team, "p1"))
-        self.assertIn("internes Ziel", str(e.exception))
+        # Einheitlich: verrät nicht, ob der Name intern auflöst (kein Namensorakel).
+        self.assertIn("nicht erreichbar oder nicht freigegeben", str(e.exception))
+        self.assertNotIn("internes Ziel", str(e.exception))
 
 
 class EchteAdresspruefung(unittest.TestCase):

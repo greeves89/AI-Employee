@@ -306,7 +306,7 @@ export default function IntegrationsPage() {
                               <details className="mt-1.5 group">
                                 <summary className="cursor-pointer list-none text-[10px] text-muted-foreground/60 hover:text-muted-foreground/90 select-none">
                                   {integration.connected ? "Erteilte" : "Angeforderte"} Berechtigungen ({scopeList.length})
-                                  <span className="ml-1 text-muted-foreground/40 group-open:hidden">· anzeigen</span>
+                                  <span className="ml-1 text-muted-foreground group-open:hidden">· anzeigen</span>
                                 </summary>
                                 <div className="mt-1.5 flex flex-wrap gap-1">
                                   {scopeList.map((s) => (
@@ -319,7 +319,7 @@ export default function IntegrationsPage() {
                                   ))}
                                 </div>
                                 {!integration.connected && (
-                                  <p className="mt-1 text-[10px] text-muted-foreground/40">
+                                  <p className="mt-1 text-[10px] text-muted-foreground">
                                     Anpassbar via OAUTH_{integration.provider.toUpperCase()}_SCOPES.
                                   </p>
                                 )}
@@ -349,7 +349,7 @@ export default function IntegrationsPage() {
                             Trennen
                           </button>
                         ) : integration.auth_type === "pat" ? (
-                          <span className="text-[10px] text-muted-foreground/40">Token unten eingeben</span>
+                          <span className="text-[10px] text-muted-foreground">Token unten eingeben</span>
                         ) : integration.available ? (
                           <button
                             onClick={() => handleConnect(integration.provider)}
@@ -360,7 +360,7 @@ export default function IntegrationsPage() {
                             Verbinden
                           </button>
                         ) : (
-                          <span className="text-[10px] text-muted-foreground/40 px-3 py-2">Nicht verfügbar</span>
+                          <span className="text-[10px] text-muted-foreground px-3 py-2">Nicht verfügbar</span>
                         )}
                       </div>
                     </div>
@@ -385,7 +385,7 @@ export default function IntegrationsPage() {
                                   <span className="flex-1 text-emerald-400 break-all">{redirectUrl}</span>
                                   <button
                                     onClick={() => navigator.clipboard.writeText(redirectUrl)}
-                                    className="text-muted-foreground/40 hover:text-muted-foreground transition-colors flex-shrink-0"
+                                    className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
                                   >
                                     <Copy className="h-3 w-3" />
                                   </button>
@@ -425,7 +425,7 @@ export default function IntegrationsPage() {
                             <button
                               type="button"
                               onClick={() => setPatVisible(!patVisible)}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                             >
                               {patVisible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                             </button>
@@ -443,7 +443,7 @@ export default function IntegrationsPage() {
                             Speichern
                           </button>
                         </div>
-                        <p className="text-[10px] text-muted-foreground/50 mt-1.5">
+                        <p className="text-[10px] text-muted-foreground mt-1.5">
                           Ein Token legst du unter github.com/settings/tokens mit den Rechten repo, workflow und read:org an
                         </p>
 

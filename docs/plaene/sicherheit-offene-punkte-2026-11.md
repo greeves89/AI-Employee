@@ -1,0 +1,67 @@
+# Offene Sicherheitspunkte nach 1.455–1.460 (Stand 14.11.2026)
+
+Mit 1.455 bis 1.460 gibt es für Zugriffe eine gemeinsame Regel. Dieser Plan ordnet die offenen
+Punkte daran und legt die Reihenfolge fest.
+
+## Die gemeinsame Regel
+
+Jeder Eingang (REST, WebSocket, Sprache, MCP, Kanal, Kiosk) entscheidet in drei Schritten, immer
+an derselben Stelle:
+
+1. **Wer fragt?** Mensch (Sitzung, SSO, IdP-Token), Agent (Agenten-Token) oder Dienstkonto
+   (Brain- oder Webhook-Schlüssel). Unbekannt heißt abgewiesen, nie Gast.
+2. **Darf er an den Agenten?** `dependencies.require_agent_access`. Standard ist
+   **verwalten**. Nur Nutzungs-Endpunkte sagen ausdrücklich `nutzen=True`. Eine neue
+   Schnittstelle ist für Nur-Nutzer also zu, bis jemand das anders entscheidet.
+   Sichtbarkeitslisten gehen über `core/ownership` (`eigene_agent_ids`,
+   `verwaltende_freigaben`).
+3. **Darf er an dieses Stück?** Gespräche über `core/chat_besitz`, Meldungen über
+   `notifications.empfaenger_id`, Dateien über den eigenen Ordner und den echten Pfad.
+   Fremdes liefert 404, nicht 403.
+
+Im Zweifel zu: Kann eine Prüfung nicht entscheiden, etwa wegen eines Datenbankfehlers,
+gilt das als abgewiesen.
+
+## Offene Punkte
+
+| # | Punkt | Einordnung in die Regel | Stand | Nächster Schritt |
+|---|---|---|---|---|
+| 1 | **Kiosk ohne Anmeldung** war im ganzen LAN erreichbar, aber nur mit `KIOSK_ENABLED` (Standard aus, also nur auf einem Kiosk-Gerät). | Schritt 1: Eingang ohne Person | **Erledigt 1.461:** Zugang je Gerät (`core/kiosk_zugang`, Admin → Betrieb → Kiosk-Anzeige). Eine Caddy-Netzregel wurde verworfen, weil sie 172.x-Firmennetze und Agenten direkt am Orchestrator durchgelassen hätte. | Kiosk auf dem Pi einmal neu anmelden. |
+| 2 | **Automatisches Wecken übergeht den Stopp** durch den Nutzer: Projekt-Takt, Delegation, Kanal-Nachricht. | Schritt 2: Wirkung am Agenten | **Erledigt 1.461:** zentral in `wake_agent` und `start_agent` (`durch_mensch`). Nur Chat (wer verwaltet), Telegram an den eigenen Agenten, Start, Fortsetzen, Concierge und Browser-Reiter wecken. Neustarts nach Einstellungen bauen gestoppte Agenten nur neu. | Live-Probe mit einem Demo-Agenten. |
+| 3 | **Freigabe „nur nutzen“ live prüfen:** zwei Mitglieder an einem Demo-Agenten, Chat, Sprache, Datei, Entzug. | Schritte 2 und 3 | **Live geprüft 14.11.** mit einem Wegwerf-Testkonto: Verwaltung 403, fremde Gespräche und Anweisungen 404, Upload im eigenen Ordner. Dabei gefunden: Anmelden weckte angehaltene Agenten (behoben 1.463). | Bildschirmfotos fürs Handbuch. |
+| 4 | **OAuth mit Entra live:** App-Registrierung, echter Token, Claude Code mit `--client-id`. | Schritt 1 | 68 Tests, zwei Reviews | Daniel legt eine App-Registrierung im eigenen Tenant an (Anleitung im Handbuch 22.5.2), dann Test gegen den Pi. |
+| 5 | **GitLab gegen einen echten Server:** gitlab.com mit einem Testprojekt, Board-Import, Merge Request. | Schritt 3 | Proxy-Tausch live geprüft, Anbieter nur nachgestellt | Testprojekt auf gitlab.com mit Projekt-Token, Abnahme laut #1194. |
+| 6 | **Sicherung im Update-Skript** scheiterte als `pi` (`/var/backups/ai-employee` gehört root). | Betrieb | **Erledigt 1.461:** Ausweichen nach `~/ai-employee-sicherungen` (ohne root, nur beim Standardziel), mit Hinweis auf `chown`. | Erledigt. |
+| 7 | **Alte Agenten-Abbilder** halten bei „Stopp“ weiter alle Züge an (gezielter Stopp ab 1.457). | Schritt 3 | Erledigt sich mit dem Aktualisieren der Agenten | Nach dem Einspielen Agenten aktualisieren. Gestoppte bleiben dabei jetzt gestoppt. |
+| 8 | **DNS-Rebinding beim Schlüsselabruf des IdP:** zweite Auflösung in httpx. | Schritt 1, nur Admin-Konfiguration | **Erledigt 1.462:** `core/feste_verbindung.FesteAdresse` für beide. | Erledigt. |
+| 9 | **Freigabe-Anfragen an freigegebenen Agenten** gehen nur an den Besitzer. Der Nur-Nutzer wartet, ohne es zu sehen. | Schritt 3 | **Leck gefunden und behoben 1.462:** Die Anfrage ging samt Inhalt an alle Fenster, jetzt nur an Besitzer und Admin. | Statuszeile „wartet auf Freigabe“ für Nur-Nutzer (nur Hinweis, kein Inhalt). |
+
+## Reihenfolge
+
+1. Punkt 7 sofort nach dem Einspielen. Punkt 6 als kleiner Fix.
+2. Punkt 2, dann Punkt 1. Beide wirken auf jeder Anlage.
+3. Punkt 3 live mit Bildschirmfotos.
+4. Punkte 4 und 5, sobald Testzugänge da sind.
+5. Punkte 8 und 9.
+
+## Nachtrag 1.462
+
+- **Verwalter-Freigaben ohne Live-Signal:** Wer einen Agenten per älterer Voll-Freigabe verwaltet, aber nicht Besitzer ist, bekommt Freigabe-Anfragen nicht mehr als Live-Signal im Chat. Er sieht sie weiter auf der Freigaben-Seite. Falls das stört: `_ereignis_fuer_verbindung` zusätzlich mit `verwaltende_freigaben` prüfen.
+
+## Stand 14.11.2026 (nach 1.466, abgeschlossen)
+
+| # | Stand |
+|---|---|
+| 1 Kiosk | Erledigt (1.461), live: ohne Zugang 404 aus LAN, vom Gerät und am Orchestrator; Anzeige auf dem Pi angemeldet. |
+| 2 Wecken trotz Stopp | Erledigt (1.461 + 1.463). Live: angehaltener Agent startet weder durch Aufgabe noch durch Anmeldung. Die Anmeldung war die eigentliche Ursache vom 13.11. |
+| 3 Freigabe „nur nutzen“ | Erledigt. Live mit Wegwerf-Testkonto geprüft (14.11.), Bildschirmfoto im Handbuch 22.3. |
+| 4 OAuth mit Entra | Live gegen das echte Entra der Anlage (14.11.): Discovery und 6 Schlüssel über die feste Verbindung, gefälschte Tokens abgewiesen (fremder Schlüssel, unbekannte kid, alg none, HS256). Erfolgsfall mit echtem Token läuft seit 14.11. in jeder CI (`test_idp_echter_aussteller`): GitHub Actions stellt ein signiertes Token aus, geprüft über SSRF-Sperre, feste Verbindung, Discovery, JWKS und RS256 wie im Betrieb; veränderte Signatur, anderer Empfänger und falscher Aussteller abgewiesen. Am 14.11. außerdem mit einem echten Entra-Token der Anlage (Anmeldung als Anwendung, v1-Token): mit erlaubter Anwendung (`appid`) angenommen, als App-Token ohne Person 403, andere Anwendung, fehlende Pflicht-Berechtigung, anderer Empfänger und veränderte Signatur abgewiesen. Nur ein Token mit Person (`scp`, Zuordnung über `oid`) ist mit Entra auf dieser Anlage nicht prüfbar (Entscheidung Daniel, 14.11.): Es gibt kein Microsoft-Konto für die Anmeldung. Er wird bei der ersten Anlage mit Entra-Anmeldung geprüft (Handbuch 22.5.2). |
+| 5 GitLab | Lesen live gegen gitlab.com geprüft, Token-Tausch im Proxy live mit mitmproxy geprüft. Schreiben seit 14.11. gegen ein echtes GitLab CE geprüft (Workflow `gitlab-echt.yml`, ohne Konto auf gitlab.com): Server im Runner wie im Firmennetz (private Adresse, Freigabe über `git_interne_server`), Issue, Labels, Kommentare mit Rolle des Autors, Branch, Datei, Merge Request, Schließen; ohne Freigabe keine Verbindung, read_api-Token und Reporter abgewiesen, kein Token in Meldungen. |
+| 6 Sicherung | Erledigt (1.461 + 1.464). Live: Ausweichen ohne root, Ziel aus der `.env` (NAS), Update verweigert während einer Sicherung. |
+| 7 Alte Agenten-Abbilder | Erledigt (14.11.): Die 7 Agenten des Besitzers sind aktualisiert, gestoppt und angehalten geblieben. |
+| 8 DNS-Rebinding IdP | Erledigt (1.462). |
+| 9 Freigabe-Anfragen | Leck behoben (1.462), Statuszeile „wartet auf Freigabe“ für Nur-Nutzer ohne Inhalt (1.465). Erledigt. |
+
+Alte root-Sicherung `/var/backups/ai-employee` (19 GB, 13.11.) auf Wunsch gelöscht, Platte jetzt bei 74 %.
+
+Damit ist der Plan abgeschlossen. Punkte 4 und 5 laufen gegen echte Server (GitHub-OIDC, GitLab CE) in der CI; dazu ein echtes Entra-App-Token gegen die Anlage. Offen ist nur ein Entra-Token mit Person (`scp`, `oid`), geprüft mit dem Nachbau.

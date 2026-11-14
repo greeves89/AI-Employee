@@ -6,6 +6,8 @@ transport — the same pattern as the per-agent server (``mcp_agent.py``).
 
 Endpoint: POST /api/v1/mcp/brains/{slug}
 Auth:      Authorization: Bearer <brain MCP token>   (generated in the UI)
+           or an access token of the corporate IdP (OAuth 2.1, #1195) when the
+           admin enabled it — see core/mcp_idp_auth.py.
 
 Supported MCP methods:
   initialize                → server capabilities + brain info
@@ -17,7 +19,7 @@ Supported MCP methods:
 import hmac
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,7 +32,7 @@ from app.api.mcp_agent import (
     _mcp_result,
     _tool_result,
 )
-from app.core import vault
+from app.core import mcp_idp_auth, vault
 from app.core.encryption import decrypt_token
 from app.db.session import get_db
 from app.models.second_brain import SecondBrain
@@ -127,28 +129,93 @@ BRAIN_TOOLS = [
 ]
 
 
-async def _auth_brain(slug: str, request: Request, db: AsyncSession) -> SecondBrain:
-    """Verify the brain exists, has MCP enabled, and the Bearer token matches."""
+class _Abgewiesen(Exception):
+    """Abweisung mit fertiger Antwort (401 samt WWW-Authenticate, 403, 404)."""
+
+    def __init__(self, antwort: JSONResponse):
+        self.antwort = antwort
+
+
+def _abweisung(status: int, text: str, slug: str, fehler: str = "") -> _Abgewiesen:
+    headers = {}
+    if status == 401:
+        headers["WWW-Authenticate"] = mcp_idp_auth.www_authenticate(f"brains/{slug}", fehler)
+    return _Abgewiesen(JSONResponse({"detail": text}, status_code=status, headers=headers))
+
+
+def _modus(brain: SecondBrain, gewaehrt: str | None) -> str:
+    """Wirksamer Modus: Katalog-Obergrenze des Brains, ggf. durch die Freigabe verengt."""
+    katalog = (brain.default_mode or "rw").lower()
+    if katalog != "rw" or (gewaehrt or "").lower() == "ro":
+        return "ro"
+    return "rw"
+
+
+async def brain_zugriff(db: AsyncSession, brain: SecondBrain, user) -> str | None:
+    """Darf ``user`` dieses Brain nutzen — und wie? ``None`` = nein.
+
+    Die gemeinsame Rechteprüfung beider Wege: der Brain-Schlüssel ist ein
+    Dienstkonto des Brains selbst (``user=None`` → Katalog-Modus), ein IdP-Token
+    steht für eine Person und sieht genau die Brains, die sie auch in der
+    Oberfläche sieht (``freigegebene_mounts`` + ``fremde_privatablagen``).
+    """
+    if user is None:
+        return _modus(brain, None)
+    from app.core.mounts import fremde_privatablagen, freigegebene_mounts
+
+    if brain.label in await fremde_privatablagen(db, [brain.label], user):
+        return None
+    erlaubt = await freigegebene_mounts(user, db)
+    if erlaubt is None:  # Administrator
+        return _modus(brain, None)
+    if brain.label not in erlaubt:
+        return None
+    return _modus(brain, erlaubt[brain.label])
+
+
+async def _auth_brain(slug: str, request: Request, db: AsyncSession) -> tuple[SecondBrain, str]:
+    """Brain + wirksamer Modus. Zwei Wege, eine Rechteprüfung:
+
+    * ``Authorization: Bearer <Brain-Schlüssel>`` — Dienstkonten, Clients ohne OAuth;
+    * ``Authorization: Bearer <Zugriffstoken des Firmen-IdP>`` (#1195), wenn in den
+      Einstellungen eingeschaltet.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    provided = auth_header[7:].strip() if auth_header[:7].lower() == "bearer " else ""
+    if not provided:
+        raise _abweisung(401, "Invalid or missing Bearer token", slug)
+
     brain = (
         await db.execute(select(SecondBrain).where(SecondBrain.slug == slug))
     ).scalar_one_or_none()
     if not brain:
-        raise HTTPException(status_code=404, detail="Brain not found")
-    if not brain.is_active or not brain.mcp_enabled or not brain.mcp_token_encrypted:
-        raise HTTPException(
-            status_code=403,
-            detail="MCP access is not enabled for this Second Brain.",
-        )
-    try:
-        expected = decrypt_token(brain.mcp_token_encrypted)
-    except ValueError:
-        raise HTTPException(status_code=500, detail="Token decryption failed (ENCRYPTION_KEY changed?)")
+        raise _abweisung(404, "Brain not found", slug)
+    if not brain.is_active or not brain.mcp_enabled:
+        raise _abweisung(403, "MCP access is not enabled for this Second Brain.", slug)
 
-    auth_header = request.headers.get("Authorization", "")
-    provided = auth_header.removeprefix("Bearer ").strip()
-    if not provided or not hmac.compare_digest(provided, expected):
-        raise HTTPException(status_code=401, detail="Invalid or missing Bearer token")
-    return brain
+    if brain.mcp_token_encrypted:
+        try:
+            expected = decrypt_token(brain.mcp_token_encrypted)
+        except ValueError:
+            raise _abweisung(500, "Token decryption failed (ENCRYPTION_KEY changed?)", slug)
+        if hmac.compare_digest(provided, expected):
+            return brain, await brain_zugriff(db, brain, None)
+
+    if mcp_idp_auth.aktiv() and mcp_idp_auth.sieht_wie_jwt_aus(provided):
+        try:
+            user = await mcp_idp_auth.nutzer_aus_bearer(db, provided)
+        except mcp_idp_auth.IdpTokenFehler as e:
+            logger.info("MCP-Brain %s: IdP-Token abgewiesen (%s)", vault.safe_log(slug), e.grund)
+            if e.status == 401:
+                raise _abweisung(401, "Invalid or missing Bearer token", slug, "invalid_token")
+            raise _abweisung(403, "Kein Zugang für diese Person.", slug)
+        modus = await brain_zugriff(db, brain, user)
+        if modus is None:
+            # 404 statt 403: bestätigt fremde Brains nicht.
+            raise _abweisung(404, "Brain not found", slug)
+        return brain, modus
+
+    raise _abweisung(401, "Invalid or missing Bearer token", slug, "invalid_token")
 
 
 @router.post("/brains/{slug}")
@@ -158,7 +225,10 @@ async def mcp_brain_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """MCP Streamable HTTP endpoint — handles all JSON-RPC requests from MCP clients."""
-    brain = await _auth_brain(slug, request, db)
+    try:
+        brain, modus = await _auth_brain(slug, request, db)
+    except _Abgewiesen as a:
+        return a.antwort
 
     try:
         body = await request.json()
@@ -168,18 +238,18 @@ async def mcp_brain_endpoint(
     if isinstance(body, list):
         responses = []
         for req in body:
-            resp = await _handle_rpc(req, brain, db)
+            resp = await _handle_rpc(req, brain, db, modus)
             if resp is not None:
                 responses.append(resp)
         return JSONResponse(responses)
 
-    resp = await _handle_rpc(body, brain, db)
+    resp = await _handle_rpc(body, brain, db, modus)
     if resp is None:
         return JSONResponse(None, status_code=202)  # notification — no body
     return JSONResponse(resp)
 
 
-async def _handle_rpc(req: dict, brain: SecondBrain, db: AsyncSession):
+async def _handle_rpc(req: dict, brain: SecondBrain, db: AsyncSession, modus: str = "ro"):
     """Dispatch a single JSON-RPC request (or None for notifications)."""
     rpc_id = req.get("id")
     method = req.get("method", "")
@@ -202,13 +272,13 @@ async def _handle_rpc(req: dict, brain: SecondBrain, db: AsyncSession):
         return _mcp_result(rpc_id, {"tools": BRAIN_TOOLS})
 
     if method == "tools/call":
-        result = await _call_tool(params.get("name", ""), params.get("arguments", {}), brain, db)
+        result = await _call_tool(params.get("name", ""), params.get("arguments", {}), brain, db, modus)
         return _mcp_result(rpc_id, result)
 
     return _mcp_error(rpc_id, -32601, f"Method not found: {method}")
 
 
-async def _call_tool(name: str, args: dict, brain: SecondBrain, db: AsyncSession) -> dict:
+async def _call_tool(name: str, args: dict, brain: SecondBrain, db: AsyncSession, modus: str = "ro") -> dict:
     """Execute a vault tool and return an MCP tool result."""
     if name == "brain_search":
         query = (args.get("query") or "").strip()
@@ -253,7 +323,7 @@ async def _call_tool(name: str, args: dict, brain: SecondBrain, db: AsyncSession
         return _tool_result(f"Structure of {brain.name}:\n{vault.tree_text(brain.host_path)}")
 
     if name == "brain_write":
-        if (brain.default_mode or "rw").lower() != "rw":
+        if modus != "rw":
             return _tool_result(f"'{brain.name}' is read-only — writing is not permitted.", is_error=True)
         path = (args.get("path") or "").strip()
         content = args.get("content")
@@ -275,7 +345,7 @@ async def _call_tool(name: str, args: dict, brain: SecondBrain, db: AsyncSession
         return _tool_result(f"{verb} {path} in {brain.name} ({res['bytes']} bytes).")
 
     if name == "brain_delete":
-        if (brain.default_mode or "rw").lower() != "rw":
+        if modus != "rw":
             return _tool_result(f"'{brain.name}' is read-only — deleting is not permitted.", is_error=True)
         path = (args.get("path") or "").strip()
         if not path:

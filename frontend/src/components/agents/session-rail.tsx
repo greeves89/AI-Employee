@@ -76,7 +76,7 @@ export function SessionRail({
       </div>
       <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2">
         {loading ? (
-          <div className="flex items-center justify-center py-6 text-muted-foreground/50">
+          <div className="flex items-center justify-center py-6 text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
           </div>
         ) : (
@@ -138,7 +138,7 @@ export function SessionRail({
                     )}
                   </span>
                   {s.last_message_at && (
-                    <span className="pl-4 text-[10px] text-muted-foreground/40">
+                    <span className="pl-4 text-[10px] text-muted-foreground">
                       {timeAgo(s.last_message_at)}
                       {s.message_count !== undefined && ` · ${s.message_count}`}
                     </span>
@@ -172,7 +172,7 @@ export function SessionRail({
               );
             })}
             {sessions.length === 0 && (
-              <p className="px-2.5 py-4 text-center text-[11px] text-muted-foreground/40">
+              <p className="px-2.5 py-4 text-center text-[11px] text-muted-foreground">
                 Noch keine Gespräche
               </p>
             )}

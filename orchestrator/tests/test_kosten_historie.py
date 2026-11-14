@@ -106,7 +106,7 @@ class ChatLoeschen(Basis):
 
         vorher = await self.summen()
         async with self.Session() as db:
-            with patch.object(agents, "_check_owner", AsyncMock()):
+            with patch.object(agents, "_check_owner", AsyncMock()), patch.object(agents, "_check_nutzen", AsyncMock()):
                 await agents.delete_chat_session("a1", "s", force=True, user=SimpleNamespace(id="ua"), db=db)
         self.assertEqual(await self.chatzeilen(agent_id="a1", session_id="s"), [])
         self.assertEqual(await self.summen(), vorher)
@@ -119,7 +119,7 @@ class ChatLoeschen(Basis):
             await db.commit()
         vorher = await self.summen()
         async with self.Session() as db:
-            with patch.object(agents, "_check_owner", AsyncMock()):
+            with patch.object(agents, "_check_owner", AsyncMock()), patch.object(agents, "_check_nutzen", AsyncMock()):
                 await agents.delete_all_chat_sessions("a1", user=SimpleNamespace(id="ua"), db=db)
         # Das angeheftete Gespräch bleibt — und wird nicht zusätzlich verdichtet.
         self.assertEqual(len(await self.chatzeilen(session_id="alt")), 1)

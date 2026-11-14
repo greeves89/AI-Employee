@@ -317,6 +317,96 @@ def _sitzungskennung(wert) -> str | None:
     return wert if 0 < len(wert) <= 128 else None
 
 
+async def _chat_sitzung_erlaubt(agent_id: str, user, sitzung: str, *,
+                                beanspruchen: bool = False) -> bool:
+    """Darf ``user`` dieses Gespraech sehen bzw. darin schreiben (core/chat_besitz)?
+    Mit ``beanspruchen`` wird ein neues Gespraech ihm zugeschrieben."""
+    from app.core import chat_besitz
+
+    async with async_session_factory() as db:
+        if not await chat_besitz.darf(db, agent_id, user, sitzung):
+            return False
+        if beanspruchen:
+            await chat_besitz.beanspruchen(db, agent_id, sitzung, getattr(user, "id", None))
+    return True
+
+
+#: Ereignisse ohne Gespraech, die Inhalte eines Gespraechs tragen — an freigegebene
+#: Nutzer nur mit Gespraechskennung (sonst wuesste niemand, wessen es ist).
+_INHALT_OHNE_GESPRAECH = frozenset({"task_card", "sentinel", "goal", "ankuendigung", "stillstand",
+                                    # Freigabe-Anfragen tragen Frage und Begruendung und
+                                    # gehen den Besitzer an, nicht freigegebene Kollegen.
+                                    "approval_request"})
+
+
+async def _ereignis_fuer_verbindung(ereignis: dict, agent_id: str, user, cache: dict) -> bool:
+    """Darf ein Live-Ereignis OHNE Nachrichtenkennung an diese Verbindung?
+
+    Ereignisse MIT Kennung ordnet ``_sitzung_fuer_ereignis`` zu. Die ohne — Aufgaben-
+    Kacheln, Ziele, Stillstands-Hinweise — gingen bisher an jedes offene Fenster des
+    Agenten; an einem freigegebenen Agenten also auch an Kollegen (Sicherheitsreview
+    1.455). Besitzer und Admins bekommen weiter alles, ihr Browser sortiert selbst."""
+    sitzung = ereignis.get("session_id")
+    if sitzung is None and ereignis.get("type") not in _INHALT_OHNE_GESPRAECH:
+        return True  # Steuerereignisse (ready, cancelled, queued …)
+    schluessel = sitzung if isinstance(sitzung, str) else ""
+    if schluessel not in cache:
+        from app.core import chat_besitz
+
+        async with async_session_factory() as db:
+            if await chat_besitz.sieht_alle(db, agent_id, user):
+                cache.update({"*": True})
+                cache[schluessel] = True
+            else:
+                cache[schluessel] = bool(schluessel) and await chat_besitz.darf(db, agent_id, user, schluessel)
+    return cache.get("*", False) or cache[schluessel]
+
+
+#: Offene Sprachsitzungen je ``user:agent:voice:<id>`` (fuer den Entzug einer Freigabe).
+_active_voice_websockets: dict = {}
+
+
+async def freigabe_entzogen(agent_id: str, user_ids) -> int:
+    """Offene Chat-Fenster von Menschen schliessen, denen die Freigabe gerade entzogen
+    wurde — die Pruefung laeuft nur beim Verbinden (Sicherheitsreview 1.457)."""
+    geschlossen = 0
+    for uid in user_ids or ():
+        for ablage, art in ((_active_chat_websockets, "chat"), (_active_voice_websockets, "voice")):
+          praefix = f"{uid}:{agent_id}:{art}:"
+          for schluessel, sock in list(ablage.items()):
+            if schluessel.startswith(praefix):
+                ablage.pop(schluessel, None)
+                try:
+                    await sock.close(code=4003, reason="Freigabe entzogen")
+                except Exception:  # noqa: BLE001
+                    pass
+                geschlossen += 1
+    return geschlossen
+
+
+async def _freigabe_kuerzen(ereignis: dict, agent_id: str, user, cache: dict) -> dict | None:
+    """Was von einem Ereignis ohne Nachrichtenkennung an diese Verbindung geht.
+
+    ``None``: nichts. Sonst das Ereignis selbst — bis auf Freigabe-Anfragen an
+    jemanden, der den Agenten nicht verwaltet: Der bekommt im eigenen Gespraech nur
+    den Hinweis ``approval_wait``, ohne Frage, Werkzeug und Begruendung (die gehen den
+    Besitzer an, der auch entscheidet)."""
+    if not await _ereignis_fuer_verbindung(ereignis, agent_id, user, cache):
+        return None
+    if ereignis.get("type") == "approval_request" and not cache.get("*"):
+        return {"type": "approval_wait", "session_id": ereignis.get("session_id"),
+                "data": {"message": "Wartet auf eine Freigabe durch den Besitzer des Agenten."}}
+    return ereignis
+
+
+def _gespraech_fremd() -> dict:
+    return {
+        "type": "error",
+        "data": {"message": "Dieses Gespräch gehört einer anderen Person. Bitte ein neues beginnen."},
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 _chat_wake_locks: dict[str, asyncio.Lock] = {}
 
 
@@ -355,7 +445,11 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             if _user is None:
                 await websocket.close(code=4001, reason="Unauthorized")
                 return
-            await require_agent_access(agent_id, _user, db)
+            await require_agent_access(agent_id, _user, db, nutzen=True)
+            from app.core.ownership import nur_nutzbare_agent_ids
+            # Nur zum Nutzen freigegeben: kein eigenes Modell, keine Denktiefe auf
+            # Kosten des Besitzers, Stopp nur fuer das eigene Gespraech.
+            _nur_nutzen = agent_id in await nur_nutzbare_agent_ids(_user, db)
     except _HTTPException:
         await websocket.close(code=4003, reason="Access denied to this agent")
         return
@@ -365,6 +459,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
 
     agent_container_id: str | None = None
     agent_mode: str = "claude_code"
+    _schlaeft = False
 
     # Check if agent container is alive before accepting
     if _docker:
@@ -380,19 +475,12 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                     return
                 agent_mode = agent.mode or "claude_code"
                 status = _docker.get_container_status(agent.container_id) if agent.container_id else "missing"
-                if status not in ("running", "created"):
-                    # Wer den Chat oeffnet, will mit dem Agenten reden: gestoppte
-                    # (Leerlauf-Stopp) und container-lose Agenten (nach einem
-                    # Update) werden hier geweckt. Vorher lehnte der Chat sie mit
-                    # 4010 ab, und ohne den Neustart-Knopf — den die einfache
-                    # Ansicht nicht zeigt — kam ein Nutzer nie wieder an sie heran.
-                    from app.services.user_lifecycle import wake_agent
-                    async with _chat_wake_lock(agent_id):
-                        bereit = await wake_agent(db, _docker, agent_id, wait=True, timeout=45)
-                    if not bereit:
-                        await websocket.close(code=4010, reason=f"Agent container is {status}")
-                        return
-                    await db.refresh(agent)
+                # Gestoppt oder ohne Container (nach einem Update): Der Chat oeffnet
+                # trotzdem und zeigt den Verlauf. Geweckt wird erst mit der ersten
+                # Nachricht (``_agent_wecken``) — reines Nachsehen startet keinen
+                # Agenten mehr (Entscheidung 14.11.2026). Bis v1.340.1 lehnte der
+                # Chat solche Agenten mit 4010 ab; ab 1.340.2 weckte schon das Oeffnen.
+                _schlaeft = status not in ("running", "created")
                 agent_container_id = agent.container_id
         except Exception:
             pass  # Allow connection attempt if check fails
@@ -414,9 +502,38 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
     _active_chat_websockets[connection_key] = websocket
     await websocket.send_text(json.dumps({
         "type": "ready",
-        "data": {"agent_id": agent_id},
+        "data": {"agent_id": agent_id, "schlaeft": _schlaeft},
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }))
+
+    async def _agent_wecken() -> bool:
+        """Den gestoppten Agenten vor der ersten Nachricht starten.
+
+        Ein Mensch schreibt: weckt auch einen vom Nutzer angehaltenen Agenten —
+        aber nur, wer ihn verwaltet. Nur-Nutzer heben den Halt des Besitzers nicht
+        auf; ihre Nachricht wartet dann in der Warteschlange.
+        """
+        from app.services.user_lifecycle import wake_agent
+        from app.models.agent import Agent as _Agent
+        await websocket.send_text(json.dumps({
+            "type": "agent_startet",
+            "data": {"message": "Agent startet …"},
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }))
+        try:
+            async with _chat_wake_lock(agent_id):
+                async with async_session_factory() as db:
+                    bereit = await wake_agent(db, _docker, agent_id, wait=True, timeout=45,
+                                              durch_mensch=not _nur_nutzen)
+                    if bereit:
+                        geweckt = await db.get(_Agent, agent_id)
+                        _wecken_ergebnis["container"] = getattr(geweckt, "container_id", None)
+        except Exception:
+            logger.exception("Chat: Agent %s liess sich nicht wecken", scrub_log(agent_id))
+            bereit = False
+        return bereit
+
+    _wecken_ergebnis: dict[str, str | None] = {"container": None}
 
     # Subscribe to agent's chat response channel
     channel = f"agent:{agent_id}:chat:response"
@@ -439,6 +556,9 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
     # ``_sitzung_fuer_ereignis``.
     _nachgeschlagen: dict[str, str] = {}
     _db_gefragt: set[str] = set()
+    # Ereignisse ohne Nachrichtenkennung (Kacheln, Ziele, Hinweise): je Gespraech
+    # einmal nachgeschlagen, ob dieser Mensch es sehen darf (core/chat_besitz).
+    _darf_cache: dict[str, bool] = {}
     # Session tracking - defer session creation until first message
     # so the client can provide an existing session_id
     _session: dict[str, str | None] = {"id": None}
@@ -764,9 +884,9 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                                     except Exception:
                                         _ws_connected = False
                                 # else: foreign message_id → drop (isolation)
-                            else:
+                            elif (_raus := await _freigabe_kuerzen(_fwd, agent_id, _user, _darf_cache)) is not None:
                                 try:
-                                    await websocket.send_text(data)
+                                    await websocket.send_text(data if _raus is _fwd else json.dumps(_raus))
                                 except Exception:
                                     _ws_connected = False
 
@@ -864,7 +984,12 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             action = msg.get("action", "")
             if action == "stop":
                 cancel_channel = f"agent:{agent_id}:chat:cancel"
-                await _redis.client.publish(cancel_channel, "stop")
+                # Gezielt das Gespraech dieses Fensters anhalten (agent/chat_consumer).
+                # Ohne Gespraech: nur wer den Agenten verwaltet, haelt alles an.
+                if _session["id"]:
+                    await _redis.client.publish(cancel_channel, json.dumps({"sitzung": _session["id"]}))
+                elif not _nur_nutzen:
+                    await _redis.client.publish(cancel_channel, "stop")
                 await websocket.send_text(json.dumps({
                     "type": "cancelled",
                     "data": {"message": "Stop signal sent to agent"},
@@ -879,6 +1004,9 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             # ins Leere.
             if action == "attach":
                 sitzung = _sitzungskennung(msg.get("session_id"))
+                if sitzung and not await _chat_sitzung_erlaubt(agent_id, _user, sitzung):
+                    await websocket.send_text(json.dumps(_gespraech_fremd()))
+                    continue
                 if sitzung:
                     _session["id"] = sitzung
                     await websocket.send_text(json.dumps({
@@ -957,6 +1085,14 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                 _session["id"] = uuid.uuid4().hex[:12]
                 is_new_session = True
 
+            # Chats je Nutzer (core/chat_besitz): in fremde Gespraeche eines
+            # freigegebenen Agenten wird nicht geschrieben; ein neues gehoert ab
+            # hier dem, der es beginnt.
+            if not await _chat_sitzung_erlaubt(agent_id, _user, _session["id"], beanspruchen=True):
+                _session["id"] = None
+                await websocket.send_text(json.dumps(_gespraech_fremd()))
+                continue
+
             # /goal — Ziel fuer dieses Gespraech (app.core.ziel). Gesetzt wird es
             # hier, weitergearbeitet nach jeder fertigen Antwort (main.py). Der
             # Nutzer sieht seine Eingabe, der Agent bekommt den ausfuehrlichen Auftrag.
@@ -1003,11 +1139,15 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                 # Neustartfest: VOR dem Einreihen, damit schon das erste Ereignis
                 # des Agenten die Zuordnung in Redis vorfindet.
                 await _merke_sitzung(_redis.client, message_id, _session["id"])
-            source =str(msg.get("source") or "webapp")
+            source = str(msg.get("source") or "webapp")[:32]
+            # Ein Fenster spricht nie als Zeitplan oder Kanal: deren Faden (Verlauf,
+            # Handler) gehoert dem Besitzer (agent/chat_consumer._source_key).
+            if source == "scheduler" or source.startswith(("telegram", "teams", "whatsapp", "slack", "discord")):
+                source = "webapp"
             # Per-message model override must belong to the agent's harness — a
             # claude_code agent can't run a GPT model and vice-versa. Drop an
             # incompatible override so the agent falls back to its own model.
-            override_model = msg.get("model")
+            override_model = None if _nur_nutzen else msg.get("model")
             if override_model:
                 from app.core.model_catalog import is_model_allowed_for_mode
                 if not is_model_allowed_for_mode(agent_mode, override_model):
@@ -1017,7 +1157,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             # arbitrary string can never reach a CLI flag or request body.
             from app.models.chat_session import REASONING_LEVELS
             reasoning = str(msg.get("reasoning") or "").strip().lower()
-            if reasoning not in REASONING_LEVELS:
+            if reasoning not in REASONING_LEVELS or _nur_nutzen:
                 reasoning = ""
             chat_payload = json.dumps({
                 "id": message_id,
@@ -1057,6 +1197,26 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             # Ueber den EINEN Einreihen-Weg — dort prueft das Budget (#898). Ist es
             # aufgebraucht, kommt der Hinweis als ``error`` zu genau dieser
             # Nachricht ueber den Antwortkanal, den diese Verbindung abonniert hat.
+            # Den echten Zustand fragen, nicht nur den vom Verbinden: Ein Leerlauf-Stopp
+            # bei offenem Chat liess die Nachricht sonst ohne Start in der Warteschlange.
+            if _docker and not _schlaeft:
+                try:
+                    _schlaeft = (_docker.get_container_status(agent_container_id) if agent_container_id
+                                 else "missing") not in ("running", "created")
+                except Exception:
+                    _schlaeft = False
+            if _schlaeft and _docker:
+                if await _agent_wecken():
+                    _schlaeft = False
+                    agent_container_id = _wecken_ergebnis["container"] or agent_container_id
+                else:
+                    await websocket.send_text(json.dumps({
+                        "type": "agent_schlaeft",
+                        "message_id": message_id,
+                        "data": {"message": "Der Agent ist angehalten. Deine Nachricht wartet, "
+                                            "bis er wieder gestartet wird."},
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }))
             einreihung = await _chat_auftrag.einreihen(_redis.client, agent_id, chat_payload)
             if not einreihung.eingereiht:
                 # Eben per /goal gesetzt und schon die erste Runde gesperrt: das
@@ -1173,7 +1333,14 @@ async def ws_agent_voice(
             if _user is None:
                 await websocket.close(code=4001, reason="Unauthorized")
                 return
-            await require_agent_access(agent_id, _user, db)
+            await require_agent_access(agent_id, _user, db, nutzen=True)
+            # Ein bestehendes Gespraech per Sprache fortsetzen: nur ein eigenes
+            # (core/chat_besitz) — sonst laese die Sitzung fremden Verlauf vor.
+            if chat_session:
+                from app.core import chat_besitz
+                if not await chat_besitz.darf(db, agent_id, _user, chat_session):
+                    await websocket.close(code=4003, reason="Gespräch gehört einer anderen Person")
+                    return
     except _HTTPException:
         await websocket.close(code=4003, reason="Access denied to this agent")
         return
@@ -1221,6 +1388,18 @@ async def ws_agent_voice(
         # (Nova Sonic / Azure OpenAI Realtime) from the linked AI-account's provider.
         from app.services.realtime_voice_session import RealtimeVoiceSession
         _rt_kwargs = {"agent_id": agent_id, "user_id": user_id, "redis": _redis}
+        # Nur zum Nutzen freigegeben: nur Gespraechswerkzeuge (NUR_NUTZER_WERKZEUGE)
+        try:
+            from types import SimpleNamespace as _NS
+
+            from app.core.ownership import nur_nutzbare_agent_ids
+            async with async_session_factory() as _db_nn:
+                if agent_id in await nur_nutzbare_agent_ids(_NS(id=user_id), _db_nn):
+                    _rt_kwargs["nur_nutzen"] = True
+        except Exception:  # noqa: BLE001 — im Zweifel zu, nie auf
+            logger.warning("voice: Freigabe nicht pruefbar agent=%s", scrub_log(agent_id), exc_info=True)
+            await websocket.close(code=1011, reason="authorization error")
+            return
         if chat_session:  # continue an existing chat session by voice
             _rt_kwargs["session_id"] = chat_session
         if fresh:
@@ -1255,6 +1434,85 @@ async def ws_agent_voice(
             pass
         await websocket.close(code=1011, reason="voice init failed")
         return
+
+    # Merken, damit ein Entzug der Freigabe auch offene Sprachsitzungen schliesst.
+    _sprach_schluessel = f"{user_id}:{agent_id}:voice:{id(websocket)}"
+    _active_voice_websockets[_sprach_schluessel] = websocket
+    try:
+        await _sprachsitzung_betreiben(websocket, session, agent_id, interaction_model)
+    finally:
+        _active_voice_websockets.pop(_sprach_schluessel, None)
+
+
+@router.websocket("/agents/{agent_id}/teams-stimme")
+async def ws_teams_stimme(websocket: WebSocket, agent_id: str, meeting_id: str = Query(...)):
+    """Stimme des Agenten in einer Teams-Besprechung (agent/app/teams_teilnehmer).
+
+    Gegenstelle ist der Agent selbst, nicht ein Mensch: Anmeldung mit dem Agenten-Token
+    (``X-Agent-Token``, nur aus dem Agenten-Netz, ``agent_zugang_pruefen``). Nur für einen
+    eigenen, gerade laufenden Teams-Termin. Die Sitzung gehört dem Besitzer des Agenten
+    (dessen Rechte, dessen Freigaben) — wie wenn er selbst mit dem Agenten spräche.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from app.dependencies import agent_zugang_pruefen
+    from app.models.agent import Agent
+    from app.models.meeting import QUELLE_TEAMS, Meeting
+
+    if not _redis or not _redis.client:
+        await websocket.close(code=1011, reason="Redis not initialized")
+        return
+    if not agent_zugang_pruefen(websocket, agent_id, websocket.headers.get("x-agent-token", "")):
+        await websocket.close(code=4003, reason="Kein Zugang")
+        return
+    async with async_session_factory() as db:
+        seite = await db.get(Meeting, meeting_id)
+        agent = await db.get(Agent, agent_id)
+        jetzt = datetime.now(timezone.utc)
+        ende = seite.ende if seite else None
+        if ende is not None and ende.tzinfo is None:
+            ende = ende.replace(tzinfo=timezone.utc)
+        beginn = seite.beginn if seite else None
+        if beginn is not None and beginn.tzinfo is None:
+            beginn = beginn.replace(tzinfo=timezone.utc)
+        if (agent is None or seite is None or seite.agent_id != agent_id or seite.quelle != QUELLE_TEAMS
+                or ende is None or beginn is None or jetzt > ende + timedelta(minutes=30)
+                or jetzt < beginn - timedelta(minutes=10)):
+            await websocket.close(code=4004, reason="Kein laufender Termin")
+            return
+        interaction_model = ((agent.config or {}).get("interaction_model") or "").strip() or None
+        if not interaction_model:
+            from app.services.settings_service import SettingsService
+            interaction_model = ((await SettingsService(db).get("voice_interaction_model")) or "").strip() or None
+        titel, besitzer = seite.title, agent.user_id
+    if interaction_model not in ("nova_sonic", "azure_realtime"):
+        # Sprechen in einer Besprechung braucht die Echtzeit-Sprachfront (durchgehender Ton).
+        await websocket.close(code=4009, reason="Echtzeit-Sprache nicht eingerichtet")
+        return
+    await websocket.accept()
+    from app.services.realtime_voice_session import RealtimeVoiceSession
+
+    session = RealtimeVoiceSession(agent_id=agent_id, user_id=besitzer or "unknown", redis=_redis,
+                                   neues_gespraech=True, besprechung=titel)
+    try:
+        async with async_session_factory() as db:
+            await session.init(db)
+    except Exception:  # noqa: BLE001
+        logger.exception("teams-stimme: Start fehlgeschlagen agent=%s", scrub_log(agent_id))
+        try:
+            await session.close()
+        except Exception:  # noqa: BLE001
+            pass
+        await websocket.close(code=1011, reason="voice init failed")
+        return
+    await _sprachsitzung_betreiben(websocket, session, agent_id, interaction_model)
+
+
+async def _sprachsitzung_betreiben(websocket: WebSocket, session, agent_id: str,
+                                  interaction_model: str | None) -> None:
+    """Eine angenommene Sprachsitzung betreiben — Browser bzw. App UND Teams-Teilnehmer
+    (``/agents/{id}/teams-stimme``) laufen über diese eine Schleife."""
+    import base64
 
     # Ab hier läuft ein Gespräch: kein automatisches Neuerstellen des Agenten
     # (core/agenten_aktualisieren.beschaeftigt). Abmelden im finally unten.
@@ -1387,6 +1645,18 @@ async def _notif_visible_agent_ids(user_id: str | None) -> set[str]:
     return set(owned) | set(shared)
 
 
+async def _notif_nur_nutzbar(user_id: str | None) -> set[str]:
+    """Agenten, die dieser Mensch nur NUTZEN darf (core/ownership)."""
+    if not user_id:
+        return set()
+    from types import SimpleNamespace
+
+    from app.core.ownership import nur_nutzbare_agent_ids
+
+    async with async_session_factory() as db:
+        return await nur_nutzbare_agent_ids(SimpleNamespace(id=user_id), db)
+
+
 @router.websocket("/notifications")
 async def ws_notifications(websocket: WebSocket, token: str | None = Query(None), ticket: str | None = Query(None)):
     """WebSocket for live notification push to the frontend. Requires ?ticket=<ticket> or ?token=<jwt> (legacy)."""
@@ -1400,6 +1670,7 @@ async def ws_notifications(websocket: WebSocket, token: str | None = Query(None)
     await websocket.accept()
     user_id = getattr(websocket.state, "user_id", None)
     visible = await _notif_visible_agent_ids(user_id)
+    nur = await _notif_nur_nutzbar(user_id)
     pubsub = await _redis.subscribe("notifications:live")
 
     try:
@@ -1408,6 +1679,7 @@ async def ws_notifications(websocket: WebSocket, token: str | None = Query(None)
             ticks += 1
             if ticks % 60 == 0:  # refresh visibility (~30s) to pick up new agents/access
                 visible = await _notif_visible_agent_ids(user_id)
+                nur = await _notif_nur_nutzbar(user_id)
             if ticks % 50 == 0:  # keepalive (~27s) so Cloudflare/Caddy doesn't drop the idle WS
                 try:
                     await websocket.send_text('{"type":"ping"}')
@@ -1422,10 +1694,18 @@ async def ws_notifications(websocket: WebSocket, token: str | None = Query(None)
                     data = data.decode("utf-8")
                 # Scope: only forward notifications for agents this user may see.
                 try:
-                    aid = (json.loads(data).get("data") or {}).get("agent_id")
+                    _inhalt = json.loads(data).get("data") or {}
+                    aid = _inhalt.get("agent_id")
+                    empfaenger = _inhalt.get("empfaenger_id")
                 except Exception:
-                    aid = None
+                    aid, empfaenger = None, None
                 if aid not in visible:
+                    continue
+                # Antworten in einem fremden Gespraech (core/chat_besitz)
+                if empfaenger and empfaenger != user_id:
+                    continue
+                # Agent nur zum Nutzen freigegeben: nur Meldungen an diesen Menschen
+                if aid in nur and empfaenger != user_id:
                     continue
                 await websocket.send_text(data)
             await asyncio.sleep(0.05)
@@ -1533,7 +1813,8 @@ async def ws_agent_browser(
     from app.core.agent_wakeup import ensure_agent_running
 
     try:
-        await ensure_agent_running(agent_id, _docker, _redis)
+        # Besitzer oeffnet den Browser-Reiter (require_agent_owner): ein Mensch.
+        await ensure_agent_running(agent_id, _docker, _redis, durch_mensch=True)
     except Exception as e:  # noqa: BLE001 — der Versuch darf den Kanal nicht kippen
         logger.warning("[Browser] Wecken von %s fehlgeschlagen: %s", scrub_log(agent_id), e)
 

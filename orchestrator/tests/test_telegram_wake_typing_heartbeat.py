@@ -66,7 +66,7 @@ class WakeTypingHeartbeatTests(unittest.IsolatedAsyncioTestCase):
         self.bot.WAKE_TYPING_INTERVAL_SECONDS = 0.02
 
     async def test_typing_is_refreshed_repeatedly_during_a_slow_wake(self):
-        async def _slow_wake(_db, _docker, _agent_id, wait=True, timeout=20):
+        async def _slow_wake(_db, _docker, _agent_id, wait=True, timeout=20, **_):
             await asyncio.sleep(0.09)  # laenger als mehrere Tipp-Intervalle
             return True
 
@@ -92,7 +92,7 @@ class WakeTypingHeartbeatTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(call.args, ("typing",))
 
     async def test_a_fast_wake_still_returns_correctly_with_at_least_one_ping(self):
-        async def _fast_wake(_db, _docker, _agent_id, wait=True, timeout=20):
+        async def _fast_wake(_db, _docker, _agent_id, wait=True, timeout=20, **_):
             return True
 
         agent = SimpleNamespace(id="a1", state=AgentState.STOPPED, container_id="c1")
@@ -134,7 +134,7 @@ class WakeTypingHeartbeatTests(unittest.IsolatedAsyncioTestCase):
         send_action.assert_not_awaited()
 
     async def test_a_failed_wake_is_reported_false_after_the_typing_loop(self):
-        async def _wake_that_fails(_db, _docker, _agent_id, wait=True, timeout=20):
+        async def _wake_that_fails(_db, _docker, _agent_id, wait=True, timeout=20, **_):
             await asyncio.sleep(0.05)
             return False
 

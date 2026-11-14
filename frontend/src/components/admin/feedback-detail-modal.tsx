@@ -112,7 +112,7 @@ export function FeedbackDetailModal({ feedback: f, onClose }: Props) {
                     </Dialog.Description>
                   </div>
                 </div>
-                <button onClick={onClose} className="rounded p-1 text-muted-foreground/50 hover:text-foreground shrink-0">
+                <button onClick={onClose} className="rounded p-1 text-muted-foreground hover:text-foreground shrink-0">
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -124,16 +124,16 @@ export function FeedbackDetailModal({ feedback: f, onClose }: Props) {
                   <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium", statusColor)}>
                     {f.status}
                   </span>
-                  <span className="text-[10px] text-muted-foreground/50 capitalize">{f.category}</span>
+                  <span className="text-[10px] text-muted-foreground capitalize">{f.category}</span>
                   {sentiment && (
                     <span className={cn("inline-flex items-center gap-1 text-[10px]", sentiment.color)}>
                       <sentiment.icon className="h-3 w-3" />
                       {sentiment.label}
                     </span>
                   )}
-                  {f.page && <span className="text-[10px] font-mono text-muted-foreground/50">{f.page}</span>}
+                  {f.page && <span className="text-[10px] font-mono text-muted-foreground">{f.page}</span>}
                   {f.element_label && (
-                    <span className="text-[10px] text-muted-foreground/50" title={f.selector || undefined}>
+                    <span className="text-[10px] text-muted-foreground" title={f.selector || undefined}>
                       Element: {f.element_label}
                     </span>
                   )}
@@ -161,7 +161,7 @@ export function FeedbackDetailModal({ feedback: f, onClose }: Props) {
                 ) : f.description ? (
                   <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap">{f.description}</p>
                 ) : (
-                  <p className="text-sm text-muted-foreground/50 italic">Keine Beschreibung vorhanden.</p>
+                  <p className="text-sm text-muted-foreground italic">Keine Beschreibung vorhanden.</p>
                 )}
 
                 {/* Screenshot */}

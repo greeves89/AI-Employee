@@ -239,3 +239,30 @@ class CustomPageInputTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MenuegruppenPassenZusammen(unittest.TestCase):
+    """Eine Gruppe, die der Server annimmt, die Seitenleiste aber nicht kennt,
+    verschluckt den Menuepunkt still. Server, Leiste und Auswahl im Admin-Bereich
+    muessen dieselben Schluessel haben (alte Gruppen nur ueber die Umleitung)."""
+
+    def test_server_leiste_und_auswahl(self):
+        import re
+        from pathlib import Path
+
+        from app.models.custom_page import GROUP_KEYS
+
+        wurzel = Path(__file__).resolve().parents[2] / "frontend" / "src"
+        leiste = (wurzel / "components/layout/sidebar.tsx").read_text()
+        icons = (wurzel / "lib/page-icons.ts").read_text()
+        leisten_keys = set(re.findall(r'^\s+key: "(\w+)",$', leiste.split("const navGroups")[1].split("];")[0], re.M))
+        auswahl = set(re.findall(r'\{ key: "(\w+)", label:', icons))
+        umgeleitet = set(re.findall(r'^\s+(\w+): "\w+",$', icons.split("ALTE_SEITEN_GRUPPEN")[1], re.M))
+        self.assertEqual(set(GROUP_KEYS) - umgeleitet, leisten_keys)
+        self.assertEqual(auswahl, leisten_keys)
+        self.assertIn("apps", leisten_keys)
+
+    def test_neue_seiten_landen_unter_anwendungen(self):
+        from app.api.custom_pages import CustomPageCreate
+
+        self.assertEqual(CustomPageCreate.model_fields["group_key"].default, "apps")

@@ -321,7 +321,7 @@ export function TodoTab({ agentId }: TodoTabProps) {
                     "h-6 rounded-md px-2 text-[10px] font-medium border transition-all",
                     newPriority === p
                       ? priorityColors[p]
-                      : "border-transparent text-muted-foreground/40 hover:text-muted-foreground"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
                   )}
                 >
                   {priorityLabels[p]}
@@ -370,11 +370,11 @@ export function TodoTab({ agentId }: TodoTabProps) {
             {projectKey !== "_general" && (
               <FolderOpen className="h-3 w-3 text-muted-foreground/40 shrink-0" />
             )}
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
               {projectKey !== "_general" ? projectKey : "Allgemein"}
             </span>
             <div className="flex-1 h-px bg-foreground/[0.06]" />
-            <span className="text-[10px] text-muted-foreground/40 tabular-nums">
+            <span className="text-[10px] text-muted-foreground tabular-nums">
               {groupTodos.filter((t) => t.status === "completed").length}/{groupTodos.length}
             </span>
           </div>
@@ -398,7 +398,7 @@ export function TodoTab({ agentId }: TodoTabProps) {
             onClick={() => setShowCompleted(!showCompleted)}
             className="flex items-center gap-2 px-1 pb-1 w-full text-left"
           >
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
               Erledigt ({completedTodos.length})
             </span>
             <div className="flex-1 h-px bg-foreground/[0.06]" />
@@ -455,7 +455,7 @@ function TodoItem({
             ? "text-emerald-500"
             : isInProgress
             ? "text-blue-400"
-            : "text-muted-foreground/30 hover:text-muted-foreground"
+            : "text-muted-foreground hover:text-foreground"
         )}
       >
         <StatusIcon className="h-4 w-4" />
@@ -494,7 +494,7 @@ function TodoItem({
           {/* Nur bei Erledigtem: macht die Sortierung nachvollziehbar. Bei
               Offenem wäre das Datum nur Rauschen — dort zaehlt die Reihenfolge. */}
           {isCompleted && doneAt(todo) > 0 && (
-            <span className="text-[9px] text-muted-foreground/50 tabular-nums">
+            <span className="text-[9px] text-muted-foreground tabular-nums">
               {new Date(doneAt(todo)).toLocaleDateString("de-DE", {
                 day: "2-digit", month: "2-digit", year: "2-digit",
               })}
@@ -511,7 +511,7 @@ function TodoItem({
       {/* Delete */}
       <button
         onClick={() => onDelete(todo.id)}
-        className="mt-0.5 shrink-0 text-muted-foreground/20 hover:text-red-400 can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-all"
+        className="mt-0.5 shrink-0 text-muted-foreground hover:text-red-400 can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-all"
       >
         <Trash2 className="h-3.5 w-3.5" />
       </button>

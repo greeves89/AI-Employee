@@ -1,10 +1,12 @@
-"""Wer den Chat eines gestoppten Agenten oeffnet, weckt ihn.
+"""Wer einem gestoppten Agenten im Chat schreibt, weckt ihn — Oeffnen allein nicht.
 
 Bis v1.340.1 lehnte der Chat-WebSocket einen gestoppten Agenten mit 4010 ab
 und einen Agenten ohne Container (nach einem Update) sogar, ohne es je wieder
 zu versuchen. Geweckt wurde nur beim Anmelden — und auch dort nur, wenn noch
 ein Container da war. In der einfachen Ansicht fehlt der Neustart-Knopf: der
-Nutzer kam an seinen Agenten nicht mehr heran.
+Nutzer kam an seinen Agenten nicht mehr heran. Ab 1.340.2 weckte schon das
+Oeffnen; seit 14.11.2026 (Entscheidung Daniel) erst die erste Nachricht: reines
+Nachsehen kostet keine Rechenzeit.
 
 Der Test faehrt den echten Handler ueber einen echten WebSocket und ersetzt
 nur die Aussenwelt (Datenbank, Docker, Redis, Anmeldung).
@@ -12,7 +14,7 @@ nur die Aussenwelt (Datenbank, Docker, Redis, Anmeldung).
 import asyncio
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi import FastAPI
 from starlette.testclient import TestClient
@@ -68,7 +70,7 @@ async def _angemeldet(websocket, token=None, ticket=None):
     return True
 
 
-async def _zugriff_ok(agent_id, user, db):
+async def _zugriff_ok(agent_id, user, db, **_):
     return None
 
 
@@ -82,6 +84,7 @@ class ChatWecktTests(unittest.TestCase):
              patch.object(ws, "_authenticate_ws", _angemeldet), \
              patch.object(ws, "async_session_factory", lambda: _Db(agent)), \
              patch("app.dependencies.require_agent_access", _zugriff_ok), \
+             patch("app.core.ownership.nur_nutzbare_agent_ids", AsyncMock(return_value=set())), \
              patch("app.services.user_lifecycle.wake_agent", wecken):
             with TestClient(app) as client:
                 try:
@@ -91,20 +94,18 @@ class ChatWecktTests(unittest.TestCase):
                     pass
         return erste
 
-    def test_gestoppter_agent_ohne_container_wird_geweckt(self):
+    def test_oeffnen_weckt_nicht_und_meldet_schlaf(self):
         agent = SimpleNamespace(id="a1", container_id=None, mode="claude_code")
-        docker = _Docker("exited")
         aufrufe = []
 
-        async def wecken(db, d, agent_id, wait=False, timeout=30):
-            aufrufe.append((agent_id, wait))
-            agent.container_id = "c-neu"
-            docker.status = "running"
+        async def wecken(*a, **k):
+            aufrufe.append(a)
             return True
 
-        erste = self._verbinden(agent, docker, wecken)
-        self.assertEqual(aufrufe, [("a1", True)])
+        erste = self._verbinden(agent, _Docker("exited"), wecken)
+        self.assertEqual(aufrufe, [], "Oeffnen darf den Agenten nicht starten")
         self.assertEqual(erste["type"], "ready")
+        self.assertIs(erste["data"]["schlaeft"], True)
 
     def test_laufender_agent_wird_nicht_angefasst(self):
         agent = SimpleNamespace(id="a2", container_id="c1", mode="claude_code")
@@ -117,16 +118,48 @@ class ChatWecktTests(unittest.TestCase):
         erste = self._verbinden(agent, _Docker("running"), wecken)
         self.assertEqual(aufrufe, [])
         self.assertEqual(erste["type"], "ready")
+        self.assertIs(erste["data"]["schlaeft"], False)
 
-    def test_scheitert_das_wecken_bleibt_es_bei_4010(self):
+    def test_gestoppter_agent_oeffnet_statt_4010(self):
+        """Auch wenn Wecken scheitern wuerde: der Verlauf ist lesbar."""
         agent = SimpleNamespace(id="a3", container_id="c1", mode="claude_code")
 
         async def wecken(*a, **k):
             return False
 
-        with self.assertRaises(WebSocketDisconnect) as fehler:
-            self._verbinden(agent, _Docker("exited"), wecken)
-        self.assertEqual(fehler.exception.code, 4010)
+        erste = self._verbinden(agent, _Docker("exited"), wecken)
+        self.assertEqual(erste["type"], "ready")
+
+
+class WeckenBeimSenden(unittest.TestCase):
+    """Die erste Nachricht weckt — vor dem Einreihen, mit derselben Halt-Regel."""
+
+    def setUp(self):
+        import inspect
+        self.quelle = inspect.getsource(ws.ws_agent_chat)
+
+    def test_vor_dem_einreihen(self):
+        wecken = self.quelle.index("if await _agent_wecken():")
+        einreihen = self.quelle.index("einreihung = await _chat_auftrag.einreihen(")
+        self.assertLess(wecken, einreihen)
+        self.assertIn("if _schlaeft and _docker:", self.quelle)
+
+    def test_nur_wer_verwaltet_hebt_den_halt_auf(self):
+        block = self.quelle.split("async def _agent_wecken")[1].split("return bereit")[0]
+        self.assertIn("durch_mensch=not _nur_nutzen", block)
+        self.assertIn("_chat_wake_lock(agent_id)", block)
+
+    def test_prueft_bei_jeder_nachricht_den_echten_zustand(self):
+        """Leerlauf-Stopp bei offenem Chat: die naechste Nachricht weckt trotzdem."""
+        block = self.quelle.split("if _docker and not _schlaeft:")[1].split("if _schlaeft and _docker:")[0]
+        self.assertIn("get_container_status(agent_container_id)", block)
+
+    def test_scheitert_es_erfaehrt_es_der_mensch(self):
+        self.assertIn('"type": "agent_schlaeft"', self.quelle)
+
+    def test_oeffnen_weckt_nicht_mehr(self):
+        vor_ready = self.quelle.split('"type": "ready"')[0]
+        self.assertNotIn("wake_agent(", vor_ready)
 
 
 if __name__ == "__main__":

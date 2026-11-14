@@ -33,7 +33,7 @@ class _Stufe2Repo(_RepoMitKommentaren):
     async def commit_info(self, client, token, repo, sha):
         return self.commits.get(sha)
 
-    async def kommentar_aendern(self, client, token, repo, kommentar_id, body):
+    async def kommentar_aendern(self, client, token, repo, kommentar_id, body, *, nummer=None):
         self.geaendert.append((kommentar_id, body))
         return True
 

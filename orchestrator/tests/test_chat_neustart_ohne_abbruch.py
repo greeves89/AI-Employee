@@ -189,7 +189,7 @@ async def _angemeldet(websocket, token=None, ticket=None):
     return True
 
 
-async def _zugriff_ok(agent_id, user, db):
+async def _zugriff_ok(agent_id, user, db, **_):
     return None
 
 
@@ -216,6 +216,11 @@ class NeustartTests(unittest.TestCase):
             patch.object(ws, "_authenticate_ws", _angemeldet),
             patch.object(ws, "async_session_factory", lambda: _Db()),
             patch("app.dependencies.require_agent_access", _zugriff_ok),
+            patch("app.core.ownership.nur_nutzbare_agent_ids", AsyncMock(return_value=set())),
+            # Gespraechsbesitz (core/chat_besitz) pruefen eigene Tests — die
+            # nachgestellte Datenbank hier kennt keine Abfragen.
+            patch.object(ws, "_chat_sitzung_erlaubt", AsyncMock(return_value=True)),
+            patch.object(ws, "_ereignis_fuer_verbindung", AsyncMock(return_value=True)),
             # Die Datenbank weiss hier nichts — die Zuordnung MUSS aus Redis kommen.
             patch("app.services.chat_persistence.session_for_message",
                   AsyncMock(return_value=None)),

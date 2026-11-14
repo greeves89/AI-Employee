@@ -336,6 +336,20 @@ def _build_channel_prompt(text: str, source: str, is_new_session: bool) -> str:
     )
 
 
+
+
+def _stopp_sitzung(daten) -> str | None:
+    """Gespraech eines gezielten Stopps — ``None`` heisst: alles anhalten (alter Weg)."""
+    if not isinstance(daten, str) or not daten.startswith("{"):
+        return None
+    try:
+        import json as _json
+
+        wert = _json.loads(daten).get("sitzung")
+    except (ValueError, AttributeError):
+        return None
+    return wert if isinstance(wert, str) and wert else None
+
 class ChatConsumer:
     """Consumes chat messages from the Redis queue and processes them via
     per-channel ChatHandler instances.
@@ -528,10 +542,18 @@ class ChatConsumer:
                     ignore_subscribe_messages=True, timeout=1.0
                 )
                 if message and message["type"] == "message":
-                    # Stop whichever channel(s) are currently processing. In serial
-                    # mode that's at most one; in parallel mode a global cancel
-                    # stops all in-flight turns (the cancel channel carries no key).
+                    # Stop whichever channel(s) are currently processing. "stop"
+                    # (alt) haelt alle laufenden Zuege an; {"sitzung": "<id>"} nur
+                    # den Zug dieses Gespraechs — an einem geteilten Agenten soll ein
+                    # Stopp nicht die Antwort fuer jemand anderen abbrechen.
+                    nur_sitzung = _stopp_sitzung(message.get("data"))
+                    gezielt = ({f"webapp:{nur_sitzung}", f"ios:{nur_sitzung}", f"voice:{nur_sitzung}"}
+                               if nur_sitzung is not None else None)
                     for sk in list(self._active_source_keys):
+                        # Volle Kennung vergleichen: Zeitplan- und Kanal-Faeden
+                        # (scheduler, telegram:…) stoppt ein gezielter Stopp nie.
+                        if gezielt is not None and sk not in gezielt:
+                            continue
                         handler = self._handlers.get(sk)
                         if handler and getattr(handler, "is_running", False):
                             await handler.stop_current()

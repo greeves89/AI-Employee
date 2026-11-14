@@ -93,7 +93,7 @@ function ImageChoice({ agentId, data, antworten, beschaeftigt }: AgentViewProps)
                 /* Ein fehlender Pfad darf nicht wie ein leeres Feld aussehen —
                    sonst hält der Nutzer die Ansicht für kaputt und antwortet
                    gar nicht, während der Agent wartet. */
-                <div className="flex h-full flex-col items-center justify-center gap-1 text-muted-foreground/40">
+                <div className="flex h-full flex-col items-center justify-center gap-1 text-muted-foreground">
                   <ImageOff className="h-5 w-5" />
                   <span className="text-[10px]">nicht gefunden</span>
                 </div>

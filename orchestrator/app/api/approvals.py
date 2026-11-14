@@ -471,8 +471,16 @@ async def anfrage_anlegen(db: AsyncSession, agent_id: str, body: ApprovalRequest
     # Publish to agent's chat WS so approval appears inline in the chat
     if redis and redis.client:
         try:
+            # Gespraech der Aufgabe, falls bekannt: dort darf ein freigegebener Kollege
+            # sehen, DASS seine Anfrage auf den Besitzer wartet (ws.py, ohne Inhalt).
+            sitzung = None
+            if body.task_id:
+                from app.models.task import Task as _Task
+                _aufgabe = await db.get(_Task, body.task_id)
+                sitzung = ((_aufgabe.metadata_ or {}) if _aufgabe else {}).get("chat_session_id")
             ws_event = json.dumps({
                 "type": "approval_request",
+                **({"session_id": sitzung} if isinstance(sitzung, str) and sitzung else {}),
                 "data": {
                     "approval_id": str(approval.id),
                     "notification_id": str(notif.id),
@@ -758,7 +766,8 @@ async def _visible_agent_ids(user, db: AsyncSession) -> list[str]:
 
     uid = str(getattr(user, "id", "") or "")
     eigene = set((await db.execute(select(Agent.id).where(Agent.user_id == uid))).scalars().all())
-    eigene |= set((await db.execute(select(AgentAccess.agent_id).where(AgentAccess.user_id == uid))).scalars().all())
+    from app.core.ownership import verwaltende_freigaben
+    eigene |= set((await db.execute(verwaltende_freigaben(uid))).scalars().all())
     if getattr(user, "role", None) == UserRole.ADMIN:
         eigene.add("system")
     return sorted(str(a) for a in eigene)

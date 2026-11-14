@@ -12,7 +12,7 @@ export default function AuditPage() {
     router.replace("/admin?tab=audit");
   }, [router]);
   return (
-    <div className="flex h-64 items-center justify-center text-muted-foreground/50">
+    <div className="flex h-64 items-center justify-center text-muted-foreground">
       <Loader2 className="h-5 w-5 animate-spin" />
     </div>
   );

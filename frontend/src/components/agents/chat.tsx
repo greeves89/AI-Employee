@@ -18,6 +18,7 @@ import {
   CirclePause,
   ShieldAlert,
   Copy,
+  Moon,
 } from "lucide-react";
 import { useWebSocket } from "@/hooks/use-websocket";
 import type { LogEvent } from "@/lib/types";
@@ -206,6 +207,10 @@ interface ChatEvent {
   session_id?: string;  // owning session (set by the server) — used to isolate chat tabs
   type: "text" | "tool_call" | "tool_result" | "error" | "system" | "done" | "session" | "cancelled" | "queued" | "image" | "file" | "task_card" | "context"
     | "approval_request"  // Freigabe angelegt (approvals.py) — Anstoss fuer den Banner-Abgleich
+    | "approval_wait"  // Nur-Nutzer: die eigene Anfrage wartet auf den Besitzer (ws.py, ohne Inhalt)
+    | "ready"  // Verbindung steht; ``data.schlaeft``: Agent gestoppt, startet mit der ersten Nachricht (ws.py)
+    | "agent_startet"  // die erste Nachricht weckt den Agenten gerade (ws.py)
+    | "agent_schlaeft"  // Wecken ging nicht (angehalten): die Nachricht wartet (ws.py)
     | "attached"  // Quittung auf {action: "attach"} (ws.py)
     | "goal"  // /goal gesetzt oder beendet (ws.py) — Anstoß, den Ziel-Stand neu zu laden
     | "stillstand"  // #891: Zug endete mit einer Ankündigung, danach lief nichts (app/core/ankuendigung.py)
@@ -322,7 +327,7 @@ function LiveActivity({ agentId }: { agentId: string }) {
       {target && (
         <span className="truncate max-w-[220px]">· {target}</span>
       )}
-      <span className="text-muted-foreground/50 shrink-0">· {elapsed}s</span>
+      <span className="text-muted-foreground shrink-0">· {elapsed}s</span>
     </div>
   );
 }
@@ -513,6 +518,9 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   zuletztAktives?: boolean;
 }) {
   const { simpleMode } = useSimpleMode();
+  // Hinweis über dem Eingabefeld, solange ein gestoppter Agent erst mit der
+  // ersten Nachricht startet (ws.py: ready.schlaeft, agent_startet, agent_schlaeft).
+  const [schlafHinweis, setSchlafHinweis] = useState("");
   const [sessions, setSessions] = useState<SessionTab[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   // Kennung aus „Neues Gespräch“, solange darin noch nichts geschrieben wurde —
@@ -1361,6 +1369,32 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           // Live-Signal: sofort abgleichen statt auf den naechsten Takt zu warten.
           approvalRecheckRef.current();
         }
+        // Gestoppter Agent: Öffnen startet ihn nicht mehr, erst die erste Nachricht
+        // (Entscheidung 14.11.2026). Eine Zeile über dem Eingabefeld sagt, was
+        // passiert; sie verschwindet, sobald der Agent antwortet. Nicht im Verlauf:
+        // den ersetzt das Nachladen des Gesprächs.
+        if (chatEvent.type === "ready" || chatEvent.type === "agent_startet" || chatEvent.type === "agent_schlaeft") {
+          const text = chatEvent.type === "ready"
+            ? (chatEvent.data?.schlaeft ? "Der Agent ist gestoppt. Er startet, sobald du schreibst." : "")
+            : String(chatEvent.data?.message || "");
+          setSchlafHinweis(text);
+          return;
+        }
+        if (chatEvent.type === "text" || chatEvent.type === "tool_call" || chatEvent.type === "done") {
+          setSchlafHinweis("");
+        }
+        if (chatEvent.type === "approval_wait") {
+          // Wer den Agenten nur nutzt, entscheidet nicht selbst — er sieht nur, dass
+          // seine Anfrage auf den Besitzer wartet (ohne Frage und Begründung).
+          if (!chatEvent.session_id || chatEvent.session_id === activeSessionIdRef.current) {
+            setMessages((prev) => prev.some((m) => m.id === "freigabe-wartet") ? prev : [...prev, {
+              id: "freigabe-wartet", role: "system",
+              content: String(chatEvent.data?.message || "Wartet auf eine Freigabe durch den Besitzer des Agenten."),
+              timestamp: new Date().toISOString(),
+            }]);
+          }
+          return;
+        }
         if (chatEvent.type === "session") {
           const sid = String(chatEvent.data.session_id || "");
           if (sid) {
@@ -1916,10 +1950,14 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
 
     // Upload attached files to the agent's workspace first — the message only
     // goes out if the upload succeeds (pending chips stay on failure).
+    // Ziel bestimmt der Server: Wer den Agenten nur nutzt, landet in seinem
+    // eigenen Ordner (/workspace/geteilt/<id>), alle anderen in /workspace.
+    let zielOrdner = "/workspace";
     if (files.length > 0) {
       setIsUploading(true);
       try {
-        await api.uploadFiles(agentId, "/workspace", files);
+        const hochgeladen = await api.uploadFiles(agentId, "/workspace", files);
+        if (hochgeladen && typeof hochgeladen.path === "string") zielOrdner = hochgeladen.path;
       } catch (e) {
         setMessages((prev) => [
           ...prev,
@@ -1934,7 +1972,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     // baut der Server (app/core/chat_auftrag.py) — in jeder Laufzeit gleich. In
     // Verlauf und Titel steht nur, was hier getippt wurde.
     const anhaenge = files.map((f) => ({
-      path: `/workspace/${f.name}`, filename: f.name, size: f.size, media_type: f.type || undefined,
+      path: `${zielOrdner}/${f.name}`, filename: f.name, size: f.size, media_type: f.type || undefined,
     }));
 
     const msgId = `user-${Date.now()}`;
@@ -2486,7 +2524,9 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   // Einfüge-Kürzel des Geräts (⌘V/Strg+V), auf Touch-Geräten keins (#907).
   // Erst nach dem Einhängen ermittelt — der Server kennt das Gerät nicht.
   const [einfuegen, setEinfuegen] = useState<string | null>(null);
-  useEffect(() => { setEinfuegen(einfuegenTaste()); }, []);
+  // Auf schmalen Bildschirmen passt der Hinweis zum Einfügen nicht in die Zeile:
+  // er lief unter das Eingabefeld (UI-Durchsicht 14.11.2026).
+  useEffect(() => { setEinfuegen(window.matchMedia("(min-width: 640px)").matches ? einfuegenTaste() : null); }, []);
   useEffect(() => {
     if (!contextOpen) return;
     const onDown = (e: MouseEvent) => {
@@ -2614,7 +2654,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           <Type className="h-3 w-3 text-muted-foreground/40" />
           <button onClick={() => changeFontScale(0.1)} disabled={fontScale >= 1.4} className="rounded px-1 py-0.5 text-[13px] font-semibold text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06] disabled:opacity-30" title="Schrift größer" aria-label="Schrift größer">A+</button>
           {sessions.length > 0 && (
-            <button onClick={deleteAllSessions} className="ml-1 rounded p-1 text-muted-foreground/50 hover:text-red-400 hover:bg-red-500/10 transition-all" title="Alle Chats löschen" aria-label="Alle Chats löschen">
+            <button onClick={deleteAllSessions} className="ml-1 rounded p-1 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-all" title="Alle Chats löschen" aria-label="Alle Chats löschen">
               <Trash2 className="h-3.5 w-3.5" />
             </button>
           )}
@@ -2631,8 +2671,10 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
               isConnected ? "bg-emerald-500" : connectionFailed ? "bg-red-500" : "bg-yellow-500"
             )} />
           </span>
-          <span className="text-[10px] text-muted-foreground/60">
-            {isConnected ? "Online" : connectionFailed ? "Offline" : "..."}
+          {/* Zeigt die Verbindung zur Plattform, nicht den Zustand des Agenten —
+              „Online“ stand sonst neben „Gestoppt“ im Seitenkopf (UI-Durchsicht 14.11.2026). */}
+          <span className="text-[10px] text-muted-foreground" title="Verbindung zur Plattform">
+            {isConnected ? "Verbunden" : connectionFailed ? "Getrennt" : "Verbindet …"}
           </span>
           {connectionFailed && (
             <button onClick={retryConnect} title="Neu verbinden" aria-label="Neu verbinden" className="text-[10px] text-yellow-500 hover:text-yellow-400 transition-colors">
@@ -3050,7 +3092,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                         <div className="text-[11px] font-medium">
                           {g.label}
                           {g.note && (
-                            <span className="ml-1.5 font-normal text-muted-foreground/50">
+                            <span className="ml-1.5 font-normal text-muted-foreground">
                               — {g.note}
                             </span>
                           )}
@@ -3073,7 +3115,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                       <div>
                         <div className="text-[11px] font-medium">
                           Befehle der Laufzeit
-                          <span className="ml-1.5 font-normal text-muted-foreground/50">
+                          <span className="ml-1.5 font-normal text-muted-foreground">
                             — laufen in der CLI des Agenten, nicht von hier auslösbar
                           </span>
                         </div>
@@ -3276,6 +3318,12 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
             einer Fusszeile darunter. Vorher standen sechs Knoepfe NEBEN dem
             Eingabefeld — auf schmalen Schirmen blieb für den Text eine Spalte, und
             die Kontextanzeige lag als eigener Streifen darunter, ohne Bezug. */}
+        {schlafHinweis && (
+          <p role="status" className="mb-1.5 flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
+            <Moon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            {schlafHinweis}
+          </p>
+        )}
         <div
           className={cn(
             "rounded-2xl border bg-background/80 transition-all",
@@ -3302,7 +3350,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                   : "Nachricht… — / für Befehle"
               }
               disabled={!isConnected}
-              className="max-h-48 w-full resize-none overflow-y-auto bg-transparent px-4 pt-3 pb-1.5 text-sm outline-none transition-all placeholder:text-muted-foreground/30 disabled:opacity-40"
+              className="max-h-48 w-full resize-none overflow-y-auto bg-transparent px-4 pt-3 pb-1.5 text-sm outline-none transition-all placeholder:text-muted-foreground disabled:opacity-40"
               rows={1}
             />
 
@@ -3327,7 +3375,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                   </button>
                 ))}
                 {slashCommands.every((c) => !c.name.startsWith(input.slice(1).toLowerCase())) && (
-                  <p className="px-3 pb-2.5 text-[11px] text-muted-foreground/50">
+                  <p className="px-3 pb-2.5 text-[11px] text-muted-foreground">
                     Kein Befehl mit diesem Namen — Enter schickt den Text normal ab.
                   </p>
                 )}
@@ -3429,7 +3477,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
             <div className="ml-auto flex items-center gap-1.5">
               {agentModel && !simpleMode && (
                 <span
-                  className="hidden max-w-[10rem] truncate font-mono text-[10px] text-muted-foreground/50 sm:inline"
+                  className="hidden max-w-[10rem] truncate font-mono text-[10px] text-muted-foreground sm:inline"
                   title={agentModel}
                 >
                   {agentModel}
@@ -3483,14 +3531,14 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                     >
                       In frischem Gespräch weiterreden
                     </button>
-                    <p className="mt-1.5 text-[10px] text-muted-foreground/50">
+                    <p className="mt-1.5 text-[10px] text-muted-foreground">
                       Der Verlauf bleibt unangetastet — die Fortsetzung startet mit
                       einem kurzen Stand statt der vollen Last.
                     </p>
                     {/* Erklaert die haeufigste Rueckfrage: hier stehen 7%, und der
                         Agent verdichtet trotzdem. Beides stimmt — es sind zwei
                         verschiedene Dinge. */}
-                    <p className="mt-1.5 border-t border-border/60 pt-1.5 text-[10px] text-muted-foreground/50">
+                    <p className="mt-1.5 border-t border-border/60 pt-1.5 text-[10px] text-muted-foreground">
                       Gezählt wird das sichtbare Gespräch. Der Agent trägt zusätzlich
                       seine Anweisungen und jede Werkzeugausgabe mit — deshalb kann er
                       verdichten, während hier noch viel Platz steht.
@@ -3783,7 +3831,7 @@ function MsgTime({ ts }: { ts?: string }) {
   if (isNaN(d.getTime())) return null;
   const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return (
-    <time dateTime={ts} title={d.toLocaleString()} className="text-[10px] text-muted-foreground/50 tabular-nums">
+    <time dateTime={ts} title={d.toLocaleString()} className="text-[10px] text-muted-foreground tabular-nums">
       {time}
     </time>
   );
@@ -4735,7 +4783,7 @@ function ToolCallBlock({ step, isStreaming }: { step: ToolStep; isStreaming?: bo
         {/* Expand chevron */}
         <ChevronRight
           className={cn(
-            "h-3 w-3 text-muted-foreground/50 transition-transform ml-auto shrink-0",
+            "h-3 w-3 text-muted-foreground transition-transform ml-auto shrink-0",
             expanded && "rotate-90"
           )}
         />
@@ -4747,7 +4795,7 @@ function ToolCallBlock({ step, isStreaming }: { step: ToolStep; isStreaming?: bo
           {/* IN block */}
           {detail && (
             <div className="flex gap-0">
-              <span className="text-[10px] text-muted-foreground/50 w-10 shrink-0 text-right pr-2 pt-1.5 font-mono select-none">IN</span>
+              <span className="text-[10px] text-muted-foreground w-10 shrink-0 text-right pr-2 pt-1.5 font-mono select-none">IN</span>
               <pre className="text-[12px] font-mono text-muted-foreground bg-muted/80 dark:bg-muted/40 border border-border rounded-md px-3 py-2 overflow-x-auto max-w-full flex-1 whitespace-pre-wrap break-all">
                 {detail}
               </pre>
@@ -4757,7 +4805,7 @@ function ToolCallBlock({ step, isStreaming }: { step: ToolStep; isStreaming?: bo
           {/* OUT block */}
           {hasOutput && (
             <div className="flex gap-0">
-              <span className="text-[10px] text-muted-foreground/50 w-10 shrink-0 text-right pr-2 pt-1.5 font-mono select-none">OUT</span>
+              <span className="text-[10px] text-muted-foreground w-10 shrink-0 text-right pr-2 pt-1.5 font-mono select-none">OUT</span>
               <pre className="text-[12px] font-mono text-muted-foreground bg-muted/80 dark:bg-muted/40 border border-border rounded-md px-3 py-2 overflow-x-auto max-w-full flex-1 max-h-60 overflow-y-auto whitespace-pre-wrap break-all">
                 {(step.output || "").length > 2000
                   ? step.output!.slice(0, 2000) + "\n… (gekürzt)"
