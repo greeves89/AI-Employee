@@ -364,3 +364,10 @@ sicherungsziel_waehlen() {
     fi
     if [ -n "$gesperrt" ]; then echo "${heim}/ai-employee-sicherungen"; else echo "$ziel"; fi
 }
+
+# Laeuft gerade ein backup.sh (naechtliche Sicherung, ein anderes Update)? Fuer
+# update.sh: ein Neustart der Dienste bricht eine laufende Sicherung ab.
+# ``pgrep -f`` sieht auch Prozesse anderer Nutzer (etwa root aus der systemd-Unit).
+sicherung_laeuft() {
+    pgrep -f '(^|/)scripts/backup\.sh( |$)' >/dev/null 2>&1
+}

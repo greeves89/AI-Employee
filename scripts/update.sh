@@ -46,6 +46,17 @@ docker compose version &>/dev/null 2>&1 || die "docker compose plugin not found.
 command -v git &>/dev/null              || die "git not found."
 ok "Docker is running"
 
+# Laeuft gerade eine Sicherung (etwa die naechtliche), wuerde der Neustart der
+# Dienste sie abbrechen — am 14.11.2026 brach so die naechtliche Sicherung im
+# Datenbank-Schritt ab. Dann lieber nicht aktualisieren und es spaeter erneut tun.
+# Der zweite Durchgang (neue Fassung) prueft nicht erneut: die eigene Sicherung
+# des ersten Durchgangs ist da schon fertig.
+# shellcheck source=lib/sicherung.sh
+. ./scripts/lib/sicherung.sh
+if [ "${UPDATE_NEU_GESTARTET:-0}" != "1" ] && sicherung_laeuft; then
+    die "Gerade läuft eine Sicherung (scripts/backup.sh). Das Update würde sie abbrechen — bitte nach ihrem Ende erneut starten."
+fi
+
 # ── 2. Sicherung vor dem Update (#892) ────────────────────────────────────────
 # Ein Update ändert Datenbankschema und Abbilder. Geht dabei etwas schief, ist
 # die Sicherung von vorhin der Rückweg. Abschaltbar, aber nicht stillschweigend.
