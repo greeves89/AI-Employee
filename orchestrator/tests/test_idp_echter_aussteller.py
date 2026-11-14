@@ -37,8 +37,8 @@ def _token(empfaenger: str = EMPFAENGER) -> str:
 
 
 def _einstellung(**mehr):
-    werte = dict(mcp_idp_oauth_enabled=True, mcp_idp_issuer=AUSSTELLER, mcp_idp_audience=EMPFAENGER,
-                 mcp_idp_jwks_uri="", mcp_idp_required_scope="", mcp_idp_allowed_clients="")
+    werte = {"mcp_idp_oauth_enabled": True, "mcp_idp_issuer": AUSSTELLER, "mcp_idp_audience": EMPFAENGER,
+             "mcp_idp_jwks_uri": "", "mcp_idp_required_scope": "", "mcp_idp_allowed_clients": ""}
     werte.update(mehr)
     return patch.multiple(settings, **werte)
 
