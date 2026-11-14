@@ -183,6 +183,20 @@ function SingleTasksView() {
 
   const activeCount = tasks.filter((t) => ACTIVE_STATUSES.includes(t.status)).length;
 
+  // Läuft gerade nichts, aber es gibt Aufgaben: einmal auf „Alle“ springen, statt
+  // mit einem leeren Reiter „Aktiv 0“ zu begrüßen (UI-Durchsicht 14.11.2026).
+  // Nur beim ersten Laden — eine Wahl des Nutzers bleibt unangetastet.
+  // ``loading`` steht anfangs auf false (gemeinsamer Speicher): erst nach dem ersten
+  // echten Laden entscheiden.
+  const startReiter = useRef<"wartet" | "laedt" | "fertig">("wartet");
+  useEffect(() => {
+    if (startReiter.current === "fertig") return;
+    if (loading) { startReiter.current = "laedt"; return; }
+    if (startReiter.current !== "laedt") return;
+    startReiter.current = "fertig";
+    if (activeCount === 0 && tasks.length > 0) setFilter((f) => (f === "active" ? "all" : f));
+  }, [loading, activeCount, tasks.length]);
+
   const retryTask = async (task: { title: string; prompt: string; agent_id: string | null; model: string | null }) => {
     try {
       await api.createTask({

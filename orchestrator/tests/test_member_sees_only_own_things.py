@@ -148,7 +148,8 @@ class TheModelsTabHasItsOwnMemberViewTests(unittest.TestCase):
 
     def test_the_empty_case_says_what_to_do(self):
         """Der haeufigste Fall bei einem neuen Nutzer: nichts freigegeben."""
-        self.assertIn("Noch kein Modell freigegeben", self.KOMPONENTE)
+        self.assertIn("Kein zusätzliches Modell freigegeben", self.KOMPONENTE)
+        self.assertIn("Standard-Zugang der", self.KOMPONENTE)
         self.assertIn("Meine KI-Zugänge", self.KOMPONENTE)
 
     def test_the_save_button_is_gone_where_nothing_is_saved(self):

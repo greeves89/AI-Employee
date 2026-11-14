@@ -2650,8 +2650,10 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
               isConnected ? "bg-emerald-500" : connectionFailed ? "bg-red-500" : "bg-yellow-500"
             )} />
           </span>
-          <span className="text-[10px] text-muted-foreground/60">
-            {isConnected ? "Online" : connectionFailed ? "Offline" : "..."}
+          {/* Zeigt die Verbindung zur Plattform, nicht den Zustand des Agenten —
+              „Online“ stand sonst neben „Gestoppt“ im Seitenkopf (UI-Durchsicht 14.11.2026). */}
+          <span className="text-[10px] text-muted-foreground" title="Verbindung zur Plattform">
+            {isConnected ? "Verbunden" : connectionFailed ? "Getrennt" : "Verbindet …"}
           </span>
           {connectionFailed && (
             <button onClick={retryConnect} title="Neu verbinden" aria-label="Neu verbinden" className="text-[10px] text-yellow-500 hover:text-yellow-400 transition-colors">
