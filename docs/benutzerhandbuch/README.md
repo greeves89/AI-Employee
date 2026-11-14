@@ -633,6 +633,9 @@ Darunter die **Tabs**: **Chat · Todos · Activity · Workspace · Wissen · Set
 
 ### 5.1 Chat — mit dem Agenten sprechen
 Tab **Chat**. Das ist das direkte Gespräch (wie ein Messenger).
+- **Werkzeuge** *(seit 1.468.4)* — unten im Eingabefeld stehen nur **Anhängen** und **Sprechen** als
+  Symbole. Alles Weitere (Konnektoren, Computer, Modell, Rechte, Dateien, Wissen) öffnet der Knopf
+  **Werkzeuge**, jeweils mit kurzer Erklärung. **Gespräche** oben links blendet die Gesprächsliste ein.
 - **Gestoppter Agent** *(seit 1.467.0)* — Öffnen startet ihn nicht. Über dem Eingabefeld steht
   „Der Agent ist gestoppt. Er startet, sobald du schreibst.“ Mit deiner ersten Nachricht startet er
   („Agent startet …“) und antwortet dann. Hat der Besitzer den Agenten angehalten und du nutzt ihn
@@ -1891,9 +1894,9 @@ Solange du kein Sekretariat eingerichtet hast, zeigt **Start** deinen Tag:
 
 Darunter steht die Karte **Sekretariat einrichten**. Erst **Einrichten** öffnet das Formular aus 6c.1.
 
-Oben auf **Start** steht außerdem der Einstieg **In 6 Schritten startklar**, bis alles erledigt
-ist *(seit 1.468.2)*. Erledigte Schritte sind in einer Zeile zusammengefasst; **anzeigen**
-klappt sie auf.
+Für **neue Nutzer** steht oben auf **Start** der Einstieg **In 6 Schritten startklar** *(seit 1.468.4)*.
+Sobald der erste Schritt erledigt ist, wird er zu einer Zeile unter den Tageskacheln
+(„Einstieg: 1 von 6 erledigt · Als Nächstes: …“); **Schritte zeigen** klappt ihn auf.
 
 ![Start ohne Sekretariat: Wartet auf dich, Aufgaben heute, Als Nächstes geplant, Meine Agenten und die Karte Sekretariat einrichten](screenshots/84-mein-tag.png)
 

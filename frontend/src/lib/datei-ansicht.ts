@@ -16,7 +16,10 @@ import type { FileEntry } from "./types";
 const WURZEL = "/workspace";
 
 /** Steuerdateien des Agenten — nur direkt im Arbeitsordner, nicht in Projekten. */
-const SYSTEM_NAMEN = new Set([".claude", ".mcp.json", "CLAUDE.md", "AGENT.md", "knowledge.md"]);
+// .agent_state.md, skills, daily: Zustand, Fähigkeiten und Tagesnotizen des Agenten —
+// für Mitglieder Rauschen, sie suchen Ergebnisse (Persona Einsteigerin, 14.11.2026).
+const SYSTEM_NAMEN = new Set([".claude", ".codex", ".mcp.json", "CLAUDE.md", "AGENT.md", "AGENTS.md", "knowledge.md",
+  ".agent_state.md", "skills", "daily"]);
 
 /** Wo der Agent Ergebnisse für den Nutzer ablegt. */
 export const ERGEBNIS_ORDNER = `${WURZEL}/transfer`;

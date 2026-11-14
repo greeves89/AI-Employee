@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.468.4] - 2026-11-14
+
+### Geändert (UI-Runde 4, nach Tests mit vier Personas)
+- **Chat:** Unten nur noch Anhängen und Sprechen als Symbole; Konnektoren, Computer, Modell, Rechte, Dateien und Wissen stehen im Menü **Werkzeuge** mit kurzer Erklärung. Oben ein beschrifteter Knopf **Gespräche**; seltene Steuerungen (Schriftgröße, Alle Chats löschen …) nur für Admins. Mitglieder sehen den Platzhalter „Frag etwas oder gib einen Auftrag …“.
+- **Start:** Die volle Einführung „In 6 Schritten startklar“ steht oben nur für neue Nutzer; ab dem ersten erledigten Schritt ist sie eine Zeile unter den Tageskacheln.
+- **Rechte eines Agenten:** „Was darf der Agent?“ steht zuerst, Freigabe an andere und Anonymisierer darunter.
+- **Dateien:** Gestoppte Agenten erscheinen mit „Starten“; interne Dateien (Zustand, Fähigkeiten, Tagesnotizen) sind für Mitglieder ausgeblendet.
+- **Hilfe:** Die Suche findet einzelne Wörter (auch ohne Umlaute); neuer Eintrag „Mein Agent fragt mich etwas oder bittet um Erlaubnis“.
+- **Kosten:** „davon außerhalb deiner Projekte“ statt zweier verschachtelter Angaben; keine doppelten Achsenwerte.
+- **Agentenliste:** „Update verfügbar“ sehen nur Admins.
+
+### Behoben
+- Handy: Kontomenü lief rechts aus dem Bild und blieb nach dem Antippen offen; die Abschnitte in „Mein Konto“ sind als Knöpfe erkennbar.
+- Pausierte Zeitplan-Gruppen zeigten vergangene Termine als „Nächster“, jetzt „alle pausiert“.
+
 ## [1.468.3] - 2026-11-14
 
 ### Geändert

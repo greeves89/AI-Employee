@@ -220,6 +220,15 @@ const HELP_TOPICS: HelpTopic[] = [
     keywords: ["update", "aktualisierung", "aktualisieren", "version", "agent", "faq"],
   },
   {
+    id: "faq-rueckfrage",
+    category: "Problemlösung (FAQ)",
+    title: "Mein Agent fragt mich etwas oder bittet um Erlaubnis",
+    body: "Bevor ein Agent etwas Heikles tut, fragt er um Erlaubnis: Das steht auf Start unter „Wartet auf dich“ und unter Freigaben → Ausstehend. Dort „Erlauben“ oder „Ablehnen“ wählen. Weiß er nicht weiter, fragt er im Chat zurück oder meldet sich unter Freigaben → Hilfe nötig — einfach im Chat antworten.",
+    keywords: ["rückfrage", "frage", "fragt", "erlaubnis", "erlauben", "freigabe", "genehmigen", "wartet", "hilfe nötig"],
+    href: "/approvals",
+    hrefLabel: "Zu den Freigaben",
+  },
+  {
     id: "faq-approval",
     tutorial: "rechte",
     category: "Problemlösung (FAQ)",
@@ -258,12 +267,17 @@ export default function HelpPage() {
   const tutorialsOeffnen = useTutorials((x) => x.oeffnen);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    // Jedes Wort muss vorkommen (nicht der ganze Satz am Stück), Umlaute wie
+    // ausgeschrieben. „Rückfrage“ oder „Agent Erlaubnis“ fand bis 14.11.2026 nichts
+    // (Persona Einsteigerin).
+    const normal = (t: string) => t.toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss");
+    const woerter = normal(query.trim()).split(/\s+/).filter(Boolean);
     const themen = simpleMode ? HELP_TOPICS.filter((t) => t.category !== "Admin") : HELP_TOPICS;
-    if (!q) return themen;
-    return themen.filter((t) =>
-      [t.title, t.body, ...t.keywords].join(" ").toLowerCase().includes(q),
-    );
+    if (!woerter.length) return themen;
+    return themen.filter((t) => {
+      const text = normal([t.title, t.body, ...t.keywords].join(" "));
+      return woerter.every((w) => text.includes(w));
+    });
   }, [query, simpleMode]);
 
   const byCategory = useMemo(() => {

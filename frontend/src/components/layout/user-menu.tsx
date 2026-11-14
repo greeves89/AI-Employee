@@ -1,5 +1,6 @@
 "use client";
 
+import { useSidebarCollapsed } from "@/hooks/use-sidebar";
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
@@ -24,6 +25,7 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
   const { simpleMode, istAdmin, mitgliederAnsicht, setMitgliederAnsicht } = useSimpleMode();
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
+  const { setMobileOpen } = useSidebarCollapsed();
   const menuRef = useRef<HTMLDivElement>(null);
 
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -108,7 +110,9 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
       )}
 
       {isOpen && (
-        <div className="absolute left-full ml-2 bottom-0 w-56 rounded-xl border border-border bg-card shadow-2xl z-50 overflow-hidden">
+        // Handy: Die Leiste ist schmal, das Menü öffnet nach oben innerhalb statt
+        // rechts daneben — dort lief es aus dem Bild (Persona Mobil, 14.11.2026).
+        <div className="absolute bottom-full left-0 mb-2 w-56 max-w-[calc(100vw-1rem)] rounded-xl border border-border bg-card shadow-2xl z-50 overflow-hidden lg:bottom-0 lg:left-full lg:mb-0 lg:ml-2">
           <div className="py-1 border-b border-border">
             <NotificationBell variant="sidebar" />
             <button
@@ -150,7 +154,7 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
               <span className="text-[13px] font-medium">Auf GitHub mit Stern markieren</span>
             </a>}
             <button
-              onClick={() => { setIsOpen(false); setIphoneOpen(true); }}
+              onClick={() => { setIsOpen(false); setMobileOpen(false); setIphoneOpen(true); }}
               className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all duration-150"
             >
               <Smartphone className="h-4 w-4" />
@@ -185,7 +189,7 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
                 Seite je gefunden hat — samt der Stelle, an der man sein eigenes
                 Claude-/Codex-Abo verbindet. */}
             <button
-              onClick={() => { setIsOpen(false); router.push("/settings"); }}
+              onClick={() => { setIsOpen(false); setMobileOpen(false); router.push("/settings"); }}
               className="flex w-full items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
             >
               <Settings className="h-3.5 w-3.5" />

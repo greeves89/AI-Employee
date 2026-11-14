@@ -91,7 +91,7 @@ export function AgentFilterBar({
         <input
           value={query}
           onChange={(e) => onQuery(e.target.value)}
-          placeholder="Agent suchen — Name, Rolle, Schlagwort"
+          placeholder="Agent suchen …"
           className="w-full rounded-lg border border-foreground/[0.06] bg-card/50 py-2 pl-9 pr-8 text-sm outline-none transition-all focus:border-primary/40"
         />
         {query && (

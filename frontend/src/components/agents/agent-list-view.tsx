@@ -1,5 +1,6 @@
 "use client";
 
+import { useSimpleMode } from "@/hooks/use-simple-mode";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -81,6 +82,8 @@ const AB_SM: ListColumn[] = ["zuletzt_aktiv"];
 function budgetReached(a: Agent): boolean {
   return a.budget_usd != null && a.budget_usd > 0 && a.monthly_cost_usd >= a.budget_usd;
 }
+
+const NUR_ADMIN_HINWEISE = ["Update verfügbar", "Image veraltet"];
 
 export function agentWarnings(a: Agent): string[] {
   const w: string[] = [];
@@ -428,6 +431,7 @@ function AgentRow({
 }) {
   const status = agentStatusKey(agent);
   const active = ACTIVE_STATES.includes(agent.state);
+  const { simpleMode: nurHinweiseFuerMich } = useSimpleMode();
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
   const cellBase = "h-11 border-b border-foreground/[0.04] px-3";
 
@@ -495,7 +499,9 @@ function AgentRow({
           </span>
         );
       case "warnungen": {
-        const warnings = agentWarnings(agent);
+        // Updates spielt der Admin ein — Mitglieder können nichts tun, das Orange in
+        // jeder Zeile verunsicherte nur (Personas, 14.11.2026).
+        const warnings = agentWarnings(agent).filter((w) => !nurHinweiseFuerMich || !NUR_ADMIN_HINWEISE.includes(w));
         return warnings.length > 0 ? (
           // Text statt nur Dreieck mit Zahl: ein Warnzeichen ohne Inhalt verunsicherte
           // nur (UI-Bewertung 14.11.2026). Der erste Hinweis steht da, alle im Tooltip.

@@ -647,9 +647,14 @@ function ScheduledTasksView({ hervorgehoben = "" }: { hervorgehoben?: string }) 
                     {gruppe.aktiv} aktiv
                   </span>
                 )}
+                {/* Pausierte Pläne zeigten hier vergangene Termine als „Nächster“
+                    (Persona Teamleitung, 14.11.2026). */}
                 {!offen && gruppe.plaene[0] && (
                   <span title="Nächster Lauf in dieser Gruppe" className="hidden sm:inline">
-                    Nächster: {formatRelative(gruppe.plaene[0].next_run_at)}
+                    {(() => {
+                      const aktiv = gruppe.plaene.filter((p) => p.enabled);
+                      return aktiv.length ? `Nächster: ${formatRelative(aktiv[0].next_run_at)}` : "alle pausiert";
+                    })()}
                   </span>
                 )}
               </span>
