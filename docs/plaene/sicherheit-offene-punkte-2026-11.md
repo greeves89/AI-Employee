@@ -43,3 +43,8 @@ gilt das als abgewiesen.
 3. Punkt 3 live mit Bildschirmfotos.
 4. Punkte 4 und 5, sobald Testzugänge da sind.
 5. Punkte 8 und 9.
+
+## Nachtrag 1.462
+
+- **Verwalter-Freigaben ohne Live-Signal:** Wer einen Agenten per älterer Voll-Freigabe verwaltet, aber nicht Besitzer ist, bekommt Freigabe-Anfragen nicht mehr als Live-Signal im Chat. Er sieht sie weiter auf der Freigaben-Seite. Falls das stört: `_ereignis_fuer_verbindung` zusätzlich mit `verwaltende_freigaben` prüfen.
+

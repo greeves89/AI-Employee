@@ -24,7 +24,11 @@ log = logging.getLogger(__name__)
 class FesteAdresse(httpx.AsyncBaseTransport):
     def __init__(self, verify=True, innen: httpx.AsyncBaseTransport | None = None, aufloesen=None,
                  firmennetz_frei=None, name: str = "Verbindung"):
-        self._innen = innen or httpx.AsyncHTTPTransport(verify=verify)
+        # Keine wiederverwendeten Verbindungen: Der Pool kennt nur (Schema, IP, Port) —
+        # zwei Namen auf derselben IP teilten sonst eine fuer den ersten Namen gepruefte
+        # Verbindung (Review 1.462).
+        self._innen = innen or httpx.AsyncHTTPTransport(
+            verify=verify, limits=httpx.Limits(max_keepalive_connections=0))
         self._aufloesen = aufloesen
         #: ``(host, port) -> bool``: darf dieses Ziel im Firmennetz liegen? Standard: nein.
         self._firmennetz_frei = firmennetz_frei or (lambda host, port: False)
@@ -33,7 +37,8 @@ class FesteAdresse(httpx.AsyncBaseTransport):
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         from app.core import url_guard
 
-        host, port = request.url.host, request.url.port or 443
+        host = request.url.host
+        port = request.url.port or (443 if request.url.scheme == "https" else 80)
         kw = {"aufloesen": self._aufloesen} if self._aufloesen else {}
         try:
             ip = await asyncio.to_thread(url_guard.feste_adresse, host, port,

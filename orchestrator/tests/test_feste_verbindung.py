@@ -54,6 +54,20 @@ class FesteAdresseTests(unittest.IsolatedAsyncioTestCase):
             await self._holen("127.0.0.1", frei=lambda h, p: True)   # Loopback nie
 
 
+class StandardPortTests(unittest.IsolatedAsyncioTestCase):
+    async def test_port_nach_schema(self):
+        gesehen = []
+
+        def aufloesen(host, port, type=None):
+            gesehen.append(port)
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port))]
+
+        async with httpx.AsyncClient(transport=FesteAdresse(innen=_Innen(), aufloesen=aufloesen)) as c:
+            await c.get("https://idp.example.com/a")
+            await c.get("http://idp.example.com/a")
+        self.assertEqual(gesehen, [443, 80])
+
+
 class NutzerTests(unittest.TestCase):
     def test_idp_abruf_nutzt_feste_adresse_ohne_firmennetz(self):
         from app.core import mcp_idp_auth
