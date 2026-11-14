@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.468.0] - 2026-11-14
+
+### Geändert
+- **Admin-Bereich mit acht Seiten statt 22 Punkten.** Die Leiste zeigt nur noch Start, Nutzer, Agenten, KI, Werkzeuge, Sicherheit, Kosten und System. Die Unterseiten stehen als Reiter oben auf der Seite. Alte Links und Lesezeichen (`/admin?tab=…`) führen weiter auf den richtigen Reiter, die Suche findet jeden Reiter.
+- **MCP-Server als eigener Reiter** unter Werkzeuge. Bisher standen sie unten auf „Dienste & Konten“, unter dem Knopf „Einstellungen speichern“.
+- **„Dienste & Konten“:** SAML und der MCP-Zugang mit Firmenanmeldung stehen unter „Anmeldung“ statt unter „Benachrichtigungen“; der Einleitungstext nennt die MCP-Server nicht mehr als Sache der Nutzer.
+
+### Behoben
+- **Seitenleiste:** Punkte unter „Weitere Bereiche“ springen beim Anklicken nicht mehr nach oben. Sie bleiben an ihrem Platz, der Bereich ist dann aufgeklappt.
+
 ## [1.467.3] - 2026-11-14
 
 ### Behoben

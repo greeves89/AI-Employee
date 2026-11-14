@@ -58,7 +58,7 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 | **Skill** | Eine wiederverwendbare Fähigkeit / ein Slash-Command, den ein Agent installieren kann (z. B. „Präsentation erstellen"). |
 | **Knowledge Base** | Persönliche, durchsuchbare Wissensablage mit Tags. |
 | **Second Brain** | Ein **geteilter** Wissens-Vault (Markdown-Sammlung) für eine ganze Abteilung, der in zugewiesene Agenten eingebunden wird. |
-| **MCP** | Standard, über den Agenten **externe Werkzeuge/Datenquellen** anbinden (z. B. Wiki, DMS). Werkzeug-Server richtet ein Admin im Admin-Bereich unter **Dienste & Konten** ein. |
+| **MCP** | Standard, über den Agenten **externe Werkzeuge/Datenquellen** anbinden (z. B. Wiki, DMS). Werkzeug-Server richtet ein Admin im Admin-Bereich unter **Werkzeuge → MCP-Server** ein. |
 | **AI-Account** | Ein zentral hinterlegter **Modell-Zugang** (z. B. Azure OpenAI), den Agenten nutzen — statt eigener Schlüssel pro Person. |
 | **Harness / Modus** | Die „Maschine" hinter dem Agenten (z. B. *claude_code* oder *custom_llm/Azure*) — bestimmt, welches Modell/Provider verwendet wird. Im Zweifel die vorgeschlagene Option nehmen. |
 | **Rolle (Gruppe)** | Ein **Rechtebündel** (Admin), das Modelle, Second Brains, AI-Accounts, MCP-Tools usw. zusammenfasst und an Benutzer vergeben wird. |
@@ -200,6 +200,7 @@ ganze Anlage betrifft, steht in einem eigenen **Admin-Bereich** (Kap. 1.5).
 - **Weitere Bereiche** (aufklappbar) — Übersicht, Kosten, Aktivität (Kap. 33),
   Auswertung, Gelerntes, Verbindungen, Apps, Agenten-Runden, Auslöser und
   Prüfaufgaben. Der Bereich bleibt zugeklappt, bis du ihn öffnest; die Leiste merkt sich das.
+  Öffnest du eine Seite daraus, bleibt sie an ihrem Platz und der Bereich ist aufgeklappt *(seit 1.468.0)*.
 
 **Bedienung:**
 - Auf einen **Menüpunkt** klicken → die Seite öffnet sich; der aktive Punkt ist
@@ -306,16 +307,18 @@ gilt, verwalten sie in einem eigenen Bereich:
    ![Suche im Admin-Bereich: „budget“ eingegeben, Treffer „Budget je Nutzer“ markiert](screenshots/91-admin-suche.png)
 
 
-3. Die Leiste zeigt die Bereiche der Anlage und trägt oben die Marke **Admin** — so
-   ist jederzeit sichtbar, dass Änderungen hier alle betreffen. Ganz oben steht **Suche**.
-4. Links einen Bereich wählen. Die Gruppen:
-   - **Menschen** — Nutzer, Rollen & Rechte, SSO-Gruppen
+3. Die Leiste zeigt acht Seiten und trägt oben die Marke **Admin** — so ist jederzeit
+   sichtbar, dass Änderungen hier alle betreffen *(seit 1.468.0)*.
+4. Links eine Seite wählen, oben auf der Seite den **Reiter**:
+   - **Start** — Übersicht (mit Suche), Systemzustand, Rückmeldungen
+   - **Nutzer** — Nutzer, Rollen & Rechte, SSO-Gruppen
    - **Agenten** — Alle Agenten, Zuweisungen, Vorlagen
    - **KI** — Modelle & Anbieter, KI-Konten, Sprache, Websuche
-   - **Anbindungen** — Dienste & Konten, Wissens-Ablagen, Eigene Menüpunkte
-   - **Regeln** — Master-Regeln, Datenschutz-Filter, Gesetze, Schlüssel &
+   - **Werkzeuge** — MCP-Server, Dienste & Konten, Wissens-Ablagen, Eigene Menüpunkte
+   - **Sicherheit** — Master-Regeln, Datenschutz-Filter, Gesetze, Schlüssel &
      Zugangsdaten, Protokoll
-   - **Anlage** — Systemzustand, Kosten & Budget, System & Lizenz, Rückmeldungen
+   - **Kosten** — Kosten & Budget
+   - **System** — System & Lizenz
 5. Unten auf **Zurück zur Arbeit** klicken, um in die normale Ansicht zu wechseln.
 
 ![Admin-Bereich mit eigener Leiste](screenshots/38-admin-bereich.png)
@@ -2402,7 +2405,7 @@ Seit 1.391.0 sind die beiden Teile getrennt:
   **Meine Verbindungen**): hier verbindest du **deine eigenen** Konten, etwa Postfach und
   Kalender (Kap. 14.2).
 - **Werkzeug-Server (MCP)**: gelten für die ganze Anlage und stehen deshalb im
-  **Admin-Bereich** → **Anbindungen** → **Dienste & Konten**, unterhalb der Dienste.
+  **Admin-Bereich** → **Werkzeuge** → Reiter **MCP-Server** *(seit 1.468.0)*.
   Nur Admins richten sie ein (Kap. 14.1).
 
 ![Verbindungen](screenshots/11-integrations.png)
@@ -2410,8 +2413,8 @@ Seit 1.391.0 sind die beiden Teile getrennt:
 ### 14.1 MCP-Server hinzufügen — jedes Feld erklärt
 
 Ein **MCP-Server** stellt Agenten zusätzliche **Tools** bereit (z. B. ein Wiki, ein
-Dokumenten-Management, ein Dateisystem). Im **Admin-Bereich** → **Dienste & Konten** bis
-zum Abschnitt **MCP-Server** scrollen und auf **MCP-Server hinzufügen** klicken → das Formular:
+Dokumenten-Management, ein Dateisystem). Im **Admin-Bereich** → **Werkzeuge** → Reiter
+**MCP-Server** auf **MCP-Server hinzufügen** klicken → das Formular:
 
 ![MCP-Server hinzufügen](screenshots/f09-mcp-add.png)
 
@@ -2434,7 +2437,7 @@ zum Abschnitt **MCP-Server** scrollen und auf **MCP-Server hinzufügen** klicken
 Ein MCP-Server, den ein Administrator einträgt, nutzen zunächst nur Administratoren und
 Rollen, die ihn ausdrücklich freigeben (Kap. 22.4). Soll **jeder Nutzer** ihn bekommen:
 
-1. **Admin-Bereich** → **Dienste & Konten** öffnen und beim Server auf das **Personen-Symbol** (*Allen Nutzern
+1. **Admin-Bereich** → **Werkzeuge** → **MCP-Server** öffnen und beim Server auf das **Personen-Symbol** (*Allen Nutzern
    bereitstellen*) klicken. Beim Anlegen gibt es dafür denselben Haken **Allen Nutzern
    bereitstellen** im Formular.
 2. Die Rückfrage *„Allen Nutzern bereitstellen?“* lesen und **Bereitstellen** klicken. Das
@@ -2798,7 +2801,7 @@ gleichermaßen** — unabhängig davon, was bei einem einzelnen Agenten eingeste
 
 So findest du ihn:
 1. Unten in der Seitenleiste auf **Zum Admin-Bereich** klicken.
-2. Links unter **Anbindungen** den Bereich **Dienste & Konten** wählen.
+2. Links **Werkzeuge** wählen, oben den Reiter **Dienste & Konten**.
 3. Zum Abschnitt **Microsoft 365** scrollen.
 4. Dort der Schalter **Microsoft nur lesend** — grün = aktiv (nur lesen).
 
@@ -2837,7 +2840,7 @@ fängt eigenständig an — statt dass du jeden neuen Agenten von Hand briefst.
 ![Vorlage · Verantwortungsbereiche](screenshots/36-vorlagen-bereiche.png)
 *Abbildung 36: Derselbe Editor wie beim Agenten — hier in der Vorlage*
 
-1. Seitenleiste unten → **Zum Admin-Bereich** → links unter **Agenten** den Bereich **Vorlagen**.
+1. Seitenleiste unten → **Zum Admin-Bereich** → links **Agenten**, oben den Reiter **Vorlagen**.
 2. Die gewünschte Vorlage aufklappen → **Bearbeiten**.
 3. Zum Block **Verantwortungsbereiche** scrollen → **+ Bereich**.
 4. **Titel**, **Takt** (täglich/wöchentlich/monatlich/laufend) und **Priorität** setzen —
@@ -2985,7 +2988,7 @@ Unter **Admin-Bereich → System & Lizenz** steht ganz oben, mit welcher Lizenz 
   Anlage, laufend oder gestoppt.
 
 **Lizenz eintragen — Schritt für Schritt**
-1. Seitenleiste unten → **Zum Admin-Bereich** → links unter **Anlage** den Bereich **System & Lizenz** wählen.
+1. Seitenleiste unten → **Zum Admin-Bereich** → links **System** wählen.
 2. Den Schlüssel in das Feld **Lizenzschlüssel** einfügen.
 3. **Lizenz eintragen** klicken. Edition und Belegung erscheinen sofort.
 
@@ -3020,19 +3023,23 @@ Editionen und Preise stehen in der README des Projekts, Abschnitt „License".
 
 ![Admin-Bereich](screenshots/19-admin.png)
 
-Seitenleiste unten → **Zum Admin-Bereich** (nur Administratoren). Die Leiste links trägt jetzt
-die Marke **Admin**; dort stehen **alle Bereiche**, nach Gruppen überschrieben —
-jeder mit **einem Klick** erreichbar *(seit 1.391.0)*. Auf dem Handy öffnet das Menü-Symbol
-oben links dieselbe Leiste. **Zurück zur Arbeit** führt in die normale Ansicht.
+Seitenleiste unten → **Zum Admin-Bereich** (nur Administratoren). Die Leiste links trägt die
+Marke **Admin** und hat **acht Seiten** *(seit 1.468.0)*. Die Unterseiten stehen als **Reiter**
+oben auf der Seite. Auf dem Handy öffnet das Menü-Symbol oben links dieselbe Leiste.
+**Zurück zur Arbeit** führt in die normale Ansicht.
 
-| Gruppe | Bereiche |
+| Seite | Reiter |
 |---|---|
-| **Menschen** | Nutzer, Rollen & Rechte, SSO-Gruppen |
+| **Start** | Übersicht (mit Suche), Systemzustand, Rückmeldungen |
+| **Nutzer** | Nutzer, Rollen & Rechte, SSO-Gruppen |
 | **Agenten** | Alle Agenten, Zuweisungen, Vorlagen |
 | **KI** | Modelle & Anbieter, KI-Konten, Sprache, Websuche |
-| **Anbindungen** | Dienste & Konten (mit den Werkzeug-Servern), Wissens-Ablagen, Eigene Menüpunkte |
-| **Regeln** | Master-Regeln, Datenschutz-Filter, Gesetze, Schlüssel & Zugangsdaten, Protokoll |
-| **Anlage** | Systemzustand, Kosten & Budget, System & Lizenz, Rückmeldungen |
+| **Werkzeuge** | MCP-Server, Dienste & Konten, Wissens-Ablagen, Eigene Menüpunkte |
+| **Sicherheit** | Master-Regeln, Datenschutz-Filter, Gesetze, Schlüssel & Zugangsdaten, Protokoll |
+| **Kosten** | Kosten & Budget |
+| **System** | System & Lizenz |
+
+Die **Suche** auf der Startseite findet auch jeden Reiter und springt direkt hinein.
 
 Jeder Bereich hat eine eigene Adresse, z. B. `/admin?tab=modelle` oder `/admin?tab=lizenz` —
 gut für Lesezeichen. Der frühere Sammelreiter **Einstellungen** ist aufgeteilt in **Modelle &

@@ -14,7 +14,7 @@ export type AdminBereich =
   | "users" | "roles" | "sso-groups"
   | "agents" | "assignments" | "vorlagen"
   | "modelle" | "ai-accounts" | "sprache" | "second-brains" | "web-search"
-  | "integrationen-anlage" | "system" | "pages"
+  | "mcp" | "integrationen-anlage" | "system" | "pages"
   | "master-rules" | "secrets" | "dlp" | "audit" | "gesetze"
   | "health" | "budget" | "feedback";
 
@@ -24,21 +24,28 @@ export interface AdminGruppe {
   bereiche: AdminBereich[];
 }
 
-/** Reihenfolge = Reihenfolge in der Leiste des Admin-Bereichs (Redesign 2026-10,
- *  Vorbild lavalake-Konsole: Menschen, Agenten, KI, Anbindungen, Regeln, Anlage). */
+/** Acht Seiten in der Leiste, jede mit Reitern (Daniel, 14.11.2026: „alles soooo viel
+ *  und verschachtelt“). Eine Gruppe ist eine Seite, ihre Bereiche sind die Reiter.
+ *  Die Kennungen der Bereiche bleiben — Links, Lesezeichen und Suche führen weiter
+ *  direkt auf den richtigen Reiter (``?tab=<bereich>``). */
 export const ADMIN_GRUPPEN: AdminGruppe[] = [
-  // Einstieg: „Zum Admin-Bereich“ oeffnet die Suche ueber alle Bereiche.
-  { id: "start", titel: "Übersicht", bereiche: ["suche"] },
-  { id: "people", titel: "Menschen", bereiche: ["users", "roles", "sso-groups"] },
+  { id: "start", titel: "Start", bereiche: ["suche", "health", "feedback"] },
+  { id: "people", titel: "Nutzer", bereiche: ["users", "roles", "sso-groups"] },
   { id: "agents", titel: "Agenten", bereiche: ["agents", "assignments", "vorlagen"] },
   { id: "ki", titel: "KI", bereiche: ["modelle", "ai-accounts", "sprache", "web-search"] },
-  { id: "anlage", titel: "Anbindungen", bereiche: ["integrationen-anlage", "second-brains", "pages"] },
-  { id: "security", titel: "Regeln", bereiche: ["master-rules", "dlp", "gesetze", "secrets", "audit"] },
-  { id: "ops", titel: "Anlage", bereiche: ["health", "budget", "system", "feedback"] },
+  { id: "werkzeuge", titel: "Werkzeuge", bereiche: ["mcp", "integrationen-anlage", "second-brains", "pages"] },
+  { id: "security", titel: "Sicherheit", bereiche: ["master-rules", "dlp", "gesetze", "secrets", "audit"] },
+  { id: "kosten", titel: "Kosten", bereiche: ["budget"] },
+  { id: "system", titel: "System", bereiche: ["system"] },
 ];
 
+/** Die Seite (Gruppe), zu der ein Bereich gehört. */
+export function adminSeite(bereich: AdminBereich): AdminGruppe {
+  return ADMIN_GRUPPEN.find((g) => g.bereiche.includes(bereich)) ?? ADMIN_GRUPPEN[0];
+}
+
 export const ADMIN_BEREICH_NAMEN: Record<AdminBereich, string> = {
-  suche: "Suche",
+  suche: "Übersicht",
   users: "Nutzer",
   roles: "Rollen & Rechte",
   "sso-groups": "SSO-Gruppen",
@@ -50,6 +57,7 @@ export const ADMIN_BEREICH_NAMEN: Record<AdminBereich, string> = {
   sprache: "Sprache",
   "second-brains": "Wissens-Ablagen",
   "web-search": "Websuche",
+  mcp: "MCP-Server",
   "integrationen-anlage": "Dienste & Konten",
   system: "System & Lizenz",
   pages: "Eigene Menüpunkte",
@@ -74,6 +82,8 @@ const ALIASE: Record<string, { bereich: AdminBereich; anker?: string }> = {
   lizenz: { bereich: "system", anker: "lizenz" },
   voice: { bereich: "sprache" },
   integrationen: { bereich: "integrationen-anlage" },
+  "mcp-server": { bereich: "mcp" },
+  werkzeuge: { bereich: "mcp" },
 };
 
 function istBereich(tab: string): tab is AdminBereich {
@@ -129,6 +139,8 @@ const BEREICH_STICHWORTE: Record<AdminBereich, { beschreibung: string; stichwort
   "second-brains": { beschreibung: "Geteilte Wissens-Ablagen (Second Brains) anlegen und freigeben.",
     stichworte: ["second brain", "wissen", "vault", "ablage", "obsidian", "mount"] },
   "web-search": { beschreibung: "Anbieter und Einstellungen der Websuche.", stichworte: ["internet", "brave", "serp", "duckduckgo", "recherche"] },
+  mcp: { beschreibung: "Werkzeug-Server (MCP) der Anlage anlegen, prüfen und für Agenten freigeben.",
+    stichworte: ["mcp", "werkzeug-server", "werkzeuge", "tools", "server", "model context protocol", "anbindung"] },
   "integrationen-anlage": { beschreibung: "Dienste und Konten der Anlage: Microsoft 365, Google, Git, Telegram, Teams.",
     stichworte: ["integration", "anbindung", "microsoft 365", "m365", "outlook", "google", "github", "gitea", "forgejo", "telegram", "teams", "slack", "oauth"] },
   system: { beschreibung: "Version, Updates, Lizenz, Anzeigewährung und Grundeinstellungen der Anlage.",

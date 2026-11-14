@@ -147,3 +147,49 @@ class AdminSuche(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(NODE, "Node.js nicht installiert")
+class AchtSeitenMitReitern(unittest.TestCase):
+    """Admin-Bereich seit 14.11.2026: acht Seiten in der Leiste, Unterseiten als Reiter."""
+
+    def test_acht_seiten(self):
+        titel = _ausfuehren("m.ADMIN_GRUPPEN.map((g) => g.titel)")
+        self.assertEqual(titel, ["Start", "Nutzer", "Agenten", "KI", "Werkzeuge", "Sicherheit", "Kosten", "System"])
+
+    def test_jeder_reiter_kennt_seine_seite(self):
+        paare = _ausfuehren("m.ADMIN_GRUPPEN.flatMap((g) => g.bereiche.map((b) => [b, m.adminSeite(b).id, g.id]))")
+        for bereich, gefunden, erwartet in paare:
+            with self.subTest(bereich=bereich):
+                self.assertEqual(gefunden, erwartet)
+
+    def test_mcp_server_eigener_reiter_und_auffindbar(self):
+        self.assertEqual(_ausfuehren("m.adminBereichAusTab('mcp-server')")["bereich"], "mcp")
+        treffer = _ausfuehren("m.adminSuche('mcp').map((z) => m.adminZiel(z))")
+        self.assertEqual(treffer[0], "/admin?tab=mcp")
+
+    def test_leiste_und_seite_zeigen_es_an(self):
+        from pathlib import Path
+
+        wurzel = Path(__file__).resolve().parents[2] / "frontend" / "src"
+        leiste = (wurzel / "components/layout/admin-sidebar.tsx").read_text()
+        seite = (wurzel / "app/admin/page.tsx").read_text()
+        symbole = (wurzel / "lib/admin-symbole.ts").read_text()
+        self.assertIn("ADMIN_GRUPPEN.map", leiste)
+        self.assertIn("seite.bereiche.map", seite, "Reiterzeile")
+        self.assertIn('tab === "mcp"', seite)
+        self.assertIn('"mcp",', seite.split("EMBEDDED_TABS")[1].split("];")[0])
+        for gid in _ausfuehren("m.ADMIN_GRUPPEN.map((g) => g.id)"):
+            self.assertIn(f"  {gid}:", symbole.split("ADMIN_SEITEN_SYMBOLE")[1])
+
+
+class SeitenleisteBleibtStehen(unittest.TestCase):
+    """Punkte unter „Weitere Bereiche“ springen beim Anklicken nicht mehr nach oben (14.11.2026)."""
+
+    def test_offene_seite_bleibt_an_ihrem_platz(self):
+        from pathlib import Path
+
+        quelle = (Path(__file__).resolve().parents[2] / "frontend/src/components/layout/sidebar.tsx").read_text()
+        regel = quelle.split("const zurueckgestellt = (item: NavItem) =>")[1].split(";")[0]
+        self.assertNotIn("istHier", regel)
+        self.assertIn("weitereItems.some((i) => istHier(i.href))", quelle, "Bereich klappt auf, Punkt bleibt sichtbar")

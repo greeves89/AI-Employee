@@ -175,8 +175,9 @@ class TheAdminCanSetThemTests(unittest.TestCase):
         # Umbenannt zu "Compliance" (Kundenwunsch: Audit Log/DLP/Gesetze in
         # einem Bereich buendeln) — derselbe Tab-Reiter, neues Anzeige-Label.
         # Seit #899 steht die Navigation in lib/admin-bereiche.ts; seit dem
-        # Redesign 2026-10 heisst die Gruppe "Regeln".
-        block = self.BEREICHE.split('titel: "Regeln"', 1)[1][:160]
+        # Redesign 2026-10 heisst die Gruppe "Regeln", seit 14.11.2026 die Seite
+        # "Sicherheit" (Reiter statt Gruppen).
+        block = self.BEREICHE.split('titel: "Sicherheit"', 1)[1][:160]
         self.assertIn("master-rules", block)
 
     def test_the_tab_actually_renders_something(self):

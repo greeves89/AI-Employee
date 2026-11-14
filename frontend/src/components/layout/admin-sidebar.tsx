@@ -9,14 +9,13 @@ import {
   Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ADMIN_SYMBOLE } from "@/lib/admin-symbole";
+import { ADMIN_SEITEN_SYMBOLE } from "@/lib/admin-symbole";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar";
 import {
-  ADMIN_BEREICH_NAMEN,
   ADMIN_GRUPPEN,
   adminBereichAusTab,
   adminPfad,
-  type AdminBereich,
+  adminSeite,
 } from "@/lib/admin-bereiche";
 
 
@@ -54,40 +53,35 @@ export function AdminSidebar() {
         </span>
       </div>
 
-      <nav className="flex-1 space-y-3 overflow-y-auto px-2 py-2 scrollbar-thin" aria-label="Bereiche des Admin-Bereichs">
-        {ADMIN_GRUPPEN.map((g) => (
-          <div key={g.id}>
-            <h2 className={cn("px-2.5 pb-1 text-[11px] font-medium uppercase tracking-[0.06em] text-muted-foreground", collapsed && "lg:hidden")}>
-              {g.titel}
-            </h2>
-            <ul className="space-y-px">
-              {g.bereiche.map((id) => {
-                const Icon = ADMIN_SYMBOLE[id];
-                const aktiv = aktuell === id;
-                return (
-                  <li key={id}>
-                    <Link
-                      href={adminPfad(id)}
-                      onClick={schliessen}
-                      title={ADMIN_BEREICH_NAMEN[id]}
-                      aria-current={aktiv ? "page" : undefined}
-                      className={cn(
-                        "flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[14px] transition-colors",
-                        collapsed && "lg:justify-center lg:px-0 lg:h-9 lg:w-9 lg:mx-auto",
-                        aktiv
-                          ? "bg-primary/10 font-medium text-foreground"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                      )}
-                    >
-                      <Icon className={cn("h-4 w-4 shrink-0", aktiv && "text-primary")} />
-                      <span className={cn("truncate", collapsed && "lg:hidden")}>{ADMIN_BEREICH_NAMEN[id]}</span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        ))}
+      {/* Acht Seiten, eine Ebene (14.11.2026). Die Unterseiten stehen als Reiter oben
+          auf der Seite (``app/admin/page.tsx``). */}
+      <nav className="flex-1 overflow-y-auto px-2 py-2 scrollbar-thin" aria-label="Bereiche des Admin-Bereichs">
+        <ul className="space-y-0.5">
+          {ADMIN_GRUPPEN.map((g) => {
+            const Icon = ADMIN_SEITEN_SYMBOLE[g.id];
+            const aktiv = aktuell !== null && adminSeite(aktuell).id === g.id;
+            return (
+              <li key={g.id}>
+                <Link
+                  href={adminPfad(g.bereiche[0])}
+                  onClick={schliessen}
+                  title={g.titel}
+                  aria-current={aktiv ? "page" : undefined}
+                  className={cn(
+                    "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[14px] transition-colors",
+                    collapsed && "lg:justify-center lg:px-0 lg:h-9 lg:w-9 lg:mx-auto",
+                    aktiv
+                      ? "bg-primary/10 font-medium text-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  <Icon className={cn("h-4 w-4 shrink-0", aktiv && "text-primary")} />
+                  <span className={cn("truncate", collapsed && "lg:hidden")}>{g.titel}</span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
       </nav>
 
       <div className="shrink-0 border-t border-border p-2">
