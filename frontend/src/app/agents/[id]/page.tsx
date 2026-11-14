@@ -16,6 +16,7 @@ import {
   Image as ImageIcon, Container, Send, Copy, RefreshCcw, Trash2, Key, Sparkles, Monitor, Globe,
   Layers, AudioLines, ArrowUpRight, CalendarDays,
   ChevronDown, ShieldCheck,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { ActivityTimeline } from "@/components/activity/activity-timeline";
@@ -33,7 +34,6 @@ import { useOrdnerAbwurf } from "@/components/files/use-ordner-abwurf";
 import { FileUploader } from "@/components/files/file-uploader";
 import { LiveTerminal } from "@/components/terminal/live-terminal";
 import { AgentChat } from "@/components/agents/chat";
-import { ChatSymbolKnopf } from "@/components/agents/chat-symbol-knopf";
 import { AutonomyMatrix } from "@/components/agents/autonomy-matrix";
 import { rechteStufeName } from "@/components/agents/rechte-stufen";
 import { InteractionModelCard } from "@/components/agents/interaction-model-card";
@@ -783,15 +783,15 @@ function BudgetBar({ spent, budget, action }: { spent: number; budget: number; a
 /** Mitglieder-Ansicht: was frueher als Reiter oben stand, unten in der
  *  Chat-Leiste als Icon — je ein Fenster mit der bestehenden Verwaltung. */
 type SchnellKey = "konnektoren" | "computer" | "modell" | "rechte" | "dateien" | "wissen";
-const SCHNELL: { key: SchnellKey; titel: string; icon: typeof CheckCircle2 }[] = [
-  { key: "konnektoren", titel: "Konnektoren", icon: Plug },
+const SCHNELL: { key: SchnellKey; titel: string; hinweis: string; icon: typeof CheckCircle2 }[] = [
+  { key: "konnektoren", titel: "Konnektoren", hinweis: "Mail, Kalender, Teams und andere Dienste verbinden", icon: Plug },
   // Bridge auf dem eigenen Rechner: Sitzung, Berechtigungen, Mitsehen und Regeln
   // (#1019) — dieselbe Verwaltung wie der Admin-Reiter „Computer-Steuerung".
-  { key: "computer", titel: "Computer", icon: Monitor },
-  { key: "modell", titel: "Modell", icon: Cpu },
-  { key: "rechte", titel: "Rechte", icon: ShieldCheck },
-  { key: "dateien", titel: "Dateien", icon: FolderOpen },
-  { key: "wissen", titel: "Wissen", icon: Brain },
+  { key: "computer", titel: "Computer", hinweis: "Auf deinem Rechner mithelfen lassen", icon: Monitor },
+  { key: "modell", titel: "Modell", hinweis: "Welche KI der Agent nutzt und wie er antwortet", icon: Cpu },
+  { key: "rechte", titel: "Rechte", hinweis: "Was der Agent selbst darf und wann er fragt", icon: ShieldCheck },
+  { key: "dateien", titel: "Dateien", hinweis: "Was der Agent erstellt hat", icon: FolderOpen },
+  { key: "wissen", titel: "Wissen", hinweis: "Was der Agent über dich und deine Arbeit weiß", icon: Brain },
 ];
 
 function Schnellzugriff({ agent, setAgent }: { agent: Agent; setAgent: (a: Agent) => void }) {
@@ -804,13 +804,53 @@ function Schnellzugriff({ agent, setAgent }: { agent: Agent; setAgent: (a: Agent
   }, [suchParameter]);
   const zu = useCallback(() => setOffen(null), []);
   const aktiv = SCHNELL.find((s) => s.key === offen);
+  // Ein beschrifteter Knopf statt sechs Symbole: Die Zeile war unruhig und brach um,
+  // Einsteiger verstanden „Konnektoren“ oder „Computer“ nicht (Daniel und Personas,
+  // 14.11.2026). Im Menü steht jedes Werkzeug mit Text und kurzer Erklärung.
+  const [menue, setMenue] = useState(false);
+  const menueRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menue) return;
+    const weg = (e: MouseEvent) => { if (!menueRef.current?.contains(e.target as Node)) setMenue(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setMenue(false); };
+    document.addEventListener("mousedown", weg);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", weg); document.removeEventListener("keydown", esc); };
+  }, [menue]);
   return (
     <>
-      {SCHNELL.map(({ key, titel, icon: Icon }) => (
-        <ChatSymbolKnopf key={key} beschriftung={titel} onClick={() => setOffen(key)}>
-          <Icon className="h-4 w-4" />
-        </ChatSymbolKnopf>
-      ))}
+      <div className="relative" ref={menueRef}>
+        <button
+          type="button"
+          onClick={() => setMenue((m) => !m)}
+          aria-expanded={menue}
+          aria-haspopup="menu"
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-[13px] text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+        >
+          <SlidersHorizontal className="h-4 w-4" />
+          Werkzeuge
+          <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", menue && "rotate-180")} />
+        </button>
+        {menue && (
+          <div role="menu" className="absolute bottom-full left-0 z-40 mb-1.5 w-64 rounded-xl border border-border bg-card p-1 shadow-xl">
+            {SCHNELL.map(({ key, titel, hinweis, icon: Icon }) => (
+              <button
+                key={key}
+                role="menuitem"
+                type="button"
+                onClick={() => { setMenue(false); setOffen(key); }}
+                className="flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-foreground/[0.05]"
+              >
+                <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">{titel}</span>
+                  <span className="block text-xs text-muted-foreground">{hinweis}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <Fenster offen={offen !== null} schliessen={zu} titel={aktiv?.titel}>
         <div className="p-5">
           {offen === "konnektoren" && (
@@ -2990,12 +3030,6 @@ function AgentSettings({
       </SettingsAccordionSection>
 
       <SettingsAccordionSection title="Zugriff & Rechte" icon={ShieldCheck}>
-      {/* Anderen zum Nutzen freigeben (nur Chat und Sprache, eigene Gespräche) */}
-      <FreigebenCard agentId={agentId} />
-
-      {/* Anonymisierer vor dem Modell (opt-in je Agent) */}
-      <AnonymisiererCard agentId={agentId} />
-
       {/* Autonomy Level */}
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
         <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
@@ -3017,6 +3051,14 @@ function AgentSettings({
           <AutonomyMatrix agentId={agentId} onLevelChange={setAutonomyLevel} />
         </div>
       </div>
+
+      {/* Freigabe an andere und Anonymisierer erst NACH „Was darf der Agent?“ — wer die
+          Rechte suchte, sah zuerst etwas anderes (Persona Teamleitung, 14.11.2026). */}
+      {/* Anderen zum Nutzen freigeben (nur Chat und Sprache, eigene Gespräche) */}
+      <FreigebenCard agentId={agentId} />
+
+      {/* Anonymisierer vor dem Modell (opt-in je Agent) */}
+      <AnonymisiererCard agentId={agentId} />
 
       {/* Permissions — Sudo/Root-Bereich nur für Rollen ohne Autonomie-Grenze (#910) */}
       {ohneGrenze && <PermissionPackagesPanel

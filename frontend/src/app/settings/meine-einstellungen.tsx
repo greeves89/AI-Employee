@@ -99,7 +99,9 @@ export function MeineEinstellungenView() {
             <a
               key={b.id}
               href={`#${b.id}`}
-              className="shrink-0 rounded-lg px-3 py-2 text-[14px] text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+              /* Als Knöpfe erkennbar (Rahmen auf dem Handy), vorher sahen sie wie Text aus
+                 (Persona Mobil, 14.11.2026). Am Rechner eine ruhige Liste links. */
+              className="shrink-0 rounded-full border border-border px-3 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-card hover:text-foreground lg:rounded-lg lg:border-transparent lg:py-2 lg:text-[14px]"
             >
               {b.titel}
             </a>

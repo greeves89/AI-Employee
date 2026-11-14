@@ -978,6 +978,8 @@ function MeinTag({ onSekretariatFertig, entwurfFrei }: { onSekretariatFertig: ()
         </Kasten>
       </div>
 
+      {/* Ab dem ersten erledigten Schritt: Einstieg als eine Zeile unter dem Tag. */}
+      <ErsteSchritteKarte platz="unten" />
       {einrichten ? (
         <Einrichten onFertig={onSekretariatFertig} entwurfFrei={entwurfFrei} />
       ) : (
@@ -1064,9 +1066,8 @@ export default function HeutePage() {
     <div>
       <Header title="Start" subtitle={`${datum} — ${daten && !daten.eingerichtet ? "dein Tag" : "dein Sekretariat"}`} />
       <div className="space-y-5 p-4 sm:p-6">
-        {/* Einstieg „In 6 Schritten startklar“ — stand bis 14.11.2026 nur auf der
-            Übersicht. Blendet sich aus, sobald alles erledigt oder weggeklickt ist. */}
-        <ErsteSchritteKarte />
+        {/* Ganz neu: die volle Einführung oben (Daniel, 14.11.2026). */}
+        <ErsteSchritteKarte platz="oben" />
         {!daten ? (
           <div className="flex justify-center py-16 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /></div>
         ) : !daten.eingerichtet ? (

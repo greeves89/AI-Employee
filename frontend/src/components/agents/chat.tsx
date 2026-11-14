@@ -2613,17 +2613,23 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
       {/* Toolbar — hidden in embedded (modal) mode */}
       {!embedded && (
       <div className="flex items-center gap-1 border-b border-border px-3 py-1.5 shrink-0 min-w-0">
+        {/* Beschriftet und groß genug zum Tippen — vorher ein 26-px-Symbol ohne Text
+            (Persona Mobil, 14.11.2026). */}
         <button
           onClick={() => setRailOpen((o) => !o)}
-          className="rounded-lg p-1.5 text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06] transition-all shrink-0"
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-[13px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-all shrink-0"
           title={railOpen ? "Gesprächsliste ausblenden" : "Gesprächsliste einblenden"}
           aria-label={railOpen ? "Gesprächsliste ausblenden" : "Gesprächsliste einblenden"}
         >
-          {railOpen ? <PanelLeftClose className="h-3.5 w-3.5" /> : <PanelLeft className="h-3.5 w-3.5" />}
+          {railOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
+          Gespräche
         </button>
         <div className="flex-1 min-w-0" />
 
-        {/* Right controls: summarize · overview toggle · font size · delete all · connection */}
+        {/* Right controls: summarize · overview toggle · font size · delete all · connection.
+            Für Mitglieder ausgeblendet — selten gebraucht, auf dem Handy winzig, und
+            „Alle Chats löschen“ gehört nicht neben einen Fehlklick (14.11.2026). */}
+        {!simpleMode && (
         <div className="flex items-center gap-0.5 shrink-0 border-l border-border pl-2 ml-1">
           {/* Fortsetzung mit kurzem Stand (#538). Ein langes Gespraech wird traege und
               teuer; hier geht es in einem frischen weiter, ohne dass der Verlauf
@@ -2659,6 +2665,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
             </button>
           )}
         </div>
+        )}
 
         {/* Verbindung zur Plattform: nur sichtbar, wenn etwas nicht stimmt. Ein grünes
             „Verbunden“ neben einem roten „Gestoppt“ im Seitenkopf verunsicherte
@@ -3339,9 +3346,13 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                   ? "Agent nicht verbunden"
                   : isWaiting
                   ? "Agent arbeitet… (du kannst trotzdem schreiben)"
+                  : simpleMode
+                  // Alltagssprache statt Tastenkürzel und Befehlszeichen (Persona
+                  // Einsteigerin, 14.11.2026).
+                  ? "Frag etwas oder gib einen Auftrag …"
                   : einfuegen
-                  ? `Nachricht… — / für Befehle, Bild mit ${einfuegen}`
-                  : "Nachricht… — / für Befehle"
+                  ? `Nachricht … (/ für Befehle, Bild mit ${einfuegen})`
+                  : "Nachricht … (/ für Befehle)"
               }
               disabled={!isConnected}
               className="max-h-48 w-full resize-none overflow-y-auto bg-transparent px-4 pt-3 pb-1.5 text-sm outline-none transition-all placeholder:text-muted-foreground disabled:opacity-40"

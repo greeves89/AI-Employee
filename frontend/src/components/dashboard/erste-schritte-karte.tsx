@@ -45,7 +45,14 @@ function ausgeblendet(uid: string | undefined): boolean {
 
 /** „Erste Schritte“ (#1047): Schritte, die sich anhand echter Daten selbst abhaken.
  *  Die Bridge kommt zuletzt und bringt ihre Downloads gleich mit. */
-export function ErsteSchritteKarte() {
+/** Auf Start in zwei Rollen (Daniel, 14.11.2026):
+ *  - ``platz="oben"``: die volle Einführung, nur solange noch nichts erledigt ist —
+ *    neue Nutzer bekommen einen sauberen Einstieg.
+ *  - ``platz="unten"``: ab dem ersten erledigten Schritt eine Zeile unter dem Tag,
+ *    aufklappbar. Oben schob die volle Karte den Tagesüberblick unter die Falz
+ *    (Personas). Ohne ``platz`` (Übersicht): immer die volle Karte. */
+export function ErsteSchritteKarte({ platz }: { platz?: "oben" | "unten" } = {}) {
+  const [aufgeklappt, setAufgeklappt] = useState(platz !== "unten");
   const uid = useAuthStore((s) => s.user?.id);
   const [stand, setStand] = useState<ErsteSchritte | null>(null);
   const [zu, setZu] = useState(true);
@@ -68,6 +75,8 @@ export function ErsteSchritteKarte() {
 
   // Fertig oder bewusst ausgeblendet: Platz für die Arbeit.
   if (!stand || zu || stand.erledigt >= stand.gesamt) return null;
+  if (platz === "oben" && stand.erledigt > 0) return null;
+  if (platz === "unten" && stand.erledigt === 0) return null;
 
   const naechster = stand.schritte.find((s) => !s.erledigt);
   const anteil = Math.round((stand.erledigt / stand.gesamt) * 100);
@@ -81,10 +90,34 @@ export function ErsteSchritteKarte() {
     setZu(true);
   };
 
+  if (!aufgeklappt) {
+    return (
+      <section aria-label="Erste Schritte" className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-border bg-card px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium">
+            Einstieg: {stand.erledigt} von {stand.gesamt} erledigt
+            {naechster && <span className="font-normal text-muted-foreground"> · Als Nächstes: {naechster.titel}</span>}
+          </p>
+          <div className="mt-2 h-1 w-full max-w-xs overflow-hidden rounded-full bg-foreground/[0.06]" aria-hidden="true">
+            <div className="h-full rounded-full bg-primary" style={{ width: `${anteil}%` }} />
+          </div>
+        </div>
+        <button type="button" onClick={() => setAufgeklappt(true)}
+          className="inline-flex h-9 items-center rounded-lg border border-border px-3 text-[13px] font-medium hover:bg-foreground/[0.04]">
+          Schritte zeigen
+        </button>
+        <button type="button" onClick={schliessen} aria-label="Erste Schritte für zwei Wochen ausblenden" title="Für zwei Wochen ausblenden"
+          className="rounded-lg p-2 text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground">
+          <X className="h-4 w-4" />
+        </button>
+      </section>
+    );
+  }
+
   return (
     <section
       aria-labelledby="erste-schritte-titel"
-      className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary/[0.06] to-transparent p-6"
+      className="rounded-xl border border-border bg-card p-6"
     >
       <div className="flex items-start justify-between gap-4">
         <div>

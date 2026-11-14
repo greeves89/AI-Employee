@@ -504,6 +504,24 @@ export default function FilesPage() {
                     );
                   })
                 )}
+                {/* Gestoppte Agenten fehlten hier ganz — man fragte sich, ob ihre Dateien
+                    weg sind (Persona Einsteigerin, 14.11.2026). Jetzt mit „Starten“. */}
+                {!searchQuery.trim() && startbare.length > 0 && (
+                  <div className="mt-2 border-t border-foreground/[0.06] pt-2">
+                    <p className="px-2 pb-1 text-[11px] text-muted-foreground">Gestoppt — starten, um die Dateien zu sehen</p>
+                    {startbare.map((a) => (
+                      <div key={a.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5">
+                        <span className="min-w-0 truncate text-sm">{a.name}</span>
+                        <button type="button" onClick={() => agentStarten(a.id)} disabled={startet !== null}
+                          aria-label={`${a.name} starten`}
+                          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-[12px] hover:bg-foreground/[0.04] disabled:opacity-60">
+                          {startet === a.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                          Starten
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 

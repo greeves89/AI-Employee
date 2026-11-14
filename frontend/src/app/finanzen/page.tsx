@@ -179,8 +179,10 @@ function FinanzenSeite() {
                 sub={<>Vormonat {money.fmt(s.vormonat_usd)}</>} />
               <Kachel label="Aufgaben und Projekte" wert={money.fmt(s.aufgaben_usd)} titel={money.title(s.aufgaben_usd)}
                 sub={<>
-                  davon ohne Projekt {money.fmt(s.ohne_projekt_aufgaben_usd)}
-                  {(s.andere_projekte_aufgaben_usd ?? 0) > 0 && <> · in gelöschten oder fremden Projekten {money.fmt(s.andere_projekte_aufgaben_usd ?? 0)}</>}
+                  {/* Ein klarer Satz statt „ohne Projekt … · in gelöschten oder fremden
+                      Projekten …“ (Personas, 14.11.2026). Die Aufschlüsselung je Projekt
+                      steht unten in der Tabelle „Projekte“. */}
+                  davon außerhalb deiner Projekte {money.fmt(s.ohne_projekt_aufgaben_usd + (s.andere_projekte_aufgaben_usd ?? 0))}
                 </>} />
               <Kachel label="Chat" wert={money.fmt(s.chat_usd)} titel={money.title(s.chat_usd)}
                 sub="Gespräche mit den Agenten, keinem Projekt zugeordnet" />
@@ -206,7 +208,7 @@ function FinanzenSeite() {
                   <ComposedChart data={diagramm} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.08} />
                     <XAxis dataKey="monat" tick={{ fontSize: 11 }} stroke="currentColor" strokeOpacity={0.4} />
-                    <YAxis tick={{ fontSize: 11 }} stroke="currentColor" strokeOpacity={0.4} width={48}
+                    <YAxis tick={{ fontSize: 11 }} stroke="currentColor" strokeOpacity={0.4} width={48} allowDecimals={false}
                       tickFormatter={(v: number) => `${v.toFixed(0)} ${money.symbol}`} />
                     <Tooltip formatter={(v) => `${Number(v).toFixed(2).replace(".", ",")} ${money.symbol}`}
                       contentStyle={{ fontSize: 12, borderRadius: 8 }} />
