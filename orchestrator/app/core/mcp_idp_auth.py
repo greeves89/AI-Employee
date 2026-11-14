@@ -220,7 +220,12 @@ def cache_leeren() -> None:
 
 async def _hole_json(url: str) -> dict:
     """Ein HTTPS-Abruf beim IdP. In Tests ersetzt."""
-    async with httpx.AsyncClient(timeout=ABRUF_TIMEOUT_SEKUNDEN, follow_redirects=False) as client:
+    from app.core.feste_verbindung import FesteAdresse
+
+    # Per einmal geprueffter Adresse verbinden: sonst loeste httpx den Namen nach der
+    # SSRF-Pruefung ein zweites Mal auf (DNS-Rebinding, Plan Sicherheit 2026-11 Punkt 8).
+    async with httpx.AsyncClient(timeout=ABRUF_TIMEOUT_SEKUNDEN, follow_redirects=False,
+                                 transport=FesteAdresse(True, name="MCP-IdP")) as client:
         resp = await client.get(url, headers={"Accept": "application/json"})
         resp.raise_for_status()
         data = resp.json()

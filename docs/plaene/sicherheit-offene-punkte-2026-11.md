@@ -33,8 +33,8 @@ gilt das als abgewiesen.
 | 5 | **GitLab gegen einen echten Server:** gitlab.com mit einem Testprojekt, Board-Import, Merge Request. | Schritt 3 | Proxy-Tausch live geprüft, Anbieter nur nachgestellt | Testprojekt auf gitlab.com mit Projekt-Token, Abnahme laut #1194. |
 | 6 | **Sicherung im Update-Skript** scheiterte als `pi` (`/var/backups/ai-employee` gehört root). | Betrieb | **Erledigt 1.461:** Ausweichen nach `~/ai-employee-sicherungen` (ohne root, nur beim Standardziel), mit Hinweis auf `chown`. | Erledigt. |
 | 7 | **Alte Agenten-Abbilder** halten bei „Stopp“ weiter alle Züge an (gezielter Stopp ab 1.457). | Schritt 3 | Erledigt sich mit dem Aktualisieren der Agenten | Nach dem Einspielen Agenten aktualisieren. Gestoppte bleiben dabei jetzt gestoppt. |
-| 8 | **DNS-Rebinding beim Schlüsselabruf des IdP:** zweite Auflösung in httpx. | Schritt 1, nur Admin-Konfiguration | Gering | Denselben Transport mit fester IP wie bei GitLab verwenden (`projekt_git.git_client`), eine Stelle für beide. |
-| 9 | **Freigabe-Anfragen an freigegebenen Agenten** gehen nur an den Besitzer. Der Nur-Nutzer wartet, ohne es zu sehen. | Schritt 3 | Kein Leck, aber unklar für den Nutzer | Im Chat des Nur-Nutzers eine Statuszeile „wartet auf Freigabe durch den Besitzer“, ohne den Inhalt der Anfrage. |
+| 8 | **DNS-Rebinding beim Schlüsselabruf des IdP:** zweite Auflösung in httpx. | Schritt 1, nur Admin-Konfiguration | **Erledigt 1.462:** `core/feste_verbindung.FesteAdresse` für beide. | Erledigt. |
+| 9 | **Freigabe-Anfragen an freigegebenen Agenten** gehen nur an den Besitzer. Der Nur-Nutzer wartet, ohne es zu sehen. | Schritt 3 | **Leck gefunden und behoben 1.462:** Die Anfrage ging samt Inhalt an alle Fenster, jetzt nur an Besitzer und Admin. | Statuszeile „wartet auf Freigabe“ für Nur-Nutzer (nur Hinweis, kein Inhalt). |
 
 ## Reihenfolge
 

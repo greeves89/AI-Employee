@@ -227,6 +227,11 @@ class ChatsJeNutzerTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(await ws._ereignis_fuer_verbindung(ohne, "a1", ANNA, {}))
             self.assertTrue(await ws._ereignis_fuer_verbindung(ohne, "a1", ADMIN, {}))
             self.assertTrue(await ws._ereignis_fuer_verbindung({"type": "cancelled"}, "a1", ANNA, {}))
+            # Freigabe-Anfrage ohne Gespraech: nur fuer Besitzer und Admin (Review 1.461, Punkt 9)
+            anfrage = {"type": "approval_request", "data": {"question": "Mail an Kunden senden?"}}
+            self.assertFalse(await ws._ereignis_fuer_verbindung(anfrage, "a1", ANNA, {}))
+            self.assertTrue(await ws._ereignis_fuer_verbindung(anfrage, "a1", BESITZER, {}))
+            self.assertTrue(await ws._ereignis_fuer_verbindung(anfrage, "a1", ADMIN, {}))
 
     async def test_aufgabe_liefert_nur_ins_eigene_gespraech(self):
         from app.api import tasks

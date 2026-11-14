@@ -366,35 +366,15 @@ def ssl_kontext(pem: str | None = None) -> ssl.SSLContext | bool:
     return _SSL[schluessel]
 
 
-class _FesteAdresse(httpx.AsyncBaseTransport):
-    """Verbindet mit EINER geprüften Adresse statt den Namen neu aufzulösen (DNS-Rebinding).
+class _FesteAdresse:
+    """Wie ``core/feste_verbindung.FesteAdresse`` — mit der Freigabe fuer Server im
+    Firmennetz (``freigegeben``). Eine Stelle fuer die Verbindung, hier nur die Regel."""
 
-    Je Anfrage: Name einmal auflösen, jede Adresse prüfen (öffentlich, oder im
-    Firmennetz bei freigegebenem Server), dann per IP verbinden. Zertifikat und SNI
-    gelten weiter für den Namen (``sni_hostname``), der Host-Kopf bleibt der Name.
-    Scheitert die Prüfung, kommt ein einheitlicher Verbindungsfehler — ohne Grund.
-    """
+    def __new__(cls, verify, innen=None, aufloesen=None):
+        from app.core.feste_verbindung import FesteAdresse
 
-    def __init__(self, verify, innen: httpx.AsyncBaseTransport | None = None, aufloesen=None):
-        self._innen = innen or httpx.AsyncHTTPTransport(verify=verify)
-        self._aufloesen = aufloesen
-
-    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        from app.core import url_guard
-
-        host, port = request.url.host, request.url.port or 443
-        kw = {"aufloesen": self._aufloesen} if self._aufloesen else {}
-        try:
-            ip = await asyncio.to_thread(url_guard.feste_adresse, host, port, freigegeben(host, port), **kw)
-        except ValueError as e:
-            log.info("[Projekt] Verbindung zu %s:%s abgelehnt: %s", host[:100], port, e)
-            raise httpx.ConnectError("Server nicht erreichbar", request=request) from None
-        request.url = request.url.copy_with(host=ip)
-        request.extensions = {**request.extensions, "sni_hostname": host}
-        return await self._innen.handle_async_request(request)
-
-    async def aclose(self) -> None:
-        await self._innen.aclose()
+        return FesteAdresse(verify, innen=innen, aufloesen=aufloesen,
+                            firmennetz_frei=freigegeben, name="Projekt")
 
 
 def git_client(timeout: float, anbieter=None) -> httpx.AsyncClient:

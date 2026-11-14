@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.462.0] - 2026-11-14
+
+### Sicherheit
+- **Freigabe-Anfragen nur an Besitzer und Admin.** Im Live-Chat gingen Freigabe-Anfragen (`approval_request`) samt Frage und Begründung an jedes offene Fenster des Agenten, auch an Kollegen mit Freigabe „nur nutzen“. Jetzt bekommen sie nur Besitzer und Admin.
+- **DNS-Rebinding beim Identitätsanbieter:** Der Schlüsselabruf der MCP-Anmeldung verbindet jetzt per einmal geprüfter Adresse, wie die Git-Server der Projekte. Bisher löste httpx den Namen nach der SSRF-Prüfung ein zweites Mal auf.
+  - Eine Klasse für beide Fälle (`core/feste_verbindung.FesteAdresse`).
+  - Der Identitätsanbieter darf nie im Firmennetz liegen, Git-Server nur, wenn sie freigegeben sind.
+
 ## [1.461.0] - 2026-11-14
 
 ### Sicherheit
