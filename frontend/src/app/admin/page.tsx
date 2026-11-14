@@ -62,12 +62,13 @@ import { MasterRulesView } from "@/app/admin/master-rules-view";
 import { VoiceSettings } from "@/components/settings/voice-settings";
 import { TemplateManager } from "@/components/settings/template-manager";
 import {
-  ADMIN_GRUPPEN,
   ADMIN_BEREICH_NAMEN,
   adminBereichAusTab,
   adminPfad,
+  adminSeite,
   type AdminBereich,
 } from "@/lib/admin-bereiche";
+import Link from "next/link";
 import { cn, timeAgo, formatCost } from "@/lib/utils";
 import { agentZustand } from "@/lib/aufgaben-anzeige";
 import { Header } from "@/components/layout/header";
@@ -106,7 +107,7 @@ type Tab = AdminBereich;
 // nicht an den Daten, die diese Seite selbst laedt (Nutzer, Agenten).
 const EMBEDDED_TABS: Tab[] = [
   "suche",
-  "modelle", "integrationen-anlage", "system", "sprache", "vorlagen",
+  "modelle", "mcp", "integrationen-anlage", "system", "sprache", "vorlagen",
   "ai-accounts", "second-brains", "secrets", "health", "audit", "dlp",
   "master-rules", "web-search", "gesetze",
 ];
@@ -487,6 +488,7 @@ export default function AdminPage() {
   };
 
   const pendingFeedback = feedbackItems.filter((f) => f.status === "pending").length;
+  const seite = adminSeite(tab);
 
   const anzahl: Partial<Record<Tab, number | undefined>> = {
     users: users.length,
@@ -503,9 +505,29 @@ export default function AdminPage() {
   return (
     <div>
       <Header
-        title={ADMIN_BEREICH_NAMEN[tab]}
+        title={seite.titel}
         subtitle="Admin-Bereich · Einstellungen hier gelten für die ganze Anlage"
       />
+      {/* Unterseiten als Reiter (14.11.2026): Die Leiste hat nur noch acht Punkte. */}
+      {seite.bereiche.length > 1 && (
+        <nav aria-label={`Unterseiten von ${seite.titel}`}
+          className="flex gap-1 overflow-x-auto border-b border-foreground/[0.06] px-4 sm:px-8">
+          {seite.bereiche.map((b) => (
+            <Link key={b} href={adminPfad(b)} aria-current={b === tab ? "page" : undefined}
+              className={cn(
+                "-mb-px inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm transition-colors",
+                b === tab
+                  ? "border-primary font-medium text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}>
+              {ADMIN_BEREICH_NAMEN[b]}
+              {anzahl[b] ? (
+                <span className="rounded-full bg-foreground/[0.06] px-1.5 text-[11px] text-muted-foreground">{anzahl[b]}</span>
+              ) : null}
+            </Link>
+          ))}
+        </nav>
+      )}
 
       <motion.div
         className="px-4 py-6 sm:px-8"
@@ -526,12 +548,12 @@ export default function AdminPage() {
                 bereich={tab === "integrationen-anlage" ? "integrationen" : tab}
               />
             )}
-            {tab === "integrationen-anlage" && (
-              <div className="mt-8">
-                <McpServersSection
-                  onToast={(t) => (t.type === "success" ? toast.success(t.message) : toast.error(t.message))}
-                />
-              </div>
+            {/* MCP-Server als eigener Reiter — vorher unten in „Dienste & Konten“
+                unter dem Knopf „Einstellungen speichern“, kaum zu finden. */}
+            {tab === "mcp" && (
+              <McpServersSection
+                onToast={(t) => (t.type === "success" ? toast.success(t.message) : toast.error(t.message))}
+              />
             )}
             {tab === "sprache" && <VoiceSettings />}
             {tab === "vorlagen" && (

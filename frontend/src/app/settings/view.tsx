@@ -8,7 +8,7 @@ import {
   CheckCircle2, AlertCircle, Shield, Bot, Gauge, Coins,
   UserPlus, Cloud, Server, Lock, Globe, Cpu,
   ExternalLink, Copy, LogIn, Info, ChevronRight, Sparkles, Network,
-  AlertTriangle, Moon } from "lucide-react";
+  AlertTriangle, Moon, KeyRound } from "lucide-react";
 import { useAuthStore } from "@/lib/auth";
 import { ModelCatalogAdmin } from "@/components/settings/model-catalog-admin";
 import { SystemControl } from "@/components/settings/system-control";
@@ -1064,11 +1064,30 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
         <div className="space-y-6">
         <p className="text-[11px] text-muted-foreground">
           Anbindungen für die ganze Anlage: Anmeldung, Benachrichtigungskanäle,
-          Mail und Kalender. Eigene Konten (Microsoft, Google, MCP-Server) verbindet
-          jeder Nutzer selbst unter{" "}
-          <Link href="/integrations" className="text-primary hover:underline">Integrationen</Link>{" "}
-          in der Seitenleiste.
+          Mail und Kalender. Eigene Konten (Microsoft, Google) verbindet jeder Nutzer
+          selbst unter{" "}
+          <Link href="/integrations" className="text-primary hover:underline">Verbindungen</Link>{" "}
+          in der Seitenleiste. Werkzeug-Server stehen im Reiter{" "}
+          <Link href="/admin?tab=mcp" className="text-primary hover:underline">MCP-Server</Link>.
         </p>
+        {/* ─── Anmeldung: SAML und MCP-Zugang mit Firmenanmeldung. Stand bis 14.11.2026
+             unter der Überschrift „Benachrichtigungen“. ─── */}
+        {isAdmin && (
+          <section>
+            <div className="flex items-center gap-2 mb-3">
+              <KeyRound className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Anmeldung
+              </h2>
+            </div>
+            <div className="mb-4">
+              <SamlConfig />
+            </div>
+            <div className="mb-4">
+              <McpIdpOAuthConfigPanel />
+            </div>
+          </section>
+        )}
         {/* ─── Section 4: Notifications ─── */}
         <section>
           <div className="flex items-center gap-2 mb-3">
@@ -1077,18 +1096,6 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
               Benachrichtigungen
             </h2>
           </div>
-
-          {isAdmin && (
-            <div className="mb-4">
-              <SamlConfig />
-            </div>
-          )}
-
-          {isAdmin && (
-            <div className="mb-4">
-              <McpIdpOAuthConfigPanel />
-            </div>
-          )}
 
           <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-foreground/[0.04]">

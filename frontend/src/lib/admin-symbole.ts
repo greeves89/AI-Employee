@@ -24,6 +24,9 @@ import {
   ShieldAlert,
   UserCog,
   Users,
+  Wrench,
+  Settings,
+  Home,
 } from "lucide-react";
 
 import type { AdminBereich } from "@/lib/admin-bereiche";
@@ -41,6 +44,7 @@ export const ADMIN_SYMBOLE: Record<AdminBereich, React.ElementType> = {
   sprache: Mic,
   "second-brains": Brain,
   "web-search": Search,
+  mcp: Wrench,
   "integrationen-anlage": Plug,
   system: Lock,
   pages: AppWindow,
@@ -52,4 +56,16 @@ export const ADMIN_SYMBOLE: Record<AdminBereich, React.ElementType> = {
   health: HeartPulse,
   budget: DollarSign,
   feedback: MessageSquare,
+};
+
+/** Ein Symbol je Seite der Leiste (``ADMIN_GRUPPEN``). */
+export const ADMIN_SEITEN_SYMBOLE: Record<string, React.ElementType> = {
+  start: Home,
+  people: Users,
+  agents: Cpu,
+  ki: Brain,
+  werkzeuge: Wrench,
+  security: ShieldAlert,
+  kosten: DollarSign,
+  system: Settings,
 };
