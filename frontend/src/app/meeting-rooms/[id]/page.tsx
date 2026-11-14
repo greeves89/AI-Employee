@@ -543,7 +543,7 @@ ${msgHtml}
                           <span className={cn("text-[11px] font-medium", getAgentColor(msg.agent_id || ""))}>
                             {getAgentName(msg.agent_id)}
                           </span>
-                          <span className="text-[10px] text-muted-foreground/40">reagiert</span>
+                          <span className="text-[10px] text-muted-foreground">reagiert</span>
                         </div>
                         <div className="rounded-lg bg-foreground/[0.03] border border-foreground/[0.05] px-3 py-1.5 text-sm text-foreground/70 italic leading-snug">
                           {msg.content}
@@ -611,11 +611,11 @@ ${msgHtml}
                             {getAgentName(msg.agent_id)}
                           </span>
                           {msg.round !== undefined && (
-                            <span className="text-[10px] text-muted-foreground/50">
+                            <span className="text-[10px] text-muted-foreground">
                               R{msg.round + 1}
                             </span>
                           )}
-                          <span className="text-[10px] text-muted-foreground/50">
+                          <span className="text-[10px] text-muted-foreground">
                             {new Date(msg.timestamp).toLocaleTimeString()}
                           </span>
                         </div>
@@ -733,7 +733,7 @@ ${msgHtml}
                   </div>
                   <Gavel className="h-3.5 w-3.5 text-violet-400 shrink-0" />
                   <span className="text-sm font-medium text-violet-300 flex-1 truncate">Moderator</span>
-                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground/50 shrink-0">
+                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground shrink-0">
                     <MessageSquare className="h-3 w-3" />
                     {messages.filter(m => m.role === "moderator").length}
                   </div>
@@ -755,7 +755,7 @@ ${msgHtml}
                         key="mod-waiting"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        className="text-[11px] text-muted-foreground/40 italic"
+                        className="text-[11px] text-muted-foreground italic"
                       >
                         {room.state === "running" ? "Wartet auf ersten Beitrag…" : "Bereit"}
                       </motion.p>
@@ -817,7 +817,7 @@ ${msgHtml}
                       {getAgentName(aid)}
                     </span>
 
-                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground/50 shrink-0">
+                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground shrink-0">
                       <MessageSquare className="h-3 w-3" />
                       {stats.count}
                     </div>
@@ -855,7 +855,7 @@ ${msgHtml}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="text-[11px] text-muted-foreground/40 italic"
+                        className="text-[11px] text-muted-foreground italic"
                       >
                         Noch nicht dran
                       </motion.p>
@@ -911,7 +911,7 @@ ${msgHtml}
                   Abgeschlossen
                 </span>
               )}
-              <span className="text-[11px] text-muted-foreground/50 ml-auto">
+              <span className="text-[11px] text-muted-foreground ml-auto">
                 {messages.filter((m) => m.role === "agent").length} Beiträge
               </span>
             </div>

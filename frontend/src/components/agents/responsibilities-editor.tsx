@@ -57,7 +57,7 @@ export function ResponsibilitiesEditor({
   return (
     <div>
       <div className="mb-1 flex items-center justify-between gap-2">
-        <span className="text-[10px] uppercase tracking-wide text-muted-foreground/40">
+        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
           Verantwortungsbereiche
         </span>
         <button
@@ -74,7 +74,7 @@ export function ResponsibilitiesEditor({
         </button>
       </div>
       {value.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-foreground/[0.08] p-2.5 text-[10px] leading-relaxed text-muted-foreground/50">
+        <div className="rounded-lg border border-dashed border-foreground/[0.08] p-2.5 text-[10px] leading-relaxed text-muted-foreground">
           {emptyHint ??
             "Noch keine Bereiche. Ohne sie plant der Agent nur, was jemand als Todo angelegt hat — mit ihnen weiß er, wofür er dauerhaft zuständig ist, und baut sich daraus selbst den Tag."}
         </div>
@@ -91,7 +91,7 @@ export function ResponsibilitiesEditor({
                   value={duty.title}
                   onChange={(e) => patch(idx, { title: e.target.value })}
                   placeholder="z.B. Posteingang sichten"
-                  className="min-w-0 flex-1 rounded-md border border-foreground/[0.08] bg-background/60 px-2 py-1 text-[11px] text-foreground placeholder:text-muted-foreground/30 focus:border-emerald-500/40 focus:outline-none"
+                  className="min-w-0 flex-1 rounded-md border border-foreground/[0.08] bg-background/60 px-2 py-1 text-[11px] text-foreground placeholder:text-muted-foreground focus:border-emerald-500/40 focus:outline-none"
                 />
                 <select
                   value={duty.rhythm}
@@ -115,7 +115,7 @@ export function ResponsibilitiesEditor({
                   type="button"
                   onClick={() => remove(idx)}
                   title="Bereich entfernen"
-                  className="shrink-0 rounded-md p-1 text-muted-foreground/40 transition-colors hover:bg-foreground/[0.06] hover:text-red-400"
+                  className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-red-400"
                 >
                   <Trash2 className="h-3 w-3" />
                 </button>
@@ -125,13 +125,13 @@ export function ResponsibilitiesEditor({
                 value={duty.notes ?? ""}
                 onChange={(e) => patch(idx, { notes: e.target.value })}
                 placeholder="Präzisierung (optional) — woran genau erkennt er, dass es erledigt ist?"
-                className="mt-1.5 w-full rounded-md border border-foreground/[0.06] bg-background/40 px-2 py-1 text-[10px] text-muted-foreground placeholder:text-muted-foreground/25 focus:border-emerald-500/40 focus:outline-none"
+                className="mt-1.5 w-full rounded-md border border-foreground/[0.06] bg-background/40 px-2 py-1 text-[10px] text-muted-foreground placeholder:text-muted-foreground focus:border-emerald-500/40 focus:outline-none"
               />
             </div>
           ))}
         </div>
       )}
-      <div className="mt-1.5 text-[10px] text-muted-foreground/40">
+      <div className="mt-1.5 text-[10px] text-muted-foreground">
         {footnote ??
           "Daueraufträge, keine Todos: der Lauf leitet daraus die Aufgaben des Tages ab (STEP 1). Ein Bereich wird nie „fertig\" — abgehakt wird der heutige Durchgang."}
       </div>

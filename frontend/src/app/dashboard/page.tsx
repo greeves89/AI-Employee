@@ -47,7 +47,7 @@ export default function DashboardPage() {
   return (
     <div>
       <Header
-        title="Dashboard"
+        title="Übersicht"
         subtitle="Überblick über deine Agenten"
         actions={
           <button

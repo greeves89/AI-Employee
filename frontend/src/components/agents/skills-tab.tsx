@@ -296,7 +296,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
           </span>
           <Link
             href="/skills"
-            className="text-[10px] text-muted-foreground/50 hover:text-primary hover:underline"
+            className="text-[10px] text-muted-foreground hover:text-primary hover:underline"
           >
             globaler Marktplatz →
           </Link>
@@ -388,7 +388,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                     value={installRepo}
                     onChange={(e) => setInstallRepo(e.target.value)}
                     placeholder="https://github.com/vercel-labs/skills"
-                    className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </div>
                 <div>
@@ -400,7 +400,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                     value={installSkill}
                     onChange={(e) => setInstallSkill(e.target.value)}
                     placeholder="z. B. find-skills"
-                    className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </div>
               </div>
@@ -485,7 +485,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                     {catalog.length} Skills
                   </span>
                   {catalogCrawledAt && (
-                    <span className="text-[10px] text-muted-foreground/40">
+                    <span className="text-[10px] text-muted-foreground">
                       aktualisiert am {new Date(catalogCrawledAt).toLocaleDateString("de-DE")}
                     </span>
                   )}
@@ -517,7 +517,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                     value={catalogSearch}
                     onChange={(e) => setCatalogSearch(e.target.value)}
                     placeholder="Skills durchsuchen …"
-                    className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] pl-9 pr-3.5 py-2 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] pl-9 pr-3.5 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </div>
                 <div className="flex gap-1 flex-wrap">
@@ -569,8 +569,8 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                           </span>
                         </div>
                         <p className="text-[11px] text-muted-foreground/70 mt-0.5 line-clamp-1">{cat.description}</p>
-                        {cat.installs && <p className="text-[10px] text-muted-foreground/40 mt-0.5">{cat.installs} installs</p>}
-                        {!cat.installs && <p className="text-[10px] text-muted-foreground/40 mt-0.5">{cat.repo}</p>}
+                        {cat.installs && <p className="text-[10px] text-muted-foreground mt-0.5">{cat.installs} installs</p>}
+                        {!cat.installs && <p className="text-[10px] text-muted-foreground mt-0.5">{cat.repo}</p>}
                       </div>
                       <button
                         onClick={() => !isInstalled && !isInstalling && handleInstallFromCatalog(cat)}
@@ -633,9 +633,9 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                     value={formName}
                     onChange={(e) => setFormName(e.target.value)}
                     placeholder="z. B. auf-produktion-ausrollen"
-                    className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   />
-                  <p className="text-[10px] text-muted-foreground/50 mt-1">
+                  <p className="text-[10px] text-muted-foreground mt-1">
                     Kleinbuchstaben mit Bindestrichen — daraus wird der Ordnername.
                   </p>
                 </div>
@@ -649,7 +649,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                     value={formDescription}
                     onChange={(e) => setFormDescription(e.target.value)}
                     placeholder="Was dieser Skill tut …"
-                    className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </div>
 
@@ -662,7 +662,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                     onChange={(e) => setFormContent(e.target.value)}
                     placeholder="Schritt-für-Schritt-Anleitung für den Agenten …"
                     rows={8}
-                    className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary resize-y"
+                    className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-y"
                   />
                 </div>
               </div>

@@ -384,7 +384,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                   </div>
                   <ChevronRight
                     className={cn(
-                      "h-4 w-4 text-muted-foreground/40 transition-transform duration-200 shrink-0",
+                      "h-4 w-4 text-muted-foreground transition-transform duration-200 shrink-0",
                       isExpanded && "rotate-90"
                     )}
                   />
@@ -448,7 +448,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                     </div>
                     <ChevronRight
                       className={cn(
-                        "h-4 w-4 text-muted-foreground/40 transition-transform duration-200 shrink-0",
+                        "h-4 w-4 text-muted-foreground transition-transform duration-200 shrink-0",
                         isExpanded && "rotate-90"
                       )}
                     />
@@ -486,7 +486,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
 
         {enabledMcpServers.length === 0 && (
           <div className="border-t border-foreground/[0.04] px-5 py-3">
-            <p className="text-[11px] text-muted-foreground/50">
+            <p className="text-[11px] text-muted-foreground">
               Werkzeug-Server (MCP) richtet ein Admin im{" "}
               <a href="/admin?tab=integrationen-anlage" className="text-primary hover:underline">Admin-Bereich unter Dienste &amp; Konten</a>{" "}
               ein; danach den Agenten neu starten, damit er sie nutzt.
@@ -787,7 +787,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
         <div className="divide-y divide-foreground/[0.04]">
           {allowlist.length === 0 ? (
             <div className="px-5 py-4 text-center">
-              <p className="text-[11px] text-muted-foreground/50">
+              <p className="text-[11px] text-muted-foreground">
                 {zielliste?.aktiv
                   ? "Keine Regeln — der Agent erreicht nur seine Modellanbieter und die Ziele seiner Zugänge"
                   : "Keine Regeln — der Agent darf alle Adressen aufrufen"}
@@ -800,12 +800,12 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                 <div className="flex-1 min-w-0">
                   <span className="text-[11px] font-mono text-foreground/80 truncate block">{entry.url_pattern}</span>
                   {entry.description && (
-                    <span className="text-[10px] text-muted-foreground/50">{entry.description}</span>
+                    <span className="text-[10px] text-muted-foreground">{entry.description}</span>
                   )}
                 </div>
                 <button
                   onClick={() => handleDeleteUrl(entry.id)}
-                  className="p-1 rounded text-muted-foreground/40 hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
+                  className="p-1 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
@@ -823,14 +823,14 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
               onChange={(e) => setNewUrl(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleAddUrl()}
               placeholder="api.example.com oder *.github.com"
-              className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-1.5 text-[11px] font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:border-emerald-500/40"
+              className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-1.5 text-[11px] font-mono placeholder:text-muted-foreground focus:outline-none focus:border-emerald-500/40"
             />
             <input
               type="text"
               value={newUrlDesc}
               onChange={(e) => setNewUrlDesc(e.target.value)}
               placeholder="Beschreibung (optional)"
-              className="w-36 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-1.5 text-[11px] placeholder:text-muted-foreground/40 focus:outline-none focus:border-emerald-500/40"
+              className="w-36 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-1.5 text-[11px] placeholder:text-muted-foreground focus:outline-none focus:border-emerald-500/40"
             />
             <button
               onClick={handleAddUrl}
@@ -871,7 +871,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
               <a
                 href="/admin?tab=secrets"
                 target="_blank"
-                className="flex items-center gap-1 text-[11px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
               >
                 Alle verwalten
                 <ExternalLink className="h-3 w-3" />
@@ -934,7 +934,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
         {allSecrets.length === 0 ? (
           <div className="px-5 py-6 text-center">
             <KeyRound className="h-6 w-6 mx-auto mb-2 text-muted-foreground/30" />
-            <p className="text-[11px] text-muted-foreground/50">Noch keine Schlüssel.</p>
+            <p className="text-[11px] text-muted-foreground">Noch keine Schlüssel.</p>
             <button onClick={() => setNeuOffen(true)} className="text-[11px] text-violet-400 hover:text-violet-300 transition-colors mt-1 inline-block">
               Ersten Schlüssel hinzufügen
             </button>
@@ -952,7 +952,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-[12px] font-medium truncate">{secret.name}</span>
-                      <span className="text-[10px] font-mono text-muted-foreground/50 bg-foreground/[0.04] px-1.5 py-0.5 rounded">
+                      <span className="text-[10px] font-mono text-muted-foreground bg-foreground/[0.04] px-1.5 py-0.5 rounded">
                         {secret.key_name}
                       </span>
                       {secret.owned && (
@@ -969,7 +969,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                       <ZieleAbzeichen secret={secret} klein />
                     </div>
                     {secret.description && (
-                      <p className="text-[10px] text-muted-foreground/40 mt-0.5 truncate">{secret.description}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{secret.description}</p>
                     )}
                     {zieleOffen?.id === secret.id && (
                       <div className="mt-2 space-y-2">

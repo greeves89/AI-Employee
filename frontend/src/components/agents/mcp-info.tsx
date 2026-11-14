@@ -185,7 +185,7 @@ export function McpInfo() {
                     </div>
                     <ChevronRight
                       className={cn(
-                        "h-3.5 w-3.5 text-muted-foreground/40 transition-transform duration-200",
+                        "h-3.5 w-3.5 text-muted-foreground transition-transform duration-200",
                         isOpen && "rotate-90"
                       )}
                     />

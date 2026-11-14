@@ -101,11 +101,11 @@ export function SynthesisView({ onOpenEntry }: { onOpenEntry?: (id: number) => v
               <header className="mb-2 flex items-center gap-2">
                 <Calendar className="h-3.5 w-3.5 text-primary" />
                 <h3 className="text-sm font-medium">{s.title}</h3>
-                <span className="ml-auto text-[11px] text-muted-foreground/50">
+                <span className="ml-auto text-[11px] text-muted-foreground">
                   {s.created_at ? new Date(s.created_at).toLocaleDateString("de-DE") : ""}
                 </span>
               </header>
-              <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] text-muted-foreground [&_h2]:mb-1 [&_h2]:mt-3 [&_h2]:text-[12px] [&_h2]:font-semibold [&_h2]:uppercase [&_h2]:tracking-wide [&_h2]:text-muted-foreground/50">
+              <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] text-muted-foreground [&_h2]:mb-1 [&_h2]:mt-3 [&_h2]:text-[12px] [&_h2]:font-semibold [&_h2]:uppercase [&_h2]:tracking-wide [&_h2]:text-muted-foreground">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{s.content}</ReactMarkdown>
               </div>
             </article>

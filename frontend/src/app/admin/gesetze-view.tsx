@@ -70,7 +70,7 @@ export function GesetzeView({ embedded = false }: { embedded?: boolean }) {
             <code className="rounded bg-foreground/[0.06] px-1">gesetze_search</code> abfragen.
           </p>
           {status && (
-            <div className="mt-1.5 space-y-0.5 text-[11px] text-muted-foreground/50">
+            <div className="mt-1.5 space-y-0.5 text-[11px] text-muted-foreground">
               <p>{quellenZeile("EU-Recht", status.eu)}</p>
               <p>{quellenZeile("Bundesrecht", status.de)}</p>
             </div>
@@ -104,7 +104,7 @@ export function GesetzeView({ embedded = false }: { embedded?: boolean }) {
             )}
             {results.map((r) => (
               <div key={r.path} className="rounded-lg border border-foreground/[0.05] bg-foreground/[0.02] p-3">
-                <p className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/50">
+                <p className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   <span className={cn(
                     "rounded px-1.5 py-0.5 text-[10px] normal-case",
                     r.jurisdiction === "eu" ? "bg-blue-500/15 text-blue-400" : "bg-foreground/10",
@@ -151,7 +151,7 @@ export function GesetzeView({ embedded = false }: { embedded?: boolean }) {
             ))}
           </div>
         )}
-        <p className="mt-3 text-[11px] text-muted-foreground/50">
+        <p className="mt-3 text-[11px] text-muted-foreground">
           Bundesrecht (6000+ Normen) ist bewusst nur über die Suche oben erreichbar,
           nicht als Liste — dafür ist es zu viel, um sinnvoll durchzublättern.
         </p>

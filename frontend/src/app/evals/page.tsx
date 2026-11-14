@@ -366,7 +366,7 @@ export default function EvalsPage() {
               </button>
             </div>
 
-            <p className="text-[10px] text-muted-foreground/50">
+            <p className="text-[10px] text-muted-foreground">
               Jede Aufgabe braucht mindestens eine Erwartung — eine Aufgabe, die nie
               durchfallen kann, ist kein Test und würde den Wert stillschweigend nach
               oben ziehen. Ändern sich die Aufgaben, steigt die Fassung: sonst könnte
@@ -432,7 +432,7 @@ export default function EvalsPage() {
                     </div>
                     <ChevronRight
                       className={cn(
-                        "mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/40 transition-transform",
+                        "mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform",
                         selectedId === s.id && "rotate-90",
                       )}
                     />
@@ -521,7 +521,7 @@ export default function EvalsPage() {
                       </div>
                       <ChevronRight
                         className={cn(
-                          "h-4 w-4 shrink-0 text-muted-foreground/40 transition-transform",
+                          "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
                           openRun === r.id && "rotate-90",
                         )}
                       />
@@ -538,7 +538,7 @@ export default function EvalsPage() {
                                 <X className="h-3 w-3 shrink-0 text-red-400" />
                               )}
                               <span className="font-medium">{res.title || res.id}</span>
-                              <span className="text-muted-foreground/40">
+                              <span className="text-muted-foreground">
                                 ×{res.weight}
                               </span>
                             </div>

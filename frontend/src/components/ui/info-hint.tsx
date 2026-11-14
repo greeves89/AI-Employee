@@ -12,7 +12,7 @@ export function InfoHint({ text, className }: { text: string; className?: string
     <span title={text} aria-label={text} className="inline-flex shrink-0 cursor-help">
       <HelpCircle
         className={cn(
-          "h-3.5 w-3.5 text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors",
+          "h-3.5 w-3.5 text-muted-foreground hover:text-muted-foreground/70 transition-colors",
           className,
         )}
         aria-hidden="true"

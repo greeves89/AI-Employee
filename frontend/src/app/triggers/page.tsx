@@ -254,7 +254,7 @@ export default function TriggersPage() {
                     placeholder='z.B. {"action": "opened", "pull_request.draft": false}'
                     className="mt-1 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-mono"
                   />
-                  <p className="mt-1 text-[10px] text-muted-foreground/50">
+                  <p className="mt-1 text-[10px] text-muted-foreground">
                     Operatoren: {`{"field": {"$in": [...]}}`}, {`{"$ne": "value"}`}, {`{"$contains": "x"}`}, {`{"$exists": true}`}
                   </p>
                 </div>
@@ -270,7 +270,7 @@ export default function TriggersPage() {
                     placeholder={"PR prüfen: {{payload.pull_request.title}} von {{payload.pull_request.user.login}}\n\nBitte die Änderungen prüfen und Rückmeldung geben."}
                     className="mt-1 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-mono"
                   />
-                  <p className="mt-1 text-[10px] text-muted-foreground/50">
+                  <p className="mt-1 text-[10px] text-muted-foreground">
                     Nutze {"{{payload.field}}"} um Werte aus dem Webhook-Payload einzusetzen.
                   </p>
                 </div>
@@ -376,7 +376,7 @@ export default function TriggersPage() {
                         {trigger.fire_count}x
                       </p>
                       {trigger.last_fired_at && (
-                        <p className="text-[10px] text-muted-foreground/50">
+                        <p className="text-[10px] text-muted-foreground">
                           {new Date(trigger.last_fired_at).toLocaleDateString()}
                         </p>
                       )}

@@ -122,7 +122,7 @@ export function ErsteSchritteKarte() {
             <li
               key={s.id}
               className={cn(
-                "flex items-start gap-3 rounded-lg border p-3 transition-colors",
+                "flex flex-wrap items-start gap-3 rounded-lg border p-3 transition-colors",
                 istNaechster ? "border-primary/30 bg-card" : "border-transparent",
               )}
             >
@@ -134,7 +134,8 @@ export function ErsteSchritteKarte() {
               >
                 {s.erledigt ? <Check className="h-4 w-4" /> : <Symbol className="h-4 w-4" />}
               </div>
-              <div className="min-w-0 flex-1">
+              {/* Auf dem Handy rutscht der Knopf unter den Text, statt ihn in eine Wortspalte zu quetschen. */}
+              <div className="min-w-0 flex-1 basis-[calc(100%-2.5rem)] sm:basis-0">
                 <p className={cn("text-sm font-medium", s.erledigt && "text-muted-foreground line-through")}>
                   {i + 1}. {s.titel}
                 </p>
@@ -160,7 +161,7 @@ export function ErsteSchritteKarte() {
                   type="button"
                   onClick={() => setAuf(auf === s.id ? null : s.id)}
                   aria-expanded={auf === s.id}
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium text-primary hover:bg-primary/10 transition-colors"
+                  className="ml-10 inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium text-primary hover:bg-primary/10 transition-colors sm:ml-0"
                 >
                   {auf === s.id ? "Zuklappen" : "Anzeigen"}
                 </button>
@@ -169,7 +170,7 @@ export function ErsteSchritteKarte() {
                 <Link
                   href={s.link}
                   className={cn(
-                    "inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors",
+                    "ml-10 inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors sm:ml-0",
                     istNaechster
                       ? "bg-primary text-primary-foreground hover:bg-primary/90"
                       : "text-primary hover:bg-primary/10",

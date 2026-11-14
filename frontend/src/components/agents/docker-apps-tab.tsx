@@ -271,7 +271,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-muted-foreground/50">
+      <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
         <Loader2 className="h-6 w-6 animate-spin mb-3" />
         <span className="text-sm">Arbeitsbereich wird nach Docker-Apps durchsucht …</span>
       </div>
@@ -286,7 +286,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
           <p className="text-sm font-medium text-muted-foreground/60 mb-1">
             Keine Docker-Apps gefunden
           </p>
-          <p className="text-[11px] text-muted-foreground/40 leading-relaxed">
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
             Legt dein Agent ein Projekt mit einer docker-compose.yml an, erscheint
             es hier. Du kannst die App dann direkt von hier starten, stoppen und
             beobachten. (Nur Apps DIESES Agenten — die Übersicht aller
@@ -314,12 +314,12 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
           <span className="text-sm font-medium">
             {apps.length} {apps.length === 1 ? "App" : "Apps"} gefunden
           </span>
-          <span className="text-[10px] text-muted-foreground/40">
+          <span className="text-[10px] text-muted-foreground">
             — nur dieser Agent
           </span>
           <Link
             href="/apps"
-            className="text-[10px] text-muted-foreground/50 hover:text-primary hover:underline"
+            className="text-[10px] text-muted-foreground hover:text-primary hover:underline"
           >
             alle Agenten →
           </Link>
@@ -356,7 +356,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                     {/* Expand Toggle */}
                     <button
                       onClick={() => setExpandedApp(isExpanded ? null : app.path)}
-                      className="text-muted-foreground/40 hover:text-foreground transition-colors"
+                      className="text-muted-foreground hover:text-foreground transition-colors"
                     >
                       {isExpanded ? (
                         <ChevronDown className="h-4 w-4" />
@@ -394,7 +394,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                         )}
                       </div>
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        <p className="text-[11px] text-muted-foreground/50 font-mono">
+                        <p className="text-[11px] text-muted-foreground font-mono">
                           /workspace/{app.path}/{app.compose_file}
                         </p>
                         {/* Auto-detected ports in header */}
@@ -532,7 +532,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                                 className={cn(
                                   "ml-0.5 rounded p-0.5 transition-all disabled:opacity-50",
                                   isRunning
-                                    ? "text-muted-foreground/40 hover:text-foreground hover:bg-foreground/[0.08]"
+                                    ? "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.08]"
                                     : "text-emerald-400/60 hover:text-emerald-400 hover:bg-emerald-500/10"
                                 )}
                                 title={`${svc.name} ${isRunning ? "neu starten" : "starten"}`}
@@ -558,7 +558,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                       if (allPorts.length === 0) return null;
                       return (
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="text-[10px] text-muted-foreground/40 mr-0.5">Ports:</span>
+                          <span className="text-[10px] text-muted-foreground mr-0.5">Ports:</span>
                           {allPorts.map((p) => (
                             <a
                               key={`${p.service}-${p.host_port}`}
@@ -589,7 +589,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                     className="overflow-hidden"
                   >
                     <div className="border-t border-foreground/[0.04] px-4 py-3 space-y-2">
-                      <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">
+                      <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
                         Dienste
                       </span>
                       {app.services.map((svc) => {
@@ -613,12 +613,12 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                               />
                               <span className="text-xs font-medium">{svc.name}</span>
                               {svc.image && (
-                                <span className="text-[10px] text-muted-foreground/40 font-mono">
+                                <span className="text-[10px] text-muted-foreground font-mono">
                                   {svc.image}
                                 </span>
                               )}
                               {svc.build && !svc.image && (
-                                <span className="text-[10px] text-muted-foreground/40 font-mono">
+                                <span className="text-[10px] text-muted-foreground font-mono">
                                   [build]
                                 </span>
                               )}
@@ -642,7 +642,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                                 svc.ports.map((port) => (
                                   <span
                                     key={String(port)}
-                                    className="inline-flex items-center rounded-md bg-foreground/[0.04] border border-foreground/[0.06] px-2 py-0.5 text-[10px] font-mono text-muted-foreground/50"
+                                    className="inline-flex items-center rounded-md bg-foreground/[0.04] border border-foreground/[0.06] px-2 py-0.5 text-[10px] font-mono text-muted-foreground"
                                   >
                                     {String(port)}
                                   </span>
@@ -658,7 +658,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                                 </span>
                               ))}
                               {container && (
-                                <span className="text-[10px] text-muted-foreground/30">
+                                <span className="text-[10px] text-muted-foreground">
                                   {container.status}
                                 </span>
                               )}
@@ -669,7 +669,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                                   className={cn(
                                     "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] transition-all disabled:opacity-50",
                                     isRunning
-                                      ? "text-muted-foreground/50 hover:text-foreground hover:bg-foreground/[0.06]"
+                                      ? "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]"
                                       : "text-emerald-400/70 hover:text-emerald-400 hover:bg-emerald-500/10"
                                   )}
                                   title={`${svc.name} ${isRunning ? "neu starten" : "starten"}`}
@@ -707,7 +707,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                       {/* Log Header */}
                       <div className="flex items-center justify-between px-4 py-2 bg-foreground/[0.02]">
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">
+                          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
                             Protokolle
                           </span>
                           {isBuilding && (
@@ -728,7 +728,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                           </button>
                           <button
                             onClick={() => { setLogsApp(null); setLogs([]); }}
-                            className="rounded p-0.5 text-muted-foreground/40 hover:text-foreground transition-colors"
+                            className="rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors"
                           >
                             <X className="h-3 w-3" />
                           </button>
@@ -746,12 +746,12 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                             Container werden gebaut und gestartet … die Protokolle erscheinen gleich hier
                           </div>
                         ) : logsLoading && logs.length === 0 ? (
-                          <div className="flex items-center gap-2 py-4 text-muted-foreground/40">
+                          <div className="flex items-center gap-2 py-4 text-muted-foreground">
                             <Loader2 className="h-3 w-3 animate-spin" />
                             Protokolle werden geladen …
                           </div>
                         ) : logs.length === 0 ? (
-                          <div className="py-4 text-muted-foreground/30 text-center">
+                          <div className="py-4 text-muted-foreground text-center">
                             Keine Protokolle vorhanden
                           </div>
                         ) : (

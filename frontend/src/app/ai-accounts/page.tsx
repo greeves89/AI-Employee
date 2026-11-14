@@ -14,7 +14,7 @@ export default function AIAccountsPage() {
     router.replace("/admin?tab=ai-accounts");
   }, [router]);
   return (
-    <div className="flex h-64 items-center justify-center text-muted-foreground/50">
+    <div className="flex h-64 items-center justify-center text-muted-foreground">
       <Loader2 className="h-5 w-5 animate-spin" />
     </div>
   );

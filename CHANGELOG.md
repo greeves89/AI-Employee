@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.466.1] - 2026-11-14
+
+### Behoben
+- **Grauer Text ist wieder lesbar.** An rund 540 Stellen war grauer Text zusätzlich auf 20 bis 50 % Deckkraft gesetzt, etwa bei leeren Zuständen und Untertiteln. Er nutzt jetzt das normale Grau. Rein schmückende Symbole bleiben blass, Knöpfe, die dadurch keinen Hover-Effekt mehr hatten, werden beim Darüberfahren dunkler.
+- **Menü und Seitentitel stimmen überein:** „Übersicht“ öffnet die Seite „Übersicht“ (früher „Dashboard“), „Kosten“ die Seite „Kosten“ (früher „Finanzen“).
+- **Jede Seite hat eine echte Überschrift** (`h1`) für Screenreader. „Freigaben“ nutzt denselben Seitenkopf wie die anderen Seiten.
+- **Handy:**
+  - Die Schritte „In 6 Schritten startklar“ setzen den Knopf unter den Text, statt den Text in eine Wortspalte zu quetschen.
+  - Die Reiter bei Aufgaben und „Mein Konto“ brechen um, statt abgeschnitten zu werden.
+  - Im Agenten-Chat liegt der Aufgaben-Knopf oben rechts statt auf dem Senden-Knopf. Der Hinweis zum Einfügen von Bildern entfällt im schmalen Eingabefeld.
+
 ## [1.466.0] - 2026-11-14
 
 ### Behoben

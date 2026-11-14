@@ -96,7 +96,7 @@ export function MountPermissionsModal({ userId, userName, onClose }: Props) {
                     </Dialog.Description>
                   </div>
                 </div>
-                <button onClick={onClose} className="rounded p-1 text-muted-foreground/50 hover:text-foreground">
+                <button onClick={onClose} className="rounded p-1 text-muted-foreground hover:text-foreground">
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -135,7 +135,7 @@ export function MountPermissionsModal({ userId, userName, onClose }: Props) {
                                     : mode === "ro"
                                     ? "bg-amber-500/20 text-amber-700 dark:text-amber-400"
                                     : "bg-emerald-500/20 text-emerald-400"
-                                  : "text-muted-foreground/50 hover:text-foreground hover:bg-foreground/[0.04]"
+                                  : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
                               )}
                             >
                               {mode === "none" ? "—" : mode === "ro" ? "Lesen" : "Lesen + Schreiben"}

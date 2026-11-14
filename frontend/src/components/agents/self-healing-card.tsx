@@ -95,7 +95,7 @@ function ConfidenceRow({ agentId }: { agentId: string }) {
               {settings.threshold}%
             </span>
           </div>
-          <p className="mt-1.5 text-[10px] text-muted-foreground/50">
+          <p className="mt-1.5 text-[10px] text-muted-foreground">
             Unter {settings.threshold}% Sicherheit wird gefragt. Höher = vorsichtiger
             (mehr Rückfragen), niedriger = eigenständiger. <b>0%</b> heißt „nie fragen"
             — das ist etwas anderes als Ausschalten: ausgeschaltet meldet der Agent gar
@@ -208,7 +208,7 @@ export function SelfHealingCard({ agentId }: { agentId: string }) {
                 onChange={(e) => save({ max_attempts: Number(e.target.value) })}
                 className="mt-1 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-1.5 text-xs outline-none focus:border-primary/50"
               />
-              <span className="mt-1 block text-[10px] text-muted-foreground/50">
+              <span className="mt-1 block text-[10px] text-muted-foreground">
                 1. gleich nochmal · 2. in kleineren Schritten · 3. mit anderem Modell
               </span>
             </label>
@@ -222,7 +222,7 @@ export function SelfHealingCard({ agentId }: { agentId: string }) {
                 onChange={(e) => save({ base_delay_seconds: Number(e.target.value) })}
                 className="mt-1 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-1.5 text-xs outline-none focus:border-primary/50"
               />
-              <span className="mt-1 block text-[10px] text-muted-foreground/50">
+              <span className="mt-1 block text-[10px] text-muted-foreground">
                 verdoppelt sich je Versuch, höchstens {policy.max_delay_seconds}s
               </span>
             </label>

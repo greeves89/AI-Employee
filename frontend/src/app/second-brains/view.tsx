@@ -133,7 +133,7 @@ function BrainMcpModal({
                 {copied === "token" ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
               </button>
             </div>
-            <p className="text-[10px] text-muted-foreground/50 mt-1">
+            <p className="text-[10px] text-muted-foreground mt-1">
               Header: <code>Authorization: Bearer {"<token>"}</code>
             </p>
           </div>
@@ -161,7 +161,7 @@ function BrainMcpModal({
           </div>
         </div>
         {enabled && (
-          <p className="text-[10px] text-muted-foreground/40">
+          <p className="text-[10px] text-muted-foreground">
             „Neu generieren" rotiert den Token — der alte verliert sofort die Gültigkeit.
           </p>
         )}
@@ -362,13 +362,13 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
               </div>
               <div>
                 <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">
-                  Slug {editingId && <span className="text-muted-foreground/40">(fix)</span>}
+                  Slug {editingId && <span className="text-muted-foreground">(fix)</span>}
                 </label>
                 <input className={cn(inputCls, editingId && "opacity-60")} value={form.slug}
                   disabled={!!editingId}
                   onChange={(e) => { setSlugTouched(true); setForm({ ...form, slug: e.target.value }); }}
                   placeholder="it_operations" />
-                <p className="text-[10px] text-muted-foreground/40 mt-1">
+                <p className="text-[10px] text-muted-foreground mt-1">
                   Pfad: <code>/srv/secondbrain/{slugify(form.slug || form.name) || "<slug>"}</code> → <code>/mnt/brains/{slugify(form.slug || form.name) || "<slug>"}</code>
                 </p>
               </div>
@@ -379,7 +379,7 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
                   <option value="rw">read-write (Obergrenze)</option>
                   <option value="ro">read-only</option>
                 </select>
-                <p className="text-[10px] text-muted-foreground/40 mt-1">Pro Person/Rolle weiter einschränkbar (ro gewinnt).</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Pro Person/Rolle weiter einschränkbar (ro gewinnt).</p>
               </div>
               <div>
                 <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">Beschreibung</label>
@@ -389,13 +389,13 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
               </div>
               <div className="col-span-2">
                 <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">
-                  Vault-Standard {editingId && <span className="text-muted-foreground/40">(beim Anlegen festgelegt)</span>}
+                  Vault-Standard {editingId && <span className="text-muted-foreground">(beim Anlegen festgelegt)</span>}
                 </label>
                 <select className={cn(inputCls, editingId && "opacity-60")} value={form.standard} disabled={!!editingId}
                   onChange={(e) => setForm({ ...form, standard: e.target.value as Standard })}>
                   {STANDARDS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                 </select>
-                <p className="text-[10px] text-muted-foreground/40 mt-1">
+                <p className="text-[10px] text-muted-foreground mt-1">
                   {STANDARDS.find((s) => s.value === form.standard)?.hint}
                   {!editingId && " — Ordner + CONVENTIONS.md werden beim Speichern angelegt."}
                 </p>
@@ -454,7 +454,7 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
                       nicht zu sehen, ob die Hybrid-Suche in diesem Vault
                       ueberhaupt etwas zu arbeiten hat — ein leerer Index
                       antwortet still ueber den Dateiweg weiter. */}
-                  <p className="text-[11px] text-muted-foreground/50 mt-0.5 truncate">
+                  <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
                     {(b.indexed_files ?? 0) > 0
                       ? `${b.indexed_files} Dateien im Index${b.indexed_at ? ` · zuletzt ${new Date(b.indexed_at).toLocaleString("de-DE")}` : ""}`
                       : "noch nicht indiziert — die Suche nutzt bis dahin den Dateiweg"}
@@ -549,7 +549,7 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
               className="mt-4 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] p-2 text-xs file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-primary-foreground"
             />
 
-            <p className="mt-3 text-[11px] text-muted-foreground/50">
+            <p className="mt-3 text-[11px] text-muted-foreground">
               {importLaeuft
                 ? "Wird eingespielt und neu indiziert…"
                 : "Nach dem Einspielen werden die Einbettungen neu aufgebaut, damit die Notizen auffindbar sind."}

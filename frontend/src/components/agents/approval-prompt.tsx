@@ -152,7 +152,7 @@ export function ApprovalPrompt({ request, onAnswer, onDeny, busy, compact }: Pro
             }}
             placeholder="Oder eigene Antwort…"
             disabled={busy}
-            className="min-w-0 flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-1.5 text-sm outline-none transition-all placeholder:text-muted-foreground/25 focus:border-primary/50 disabled:opacity-50"
+            className="min-w-0 flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-1.5 text-sm outline-none transition-all placeholder:text-muted-foreground focus:border-primary/50 disabled:opacity-50"
           />
           <button
             onClick={() => antworten(eigene.trim())}

@@ -360,7 +360,7 @@ export default function AdminAgentDetailPage() {
                           {task.num_turns} turns
                         </span>
                       )}
-                      <span className="shrink-0 text-[11px] text-muted-foreground/50">
+                      <span className="shrink-0 text-[11px] text-muted-foreground">
                         {formatDate(task.created_at)}
                       </span>
                     </div>

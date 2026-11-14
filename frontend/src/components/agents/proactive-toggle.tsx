@@ -254,7 +254,7 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
           )}>
             <Zap className={cn(
               "h-4 w-4 transition-colors",
-              enabled ? "text-emerald-400" : "text-muted-foreground/40"
+              enabled ? "text-emerald-400" : "text-muted-foreground"
             )} />
           </div>
           <div>
@@ -314,7 +314,7 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                     "px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
                     interval === opt.seconds
                       ? "bg-foreground/[0.08] text-foreground"
-                      : "text-muted-foreground/50 hover:text-foreground hover:bg-foreground/[0.04]"
+                      : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
                   )}
                 >
                   {opt.label}
@@ -325,7 +325,7 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
 
           {/* Stats row */}
           {schedule && (
-            <div className="flex items-center gap-4 text-[10px] text-muted-foreground/50">
+            <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
               <span className="flex items-center gap-1">
                 <Activity className="h-2.5 w-2.5" />
                 {schedule.total_runs} runs
@@ -368,7 +368,7 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
               )}
               {needsSetup ? <AlertTriangle className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
               Auftrag, Vertretung &amp; Zeiten
-              <span className="ml-auto text-[10px] text-muted-foreground/40">{summary}</span>
+              <span className="ml-auto text-[10px] text-muted-foreground">{summary}</span>
             </button>
             {needsSetup && !expanded && (
               <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-400/70">
@@ -380,7 +380,7 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
               <div className="mt-2 space-y-2.5">
                 {data?.base_prompt && (
                   <div>
-                    <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/40">
+                    <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
                       Basis-Prompt — fest im System, gilt für alle Agenten
                     </div>
                     <pre className="max-h-44 overflow-auto whitespace-pre-wrap rounded-lg border border-foreground/[0.06] bg-background/60 p-2 text-[10px] leading-relaxed text-muted-foreground/70">
@@ -391,7 +391,7 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                 <ResponsibilitiesEditor value={dutiesDraft} onChange={setDutiesDraft} />
 
                 <div>
-                  <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/40">
+                  <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
                     Zusätzliche Anweisungen für diesen Agenten
                   </div>
                   <textarea
@@ -399,15 +399,15 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                     onChange={(e) => setCustomDraft(e.target.value)}
                     rows={5}
                     placeholder="z.B. Prüfe bei jedem Lauf das IT-Operations Second Brain auf neue Druckerprobleme und ergänze fehlende Lösungen als .md."
-                    className="w-full resize-y rounded-lg border border-foreground/[0.08] bg-background/60 p-2 text-[11px] leading-relaxed text-foreground placeholder:text-muted-foreground/30 focus:border-emerald-500/40 focus:outline-none"
+                    className="w-full resize-y rounded-lg border border-foreground/[0.08] bg-background/60 p-2 text-[11px] leading-relaxed text-foreground placeholder:text-muted-foreground focus:border-emerald-500/40 focus:outline-none"
                   />
-                  <div className="mt-1.5 text-[10px] text-muted-foreground/40">
+                  <div className="mt-1.5 text-[10px] text-muted-foreground">
                     Wird bei jedem proaktiven Lauf an den Basis-Prompt angehängt.
                   </div>
                 </div>
 
                 <div>
-                  <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/40">
+                  <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
                     Vertretung bei Ausfall
                   </div>
                   <select
@@ -420,7 +420,7 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                       <option key={a.id} value={a.id}>{a.name}</option>
                     ))}
                   </select>
-                  <div className="mt-1.5 text-[10px] text-muted-foreground/40">
+                  <div className="mt-1.5 text-[10px] text-muted-foreground">
                     Hängt oder scheitert dieser Agent, gehen seine offenen Todos an den
                     Vertreter — und du bekommst eine Meldung. Ohne Vertreter und ohne
                     Team-Lead bleibt die Arbeit liegen.
@@ -428,7 +428,7 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                 </div>
 
                 <div>
-                  <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/40">
+                  <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
                     Dienstzeit des Agenten
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -438,7 +438,7 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                       onChange={(e) => setDutyStart(e.target.value)}
                       className="rounded-lg border border-foreground/[0.08] bg-background/60 px-2 py-1 text-[11px] text-foreground focus:border-emerald-500/40 focus:outline-none"
                     />
-                    <span className="text-[11px] text-muted-foreground/40">bis</span>
+                    <span className="text-[11px] text-muted-foreground">bis</span>
                     <input
                       type="time"
                       value={dutyEnd}
@@ -455,14 +455,14 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                       nur werktags
                     </label>
                   </div>
-                  <div className="mt-1.5 text-[10px] text-muted-foreground/40">
+                  <div className="mt-1.5 text-[10px] text-muted-foreground">
                     Seine EIGENE Arbeitszeit (nicht deine). Außerhalb läuft kein proaktiver
                     Lauf. Leer = rund um die Uhr. Zeitzone kommt aus der Erreichbarkeit unten.
                   </div>
                 </div>
 
                 <div>
-                  <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/40">
+                  <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
                     Abwesenheit des Ansprechpartners
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -472,7 +472,7 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                       onChange={(e) => setAbsFrom(e.target.value)}
                       className="rounded-lg border border-foreground/[0.08] bg-background/60 px-2 py-1 text-[11px] text-foreground focus:border-emerald-500/40 focus:outline-none"
                     />
-                    <span className="text-[11px] text-muted-foreground/40">bis</span>
+                    <span className="text-[11px] text-muted-foreground">bis</span>
                     <input
                       type="date"
                       value={absTo}
@@ -483,20 +483,20 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                       <button
                         type="button"
                         onClick={() => { setAbsFrom(""); setAbsTo(""); }}
-                        className="text-[10px] text-muted-foreground/50 underline-offset-2 hover:underline"
+                        className="text-[10px] text-muted-foreground underline-offset-2 hover:underline"
                       >
                         löschen
                       </button>
                     )}
                   </div>
-                  <div className="mt-1.5 text-[10px] text-muted-foreground/40">
+                  <div className="mt-1.5 text-[10px] text-muted-foreground">
                     In diesem Zeitraum stellt der Agent keine Rückfragen, sondern sammelt sie
                     und legt sie dir gebündelt vor, wenn du zurück bist.
                   </div>
                 </div>
 
                 <div>
-                  <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/40">
+                  <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
                     Morgencheck — abweichende Uhrzeit
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -519,13 +519,13 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                       <button
                         type="button"
                         onClick={() => setMorningDraft("")}
-                        className="text-[10px] text-muted-foreground/50 underline-offset-2 hover:underline"
+                        className="text-[10px] text-muted-foreground underline-offset-2 hover:underline"
                       >
                         abschalten
                       </button>
                     )}
                   </div>
-                  <div className="mt-1.5 text-[10px] text-muted-foreground/40">
+                  <div className="mt-1.5 text-[10px] text-muted-foreground">
                     Jeder proaktive Agent plant abends den nächsten Tag und sieht morgens
                     nochmal drüber. Hier setzt du NUR eine andere Uhrzeit für den
                     Morgencheck; leer = er richtet sich nach seiner Dienstzeit (sonst 07:00).
@@ -534,7 +534,7 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                 </div>
 
                 <div>
-                  <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/40">
+                  <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
                     Erreichbarkeit des Ansprechpartners
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -544,7 +544,7 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                       onChange={(e) => setHoursStartDraft(e.target.value)}
                       className="rounded-lg border border-foreground/[0.08] bg-background/60 px-2 py-1 text-[11px] text-foreground focus:border-emerald-500/40 focus:outline-none"
                     />
-                    <span className="text-[11px] text-muted-foreground/40">bis</span>
+                    <span className="text-[11px] text-muted-foreground">bis</span>
                     <input
                       type="time"
                       value={hoursEndDraft}
@@ -556,10 +556,10 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                       value={hoursTzDraft}
                       onChange={(e) => setHoursTzDraft(e.target.value)}
                       placeholder="Europe/Berlin"
-                      className="w-32 rounded-lg border border-foreground/[0.08] bg-background/60 px-2 py-1 text-[11px] text-foreground placeholder:text-muted-foreground/30 focus:border-emerald-500/40 focus:outline-none"
+                      className="w-32 rounded-lg border border-foreground/[0.08] bg-background/60 px-2 py-1 text-[11px] text-foreground placeholder:text-muted-foreground focus:border-emerald-500/40 focus:outline-none"
                     />
                   </div>
-                  <div className="mt-1.5 text-[10px] text-muted-foreground/40">
+                  <div className="mt-1.5 text-[10px] text-muted-foreground">
                     Außerhalb dieses Fensters meldet sich der Agent nur bei wirklich Dringendem
                     (STEP 4 der Basis-Regeln). Leer lassen = jeder Lauf gilt als Off-Hours.
                   </div>
@@ -574,7 +574,7 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                       "flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors",
                       draftDirty && !savingPrompt
                         ? "bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25"
-                        : "cursor-not-allowed bg-foreground/[0.04] text-muted-foreground/40"
+                        : "cursor-not-allowed bg-foreground/[0.04] text-muted-foreground"
                     )}
                   >
                     {savingPrompt ? (

@@ -291,7 +291,7 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
                               "h-2.5 w-2.5",
                               i <= (isEditing ? editImportance : mem.importance)
                                 ? "text-amber-700 dark:text-amber-400 fill-amber-400"
-                                : "text-muted-foreground/20"
+                                : "text-muted-foreground"
                             )}
                             onClick={() => isEditing && setEditImportance(i)}
                           />
@@ -313,11 +313,11 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
                     )}
 
                     <div className="flex items-center gap-3 mt-1.5">
-                      <span className="text-[10px] text-muted-foreground/50">
+                      <span className="text-[10px] text-muted-foreground">
                         {new Date(mem.updated_at).toLocaleDateString()}
                       </span>
                       {mem.access_count > 0 && (
-                        <span className="text-[10px] text-muted-foreground/50">
+                        <span className="text-[10px] text-muted-foreground">
                           accessed {mem.access_count}x
                         </span>
                       )}
@@ -327,7 +327,7 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
                           "flex items-center gap-1 text-[10px] transition-colors",
                           isHistoryOpen
                             ? "text-foreground"
-                            : "text-muted-foreground/50 hover:text-foreground"
+                            : "text-muted-foreground hover:text-foreground"
                         )}
                       >
                         <History className="h-2.5 w-2.5" />
@@ -342,7 +342,7 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
                         onClick={() => toggleRelated(mem.id)}
                         className={cn(
                           "flex items-center gap-1 text-[10px] transition-colors",
-                          isRelatedOpen ? "text-foreground" : "text-muted-foreground/50 hover:text-foreground",
+                          isRelatedOpen ? "text-foreground" : "text-muted-foreground hover:text-foreground",
                         )}
                       >
                         <Link2 className="h-2.5 w-2.5" />
@@ -359,18 +359,18 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
                     {isRelatedOpen && (
                       <div className="mt-2 border-t border-border/50 pt-2 space-y-2">
                         {relatedLoadingId === mem.id ? (
-                          <div className="flex items-center gap-2 py-1 text-[11px] text-muted-foreground/50">
+                          <div className="flex items-center gap-2 py-1 text-[11px] text-muted-foreground">
                             <Loader2 className="h-3 w-3 animate-spin" /> Suche Verknüpfungen...
                           </div>
                         ) : !related || (related.related_memories.length === 0 && related.related_knowledge.length === 0) ? (
-                          <p className="py-1 text-[11px] text-muted-foreground/50">
+                          <p className="py-1 text-[11px] text-muted-foreground">
                             Keine semantisch ähnlichen Einträge gefunden.
                           </p>
                         ) : (
                           <>
                             {related.related_memories.length > 0 && (
                               <div>
-                                <p className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground/50">
+                                <p className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
                                   <Brain className="h-2.5 w-2.5 text-emerald-400" /> Memories
                                 </p>
                                 <div className="space-y-1">
@@ -386,7 +386,7 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
                             )}
                             {related.related_knowledge.length > 0 && (
                               <div>
-                                <p className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground/50">
+                                <p className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
                                   <Link2 className="h-2.5 w-2.5 text-sky-400" /> Wissen (Second Brain)
                                 </p>
                                 <div className="space-y-1">
@@ -408,12 +408,12 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
                     {isHistoryOpen && (
                       <div className="mt-2 border-t border-border/50 pt-2">
                         {historyLoadingId === mem.id ? (
-                          <div className="flex items-center gap-2 py-1 text-[11px] text-muted-foreground/50">
+                          <div className="flex items-center gap-2 py-1 text-[11px] text-muted-foreground">
                             <Loader2 className="h-3 w-3 animate-spin" />
                             Lade Verlauf...
                           </div>
                         ) : !history || history.length <= 1 ? (
-                          <p className="py-1 text-[11px] text-muted-foreground/50">
+                          <p className="py-1 text-[11px] text-muted-foreground">
                             Kein früherer Stand — dieser Eintrag wurde noch nie überschrieben.
                           </p>
                         ) : (

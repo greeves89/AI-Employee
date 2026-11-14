@@ -68,7 +68,7 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 
 ## In 6 Schritten startklar
 
-Mit diesen Schritten nutzt du AI-Employee sauber. Auf dem **Dashboard** steht dafür die
+Mit diesen Schritten nutzt du AI-Employee sauber. Auf der **Übersicht** steht dafür die
 Karte **„In 6 Schritten startklar“**: Sie zeigt, was erledigt ist, und hakt jeden Schritt
 **von selbst** ab, sobald er eingerichtet ist. Der nächste offene Schritt hat den Knopf
 **Jetzt machen**, der direkt auf die richtige Seite führt.
@@ -111,7 +111,7 @@ Administratoren mit dem Schalter **Mitglieder-Ansicht** im Benutzermenü.
 ## Inhalt
 1. [Grundlagen: Navigation & Login](#1-grundlagen-navigation--login)
 2. [Onboarding](#2-onboarding)
-3. [Dashboard](#3-dashboard)
+3. [Übersicht](#3-übersicht)
 4. [Agenten](#4-agenten)
 5. [Agent-Detailseite (Chat, Todos, Activity, Workspace, Wissen, Settings)](#5-agent-detailseite)
 6. [Tasks](#6-tasks)
@@ -165,7 +165,7 @@ Administratoren mit dem Schalter **Mitglieder-Ansicht** im Benutzermenü.
 ### 1.1 Anmelden
 1. Öffne die Plattform-URL im Browser.
 2. **E-Mail** und **Passwort** eingeben.
-3. Auf **Anmelden** klicken. Du landest auf dem **Dashboard**. Die Sitzung bleibt sicher
+3. Auf **Anmelden** klicken. Du landest auf der **Übersicht**. Die Sitzung bleibt sicher
    aktiv (verschlüsseltes Cookie), bis du dich abmeldest oder sie abläuft.
 4. **Hast du die Zwei-Faktor-Anmeldung eingerichtet** (Kap. 20.4) oder verlangt die Anlage
    sie *(seit 1.362.0)*, folgt nach dem Passwort ein zweiter Schritt **Bestätigungscode**:
@@ -363,12 +363,12 @@ Danach findest du die neuen Agenten unter **Agents** und kannst sofort loslegen.
 
 ---
 
-## 3. Dashboard
+## 3. Übersicht
 
-Das **Dashboard** ist deine Startseite nach dem Login — der Gesamtüberblick über deine
-Agenten, ihre Auslastung, Kosten und letzte Aktivität. Seitenleiste → **Dashboard**.
+Die **Übersicht** (früher „Dashboard“) ist der Gesamtüberblick über deine
+Agenten, ihre Auslastung, Kosten und letzte Aktivität. Seitenleiste → **Übersicht**.
 
-![Dashboard](screenshots/01-dashboard.png)
+![Übersicht](screenshots/01-dashboard.png)
 
 **Aufbau der Seite, Element für Element:**
 
@@ -1805,15 +1805,15 @@ die Agenten nicht steuern.
 
 ---
 
-## 6b. Finanzen: was die Agenten kosten *(seit 1.373.0)*
+## 6b. Kosten: was die Agenten kosten *(seit 1.373.0)*
 
-Seitenleiste → **Finanzen**. Die Seite zeigt, was deine Agenten kosten — **je Monat, je Projekt
+Seitenleiste → **Kosten** (Seite „Kosten“, früher „Finanzen“). Die Seite zeigt, was deine Agenten kosten — **je Monat, je Projekt
 und je Agent**.
 
 Jeder sieht hier nur seine eigenen (und ihm freigegebenen) Agenten und Projekte — **auch
 Administratoren**. Die Kosten der ganzen Anlage stehen für Administratoren im Admin-Bereich.
 
-![Seite „Finanzen“: Kacheln, Verlauf je Monat, Projekte und Agenten](screenshots/80-finanzen.png)
+![Seite „Kosten“: Kacheln, Verlauf je Monat, Projekte und Agenten](screenshots/80-finanzen.png)
 
 **Oben vier Kacheln:**
 - **Dieser Monat** — alles zusammen, darunter der Vormonat zum Vergleich.

@@ -1,5 +1,6 @@
 "use client";
 
+import { Header } from "@/components/layout/header";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ApprovalModal } from "@/components/agents/approval-modal";
@@ -395,44 +396,36 @@ export default function ApprovalsPage() {
       : approvals;
 
   return (
-    <div className="px-8 py-8 max-w-6xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-            <ShieldCheck className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Freigaben
-            </h1>
-            <p className="text-sm text-muted-foreground/60 mt-0.5">
-              Hier bittet dein Agent um Erlaubnis, bevor er etwas Heikles tut
-            </p>
-          </div>
-        </div>
-        {approvals.length > 0 && (
-          <button
-            onClick={clearAll}
-            disabled={clearing}
-            title="Alle offenen Anfragen verwerfen — sie werden als abgelehnt vermerkt, nicht gelöscht"
-            className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
-          >
-            {clearing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-            Alle verwerfen ({approvals.length})
-          </button>
-        )}
-        <button
-          onClick={refreshCurrentTab}
-          className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
-        >
-          <RefreshCw
-            className={cn("h-4 w-4", (isLoading || rulesLoading) && "animate-spin")}
-          />
-          Aktualisieren
-        </button>
-      </div>
-
+    <div>
+      <Header
+        title="Freigaben"
+        subtitle="Hier bittet dein Agent um Erlaubnis, bevor er etwas Heikles tut"
+        actions={
+          <>
+            {approvals.length > 0 && (
+              <button
+                onClick={clearAll}
+                disabled={clearing}
+                title="Alle offenen Anfragen verwerfen — sie werden als abgelehnt vermerkt, nicht gelöscht"
+                className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
+              >
+                {clearing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                Alle verwerfen ({approvals.length})
+              </button>
+            )}
+            <button
+              onClick={refreshCurrentTab}
+              className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
+            >
+              <RefreshCw
+                className={cn("h-4 w-4", (isLoading || rulesLoading) && "animate-spin")}
+              />
+              Aktualisieren
+            </button>
+          </>
+        }
+      />
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-8">
       {/* Tabs */}
       <div className="flex gap-1 p-1 rounded-xl bg-foreground/[0.03] mb-6 w-fit">
         <button
@@ -634,15 +627,15 @@ export default function ApprovalsPage() {
 
           {/* Rules List */}
           {rulesLoading && rules.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground/50">
+            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
               <Loader2 className="h-6 w-6 animate-spin mb-3" />
               <span className="text-sm">Lade Regeln...</span>
             </div>
           ) : ownRules.length === 0 && autoRules.length === 0 ? (
             <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-16 text-center">
               <ShieldCheck className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground/50">Noch keine Regeln definiert</p>
-              <p className="text-[11px] text-muted-foreground/30 mt-1">
+              <p className="text-sm text-muted-foreground">Noch keine Regeln definiert</p>
+              <p className="text-[11px] text-muted-foreground mt-1">
                 Lege Regeln an, damit Agents wissen wann sie fragen müssen.
               </p>
             </div>
@@ -710,7 +703,7 @@ export default function ApprovalsPage() {
                       </button>
                       <button
                         onClick={() => handleDeleteRule(rule.id)}
-                        className="rounded-lg p-1.5 text-muted-foreground/50 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                        className="rounded-lg p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-all"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -739,7 +732,7 @@ export default function ApprovalsPage() {
       {(activeTab === "pending" || activeTab === "reflection" || activeTab === "escalations") && (
       <>
       {isLoading && approvals.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground/50">
+        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
           <Loader2 className="h-6 w-6 animate-spin mb-3" />
           <span className="text-sm">Freigaben werden geladen …</span>
         </div>
@@ -748,20 +741,20 @@ export default function ApprovalsPage() {
           {activeTab === "reflection" ? (
             <>
               <Moon className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground/50">
+              <p className="text-sm text-muted-foreground">
                 Keine offenen Nachtschicht-Freigaben
               </p>
-              <p className="text-[11px] text-muted-foreground/30 mt-1">
+              <p className="text-[11px] text-muted-foreground mt-1">
                 Vorschläge aus dem nächtlichen Reflexions-Lauf erscheinen hier
               </p>
             </>
           ) : (
             <>
               <ShieldCheck className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground/50">
+              <p className="text-sm text-muted-foreground">
                 Keine offenen Anfragen
               </p>
-              <p className="text-[11px] text-muted-foreground/30 mt-1">
+              <p className="text-[11px] text-muted-foreground mt-1">
                 Wenn ein Agent um Erlaubnis fragt, erscheint das hier
               </p>
             </>
@@ -849,7 +842,7 @@ export default function ApprovalsPage() {
                             {/* Before/after side by side */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
                               <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2">
-                                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 mb-1">
+                                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
                                   Vorher
                                 </p>
                                 {rMeta?.before ? (
@@ -858,13 +851,13 @@ export default function ApprovalsPage() {
                                       {rMeta.before.content}
                                     </p>
                                     {typeof rMeta.before.similarity === "number" && (
-                                      <p className="text-[10px] text-muted-foreground/40 mt-1.5">
+                                      <p className="text-[10px] text-muted-foreground mt-1.5">
                                         Ähnlichkeit: {Math.round(rMeta.before.similarity * 100)}%
                                       </p>
                                     )}
                                   </>
                                 ) : (
-                                  <p className="text-xs text-muted-foreground/40 italic">
+                                  <p className="text-xs text-muted-foreground italic">
                                     Neuer Eintrag — kein vorheriger Stand
                                   </p>
                                 )}
@@ -936,7 +929,7 @@ export default function ApprovalsPage() {
                         )}
 
                         {/* Meta */}
-                        <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground/40">
+                        <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
                           <span>Agent: {agentName(approval.agent_id)}</span>
                           <span>
                             {new Date(approval.created_at).toLocaleString()}
@@ -1027,7 +1020,7 @@ export default function ApprovalsPage() {
                         <p className="text-[11px] text-muted-foreground/60 mt-0.5">{preset.description}</p>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
-                        <span className="text-[11px] text-muted-foreground/50">
+                        <span className="text-[11px] text-muted-foreground">
                           {preset.rule_count === 0 ? "Alles erlaubt" : `${preset.rule_count} erlaubte Aktion${preset.rule_count !== 1 ? "en" : ""}`}
                         </span>
                         {isExpanded
@@ -1039,7 +1032,7 @@ export default function ApprovalsPage() {
                     {isExpanded && (
                       <div className="border-t border-foreground/[0.06] divide-y divide-foreground/[0.04]">
                         {preset.rule_count === 0 && addingRuleLevel !== level ? (
-                          <div className="px-4 py-5 text-center text-[11px] text-muted-foreground/40">
+                          <div className="px-4 py-5 text-center text-[11px] text-muted-foreground">
                             Keine Regeln — Agent handelt vollständig autonom.
                           </div>
                         ) : (preset.rules as PresetRule[]).map((rule) => {
@@ -1060,7 +1053,7 @@ export default function ApprovalsPage() {
                                 </span>
                                 <button
                                   onClick={() => handleDeletePresetRule(level, rule.id)}
-                                  className="rounded-md p-1 text-muted-foreground/30 hover:text-red-400 hover:bg-red-500/10 transition-all can-hover:opacity-0 can-hover:group-hover/rule:opacity-100"
+                                  className="rounded-md p-1 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-all can-hover:opacity-0 can-hover:group-hover/rule:opacity-100"
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </button>
@@ -1115,7 +1108,7 @@ export default function ApprovalsPage() {
                         ) : (
                           <button
                             onClick={() => { setAddingRuleLevel(level); setExpandedLevel(level); setPresetDraft({ name: "", description: "", category: "custom" }); }}
-                            className="w-full flex items-center gap-2 px-4 py-2.5 text-[11px] text-muted-foreground/50 hover:text-muted-foreground hover:bg-foreground/[0.02] transition-colors"
+                            className="w-full flex items-center gap-2 px-4 py-2.5 text-[11px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.02] transition-colors"
                           >
                             <Plus className="h-3 w-3" />
                             Regel hinzufügen
@@ -1138,6 +1131,7 @@ export default function ApprovalsPage() {
         onApprove={handleApprove}
         onDeny={handleDeny}
       />
+      </div>
     </div>
   );
 }
@@ -1233,7 +1227,7 @@ function VerlaufTab({ agents }: { agents: { id: string; name: string }[] }) {
       ) : eintraege.length === 0 ? (
         <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-16 text-center">
           <History className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
-          <p className="text-sm text-muted-foreground/50">Keine entschiedenen Anfragen für diese Auswahl</p>
+          <p className="text-sm text-muted-foreground">Keine entschiedenen Anfragen für diese Auswahl</p>
         </div>
       ) : (
         <div className="space-y-2">

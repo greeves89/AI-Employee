@@ -555,7 +555,7 @@ export default function MeetingRoomsPage() {
                               {customStages.length > 1 && (
                                 <button type="button"
                                   onClick={() => setCustomStages(prev => prev.filter((_, j) => j !== i))}
-                                  className="h-5 w-5 rounded flex items-center justify-center text-muted-foreground/50 hover:text-red-400 hover:bg-red-500/10 text-xs"
+                                  className="h-5 w-5 rounded flex items-center justify-center text-muted-foreground hover:text-red-400 hover:bg-red-500/10 text-xs"
                                 >×</button>
                               )}
                             </div>
@@ -563,7 +563,7 @@ export default function MeetingRoomsPage() {
                           {/* Add stage */}
                           <button type="button"
                             onClick={() => setCustomStages(prev => [...prev, { name: "Neue Phase", rounds: 1 }])}
-                            className="w-full rounded border border-dashed border-foreground/[0.08] py-1 text-[11px] text-muted-foreground/50 hover:text-muted-foreground hover:border-foreground/20 transition-colors"
+                            className="w-full rounded border border-dashed border-foreground/[0.08] py-1 text-[11px] text-muted-foreground hover:text-foreground hover:border-foreground/20 transition-colors"
                           >
                             + Phase hinzufügen
                           </button>

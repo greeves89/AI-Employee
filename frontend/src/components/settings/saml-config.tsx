@@ -155,7 +155,7 @@ export function SamlConfig() {
                 onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
                 className="mt-1 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm outline-none focus:border-primary/50"
               />
-              <p className="mt-1 text-[10px] text-muted-foreground/50">{f.hint}</p>
+              <p className="mt-1 text-[10px] text-muted-foreground">{f.hint}</p>
             </div>
           ))}
         </div>
@@ -172,7 +172,7 @@ export function SamlConfig() {
             placeholder="MIIC..."
             className="mt-1 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 font-mono text-[11px] outline-none focus:border-primary/50"
           />
-          <p className="mt-1 text-[10px] text-muted-foreground/50">
+          <p className="mt-1 text-[10px] text-muted-foreground">
             Damit wird jede Antwort geprüft. Ohne Zertifikat wird SAML nicht als
             Anmeldeweg angeboten.
           </p>
