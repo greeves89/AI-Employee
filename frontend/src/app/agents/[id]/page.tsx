@@ -381,6 +381,18 @@ export default function AgentDetailPage() {
         }
         actions={
           <div className="flex items-center gap-3">
+            {/* Handy/Tablet: die Aufgabenspalte hat keinen Platz — der Knopf holt sie ins
+                Fenster. Steht als normaler Knopf im Seitenkopf: schwebend lag er erst auf
+                dem Senden-Knopf, dann auf dem Titel (UI-Bewertung 14.11.2026). */}
+            {simpleMode && (
+              <button
+                onClick={() => setAufgabenFenster(true)}
+                className="lg:hidden inline-flex h-9 items-center gap-1.5 rounded-full border border-foreground/[0.1] px-3 text-xs font-medium text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground"
+              >
+                <ListTodo className="h-4 w-4" />
+                Aufgaben
+              </button>
+            )}
             {/* Inline status metrics */}
             {!simpleMode && (
               <div className="hidden lg:flex items-center gap-3 mr-2">
@@ -508,18 +520,8 @@ export default function AgentDetailPage() {
               ladeAufgaben={ladeAufgaben}
               ausloeser={agent.current_task ?? ""}
             />
-            {/* Handy/Tablet: die Spalte hat keinen Platz — ein Knopf holt sie
-                ins Fenster (UI-Test 27.09.2026: dort gab es sie gar nicht). */}
-            <button
-              onClick={() => setAufgabenFenster(true)}
-              title="Aufgaben"
-              aria-label="Aufgaben"
-              /* Oben rechts im Seitenkopf: unten lag der Knopf auf dem Senden-Knopf
-                 des Chats (UI-Durchsicht 14.11.2026). */
-              className="lg:hidden fixed top-2.5 right-4 z-30 flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg"
-            >
-              <ListTodo className="h-5 w-5" />
-            </button>
+            {/* Handy/Tablet: Die Spalte hat keinen Platz, der Knopf „Aufgaben“ im
+                Seitenkopf holt sie ins Fenster (UI-Test 27.09.2026). */}
             <Fenster offen={aufgabenFenster} schliessen={() => setAufgabenFenster(false)} titel="Aufgaben">
               <AufgabenSpalte
                 agentId={agentId}

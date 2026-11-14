@@ -326,7 +326,7 @@ export default function FilesPage() {
         />
 
         {runningAgents.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-16 text-center">
+          <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 px-4 py-10 text-center sm:p-16">
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-foreground/[0.06] mb-4">
               <Bot className="h-7 w-7 text-muted-foreground" />
             </div>
@@ -339,15 +339,16 @@ export default function FilesPage() {
               <ul className="mx-auto mt-5 flex max-w-sm flex-col gap-2">
                 {startbare.map((a) => (
                   <li key={a.id} className="flex items-center justify-between gap-3 rounded-lg border border-foreground/[0.08] bg-card px-3 py-2 text-left">
-                    <span className="truncate text-sm font-medium">{a.name}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{a.name}</span>
                     <button
                       type="button"
                       onClick={() => agentStarten(a.id)}
                       disabled={startet !== null}
-                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+                      aria-label={`${a.name} starten`}
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-foreground/[0.12] px-3 py-1.5 text-[13px] font-medium hover:bg-foreground/[0.04] disabled:opacity-60"
                     >
                       {startet === a.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-                      Agent starten
+                      Starten
                     </button>
                   </li>
                 ))}

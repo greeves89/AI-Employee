@@ -2634,10 +2634,10 @@ hier holst du **Ergebnisse** ab (Dokumente, Bilder, Videos, Auswertungen). Seite
 2. Durch die **Ordnerstruktur** klicken (z. B. `transfer/` für fertige Ergebnisse).
 3. Auf eine **Datei** klicken → **Vorschau** (bei Bildern/Text/PDF) bzw. **Herunterladen**.
 
-**Läuft keiner deiner Agenten** *(seit 1.467.0)*, steht je gestopptem Agent ein Knopf **Agent starten**.
+**Läuft keiner deiner Agenten** *(seit 1.467.0)*, steht je gestopptem Agent ein Knopf **Starten**.
 Nach dem Start erscheinen seine Dateien. Agenten, die du nur nutzen darfst, startet ihr Besitzer.
 
-![Dateien ohne laufenden Agenten: je Agent ein Knopf Agent starten](screenshots/14b-files-agent-starten.png)
+![Dateien ohne laufenden Agenten: je Agent ein Knopf Starten](screenshots/14b-files-agent-starten.png)
 
 > Dieselben Dateien siehst du auch direkt am Agenten unter **Workspace** (Kap. 5.4) — der
 > Explorer bündelt sie zentral.
