@@ -149,6 +149,11 @@ class WeckenBeimSenden(unittest.TestCase):
         self.assertIn("durch_mensch=not _nur_nutzen", block)
         self.assertIn("_chat_wake_lock(agent_id)", block)
 
+    def test_prueft_bei_jeder_nachricht_den_echten_zustand(self):
+        """Leerlauf-Stopp bei offenem Chat: die naechste Nachricht weckt trotzdem."""
+        block = self.quelle.split("if _docker and not _schlaeft:")[1].split("if _schlaeft and _docker:")[0]
+        self.assertIn("get_container_status(agent_container_id)", block)
+
     def test_scheitert_es_erfaehrt_es_der_mensch(self):
         self.assertIn('"type": "agent_schlaeft"', self.quelle)
 

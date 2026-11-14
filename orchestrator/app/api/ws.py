@@ -1197,6 +1197,14 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             # Ueber den EINEN Einreihen-Weg — dort prueft das Budget (#898). Ist es
             # aufgebraucht, kommt der Hinweis als ``error`` zu genau dieser
             # Nachricht ueber den Antwortkanal, den diese Verbindung abonniert hat.
+            # Den echten Zustand fragen, nicht nur den vom Verbinden: Ein Leerlauf-Stopp
+            # bei offenem Chat liess die Nachricht sonst ohne Start in der Warteschlange.
+            if _docker and not _schlaeft:
+                try:
+                    _schlaeft = (_docker.get_container_status(agent_container_id) if agent_container_id
+                                 else "missing") not in ("running", "created")
+                except Exception:
+                    _schlaeft = False
             if _schlaeft and _docker:
                 if await _agent_wecken():
                     _schlaeft = False
