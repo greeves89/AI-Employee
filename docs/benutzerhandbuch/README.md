@@ -637,7 +637,7 @@ Darunter die **Tabs**: **Chat · Todos · Activity · Workspace · Wissen · Set
 Tab **Chat**. Das ist das direkte Gespräch (wie ein Messenger).
 - **Einstellungen** *(seit 1.468.5, vorher „Werkzeuge“)* — unten im Eingabefeld stehen nur **Anhängen** und **Sprechen** als
   Symbole. Alles Weitere (Konten & Dienste, Computer, Modell, Rechte, Dateien, Wissen) öffnet der Knopf
-  **Einstellungen**, jeweils mit kurzer Erklärung. **Gespräche** oben links blendet die Gesprächsliste ein.
+  **Einstellungen**, jeweils mit kurzer Erklärung. **Gespräche** oben links blendet die Gesprächsliste ein. Im Aufgaben-Fenster heißen die Reiter *(seit 1.468.7)* **Offen**, **Geplant** und **Abgeschlossen** (auch abgebrochene Aufgaben).
 - **Gestoppter Agent** *(seit 1.467.0)* — Öffnen startet ihn nicht. Über dem Eingabefeld steht
   „Der Agent ist gestoppt. Er startet, sobald du schreibst.“ Mit deiner ersten Nachricht startet er
   („Agent wird gestartet. Das dauert beim ersten Mal bis zu einer Minute.“) und antwortet dann. Hat der Besitzer den Agenten angehalten und du nutzt ihn

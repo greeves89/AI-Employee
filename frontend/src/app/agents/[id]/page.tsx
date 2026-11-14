@@ -198,6 +198,18 @@ export default function AgentDetailPage() {
   const [savingName, setSavingName] = useState(false);
   const [aufgabenFenster, setAufgabenFenster] = useState(false);
   const { simpleMode } = useSimpleMode();
+  // Der Chat meldet, wenn die erste Nachricht den Agenten gerade startet. Der
+  // Container läuft dann schon („Bereit“), die Antwort braucht aber noch bis zu
+  // einer Minute — der Kopf sagte zu früh „Bereit“ (Persona Einsteigerin, Runde 5).
+  const [startetImChat, setStartetImChat] = useState(false);
+  useEffect(() => {
+    const f = (e: Event) => {
+      const d = (e as CustomEvent<{ agentId: string; aktiv: boolean }>).detail;
+      if (d?.agentId === agentId) setStartetImChat(d.aktiv);
+    };
+    window.addEventListener("agent-startet", f);
+    return () => window.removeEventListener("agent-startet", f);
+  }, [agentId]);
   const isAdminUser = useAuthStore((s) => s.user?.role) === "admin";
   // Nur zum Nutzen freigegeben: wie die einfache Ansicht — Chat und Sprache, keine
   // Einstellungen (der Server lehnt sie für diese Person ohnehin ab).
@@ -283,7 +295,9 @@ export default function AgentDetailPage() {
     );
   }
 
-  const stateConfig = agentStateConfig[agent.state] ?? agentStateConfig.stopped;
+  const stateConfig = startetImChat && agent.state !== "working"
+    ? agentStateConfig.created
+    : agentStateConfig[agent.state] ?? agentStateConfig.stopped;
   const isActive = stateConfig.online;
   const cpuPercent = agent.cpu_percent ?? 0;
   const memMb = agent.memory_usage_mb ?? 0;
@@ -899,7 +913,9 @@ const AUFGABEN_OFFEN_SCHLUESSEL = "agent_aufgaben_offen";
 const REITER = [
   { key: "offen", titel: "Offen" },
   { key: "geplant", titel: "Geplant" },
-  { key: "erledigt", titel: "Erledigt" },
+  // „Abgeschlossen“ statt „Erledigt“: hier stehen auch abgebrochene und fehlgeschlagene
+  // Aufgaben (Persona Mobil, Runde 5).
+  { key: "erledigt", titel: "Abgeschlossen" },
 ] as const;
 const LEER = {
   offen: "Nichts offen. Was du dem Agenten im Chat aufträgst, steht hier.",

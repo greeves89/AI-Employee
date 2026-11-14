@@ -214,9 +214,11 @@ function FinanzenSeite() {
                       contentStyle={{ fontSize: 12, borderRadius: 8 }} />
                     {/* Legende und Akzentfarbe der App statt Indigo/Grün ohne Erklärung
                         (UI-Bewertung 14.11.2026). */}
-                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
+                    {/* Legendentext in Vordergrundfarbe: blass-bläulich war er kaum lesbar (Gestaltungsprüfung Runde 5). */}
+                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }}
+                      formatter={(v: string) => <span style={{ color: "hsl(var(--foreground))" }}>{v}</span>} />
                     <Bar dataKey="Aufgaben" stackId="k" fill="hsl(var(--primary))" radius={[0, 0, 0, 0]} />
-                    <Bar dataKey="Chat" stackId="k" fill="hsl(var(--primary) / 0.45)" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Chat" stackId="k" fill="hsl(var(--primary) / 0.55)" radius={[4, 4, 0, 0]} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>

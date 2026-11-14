@@ -1378,10 +1378,13 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
             ? (chatEvent.data?.schlaeft ? "Der Agent ist gestoppt. Er startet, sobald du schreibst." : "")
             : String(chatEvent.data?.message || "");
           setSchlafHinweis(text);
+          // Kopfzeile der Agenten-Seite: „Startet“ statt zu frühem „Bereit“.
+          window.dispatchEvent(new CustomEvent("agent-startet", { detail: { agentId, aktiv: chatEvent.type === "agent_startet" } }));
           return;
         }
         if (chatEvent.type === "text" || chatEvent.type === "tool_call" || chatEvent.type === "done") {
           setSchlafHinweis("");
+          window.dispatchEvent(new CustomEvent("agent-startet", { detail: { agentId, aktiv: false } }));
         }
         if (chatEvent.type === "approval_wait") {
           // Wer den Agenten nur nutzt, entscheidet nicht selbst — er sieht nur, dass
