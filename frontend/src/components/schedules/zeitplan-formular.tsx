@@ -15,6 +15,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { UhrzeitFeld } from "@/components/ui/uhrzeit-feld";
 import { Loader2, Sparkles, Wand2 } from "lucide-react";
 import * as api from "@/lib/api";
 import { apiFehlertext } from "@/lib/api-fehler";
@@ -347,13 +348,7 @@ export function ZeitplanFormular({ agents, onAngelegt, onAbbrechen }: ZeitplanFo
           {(takt.art === "taeglich" || takt.art === "werktags" || takt.art === "woechentlich" || takt.art === "monatlich") && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs text-muted-foreground">um</span>
-              <input
-                type="time"
-                value={takt.uhrzeit}
-                onChange={(e) => aendere({ uhrzeit: e.target.value })}
-                className={cn(eingabe, "w-auto")}
-                aria-label="Uhrzeit"
-              />
+              <UhrzeitFeld value={takt.uhrzeit} onChange={(uhrzeit) => aendere({ uhrzeit })} />
               <span className="text-xs text-muted-foreground">Uhr</span>
             </div>
           )}

@@ -3573,7 +3573,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                   <button
                     onClick={() => sendMessage(true)}
                     disabled={!isConnected || isUploading || !input.trim()}
-                    className="flex h-9 items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-2.5 text-xs font-medium text-amber-700 dark:text-amber-300 transition-all hover:bg-amber-500/20 disabled:opacity-40"
+                    className="flex h-9 items-center gap-1.5 rounded-xl border border-border px-2.5 text-[13px] font-medium text-foreground transition-all hover:bg-foreground/[0.05] disabled:border-border disabled:text-muted-foreground"
                     title="Nur planen — der Agent beschreibt die Schritte, führt aber nichts aus"
                   >
                     <ListChecks className="h-4 w-4" /> Planen
@@ -3583,7 +3583,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                     disabled={!isConnected || isUploading || (!input.trim() && pendingImages.length === 0 && pendingFiles.length === 0)}
                     aria-label="Senden"
                     title="Senden"
-                    className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:bg-primary/90 disabled:opacity-40 disabled:shadow-none"
+                    className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:bg-primary/90 disabled:bg-foreground/[0.08] disabled:text-muted-foreground disabled:shadow-none"
                   >
                     {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   </button>

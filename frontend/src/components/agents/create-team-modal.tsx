@@ -225,6 +225,55 @@ export function CreateTeamModal({
                       />
                     </div>
 
+                    {/* Members — gleich nach der Beschreibung: unten im Dialog übersah man sie (Persona Teamleitung, Runde 7) */}
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-2.5">
+                        Mitglieder <span className="text-muted-foreground">({memberIds.length})</span>
+                      </label>
+                      <div className="space-y-2">
+                        {agents.map((agent) => {
+                          const isSelected = memberIds.includes(agent.id);
+                          return (
+                            <button
+                              key={agent.id}
+                              type="button"
+                              onClick={() => toggleMember(agent.id)}
+                              className={cn(
+                                "w-full flex items-center gap-3 rounded-xl border p-3 text-left transition-all duration-200",
+                                isSelected
+                                  ? "border-primary/40 bg-primary/[0.08]"
+                                  : "border-foreground/[0.06] bg-foreground/[0.02] hover:bg-foreground/[0.04]"
+                              )}
+                            >
+                              <AgentAvatar config={agent.config} seed={agent.id} size="sm" />
+                              <div className="flex-1 min-w-0">
+                                <p className={cn("text-sm font-medium truncate", isSelected ? "text-foreground" : "text-muted-foreground")}>
+                                  {agent.name}
+                                </p>
+                                {agent.role && (
+                                  <p className="text-xs text-muted-foreground/70 truncate">{agent.role}</p>
+                                )}
+                              </div>
+                              <div
+                                className={cn(
+                                  "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-all",
+                                  isSelected ? "border-primary bg-primary text-white" : "border-foreground/20"
+                                )}
+                              >
+                                {isSelected && <Check className="h-3 w-3" />}
+                              </div>
+                            </button>
+                          );
+                        })}
+
+                        {agents.length === 0 && (
+                          <p className="text-xs text-muted-foreground text-center py-3">
+                            Keine Agents vorhanden — lege zuerst einen Agent an.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
                     {projekt && (
                       <div>
                         <label className="block text-xs font-medium text-muted-foreground mb-1.5">
@@ -394,54 +443,6 @@ export function CreateTeamModal({
                       </div>
                     )}
 
-                    {/* Members */}
-                    <div>
-                      <label className="block text-xs font-medium text-muted-foreground mb-2.5">
-                        Mitglieder <span className="text-muted-foreground">({memberIds.length})</span>
-                      </label>
-                      <div className="space-y-2">
-                        {agents.map((agent) => {
-                          const isSelected = memberIds.includes(agent.id);
-                          return (
-                            <button
-                              key={agent.id}
-                              type="button"
-                              onClick={() => toggleMember(agent.id)}
-                              className={cn(
-                                "w-full flex items-center gap-3 rounded-xl border p-3 text-left transition-all duration-200",
-                                isSelected
-                                  ? "border-primary/40 bg-primary/[0.08]"
-                                  : "border-foreground/[0.06] bg-foreground/[0.02] hover:bg-foreground/[0.04]"
-                              )}
-                            >
-                              <AgentAvatar config={agent.config} seed={agent.id} size="sm" />
-                              <div className="flex-1 min-w-0">
-                                <p className={cn("text-sm font-medium truncate", isSelected ? "text-foreground" : "text-muted-foreground")}>
-                                  {agent.name}
-                                </p>
-                                {agent.role && (
-                                  <p className="text-xs text-muted-foreground/70 truncate">{agent.role}</p>
-                                )}
-                              </div>
-                              <div
-                                className={cn(
-                                  "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-all",
-                                  isSelected ? "border-primary bg-primary text-white" : "border-foreground/20"
-                                )}
-                              >
-                                {isSelected && <Check className="h-3 w-3" />}
-                              </div>
-                            </button>
-                          );
-                        })}
-
-                        {agents.length === 0 && (
-                          <p className="text-xs text-muted-foreground text-center py-3">
-                            Keine Agents vorhanden — lege zuerst einen Agent an.
-                          </p>
-                        )}
-                      </div>
-                    </div>
 
                     {/* Lead */}
                     <div>

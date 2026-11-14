@@ -9,7 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select, desc, func
+from sqlalchemy import and_, desc, func, not_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import (
@@ -237,6 +237,9 @@ async def list_audit_logs(
                             outcome=outcome, since=since, until=until)
     if ohne_routine is True and not event_type:  # direkt aufgerufen ist der Standard ein Query-Objekt
         base = base.where(AuditLog.event_type.notin_(ROUTINE_EREIGNISSE))
+        # Automatische Agenten-Updates füllten die ganze erste Seite (Persona Admin, Runde 7).
+        base = base.where(not_(and_(AuditLog.event_type == "agent_updated",
+                                    AuditLog.command.like("Automatisch aktualisiert%"))))
     total = await db.scalar(select(func.count()).select_from(base.subquery()))
     result = await db.execute(base.order_by(desc(AuditLog.created_at), desc(AuditLog.id))
                               .offset(offset).limit(limit))

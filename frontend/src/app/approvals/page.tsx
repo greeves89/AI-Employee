@@ -739,7 +739,8 @@ export default function ApprovalsPage() {
             text="Vorschläge aus dem nächtlichen Rückblick deiner Agenten erscheinen hier." />
         ) : (
           <LeerZustand icon={ShieldCheck} titel="Keine offenen Anfragen"
-            text="Fragt ein Agent um Erlaubnis, bevor er etwas Heikles tut, steht es hier." />
+            text="Fragt ein Agent um Erlaubnis, bevor er etwas Heikles tut, steht es hier."
+            schritte={["Agent will etwas nach außen tun, z. B. eine Mail senden", "Er fragt dich hier um Erlaubnis", "Du erlaubst oder lehnst ab"]} />
         )
       ) : (
         <motion.div

@@ -7,6 +7,7 @@ import { initAuth, useAuthStore } from "@/lib/auth";
 import { Sidebar } from "@/components/layout/sidebar";
 import { AdminSidebar } from "@/components/layout/admin-sidebar";
 import { BetreiberHinweis } from "@/components/layout/betreiber-hinweis";
+import { HandyLeiste, handyLeisteSichtbar } from "@/components/layout/handy-leiste";
 import { VoiceSessionProvider } from "@/components/agents/voice-session-provider";
 import { SidebarProvider, useSidebarCollapsed } from "@/hooks/use-sidebar";
 import { useBereichMessung } from "@/hooks/use-nutzung";
@@ -149,8 +150,10 @@ function AppShell({ children }: { children: React.ReactNode }) {
   // Admins haben die normale Ansicht UND einen eigenen Admin-Bereich mit eigener
   // Leiste (Redesign 2026-10). Mitglieder leitet /admin ohnehin weiter.
   const imAdminBereich = istAdmin && (pfad === "/admin" || pfad.startsWith("/admin/"));
+  const leiste = handyLeisteSichtbar(pfad);
   return (
-    <div className="min-h-screen">
+    // Platz für die Leiste unten am Handy, damit sie keinen Inhalt verdeckt.
+    <div className={cn("min-h-screen", leiste && "[--handy-leiste-h:4rem] lg:[--handy-leiste-h:0px]")}>
       {imAdminBereich ? <AdminSidebar /> : <Sidebar />}
 
       {/* Mobile backdrop — tap to close the drawer */}
@@ -166,8 +169,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
       {!mobileOpen && (
         <button
           onClick={() => setMobileOpen(true)}
-          // Flach in der Kopfzeile statt schwebender Karte über dem Titel (Gestaltungsprüfung Runde 5).
-          className="fixed left-3 top-2.5 z-30 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-background/80 text-foreground backdrop-blur-lg hover:bg-foreground/[0.06] lg:hidden"
+          // Flach in der Kopfzeile (min-h-14), ohne eigene Fläche: die ragte über die
+          // Unterkante der Kopfzeile (Gestaltungsprüfung Runde 5 und 7).
+          className="fixed left-2 top-1.5 z-30 inline-flex h-11 w-11 items-center justify-center rounded-lg text-foreground hover:bg-foreground/[0.06] lg:hidden"
           aria-label="Menü öffnen"
         >
           <Menu className="h-5 w-5" />
@@ -180,10 +184,12 @@ function AppShell({ children }: { children: React.ReactNode }) {
           collapsed ? "lg:ml-[64px]" : "lg:ml-[240px]"
         )}
         // Platz fuer den Hinweis des Anbieters, falls er angezeigt wird.
-        style={{ paddingBottom: "var(--betreiber-hinweis-h, 0px)" }}
+        style={{ paddingBottom: "calc(var(--betreiber-hinweis-h, 0px) + var(--handy-leiste-h, 0px))" }}
       >
         {children}
       </main>
+
+      {!mobileOpen && <HandyLeiste onMehr={() => setMobileOpen(true)} />}
 
       <BetreiberHinweis />
     </div>

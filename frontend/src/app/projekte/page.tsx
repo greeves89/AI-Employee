@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { AgentAvatar } from "@/components/agents/agent-avatar";
+import { LeerZustand } from "@/components/ui/leer-zustand";
 import { useCallback, useEffect, useState } from "react";
 import { FolderKanban, Loader2, Plus } from "lucide-react";
 import { Header } from "@/components/layout/header";
@@ -76,21 +78,18 @@ export default function ProjektePage() {
             <Loader2 className="h-5 w-5 animate-spin" />
           </div>
         ) : projekte && projekte.length === 0 ? (
-          <div className="mx-auto max-w-md py-20 text-center">
-            <FolderKanban className="mx-auto h-10 w-10 text-muted-foreground/50" />
-            <h2 className="mt-3 font-semibold">Noch kein Projekt</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Lege ein Projekt an, weise ihm Agenten zu und gib ihm Aufträge. Du siehst die Agenten dann bei der Arbeit.
-            </p>
+          <LeerZustand icon={FolderKanban} titel="Noch kein Projekt"
+            text="Ein Projekt bündelt Agenten und Aufträge für ein Ziel. Du siehst die Agenten dann bei der Arbeit."
+            schritte={["Projekt anlegen", "Agenten zuweisen", "Aufträge geben"]}>
             <button
               type="button"
               onClick={() => setNeu(true)}
-              className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
               <Plus className="h-4 w-4" />
               Neues Projekt
             </button>
-          </div>
+          </LeerZustand>
         ) : (
           <div className="grid gap-5 lg:grid-cols-2 2xl:grid-cols-3">
             {projekte?.map((pr) => {
@@ -108,6 +107,21 @@ export default function ProjektePage() {
                         <span className="truncate">{pr.name}</span>
                       </h2>
                       {pr.description && <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{pr.description}</p>}
+                      {/* Wer im Projekt arbeitet, stand erst im geöffneten Projekt (Persona Teamleitung, Runde 7). */}
+                      {pr.member_agent_ids.length > 0 && (
+                        <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                          {pr.member_agent_ids.slice(0, 4).map((mid) => {
+                            const ag = agentById.get(mid);
+                            return (
+                              <span key={mid} className="inline-flex items-center gap-1">
+                                <AgentAvatar config={ag?.config} seed={mid} size="sm" className="h-5 w-5 rounded-md [&_svg]:h-3 [&_svg]:w-3" />
+                                {ag?.name ?? "Agent"}
+                              </span>
+                            );
+                          })}
+                          {pr.member_agent_ids.length > 4 && <span>+{pr.member_agent_ids.length - 4}</span>}
+                        </p>
+                      )}
                       <ProjektStatusZeile status={pr.status} className="mt-1.5" />
                       <p className="mt-0.5 text-xs text-muted-foreground">
                         {pr.takt?.aktiv ? `Takt ${TAKTE.find((t) => t.minuten === pr.takt.minuten)?.label.toLowerCase() ?? "an"} · nächster ${bis(pr.takt.naechster_lauf) ?? "—"}` : "Takt aus"}

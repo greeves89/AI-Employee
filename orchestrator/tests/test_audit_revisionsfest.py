@@ -224,6 +224,14 @@ class RoutineAusblenden(_Basis):
             gezielt = await self._liste(db, _admin(), ohne_routine=True, event_type="login_succeeded")
             self.assertEqual(len(gezielt["logs"]), 1)
 
+    async def test_automatische_updates_sind_routine(self):
+        async with self.Session() as db:
+            await protokolliere(db, AuditEventType.AGENT_UPDATED, agent_id="a1", command="Automatisch aktualisiert auf 1.468.7")
+            await protokolliere(db, AuditEventType.AGENT_UPDATED, agent_id="a1", command="Name geändert")
+            await db.commit()
+            ohne = await self._liste(db, _admin(), ohne_routine=True)
+            self.assertEqual([e["command"] for e in ohne["logs"]], ["Name geändert"])
+
 
 class NamenUndPerson(_Basis):
     async def test_namen_fuer_fremde_und_geloeschte_agenten(self):
