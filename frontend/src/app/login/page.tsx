@@ -196,6 +196,11 @@ export default function LoginPage() {
               </>
             )}
           </button>
+          {/* Selbst betriebene Anlage ohne Mailversand für Rücksetzlinks: der Weg
+              steht hier, statt dass man ihn suchen muss (UI-Bewertung 14.11.2026). */}
+          <p className="text-center text-xs text-muted-foreground">
+            Passwort vergessen? Dein Administrator setzt es im Admin-Bereich unter Nutzer zurück.
+          </p>
         </form>
         )}
 

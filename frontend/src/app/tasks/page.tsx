@@ -126,34 +126,27 @@ function TasksPageInner() {
       />
 
       <div className="px-4 py-6 sm:px-8">
-        {/* View mode toggle */}
-        <div className="mb-6 flex gap-1 p-1 rounded-xl bg-foreground/[0.03] border border-foreground/[0.06] w-fit">
-          <button
-            onClick={() => setViewMode("single")}
-            className={cn(
-              "rounded-lg px-4 py-2 text-xs font-medium transition-all duration-150",
-              viewMode === "single"
-                ? "bg-foreground/[0.08] text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
-            )}
-          >
-            Einzelaufgaben
-          </button>
-          <button
-            onClick={() => setViewMode("scheduled")}
-            className={cn(
-              "rounded-lg px-4 py-2 text-xs font-medium transition-all duration-150",
-              viewMode === "scheduled"
-                ? "bg-foreground/[0.08] text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
-            )}
-          >
-            <span className="inline-flex items-center gap-1.5">
-              <Clock className="h-3 w-3" />
-              Zeitpläne
-            </span>
-          </button>
-        </div>
+        {/* Erste Ebene als Reiter (wie im Admin-Bereich), die Statusfilter darunter als
+            Segmente — zwei gleich aussehende Leisten übereinander machten die Ebenen
+            unklar (UI-Bewertung 14.11.2026). */}
+        <nav aria-label="Ansicht" className="mb-5 flex gap-1 border-b border-foreground/[0.06]">
+          {([["single", "Einzelaufgaben", null], ["scheduled", "Zeitpläne", Clock]] as const).map(([wert, text, Icon]) => (
+            <button
+              key={wert}
+              onClick={() => setViewMode(wert)}
+              aria-current={viewMode === wert ? "page" : undefined}
+              className={cn(
+                "-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm transition-colors",
+                viewMode === wert
+                  ? "border-primary font-medium text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {Icon && <Icon className="h-3.5 w-3.5" />}
+              {text}
+            </button>
+          ))}
+        </nav>
 
         {viewMode === "single" ? <SingleTasksView /> : <ScheduledTasksView hervorgehoben={hervorgehoben} />}
       </div>
@@ -336,9 +329,13 @@ function SingleTasksView() {
                         </span>
                       )}
                     </div>
-                    <p className="text-[12px] text-muted-foreground/70 mt-0.5 line-clamp-1">
-                      {task.prompt}
-                    </p>
+                    {/* Der rohe Auftrag (oft mit Befehlen) ist für Mitglieder Rauschen
+                        (UI-Bewertung 14.11.2026) — im Fenster der Aufgabe steht er ganz. */}
+                    {!simpleMode && (
+                      <p className="text-[12px] text-muted-foreground mt-0.5 line-clamp-1">
+                        {task.prompt}
+                      </p>
+                    )}
                   </div>
 
                   {/* Actions */}
