@@ -174,10 +174,22 @@ async def agent_in_besprechung_schicken(
     client = getattr(redis, "client", None)
     if client is None:
         raise HTTPException(status_code=503, detail="Nachrichtendienst nicht erreichbar")
-    if await client.set(f"teams-teilnahme:{seite.id}", "1", nx=True, ex=2 * 3600):
+    # Ein gestoppter Agent holt den Auftrag nicht ab — die Seite stand dann auf
+    # „läuft gerade“, und niemand kam (14.11.2026: Agent nach dem Update angehalten).
+    # „Schicken“ ist ein bewusster Klick des Besitzers oder Admins: weckt auch einen
+    # angehaltenen Agenten (``durch_mensch``), wie das Schreiben im Chat.
+    from app.dependencies import get_docker_service
+    from app.services.user_lifecycle import wake_agent
+
+    if not await wake_agent(db, get_docker_service(request), agent.id, durch_mensch=True):
+        raise HTTPException(status_code=409, detail="Der Agent ließ sich nicht starten. "
+                                                    "Starte ihn auf seiner Seite und schicke ihn dann erneut.")
+    # Nur Doppelklicks abfangen (30 s). Bisher sperrte der Schlüssel zwei Stunden: Ein
+    # erneutes „Schicken“ mit demselben Link tat dann still nichts (14.11.2026).
+    if await client.set(f"teams-schicken:{seite.id}", "1", nx=True, ex=30):
         await nachricht_einreihen(client, agent.id, {
             "type": "teilnehmen", "meeting_id": seite.id, "join_url": link,
-            "name": f"{agent.name} - KI", "ende": seite.ende.isoformat(),
+            "name": f"{agent.name} - KI", "ende": seite.ende.isoformat(), "neu": True,
         }, vorne=True)
     return seite
 

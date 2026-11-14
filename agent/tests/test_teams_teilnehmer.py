@@ -184,3 +184,53 @@ class StartTests(unittest.IsolatedAsyncioTestCase):
     async def test_fremder_link_startet_nichts(self):
         self.assertFalse(tt.starten({"meeting_id": "m2", "join_url": "https://evil.example/l/meetup-join/x"}))
         self.assertNotIn("m2", tt._laufend)
+
+
+class VerlassenTests(unittest.TestCase):
+    """Er geht, wenn die Besprechung vorbei ist — nicht erst zwei Stunden später."""
+
+    def test_ende_erkannt(self):
+        from app.teams_teilnehmer import besprechung_beendet
+
+        for text in ("Die Besprechung wurde beendet.", "You’ve been removed from this meeting",
+                     "The meeting has ended", "Sie haben die Besprechung verlassen"):
+            self.assertTrue(besprechung_beendet(text), text)
+        self.assertFalse(besprechung_beendet("Teilnehmer  Chat  Mikro  Verlassen"))
+        self.assertFalse(besprechung_beendet(""))
+
+    def test_stille_nur_nach_erstem_ton(self):
+        from datetime import datetime, timedelta, timezone
+
+        from app.teams_teilnehmer import STILLE_ENDE, zu_lange_still
+
+        jetzt = datetime.now(timezone.utc)
+        self.assertFalse(zu_lange_still(None, jetzt), "vor dem ersten Ton gilt BEITRITT_WARTEN")
+        self.assertFalse(zu_lange_still(jetzt - STILLE_ENDE + timedelta(seconds=5), jetzt))
+        self.assertTrue(zu_lange_still(jetzt - STILLE_ENDE - timedelta(seconds=5), jetzt))
+
+
+class NeuSchickenTests(unittest.IsolatedAsyncioTestCase):
+    async def test_erneut_geschickt_startet_frisch(self):
+        import asyncio
+        from unittest.mock import patch
+
+        from app import teams_teilnehmer as t
+
+        gestartet = []
+
+        async def teilnehmen(mid, url, name, ende):
+            gestartet.append(mid)
+            await asyncio.sleep(3600)
+
+        nachricht = {"meeting_id": "m1", "join_url": "https://teams.microsoft.com/meet/1?p=x", "ende": "2099-01-01T00:00:00+00:00"}
+        with patch.object(t, "teilnehmen", teilnehmen):
+            self.assertTrue(t.starten(nachricht))
+            await asyncio.sleep(0)
+            alt = t._laufend["m1"]
+            self.assertFalse(t.starten(nachricht), "ohne neu: keine zweite Teilnahme")
+            self.assertTrue(t.starten({**nachricht, "neu": True}))
+            await asyncio.sleep(0)
+            self.assertTrue(alt.cancelled() or alt.cancelling())
+            self.assertIsNot(t._laufend["m1"], alt)
+            t._laufend.pop("m1").cancel()
+        self.assertEqual(gestartet, ["m1", "m1"])

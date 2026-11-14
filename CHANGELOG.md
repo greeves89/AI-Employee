@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.467.3] - 2026-11-14
+
+### Behoben
+- **„Agent in eine Teams-Besprechung schicken“ startet einen gestoppten Agenten jetzt selbst.** Bisher blieb der Auftrag in der Warteschlange, die Seite zeigte „läuft gerade“, und der Agent kam nie. Lässt er sich nicht starten, kommt sofort eine Fehlermeldung.
+- **Erneutes Schicken wirkt.** Derselbe Link war zwei Stunden lang gesperrt; jetzt fängt die Sperre nur Doppelklicks ab (30 s), und der Agent tritt frisch bei.
+- **Schnellerer Beitritt.** Der Agent sucht die Knöpfe der Teams-Seite in allen Sprachfassungen gleichzeitig statt nacheinander mit langen Wartezeiten.
+- **Der Agent verlässt die Besprechung**, wenn Teams das Ende meldet, er entfernt wurde oder nach dem ersten Ton 10 Minuten lang nichts mehr zu hören ist — statt bis zwei Stunden nach dem Beitritt zu bleiben.
+- **Ansprechen per Name:** In der Besprechung reagiert der Agent auf seinen Namen so, wie man ihn ausspricht (ohne Unter- und Bindestriche, auch nur mit dem ersten Teil).
+
 ## [1.467.2] - 2026-11-14
 
 ### Behoben
