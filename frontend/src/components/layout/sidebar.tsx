@@ -176,6 +176,14 @@ const navGroups: NavGroup[] = [
       { href: "/evals", label: "Prüfaufgaben", icon: ClipboardCheck, simpleVisible: false, weitere: true, tooltip: "Prüfaufgaben (Golden-Tests): bekannte Aufgaben, an denen sich vor einem Update zeigt, ob ein Agent sie noch richtig löst." },
     ],
   },
+  {
+    // Eingebundene Anwendungen der Anlage (Admin-Bereich → Eigene Menüpunkte),
+    // z. B. OpenWebUI. Ohne feste Punkte: Die Gruppe erscheint nur, wenn es
+    // solche Menüpunkte gibt (leere Gruppen fallen unten weg).
+    label: "Anwendungen",
+    key: "apps",
+    items: [],
+  },
 ];
 
 /** Alle festen Menüpunkte mit Gruppe — für die Nutzungsübersicht der

@@ -35,7 +35,7 @@ const EMPTY_DRAFT: CustomPageInput = {
   url: "",
   description: "",
   icon: "Globe",
-  group_key: "collab",
+  group_key: "apps",
   open_mode: "iframe",
   sort_order: 0,
   enabled: true,
