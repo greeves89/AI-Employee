@@ -459,6 +459,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
 
     agent_container_id: str | None = None
     agent_mode: str = "claude_code"
+    _schlaeft = False
 
     # Check if agent container is alive before accepting
     if _docker:
@@ -474,23 +475,12 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                     return
                 agent_mode = agent.mode or "claude_code"
                 status = _docker.get_container_status(agent.container_id) if agent.container_id else "missing"
-                if status not in ("running", "created"):
-                    # Wer den Chat oeffnet, will mit dem Agenten reden: gestoppte
-                    # (Leerlauf-Stopp) und container-lose Agenten (nach einem
-                    # Update) werden hier geweckt. Vorher lehnte der Chat sie mit
-                    # 4010 ab, und ohne den Neustart-Knopf — den die einfache
-                    # Ansicht nicht zeigt — kam ein Nutzer nie wieder an sie heran.
-                    from app.services.user_lifecycle import wake_agent
-                    async with _chat_wake_lock(agent_id):
-                        # Ein Mensch oeffnet den Chat: weckt auch einen angehaltenen Agenten —
-                        # aber nur, wer ihn verwaltet. Nur-Nutzer heben den Halt des
-                        # Besitzers nicht auf.
-                        bereit = await wake_agent(db, _docker, agent_id, wait=True, timeout=45,
-                                                  durch_mensch=not _nur_nutzen)
-                    if not bereit:
-                        await websocket.close(code=4010, reason=f"Agent container is {status}")
-                        return
-                    await db.refresh(agent)
+                # Gestoppt oder ohne Container (nach einem Update): Der Chat oeffnet
+                # trotzdem und zeigt den Verlauf. Geweckt wird erst mit der ersten
+                # Nachricht (``_agent_wecken``) — reines Nachsehen startet keinen
+                # Agenten mehr (Entscheidung 14.11.2026). Bis v1.340.1 lehnte der
+                # Chat solche Agenten mit 4010 ab; ab 1.340.2 weckte schon das Oeffnen.
+                _schlaeft = status not in ("running", "created")
                 agent_container_id = agent.container_id
         except Exception:
             pass  # Allow connection attempt if check fails
@@ -512,9 +502,38 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
     _active_chat_websockets[connection_key] = websocket
     await websocket.send_text(json.dumps({
         "type": "ready",
-        "data": {"agent_id": agent_id},
+        "data": {"agent_id": agent_id, "schlaeft": _schlaeft},
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }))
+
+    async def _agent_wecken() -> bool:
+        """Den gestoppten Agenten vor der ersten Nachricht starten.
+
+        Ein Mensch schreibt: weckt auch einen vom Nutzer angehaltenen Agenten —
+        aber nur, wer ihn verwaltet. Nur-Nutzer heben den Halt des Besitzers nicht
+        auf; ihre Nachricht wartet dann in der Warteschlange.
+        """
+        from app.services.user_lifecycle import wake_agent
+        from app.models.agent import Agent as _Agent
+        await websocket.send_text(json.dumps({
+            "type": "agent_startet",
+            "data": {"message": "Agent startet …"},
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }))
+        try:
+            async with _chat_wake_lock(agent_id):
+                async with async_session_factory() as db:
+                    bereit = await wake_agent(db, _docker, agent_id, wait=True, timeout=45,
+                                              durch_mensch=not _nur_nutzen)
+                    if bereit:
+                        geweckt = await db.get(_Agent, agent_id)
+                        _wecken_ergebnis["container"] = getattr(geweckt, "container_id", None)
+        except Exception:
+            logger.exception("Chat: Agent %s liess sich nicht wecken", scrub_log(agent_id))
+            bereit = False
+        return bereit
+
+    _wecken_ergebnis: dict[str, str | None] = {"container": None}
 
     # Subscribe to agent's chat response channel
     channel = f"agent:{agent_id}:chat:response"
@@ -1178,6 +1197,26 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             # Ueber den EINEN Einreihen-Weg — dort prueft das Budget (#898). Ist es
             # aufgebraucht, kommt der Hinweis als ``error`` zu genau dieser
             # Nachricht ueber den Antwortkanal, den diese Verbindung abonniert hat.
+            # Den echten Zustand fragen, nicht nur den vom Verbinden: Ein Leerlauf-Stopp
+            # bei offenem Chat liess die Nachricht sonst ohne Start in der Warteschlange.
+            if _docker and not _schlaeft:
+                try:
+                    _schlaeft = (_docker.get_container_status(agent_container_id) if agent_container_id
+                                 else "missing") not in ("running", "created")
+                except Exception:
+                    _schlaeft = False
+            if _schlaeft and _docker:
+                if await _agent_wecken():
+                    _schlaeft = False
+                    agent_container_id = _wecken_ergebnis["container"] or agent_container_id
+                else:
+                    await websocket.send_text(json.dumps({
+                        "type": "agent_schlaeft",
+                        "message_id": message_id,
+                        "data": {"message": "Der Agent ist angehalten. Deine Nachricht wartet, "
+                                            "bis er wieder gestartet wird."},
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }))
             einreihung = await _chat_auftrag.einreihen(_redis.client, agent_id, chat_payload)
             if not einreihung.eingereiht:
                 # Eben per /goal gesetzt und schon die erste Runde gesperrt: das

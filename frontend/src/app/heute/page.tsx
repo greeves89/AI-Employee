@@ -15,7 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlarmClock, Archive, Bell, BellPlus, CalendarDays, Check, ChevronRight, Clock, ExternalLink, Inbox, Lightbulb, Loader2,
   Lock, Mail, MessageCircleQuestionMark, Pencil, Plus, RefreshCw, Reply, Save, ScrollText, Send, ShieldCheck, Sparkles,
-  Star, Sun, Trash2, Video, X,
+  Star, Sun, Trash2, Video, X, Bot, ListTodo,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { AgentView } from "@/components/agents/agent-views";
@@ -23,6 +23,10 @@ import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { MarkdownContent } from "@/components/ui/markdown-content";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import { useAgents } from "@/hooks/use-agents";
+import { useTasks } from "@/hooks/use-tasks";
+import { useSimpleMode } from "@/hooks/use-simple-mode";
+import { agentZustand, aufgabenTitel, AUFGABEN_STATUS, istSystemZeitplan, zeitplanAnzeige } from "@/lib/aufgaben-anzeige";
+import type { ApprovalRequest, Schedule } from "@/lib/types";
 import * as api from "@/lib/api";
 import { apiFehlertext } from "@/lib/api-fehler";
 import { setVisibleInterval } from "@/lib/visible-interval";
@@ -838,6 +842,154 @@ function Protokoll({ eintraege, agentName, onNeu }: { eintraege: api.HeuteProtok
 
 // ─── Seite ──────────────────────────────────────────────────────
 
+/* ─── Mein Tag ────────────────────────────────────────────────────────
+ * Startseite, solange kein Sekretariat eingerichtet ist (Entscheidung
+ * 14.11.2026): Bis dahin sah man hier nur das Einrichtungsformular — für
+ * Mitglieder samt Admin-Hinweis. Jetzt steht der eigene Tag oben, das
+ * Sekretariat ist eine schmale Karte, die das Formular erst auf Klick öffnet. */
+
+const LAUFEND = ["pending", "queued", "running"];
+
+function wannGeplant(iso: string): string {
+  const d = new Date(iso);
+  const heute = new Date();
+  const morgen = new Date(heute); morgen.setDate(heute.getDate() + 1);
+  const zeit = d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  if (d.toDateString() === heute.toDateString()) return `heute ${zeit}`;
+  if (d.toDateString() === morgen.toDateString()) return `morgen ${zeit}`;
+  return `${d.toLocaleDateString("de-DE", { weekday: "short", day: "numeric", month: "numeric" })} ${zeit}`;
+}
+
+function MehrLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link href={href} className="inline-flex items-center gap-0.5 text-xs font-medium text-primary hover:underline">
+      {children} <ChevronRight className="h-3 w-3" />
+    </Link>
+  );
+}
+
+function MeinTag({ onSekretariatFertig, entwurfFrei }: { onSekretariatFertig: () => void; entwurfFrei: boolean }) {
+  const { agents } = useAgents();
+  const { tasks } = useTasks();
+  const { simpleMode } = useSimpleMode();
+  const [freigaben, setFreigaben] = useState<ApprovalRequest[] | null>(null);
+  const [zeitplaene, setZeitplaene] = useState<Schedule[] | null>(null);
+  const [einrichten, setEinrichten] = useState(false);
+  const name = (id: string | null) => agents.find((a) => a.id === id)?.name ?? "Agent";
+
+  const laden = useCallback(async () => {
+    const [f, z] = await Promise.allSettled([api.getPendingApprovals(), api.getSchedules()]);
+    setFreigaben(f.status === "fulfilled" ? f.value.approvals : []);
+    setZeitplaene(z.status === "fulfilled" ? z.value.schedules : []);
+  }, []);
+  useEffect(() => {
+    laden();
+    return setVisibleInterval(laden, 30000);
+  }, [laden]);
+
+  const laufend = tasks.filter((t) => LAUFEND.includes(t.status));
+  const tagesbeginn = new Date(); tagesbeginn.setHours(0, 0, 0, 0);
+  const fertig = tasks
+    .filter((t) => !LAUFEND.includes(t.status) && t.completed_at && new Date(t.completed_at) >= tagesbeginn)
+    .sort((a, b) => String(b.completed_at).localeCompare(String(a.completed_at)));
+  const geplant = (zeitplaene ?? [])
+    .filter((z) => z.enabled && z.next_run_at && !(simpleMode && istSystemZeitplan(z)))
+    .sort((a, b) => a.next_run_at.localeCompare(b.next_run_at))
+    .slice(0, 5);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        <Kasten titel="Wartet auf dich" icon={ShieldCheck}
+          rechts={freigaben && freigaben.length > 0 ? <span className="rounded-full bg-amber-500/15 px-2 text-xs font-semibold text-amber-700 dark:text-amber-300">{freigaben.length}</span> : null}>
+          {freigaben === null ? (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          ) : freigaben.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Nichts offen. Fragt ein Agent um Erlaubnis, steht es hier.</p>
+          ) : (
+            <ul className="space-y-2">
+              {freigaben.slice(0, 5).map((f) => (
+                <li key={f.approval_id} className="text-sm">
+                  <span className="font-medium">{name(f.agent_id)}</span>
+                  <span className="text-muted-foreground"> — {f.question || (f.tool ? `möchte ${f.tool} ausführen` : "bittet um Freigabe")}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="mt-3"><MehrLink href="/approvals">Zu den Freigaben</MehrLink></div>
+        </Kasten>
+
+        <Kasten titel="Aufgaben heute" icon={ListTodo}>
+          {laufend.length === 0 && fertig.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Heute ist noch nichts gelaufen.</p>
+          ) : (
+            <ul className="space-y-2">
+              {[...laufend, ...fertig].slice(0, 6).map((t) => (
+                <li key={t.id} className="flex items-baseline justify-between gap-3 text-sm">
+                  <span className="min-w-0 truncate">{aufgabenTitel(t.title)}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{AUFGABEN_STATUS[t.status] ?? t.status} · {name(t.agent_id)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="mt-3"><MehrLink href="/tasks">Alle Aufgaben</MehrLink></div>
+        </Kasten>
+
+        <Kasten titel="Als Nächstes geplant" icon={Clock}>
+          {zeitplaene === null ? (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          ) : geplant.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Nichts geplant. Wiederkehrende Aufgaben legst du unter Aufgaben → Zeitpläne an.</p>
+          ) : (
+            <ul className="space-y-2">
+              {geplant.map((z) => (
+                <li key={z.id} className="flex items-baseline justify-between gap-3 text-sm">
+                  <span className="min-w-0 truncate">{zeitplanAnzeige(z, simpleMode).titel}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{wannGeplant(z.next_run_at)} · {name(z.agent_id)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="mt-3"><MehrLink href="/tasks?ansicht=zeitplaene">Alle Zeitpläne</MehrLink></div>
+        </Kasten>
+
+        <Kasten titel="Meine Agenten" icon={Bot}>
+          {agents.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Noch kein Agent. Lege unter Agenten deinen ersten an.</p>
+          ) : (
+            <ul className="space-y-1">
+              {agents.slice(0, 8).map((a) => (
+                <li key={a.id}>
+                  <Link href={`/agents/${a.id}`} className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-foreground/[0.04]">
+                    <span className="min-w-0 truncate font-medium">{a.name}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">{agentZustand(a.state)}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="mt-3"><MehrLink href="/agents">Alle Agenten</MehrLink></div>
+        </Kasten>
+      </div>
+
+      {einrichten ? (
+        <Einrichten onFertig={onSekretariatFertig} entwurfFrei={entwurfFrei} />
+      ) : (
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-dashed border-foreground/[0.12] px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">Sekretariat einrichten</p>
+            <p className="text-xs text-muted-foreground">Agenten sichten Postfach und Kalender und entwerfen Antworten. Gesendet wird nichts ohne dich.</p>
+          </div>
+          <button type="button" onClick={() => setEinrichten(true)}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-foreground/[0.1] px-3 py-1.5 text-[13px] font-medium hover:bg-foreground/[0.04]">
+            Einrichten <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </section>
+      )}
+    </div>
+  );
+}
+
 export default function HeutePage() {
   const toast = useToast();
   const toastRef = useRef(toast);
@@ -904,12 +1056,12 @@ export default function HeutePage() {
 
   return (
     <div>
-      <Header title="Start" subtitle={`${datum} — dein Sekretariat`} />
+      <Header title="Start" subtitle={`${datum} — ${daten && !daten.eingerichtet ? "dein Tag" : "dein Sekretariat"}`} />
       <div className="space-y-5 p-4 sm:p-6">
         {!daten ? (
           <div className="flex justify-center py-16 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /></div>
         ) : !daten.eingerichtet ? (
-          <Einrichten onFertig={laden} entwurfFrei={daten.m365_entwurf_frei} />
+          <MeinTag onSekretariatFertig={laden} entwurfFrei={daten.m365_entwurf_frei} />
         ) : (
           <>
             <div className="space-y-2 rounded-2xl border border-foreground/[0.08] bg-card p-3">

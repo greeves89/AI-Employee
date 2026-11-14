@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.467.0] - 2026-11-14
+
+### Neu
+- **„Mein Tag“ auf der Startseite.** Solange kein Sekretariat eingerichtet ist, zeigt **Start** offene Freigaben, die Aufgaben von heute, die nächsten Zeitpläne und die eigenen Agenten. Das Sekretariat ist eine schmale Karte, das Formular öffnet sich erst mit **Einrichten**. Bisher sahen Nutzer hier nur das Einrichtungsformular.
+- **Dateien: Knopf „Agent starten“.** Läuft keiner der eigenen Agenten, lässt sich jeder gestoppte direkt auf der Seite starten. Agenten, die man nur nutzt, sind ausgenommen.
+
+### Geändert
+- **Der Chat startet einen gestoppten Agenten erst mit der ersten Nachricht**, nicht schon beim Öffnen. Reines Nachsehen kostet keine Rechenzeit mehr. Über dem Eingabefeld steht, was passiert („startet, sobald du schreibst“, „Agent startet …“). Die Regel bleibt: Einen vom Besitzer angehaltenen Agenten weckt nur, wer ihn verwaltet. Bei Nur-Nutzern wartet die Nachricht.
+- **Die Agenten-Seite öffnet zuerst die Liste** statt der Kacheln. Eine gespeicherte Wahl gilt weiter.
+
 ## [1.466.2] - 2026-11-14
 
 ### Behoben
