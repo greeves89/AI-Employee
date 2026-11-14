@@ -128,6 +128,30 @@ class UpdateWartetAufSicherung(unittest.TestCase):
         self.assertLess(pruefung, text.index("./scripts/backup.sh \\"))
 
 
+class UpdateSicherungRaeumtNichtAuf(unittest.TestCase):
+    """14.11.2026: Die Sicherung vor einem Update raeumte mit dem Standard (7) eine
+    NAS-Ablage auf, die die naechtliche Sicherung mit 14 fuehrt — 8 Tagessicherungen weg."""
+
+    def setUp(self):
+        self.backup = (LIB.parents[1] / "backup.sh").read_text(encoding="utf-8")
+        self.update = (LIB.parents[1] / "update.sh").read_text(encoding="utf-8")
+
+    def test_update_sagt_nicht_aufraeumen(self):
+        self.assertIn("BACKUP_NICHT_AUFRAEUMEN=1 ./scripts/backup.sh", self.update)
+
+    def test_backup_raeumt_dann_nicht_auf(self):
+        block = self.backup.split('if [ "${BACKUP_NICHT_AUFRAEUMEN:-0}" = "1" ]; then', 1)[1].split("fi", 1)[0]
+        vorher, nachher = block.split("else", 1)
+        self.assertNotIn("aufraeumen", vorher)
+        self.assertIn('aufraeumen daily "$KEEP_DAILY"', nachher)
+        self.assertEqual(self.backup.count('aufraeumen daily "$KEEP_DAILY"'), 1)
+
+    def test_aufbewahrung_auch_aus_env(self):
+        self.assertLess(self.backup.index('ENV_DATEI="${INSTALL_DIR}/.env"'),
+                        self.backup.index('env_wert "$ENV_DATEI" BACKUP_KEEP_DAILY'))
+        self.assertIn('env_wert "$ENV_DATEI" BACKUP_KEEP_WEEKLY', self.backup)
+
+
 class BackupSkriptRuftAuf(unittest.TestCase):
     def test_backup_nutzt_die_auswahl(self):
         text = (LIB.parents[1] / "backup.sh").read_text(encoding="utf-8")

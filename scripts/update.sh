@@ -70,7 +70,7 @@ elif [ "$OHNE_SICHERUNG" = "1" ]; then
     warn "Sicherung vor dem Update übersprungen (--ohne-sicherung / UPDATE_OHNE_SICHERUNG=1)."
 else
     info "Sichere vor dem Update (scripts/backup.sh)..."
-    ./scripts/backup.sh \
+    BACKUP_NICHT_AUFRAEUMEN=1 ./scripts/backup.sh \
         || die "Sicherung fehlgeschlagen — Update abgebrochen, nichts verändert. Ursache beheben oder bewusst mit --ohne-sicherung aktualisieren."
     ok "Sicherung erstellt"
 fi
