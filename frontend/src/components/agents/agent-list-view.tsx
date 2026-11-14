@@ -72,8 +72,11 @@ const STATUS_RANK: Record<AgentStatusKey, number> = {
   stopped: 5,
 };
 
-/** Auf schmalen Bildschirmen nur Name, Status und Zuletzt aktiv. */
-const ALWAYS_VISIBLE: ListColumn[] = ["name", "status", "zuletzt_aktiv"];
+/** Auf dem Handy nur Name und Status — mit „Zuletzt aktiv“ lief die Tabelle rechts aus
+ *  dem Bild (UI-Bewertung 14.11.2026). Ab ``sm`` kommt „Zuletzt aktiv“ dazu, ab ``md``
+ *  der Rest. */
+const ALWAYS_VISIBLE: ListColumn[] = ["name", "status"];
+const AB_SM: ListColumn[] = ["zuletzt_aktiv"];
 
 function budgetReached(a: Agent): boolean {
   return a.budget_usd != null && a.budget_usd > 0 && a.monthly_cost_usd >= a.budget_usd;
@@ -245,7 +248,8 @@ export function AgentListView({
       return next;
     });
 
-  const cellVisibility = (c: ListColumn) => (ALWAYS_VISIBLE.includes(c) ? "" : "hidden md:table-cell");
+  const cellVisibility = (c: ListColumn) =>
+    ALWAYS_VISIBLE.includes(c) ? "" : AB_SM.includes(c) ? "hidden sm:table-cell" : "hidden md:table-cell";
   const colSpan = columns.length + 2;
   const showGroupHeaders = grouping !== "none";
 

@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.468.1] - 2026-11-14
+
+### Behoben
+- **Handy** (aus der UI/UX-Bewertung vom 14.11.):
+  - Die Agentenliste zeigt nur Name und Status und läuft nicht mehr rechts aus dem Bild; „Zuletzt aktiv“ erscheint ab Tablet-Breite.
+  - Die Reiter bei „Freigaben“ brechen um, statt abgeschnitten zu werden.
+  - Auf „Dateien“ sind die Agentennamen neben „Starten“ lesbar (vorher „C…“, „M…“).
+  - Im Agenten-Chat steht „Aufgaben“ als Knopf im Seitenkopf, statt schwebend über dem Titel zu liegen.
+
 ## [1.468.0] - 2026-11-14
 
 ### Geändert

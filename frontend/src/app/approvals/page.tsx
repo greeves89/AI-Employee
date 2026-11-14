@@ -427,7 +427,7 @@ export default function ApprovalsPage() {
       />
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-8">
       {/* Tabs */}
-      <div className="flex gap-1 p-1 rounded-xl bg-foreground/[0.03] mb-6 w-fit">
+      <div className="flex max-w-full flex-wrap gap-1 p-1 rounded-xl bg-foreground/[0.03] mb-6 w-fit">
         <button
           onClick={() => setActiveTab("pending")}
           className={cn(
