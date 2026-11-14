@@ -60,6 +60,30 @@ class WeckenTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self._wecken(False, False), (True, ["c1"]))
 
 
+class AnmeldungWecktKeineAngehaltenen(unittest.IsolatedAsyncioTestCase):
+    """Beim Anmelden werden die gestoppten Agenten des Nutzers gestartet — nicht die,
+    die er angehalten hat (live gefunden am 14.11.2026, Ursache vom 13.11.)."""
+
+    async def test_nur_nicht_angehaltene(self):
+        frei = SimpleNamespace(id="frei", state=AgentState.STOPPED, container_id="c-frei", config={})
+        halt = SimpleNamespace(id="halt", state=AgentState.STOPPED, container_id="c-halt",
+                               config={ANGEHALTEN_VOM_NUTZER: True})
+
+        class _Ergebnis:
+            def scalars(self):
+                return SimpleNamespace(all=lambda: [frei, halt])
+
+        class _DbListe(_Db):
+            async def execute(self, _stmt):
+                return _Ergebnis()
+
+        docker = _Docker()
+        geweckt = await user_lifecycle.wake_user_agents(_DbListe(None), docker, "u1")
+        self.assertEqual(geweckt, ["frei"])
+        self.assertEqual(docker.gestartet, ["c-frei"])
+        self.assertEqual(halt.state, AgentState.STOPPED)
+
+
 class AufruferTests(unittest.TestCase):
     """Nur der Chat (Mensch, der verwaltet) und Telegram an den eigenen Bot dürfen
     einen angehaltenen Agenten wecken. Ein neuer Aufrufer mit ``durch_mensch=True``
