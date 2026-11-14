@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.466.0] - 2026-11-14
+
+### Behoben
+- **Die Sicherung vor einem Update räumt keine alten Sicherungen mehr weg.** Seit 1.464.0 sichert das Update in dieselbe Ablage wie die nächtliche Sicherung. Es hat dort aber mit seiner eigenen Standard-Aufbewahrung (7) aufgeräumt statt mit der der nächtlichen Sicherung (z. B. 14). Auf dem Pi hat das am 14.11. acht Tagessicherungen gelöscht.
+  - Jetzt räumt nur noch die planmäßige Sicherung auf (`BACKUP_NICHT_AUFRAEUMEN=1` aus `update.sh`).
+  - `BACKUP_KEEP_DAILY` und `BACKUP_KEEP_WEEKLY` werden auch aus der `.env` gelesen.
+
 ## [1.465.0] - 2026-11-14
 
 ### Neu
