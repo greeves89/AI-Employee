@@ -72,16 +72,17 @@ export default function DashboardPage() {
         {/* System Status — API/DB/Redis sind Betreibersache */}
         {!simpleMode && <SystemStatusBar />}
 
-        {/* Einstieg: verschwindet, sobald alles eingerichtet ist (#1047) */}
-        <ErsteSchritteKarte />
+        {/* Einstieg als Zeile unter den Kennzahlen: oben verdrängte er sie, und
+            Start zeigt ihn schon (Gestaltungsprüfung Runde 5). */}
 
         {/* Stats */}
         <StatsOverview agents={agents} tasks={tasks} />
+        <ErsteSchritteKarte platz="unten" />
 
         {/* Agents */}
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold tracking-tight">Aktive Agenten</h3>
+            <h3 className="font-display text-lg font-semibold tracking-tight">Deine Agenten</h3>
             <Link
               href="/agents"
               className="text-[13px] text-muted-foreground hover:text-foreground transition-colors"

@@ -166,7 +166,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
       {!mobileOpen && (
         <button
           onClick={() => setMobileOpen(true)}
-          className="fixed left-3 top-3 z-30 inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-card/80 text-foreground backdrop-blur-xl shadow-lg lg:hidden"
+          // Flach in der Kopfzeile statt schwebender Karte über dem Titel (Gestaltungsprüfung Runde 5).
+          className="fixed left-3 top-2.5 z-30 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-background/80 text-foreground backdrop-blur-lg hover:bg-foreground/[0.06] lg:hidden"
           aria-label="Menü öffnen"
         >
           <Menu className="h-5 w-5" />

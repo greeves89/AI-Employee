@@ -3999,6 +3999,8 @@ export interface AuditLogFilter {
   outcome?: string;
   since?: string;
   until?: string;
+  /** Reflexion, Log-Lesen und erfolgreiche Anmeldungen ausblenden (nur Liste). */
+  ohne_routine?: boolean;
 }
 
 function auditQuery(params?: AuditLogFilter & { limit?: number; offset?: number }): string {
@@ -4008,6 +4010,7 @@ function auditQuery(params?: AuditLogFilter & { limit?: number; offset?: number 
   if (params?.outcome) q.set("outcome", params.outcome);
   if (params?.since) q.set("since", params.since);
   if (params?.until) q.set("until", params.until);
+  if (params?.ohne_routine) q.set("ohne_routine", "true");
   if (params?.limit != null) q.set("limit", String(params.limit));
   if (params?.offset != null) q.set("offset", String(params.offset));
   const qs = q.toString();

@@ -184,8 +184,8 @@ export function CreateTeamModal({
                   transition={{ duration: 0.2, ease: "easeOut" }}
                 >
                   {/* Header */}
-                  <div className="flex items-center justify-between border-b border-foreground/[0.06] px-6 py-4">
-                    <Dialog.Title className="text-lg font-semibold">
+                  <div className="sticky top-0 z-10 flex items-center justify-between border-b border-foreground/[0.06] bg-card px-6 py-4">
+                    <Dialog.Title className="font-display text-lg font-semibold">
                       {isEdit ? `${wort} bearbeiten` : `${wort} erstellen`}
                     </Dialog.Title>
                     <Dialog.Close className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors">
@@ -537,8 +537,9 @@ export function CreateTeamModal({
                     )}
                   </div>
 
-                  {/* Footer */}
-                  <div className="flex items-center justify-end gap-3 border-t border-foreground/[0.06] px-6 py-4 bg-foreground/[0.02]">
+                  {/* Footer — angeheftet: der Knopf lag sonst unter dem sichtbaren Bereich
+                      (Persona Teamleitung, Runde 5). */}
+                  <div className="sticky bottom-0 z-10 flex items-center justify-end gap-3 border-t border-foreground/[0.06] bg-card px-6 py-4">
                     <Dialog.Close className="rounded-lg px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all">
                       Abbrechen
                     </Dialog.Close>

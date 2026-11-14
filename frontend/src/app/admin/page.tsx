@@ -1391,6 +1391,10 @@ function BudgetTab({
 
   return (
     <div className="space-y-6">
+      {/* Monatsbudget je Nutzer zuerst: die gesuchte Einstellung dieser Seite
+          stand hinter dem Leerlauf-Stopp (Persona Admin, Runde 4 und 5). */}
+      <NutzerBudget />
+
       {/* Idle-Stop Global Setting */}
       <div id="leerlauf-stopp" className="scroll-mt-24 rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
         <div className="flex items-start justify-between gap-4">
@@ -1451,9 +1455,6 @@ function BudgetTab({
           </button>
         </div>
       </div>
-
-      {/* Monatsbudget je Nutzer: Standard + eigene Grenzen */}
-      <NutzerBudget />
 
       {/* Platform summary cards */}
       <div className="grid grid-cols-4 gap-4">

@@ -897,6 +897,8 @@ function MeinTag({ onSekretariatFertig, entwurfFrei }: { onSekretariatFertig: ()
     .filter((z) => z.enabled && z.next_run_at && !(simpleMode && istSystemZeitplan(z)))
     .sort((a, b) => a.next_run_at.localeCompare(b.next_run_at))
     .slice(0, 5);
+  // „Nichts geplant“ verschwieg pausierte Zeitpläne (Persona Teamleitung, Runde 5).
+  const pausiert = (zeitplaene ?? []).filter((z) => !z.enabled && !(simpleMode && istSystemZeitplan(z))).length;
 
   return (
     <div className="space-y-4">
@@ -943,7 +945,11 @@ function MeinTag({ onSekretariatFertig, entwurfFrei }: { onSekretariatFertig: ()
           {zeitplaene === null ? (
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
           ) : geplant.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Nichts geplant. Wiederkehrende Aufgaben legst du unter Aufgaben → Zeitpläne an.</p>
+            <p className="text-xs text-muted-foreground">
+              {pausiert > 0
+                ? `Nichts geplant — ${pausiert} ${pausiert === 1 ? "Zeitplan ist" : "Zeitpläne sind"} pausiert.`
+                : "Nichts geplant. Wiederkehrende Aufgaben legst du unter Aufgaben → Zeitpläne an."}
+            </p>
           ) : (
             <ul className="space-y-2">
               {geplant.map((z) => (
@@ -965,7 +971,11 @@ function MeinTag({ onSekretariatFertig, entwurfFrei }: { onSekretariatFertig: ()
               {agents.slice(0, 8).map((a) => (
                 <li key={a.id}>
                   <Link href={`/agents/${a.id}`} className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-foreground/[0.04]">
-                    <span className="min-w-0 truncate font-medium">{a.name}</span>
+                    {/* Mit Farbsymbol: dieselbe Wiedererkennung wie in Liste und Chat. */}
+                    <span className="flex min-w-0 items-center gap-2.5">
+                      <AgentAvatar config={a.config} seed={a.id} size="sm" className="h-7 w-7" />
+                      <span className="truncate font-medium">{a.name}</span>
+                    </span>
                     <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
                       <span aria-hidden="true" className={cn("h-1.5 w-1.5 rounded-full",
                         a.state === "working" ? "bg-blue-500" : a.state === "error" ? "bg-red-500"

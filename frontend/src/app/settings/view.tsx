@@ -671,6 +671,10 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
         {/* ─── Bereich: Modelle & Anbieter ─── */}
         {bereich === "modelle" && (
         <div className="space-y-6">
+        {/* ─── Modelle freischalten (Auto-Discovery + Admin-Toggle) ───
+            Ganz oben: Am Seitenende (nach ~3.400 px) fand die Persona Admin
+            die Freigabe kaum (Runde 4). */}
+        {isAdmin && <ModelCatalogAdmin />}
         {/* ─── Section 1: Model Provider ─── */}
         <section>
           <div className="flex items-center gap-2 mb-3">
@@ -1054,8 +1058,6 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
           </div>
         </section>
 
-        {/* ─── Modelle freischalten (Auto-Discovery + Admin-Toggle) ─── */}
-        {isAdmin && <ModelCatalogAdmin />}
         </div>
         )}
 

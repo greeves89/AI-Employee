@@ -206,6 +206,25 @@ class AnmeldungWirdProtokolliert(_Basis):
             self.assertIn("login_succeeded", {e["event_type"] for e in admin["logs"]})
 
 
+class RoutineAusblenden(_Basis):
+    async def test_routine_nur_auf_wunsch_ausgeblendet(self):
+        """Reflexion, Log-Lesen und erfolgreiche Anmeldungen überdeckten die
+        wichtigen Einträge (Persona Admin, Runde 5) — ausgeblendet nur mit
+        ``ohne_routine``; wer nach einer Art filtert, sieht sie trotzdem."""
+        async with self.Session() as db:
+            await protokolliere(db, AuditEventType.LOGIN_SUCCEEDED, agent_id="auth", user_id="u2")
+            await protokolliere(db, AuditEventType.COMMAND_EXECUTED, agent_id="a1", command="ls")
+            await db.commit()
+
+            alle = {e["event_type"] for e in (await self._liste(db, _admin()))["logs"]}
+            self.assertEqual(alle, {"login_succeeded", "command_executed"})
+            ohne = await self._liste(db, _admin(), ohne_routine=True)
+            self.assertEqual({e["event_type"] for e in ohne["logs"]}, {"command_executed"})
+            self.assertEqual(ohne["total"], 1)
+            gezielt = await self._liste(db, _admin(), ohne_routine=True, event_type="login_succeeded")
+            self.assertEqual(len(gezielt["logs"]), 1)
+
+
 class NamenUndPerson(_Basis):
     async def test_namen_fuer_fremde_und_geloeschte_agenten(self):
         async with self.Session() as db:

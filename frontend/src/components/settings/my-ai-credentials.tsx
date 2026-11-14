@@ -226,8 +226,10 @@ export function MyAiCredentials() {
         const verbunden = !!z?.created_at;
         return (
           <div key={h.id} className="rounded-xl border border-border bg-card/40 p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5 min-w-0">
+            {/* Am Handy Knöpfe unter den Text: daneben blieb dem Text eine Wortspalte
+                (Gestaltungsprüfung Runde 5). */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 flex-1 basis-56 items-center gap-2.5">
                 <KeyRound className="h-4 w-4 shrink-0 text-muted-foreground/60" />
                 <div className="min-w-0">
                   <p className="text-sm font-medium">{h.name} <span className="font-normal text-muted-foreground">· {h.wofuer}</span></p>

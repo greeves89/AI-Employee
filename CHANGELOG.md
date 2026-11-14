@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.468.6] - 2026-11-14
+
+### Geändert (UI-Runde 6, nach Persona-Runde 5)
+- **Handy:** Menüknopf flach in der Kopfzeile statt als schwebende Karte, Untertitel am Handy ausgeblendet. Agentenliste ohne Beschreibungszeile, damit der Status sichtbar bleibt. In Mein Konto rutschen die Knöpfe unter den Text. Die Einstiegszeile bricht sauber um. Kontomenü mit größeren Einträgen.
+- **Start:** „Meine Agenten“ mit Farbsymbol. „Als Nächstes geplant“ nennt pausierte Zeitpläne. Die Einführung zählt mitverwaltete freigegebene Agenten mit – vorher stand dort „0 von 6“ und „Agenten anlegen“, obwohl man längst mit Agenten arbeitete.
+- **Überall:** Leere Zustände mit getöntem Symbol. Auswahllisten einheitlich mit eigenem Pfeil statt im Stil des Browsers.
+- **Agent:** Das Aufgaben-Fenster öffnet ohne Offenes auf „Erledigt“. Gesperrte Rechte-Stufe sagt sichtbar, warum und wer sie freischaltet.
+- **Navigation:** „Teams-Besprechungen“ steht unter „Arbeiten“; der Hinweis auf der Seite nennt den richtigen Weg (Einstellungen → Konten & Dienste).
+- **Dateien:** Gestoppte Agenten unter eigener Überschrift.
+- **Projekte:** Kopf und Knöpfe im Dialog „Neues Projekt“ bleiben beim Scrollen sichtbar.
+- **Übersicht:** Kennzahlen zuerst, Einstieg darunter; „Deine Agenten“ statt „Aktive Agenten“.
+- **Admin:** „Modelle freischalten“ steht ganz oben, Schalter mit „Für alle frei“ und Erklärung von Basis/Erkannt. Budget je Nutzer oben auf der Kostenseite. Protokoll mit „Routine ausblenden“ (Reflexion, gelesene Logs, Anmeldungen; Standard an) und lesbaren Namen für zwei ältere Ereignisarten.
+
 ## [1.468.5] - 2026-11-14
 
 ### Geändert (UI-Runde 5, nach Tests mit vier Personas und Gestaltungsprüfung)
