@@ -521,9 +521,12 @@ async def report_app(
             )
         except Exception as e:  # noqa: BLE001
             logger.warning("[Apps] report push failed: %s", e)
+    # Ueber denselben Weg wie alle Zustellungen (user_lifecycle.wake_agent): ein vom
+    # Nutzer angehaltener Agent bleibt aus, die Aufgabe wartet in der Warteschlange.
     if agent.container_id:
         try:
-            docker.start_container(agent.container_id)  # no-op if already running
+            from app.services.user_lifecycle import wake_agent
+            await wake_agent(db, docker, agent.id)
         except Exception:  # noqa: BLE001
             pass
 

@@ -207,7 +207,7 @@ export function SystemStatusBar() {
         {/* Refresh + last updated */}
         <button
           onClick={fetchHealth}
-          className="ml-auto text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+          className="ml-auto text-muted-foreground hover:text-foreground transition-colors"
           title={
             lastUpdated
               ? `Zuletzt geprüft um ${lastUpdated.toLocaleTimeString("de-DE")}`

@@ -122,7 +122,7 @@ export function BrainBrowser({ brain, onClose }: { brain: SecondBrain; onClose: 
         <div className="flex items-center justify-between border-b border-foreground/[0.08] px-5 py-3">
           <div className="min-w-0 text-sm font-semibold truncate">
             {brain.name}
-            <span className="ml-2 text-xs font-normal text-muted-foreground/50">{brain.container_path}</span>
+            <span className="ml-2 text-xs font-normal text-muted-foreground">{brain.container_path}</span>
             {readOnly && <span className="ml-2 text-[10px] text-amber-700 dark:text-amber-400">read-only</span>}
           </div>
           <div className="flex items-center gap-2">
@@ -170,7 +170,7 @@ export function BrainBrowser({ brain, onClose }: { brain: SecondBrain; onClose: 
             {loading ? (
               <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
             ) : entries.length === 0 ? (
-              <span className="block px-2 py-2 text-xs text-muted-foreground/50">Vault ist leer</span>
+              <span className="block px-2 py-2 text-xs text-muted-foreground">Vault ist leer</span>
             ) : (
               entries.map((e) => (
                 <button

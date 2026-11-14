@@ -5,7 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.442.2] - 2026-11-08
+## [1.467.3] - 2026-11-14
 
 ### Behoben
 - **Die Besprechung legte Punkte zu längst geschlossenen Issues immer wieder als Karten an (#1106).** Die Wache prüfte, ob zu einer genannten Issue-Nummer eine Karte in der Spalte „Erledigt“ liegt — nicht, ob das Issue beim Hoster geschlossen ist. Wer die Karte abräumte, nahm damit das einzige Kennzeichen mit, und die nächste Besprechung legte denselben Punkt erneut an. Auf dem eigenen Board kannte die Wache so 4 Nummern, während im Repo hunderte Issues geschlossen waren.
@@ -17,6 +17,595 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   - Die Abfrage läuft in einer eigenen Datenbanksitzung. Sonst konnte das Beschaffen des Zugangs die Sitzung der Besprechung zurückrollen — Karten, Protokollnachricht und Übersprungen-Spur gingen dann still verloren, obwohl die Besprechung als beendet galt.
   - Antwortet der Hoster mit einer Seite statt mit Daten — ein Anmeldeportal oder eine Fehlerseite einer eigenen Installation tut das mit vollem Erfolgscode —, betrifft das nur diese eine Nummer. Vorher riss sie alle noch nicht gefragten Nummern derselben Besprechung mit, und jede davon bekam ihre Karte ein zweites Mal.
   - Unverändert bleibt: ein Punkt, der neben einer geschlossenen auch eine offene Nummer nennt, wird weiterhin zur Karte.
+
+## [1.467.2] - 2026-11-14
+
+### Behoben
+- Sentinel: Ein Agent wurde angehalten, sobald er eine Datei aus diesem Repository mit einem schlüsselförmigen Testwert las, und mit ihm fielen alle seine Zeitpläne aus (beim Betreiber gut 21 Stunden, ohne echtes Leck). Betroffen waren 13 Dateien, darunter die Beispiel-Konfiguration und die Installationsanleitung. Die Testwerte sind jetzt im Quelltext geteilt, die Platzhalter ersetzt, und ein Wächter-Test verhindert neue (er fängt auch echte Schlüssel, die versehentlich eingecheckt werden). Öffentliche Schlüssel und Zertifikate lösen keinen Stopp mehr aus, geschwärzt werden sie weiter; Tokens und als privat gekennzeichnete Schlüssel stoppen wie bisher. Fremde Repositories schützt das nicht, das bleibt in #1198 offen.
+
+## [1.467.1] - 2026-11-14
+
+### Geändert
+- **Eigene Menüpunkte bekommen eine eigene Gruppe „Anwendungen“** in der Seitenleiste, z. B. für eine eingebundene OpenWebUI. Die Gruppe erscheint nur, wenn es solche Menüpunkte gibt, und ist für alle sichtbar, die den Menüpunkt sehen dürfen. Neue Menüpunkte landen standardmäßig dort; bestehende behalten ihre Gruppe und lassen sich im Admin-Bereich unter **Eigene Menüpunkte** umstellen.
+
+## [1.467.0] - 2026-11-14
+
+### Neu
+- **„Mein Tag“ auf der Startseite.** Solange kein Sekretariat eingerichtet ist, zeigt **Start** offene Freigaben, die Aufgaben von heute, die nächsten Zeitpläne und die eigenen Agenten. Das Sekretariat ist eine schmale Karte, das Formular öffnet sich erst mit **Einrichten**. Bisher sahen Nutzer hier nur das Einrichtungsformular.
+- **Dateien: Knopf „Agent starten“.** Läuft keiner der eigenen Agenten, lässt sich jeder gestoppte direkt auf der Seite starten. Agenten, die man nur nutzt, sind ausgenommen.
+
+### Geändert
+- **Der Chat startet einen gestoppten Agenten erst mit der ersten Nachricht**, nicht schon beim Öffnen. Reines Nachsehen kostet keine Rechenzeit mehr. Über dem Eingabefeld steht, was passiert („startet, sobald du schreibst“, „Agent startet …“). Die Regel bleibt: Einen vom Besitzer angehaltenen Agenten weckt nur, wer ihn verwaltet. Bei Nur-Nutzern wartet die Nachricht.
+- **Die Agenten-Seite öffnet zuerst die Liste** statt der Kacheln. Eine gespeicherte Wahl gilt weiter.
+
+## [1.466.2] - 2026-11-14
+
+### Behoben
+- **Aufgaben öffnen auf „Alle“, wenn gerade nichts läuft**, statt mit einem leeren Reiter „Aktiv 0“. Eine eigene Wahl bleibt erhalten.
+- **Chat zeigt „Verbunden“ statt „Online“.** Die Anzeige betrifft die Verbindung zur Plattform, nicht den Agenten. „Online“ stand bisher neben „Gestoppt“ im Seitenkopf.
+- **„Mein Konto“ ohne freigegebenes Modell** sagt jetzt, dass Agenten dann über den Standard-Zugang der Anlage laufen, statt „Noch kein Modell freigegeben“ wie einen Fehler zu melden.
+- **Handbuch:** Bilder zu „Übersicht“ (Kap. 3) und „Kosten“ (Kap. 6b) neu aus dem Demokonto, PDF neu erzeugt.
+
+## [1.466.1] - 2026-11-14
+
+### Behoben
+- **Grauer Text ist wieder lesbar.** An rund 540 Stellen war grauer Text zusätzlich auf 20 bis 50 % Deckkraft gesetzt, etwa bei leeren Zuständen und Untertiteln. Er nutzt jetzt das normale Grau. Rein schmückende Symbole bleiben blass, Knöpfe, die dadurch keinen Hover-Effekt mehr hatten, werden beim Darüberfahren dunkler.
+- **Menü und Seitentitel stimmen überein:** „Übersicht“ öffnet die Seite „Übersicht“ (früher „Dashboard“), „Kosten“ die Seite „Kosten“ (früher „Finanzen“).
+- **Jede Seite hat eine echte Überschrift** (`h1`) für Screenreader. „Freigaben“ nutzt denselben Seitenkopf wie die anderen Seiten.
+- **Handy:**
+  - Die Schritte „In 6 Schritten startklar“ setzen den Knopf unter den Text, statt den Text in eine Wortspalte zu quetschen.
+  - Die Reiter bei Aufgaben und „Mein Konto“ brechen um, statt abgeschnitten zu werden.
+  - Im Agenten-Chat liegt der Aufgaben-Knopf oben rechts statt auf dem Senden-Knopf. Der Hinweis zum Einfügen von Bildern entfällt im schmalen Eingabefeld.
+
+## [1.466.0] - 2026-11-14
+
+### Behoben
+- **Die Sicherung vor einem Update räumt keine alten Sicherungen mehr weg.** Seit 1.464.0 sichert das Update in dieselbe Ablage wie die nächtliche Sicherung. Es hat dort aber mit seiner eigenen Standard-Aufbewahrung (7) aufgeräumt statt mit der der nächtlichen Sicherung (z. B. 14). Auf dem Pi hat das am 14.11. acht Tagessicherungen gelöscht.
+  - Jetzt räumt nur noch die planmäßige Sicherung auf (`BACKUP_NICHT_AUFRAEUMEN=1` aus `update.sh`).
+  - `BACKUP_KEEP_DAILY` und `BACKUP_KEEP_WEEKLY` werden auch aus der `.env` gelesen.
+
+## [1.465.0] - 2026-11-14
+
+### Neu
+- **„Wartet auf Freigabe“ für Kollegen, die einen Agenten nur nutzen.** Braucht eine Aufgabe aus ihrem Gespräch eine Freigabe, steht dort jetzt „Wartet auf eine Freigabe durch den Besitzer des Agenten.“ Frage, Werkzeug und Begründung bekommen weiter nur Besitzer und Admin, die auch entscheiden. Die Freigabe-Anfrage trägt dafür das Gespräch ihrer Aufgabe.
+
+## [1.464.0] - 2026-11-14
+
+### Behoben
+- **Die Sicherung vor einem Update landet dort, wo auch die nächtliche liegt.** `backup.sh` liest `BACKUP_DIR` und `BACKUP_MOUNT` jetzt auch aus der `.env`. Bisher kannte nur die systemd-Unit der nächtlichen Sicherung das Ziel, etwa ein NAS. Das Update schrieb seine Sicherung auf die lokale Platte (auf dem Pi 21 GB je Update, Platte danach zu 91 % voll). Eintrag in `.env.example`.
+- **Ein Update bricht keine laufende Sicherung mehr ab.** `update.sh` verweigert, solange ein `backup.sh` läuft, etwa die nächtliche Sicherung, und sagt warum. Am 14.11. hatte der Neustart der Dienste die nächtliche Sicherung auf dem Pi im Datenbank-Schritt abgebrochen.
+
+## [1.463.0] - 2026-11-14
+
+### Sicherheit
+- **Anmelden weckt keine angehaltenen Agenten mehr.** Beim Anmelden startet die Plattform die gestoppten Agenten des Nutzers, damit sie bereitstehen. Dabei liefen bisher auch die an, die der Nutzer bewusst angehalten hatte. Das war die eigentliche Ursache dafür, dass am 13.11. sieben angehaltene Agenten wieder liefen. Bei der Live-Probe der Freigabe am 14.11. ist es mit zwei Demo-Agenten erneut aufgetreten. `wake_user_agents` lässt angehaltene Agenten jetzt aus.
+
+### Geprüft
+- **Freigabe „nur nutzen“ live auf dem Pi** mit zwei Konten. Das Testkonto sieht den Agenten nur gekürzt (ohne Webhook-Token, Budget und Aufgabe).
+  - Für das Testkonto gesperrt (403): Freigaben, Wissen, Dateiliste, Integrationen, MCP, Skills, Telegram, Statistik, Rechte, Zielliste, Löschen, Start und Freigeben.
+  - Nicht sichtbar (404): Anweisungsdatei und fremdes Gespräch. Gespräche: 0 statt 7.
+  - Hochladen landet in `geteilt/<Person>`, die eigene Datei lässt sich abholen.
+
+## [1.462.0] - 2026-11-14
+
+### Sicherheit
+- **Freigabe-Anfragen nur an Besitzer und Admin.** Im Live-Chat gingen Freigabe-Anfragen (`approval_request`) samt Frage und Begründung an jedes offene Fenster des Agenten, auch an Kollegen mit Freigabe „nur nutzen“. Jetzt bekommen sie nur Besitzer und Admin.
+- **DNS-Rebinding beim Identitätsanbieter:** Der Schlüsselabruf der MCP-Anmeldung verbindet jetzt per einmal geprüfter Adresse, wie die Git-Server der Projekte. Bisher löste httpx den Namen nach der SSRF-Prüfung ein zweites Mal auf.
+  - Eine Klasse für beide Fälle (`core/feste_verbindung.FesteAdresse`).
+  - Der Identitätsanbieter darf nie im Firmennetz liegen, Git-Server nur, wenn sie freigegeben sind.
+
+## [1.461.0] - 2026-11-14
+
+### Sicherheit
+- **Angehaltene Agenten bleiben angehalten.** Hat der Nutzer einen Agenten gestoppt, weckt ihn kein automatischer Weg mehr: Aufgaben, Delegationen, Projekt-Takt, Kanäle, Produktivitätswächter. Ihre Nachrichten bleiben in der Warteschlange. Die Prüfung sitzt zentral in `user_lifecycle.wake_agent`.
+  - Wecken darf nur ein Mensch selbst: der Besitzer oder Admin im Chat oder eine Telegram-Nachricht an den eigenen Agenten des Bots. Wer den Agenten nur nutzen darf, hebt den Halt des Besitzers nicht auf.
+  - Am 13.11. liefen angehaltene Agenten wieder, dazu 1.458.0 für „Alle aktualisieren“.
+- **Kiosk nur mit Gerätezugang.** Mit `KIOSK_ENABLED` (Standard aus) antwortete der Kiosk ohne Anmeldung im ganzen lokalen Netz, und Agenten erreichten ihn direkt am Orchestrator. Betroffen waren Status, Chat mit den Agenten, Strompreis und, mit `KIOSK_VOICE_ENABLED`, ein Sprach-Ticket für den Besitzer.
+  - Jetzt braucht jedes Kiosk-Gerät einen Zugang. Ein Admin erzeugt unter **Admin-Bereich → Betrieb → Kiosk-Anzeige** einen Link und öffnet ihn einmal auf dem Gerät. Daraus wird ein Cookie, das nur für die Kiosk-Pfade gilt.
+  - Gespeichert wird nur der Prüfwert des Zugangs. Ohne Zugang antwortet jeder Kiosk-Endpunkt mit 404.
+  - Eine Netzregel in Caddy (nur lokal) hätte Firmennetze mit 172.x-Adressen und Agenten durchgelassen. Sie ist deshalb nicht Teil dieser Lösung.
+- **Weitere Startwege beachten den Halt:** Über `AgentManager.start_agent` laufen die Zustellung, die Agenten-Runden und die Nachrichten zwischen Agenten. Dort startet ein angehaltener Agent nur noch auf menschlichen Wunsch: Start-Knopf, Fortsetzen, Concierge, Browser-Reiter.
+  - Anonymisierer und Zielliste bauen einen gestoppten Agenten nur neu und lassen ihn gestoppt.
+  - Ein App-Bericht weckt nur über `wake_agent`.
+
+### Behoben
+- **Sicherung vor dem Update ohne root.** War `/var/backups/ai-employee` oder einer seiner Unterordner nicht beschreibbar (etwa nach einem früheren `sudo update.sh`), brach das Update ab und niemand sicherte. Jetzt sichert `backup.sh` nach `~/ai-employee-sicherungen` und nennt den Befehl, mit dem man es dauerhaft behebt.
+  - Kein Ausweichen, wenn ein Ziel ausdrücklich gesetzt ist (`BACKUP_DIR`, `--dest`).
+  - Kein Ausweichen, wenn eine eigene Sicherungsplatte eingehängt ist (`BACKUP_MOUNT`).
+
+## [1.460.0] - 2026-11-14
+
+### Neu
+- **GitLab für Projekte (#1194).** Projekte können ein GitLab-Repo haben, auf gitlab.com oder einem eigenen GitLab-Server, auch mit Untergruppen.
+  - Issues kommen aufs Board, Merge Requests mit Pipeline-Stand ins Review.
+  - Übernahme, Rückfragen in der Triage und Antworten per `@ai-employee` im Issue laufen wie bei GitHub. Als vertraut gilt ein Kommentar ab der Rolle Developer.
+  - Die Agenten stellen Merge Requests, nie direkt auf main.
+  - GitHub, GitLab und Forgejo laufen über denselben Code (`core/githost`).
+- **Eigene Git-Server** (Admin → Betrieb): die Zertifizierungsstelle der Firma (nur CA:TRUE und gültig) und namentlich freigegebene Server im Firmennetz.
+  - Die CA gilt nur für die freigegebenen Git-Server, nicht für den übrigen Verkehr. Das gilt für die Plattform, den Egress-Proxy und die Agenten.
+  - Ein freigegebener interner Server ist für alle Nutzer und Agenten über Port 443 erreichbar.
+
+### Sicherheit
+- Der Token liegt in der Schlüsselverwaltung. Mit Egress-Proxy sehen Agenten nur den Platzhalter, der Proxy setzt den echten Token nur am freigegebenen Host ein. Das ist live mit mitmproxy geprüft.
+- Eigene Server werden genau einmal aufgelöst und dann per geprüfter IP verbunden (Schutz vor DNS-Rebinding). Andere Ports gelten nur mit ausdrücklichem `name:port`.
+- Fehlermeldungen sind einheitlich, damit sie nicht als Portscan taugen.
+- Das Konto des Projektschlüssels wird über die numerische ID erkannt, nicht über den Namen.
+
+### Betrieb
+- Spalte `teams.repo_anbieter`, Migration `m2gitlab1194`.
+## [1.459.0] - 2026-11-14
+
+### Neu
+- **MCP mit der Firmenanmeldung (OAuth 2.1, #1195).** Second Brains (`/api/v1/mcp/brains/{slug}`) und der Agenten-MCP (`/api/v1/mcp/agents/{id}`) nehmen Zugriffstoken des Firmen-IdP an, etwa Microsoft Entra ID. Der MCP-Client meldet sich dort an, AI Employee prüft das Token und zeigt nur, was der Person freigegeben ist.
+  - Geprüft werden Signatur (feste Algorithmenliste, kein `none`/HS*), Aussteller, Empfänger (`aud`) und Laufzeit.
+  - Zugelassen sind nur ausdrücklich erlaubte Client-Anwendungen (`azp`/`appid`) oder Tokens mit Pflicht-Berechtigung.
+  - Unbekannte Personen, Gastkonten, App-Tokens und ID-Tokens werden abgewiesen.
+  - Brain-Schlüssel und Webhook-Token gelten weiter, beide Wege enden in derselben Rechteprüfung. Eine Freigabe nur zum Nutzen (1.457.0) gibt keinen Agenten-MCP-Zugang.
+  - Protected Resource Metadata (RFC 9728) unter `/.well-known/oauth-protected-resource/…`. Eine 401 verweist per `WWW-Authenticate` darauf.
+  - Einrichtung unter **Admin-Bereich → Dienste & Konten → MCP-Zugang mit Firmenanmeldung**. Ohne Einrichtung bleibt der Zugang aus. Änderungen landen mit altem und neuem Wert im Prüfprotokoll. Handbuch Kap. 22.5.2.
+
+### Sicherheit
+- Schlüsselabruf beim IdP mit Negativ-Speicher, gemeinsamem Abruf und 4 s Zeitlimit. Adressen werden nach DNS-Auflösung geprüft, interne Ziele sind gesperrt.
+- Der E-Mail-Rückfall bei der Personenzuordnung gilt nur für Microsoft-SSO-Konten. Die erste Bindung landet im Prüfprotokoll.
+
+### Betrieb
+- Spalte `users.idp_object_id`, Migration `o3p4q5r6s7t8`. Der Microsoft-SSO-Login trägt sie künftig ein.
+## [1.458.0] - 2026-11-13
+
+### Behoben
+- **„Alle aktualisieren“ startet gestoppte Agenten nicht mehr.** Ein Agent, der vor dem Aktualisieren nicht lief, bleibt danach gestoppt, egal ob er vom Nutzer angehalten oder im Leerlauf gestoppt war. Er ist dann auf dem neuen Stand und startet beim nächsten Öffnen oder Start. Bisher lief nach dem Aktualisieren jeder Agent wieder.
+
+### Geändert
+- **Besprechungen neu benannt:** „Besprechungen“ heißt jetzt **Teams-Besprechungen** (Termine in Microsoft Teams). Die bisherigen „Besprechungsräume“ heißen **Agenten-Runden** (mehrere Agenten arbeiten gemeinsam an einem Thema). Handbuch Kap. 9 angepasst.
+
+### Entfernt
+- **„Agent mit Stimme im Termin“** (Teams-Anrufe über einen Azure-Bot, `/teams/calling`). Die Funktion war nirgends eingerichtet, hatte keinen Knopf, und der Rückruf tat nichts. Teams-Termine laufen über die Teams-Besprechungen (seit 1.451.0) und den Agenten als Teilnehmer (1.453.0). Ein gespeichertes Bot-Geheimnis bleibt verschlüsselt und wird nie ausgeliefert.
+
+## [1.457.0] - 2026-11-13
+
+### Neu
+- **Agent freigeben, nur zum Nutzen.** In den Agenten-Einstellungen unter **Zugriff & Rechte → Freigeben für** wählt der Besitzer oder ein Admin Kollegen aus. Damit lässt sich ein Agent für viele Menschen nutzen:
+  - Freigegebene dürfen chatten, sprechen und Dateien schicken und abholen. Jeder sieht nur seine eigenen Gespräche (1.455.0).
+  - Einstellungen, Gedächtnis, Zeitpläne, Auswertungen, Protokolle, Apps, Freigabe-Anfragen und Löschen bleiben beim Besitzer und beim Admin.
+  - Freigegebene sehen die einfache Ansicht mit Chat und Sprache. Die Agentendaten kommen gekürzt an, ohne Webhook-Token, Konfiguration, Konten und Kosten.
+  - Meldungen eines freigegebenen Agenten bekommen sie nur, wenn sie an sie gerichtet sind (Antworten in ihren Gesprächen).
+
+### Sicherheit
+- **Standard jeder Agenten-Zugriffsprüfung ist jetzt „verwalten“.** `require_agent_access` lässt eine Freigabe nur zum Nutzen nur dort durch, wo die Schnittstelle sich ausdrücklich als Nutzen ausweist (`nutzen=True`): Chat, Sprache, Dateien senden und abholen, Agent ansehen. Neue Schnittstellen sind für Nur-Nutzer also zu, bis jemand es anders entscheidet.
+- Auch Stellen, die Freigaben direkt abfragen (Aufgaben, Zeitpläne, Freigabe-Anfragen, Finanzen, Sichtbarkeit in rund 25 Bereichen über `core/ownership`), zählen eine Freigabe nur zum Nutzen nicht.
+- Ältere Freigaben ohne Rolle (Zuweisen, Verteilen) behalten ihre Wirkung.
+- **Sprache für Nur-Nutzer:** nur Gesprächswerkzeuge (an den Agenten weitergeben, Websuche, Anzeigen, Umbenennen). Nicht dabei sind Mail, Kalender, MCP, Dateien, Gedächtnis, Zeitpläne, Apps und Einstellungen. Das Gedächtnis kommt nicht in den Prompt. Zweite Sperre beim Ausführen.
+- **Dateien für Nur-Nutzer:** Hochladen nur in `/workspace/geteilt/<Person>`. Abholen nur von dort oder Dateien, die der Agent in einem eigenen Gespräch vorgelegt hat.
+- **Stopp je Gespräch:** „Stopp“ im Chat hält nur den Zug dieses Gesprächs an, nicht die Antworten anderer. Der Agent versteht das ab diesem Abbild, ältere halten weiter alles an.
+- **Chat:** Ein Fenster kann sich nicht als Zeitplan oder Kanal ausgeben (`source`). Nur-Nutzer wählen weder Modell noch Denktiefe. Beim Entziehen der Freigabe werden offene Chat-Fenster geschlossen.
+- **Gekürzte Agentendaten** ohne laufende Aufgabe, fremde Gesprächskennungen und Besitzer.
+
+### Betrieb
+- Spalte `agent_access.rolle`, Migration `n2o3p4q5r6s7` (idempotent). Die Spalte legt zusätzlich der Start an.
+
+
+## [1.456.0] - 2026-11-13
+
+### Neu
+- **Rollen-Vorlagen (Enterprise-Rollenmodell)** (`core/rollen_vorlagen.py`, Handbuch Kap. 22.4).
+  - Fertige Rechtebündel: Teamleitung, Mitarbeiter, Entwickler, Betrachter, Gast. Dazu der Hinweis, dass Plattform-Admin die Grundrolle ist.
+  - **Gruppe anlegen** (`POST /roles/vorlagen/{schlüssel}`, nur Admins) legt daraus eine normale Gruppe an. Prüfung der Autonomie-Grenze und Prüfprotokoll wie beim Anlegen von Hand.
+  - Die Vorlagen nutzen nur Rechte, die `core/permissions` schon durchsetzt. Es gibt kein zweites Rechtesystem.
+- **Rechte-Übersicht „Wer darf was“** (`GET /roles/uebersicht`, nur Admins): je Person Grundrolle, Gruppe, Anmeldung (lokal oder SSO) und die wirksamen Rechte aus derselben Auswertung wie überall.
+- Rollen-Bearbeitung: Die Menüpfade kennen jetzt auch Besprechungen, Chat, Apps, Abläufe und Hilfe.
+- **Hinweis:** Die Grundrolle „Manager“ sieht und steuert alle Agenten aller Nutzer (`require_agent_access`). Die Vorlage „Teamleitung“ nutzt deshalb die Grundrolle Mitglied. Eine echte Begrenzung auf das eigene Team braucht Teams bzw. Abteilungen und kommt später.
+
+### Tests
+- `test_rollen_vorlagen.py`:
+  - Vorlagen nur mit bekannten Rechten und gültigen Werten bzw. Menüpunkten.
+  - Eine Gruppe aus der Vorlage wirkt am Nutzer.
+  - Prüfprotokoll, doppelter Name, unbekannte Vorlage, nur Admins.
+  - Übersicht.
+## [1.455.0] - 2026-11-13
+
+### Sicherheit
+- **Chats je Nutzer an freigegebenen Agenten.** Ist ein Agent mehreren Menschen freigegeben, sieht jeder nur seine eigenen Gespräche. Eine Regel an einer Stelle (`core/chat_besitz`):
+  - Ein Gespräch gehört dem, der darin zuerst schreibt (`chat_sessions.user_id`).
+  - Gespräche ohne eingetragenen Besitzer gehören dem Besitzer des Agenten: ältere Gespräche, Zeitpläne, Telegram, Bridge.
+  - Besitzer des Agenten und Admins sehen alle Gespräche, der Agent selbst ebenfalls. Freigegebene Nutzer und Manager sehen nur ihre eigenen.
+  - Fremde Gespräche liefern 404. Das gilt für Liste, Verlauf, Löschen, „Alle löschen“, Umbenennen, Abzweig, Zurückspulen, Fortsetzung, Verdichten, Kontext und Ziel.
+  - Im Live-Chat lassen sich fremde Gespräche weder anhängen noch fortsetzen.
+  - Abzweig, Sicherung und Fortsetzung gehören dem Besitzer des Originals.
+  - Sprache: Ein fremdes Gespräch lässt sich nicht fortsetzen, und beim Anruf wird kein fremdes „letztes Gespräch“ mehr vorgelesen.
+- **Chat-Benachrichtigungen nur an den Besitzer des Gesprächs.** Sie zeigen den Antworttext und gingen bisher an alle, die den Agenten sehen. Die Push-Nachricht ging an den Besitzer des Agenten. Neue Spalte `notifications.empfaenger_id`. Liste, Zähler, „alle gelesen“ und der Live-Kanal filtern danach.
+
+- **Live-Chat:** Aufgaben-Kacheln, Ziele, Stillstands- und Sentinel-Hinweise ohne Nachrichtenkennung gingen an jedes offene Fenster des Agenten. Jetzt gehen sie nur an Fenster, die das Gespräch sehen dürfen.
+- **Aufgaben:** Eine Aufgabe liefert ihre Kachel nur in ein Gespräch, das der Anleger sehen darf (`chat_session_id` wird geprüft).
+- **Meldungen per Nummer** (beantworten, gelesen, löschen) nur für ihren Empfänger.
+- **Systemgespräche** (Zeitplan, Meldungen, Bridge, Kanäle wie Telegram) gehören immer dem Besitzer des Agenten und lassen sich nicht vorab beanspruchen. Eine Gesprächszeile ohne Besitzer gilt nicht als frei.
+- **Kiosk:** Lesen und Schreiben nur noch in eigenen Kiosk-Gesprächen (`kiosk-…`). Vorher ging das ohne Anmeldung in jedes Gespräch, dessen Kennung bekannt war.
+
+### Betrieb
+- Migration `m1n2o3p4q5r6` (idempotent). Die Spalten legt zusätzlich der Start an.
+## [1.453.0] - 2026-11-13
+
+### Neu (Vorschau)
+- **Agent als Teilnehmer in Teams-Besprechungen** (Plan und Live-Tests: `docs/plaene/teams-teilnehmer.md`). Neue Rolle „Teilnehmer“ unter Konnektoren → Teams-Besprechungen.
+  - **Beitritt:** Zum Termin tritt der Agent mit dem Chromium seines Behälters über den Link der Einladung bei, als „<Agent> - KI“. Die Gäste-Regel und der Hinweis „schreibt mit“ gelten wie bisher.
+  - **Zuhören:** Der Ton der Besprechung geht in 30-Sekunden-Stücken an `POST /meetings/{id}/teilnehmer-ton`. Er wird transkribiert (gemeinsame Funktion `transkribieren`, Sprache Deutsch) und an die Besprechungsseite gehängt. Das Protokoll entsteht wie bisher ohne Werkzeuge, auch ohne Teams-Transkriptionslizenz.
+  - **Sprechen:** `ws /agents/{id}/teams-stimme` verbindet den Teilnehmer mit der Echtzeit-Sprachfront, im Besprechungsmodus (spricht nur, wenn er beim Namen genannt wird). Die Antwort geht über das ersetzte Mikrofon in Teams. Ohne Echtzeit-Sprache hört er nur zu.
+  - **Sicherheit (Review vor dem Release):**
+    - Aus der Besprechung wird nichts in den Chat-Verlauf oder ins Gedächtnis geschrieben, nur ins Transkript der Seite.
+    - Das Gedächtnis des Besitzers ist im Besprechungs-Prompt nicht enthalten.
+    - Der Browser läuft über den Egress-Proxy, WebRTC nicht per UDP am Proxy vorbei, mit eigener Umgebung ohne Werte des Servers.
+    - Navigation nur zu Teams bzw. Microsoft.
+    - Strengere Link-Prüfung, auf beiden Seiten gleich.
+    - Höchstens 2 Teilnahmen gleichzeitig, höchstens 8 Stunden, begrenzte Warteschlange.
+  - In der Besprechung hat die Stimme **keine Werkzeuge**. Durchgesetzt in der Sitzung, nicht nur im Prompt: Es werden keine angeboten, und ein Aufruf wird ohne Ausführung abgelehnt. Mitsprechen kann jeder Teilnehmer, deshalb kann darüber nichts gesendet, geändert oder an den Agenten delegiert werden. Der Endpunkt nimmt nur Agenten-Token aus dem Agenten-Netz an, nur für den eigenen Termin und nur zwischen 10 min vor Beginn und 30 min nach Ende.
+  - **Live geprüft** in einem echten Teams-Termin:
+    - Beitritt, Wartebereich, Einlassen.
+    - Zuhören mit Transkription („Das ist ein wunderschöner Test, oder Maus?“).
+    - Das Sprechen ist noch nicht live geprüft.
+  - **Wege hinein:**
+    - Einladung, wenn der Agent ein eigenes Konto hat.
+    - Markierung im Kalender des Besitzers (Kategorie = Name des Agenten oder „KI-Agent“).
+    - Per Link: Seite „Besprechungen“, `POST /meetings/teilnehmen`, nur Besitzer bzw. Admin, einmal je Link.
+  - **Kalender des Besitzers:** Ohne eigenes Konto berücksichtigt der Dienst nur noch markierte Termine. Vorher hätte ein Mitschreiber auch alle anderen Termine des Besitzers mitgeschrieben.
+  - **Im Live-Test gefunden und behoben:**
+    - Klammern im Namen sind in Teams verboten.
+    - Eine abgelehnte Kamera hielt Teams für „kein Audio“, jetzt gibt es eine schwarze Ersatzkamera.
+    - Teams meldet Tonspuren nicht über `track`, deshalb werden die Empfänger abgefragt.
+    - Fast stille Stücke ließen Whisper Sätze erfinden.
+
+### Geändert
+- Die Sprachsitzungs-Schleife ist gemeinsam (`ws._sprachsitzung_betreiben`) für die App und den Teams-Teilnehmer.
+
+### Tests
+- `agent/tests/test_teams_teilnehmer.py`: Links, Name, WAV, Stille, Stückelung, Start je Termin, Stimme.
+- `test_teams_besprechungen.py`:
+  - Rolle „Teilnehmer“
+  - Ton-Endpunkt (Zugang, Besitz, Zeitfenster, Größe)
+  - `teams-stimme` (Zugang, Termin, ohne Echtzeit-Sprache)
+  - Besprechungsregeln
+- Bestehende Sprach- und WebSocket-Tests: 460 grün.
+
+## [1.452.0] - 2026-11-13
+
+### Sicherheit
+- **Protokoll aus dem Teams-Transkript ohne Werkzeuge** (letzter offener Punkt aus dem Review von 1.451.0). Steht im Transkript eine Anweisung, kann sie nichts mehr ausführen, lesen oder wegschicken. Das gilt in jeder Laufzeit:
+  - **Claude Code:** `--tools "" --strict-mcp-config`. Keine eingebauten Werkzeuge, keine MCP-Server.
+  - **Codex:** `--sandbox read-only -c mcp_servers={} -c web_search="disabled"` statt Sandbox und Freigaben zu umgehen. Die Sandbox startet im Behälter nicht (bwrap), also läuft kein Befehl. Das blockiert im Fehlerfall.
+  - **Eigenes Modell:** war schon ohne Werkzeuge.
+- Das Feld `ohne_werkzeuge` steht in der Nachricht `type=meeting`. Es entfällt der Vorspann, der den Agenten erst `knowledge.md` lesen lässt. Besprechungsräume bleiben unverändert mit Werkzeugen.
+- Live im Agenten-Abbild geprüft (Claude Code 2.1.323, Codex 0.169): Eine Aufforderung, `ls` bzw. `touch` auszuführen, bleibt ohne Wirkung.
+- Wirksam, sobald ein Agent mit dem neuen Abbild läuft. Ältere Abbilder ignorieren das Feld und schreiben das Protokoll wie bisher.
+
+### Geändert
+- Der Besprechungszug im Agenten ist eine eigene Methode (`MessageConsumer._besprechungs_zug`), statt im Verbraucher-Loop zu stecken.
+
+### Tests
+- `agent/tests/test_besprechung_ohne_werkzeuge.py`: Befehlszeile je Laufzeit mit und ohne Werkzeuge, Besprechungszug mit Feld (ohne Vorspann) und ohne Feld (unverändert). Gegenprobe: 4 von 4 Schutzmechanismen gefangen.
+- `test_teams_besprechungen.py`: Der Protokoll-Auftrag trägt `ohne_werkzeuge`.
+
+## [1.451.0] - 2026-11-13
+
+### Neu
+- **Teams-Besprechungen, Stufe 1** (Plan `docs/plaene/teams-besprechungen.md`, Handbuch Kap. 34).
+  - **Besprechungsseite je Teams-Termin:** Die Tabelle `meetings` (bisher nur Browser-Mitschnitte) bekommt Teams-Termine der Agenten. Neue Spalten: `quelle`, `agent_id`, `teams_event_id`, `beginn`, `ende`, `status`, `gaeste_extern`, `hinweis`, `protokoll`. Besitzer der Zeile ist der Besitzer des Agenten, damit gilt dieselbe Zugriffsprüfung. Neue Seite **Besprechungen** mit Protokoll, Aufgaben und Transkript. Die Schnittstelle `/meetings` hatte bisher keine Oberfläche.
+  - **Hinweis „schreibt mit“:** einmal je Termin im Termin-Chat, über `teams_gateway.senden_nach_regeln`. Lesen sendet nichts, Entwurf legt eine Freigabe an.
+  - **Gäste von außen:** Teilnehmer außerhalb der eigenen Domänen (Konto des Agenten, Besitzer) halten den Agenten heraus, ohne Chat und ohne Protokoll. Abschaltbar je Agent (`mit_gaesten`). Ohne bekannte eigene Domäne gilt jeder als Gast.
+  - **Protokoll nach dem Termin:** Der Agent bekommt das Transkript über denselben Weg wie die Besprechungsräume (`type=meeting`), nicht blockierend. Die Antwort wird geprüft (`_looks_like_todo`). Die Aufgaben sind die `- [ ]`-Zeilen (`projekt_termine.aktionspunkte`, gemeinsam mit den Projekt-Besprechungen).
+  - **Einstellungen** (an, Rolle, Einladungen annehmen, nur von, mit Gästen) sind Teil des Teams-Kanals (`core/kanaele`). Es gelten dieselben Rechte und dasselbe Prüfprotokoll. Bisher gab es dafür weder Schnittstelle noch Oberfläche.
+
+### Sicherheit (Review vor dem Merge)
+- **Protokoll-Auftrag:** höchstens 2 Läufe je Termin. Ein Protokoll ohne Aufgaben („keine“) gilt als brauchbar. Vorher hätte jede solche Antwort einen neuen bezahlten Lauf ausgelöst, eine Woche lang.
+- **Fremder Text:**
+  - Transkript zwischen Markierungen, eingeschleuste Markierungen entschärft.
+  - Betreff ohne Umbrüche und Anführungszeichen.
+  - Hinweis davor und danach: keine Anweisungen.
+  - Restrisiko (Zug mit Werkzeugen) steht in `docs/SICHERHEITSMODELL.md`.
+- **Gäste-Regel:**
+  - Öffentliche Mail-Domänen des Besitzers (gmail.com u. a.) zählen nicht als eigene.
+  - Eingeladene ohne Adresse gelten als Gast.
+  - Keine automatische Zusage mehr für Termine, aus denen sich der Agent heraushält.
+- **Einladungen „nur von“:** Domänen werden als `@domäne` gespeichert und genau verglichen. Vorher passte `evilexample.com` auf `example.com`.
+
+### Behoben
+- `fetchJSON` scheiterte an leeren Antworten (204, z. B. beim Löschen).
+- **`sudo ./scripts/update.sh`** brach nach der Sicherung ab („Host key verification failed“): `git pull` lief als root, der weder SSH-Schlüssel noch den bekannten Host hat. Unter root holt das Skript jetzt als Besitzer des Repos. Ohne sudo scheiterte vorher schon die Sicherung (`/var/backups`).
+
+### Tests
+- `test_teams_besprechungen.py`:
+  - Gäste-Matrix
+  - Seite je Termin
+  - Hinweis genau einmal, je Modus
+  - Protokoll mit Aufgaben, auch außerhalb des Kalenderfensters
+  - Neuer Auftrag bei unbrauchbarer Antwort
+  - Einstellungen samt Prüfung
+  - Nutzertrennung
+- Gegenprobe: 7 von 8 Schutzmechanismen fängt der Test. Die achte (keine doppelte Seite) sichert zusätzlich der Unique-Constraint.
+
+## [1.450.0] - 2026-11-13
+
+### Neu
+- **Erlaubte Adressen am Ausgang erzwingen** (`core/zielliste.py`, opt-in je Agent, Handbuch Kap. 37.17).
+  - Anlass: Die Liste „Erlaubte Adressen“ prüfte nur der Werkzeug-Ausführer im Agenten. Claude Code und Codex erreichten mit ihren eigenen Werkzeugen (Webabruf, Shell) jedes Ziel.
+  - Eingeschaltet lässt der Egress-Proxy nur Ziele der Liste zu, HTTPS und HTTP. Immer erlaubt: Modellanbieter, Endpunkt des KI-Kontos (vom Admin angelegt), Ziele der Zugänge. Hat die Rolle des Besitzers Host-Muster, gelten beide Listen.
+  - Gegen Domain-Fronting bricht der Proxy für diese Agenten TLS immer auf, setzt den Servernamen nach außen auf das geprüfte Ziel und prüft den Host-Kopf jeder Anfrage (421 bei Abweichung).
+  - Der Netzwächter sperrt für den Agenten alles außer dem Proxy, auf jedem Port. Das gilt für alle Behälter desselben Besitzers, also auch für die Apps des Agenten.
+  - Schalter auf der Karte „Erlaubte Adressen“ (`GET`/`PATCH /agents/{id}/zielliste`): nur Besitzer und Admin, nur mit Egress-Proxy, Neustart des Agenten, Eintrag im Audit-Log. Neuer Punkt im Sicherheitsstatus.
+  - Mit Liste meldet sich der Agent mit Kennung am Proxy an (`zl.<id>`). Der Proxy fragt dann frisch nach und sperrt, solange die Liste nicht bestätigt ist. Ein gemerkter Stand „Liste aus“ gilt nur noch 5 s statt 60 s. Ein neu gestarteter Agent kommt so nicht mit dem Stand seines Vorgängers durch.
+  - Prüfung vor dem Senden (`requestheaders`), auch bei gestreamtem Körper. Rohes TCP im Tunnel (kein HTTP) beendet der Proxy für diese Agenten. Gestoppte Agenten zählen für den Netzwächter weiter, ihre Apps bleiben gesperrt.
+  - Fail closed: Lässt sich die Einstellung beim Start nicht lesen, startet der Agent nicht.
+
+### Behoben
+- **Freigabeliste:** `*.` als Muster galt als „alles erlaubt“. Muster werden jetzt einheitlich auf den Host gekürzt (`host_muster`, URL-Form, Pfad und Port fallen weg) und beim Anlegen geprüft (422).
+- **Freigabeliste:** Einträge anlegen, löschen, leeren und Vorlagen anwenden durfte jeder, dem der Agent freigegeben war. Jetzt nur Besitzer und Admin (403).
+
+### Bekannte Grenzen
+- DNS prüft die Liste nicht (kleine Datenmengen über Namensanfragen). Was die Plattform für den Agenten tut (Mail, Teams), läuft nicht über die Liste.
+
+### Tests
+- `test_zielliste.py`: Matrix der Muster (auch `evilexample.com`, `example.com.evil.org`), Netzwächter samt Apps desselben Besitzers, Übergabe an den Proxy, Umgebung und fail closed, Freigabeliste, Schnittstelle (Besitzer, Freigegebene, ohne Proxy), Sicherheitsstatus.
+- `test_anonymisierer_addon.py` (im Proxy-Abbild): CONNECT und HTTP gesperrt bzw. erlaubt, TLS aufgebrochen mit festem Servernamen, Host-Kopf je Anfrage geprüft.
+- `test_secrets_gehoeren_ihrem_ersteller.py`: Patches werden in umgekehrter Reihenfolge gestoppt. Ein doppelt gepatchtes `visible_agent_ids` blieb sonst für alle folgenden Tests stehen.
+
+## [1.449.1] - 2026-11-12
+
+### Behoben
+- **Leerlauf-Abschaltung stoppte Agenten mitten in einer Aufgabe** (`services/user_lifecycle.py`).
+  - Anlass: Auf einer Kundenanlage delegierte ein Agent an einen Prüf-Agenten. Als dessen Ergebnis zurückkam, stand der Redis-Status des Agenten kurz nicht auf „working". 90 Sekunden später stoppte die Abschaltung den Container nach 30 Minuten ohne Nutzeraktivität, die Aufgabe endete als „Agent-Container läuft nicht mehr".
+  - Die Abschaltung fragt jetzt zusätzlich die Aufgabentabelle: Hat der Agent eine nicht beendete Aufgabe (`TERMINAL_TASK_STATUSES`), bleibt er wach. Gilt für den Sweep und für `_stop_user_agents`. Bei einem Datenbankfehler bleibt der Agent ebenfalls wach.
+
+### Tests
+- `test_lifecycle_laufende_aufgabe.py`: offene Aufgabe hält den Agenten wach, ohne offene Aufgabe wird weiter gestoppt, Abfrage filtert auf Agent und Endzustände, Datenbankfehler hält wach.
+
+## [1.449.0] - 2026-11-12
+
+### Neu
+- **Preis je Modell im KI-Konto** (`core/modellpreise.py`). In der Modellzeile eines KI-Kontos stehen zwei Felder: USD je 1 Mio. Eingabe- und Ausgabe-Token.
+  - Anlass: Ein Lauf auf einer Kundenanlage mit gpt-6.1-sol über Azure meldete 1,7 Mio. Eingabe-Token und 0 USD. Der Agent kennt den Preis der gpt-6-Familie nicht (`model_registry`: bewusst „unbekannt"). Dashboard und Monatsbudget sahen nichts, ein Budget hätte nie gegriffen.
+  - Meldet ein Lauf 0 USD, aber Token, rechnet der Orchestrator aus dem Kontopreis nach. EINE Stelle für alle Wege: Aufgabenabschluss (`task_router`), Chat mit Verlaufszeile (`upsert_chat_message`, beide Schreiber) und Chat ohne Verlaufszeile (`main._kosten_ohne_verlauf`).
+  - Ein vom Agenten gemeldeter Betrag > 0 bleibt unverändert. Ohne Kontopreis wird nichts nachgerechnet — auch nicht aus der eingebauten Tabelle, denn Abo-Läufe (Claude, Codex) kosten zu Recht 0 USD.
+  - Preise werden serverseitig geprüft (0 bis 1000 USD je 1 Mio. Token), nach dem Speichern greift die Änderung sofort.
+
+### CI
+- Agenten-Tests laufen fest auf Ubuntu 24.04. `ubuntu-latest` ist inzwischen 26.04 mit Rust-coreutils, dessen `timeout` bei Fristablauf nur den direkten Prozess beendet. Zwei Tests zur CLI-Aktualisierung warteten dadurch 60 s auf einen hängenden Kindprozess. Das Agenten-Abbild selbst läuft auf Debian (GNU coreutils) und ist nicht betroffen.
+
+### Tests
+- `test_modellpreise.py`, neu: Preisprüfung, Kontopreis, Nachrechnung, kein Rückfall auf die Tabelle, Fehler stören nicht, Ende-zu-Ende gegen SQLite (Chat-Zeile bekommt den Betrag in Spalte und `meta`).
+
+## [1.448.3] - 2026-11-09
+
+### Sicherheit
+- **Egress-Proxy auf mitmproxy 12.3.1** (Fehlerbehebungsstand). Wie vorgesehen erst nach den Addon-Tests im neuen Abbild auf der Testanlage aktualisiert: 13 von 13 grün, das Addon lädt fehlerfrei.
+
+## [1.448.2] - 2026-11-09
+
+### Sicherheit
+- **Egress-Proxy auf mitmproxy 12.3.0.** Ersetzt den Dependabot-PR #1230. Der wäre ungeprüft durchgegangen, denn die Addon-Tests laufen nur im Proxy-Abbild, nicht in der CI.
+  - mitmproxy 12.3.0 läuft auf Python 3.14 und bringt das Paket `zstandard` nicht mehr mit.
+  - Das Addon (`egress/aie_egress.py`) entpackte zstd-komprimierte Anfragen damit. Unter 12.3.0 wäre jede solche Anfrage an einen Modellanbieter gescheitert, abgewiesen statt ungeprüft, aber kaputt.
+  - Jetzt nimmt es zstd aus der Standardbibliothek (`compression.zstd`), mit `zstandard` als Rückfall. Beide Wege sind gegen Kompressionsbomben begrenzt.
+- Eine Kompressionsbombe meldet der Anonymisierer jetzt als 413 (zu groß) statt 415 (Kodierung unbekannt).
+- **Alle Hooks des Egress-Proxys sind fail closed.** Gefunden von der automatischen Nachprüfung des Commits, die Lücke bestand schon vorher.
+  - mitmproxy protokolliert eine Ausnahme in einem Hook und lässt den Fluss danach weiterlaufen. Kaputte zstd- oder gzip-Daten in einer Anfrage an einen Modellanbieter warfen beim Entpacken eine Ausnahme, und die Anfrage ging dann **nicht anonymisiert** hinaus.
+  - Jetzt bekommen kaputte Kompressionen 415.
+  - Jeder Hook (`request`, `requestheaders`, `responseheaders`, `response`, `websocket_message`) ist mit `_sicher` umhüllt: Ein unerwarteter Fehler beantwortet die Anfrage mit 502 bzw. bricht Antwort oder Websocket ab, statt durchzulassen.
+
+### Tests
+- `test_anonymisierer_addon.py`, neu:
+  - zstd-Bombe
+  - kaputte Kompression
+  - unerwarteter Fehler sperrt (Anfrage, Kopfzeilen, Antwort)
+- Alle 13 Tests sind in beiden Abbildern grün (12.2.3 und 12.3.0, auf der Testanlage). Gegenprobe: ohne Hook-Schutz bzw. ohne Abfangen beim Entpacken rot.
+
+## [1.448.1] - 2026-11-09
+
+### Behoben
+- **Die Karte „Kanäle“ war für Mitglieder nicht erreichbar.** Sie stand unter Einstellungen → Verbindungen, und das zeigt nur die volle Ansicht für Administratoren. Mitglieder kommen nur über das Fenster **Konnektoren** an die Einstellungen ihres Agenten. Die Karte steht jetzt dort, neben dem Microsoft-Konto des Agenten. Aufgefallen beim Bildschirmfoto fürs Handbuch mit dem Demokonto. Handbuch Kap. 34 ist angepasst.
+
+## [1.448.0] - 2026-11-09
+
+### Neu
+- **Kanäle in der Oberfläche einstellen:** Teams, Slack, Discord und WhatsApp (Agent → Einstellungen → Verbindungen → Karte „Kanäle“).
+  - Bisher ging das nur direkt in der Datenbank. Handbuch Kap. 34 beschrieb eine Oberfläche, die es nicht gab; es ist jetzt neu geschrieben.
+  - Zur API: `core/kanaele.py` beschreibt die Felder neutral und bildet sie auf die Schlüssel ab, die die Gateways lesen. Endpunkte: `GET /agents/{id}/kanaele`, `PUT /agents/{id}/kanaele/{kanal}`, `GET /agents/{id}/kanaele/teams/auswahl`.
+  - Teams: Chats und Kanäle werden aus Teams ausgewählt (Graph, nur lesend), Kennungen muss niemand abtippen. Chats aus Besprechungen bleiben erhalten.
+
+### Sicherheit
+- **Kanal-Einstellungen:**
+  - Zugangsdaten (Bot-Token, Zugriffstoken) werden verschlüsselt gespeichert und nie zurückgegeben (`token_gesetzt`). Leer lässt sie stehen, „Token entfernen“ löscht sie.
+  - Ändern dürfen nur Besitzer und Admin. Kennungen, Nummern und Längen werden serverseitig geprüft.
+  - Ins Prüfprotokoll gehen die geänderten Felder, nie Werte von Zugangsdaten.
+  - Die Teams-Chatliste ohne eigenes Konto des Agenten (also die Chats des Besitzers) sieht nur der Besitzer, auch kein Admin.
+- **Nach unabhängigem Sicherheitsreview** (kein kritischer Befund; ein hoher und vier mittlere behoben):
+  - **H1:** Eine WhatsApp-Nummer ließ sich mehreren Agenten zuordnen. Die Nachrichten an einen Agenten konnten so bei einem fremden landen.
+    - Jetzt lehnt die Anlage eine schon vergebene Nummer ab (409).
+    - Bei Doppelungen aus dem Altbestand verwirft der Kanal die Nachricht, statt zu raten.
+  - **M1:** Die allgemeine Agenten-Antwort (`GET /agents`) enthielt die verschlüsselten Kanal-Token, auch für Freigegebene. Jetzt enthält sie die Kanal-Einstellungen gar nicht mehr (`kanaele.ohne_zugangsdaten`). Die Nachprüfung des Commits fand, dass sonst Telefonnummern und Kennungen an der Zusammenfassung vorbei sichtbar blieben. Kanäle gibt es nur über `/kanaele`.
+  - **M2:** Änderung und Prüfprotokoll werden in EINER Transaktion festgeschrieben.
+  - **M3:** Kennungen nur aus Punkten („..“) werden abgelehnt. Discord, WhatsApp und Teams setzen Kennungen nur noch maskiert in URL-Pfade. Die WhatsApp-Telefonnummer-ID besteht nur aus Ziffern.
+  - **M4:** Wem der Agent nur freigegeben ist, der sieht je Kanal nur „an/aus“ und die Anzahl, keine Telefonnummern oder Kennungen.
+  - **Nachprüfung des Commits:** Ohne eigenes Konto des Agenten stellt nur der Besitzer Teams ein, auch kein Admin. Sonst ließe sich der Agent die Chats des Besitzers lesen lassen. Ausschalten darf jeder, der ändern darf.
+  - **Kleinkram:** Absender-Nummern brauchen mindestens 10 Ziffern, wie der Kanal (L1). Das Token-Feld wird vom Browser nicht als Anmeldung gespeichert (L3).
+- **Prüfprotokoll-Einträge gingen verloren:**
+  - `protokolliere` merkt einen Eintrag nur vor. Wurde er erst NACH dem Festschreiben vorgemerkt, kam er nie in die Datenbank.
+  - Betroffen: Anonymisierer ein und aus (seit 1.444.0), Microsoft-Konto des Agenten verbinden und trennen (seit 1.445.0).
+  - Die Tests hatten in derselben Sitzung gelesen und den vorgemerkten Eintrag gesehen. Jetzt wird festgeschrieben, und die Tests lesen in einer frischen Sitzung.
+
+### Tests
+- `test_kanaele.py` (20 Fälle): Abbildung gegen die echten `channel_config`/`is_enabled` der Gateways, Zugangsdaten, Ablehnungen, Rechte, Teams-Auswahl.
+- Prüfprotokoll: Reihenfolge „vormerken, dann festschreiben“ geprüft (Anonymisierer, Agenten-Konto, Kanäle).
+- Gegenprobe: Ohne die drei Commits, ohne die Review-Befunde H1 (API und Kanal), M1, M2, M3, M4, L1 und ohne die Teams-Besitzerregel schlagen die Tests fehl.
+
+## [1.447.0] - 2026-11-09
+
+### Sicherheit
+- **Teams-Senden folgt denselben Regeln wie Mail** (Plan `docs/plaene/agenten-identitaet-m365.md`, Phase 3).
+  - Bis 1.446 prüfte die Antwort im Teams-Kanal nur den plattformweiten Nur-Lesen-Schalter. Ein Agent auf „Lesen“, im Sekretariat oder mit „Freigabe“ in der Rechte-Matrix schrieb trotzdem direkt unter dem Namen seines Besitzers in Teams.
+  - Jetzt gibt es EINE Entscheidung, `core/ms_access.sendemodus`: Nur-Lesen-Schalter, Einstellung des Agenten, Sekretariat und Rechte-Matrix „E-Mail / M365 senden“. Sie gilt für Werkzeuge (`api/mcp_msgraph`) und Kanal (`services/teams_gateway.senden_nach_regeln`). Die Microsoft-Anbindung muss zugewiesen sein.
+- **Teams im Modus „Entwurf“:**
+  - Statt zu senden entsteht eine gebundene Freigabe `teams_senden` (`core/gebundene_freigabe`). Sie zeigt Ziel und vollen Text. Nach dem Freigeben sendet der Server genau diesen Text, einmal, und prüft vorher erneut, ob noch gesendet werden darf.
+  - Die Teams-Werkzeuge sind in diesem Modus sichtbar und gehen über die Freigabe. Ohne Freigabe-Weg senden sie nicht (fail closed).
+  - Agenten können die Art nicht selbst anlegen (`SERVER_ARTEN`). Die Ausführungen werden vor dem Prüfen und Ausführen geladen, damit eine Freigabe nie still ohne Wirkung schließt.
+- **Schleifenschutz in Teams:**
+  - Gesendete Nachrichten werden gemerkt und nicht als neue Anfrage gelesen. Das gilt auch, wenn der Agent über das Konto des Besitzers schreibt; dessen eigene Nachrichten bleiben sichtbar.
+  - Mit eigenem Konto wird zusätzlich alles von der eigenen Kennung (`/me`) übersprungen.
+  - Bisher hing der Schutz an `own_user_id`, das niemand setzte.
+
+- **Nach unabhängigem Sicherheitsreview** (kein kritischer Befund; ein hoher und fünf mittlere behoben):
+  - **H1:** Ohne eigenes Konto schreibt der Agent als sein Besitzer. Eine solche Teams-Nachricht gibt jetzt nur der Besitzer frei, wie bei Mail. Vorher reichte eine Freigabe des Agenten an andere. Dafür bekommt die gebundene Freigabe den Freigebenden mit.
+  - **M1:** Die Freigabe zeigt das Ziel mit Namen (Chat-Art, Thema, Mitglieder bzw. Team und Kanal) und die Kennung ungekürzt.
+  - **M2:**
+    - Höchstens 20 offene Teams-Freigaben je Agent.
+    - Dieselbe Nachricht wartet nur einmal.
+    - Plattform-Hinweise (Budget, Filter) werden nie zur Freigabe.
+  - **M3:** Eine ausgeführte gebundene Freigabe ist sofort als ausgeführt vermerkt. Scheitert danach das Schließen, sendet ein zweiter Klick nicht noch einmal. Das gilt auch für Tickets.
+  - **M4:** Auch Teams-Nachrichten, die Werkzeuge im Modus „Schreiben“ senden, fallen unter den Schleifenschutz.
+  - **M5:** Geweckt wird im Hintergrund, mit geteilter Docker-Verbindung, nur wenn der Agent laut Datenbank nicht läuft, und höchstens ein Start je Agent auf einmal.
+  - Außerdem:
+    - Der Schleifenschutz-Schlüssel gilt je Chat (L1).
+    - Die Ausführung prüft auch die Anbindung (L2, auch von der automatischen Nachprüfung gemeldet).
+    - Ladefehler der Freigabe-Ausführungen werden protokolliert (L4).
+    - „Zu lang“ wird dem Agenten gemeldet (L6).
+
+### Neu
+- **Kanal-Nachrichten wecken gestoppte Agenten:** Teams, Slack, Discord, WhatsApp und Webhook. Bisher wartete die Nachricht in der Warteschlange, bis jemand den Agenten von Hand startete. Bewusst vom Menschen angehaltene Agenten bleiben aus.
+- **Bei neuer Mail wecken** weckt bewusst angehaltene Agenten nicht. Der Stand rückt dann nicht weiter, nach dem Start wird nachgeholt (höchstens 24 Stunden).
+
+### Tests
+- `test_teams_identitaet.py` (25 Fälle, SQLite): Sendemodus über alle Eingänge, Senden und Freigabe bis zum Versand, Neuprüfung beim Freigeben, Werkzeuge, Schleifenschutz, Wecken. `test_graph_abos.py` um „angehalten“ ergänzt.
+- Gegenprobe mit 24 Schutzregeln, darunter die Review-Befunde: Jede entfernte Regel lässt die Tests fehlschlagen.
+- `test_teams_antwort_nur_lesen.py` ist in `test_teams_identitaet.py` aufgegangen.
+
+## [1.446.1] - 2026-11-09
+
+### Behoben
+- **Die Adressprüfung von Microsoft Graph scheiterte an der Größengrenze.**
+  - Fundort: live auf der Testanlage, Prüfanfrage von außen.
+  - Microsoft prüft die Empfangsadresse mit einem POST mit leerem Körper (`?validationToken=…`). Eine Längenangabe ist dabei nicht zugesichert.
+  - Die neue Grenze für `/api/v1/msgraph/` verlangte sie und antwortete 411. Kein Abo hätte sich anlegen lassen, und die Anlage wäre still auf Abfrage zurückgefallen.
+  - Jetzt darf nur die Prüfanfrage ohne Länge durch (`koerper_grenze.regel(..., ohne_laenge_bei="validationToken")`). Echte Meldungen brauchen weiter Länge und höchstens 1 MB.
+  - Die Ausnahme vertraut der Query nicht. Middleware und Endpunkt könnten `validationToken=x&validationToken=` verschieden lesen. Deshalb zählt die Middleware bei der Ausnahme die Bytes mit, und über 1 MB sieht die Anwendung nur einen Abbruch. Der Endpunkt liest den Körper zusätzlich selbst begrenzt (Stream statt `request.json()`). Gefunden von der automatischen Nachprüfung des Commits.
+
+## [1.446.0] - 2026-11-09
+
+### Neu
+- **Agent bei neuer Mail wecken** (Plan `docs/plaene/agenten-identitaet-m365.md`, Phase 2). Agenten mit eigenem Microsoft-Konto lassen sich per Schalter „Bei neuer Mail wecken“ (Agent → Konnektoren) bei jeder neuen Mail im eigenen Posteingang wecken. Opt-in je Agent, nur Besitzer und Admin (`PATCH /agents/{id}/microsoft-konto/mail-wecken`).
+  - **Benachrichtigung:** Ist die Anlage über HTTPS erreichbar, abonniert sie den Posteingang bei Microsoft Graph. Der Empfang läuft über `/api/v1/msgraph/benachrichtigung` und `/lebenszyklus`. Die Anlage verlängert das Abo vor Ablauf und legt es neu an, wenn Microsoft es entfernt. Nach `missed` holt sie nach.
+  - **Abfrage als Rückfall:** Ohne öffentliche Adresse, oder wenn Microsoft sie nicht erreicht, fragt die Anlage alle fünf Minuten nach Mails seit dem letzten Stand (Filter nach Eingangszeit, höchstens 24 Stunden zurück). Den Versuch, das Abo anzulegen, wiederholt sie alle sechs Stunden. Bei Benachrichtigung sieht sie zusätzlich stündlich nach, weil Microsoft unzustellbare Meldungen nach einigen Stunden verwirft.
+  - Tabelle `graph_abos` (Migration `k9l0m1n2o3p4`). Der Abgleich läuft alle fünf Minuten im Orchestrator.
+
+### Sicherheit
+- **Öffentlicher Empfang mit Prüfung:** Jede Meldung muss ein bekanntes Abo nennen und dessen `clientState` tragen. Das ist ein HMAC aus `ENCRYPTION_KEY` und der Abo-Kennung, nicht gespeichert. Verworfenes bekommt ebenfalls 202 (nichts ausforschbar). Geantwortet wird sofort, verarbeitet getrennt, höchstens 100 Meldungen je Aufruf.
+- **Nichts aus der Meldung selbst:** Die Mail wird mit dem Konto des Agenten gelesen. Der Auftrag trägt nur Absender und Betreff, gerahmt als fremder Text (`core/fremdtext`, auch gegen die Sentinel-Marke). Den Inhalt liest der Agent mit seinem Werkzeug.
+- **Kostenbremse:** höchstens 20 Läufe je Agent und Stunde, mit einer Meldung, dazu eine Doppelsperre (7 Tage). Eigene Mails und Entwürfe wecken nicht. Beim Einschalten und nach `missed` wird kein alter Posteingang abgespielt (höchstens 24 Stunden).
+- Trennen des Kontos löscht das Abo bei Microsoft und schaltet das Wecken aus. Der Sicherheitsstatus zeigt Weg und Störungen.
+
+- **Nach unabhängigem Sicherheitsreview** (kein kritischer Befund; ein hoher und sechs mittlere behoben):
+  - **H1:** Wer dem Agenten schreibt, konnte bis zu 20 bezahlte Läufe je Stunde auslösen, und echte Mails gingen hinter einer Flut verloren.
+    - Jetzt wecken voreingestellt nur Absender der eigenen Organisation (Haken „Auch Absender außerhalb der eigenen Organisation“).
+    - Maßgeblich ist das Urteil von Exchange (`X-MS-Exchange-Organization-AuthAs: Internal`), nicht die Absenderadresse, die jeder fälschen kann. Fehlt das Urteil, gilt die Mail als extern. Gefunden von der automatischen Nachprüfung des Commits.
+    - Automatische Antworten, Massenmails und Unzustellbarkeitsberichte wecken nie.
+    - Höchstens 5 Läufe je Absender und Stunde.
+    - Gedrosselte Mails werden nachgeholt.
+  - **M1:** Körper höchstens 1 MB (Orchestrator vor dem Einlesen und Caddy).
+  - **M2:** `clientState` trägt die Abo-Kennung und wird ohne Datenbank und Redis geprüft. Höchstens 8 Verarbeitungen gleichzeitig.
+  - **M3:** Ein Fehler (rollback) reißt die Runde für die anderen Agenten nicht mehr ab.
+  - **M4:** Nach einem Fehler bleibt eine Mail nachholbar (Doppelsperre wird gelöst).
+  - **M5:** Stündliches Nachsehen auch bei Benachrichtigung.
+  - **M6:** Filter nach Eingangszeit statt `delta` über den ganzen Posteingang. Große Postfächer brachen den Abfrage-Betrieb.
+
+### Tests
+- `test_graph_abos.py` (35 Fälle gegen SQLite mit nachgebautem Graph und Redis): Empfang, Prüfung, Lebenszyklus, Eingang, Absender-Filter, Grenzen, Abos, Nachsehen, API, Sicherheitsstatus.
+- Gegenprobe mit 14 Schutzregeln, darunter Geheimnis, Abo-Kennung, Gleichzeitigkeit, automatische Mails, Absender-Domäne, Grenze je Absender, Lösen der Sperre, 24 Stunden und stündliches Nachsehen. Jede entfernte Regel lässt die Tests fehlschlagen.
+
+## [1.445.0] - 2026-11-09
+
+### Neu
+- **Eigenes Microsoft-365-Konto je Agent** (Plan `docs/plaene/agenten-identitaet-m365.md`, Phase 1). Ein Agent kann ein eigenes, lizenziertes Konto bekommen und arbeitet dann als er selbst: eigenes Postfach, eigener Absender. Das Postfach des Besitzers sieht er nicht mehr.
+  - **Verbinden:** Agent → Konnektoren → „Microsoft-Konto des Agenten“ (`GET/DELETE /agents/{id}/microsoft-konto`, `POST …/verbinden`). Nur Besitzer und Admin dürfen das. Microsoft fragt immer nach dem Konto (`prompt=select_account`), und der Zustand der Anmeldung trägt die Agenten-Kennung.
+  - **Daten:** `oauth_integrations.agent_id` (Migration `j8k9l0m1n2o3`, offline-fähig). Eindeutig je (Anbieter, Agent), die bisherigen Teil-Eindeutigkeiten gelten nur noch für Zeilen ohne Agent.
+  - **Ein Weg zum Token:** `core/agenten_konto.token_fuer` nutzen die Microsoft-Werkzeuge, der Teams-Kanal, Teams-Besprechungen und die Mail-Freigabe, auch das Bearbeiten eines Entwurfs unter „Heute“.
+
+### Sicherheit
+- **Getrennte Konten:** Jede Abfrage für Menschen (Integrationsseite, SSO, Sekretariat, Erste Schritte) schließt Agenten-Konten aus und umgekehrt, obwohl beide unter dem Besitzer liegen.
+- **Kein stiller Rückfall:** Scheitert das Konto des Agenten (Erneuerung, MFA, Kennwort), arbeitet er nicht mit dem Konto des Besitzers weiter. Die Meldung nennt den Agenten und führt zu ihm. Der Sicherheitsstatus hat den neuen Punkt „Microsoft-Konten der Agenten“.
+- **Nicht das eigene Konto:** Meldet sich jemand mit dem eigenen Konto (Adresse oder `sub` des Besitzers oder Anmeldenden) oder lässt sich das Konto nicht feststellen, wird abgelehnt, und zwar VOR dem Speichern. Ein bestehendes Konto bleibt dann unverändert. Abgelehnte Rückrufe führen zurück zum Agenten.
+- Das Trennen des Agenten-Kontos lässt die MCP-Freigaben des Besitzers stehen.
+- Verbinden und Trennen stehen im Prüfprotokoll.
+- **Nach unabhängigem Sicherheitsreview** (kein kritischer oder hoher Befund):
+  - Der Anmelde-Zustand wird nur noch einmal gelesen. Zwei Lesungen konnten auseinanderlaufen, und ein Agenten-Konto wäre dann als Konto des Besitzers gespeichert worden. Eine unbrauchbare Agenten-Kennung im Zustand wird abgelehnt. Der reine Codetausch (eigener Claude-Zugang) nimmt keinen Agenten-Zustand an.
+  - Agenten ohne Besitzer bekommen kein Konto.
+  - Die Meldung bei gescheiterter Erneuerung hängt am Agenten (Besitzer und Freigegebene sehen sie), nicht als Systemmeldung bei allen Admins.
+  - Bricht man bei Microsoft ab, führt der Rückruf zurück zum Agenten. Vorher endete er mit einem rohen 422, weil `code` Pflicht war (betraf alle Integrationen).
+  - Bekannte Grenze: Der Abgleich „eigenes Konto“ vergleicht Adresse und `sub`. Ein Alias des Besitzers ohne eigene Microsoft-Verbindung fällt nicht auf. Folge wäre nur, dass der Agent wissentlich im Postfach des Besitzers arbeitet, wie ohne eigenes Konto.
+
+### Tests
+- `test_agenten_konto.py` (33 Fälle, echte SQLite-Datenbank):
+  - Trennung Mensch/Agent, kein Rückfall, Ablehnung des eigenen Kontos vor dem Speichern
+  - Rechte an den Endpunkten, Rückruf und Rücksprung, Sicherheitsstatus, Meldung
+  - Gegenprobe: Ohne Filter, ohne „kein Rückfall“ und ohne „fail closed“ schlagen die Tests fehl.
+
+## [1.444.1] - 2026-11-09
+
+### Sicherheit
+- **Teams-Antworten im Kanal respektieren den Nur-Lesen-Schalter für Microsoft 365.** `teams_gateway.send_reply` ging am plattformweiten Schalter vorbei (Voreinstellung: an): Ein Admin, der „nur lesend“ eingestellt hatte, sah trotzdem Nachrichten unter dem Namen des Agenten-Besitzers in Teams. Gefunden bei der Bestandsaufnahme für eigene Microsoft-Identitäten der Agenten. Jetzt wird bei „nur lesend“ nicht gesendet, und das Protokoll sagt, warum.
+
+### Tests
+- `test_teams_antwort_nur_lesen.py`: Bei „nur lesend“ kein Graph-Aufruf, bei erlaubtem Schreiben wie bisher.
+
+## [1.444.0] - 2026-11-09
+
+### Sicherheit
+- **Anonymisierer vor dem Modell, opt-in je Agent** (Entscheidung vom 09.11.). Personendaten gehen nur als Platzhalter an den Modellanbieter (`[EMAIL-3f9a1c2b]`, `[NAME-0a1b2c3d]` …). In der Antwort und in Werkzeugaufrufen setzt die Anlage die echten Werte wieder ein.
+  - **Wo:** im Egress-Proxy (`egress/anonym.py`, eingehängt in `aie_egress.py`). Er ist die eine Stelle, die alles sieht, was an den Anbieter geht: Chat, Aufträge, gelesene Dateien, Mails, Werkzeug-Ergebnisse. Gleiche Mechanik wie die Schlüssel-Platzhalter, in umgekehrter Richtung.
+  - **Erkannt:** E-Mail, Telefon, IBAN (Prüfziffer), Kartennummer (Luhn) und Namen und Begriffe aus einer Liste je Agent.
+  - **Platzhalter:** nur ASCII, Werte nur aus sicheren Zeichen. So sieht ein Wert in jeder JSON-Ebene gleich aus, auch in `partial_json` von Werkzeugaufrufen. Die Platzhalter sind deterministisch (HMAC je Agent), der Prompt-Cache bleibt wirksam. Es gibt keine Ablage, die Zuordnung entsteht je Anfrage aus dem mitgesendeten Verlauf.
+  - **Rückweg im Strom:** Das Modell schreibt tokenweise, ein Platzhalter kommt über mehrere Ereignisse zerteilt an. `SseEinsetzer` versteht die Ereignisströme von Anthropic (`text_delta`, `input_json_delta`, `thinking_delta`) und OpenAI/Codex (`*.delta`, `*.done`). Je Block hält er einen möglichen Platzhalter-Anfang zurück und gibt ihn am Blockende aus.
+  - **Fail closed:** Komprimierte, zu große (über 32 MB) oder nicht-JSON-Anfragen an einen Anbieter gehen nicht hinaus. Große Körper werden gepuffert statt gestreamt (`stream_large_bodies` reichte sie sonst ungesehen durch). Websockets zu Anbietern werden geschlossen. Fällt der Orchestrator kurz aus, gilt die letzte Einstellung weiter.
+  - **Einstellung:** Agent → Einstellungen → Zugriff & Rechte (`GET/PATCH /agents/{id}/anonymisierer`, nur Besitzer und Admin). Begriffe werden serverseitig geprüft. Ins Prüfprotokoll gehen nur Schalter und Anzahl der Begriffe, nie die Begriffe selbst. Bei eigenen Modellen lässt er sich nicht einschalten.
+  - **Hinweis an das Modell:** In der Agenten-Anleitung steht, dass Platzhalter unverändert zu verwenden sind.
+  - **Sicherheitsstatus:** neuer Punkt „Anonymisierer“. Warnung, wenn er eingeschaltet ist, aber nicht wirkt (Egress-Proxy aus).
+  - **Nach unabhängigem Sicherheitsreview:**
+    - Alle Erkennungsmuster sind begrenzt. Das E-Mail-Muster war quadratisch: 40 000 `%` brauchten 1,7 s, 1 MB Minuten, und das hätte den Proxy für alle Agenten angehalten. Jetzt ist der Aufwand linear.
+    - Große Anfragen (über 64 KB) werden in einem eigenen Prozess geprüft, weil Pythons `re` den GIL nicht freigibt.
+    - Kartennummern werden auch hinter anderen Zifferngruppen erkannt.
+    - Platzhalter haben 8 Hexstellen, bei einer Kollision 12, statt still zwei Werte zu vertauschen.
+    - Signierte Denk-Blöcke bleiben in beide Richtungen bytegleich, sonst lehnt der Anbieter sie im nächsten Zug ab.
+    - Komprimierte Anfragen (gzip, zstd) werden begrenzt entpackt statt abgewiesen.
+    - Beim Einschalten wird ein laufender Agent neu gestartet. Neue Verbindungen zu Modellanbietern fragen die Einstellung frisch ab, damit keine offene Verbindung im Klartext weiterläuft.
+    - Claude-Code-Telemetrie und -Fehlerberichte sind für diese Agenten aus.
+    - `body_size_limit` begrenzt gepufferte Körper.
+    - Grenze dokumentiert: Der Anonymisierer schützt vor dem Anbieter, nicht vor Prompt-Injektion.
+- Benutzerhandbuch 37.15.
+
+### Tests
+- `test_anonymisierer.py` (23 Tests: dazu Linearität bei 1 MB bösartiger Eingabe je Muster, Karte hinter Bestellnummer, Kollision, Denk-Blöcke unangetastet, stabiler Rundlauf; bisher 18 Tests, 114 Teilfälle):
+  - Erkennung je Art (IBAN nur mit Prüfziffer, Karte nur mit Luhn, Telefon gegen Versions- und Raumnummern, Namen mit Wortgrenzen).
+  - Unsichere Zeichen und Datei-Blobs bleiben, deterministisch je Agent, Rundlauf einer echten Anthropic-Anfrage.
+  - Zerteilte Platzhalter im Textstrom.
+  - Anthropic- und OpenAI-Ereignisströme in 100 zufälligen Zerlegungen mit leeren Stücken: Text und Werkzeug-Argumente vollständig zurückübersetzt, jede Ausgabe vor dem Blockende.
+- `test_anonymisierer_addon.py`: das echte mitmproxy-Addon im Abbild des Proxys (12.2.3), auf der Testanlage ausgeführt (33 Tests mit den reinen Funktionen grün). Dazu: gzip/zstd entpackt, Brotli abgewiesen, TLS zum Anbieter fragt frisch, große Anfrage im eigenen Prozess. Anfrage anonymisiert und gepuffert, andere Hosts und „aus“ unverändert, nicht prüfbare Anfragen abgewiesen, gestreamter Körper abgewiesen, Antwortstrom und Antwort am Stück zurückübersetzt, Websocket zum Anbieter geschlossen.
+- `test_anonymisierer_orchestrator.py`: Begriffe prüfen, Proxy-Einstellung, `/egress/verbindung`, Endpunkte (Besitzer, Admin, fremd 403, eigenes Modell und ungültige Begriffe 422, Prüfprotokoll ohne Namen), Hinweis in der Anleitung, Sicherheitsstatus in drei Zuständen, letzte Einstellung bei Orchestrator-Ausfall.
+
+## [1.443.0] - 2026-11-09
+
+### Sicherheit
+- **Sentinel-Hinweise mit Einmalwert** (Entscheidung vom 09.11.). Der Sentinel faltet seinen Hinweis mit der Marke `[Plattform-Sentinel]` als Chat-Nachricht in die laufende Sitzung ein. Bisher hing die Echtheit daran, dass JEDER andere Weg in die Warteschlange die Marke entschärft. Auf der Agentenseite prüfte niemand.
+  - Jetzt stellt `chat_auftrag.einreihen(..., plattform=True)` einen Beleg aus (`core/plattform_hinweis.py`): HMAC über Agent, Kennung, Zeit und Text, mit einem eigenen Schlüssel je Agent (`agent_schluessel("sentinel-hinweis", …)`). Das gilt für den Sentinel und den Knopf „Fortsetzen“. Alle anderen Wege entfernen mitgeschickte Belege.
+  - Der Agent bekommt den Schlüssel als reinen Server-Wert (`SENTINEL_HINWEIS_KEY` in `serverwerte`, Werkzeuge sehen ihn nicht).
+  - Beim Entnehmen aus der Warteschlange (`chat_consumer._entnommen`, alle drei Stellen) prüft `agent/app/plattform_hinweis.py`: Die Marke bleibt nur mit gültigem Beleg, höchstens 10 Minuten alt, jede Kennung nur einmal. Sonst wird sie entschärft, bevor das Modell den Text sieht.
+  - Nach unabhängigem Sicherheitsreview: Der Beleg gilt nur für die Gesprächssitzung, für die er ausgestellt ist. Ohne gültigen Beleg wird die Marke in der GANZEN Nachricht entschärft, auch im Telegram-Anzeigenamen. Neben einem echten Hinweis bleibt sie nur im belegten Text.
+  - Fehlt der Schlüssel (Agent noch nicht neu erstellt) oder ist der Hinweis älter als 10 Minuten, meldet der Agent das im Protokoll seines Containers. Der Text kommt weiter an, die technische Sperre wirkt unverändert.
+  - Agenten bekommen den Schlüssel mit der nächsten Neuerstellung. Das übernimmt die Aktualisierung im Leerlauf.
+- Benutzerhandbuch 37.13: Echtheit der Hinweise.
+
+### Tests
+- Agent `test_plattform_hinweis.py`: Referenzwert gleich wie im Orchestrator.
+  - Echter Hinweis behält die Marke.
+  - MC/DC: jede Bedingung allein kippt das Ergebnis (kein Schlüssel, ohne Beleg, abgelaufen, aus der Zukunft, Beleg falsch, anderer Agent, andere Sitzung), Marke in anderen Feldern (Telegram) immer entschärft.
+  - Einmalwert, verfremdete Marke, Nachricht ohne Marke unverändert, Speicher begrenzt.
+  - Alle Entnahmestellen des Chat-Verbrauchers prüfen; Schlüssel ist reiner Server-Wert.
+- Orchestrator `test_plattform_hinweis.py`: Referenzwert, Schlüssel je Agent, Plattform-Weg unterschreibt, jeder andere Weg entschärft und entfernt den Beleg, Schlüssel an jeder Stelle, an der ein Agent entsteht, Belege nur aus `einreihen`.
+- Gegenproben: ohne Entfernen 1 Fehler, ohne Einmal-Prüfung 1, ohne Altersprüfung 2, ohne Sitzung im Beleg 2, nur `text` statt ganzer Nachricht 10.
+- Agenten-Suite (1136) und 118 Orchestrator-Testdateien grün.
 
 ## [1.442.0] - 2026-11-07
 

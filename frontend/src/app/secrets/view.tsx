@@ -344,7 +344,7 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
           </div>
         ) : secrets.length === 0 ? (
           <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-12 text-center">
-            <KeyRound size={32} className="mx-auto mb-3 text-muted-foreground/40" />
+            <KeyRound size={32} className="mx-auto mb-3 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">Noch keine Schlüssel. Lege oben einen API-Schlüssel oder ein SSO-Profil an.</p>
           </div>
         ) : (
@@ -363,7 +363,7 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                         <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium", TYPE_COLORS[editForm.secret_type])}>
                           {TYPE_LABELS[editForm.secret_type]?.label ?? editForm.secret_type}
                         </span>
-                        <span className="text-xs text-muted-foreground/50">
+                        <span className="text-xs text-muted-foreground">
                           Der Wert ist verschlüsselt. Bleibt das Ersatzfeld leer, gilt der bisherige.
                         </span>
                       </div>
@@ -479,15 +479,15 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                             <p className="text-xs text-muted-foreground/60 mt-0.5">{s.description}</p>
                           )}
                           <div className="flex items-center gap-1.5 mt-2">
-                            <span className="text-xs text-muted-foreground/50 font-mono">
+                            <span className="text-xs text-muted-foreground font-mono">
                               {revealed ? s.masked_value : "••••••••"}
                             </span>
-                            <button onClick={() => toggleReveal(s.id)} className="text-muted-foreground/40 hover:text-muted-foreground transition-colors">
+                            <button onClick={() => toggleReveal(s.id)} className="text-muted-foreground hover:text-foreground transition-colors">
                               {revealed ? <EyeOff size={12} /> : <Eye size={12} />}
                             </button>
                           </div>
                           {s.assigned_agent_ids.length > 0 && (
-                            <p className="text-[11px] text-muted-foreground/40 mt-1">
+                            <p className="text-[11px] text-muted-foreground mt-1">
                               Zugewiesen an {s.assigned_agent_ids.length} Agent{s.assigned_agent_ids.length !== 1 ? "en" : ""}
                             </p>
                           )}

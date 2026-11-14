@@ -163,7 +163,7 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
               <Info className="h-4 w-4" />
               <span className="text-[13px] font-medium">Über AI Employee</span>
               {aboutVersion && (
-                <span className="ml-auto text-[11px] font-mono text-muted-foreground/50">v{aboutVersion}</span>
+                <span className="ml-auto text-[11px] font-mono text-muted-foreground">v{aboutVersion}</span>
               )}
             </button>
           </div>
@@ -252,7 +252,7 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
                 )}
               </div>
               <div className="flex items-center justify-between px-6 py-3 border-t border-foreground/[0.06] shrink-0">
-                <span className="text-[11px] text-muted-foreground/50">Made with ♥ by greeves89</span>
+                <span className="text-[11px] text-muted-foreground">Made with ♥ by greeves89</span>
                 <a href="https://github.com/greeves89/AI-Employee" target="_blank" rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-yellow-400 transition-colors">
                   <Star className="h-3 w-3" />GitHub

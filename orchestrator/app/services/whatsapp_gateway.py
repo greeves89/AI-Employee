@@ -17,6 +17,7 @@ Zwei Dinge, die Meta verlangt und die deshalb hier stehen:
 import hashlib
 import hmac
 import logging
+from urllib.parse import quote
 
 import httpx
 from sqlalchemy import select
@@ -155,10 +156,15 @@ async def agent_for_phone_number(phone_number_id: str) -> Agent | None:
         agents = (await db.execute(
             select(Agent).where(Agent.user_id.isnot(None))
         )).scalars().all()
-    for agent in agents:
-        if is_enabled(agent) and channel_config(agent).get("phone_number_id") == phone_number_id:
-            return agent
-    return None
+    treffer = [a for a in agents if is_enabled(a) and channel_config(a).get("phone_number_id") == phone_number_id]
+    if len(treffer) > 1:
+        # Nie raten: sonst landeten Nachrichten an einen Agenten bei einem fremden (core/kanaele
+        # verhindert doppelte Nummern; das hier fängt Altbestand und Wettläufe ab).
+        # Ohne die Nummer selbst (Telefonnummer-ID ist personenbezogen) — die Agenten genügen zum Finden.
+        logger.warning("[WhatsApp] Eine Nummer ist %d Agenten zugeordnet (%s) — Nachricht verworfen",
+                       len(treffer), ", ".join(a.id for a in treffer))
+        return None
+    return treffer[0] if treffer else None
 
 
 async def handle_payload(redis, payload: dict) -> int:
@@ -210,7 +216,7 @@ async def send_reply(agent: Agent, context: dict, text: str) -> bool:
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
             resp = await client.post(
-                f"{GRAPH_BASE}/{context['phone_number_id']}/messages",
+                f"{GRAPH_BASE}/{quote(str(context['phone_number_id']), safe='')}/messages",
                 headers={"Authorization": f"Bearer {token}"},
                 json={
                     "messaging_product": "whatsapp",

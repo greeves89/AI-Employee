@@ -229,7 +229,8 @@ def _aehnlich(a: frozenset[str], b: frozenset[str]) -> bool:
     return len(a & b) / min(len(a), len(b)) >= AEHNLICH_AB
 
 
-def _items(markdown: str) -> list[str]:
+def aktionspunkte(markdown: str) -> list[str]:
+    """Offene Punkte ``- [ ] …`` eines Protokolls — auch für Teams-Termine (services/teams_meetings)."""
     return [z.strip()[5:].strip() for z in (markdown or "").splitlines() if z.strip().startswith("- [ ]")][:MAX_ITEMS]
 
 
@@ -362,7 +363,7 @@ async def abschluss(room_id: str, team_id: str, raum_name: str, zusammenfassung:
                                              erledigt_at.replace(tzinfo=timezone.utc)) >= grenze)
         ]
         # Je Punkt einmal: Nummern und Wörter.
-        punkte = [(p, {int(n) for n in _ISSUE_NR.findall(p)}, _woerter(p)) for p in _items(zusammenfassung)]
+        punkte = [(p, {int(n) for n in _ISSUE_NR.findall(p)}, _woerter(p)) for p in aktionspunkte(zusammenfassung)]
         # Den Status der genannten Issues an der QUELLE messen, nicht am Kartenzustand:
         # ohne Karte kennt das Board eine geschlossene Nummer gar nicht (#1106).
         # Gefragt wird nur, was das Ergebnis noch ändern KANN: einen Punkt, den die

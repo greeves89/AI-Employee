@@ -35,6 +35,11 @@ def _sichtbar(text: str) -> str:
     return "".join(z for z in t if z in "\n\t" or unicodedata.category(z)[0] != "C")
 
 
+def hat_marke(text: str) -> bool:
+    """Steht die Sentinel-Marke im Text (auch in voller Breite, mit unsichtbaren Zeichen)?"""
+    return bool(_MARKE_MUSTER.search(_sichtbar(text)))
+
+
 def ohne_marke(wert):
     """Die Sentinel-Marke in fremdem Text entschärfen — für Nachrichten anderer Agenten,
     die nie vom Sentinel stammen. Gleiche Regel wie im Orchestrator

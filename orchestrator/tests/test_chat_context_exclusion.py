@@ -155,7 +155,7 @@ class WiringTests(unittest.TestCase):
 
         src = (Path(__file__).resolve().parents[1] / "app/api/agents.py").read_text()
         block = src.split("async def set_message_context_exclusion")[1].split("\n@router")[0]
-        self.assertIn("_check_owner", block)
+        self.assertRegex(block, r"_check_(owner|nutzen)\(")  # Nutzen: Freigabe (1.457)
 
     def test_history_endpoint_distinguishes_agent_from_human(self):
         """Der Mensch sieht alles, der Agent selbst nur, was auch ans Modell

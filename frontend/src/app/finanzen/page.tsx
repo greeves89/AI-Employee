@@ -152,7 +152,7 @@ function FinanzenSeite() {
   return (
     <div>
       <Header
-        title="Finanzen"
+        title="Kosten"
         subtitle="Was deine Agenten kosten — je Monat, Projekt und Agent"
         actions={
           <div className="flex items-center gap-2">

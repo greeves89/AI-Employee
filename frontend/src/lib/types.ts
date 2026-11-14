@@ -47,6 +47,8 @@ export interface AIModel {
   provider_type: AIAccountProviderType; // which API the model speaks
   api_endpoint: string;               // the endpoint/surface for this model
   enabled?: boolean;                  // Freigabe für Agenten (fehlt = freigegeben)
+  preis_eingabe_usd_1m?: number | null; // USD je 1 Mio. Eingabe-Token (fehlt = unbekannt)
+  preis_ausgabe_usd_1m?: number | null; // USD je 1 Mio. Ausgabe-Token
 }
 
 export interface AIAccount {
@@ -132,6 +134,8 @@ export interface Agent {
   last_active_at: string | null;
   /** Vom Menschen angehalten — „Gestoppt“ statt „Schläft“ (Leerlauf-Stopp). */
   stopped_by_user: boolean;
+  /** Dem Aufrufer nur zum Nutzen freigegeben: nur Chat und Sprache, keine Einstellungen. */
+  nur_nutzen?: boolean;
   current_task: string | null;
   active_sessions?: string[];  // all "chat:<session>" the agent is processing now
   cpu_percent: number | null;
@@ -829,4 +833,21 @@ export interface ActivityTimelineResponse {
   start: string;
   end: string;
   agents: ActivityAgentTimeline[];
+}
+
+/** Eigene MCP-Endpunkte per OAuth über den Firmen-IdP (#1195) — GET/PUT /settings/mcp-idp-oauth. */
+export interface McpIdpOAuthConfig {
+  enabled: boolean;
+  issuer: string;
+  audience: string;
+  jwks_uri: string;
+  required_scope: string;
+  /** Erlaubte aufrufende Anwendungen (Client-IDs), mit Komma getrennt. */
+  allowed_clients: string;
+  /** Aus der Microsoft-Verzeichnis-ID abgeleiteter Aussteller, leer wenn keiner ableitbar. */
+  derived_issuer: string;
+  /** Eingeschaltet UND vollständig eingerichtet. */
+  active: boolean;
+  brain_url_example: string;
+  prm_url_example: string;
 }

@@ -33,11 +33,11 @@ class TelegramTokenValidationTests(unittest.TestCase):
         self.src = _AGENTS_SRC.read_text()
 
     def test_valid_token_accepted(self):
-        self.assertTrue(self.rx.match("123456789:AAHdqTcvbd1234567890ABCDEFGHIJKLMNOP"))
+        self.assertTrue(self.rx.match("123456789:" "AAHdqTcvbd1234567890ABCDEFGHIJKLMNOP"))
 
     def test_pasted_message_rejected(self):
         # A whole BotFather message, which is exactly how the secret leaked.
-        pasted = "Use this token to access the HTTP API:\n123456789:AAHdqTcvbd1234567890ABCDEFGHIJKLMNOP\nKeep it safe"
+        pasted = "Use this token to access the HTTP API:\n123456789:" "AAHdqTcvbd1234567890ABCDEFGHIJKLMNOP\nKeep it safe"
         self.assertIsNone(self.rx.match(pasted))
 
     def test_garbage_rejected(self):

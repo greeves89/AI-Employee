@@ -568,7 +568,7 @@ function AuditDetailModal({ log, agentName, onClose }: { log: AuditLog; agentNam
               {EVENT_INFO[log.event_type]?.desc ?? "Protokollierter System-/Agenten-Vorgang."}
             </p>
           </div>
-          <button onClick={onClose} className="shrink-0 text-muted-foreground/50 hover:text-foreground transition-colors"><X className="h-4 w-4" /></button>
+          <button onClick={onClose} className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"><X className="h-4 w-4" /></button>
         </div>
 
         <dl className="space-y-2 border-t border-foreground/[0.06] pt-3 text-[13px]">
@@ -585,7 +585,7 @@ function AuditDetailModal({ log, agentName, onClose }: { log: AuditLog; agentNam
           <div className="mt-4 rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-3">
             <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">Erkannte sensible Daten</p>
             {Object.keys(classes).length === 0 ? (
-              <p className="text-[12px] text-muted-foreground/50">Keine Klassen aufgezeichnet.</p>
+              <p className="text-[12px] text-muted-foreground">Keine Klassen aufgezeichnet.</p>
             ) : (
               <div className="space-y-2.5">
                 {Object.entries(classes).map(([c, n]) => (
@@ -611,7 +611,7 @@ function AuditDetailModal({ log, agentName, onClose }: { log: AuditLog; agentNam
                 ))}
               </div>
             )}
-            <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground/50">
+            <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
               Angezeigt wird nur ein <b>maskierter Ausschnitt</b> (z. B. <code className="font-mono">df***as</code>) — genug, um den Treffer zu erkennen. Der vollständige Wert (Key/IBAN etc.) wird bewusst <b>nie</b> gespeichert.
             </p>
           </div>
@@ -628,7 +628,7 @@ function AuditDetailModal({ log, agentName, onClose }: { log: AuditLog; agentNam
                 ))}
               </dl>
               <details className="mt-2.5">
-                <summary className="cursor-pointer text-[11px] text-muted-foreground/40 hover:text-muted-foreground/70">Rohdaten (JSON)</summary>
+                <summary className="cursor-pointer text-[11px] text-muted-foreground hover:text-muted-foreground/70">Rohdaten (JSON)</summary>
                 <pre className="mt-1.5 max-h-48 overflow-auto whitespace-pre-wrap break-words text-[11px] text-muted-foreground/60">{JSON.stringify(meta, null, 2)}</pre>
               </details>
             </div>
@@ -642,7 +642,7 @@ function AuditDetailModal({ log, agentName, onClose }: { log: AuditLog; agentNam
 function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-baseline gap-3">
-      <dt className="w-28 shrink-0 text-[11px] uppercase tracking-wide text-muted-foreground/50">{label}</dt>
+      <dt className="w-28 shrink-0 text-[11px] uppercase tracking-wide text-muted-foreground">{label}</dt>
       <dd className={cn("flex-1 break-words", mono && "font-mono text-[12px]")}>{value}</dd>
     </div>
   );

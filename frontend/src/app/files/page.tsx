@@ -4,7 +4,7 @@ import { useState, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   FolderOpen, File, Folder, ChevronRight, Upload,
-  Loader2, Bot, Download, RefreshCw, Trash2,
+  Loader2, Bot, Download, RefreshCw, Trash2, Play,
   Search, ArrowUpDown, Clock, Hash, X,
 } from "lucide-react";
 import { useAgents } from "@/hooks/use-agents";
@@ -35,7 +35,23 @@ type SortMode = "name" | "date" | "size";
 export default function FilesPage() {
   const toast = useToast();
   const confirm = useConfirm();
-  const { agents } = useAgents();
+  const { agents, refresh: ladeAgenten } = useAgents();
+  const [startet, setStartet] = useState<string | null>(null);
+  // Dateien liest die Plattform aus dem laufenden Agenten. Gestoppte, die man
+  // verwaltet, lassen sich hier direkt starten (Entscheidung 14.11.2026);
+  // „nur nutzen“ darf nicht starten — die stehen nicht in der Liste.
+  const startbare = agents.filter((a) => a.state === "stopped" && !a.nur_nutzen);
+  const agentStarten = async (id: string) => {
+    setStartet(id);
+    try {
+      await api.startAgent(id);
+      await ladeAgenten();
+    } catch (e) {
+      toast.error("Agent konnte nicht gestartet werden", e instanceof Error ? e.message : undefined);
+    } finally {
+      setStartet(null);
+    }
+  };
   // Mitglieder sehen keine Steuerdateien der Agenten (#907).
   const { simpleMode } = useSimpleMode();
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
@@ -230,7 +246,7 @@ export default function FilesPage() {
           >
             {isDir ? (
               <ChevronRight className={cn(
-                "h-3 w-3 text-muted-foreground/50 transition-transform duration-150 shrink-0",
+                "h-3 w-3 text-muted-foreground transition-transform duration-150 shrink-0",
                 isExpanded && "rotate-90"
               )} />
             ) : (
@@ -250,19 +266,19 @@ export default function FilesPage() {
               <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/40 shrink-0" />
             )}
             {!isDir && entry.modified > 0 && (
-              <span className="text-[10px] text-muted-foreground/30 tabular-nums shrink-0" title={formatModifiedFull(entry.modified)}>
+              <span className="text-[10px] text-muted-foreground tabular-nums shrink-0" title={formatModifiedFull(entry.modified)}>
                 {formatModified(entry.modified)}
               </span>
             )}
             {!isDir && (
-              <span className="text-[10px] text-muted-foreground/40 tabular-nums shrink-0 w-12 text-right">
+              <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 w-12 text-right">
                 {formatFileSize(entry.size)}
               </span>
             )}
             {!isDir && (
               <button
                 onClick={(e) => { e.stopPropagation(); handleDownload(agentId, entry.path); }}
-                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-foreground can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-all shrink-0"
+                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-foreground can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-all shrink-0"
                 title="Herunterladen"
               >
                 <Download className="h-2.5 w-2.5" />
@@ -271,7 +287,7 @@ export default function FilesPage() {
             {isDir && (
               <button
                 onClick={(e) => { e.stopPropagation(); window.open(api.getFolderDownloadUrl(agentId, entry.path), "_blank"); }}
-                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-foreground can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-all shrink-0"
+                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-foreground can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-all shrink-0"
                 title="Ordner als ZIP herunterladen (ohne node_modules, .git …)"
               >
                 <Download className="h-2.5 w-2.5" />
@@ -279,7 +295,7 @@ export default function FilesPage() {
             )}
             <button
               onClick={(e) => { e.stopPropagation(); handleDelete(agentId, entry); }}
-              className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-red-400 can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-all shrink-0"
+              className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-red-400 can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-all shrink-0"
               title="Löschen"
             >
               <Trash2 className="h-2.5 w-2.5" />
@@ -316,8 +332,27 @@ export default function FilesPage() {
             </div>
             <h3 className="text-lg font-semibold mb-1.5">Keine aktiven Agenten</h3>
             <p className="text-sm text-muted-foreground">
-              Starte einen Agenten, um seine Dateien zu durchsuchen.
+              Die Dateien liegen im Arbeitsbereich eines laufenden Agenten.
+              {startbare.length > 0 ? " Starte einen, um sie zu sehen." : ""}
             </p>
+            {startbare.length > 0 && (
+              <ul className="mx-auto mt-5 flex max-w-sm flex-col gap-2">
+                {startbare.map((a) => (
+                  <li key={a.id} className="flex items-center justify-between gap-3 rounded-lg border border-foreground/[0.08] bg-card px-3 py-2 text-left">
+                    <span className="truncate text-sm font-medium">{a.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => agentStarten(a.id)}
+                      disabled={startet !== null}
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+                    >
+                      {startet === a.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                      Agent starten
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         ) : (
           <div className="flex gap-4 h-[calc(100vh-240px)]">
@@ -332,12 +367,12 @@ export default function FilesPage() {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Dateien suchen …"
-                    className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] pl-8 pr-8 py-1.5 text-[12px] placeholder:text-muted-foreground/30 focus:outline-none focus:border-primary/30 transition-colors"
+                    className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] pl-8 pr-8 py-1.5 text-[12px] placeholder:text-muted-foreground focus:outline-none focus:border-primary/30 transition-colors"
                   />
                   {searchQuery && (
                     <button
                       onClick={() => setSearchQuery("")}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground/40 hover:text-foreground"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
@@ -352,7 +387,7 @@ export default function FilesPage() {
                         "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors",
                         sortMode === mode
                           ? "bg-primary/10 text-primary"
-                          : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-foreground/[0.04]"
+                          : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
                       )}
                     >
                       {mode === "name" && <><Hash className="h-2.5 w-2.5" /> Name</>}
@@ -360,7 +395,7 @@ export default function FilesPage() {
                       {mode === "size" && <><ArrowUpDown className="h-2.5 w-2.5" /> Größe</>}
                     </button>
                   ))}
-                  <span className="text-[10px] text-muted-foreground/30 ml-auto">
+                  <span className="text-[10px] text-muted-foreground ml-auto">
                     {runningAgents.length} Agent{runningAgents.length !== 1 && "s"}
                   </span>
                 </div>
@@ -370,13 +405,13 @@ export default function FilesPage() {
               <div className="flex-1 overflow-y-auto py-1 font-mono">
                 {searchQuery.trim() ? (
                   allFiles.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-32 text-muted-foreground/30">
+                    <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
                       <Search className="h-5 w-5 mb-2" />
                       <span className="text-[11px]">Keine Treffer</span>
                     </div>
                   ) : (
                     <div className="py-1">
-                      <div className="px-3 py-1 text-[10px] text-muted-foreground/40">
+                      <div className="px-3 py-1 text-[10px] text-muted-foreground">
                         {allFiles.length} Treffer
                       </div>
                       {allFiles.map(({ agentId, agentName, entry }) => {
@@ -393,14 +428,14 @@ export default function FilesPage() {
                             <File className={cn("h-3.5 w-3.5 shrink-0", getFileColor(entry.name))} />
                             <div className="flex flex-col flex-1 min-w-0">
                               <span className="text-[12px] truncate">{entry.name}</span>
-                              <span className="text-[10px] text-muted-foreground/30 truncate">{agentName} &middot; {entry.path}</span>
+                              <span className="text-[10px] text-muted-foreground truncate">{agentName} &middot; {entry.path}</span>
                             </div>
                             {entry.modified > 0 && (
-                              <span className="text-[10px] text-muted-foreground/30 tabular-nums shrink-0" title={formatModifiedFull(entry.modified)}>
+                              <span className="text-[10px] text-muted-foreground tabular-nums shrink-0" title={formatModifiedFull(entry.modified)}>
                                 {formatModified(entry.modified)}
                               </span>
                             )}
-                            <span className="text-[10px] text-muted-foreground/40 tabular-nums shrink-0 w-12 text-right">
+                            <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 w-12 text-right">
                               {formatFileSize(entry.size)}
                             </span>
                           </div>
@@ -421,7 +456,7 @@ export default function FilesPage() {
                           onClick={() => toggleAgent(agent.id)}
                         >
                           <ChevronRight className={cn(
-                            "h-3 w-3 text-muted-foreground/50 transition-transform duration-150 shrink-0",
+                            "h-3 w-3 text-muted-foreground transition-transform duration-150 shrink-0",
                             isExpanded && "rotate-90"
                           )} />
                           <div className="relative shrink-0">
@@ -448,7 +483,7 @@ export default function FilesPage() {
                             </button>
                             <button
                               onClick={(e) => { e.stopPropagation(); refreshAgent(agent.id); }}
-                              className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground/50 hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
+                              className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
                               title="Aktualisieren"
                             >
                               <RefreshCw className="h-3 w-3" />
@@ -460,7 +495,7 @@ export default function FilesPage() {
                         </div>
                         {isExpanded && treeData[wsKey] && renderTree(agent.id, "/workspace", 1)}
                         {isExpanded && treeData[wsKey]?.length === 0 && (
-                          <div className="py-2 pl-12 text-[11px] text-muted-foreground/40 font-sans">
+                          <div className="py-2 pl-12 text-[11px] text-muted-foreground font-sans">
                             Leerer Arbeitsordner
                           </div>
                         )}

@@ -104,7 +104,7 @@ export function ClaudeLoginDialog({ open, authState, onClose, onConnected }: Cla
           onKeyDown={(e) => e.key === "Enter" && submit()}
           placeholder="Code hier einfügen..."
           autoFocus
-          className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-3 text-sm font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/25"
+          className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-3 text-sm font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground"
         />
 
         {error && (

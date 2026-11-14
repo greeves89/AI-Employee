@@ -51,6 +51,9 @@ _PLATZHALTER_DOMAIN = b"egress-platzhalter:v1:"
 CA_ADRESSE = "http://aie-egress.internal/ca.pem"
 
 #: Interne Ziele gehen nie ueber den Proxy.
+#: Präfix im Anmeldenamen am Proxy, wenn die Zielliste an ist (egress/egress_logik.py, gleich).
+ZIELLISTE_KENNUNG = "zl."
+
 NO_PROXY = (
     "localhost", "127.0.0.1", "::1",
     "ai-employee-orchestrator", "orchestrator", "ai-employee-redis", "redis",
@@ -478,6 +481,56 @@ def interne_hosts(mcp_server_json: str | None) -> list[str]:
     return gefunden
 
 
+async def _zielliste_umgebung(agent_id: str) -> dict[str, str]:
+    """Zielliste am Ausgang (core/zielliste): Marke ``AIE_ZIELLISTE=1`` für den Netzwächter
+    (sperrt alle Ports außer zum Proxy) — leer, wenn sie aus ist."""
+    from app.core import zielliste
+    from app.db.session import async_session_factory
+    from app.models.agent import Agent
+
+    # Kein Abfangen: Lässt sich die Einstellung nicht lesen, startet der Agent nicht — sonst
+    # liefe er still ohne die Sperre, die sein Besitzer eingeschaltet hat (fail closed).
+    async with async_session_factory() as db:
+        agent = await db.get(Agent, agent_id)
+    return zielliste.umgebung(agent.config if agent else None)
+
+
+def git_ca_umgebung() -> dict[str, str]:
+    """Zertifizierungsstelle der Firma für freigegebene Git-Server (#1194) — auch ohne Proxy.
+
+    Das Startskript (agent/entrypoint.sh) trägt sie NUR für diese Server in die
+    git-Einstellungen ein (``http.<url>.sslCAInfo``), nicht in den Systemspeicher —
+    sonst gälte sie für jeden Verkehr des Agenten, auch zu den Modellanbietern. Nur
+    CA-Zertifikate (geprüft in ``projekt_git.ca_pruefen``). Ohne freigegebenen Server
+    nichts."""
+    from app.core.projekt_git import git_server_freigaben
+
+    pem = str(getattr(settings, "git_ca_zertifikate", "") or "").strip()
+    server = sorted(git_server_freigaben())
+    if not pem.startswith("-----BEGIN CERTIFICATE-----") or not server:
+        return {}
+    return {"AIE_GIT_CA": pem, "AIE_GIT_CA_HOSTS": ",".join(server)}
+
+
+def git_server_fuer_proxy() -> dict:
+    """Was der Proxy für freigegebene Git-Server wissen muss: die Stelle der Firma (er
+    prüft damit NUR die Gegenseite dieser Server, wenn er für einen Key TLS aufbricht)
+    und die Server selbst (im Firmennetz sperrt er sie sonst als intern). Nur Einträge
+    ohne Port: Keys setzt der Proxy ausschließlich auf Port 443 ein; ``name:port`` gilt
+    nur für die Plattform. Leer, wenn nichts eingestellt ist."""
+    from app.core.projekt_git import git_server_freigaben
+
+    antwort: dict = {}
+    server = sorted(s for s in git_server_freigaben() if ":" not in s)
+    if not server:
+        return antwort
+    antwort["interne_ziele"] = server
+    pem = str(getattr(settings, "git_ca_zertifikate", "") or "").strip()
+    if pem.startswith("-----BEGIN CERTIFICATE-----"):
+        antwort["git_ca"] = pem
+    return antwort
+
+
 async def agent_umgebung(agent_id: str, mcp_server_json: str | None = None) -> dict[str, str]:
     """Umgebung, mit der ein Agent ueber den Proxy geht. Leer, wenn der Proxy aus ist.
 
@@ -486,14 +539,25 @@ async def agent_umgebung(agent_id: str, mcp_server_json: str | None = None) -> d
     die eigenen Apps des Agenten (http, Namen ohne Punkt) bleiben direkt erreichbar.
     ``mcp_server_json``: ``CUSTOM_MCP_SERVERS`` des Agenten (interne bleiben direkt).
     """
+    git = git_ca_umgebung()
     if not aktiv():
-        return {}
+        return git
     from app.dependencies import make_agent_token
     ca = await ca_zertifikat()
     teile = urlsplit(settings.egress_proxy_url)
-    proxy = f"{teile.scheme}://{agent_id}:{make_agent_token(agent_id)}@{teile.netloc}"
+    zielliste = await _zielliste_umgebung(agent_id)
+    # Mit Zielliste meldet sich der Agent mit Kennung am Proxy an (``zl.<id>``). Der Proxy
+    # verlässt sich dann nicht auf seinen Zwischenspeicher: Er fragt frisch nach und sperrt,
+    # solange die Liste nicht bestätigt ist (sonst liefe ein frisch gestarteter Agent bis zu
+    # einer Minute ohne). Klartext-HTTP geht dann ebenfalls über den Proxy.
+    name = f"{ZIELLISTE_KENNUNG}{agent_id}" if zielliste else agent_id
+    proxy = f"{teile.scheme}://{name}:{make_agent_token(agent_id)}@{teile.netloc}"
     no_proxy = ",".join(NO_PROXY + tuple(interne_hosts(mcp_server_json)))
+    if zielliste:
+        zielliste = {**zielliste, "HTTP_PROXY": proxy, "http_proxy": proxy}
     return {
+        **git,
+        **zielliste,
         "HTTPS_PROXY": proxy, "https_proxy": proxy,
         "NO_PROXY": no_proxy, "no_proxy": no_proxy,
         # Node (fetch/undici) folgt der Umgebung nur damit.

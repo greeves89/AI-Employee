@@ -66,6 +66,29 @@ async def _has_imminent_schedule(db: AsyncSession, agent_id: str, now: datetime,
         return True
 
 
+async def _has_open_task(db: AsyncSession, agent_id: str) -> bool:
+    """Hat der Agent laut Datenbank eine nicht beendete Aufgabe?
+
+    Der Redis-Status allein reicht nicht: Meldet ein delegierter Agent sein
+    Ergebnis zurueck, steht der Status des Delegierenden kurz nicht auf
+    "working", obwohl seine Aufgabe weiterlaeuft. Der Sweep stoppte ihn dann
+    mitten im Lauf; die Aufgabe endete als "Agent-Container laeuft nicht mehr".
+    Die Aufgabentabelle ist die Quelle der Wahrheit.
+    """
+    try:
+        from app.models.task import TERMINAL_TASK_STATUSES, Task
+        hit = await db.scalar(
+            select(Task.id).where(
+                Task.agent_id == agent_id,
+                Task.status.notin_(TERMINAL_TASK_STATUSES),
+            ).limit(1)
+        )
+        return hit is not None
+    except Exception:  # noqa: BLE001 — im Zweifel lieber wach lassen
+        logger.debug("[UserLifecycle] Aufgaben-Pruefung fehlgeschlagen", exc_info=True)
+        return True
+
+
 # Letzte Nachricht, die ueber einen Kanal (Telegram, Teams, Slack) an einen
 # Agenten ging. Der Sweep misst Aktivitaet sonst nur an ``user.last_active_at``
 # — und das setzt ausschliesslich die Web-Oberflaeche. Wer nur per Telegram
@@ -338,6 +361,8 @@ class UserLifecycleService:
                 status = await self.redis.get_agent_status(agent.id)
                 if queue_depth > 0 or status.get("state") == "working":
                     continue
+                if await _has_open_task(db, agent.id):
+                    continue
 
                 # Steht in Kuerze ein Zeitplan oder Kalender-Block an, lohnt das
                 # Schlafenlegen nicht — der Scheduler muesste den Agenten sofort
@@ -379,6 +404,8 @@ class UserLifecycleService:
             status = await self.redis.get_agent_status(agent.id)
             if queue_depth > 0 or status.get("state") == "working":
                 continue
+            if await _has_open_task(db, agent.id):
+                continue
             try:
                 if agent.container_id:
                     self.docker.stop_container(agent.container_id)
@@ -398,6 +425,8 @@ class UserLifecycleService:
 async def wake_user_agents(db: AsyncSession, docker_service, user_id: str) -> list[str]:
     """Start all stopped containers for a user's agents. Returns list of agent IDs woken.
 
+    Vom Nutzer angehaltene Agenten bleiben aus (``agent_duty.vom_nutzer_angehalten``).
+
     Non-blocking: starts containers but does NOT wait for them to be healthy.
     Callers that need the agent ready should use wake_agent() with wait=True.
     """
@@ -408,7 +437,13 @@ async def wake_user_agents(db: AsyncSession, docker_service, user_id: str) -> li
     )
     agents = list(result.scalars().all())
     woken: list[str] = []
+    from app.core.agent_duty import vom_nutzer_angehalten
     for agent in agents:
+        # Anmelden ist keine Ansage, einen angehaltenen Agenten wieder zu starten.
+        # Genau so liefen am 13.11.2026 sieben angehaltene Agenten wieder an
+        # (Anmeldung 20:42) — und am 14.11. zwei Demo-Agenten mitten in der Probe.
+        if vom_nutzer_angehalten(agent):
+            continue
         try:
             if agent.container_id:
                 docker_service.start_container(agent.container_id)
@@ -422,14 +457,26 @@ async def wake_user_agents(db: AsyncSession, docker_service, user_id: str) -> li
     return woken
 
 
-async def wake_agent(db: AsyncSession, docker_service, agent_id: str, wait: bool = False, timeout: int = 30) -> bool:
+async def wake_agent(db: AsyncSession, docker_service, agent_id: str, wait: bool = False, timeout: int = 30,
+                     *, durch_mensch: bool = False) -> bool:
     """Ensure a single agent is running. Returns True if the agent is ready.
 
     If the stored container_id no longer exists (e.g. removed by docker rm),
     falls back to a full agent restart via AgentManager to recreate the container.
+
+    Hat der NUTZER den Agenten angehalten (``agent_duty.vom_nutzer_angehalten``),
+    weckt ihn nur ein Mensch selbst (``durch_mensch=True``: der Besitzer schreibt im
+    Chat oder per Telegram). Aufgaben, Delegationen, Projekt-Takt, Kanaele und
+    Waechter wecken ihn nicht — ihre Nachricht bleibt in der Warteschlange, bis er
+    wieder gestartet wird. Bisher pruefte das nur der Scheduler und das
+    Kanal-Gateway; am 13.11.2026 liefen so angehaltene Agenten wieder.
     """
     agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
     if not agent:
+        return False
+    from app.core.agent_duty import vom_nutzer_angehalten
+    if not durch_mensch and vom_nutzer_angehalten(agent):
+        logger.info(f"[UserLifecycle] {scrub_log(agent_id)} vom Nutzer angehalten — nicht automatisch geweckt")
         return False
 
     if agent.state in (AgentState.RUNNING, AgentState.WORKING, AgentState.IDLE):

@@ -85,10 +85,10 @@ function PolicyRow({
         </div>
         <code className="mt-1 block truncate text-[11px] text-muted-foreground/60">{policy.pattern}</code>
         {policy.description && (
-          <p className="mt-1 truncate text-[11px] text-muted-foreground/50">{policy.description}</p>
+          <p className="mt-1 truncate text-[11px] text-muted-foreground">{policy.description}</p>
         )}
       </div>
-      <span className="shrink-0 text-[10px] text-muted-foreground/40">#{policy.sort_order}</span>
+      <span className="shrink-0 text-[10px] text-muted-foreground">#{policy.sort_order}</span>
       {!readOnly && (
         <>
           <button
@@ -106,7 +106,7 @@ function PolicyRow({
           </button>
           <button
             onClick={() => onDelete(policy.id)}
-            className="rounded-lg p-2 text-muted-foreground/50 transition-all hover:bg-red-500/10 hover:text-red-400"
+            className="rounded-lg p-2 text-muted-foreground transition-all hover:bg-red-500/10 hover:text-red-400"
             title="Regel löschen"
           >
             <Trash2 className="h-4 w-4" />
@@ -184,7 +184,7 @@ export function CommandPoliciesTab({ agentId }: Props) {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-muted-foreground/50">
+      <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
         <Loader2 className="mb-3 h-6 w-6 animate-spin" />
         <span className="text-sm">Befehlsregeln werden geladen …</span>
       </div>
@@ -299,7 +299,7 @@ export function CommandPoliciesTab({ agentId }: Props) {
           <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[10px] text-muted-foreground">{ownPolicies.length}</span>
         </div>
         {ownPolicies.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-foreground/[0.08] bg-card/30 p-8 text-center text-sm text-muted-foreground/50">
+          <div className="rounded-xl border border-dashed border-foreground/[0.08] bg-card/30 p-8 text-center text-sm text-muted-foreground">
             Keine Befehlsregeln eingerichtet.
           </div>
         ) : (

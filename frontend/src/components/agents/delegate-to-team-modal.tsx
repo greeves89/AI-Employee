@@ -162,7 +162,7 @@ export function DelegateToTeamModal({
                     {/* Priority */}
                     <div>
                       <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                        Prioritaet <span className="text-muted-foreground/40">(optional)</span>
+                        Prioritaet <span className="text-muted-foreground">(optional)</span>
                       </label>
                       <select
                         value={priority}
@@ -178,7 +178,7 @@ export function DelegateToTeamModal({
                     {/* Attachments */}
                     <div>
                       <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                        Dateien <span className="text-muted-foreground/40">(optional — Kontext/Artefakte für den Agenten)</span>
+                        Dateien <span className="text-muted-foreground">(optional — Kontext/Artefakte für den Agenten)</span>
                       </label>
                       <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-foreground/[0.15] bg-background/50 px-4 py-2.5 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground transition-all">
                         <Paperclip className="h-4 w-4" />
@@ -199,7 +199,7 @@ export function DelegateToTeamModal({
                             <li key={i} className="flex items-center gap-2 rounded-md bg-foreground/[0.04] px-3 py-1.5 text-xs">
                               <FileText className="h-3.5 w-3.5 shrink-0 text-sky-400" />
                               <span className="min-w-0 flex-1 truncate">{f.name}</span>
-                              <span className="text-muted-foreground/50">{(f.size / 1024).toFixed(0)} KB</span>
+                              <span className="text-muted-foreground">{(f.size / 1024).toFixed(0)} KB</span>
                               <button
                                 type="button"
                                 onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}

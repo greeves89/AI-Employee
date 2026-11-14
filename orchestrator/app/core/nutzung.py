@@ -36,7 +36,7 @@ MAX_BEREICHE_JE_TAG = 60
 #: Erste Pfadteile der Oberfläche (``frontend/src/app/*``). Ein Test hält die
 #: Liste mit den Seitenordnern gleich; ``login``/``register`` zählen nicht.
 BEREICHE = frozenset({
-    "activity", "admin", "agents", "ai-accounts", "analytics", "approvals", "apps", "audit",
+    "activity", "admin", "agents", "ai-accounts", "analytics", "approvals", "apps", "audit", "besprechungen",
     "chat", "dashboard", "evals", "files", "finanzen", "health", "help", "heute",
     "integrations", "kiosk", "knowledge", "learning", "meeting-rooms", "onboarding",
     "projekte", "schedules", "second-brains", "secrets", "settings", "skills", "tasks",

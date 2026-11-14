@@ -63,7 +63,7 @@ _APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #: **Wer eine Migration ergaenzt, die eine Tabelle anlegt, traegt sie hier
 #: ein** -- sonst faellt dieser Test mit einer irrefuehrenden Meldung um.
 _TABELLEN_NACH_DER_MARKE = ("app_favorites", "projekt_karten", "projekt_nachrichten", "erinnerungen",
-                            "bridge_regeln", "bereich_aufrufe", "sekretariat_protokoll")
+                            "bridge_regeln", "bereich_aufrufe", "sekretariat_protokoll", "graph_abos")
 
 #: Spalten, die eine Migration NACH ``_REVISION_DAVOR`` an einer schon
 #: BESTEHENDEN Tabelle erst anlegt (Paare aus Tabelle, Spalte).
@@ -82,7 +82,19 @@ _TABELLEN_NACH_DER_MARKE = ("app_favorites", "projekt_karten", "projekt_nachrich
 #: ``DROP COLUMN`` nimmt seine Indizes mit, das ``CREATE INDEX`` der Migration
 #: laeuft danach wirklich.)
 _SPALTEN_NACH_DER_MARKE = (
+    # Chats je Nutzer (m1n2o3p4q5r6)
+    ("chat_sessions", "user_id"), ("notifications", "empfaenger_id"),
+    # Freigabe nur zum Nutzen (n2o3p4q5r6s7)
+    ("agent_access", "rolle"),
+    # GitLab als Anbieter der Projekt-Repos (m2gitlab1194)
+    ("teams", "repo_anbieter"),
+    # Teams-Besprechungen (l0m1n2o3p4q5)
+    ("meetings", "quelle"), ("meetings", "agent_id"), ("meetings", "teams_event_id"),
+    ("meetings", "beginn"), ("meetings", "ende"), ("meetings", "status"),
+    ("meetings", "gaeste_extern"), ("meetings", "hinweis"), ("meetings", "protokoll"),
     ("schedules", "chat_session_id"),
+    # MCP per OAuth über den Firmen-IdP (o3p4q5r6s7t8, #1195)
+    ("users", "idp_object_id"),
     ("agent_secrets", "owner_id"),
     ("agent_secrets", "erlaubte_hosts"),
     ("agent_templates", "build_tools"),
@@ -111,6 +123,7 @@ _SPALTEN_NACH_DER_MARKE = (
     ("teams", "rueckkanal"),
     ("teams", "repo_oeffentlich"),
     ("teams", "blinder_pruefer"),
+    ("oauth_integrations", "agent_id"),
     ("kosten_historie", "team_id"),
     ("teams", "art"),
     ("meeting_rooms", "team_id"),

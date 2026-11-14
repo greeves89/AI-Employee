@@ -34,7 +34,8 @@ plain HTTP; TLS terminates at Cloudflare Tunnel, at an existing reverse proxy, o
 
 Microsoft Entra ID (SSO and Microsoft 365 for agents): register both redirect URIs,
 `https://<host>/api/v1/auth/sso/microsoft/callback` and
-`https://<host>/api/v1/integrations/microsoft/callback`.
+`https://<host>/api/v1/integrations/microsoft/callback`. Agents with their own Microsoft 365 account: see
+`docs/AGENTEN_KONTO_EINRICHTUNG.md` (checklist for IT, in German).
 
 ## Prerequisites
 
@@ -91,9 +92,9 @@ Edit `.env` with your settings:
 
 ```env
 # Required: authentication (choose one)
-CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-YOUR-TOKEN
+CLAUDE_CODE_OAUTH_TOKEN=sk-ant-...
 # OR
-ANTHROPIC_API_KEY=sk-ant-api-YOUR-KEY
+ANTHROPIC_API_KEY=sk-ant-...
 
 # Required: security (generate strong values!)
 API_SECRET_KEY=$(openssl rand -hex 32)

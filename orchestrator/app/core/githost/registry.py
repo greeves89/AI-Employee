@@ -1,6 +1,7 @@
 """Resolve a GitHostProvider by host type.
 
-"github" (#532 phase 1) and "forgejo"/"gitea" (phase 3, ``forgejo.py``). An
+"github" (#532 phase 1), "forgejo"/"gitea" (phase 3, ``forgejo.py``) and
+"gitlab" (#1194, ``gitlab.py``; without ``base_url`` it is gitlab.com). An
 unknown/unset host_type falls back to GitHub — this preserves the behaviour
 every existing caller had when GitHub was the only option. Forgejo/Gitea need a
 ``base_url`` (their own server); without one there is nothing to talk to, so
@@ -14,6 +15,7 @@ same REST API under `<base_url>/api/v3`.
 from app.core.githost.base import GitHostProvider
 from app.core.githost.forgejo import ForgejoHostProvider
 from app.core.githost.github import GitHubHostProvider
+from app.core.githost.gitlab import GitLabHostProvider
 
 #: Host-Typen, die die Gitea-API sprechen.
 FORGEJO_TYPEN = ("forgejo", "gitea")
@@ -25,6 +27,8 @@ _PROVIDERS: dict[str, GitHostProvider] = {
 
 
 def get_git_host_provider(host_type: str = "github", base_url: str | None = None) -> GitHostProvider:
+    if host_type == "gitlab":
+        return GitLabHostProvider(base_url or "https://gitlab.com")
     if not base_url:
         return _PROVIDERS.get(host_type, _DEFAULT_GITHUB)
     if host_type in FORGEJO_TYPEN:

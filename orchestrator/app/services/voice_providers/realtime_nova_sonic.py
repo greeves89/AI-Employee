@@ -71,11 +71,27 @@ def _sprechbar(s: Any) -> str:
     # Absatz = Sprechpause, einfacher Umbruch = Leerzeichen.
     # Steht davor schon ein Satzzeichen (haeufig ein Doppelpunkt vor einer
     # Aufzaehlung), waere ein zusaetzlicher Punkt zu hoeren: „Ergebnisse:. Eins".
-    t = re.sub(r"(?<=[.!?:;])[ \t]*\n[ \t]*\n\s*", " ", t)
-    t = re.sub(r"[ \t]*\n[ \t]*\n\s*", ". ", t)
-    t = re.sub(r"[ \t]*[\n\r\t][ \t]*", " ", t)
+    # Zeilenweise statt per Regex: Muster wie ``[ \t]*\n[ \t]*\n`` brauchen auf
+    # langen Folgen von Leerzeichen quadratische Zeit (CodeQL py/polynomial-redos),
+    # und der Text kann von aussen kommen (Dateinamen, Werkzeug-Ergebnisse).
+    absaetze: list[str] = []
+    zeilen: list[str] = []
+    for zeile in t.replace("\r\n", "\n").replace("\r", " ").split("\n"):
+        zeile = zeile.replace("\t", " ").strip(" ")
+        if zeile:
+            zeilen.append(zeile)
+        elif zeilen:
+            absaetze.append(" ".join(zeilen))
+            zeilen = []
+    if zeilen:
+        absaetze.append(" ".join(zeilen))
+    for i in range(len(absaetze) - 1):
+        if not absaetze[i].endswith((".", "!", "?", ":", ";")):
+            absaetze[i] += "."
+    t = " ".join(absaetze)
     # Markdown-Auszeichnung: der Inhalt bleibt, die Zeichen fliegen raus.
-    t = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", t)      # [Text](Ziel) -> Text
+    # Ohne „[“ im Linktext: sonst prueft jede öffnende Klammer bis zum Ende.
+    t = re.sub(r"\[([^\[\]]{1,500})\]\([^()\s]{0,2000}\)", r"\1", t)  # [Text](Ziel) -> Text
     t = re.sub(r"(\*\*|__|`+|~~)", "", t)                # fett/kursiv/code
     t = re.sub(r"(?m)^\s{0,3}#{1,6}\s*", "", t)          # Ueberschriften
     # Doppelte Satzzeichen aus dem Absatz-Ersatz und Mehrfach-Leerzeichen.

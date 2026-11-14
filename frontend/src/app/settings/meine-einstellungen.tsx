@@ -94,7 +94,7 @@ export function MeineEinstellungenView() {
       <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6 sm:px-8 lg:flex-row lg:items-start">
         {/* Unterbereiche wie im Entwurf (Redesign 2026-10): links eine kurze Liste,
             rechts die Abschnitte. Auf dem Handy eine waagerechte Zeile oben. */}
-        <nav aria-label="Bereiche von Mein Konto" className="flex gap-1 overflow-x-auto lg:sticky lg:top-20 lg:w-52 lg:shrink-0 lg:flex-col">
+        <nav aria-label="Bereiche von Mein Konto" className="flex flex-wrap gap-1 lg:flex-nowrap lg:sticky lg:top-20 lg:w-52 lg:shrink-0 lg:flex-col">
           {KONTO_BEREICHE.map((b) => (
             <a
               key={b.id}

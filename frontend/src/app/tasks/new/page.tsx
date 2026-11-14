@@ -130,7 +130,7 @@ export default function NewTaskPage() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Kurz: Worum geht es?"
-              className="w-full rounded-xl border border-foreground/[0.08] bg-card/80 backdrop-blur-sm px-4 py-3 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/40"
+              className="w-full rounded-xl border border-foreground/[0.08] bg-card/80 backdrop-blur-sm px-4 py-3 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground"
               required
             />
           </div>
@@ -146,7 +146,7 @@ export default function NewTaskPage() {
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="Was genau soll der Agent tun? Je genauer, desto besser das Ergebnis."
               rows={8}
-              className="w-full rounded-xl border border-foreground/[0.08] bg-card/80 backdrop-blur-sm px-4 py-3 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all resize-none placeholder:text-muted-foreground/40"
+              className="w-full rounded-xl border border-foreground/[0.08] bg-card/80 backdrop-blur-sm px-4 py-3 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all resize-none placeholder:text-muted-foreground"
               required
             />
           </div>
@@ -205,7 +205,7 @@ export default function NewTaskPage() {
           <div className="space-y-1.5">
             <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <Paperclip className="h-3 w-3" />
-              Dateien <span className="text-muted-foreground/40">(optional — Kontext/Artefakte für den Agenten)</span>
+              Dateien <span className="text-muted-foreground">(optional — Kontext/Artefakte für den Agenten)</span>
             </label>
             <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-foreground/[0.12] bg-card/60 px-4 py-3 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground transition-all">
               <Paperclip className="h-4 w-4" />
@@ -227,7 +227,7 @@ export default function NewTaskPage() {
                     <li key={i} className="flex items-center gap-2 rounded-md bg-foreground/[0.04] px-3 py-1.5 text-xs">
                       <FileText className="h-3.5 w-3.5 shrink-0 text-sky-400" />
                       <span className="min-w-0 flex-1 truncate">{f.name}</span>
-                      <span className="text-muted-foreground/50">{(f.size / 1024).toFixed(0)} KB</span>
+                      <span className="text-muted-foreground">{(f.size / 1024).toFixed(0)} KB</span>
                       <button
                         type="button"
                         onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
@@ -259,7 +259,7 @@ export default function NewTaskPage() {
                 type="button"
                 onClick={estimateCost}
                 disabled={estimating || !prompt.trim() || prompt.length < 20}
-                className="text-[11px] text-primary hover:text-primary/80 disabled:text-muted-foreground/40 transition-colors"
+                className="text-[11px] text-primary hover:text-primary/80 disabled:text-muted-foreground transition-colors"
               >
                 {estimating ? "Wird berechnet …" : "Kosten schätzen"}
               </button>

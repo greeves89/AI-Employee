@@ -31,7 +31,9 @@ const PROVIDER_COLORS: Record<string, string> = {
   "brave-search": "bg-orange-500/10 text-orange-400 border-orange-500/20",
 };
 
-type ModelRow ={ name: string; provider_type: string; api_endpoint: string; enabled: boolean };
+type ModelRow ={ name: string; provider_type: string; api_endpoint: string; enabled: boolean;
+  // Preis je 1 Mio. Token in USD (leer = unbekannt). Damit rechnet die Plattform Kosten und Budget.
+  preis_eingabe_usd_1m?: string; preis_ausgabe_usd_1m?: string };
 
 type FormState = {
   name: string;
@@ -52,6 +54,14 @@ const EMPTY_FORM: FormState = {
 
 const EMPTY_MODEL: ModelRow = { name: "", provider_type: "azure-openai", api_endpoint: "", enabled: true };
 
+/** Preisfeld → Zahl für die API (Komma erlaubt), leer oder ungültig → null. */
+function preisZahl(wert?: string): number | null {
+  const t = (wert ?? "").trim().replace(",", ".");
+  if (!t) return null;
+  const z = Number(t);
+  return Number.isFinite(z) && z >= 0 && z <= 1000 ? z : null;
+}
+
 // Connection state from the last model-discovery check (#435).
 function accountHealthBadge(a: AIAccount): { label: string; className: string } | null {
   if (!a.last_status) return null;
@@ -60,7 +70,7 @@ function accountHealthBadge(a: AIAccount): { label: string; className: string } 
     auth_failed: { label: "Anmeldung fehlgeschlagen", className: "text-amber-700 dark:text-amber-400" },
     unreachable: { label: "nicht erreichbar", className: "text-red-400" },
     protocol_error: { label: "Protokollfehler", className: "text-red-400" },
-    unsupported: { label: "keine Prüfung möglich", className: "text-muted-foreground/50" },
+    unsupported: { label: "keine Prüfung möglich", className: "text-muted-foreground" },
   };
   return map[a.last_status] ?? { label: a.last_status, className: "text-muted-foreground/60" };
 }
@@ -122,6 +132,8 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
       models: (a.models || []).map((m) => ({
         name: m.name, provider_type: m.provider_type, api_endpoint: m.api_endpoint || "",
         enabled: m.enabled !== false,
+        preis_eingabe_usd_1m: m.preis_eingabe_usd_1m != null ? String(m.preis_eingabe_usd_1m) : "",
+        preis_ausgabe_usd_1m: m.preis_ausgabe_usd_1m != null ? String(m.preis_ausgabe_usd_1m) : "",
       })),
       api_version: String(extra.api_version || ""),
       aws_access_key_id: String(extra.aws_access_key_id || ""),
@@ -234,6 +246,8 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
           provider_type: m.provider_type || form.provider_type,
           api_endpoint: (m.api_endpoint || form.api_endpoint).trim(),
           enabled: m.enabled !== false,
+          preis_eingabe_usd_1m: preisZahl(m.preis_eingabe_usd_1m),
+          preis_ausgabe_usd_1m: preisZahl(m.preis_ausgabe_usd_1m),
         })),
         extra,
         ...(form.api_key ? { api_key: form.api_key } : {}),
@@ -329,13 +343,13 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
               </div>
               <div className="col-span-2">
                 <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">
-                  Modelle <span className="text-muted-foreground/40">— jedes mit eigenem Endpoint</span>
+                  Modelle <span className="text-muted-foreground">— jedes mit eigenem Endpoint</span>
                 </label>
 
                 {/* already-added models, each with its own surface */}
                 <div className="space-y-1.5 mb-2">
                   {form.models.length === 0 && (
-                    <span className="text-[11px] text-muted-foreground/40 italic">Noch keine Modelle hinzugefügt</span>
+                    <span className="text-[11px] text-muted-foreground italic">Noch keine Modelle hinzugefügt</span>
                   )}
                   {form.models.map((m) => (
                     <div key={m.name} className="flex items-center gap-2 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2">
@@ -343,7 +357,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                       <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-medium shrink-0", PROVIDER_COLORS[m.provider_type] || "")}>
                         {m.provider_type}
                       </span>
-                      <span className="text-[10px] text-muted-foreground/50 truncate flex-1">{m.api_endpoint || "— Endpoint fehlt —"}</span>
+                      <span className="text-[10px] text-muted-foreground truncate flex-1">{m.api_endpoint || "— Endpoint fehlt —"}</span>
                       {discovered && discovered.length > 0 && !discovered.some((d) => d.id === m.name) && (
                         <span className="shrink-0 rounded-full border border-amber-500/20 bg-amber-500/[0.06] px-2 py-0.5 text-[10px] text-amber-700 dark:text-amber-400" title="Nicht in der vom Anbieter abgerufenen Liste">
                           nicht in Liste
@@ -362,6 +376,16 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                       >
                         {m.enabled !== false ? "freigegeben" : "gesperrt"}
                       </button>
+                      <span className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground" title="Preis je 1 Mio. Token in USD (Eingabe / Ausgabe). Leer = unbekannt, dann zählen diese Läufe 0 USD.">
+                        <input inputMode="decimal" aria-label={`Preis Eingabe ${m.name}`} placeholder="Ein $/1M"
+                          className="w-16 rounded border border-foreground/[0.12] bg-transparent px-1.5 py-0.5 text-[11px]"
+                          value={m.preis_eingabe_usd_1m ?? ""}
+                          onChange={(e) => setForm((f) => ({ ...f, models: f.models.map((x) => x.name === m.name ? { ...x, preis_eingabe_usd_1m: e.target.value } : x) }))} />
+                        <input inputMode="decimal" aria-label={`Preis Ausgabe ${m.name}`} placeholder="Aus $/1M"
+                          className="w-16 rounded border border-foreground/[0.12] bg-transparent px-1.5 py-0.5 text-[11px]"
+                          value={m.preis_ausgabe_usd_1m ?? ""}
+                          onChange={(e) => setForm((f) => ({ ...f, models: f.models.map((x) => x.name === m.name ? { ...x, preis_ausgabe_usd_1m: e.target.value } : x) }))} />
+                      </span>
                       <button type="button" onClick={() => removeModel(m.name)} className="shrink-0 text-muted-foreground hover:text-red-400">
                         <X className="h-3.5 w-3.5" />
                       </button>
@@ -422,7 +446,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                   </button>
                 </div>
 
-                <p className="text-[10px] text-muted-foreground/50 mt-1.5">
+                <p className="text-[10px] text-muted-foreground mt-1.5">
                   Jedes Modell hat seinen eigenen Endpoint/API-Typ — so deckt <b>ein</b> KI-Konto
                   mehrere Azure-Zugänge ab (Chat, Responses/Codex, Anthropic/Claude).
                 </p>
@@ -450,7 +474,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                 <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">
                   {form.provider_type === "bedrock" ? "AWS Secret Access Key"
                     : form.provider_type === "brave-search" ? "Brave API-Key" : "API-Key"}
-                  {editingId && <span className="text-muted-foreground/40"> (leer = unverändert)</span>}
+                  {editingId && <span className="text-muted-foreground"> (leer = unverändert)</span>}
                 </label>
                 <input className={inputCls} type="password" value={form.api_key}
                   onChange={(e) => setForm({ ...form, api_key: e.target.value })}

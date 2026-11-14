@@ -200,7 +200,7 @@ async def enqueue(redis, message: InboundMessage):
     return ergebnis
 
 
-async def send_reply(channel: str, agent, context: dict, text: str) -> bool:
+async def send_reply(channel: str, agent, context: dict, text: str, system: bool = False) -> bool:
     """Eine fertige Antwort an den Kanal zurückgeben, aus dem sie kam.
 
     Die einzige Stelle, an der entschieden wird, welcher Kanal wie sendet. Jeder
@@ -222,8 +222,10 @@ async def send_reply(channel: str, agent, context: dict, text: str) -> bool:
 
     checked = await _dlp_checked(text, agent, channel)
     if checked is None:
-        return await _send(agent, context, _DLP_BLOCKED_NOTICE)
-    return await _send(agent, context, checked)
+        # Plattform-Hinweis, keine Antwort des Agenten: Teams macht daraus nie eine Freigabe.
+        return await _send(agent, context, _DLP_BLOCKED_NOTICE,
+                           **({"system": True} if channel == CHANNEL_TEAMS else {}))
+    return await _send(agent, context, checked, **({"system": True} if system and channel == CHANNEL_TEAMS else {}))
 
 
 #: Was der Empfänger sieht, wenn der Filter blockt. Wortlaut wie im Telegram-Weg —
@@ -357,6 +359,55 @@ class ChannelResponder:
             return None
 
 
+_docker_dienst = None
+#: Laufende Weck-Aufgaben festhalten (sonst räumt der Garbage Collector sie ab).
+_weckend: set = set()
+
+
+def _docker():
+    global _docker_dienst
+    if _docker_dienst is None:
+        from app.services.docker_service import DockerService
+
+        _docker_dienst = DockerService()
+    return _docker_dienst
+
+
+async def _wecken_jetzt(redis, agent_id: str) -> None:
+    """Gestoppten Agenten starten — außer, sein Mensch hat ihn bewusst angehalten.
+
+    Je Agent höchstens ein Start auf einmal (Sperre in Redis): Eine Flut von Nachrichten soll
+    nicht viele gleichzeitige Starts oder Neuaufbauten desselben Agenten auslösen.
+    """
+    try:
+        from app.core.agent_duty import vom_nutzer_angehalten
+        from app.db.session import async_session_factory
+        from app.models.agent import Agent, AgentState
+        from app.services.user_lifecycle import wake_agent
+
+        async with async_session_factory() as db:
+            agent = await db.get(Agent, agent_id)
+            if agent is None or vom_nutzer_angehalten(agent):
+                return
+            if agent.state in (AgentState.RUNNING, AgentState.WORKING, AgentState.IDLE) and agent.container_id:
+                return      # läuft (laut Datenbank) — kein Docker-Aufruf je Nachricht
+            client = getattr(redis, "client", None)
+            if client is not None and not await client.set(f"gateway:wecken:{agent_id}", "1", nx=True, ex=60):
+                return      # wird gerade gestartet
+            await wake_agent(db, _docker(), agent_id)
+    except Exception as e:  # noqa: BLE001 — die Nachricht liegt in der Warteschlange; Start holt sie ab
+        logger.warning("[Gateway] Agent %s nicht geweckt: %s", agent_id, e)
+
+
+def _wecken(redis, agent_id: str) -> None:
+    """Im Hintergrund — der Kanal (Slack-Bestätigung, Teams-Takt) wartet nicht auf den Start."""
+    import asyncio
+
+    lauf = asyncio.create_task(_wecken_jetzt(redis, agent_id))
+    _weckend.add(lauf)
+    lauf.add_done_callback(_weckend.discard)
+
+
 async def deliver(redis, message: InboundMessage, *, capture: bool = True) -> bool:
     """Der vollständige Weg von außen zum Agenten. Gibt zurück, ob zugestellt wurde.
 
@@ -387,7 +438,7 @@ async def deliver(redis, message: InboundMessage, *, capture: bool = True) -> bo
                 async with async_session_factory() as db:
                     agent = await db.get(Agent, message.agent_id)
                 if agent:
-                    await send_reply(message.channel, agent, message.context, ergebnis.hinweis)
+                    await send_reply(message.channel, agent, message.context, ergebnis.hinweis, system=True)
             except Exception:  # noqa: BLE001
                 logger.warning("[Gateway] Budget-Hinweis an %s nicht zustellbar", message.channel)
         logger.info("[Gateway] %s -> Agent %s abgelehnt: Budget aufgebraucht",
@@ -397,6 +448,11 @@ async def deliver(redis, message: InboundMessage, *, capture: bool = True) -> bo
     # mitten im Gespraech — er kennt nur Aktivitaet in der Web-Oberflaeche.
     from app.services.user_lifecycle import mark_agent_interaction
     await mark_agent_interaction(redis, message.agent_id)
+    if message.channel != CHANNEL_TELEGRAM:
+        # Telegram weckt selbst (telegram/agent_bot). Für Teams, Slack, Discord, WhatsApp und
+        # Webhook stand die Nachricht sonst in der Warteschlange eines gestoppten Agenten,
+        # bis jemand ihn von Hand startete.
+        _wecken(redis, message.agent_id)
     logger.info("[Gateway] %s -> Agent %s (Sitzung %s)",
                 message.channel, message.agent_id, message.session_id)
     return True

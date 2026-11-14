@@ -302,6 +302,13 @@ class Settings(BaseSettings):
     egress_ki_zugang: str = ""
     # Codex-Zugang (ChatGPT-Anmeldung) nur als Platzhalter: "" aus, "alle" oder Agenten-IDs.
     egress_codex_zugang: str = ""
+    # Git-Projekte mit eigenem Server (core/projekt_git.py, #1194): Zertifizierungsstelle
+    # der Firma (PEM, nur CA:TRUE) und freigegebene Git-Server (``name`` = Port 443 oder
+    # ``name:port``, Komma-getrennt). Die CA gilt NUR für diese Server (Plattform, Egress-Proxy,
+    # git der Agenten); liegen sie im Firmennetz, dürfen sie trotzdem abgefragt werden.
+    # Beides nur durch Administratoren.
+    git_ca_zertifikate: str = ""
+    git_interne_server: str = ""
     # Agenten im Leerlauf selbst aktualisieren (core/agenten_aktualisieren.py): "leerlauf" | "aus".
     agenten_auto_update: str = "leerlauf"
     # Version, bei der das automatische Aktualisieren gescheitert ist — dann ruht es für sie.
@@ -400,6 +407,18 @@ class Settings(BaseSettings):
     # Optional independent signing key for MCP access tokens. Empty = derive from
     # api_secret_key (domain-separated). Set for full key isolation from sessions.
     mcp_signing_key: str = ""
+    # Eigene MCP-Endpunkte (Second Brains, Agenten) nehmen Zugriffstokens des
+    # Firmen-IdP an (#1195, core/mcp_idp_auth.py). Aus, solange Schalter, Aussteller
+    # und Empfänger fehlen. Leerer Aussteller = aus der Microsoft-Verzeichnis-ID
+    # abgeleitet; leere JWKS-Adresse = aus der OpenID-Konfiguration des Ausstellers.
+    mcp_idp_oauth_enabled: bool = False
+    mcp_idp_issuer: str = ""
+    mcp_idp_audience: str = ""  # Kennung dieser Ressource im IdP, mehrere mit Komma
+    mcp_idp_jwks_uri: str = ""
+    mcp_idp_required_scope: str = ""
+    # Erlaubte aufrufende Anwendungen (Client-IDs, ``azp``/``appid``), mehrere mit
+    # Komma. Einschalten nur mit dieser Liste ODER mit Pflicht-Berechtigung.
+    mcp_idp_allowed_clients: str = ""
 
     # GitHub Webhook
     github_webhook_secret: str = ""  # Set to verify GitHub webhook signatures

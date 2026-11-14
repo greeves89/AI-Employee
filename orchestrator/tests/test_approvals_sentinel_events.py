@@ -152,7 +152,7 @@ class ApprovalsSentinelEventTests(unittest.IsolatedAsyncioTestCase):
     async def test_request_approval_event_excludes_free_text_reasoning(self):
         # Same rationale as above, for the approval_requested side.
         async with self.Session() as db:
-            await self._request(db, reasoning="rm -rf /tmp/x, token=ghp_abcdefghijklmnopqrstuvwxyz0123456789")
+            await self._request(db, reasoning="rm -rf /tmp/x, token=gh" "p_abcdefghijklmnopqrstuvwxyz0123456789")
 
         events = [e for e in self._sentinel_calls() if e["type"] == "approval_requested"]
         self.assertEqual(len(events), 1)

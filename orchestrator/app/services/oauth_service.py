@@ -49,11 +49,20 @@ def _is_per_user(provider_name: str) -> bool:
     return provider_name in PER_USER_PROVIDERS
 
 
-def _provider_filter(provider_enum: OAuthProvider, user_id: str | None):
-    """Build the WHERE clause for looking up an integration row."""
+def _provider_filter(provider_enum: OAuthProvider, user_id: str | None, agent_id: str | None = None):
+    """Build the WHERE clause for looking up an integration row.
+
+    ``agent_id`` gesetzt: das eigene Konto dieses Agenten (Plan agenten-identitaet-m365, Phase 1).
+    Sonst: Konto eines Menschen bzw. global — Agenten-Konten sind dann ausdrücklich
+    ausgeschlossen, damit kein Weg für Menschen (Integrationsseite, SSO, Sekretariat) je
+    das Konto eines Agenten trifft.
+    """
+    if agent_id is not None:
+        return and_(OAuthIntegration.provider == provider_enum, OAuthIntegration.agent_id == agent_id)
+    ohne_agent = OAuthIntegration.agent_id.is_(None)
     if user_id is None:
-        return and_(OAuthIntegration.provider == provider_enum, OAuthIntegration.user_id.is_(None))
-    return and_(OAuthIntegration.provider == provider_enum, OAuthIntegration.user_id == user_id)
+        return and_(OAuthIntegration.provider == provider_enum, OAuthIntegration.user_id.is_(None), ohne_agent)
+    return and_(OAuthIntegration.provider == provider_enum, OAuthIntegration.user_id == user_id, ohne_agent)
 
 
 _RUECKSPRUNG = re.compile(r"^/[A-Za-z0-9/_\-]{0,200}(\?[A-Za-z0-9=&_\-]{0,200})?$")
@@ -79,7 +88,8 @@ class OAuthService:
         self.redis = redis
 
     async def generate_auth_url(
-        self, provider_name: str, user_id: str | None = None, ruecksprung: str | None = None
+        self, provider_name: str, user_id: str | None = None, ruecksprung: str | None = None,
+        agent_id: str | None = None,
     ) -> str:
         """Generate OAuth authorization URL with CSRF state."""
         provider = get_provider(provider_name)
@@ -94,6 +104,8 @@ class OAuthService:
             "provider": provider_name,
             "user_id": user_id,
             "ruecksprung": sicherer_ruecksprung(ruecksprung),
+            # Konto eines Agenten: der Rückruf speichert es am Agenten, nie beim Nutzer
+            "agent_id": agent_id,
         })
         await self.redis.client.setex(state_key, STATE_TTL_SECONDS, state_payload)
 
@@ -127,6 +139,10 @@ class OAuthService:
                 "state": state,
                 **get_provider_extra_params(provider),
             }
+            if agent_id:
+                # Anmelden mit dem Konto des AGENTEN: Microsoft soll fragen, welches Konto,
+                # statt still das angemeldete des Besitzers zu nehmen.
+                params["prompt"] = "select_account"
 
         return f"{apply_tenant(provider.authorization_url)}?{urlencode(params)}"
 
@@ -142,8 +158,17 @@ class OAuthService:
             return None
 
     async def exchange_code(self, provider_name: str, code: str, state: str) -> OAuthIntegration:
-        """Exchange authorization code for tokens, encrypt and store them."""
-        user_id, token_data = await self.exchange_code_tokens(provider_name, code, state)
+        """Exchange authorization code for tokens, encrypt and store them.
+
+        Trägt der Zustand eine Agenten-Kennung, ist es das eigene Konto dieses Agenten
+        (``agenten_konto``): gespeichert am Agenten, geprüft gegen Besitzer bzw. Admin.
+        Der Zustand wird dafür nur EINMAL gelesen — zwei Lesungen konnten auseinanderlaufen,
+        und das Konto des Agenten wäre dann als das des Besitzers gespeichert worden.
+        """
+        user_id, agent_id, token_data = await self._code_tauschen(provider_name, code, state)
+        if agent_id:
+            from app.core import agenten_konto
+            return await agenten_konto.speichern(self, provider_name, user_id, agent_id, token_data)
         return await self.persist_tokens(provider_name, user_id, token_data)
 
     async def exchange_code_tokens(
@@ -156,6 +181,16 @@ class OAuthService:
         globalen Anthropic-Integration — der Teamlizenz — und alle Agenten der
         Anlage arbeiteten danach still auf seinem privaten Abo.
         """
+        user_id, agent_id, token_data = await self._code_tauschen(provider_name, code, state)
+        if agent_id:
+            # Ein Agenten-Konto darf nie auf einem Weg landen, der es als Konto eines Menschen speichert.
+            raise ValueError("OAuth state belongs to an agent account")
+        return user_id, token_data
+
+    async def _code_tauschen(
+        self, provider_name: str, code: str, state: str
+    ) -> tuple[str | None, str | None, dict]:
+        """Zustand einmal lesen und verbrauchen, Code eintauschen — ``(user_id, agent_id, token_data)``."""
         state_key = f"oauth:state:{state}"
         raw = await self.redis.client.get(state_key)
         if not raw:
@@ -165,11 +200,16 @@ class OAuthService:
         await self.redis.client.delete(state_key)
 
         # Support both old format (plain string) and new format (JSON with user_id)
+        agent_id: str | None = None
         try:
             state_data = json.loads(raw)
             stored_provider = state_data["provider"]
             user_id: str | None = state_data.get("user_id")
-        except (json.JSONDecodeError, KeyError):
+            if "agent_id" in state_data and state_data["agent_id"] is not None:
+                agent_id = state_data["agent_id"]
+                if not isinstance(agent_id, str) or not agent_id:
+                    raise ValueError("Invalid OAuth state")   # unbrauchbar → nie als Konto eines Menschen weiter
+        except (json.JSONDecodeError, KeyError, TypeError):
             stored_provider = raw
             user_id = None
 
@@ -233,10 +273,33 @@ class OAuthService:
                 raise ValueError(f"Token exchange failed: {token_response.status_code}")
             token_data = token_response.json()
 
-        return user_id, token_data
+        return user_id, agent_id, token_data
+
+    async def kontoname(self, provider_name: str, access_token: str) -> str | None:
+        """Adresse des angemeldeten Kontos (``userinfo_url``) — ``None``, wenn nicht feststellbar."""
+        provider = get_provider(provider_name)
+        if not (provider.userinfo_url and access_token):
+            return None
+        try:
+            async with httpx.AsyncClient() as client:
+                userinfo_resp = await client.get(
+                    provider.userinfo_url,
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+                if userinfo_resp.status_code == 200:
+                    userinfo = userinfo_resp.json()
+                    return (
+                        userinfo.get("email")
+                        or userinfo.get("mail")
+                        or userinfo.get("userPrincipalName")
+                    )
+        except Exception as e:
+            logger.warning("Could not fetch user info for %s: %s", scrub_log(provider_name), scrub_log(e))
+        return None
 
     async def persist_tokens(
-        self, provider_name: str, user_id: str | None, token_data: dict
+        self, provider_name: str, user_id: str | None, token_data: dict, agent_id: str | None = None,
+        account_label: str | None = None,
     ) -> OAuthIntegration:
         """Encrypt + upsert tokens from a finished code exchange.
 
@@ -255,23 +318,8 @@ class OAuthService:
         if expires_in:
             expires_at = datetime.now(timezone.utc) + timedelta(seconds=int(expires_in))
 
-        account_label = None
-        if provider.userinfo_url and access_token:
-            try:
-                async with httpx.AsyncClient() as client:
-                    userinfo_resp = await client.get(
-                        provider.userinfo_url,
-                        headers={"Authorization": f"Bearer {access_token}"},
-                    )
-                    if userinfo_resp.status_code == 200:
-                        userinfo = userinfo_resp.json()
-                        account_label = (
-                            userinfo.get("email")
-                            or userinfo.get("mail")
-                            or userinfo.get("userPrincipalName")
-                        )
-            except Exception as e:
-                logger.warning("Could not fetch user info for %s: %s", scrub_log(provider_name), scrub_log(e))
+        if account_label is None:   # schon festgestellt beim Konto eines Agenten (core/agenten_konto)
+            account_label = await self.kontoname(provider_name, access_token)
 
         provider_enum = OAuthProvider(provider_name)
         # Global providers (Anthropic, GitHub, …) store a single shared token
@@ -281,8 +329,9 @@ class OAuthService:
         # behave correctly regardless of what user_id they received.
         if not _is_per_user(provider_name):
             user_id = None
+            agent_id = None
         result = await self.db.execute(
-            select(OAuthIntegration).where(_provider_filter(provider_enum, user_id))
+            select(OAuthIntegration).where(_provider_filter(provider_enum, user_id, agent_id))
         )
         integration = result.scalar_one_or_none()
 
@@ -299,6 +348,7 @@ class OAuthService:
             integration = OAuthIntegration(
                 provider=provider_enum,
                 user_id=user_id,
+                agent_id=agent_id,
                 access_token_encrypted=encrypt_token(access_token),
                 refresh_token_encrypted=encrypt_token(refresh_token) if refresh_token else None,
                 token_type=token_type,
@@ -327,7 +377,8 @@ class OAuthService:
         await integration_health.clear_refresh_failure(self.redis, getattr(integration, "id", None))
         return integration
 
-    async def get_valid_token(self, provider_name: str, user_id: str | None = None) -> str:
+    async def get_valid_token(self, provider_name: str, user_id: str | None = None,
+                              agent_id: str | None = None) -> str:
         """Get a valid access token, auto-refreshing if expired.
 
         For per-user providers (microsoft, google), pass the user's id.
@@ -335,7 +386,7 @@ class OAuthService:
         """
         provider_enum = OAuthProvider(provider_name)
         result = await self.db.execute(
-            select(OAuthIntegration).where(_provider_filter(provider_enum, user_id))
+            select(OAuthIntegration).where(_provider_filter(provider_enum, user_id, agent_id))
         )
         integration = result.scalar_one_or_none()
         if not integration:
@@ -586,11 +637,12 @@ class OAuthService:
         logger.info("Stored Codex auth.json (account: %s, user: %s)", scrub_log(account_label), scrub_log(user_id))
         return integration
 
-    async def disconnect(self, provider_name: str, user_id: str | None = None) -> None:
+    async def disconnect(self, provider_name: str, user_id: str | None = None,
+                         agent_id: str | None = None) -> None:
         """Remove an OAuth integration."""
         provider_enum = OAuthProvider(provider_name)
         result = await self.db.execute(
-            select(OAuthIntegration).where(_provider_filter(provider_enum, user_id))
+            select(OAuthIntegration).where(_provider_filter(provider_enum, user_id, agent_id))
         )
         integration = result.scalar_one_or_none()
         if integration:
@@ -603,7 +655,8 @@ class OAuthService:
         # that user — otherwise an external client (OpenWebUI) would silently be
         # re-authorized after the user deliberately disconnected. Best effort: a
         # missing Redis must never turn a disconnect into an error.
-        if provider_name == "microsoft" and user_id and self.redis:
+        # Nur beim Konto eines Menschen — das Konto eines Agenten trägt die Freigaben nicht.
+        if provider_name == "microsoft" and user_id and agent_id is None and self.redis:
             try:
                 from app.core.mcp_oauth import forget_grants
                 await forget_grants(self.redis, user_id)
@@ -621,16 +674,17 @@ class OAuthService:
         ``include_shared=False`` so an admin-connected shared provider is not exposed
         to every tenant as "connected" (default-deny — visible only if released).
         """
+        ohne_agent = OAuthIntegration.agent_id.is_(None)   # Konten von Agenten gehören nicht hierher
         if user_id:
             cond = OAuthIntegration.user_id == user_id
             if include_shared:
                 cond = cond | OAuthIntegration.user_id.is_(None)
-            result = await self.db.execute(select(OAuthIntegration).where(cond))
+            result = await self.db.execute(select(OAuthIntegration).where(cond, ohne_agent))
         elif include_shared:
-            result = await self.db.execute(select(OAuthIntegration))
+            result = await self.db.execute(select(OAuthIntegration).where(ohne_agent))
         else:
             result = await self.db.execute(
-                select(OAuthIntegration).where(OAuthIntegration.user_id.isnot(None))
+                select(OAuthIntegration).where(OAuthIntegration.user_id.isnot(None), ohne_agent)
             )
 
         rows = result.scalars().all()
@@ -739,6 +793,16 @@ class OAuthService:
         from app.models.user import User, UserRole
 
         name = get_provider(integration.provider.value).display_name
+        ziel = "/integrations"
+        agent_id = getattr(integration, "agent_id", None)
+        if agent_id:
+            # Konto eines Agenten (core/agenten_konto): neu verbinden geht am Agenten, nicht
+            # unter Integrationen — und die Meldung muss sagen, WELCHER Agent betroffen ist.
+            from app.models.agent import Agent
+
+            agent = await self.db.get(Agent, agent_id)
+            name = f"Microsoft-Konto des Agenten {getattr(agent, 'name', None) or agent_id}"
+            ziel = f"/agents/{agent_id}?konnektoren=1"
         # Der Token kann in diesem Moment noch gelten (Refresh laeuft 10 min vor
         # Ablauf) — also nicht "abgelaufen" behaupten, sondern was feststeht.
         titel = f"{name}: Token laesst sich nicht erneuern – bitte neu verbinden"
@@ -746,19 +810,26 @@ class OAuthService:
             f"Der Token fuer {name} laesst sich nicht mehr erneuern ({error_text}). "
             f"Spaetestens mit seinem Ablauf schlaegt alles fehl, was diese "
             f"Integration nutzt – bis unter Integrationen neu verbunden wird."
+        ) if not agent_id else (
+            f"Das Microsoft-Konto laesst sich nicht mehr erneuern ({error_text}). Der Agent liest "
+            f"und sendet dann keine Mails mehr – er weicht bewusst NICHT auf dein Konto aus. "
+            f"Bitte am Agenten unter Konnektoren neu verbinden."
         )
         meta = {
             "type": "integration_refresh_failed",
             "provider": integration.provider.value,
             "integration_id": integration.id,
+            **({"agent_id": agent_id} if agent_id else {}),
         }
         notif = Notification(
-            agent_id="system",
+            # Konto eines Agenten: Meldung am Agenten (sehen Besitzer und Freigegebene),
+            # nicht als Systemmeldung bei allen Admins.
+            agent_id=agent_id or "system",
             type="error",
             title=titel,
             message=nachricht[:2000],
             priority="high",
-            action_url="/integrations",
+            action_url=ziel,
             meta=meta,
         )
         self.db.add(notif)
@@ -785,9 +856,9 @@ class OAuthService:
                     self.db, user_id, titel, nachricht,
                     data={
                         "notification_id": str(notif.id),
-                        "agent_id": "system",
+                        "agent_id": agent_id or "system",
                         "type": "error",
-                        "action_url": "/integrations",
+                        "action_url": ziel,
                         "meta": meta,
                     },
                 )

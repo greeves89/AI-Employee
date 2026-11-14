@@ -260,6 +260,9 @@ class SSOService:
             email_verified=email_verified,
         )
 
+        if provider_name == "microsoft":
+            await self._merke_objekt_id(user, user_info.get("id"))
+
         # Gruppen des Nutzers lesen und die Rolle danach ausrichten — bei jedem
         # Login neu, nicht nur beim ersten (wechselt jemand in Entra die Abteilung,
         # zieht die Berechtigung hier nach). Nur Microsoft: Google-Gruppen brauchen
@@ -301,6 +304,30 @@ class SSOService:
                                scrub_log(provider_name), scrub_log(e))
 
         return user, return_to
+
+    async def _merke_objekt_id(self, user: User, oid) -> None:
+        """Die Entra-Objekt-ID (Graph ``/me`` → ``id``) am Konto hinterlegen.
+
+        Daran erkennt der MCP-Zugang per IdP-Token (#1195) die Person. Nur setzen,
+        wenn noch keine hinterlegt ist und kein anderes Konto sie trägt — eine
+        abweichende vorhandene ID wird nicht still überschrieben, sondern gemeldet.
+        """
+        oid = oid.strip().lower() if isinstance(oid, str) and oid.strip() else ""
+        if not oid:
+            return
+        vorhanden = (getattr(user, "idp_object_id", None) or "").lower()
+        if vorhanden == oid:
+            return
+        if vorhanden:
+            logger.warning("SSO: Konto %s hat eine andere Entra-Objekt-ID hinterlegt — unverändert",
+                           scrub_log(user.email))
+            return
+        anderes = await self.db.scalar(select(User.id).where(User.idp_object_id == oid, User.id != user.id))
+        if anderes:
+            logger.warning("SSO: Entra-Objekt-ID gehört schon zu einem anderen Konto — nicht übernommen")
+            return
+        user.idp_object_id = oid
+        await self.db.commit()
 
     async def _exchange_code(
         self, provider: SSOProviderConfig, code: str, base_url: str | None = None

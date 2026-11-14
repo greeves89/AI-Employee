@@ -445,7 +445,10 @@ async def entwurf_aendern(db, user, a, *, an: list[str], cc: list[str], betreff:
         raise SekretariatFehler(f"Der Text ist zu lang (höchstens {mail_freigabe.MAX_TEXT} Zeichen).")
     eingabe = dict((a.meta or {}).get("input") or {})
     message_id = str(eingabe.get("message_id") or "")
-    token = await mail_freigabe._token(db, str(getattr(user, "id", "")))
+    from app.models.agent import Agent
+
+    agent = await db.get(Agent, a.agent_id) if a.agent_id else None
+    token = await mail_freigabe._token(db, agent)   # Postfach, in dem der Entwurf liegt
     if not token or not message_id:
         raise SekretariatFehler("Microsoft-Zugang fehlt — bitte unter Verbindungen neu verbinden.")
     m = await mail_freigabe._entwurf(token, message_id)

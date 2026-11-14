@@ -38,13 +38,71 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db.session import get_db
-from app.dependencies import get_redis_service
+from app.dependencies import get_redis_service, require_admin
 from app.models.agent import Agent
 from app.models.chat_message import ChatMessage
 from app.models.task import Task, TaskStatus
 from app.services.redis_service import RedisService
 
-router = APIRouter(prefix="/kiosk", tags=["kiosk"])
+from app.core import kiosk_zugang
+
+#: Alle Kiosk-Endpunkte brauchen den Zugang des Geraets (core/kiosk_zugang).
+router = APIRouter(prefix="/kiosk", tags=["kiosk"], dependencies=[Depends(kiosk_zugang.pruefen)])
+#: Ohne Zugang erreichbar: nur der Tausch Link → Cookie.
+anmelde_router = APIRouter(prefix="/kiosk", tags=["kiosk"])
+#: Verwaltung des Zugangs (Admin), auch ohne KIOSK_ENABLED eingehaengt.
+verwaltung_router = APIRouter(prefix="/admin/kiosk-zugang", tags=["kiosk"])
+
+
+class KioskAnmeldung(BaseModel):
+    zugang: str
+
+
+@anmelde_router.post("/anmelden")
+async def kiosk_anmelden(body: KioskAnmeldung):
+    """Den Link-Zugang einmal gegen ein Cookie tauschen (nur fuer /api/v1/kiosk)."""
+    from fastapi.responses import JSONResponse
+
+    if not kiosk_zugang.passt(body.zugang, await kiosk_zugang._gespeichert()):
+        raise HTTPException(status_code=404, detail="Not Found")
+    antwort = JSONResponse({"ok": True})
+    antwort.set_cookie(kiosk_zugang.COOKIE, body.zugang, httponly=True, samesite="strict",
+                       path="/api/v1/kiosk", max_age=400 * 24 * 3600, secure=False)
+    return antwort
+
+
+@verwaltung_router.get("")
+async def kiosk_zugang_stand(user=Depends(require_admin)):
+    return {"kiosk_eingeschaltet": bool(settings.kiosk_enabled),
+            "eingerichtet": bool(await kiosk_zugang._gespeichert())}
+
+
+@verwaltung_router.post("")
+async def kiosk_zugang_erzeugen(user=Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Neuen Zugang erzeugen — ein alter gilt danach nicht mehr. Der Link steht nur in
+    dieser Antwort; gespeichert wird nur der Pruefwert."""
+    from app.core.audit import protokolliere
+    from app.models.audit_log import AuditEventType
+
+    zugang = await kiosk_zugang.erzeugen(db)
+    await protokolliere(db, AuditEventType.SETTINGS_CHANGED, user_id=getattr(user, "id", None),
+                        command="Kiosk-Zugang neu erzeugt")
+    await db.commit()
+    # Im Fragment (#), nicht in der Abfrage (?): das Fragment schickt der Browser nie
+    # an den Server — der Zugang landet so in keinem Zugriffsprotokoll.
+    return {"link": f"/kiosk#zugang={zugang}"}
+
+
+@verwaltung_router.delete("")
+async def kiosk_zugang_entfernen(user=Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    from app.core.audit import protokolliere
+    from app.models.audit_log import AuditEventType
+
+    await kiosk_zugang.entfernen(db)
+    await protokolliere(db, AuditEventType.SETTINGS_CHANGED, user_id=getattr(user, "id", None),
+                        command="Kiosk-Zugang entfernt")
+    await db.commit()
+    return {"eingerichtet": False}
 
 
 def _state_value(state) -> str:
@@ -207,6 +265,20 @@ async def kiosk_overview(db: AsyncSession = Depends(get_db)):
 # Kiosk chat (local-only) — reuses the agent's chat queue + chat_messages       #
 # --------------------------------------------------------------------------- #
 
+#: Gespraeche des Kiosks tragen dieses Praefix. Lesen und Weiterschreiben geht nur
+#: in solchen — sonst laese oder beschriebe der Kiosk (ohne Anmeldung) jeden Chat
+#: des Agenten, dessen Kennung jemand kennt (Sicherheitsreview 1.455).
+KIOSK_PRAEFIX = "kiosk-"
+
+
+def _kiosk_gespraech(session_id: str | None) -> str | None:
+    if not session_id:
+        return None
+    if not isinstance(session_id, str) or not session_id.startswith(KIOSK_PRAEFIX) or len(session_id) > 64:
+        raise HTTPException(status_code=404, detail="Gespräch nicht gefunden")
+    return session_id
+
+
 class KioskChatSend(BaseModel):
     text: str
     session_id: str | None = None
@@ -234,7 +306,7 @@ async def kiosk_chat_send(
     if not agent.container_id:
         raise HTTPException(status_code=409, detail="Agent has no running container")
 
-    session_id = body.session_id or uuid.uuid4().hex[:12]
+    session_id = _kiosk_gespraech(body.session_id) or f"{KIOSK_PRAEFIX}{uuid.uuid4().hex[:12]}"
     message_id = uuid.uuid4().hex[:12]
 
     db.add(ChatMessage(
@@ -316,6 +388,7 @@ async def kiosk_chat_history(
     db: AsyncSession = Depends(get_db),
 ):
     """Poll the persisted conversation for a kiosk chat session."""
+    _kiosk_gespraech(session_id)
     rows = (await db.execute(
         select(ChatMessage)
         .where(ChatMessage.agent_id == agent_id, ChatMessage.session_id == session_id)

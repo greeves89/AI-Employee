@@ -35,16 +35,14 @@ FELDER = "subject,toRecipients,ccRecipients,bccRecipients,replyTo,body,isDraft,h
 MAX_TEXT = 6000
 
 
-async def _token(db, user_id: str | None) -> str | None:
-    from app.services.oauth_service import OAuthService
+async def _token(db, agent) -> str | None:
+    """Das Token für das Postfach, in dem die Entwürfe dieses Agenten liegen.
 
-    if not user_id:
-        return None
-    try:
-        return await OAuthService(db, None).get_valid_token("microsoft", user_id)
-    except Exception as e:  # noqa: BLE001 — nicht verbunden / Microsoft gestört
-        log.warning("Kein Microsoft-Zugang für Mail-Freigabe: %s", e)
-        return None
+    Eine Stelle für Anfragen, Bearbeiten und Senden: hat der Agent ein eigenes
+    Microsoft-Konto, ist es dessen Postfach, sonst das des Besitzers (core/agenten_konto)."""
+    from app.core.agenten_konto import token_fuer
+
+    return await token_fuer(db, agent) if agent is not None else None
 
 
 async def _entwurf(token: str, message_id: str) -> dict:
@@ -179,7 +177,7 @@ async def anfragen(agent_id: str, message_id: str, betreff: str) -> str:
 
     async with async_session_factory() as db:
         agent = await db.get(Agent, agent_id)
-        token = await _token(db, agent.user_id if agent else None)
+        token = await _token(db, agent)   # Entwurf liegt im Postfach des Agenten
         if not token:
             return "Der Entwurf liegt im Postfach, konnte aber nicht zur Freigabe gestellt werden (kein Microsoft-Zugang)."
         m = await _entwurf(token, message_id)
@@ -209,7 +207,7 @@ async def senden(db, approval, user) -> dict:
         raise HTTPException(status_code=403, detail="Diese Mail gibt nur frei, wem das Postfach gehört.")
     eingabe = ((approval.meta or {}).get("input") or {})
     message_id = str(eingabe.get("message_id") or "")
-    token = await _token(db, agent.user_id)
+    token = await _token(db, agent)        # gesendet aus dem Postfach, in dem der Entwurf liegt
     if not message_id or not token:
         raise HTTPException(status_code=409, detail="Microsoft-Zugang fehlt — bitte unter Integrationen neu verbinden.")
     try:

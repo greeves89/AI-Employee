@@ -25,7 +25,7 @@ from sqlalchemy import select
 logger = logging.getLogger(__name__)
 
 
-async def ensure_agent_running(agent_id: str, docker, redis) -> bool:
+async def ensure_agent_running(agent_id: str, docker, redis, *, durch_mensch: bool = False) -> bool:
     """Startet den Agenten, falls sein Container nicht laeuft.
 
     Gibt zurueck, ob der Agent am Ende laeuft. Ist er schon wach, kostet der
@@ -52,7 +52,7 @@ async def ensure_agent_running(agent_id: str, docker, redis) -> bool:
                 "[Aufwecken] Agent %s schlaeft — wird fuer die Zustellung gestartet",
                 agent_id,
             )
-            started = await AgentManager(db, docker, redis).start_agent(agent_id)
+            started = await AgentManager(db, docker, redis).start_agent(agent_id, durch_mensch=durch_mensch)
             # #774: nicht "gestartet" zurueckmelden, sondern NACHMESSEN. Ein
             # Container kann nach dem Start sofort wieder stehen (Quota-Stopp
             # des disk_monitor, #714) oder gar nicht hochkommen — dann laege

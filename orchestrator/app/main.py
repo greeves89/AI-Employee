@@ -254,6 +254,23 @@ async def _refresh_oauth_tokens(redis: RedisService) -> None:
         await asyncio.sleep(300)  # Check every 5 minutes
 
 
+async def _graph_abos_abgleichen(redis: RedisService) -> None:
+    """Wecken bei neuer Mail (core/graph_abos): Abos anlegen/verlängern, im Abfrage-Betrieb nachholen."""
+    await asyncio.sleep(60)   # nach dem Start erst die Token-Erneuerung laufen lassen
+    while True:
+        try:
+            from app.core import graph_abos
+            from app.db.session import async_session_factory
+
+            async with async_session_factory() as db:
+                erg = await graph_abos.abgleichen(db, redis)
+            if any(erg.values()):
+                logger.info("[Graph-Abos] %s", erg)
+        except Exception:  # noqa: BLE001 — nächste Runde in fünf Minuten
+            logger.exception("[Graph-Abos] Abgleich gescheitert")
+        await asyncio.sleep(300)
+
+
 async def _refresh_mcp_oauth_tokens() -> None:
     """Keep OAuth-protected MCP server tokens fresh on a timer (#488).
 
@@ -492,7 +509,12 @@ async def _kosten_ohne_verlauf(redis: RedisService, db, agent_id: str, message_i
 
     from app.services.chat_persistence import betrag_pruefen
 
-    betrag = betrag_pruefen((event_data or {}).get("cost_usd"))
+    from app.core import modellpreise
+
+    daten = event_data or {}
+    betrag = modellpreise.betrag(
+        betrag_pruefen(daten.get("cost_usd")), daten.get("input_tokens"), daten.get("output_tokens"),
+        await modellpreise.preis_fuer_agent(agent_id, db=db))
     if not betrag:
         return
     try:
@@ -638,6 +660,10 @@ async def _persist_chat_completion(redis: RedisService, data: dict, *,
             return
         agent = await db.scalar(sel(Agent).where(Agent.id == agent_id))
         title = agent.name if agent else "AI Employee"
+        # Die Meldung zeigt den Antworttext — sie geht nur an den, dem das
+        # Gespraech gehoert (core/chat_besitz), nicht an alle, die den Agenten sehen.
+        from app.core.chat_besitz import besitzer_von as _besitzer_von
+        empfaenger = await _besitzer_von(db, agent_id, session_id) or (agent.user_id if agent else None)
         from app.core.ziel import ohne_marke as _ohne_marke
         body = _chat_notification_body(_ohne_marke(content)[0], meta)
         notif = Notification(
@@ -647,6 +673,7 @@ async def _persist_chat_completion(redis: RedisService, data: dict, *,
             message=body,
             priority="normal",
             action_url=f"/agents/{agent_id}",
+            empfaenger_id=empfaenger,
             meta={
                 "type": "chat_message",
                 "agent_id": agent_id,
@@ -668,10 +695,10 @@ async def _persist_chat_completion(redis: RedisService, data: dict, *,
                 "data": _notification_response(notif),
             }),
         )
-        if agent and agent.user_id:
+        if empfaenger:
             await push_to_user(
                 db,
-                agent.user_id,
+                empfaenger,
                 title,
                 body,
                 data=_notification_push_payload(notif),
@@ -716,6 +743,7 @@ def _notification_response(notif) -> dict:
         "read": notif.read,
         "action_url": notif.action_url,
         "meta": notif.meta,
+        "empfaenger_id": getattr(notif, "empfaenger_id", None),
         "created_at": notif.created_at.isoformat() if notif.created_at else "",
     }
 
@@ -1707,10 +1735,25 @@ async def lifespan(app: FastAPI):
                 "goal_rounds integer NOT NULL DEFAULT 0", "goal_last_mid varchar",
                 # v1.362: Grund einer Pause, die nicht der Agent ausgeloest hat (Budget)
                 "goal_reason varchar",
+                # 1.455: Besitzer des Gespraechs (core/chat_besitz)
+                "user_id varchar",
             ):
                 await conn.execute(_txt_cs(
                     f"ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS {_spalte}"
                 ))
+            await conn.execute(_txt_cs(
+                "CREATE INDEX IF NOT EXISTS ix_chat_sessions_user_id ON chat_sessions (user_id)"
+            ))
+            # 1.455: Empfaenger einer Meldung (Antwort im eigenen Gespraech). Auch
+            # hier, weil ohne die Spalte jede Abfrage der Meldungen scheitert.
+            await conn.execute(_txt_cs(
+                "ALTER TABLE IF EXISTS notifications ADD COLUMN IF NOT EXISTS empfaenger_id varchar"
+            ))
+            # 1.457: Freigabe nur zum Nutzen. Jede Zugriffspruefung liest diese
+            # Spalte — fehlt sie, kaeme niemand mehr an einen freigegebenen Agenten.
+            await conn.execute(_txt_cs(
+                "ALTER TABLE IF EXISTS agent_access ADD COLUMN IF NOT EXISTS rolle varchar(16)"
+            ))
         logger.info("chat_sessions table ensured")
     except Exception as e:
         logger.warning(f"Could not ensure chat_sessions table: {e}")
@@ -2850,6 +2893,7 @@ written this way is not in the index.
 
     # Start third-party OAuth token refresh background task
     oauth_refresh_task = asyncio.create_task(_refresh_oauth_tokens(app.state.redis))
+    graph_abos_task = asyncio.create_task(_graph_abos_abgleichen(app.state.redis))
 
     # Start OAuth-protected MCP server token refresh background task (#488)
     mcp_oauth_refresh_task = asyncio.create_task(_refresh_mcp_oauth_tokens())
@@ -3017,6 +3061,7 @@ written this way is not in the index.
     chat_drain_task.cancel()
     step_persist_task.cancel()
     oauth_refresh_task.cancel()
+    graph_abos_task.cancel()
     mcp_oauth_refresh_task.cancel()
     claude_token_task.cancel()
     scheduler_task.cancel()
@@ -3064,6 +3109,11 @@ from app.core import koerper_grenze as _koerper_grenze  # noqa: E402
 from app.core.projekt_dateien import MAX_BYTES as _PROJEKTDATEI_MAX  # noqa: E402
 
 _koerper_grenze.regel("POST", r"^/api/v1/teams/[^/]+/wissen/dateien$", _PROJEKTDATEI_MAX + 1024 * 1024)
+# Öffentlicher Empfang der Graph-Benachrichtigungen (api/msgraph_benachrichtigung): Microsoft
+# schickt kleine JSON-Körper mit Längenangabe; alles darüber ist kein Microsoft.
+# Die Adressprüfung (``?validationToken=``) kommt mit leerem Körper, womöglich ohne Längenangabe —
+# sie liest keinen Körper und darf deshalb ohne durch (sonst scheiterte jedes Abo bei Microsoft).
+_koerper_grenze.regel("POST", r"^/api/v1/msgraph/", 1024 * 1024, ohne_laenge_bei="validationToken")
 app.add_middleware(_koerper_grenze.KoerperGrenze)
 
 # API rate limiting (120 requests/minute per user or IP)

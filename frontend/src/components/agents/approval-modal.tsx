@@ -264,7 +264,7 @@ export function ApprovalModal({
                     )}
 
                     {/* Meta */}
-                    <div className="text-[10px] text-muted-foreground/40">
+                    <div className="text-[10px] text-muted-foreground">
                       Agent: {request.agent_id} &middot; Angefragt:{" "}
                       {new Date(request.created_at).toLocaleString("de-DE")}
                     </div>
@@ -280,7 +280,7 @@ export function ApprovalModal({
                           value={denyReason}
                           onChange={(e) => setDenyReason(e.target.value)}
                           rows={3}
-                          className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/25 resize-none"
+                          className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground resize-none"
                         />
                       </div>
                     )}

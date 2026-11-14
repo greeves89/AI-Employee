@@ -155,7 +155,7 @@ export function SystemControl() {
 
         <div className="flex items-start gap-2 px-5 py-3 border-t border-foreground/[0.04] bg-foreground/[0.01]">
           <AlertTriangle className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400/60 mt-0.5 shrink-0" />
-          <p className="text-[10px] text-muted-foreground/50">
+          <p className="text-[10px] text-muted-foreground">
             Nur Orchestrator und Frontend sind neustartbar — Datenbank, Redis und Proxy sind bewusst ausgenommen,
             damit ein Fehlklick nichts Kritisches trifft.
           </p>

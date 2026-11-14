@@ -301,7 +301,7 @@ export default function KnowledgePage() {
                   placeholder="Wissen durchsuchen …"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] py-2.5 pl-10 pr-4 text-sm placeholder:text-muted-foreground/40 focus:border-primary/30 focus:outline-none"
+                  className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] py-2.5 pl-10 pr-4 text-sm placeholder:text-muted-foreground focus:border-primary/30 focus:outline-none"
                 />
               </div>
 
@@ -326,7 +326,7 @@ export default function KnowledgePage() {
                     ))}
                   </div>
                 ) : entries.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-20 text-muted-foreground/50">
+                  <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
                     <BookOpen className="h-12 w-12 mb-3" />
                     <p className="text-sm">Noch keine Einträge</p>
                     <p className="text-xs mt-1">Lege den ersten Eintrag an oder lass deine Agenten Wissen beitragen</p>
@@ -364,11 +364,11 @@ export default function KnowledgePage() {
                           )}
                         </div>
                         <div className="flex flex-col items-end gap-1 shrink-0">
-                          <span className="text-[10px] text-muted-foreground/40">
+                          <span className="text-[10px] text-muted-foreground">
                             {new Date(entry.updated_at).toLocaleDateString()}
                           </span>
                           {entry.backlinks.length > 0 && (
-                            <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/40">
+                            <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
                               <Link2 className="h-3 w-3" />
                               {entry.backlinks.length}
                             </span>
@@ -431,16 +431,16 @@ export default function KnowledgePage() {
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
                 placeholder="Titel des Eintrags …"
-                className="text-lg font-semibold bg-transparent border-none outline-none placeholder:text-muted-foreground/30 flex-1"
+                className="text-lg font-semibold bg-transparent border-none outline-none placeholder:text-muted-foreground flex-1"
               />
               <div className="flex items-center gap-2">
                 {!isNew && selectedEntry && (
                   <>
-                    <span className="flex items-center gap-1 text-[10px] text-muted-foreground/40">
+                    <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
                       <User className="h-3 w-3" />
                       {selectedEntry.created_by}
                     </span>
-                    <span className="flex items-center gap-1 text-[10px] text-muted-foreground/40">
+                    <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
                       <Clock className="h-3 w-3" />
                       {new Date(selectedEntry.updated_at).toLocaleString("de-DE")}
                     </span>
@@ -458,7 +458,7 @@ export default function KnowledgePage() {
                 {!isNew && selectedEntry && (
                   <button
                     onClick={() => handleDelete(selectedEntry.id)}
-                    className="rounded-lg p-1.5 text-muted-foreground/50 hover:text-red-400 hover:bg-red-500/10"
+                    className="rounded-lg p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -480,7 +480,7 @@ export default function KnowledgePage() {
                 value={editTags}
                 onChange={(e) => setEditTags(e.target.value)}
                 placeholder="Schlagwörter (durch Komma getrennt): Projekt, Entscheidung, Kontakt …"
-                className="flex-1 bg-transparent border-none outline-none text-xs text-muted-foreground placeholder:text-muted-foreground/30"
+                className="flex-1 bg-transparent border-none outline-none text-xs text-muted-foreground placeholder:text-muted-foreground"
               />
             </div>
 
@@ -496,7 +496,7 @@ export default function KnowledgePage() {
                   value={editContent}
                   onChange={(e) => setEditContent(e.target.value)}
                   placeholder={"Hier in Markdown schreiben …\n\n[[Titel]] verlinkt auf andere Einträge\n#schlagwort im Text ordnet den Eintrag zu"}
-                  className="flex-1 resize-none rounded-xl border border-foreground/[0.08] bg-foreground/[0.02] p-4 text-sm font-mono placeholder:text-muted-foreground/30 focus:border-primary/30 focus:outline-none"
+                  className="flex-1 resize-none rounded-xl border border-foreground/[0.08] bg-foreground/[0.02] p-4 text-sm font-mono placeholder:text-muted-foreground focus:border-primary/30 focus:outline-none"
                 />
               )}
             </div>
@@ -553,14 +553,14 @@ export default function KnowledgePage() {
                   <Sparkles className="h-3 w-3 text-primary" /> Semantisch verwandt
                 </h4>
                 {relatedLoading ? (
-                  <div className="flex items-center gap-2 text-[12px] text-muted-foreground/50">
+                  <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" /> Suche Verknüpfungen...
                   </div>
                 ) : (
                   <div className="flex flex-col gap-3 sm:flex-row sm:gap-8">
                     {related && related.related_knowledge.length > 0 && (
                       <div className="flex-1">
-                        <p className="mb-1.5 flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground/50">
+                        <p className="mb-1.5 flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
                           <Link2 className="h-2.5 w-2.5 text-sky-400" /> Wissen
                         </p>
                         <div className="flex flex-col gap-1">
@@ -579,7 +579,7 @@ export default function KnowledgePage() {
                     )}
                     {related && related.related_memories.length > 0 && (
                       <div className="flex-1">
-                        <p className="mb-1.5 flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground/50">
+                        <p className="mb-1.5 flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
                           <Brain className="h-2.5 w-2.5 text-emerald-400" /> Agent-Memories
                         </p>
                         <div className="flex flex-col gap-1">
@@ -681,7 +681,7 @@ export default function KnowledgePage() {
                       </button>
                       <button
                         onClick={() => setGraphPreview(null)}
-                        className="rounded-lg p-1.5 text-muted-foreground/50 hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+                        className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
                       >
                         <X className="h-3.5 w-3.5" />
                       </button>
@@ -706,7 +706,7 @@ export default function KnowledgePage() {
                     <div className="border-t border-foreground/[0.06] px-4 py-3 space-y-2">
                       {graphPreview.backlinks.length > 0 && (
                         <div>
-                          <p className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/40 mb-1.5">Verweist auf</p>
+                          <p className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Verweist auf</p>
                           <div className="flex flex-wrap gap-1">
                             {graphPreview.backlinks.map((link) => (
                               <button
@@ -723,7 +723,7 @@ export default function KnowledgePage() {
                       )}
                       {(graphPreview.incoming_backlinks || []).length > 0 && (
                         <div>
-                          <p className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/40 mb-1.5">Verlinkt von</p>
+                          <p className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Verlinkt von</p>
                           <div className="flex flex-wrap gap-1">
                             {(graphPreview.incoming_backlinks || []).map((link) => (
                               <button
@@ -744,12 +744,12 @@ export default function KnowledgePage() {
                   {/* Footer meta */}
                   <div className="border-t border-foreground/[0.06] px-4 py-2 flex items-center gap-3">
                     {graphPreview.created_by && (
-                      <span className="flex items-center gap-1 text-[10px] text-muted-foreground/30">
+                      <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
                         <User className="h-2.5 w-2.5" />
                         {graphPreview.created_by}
                       </span>
                     )}
-                    <span className="flex items-center gap-1 text-[10px] text-muted-foreground/30 ml-auto">
+                    <span className="flex items-center gap-1 text-[10px] text-muted-foreground ml-auto">
                       <Clock className="h-2.5 w-2.5" />
                       {new Date(graphPreview.updated_at).toLocaleDateString()}
                     </span>

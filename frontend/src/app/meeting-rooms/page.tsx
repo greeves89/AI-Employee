@@ -150,7 +150,7 @@ export default function MeetingRoomsPage() {
       setCustomStages([{ name: "Eröffnung", rounds: 1 }, { name: "Analyse", rounds: 2 }, { name: "Synthese", rounds: 1 }]);
       router.push(`/meeting-rooms/${room.id}`);
     } catch (e) {
-      toast.error("Besprechungsraum konnte nicht angelegt werden", String(e));
+      toast.error("Agenten-Runde konnte nicht angelegt werden", String(e));
     } finally {
       setCreating(false);
     }
@@ -158,7 +158,7 @@ export default function MeetingRoomsPage() {
 
   const handleDelete = async (id: string) => {
     const ok = await confirm({
-      title: "Diesen Besprechungsraum löschen?",
+      title: "Diese Agenten-Runde löschen?",
       message: "Der gesamte Gesprächsverlauf wird unwiderruflich entfernt.",
       variant: "destructive",
       confirmLabel: "Löschen",
@@ -270,7 +270,7 @@ export default function MeetingRoomsPage() {
   return (
     <div>
       <Header
-        title="Besprechungsräume"
+        title="Agenten-Runden"
         subtitle="Gruppengespräche zwischen deinen Agenten anlegen"
       />
 
@@ -303,7 +303,7 @@ export default function MeetingRoomsPage() {
               className="w-full max-w-lg max-h-[90dvh] flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
             >
               <h2 className="shrink-0 px-6 pt-6 pb-4 text-lg font-semibold">
-                Besprechungsraum anlegen
+                Agenten-Runde anlegen
               </h2>
 
               <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-2 space-y-4">
@@ -555,7 +555,7 @@ export default function MeetingRoomsPage() {
                               {customStages.length > 1 && (
                                 <button type="button"
                                   onClick={() => setCustomStages(prev => prev.filter((_, j) => j !== i))}
-                                  className="h-5 w-5 rounded flex items-center justify-center text-muted-foreground/50 hover:text-red-400 hover:bg-red-500/10 text-xs"
+                                  className="h-5 w-5 rounded flex items-center justify-center text-muted-foreground hover:text-red-400 hover:bg-red-500/10 text-xs"
                                 >×</button>
                               )}
                             </div>
@@ -563,7 +563,7 @@ export default function MeetingRoomsPage() {
                           {/* Add stage */}
                           <button type="button"
                             onClick={() => setCustomStages(prev => [...prev, { name: "Neue Phase", rounds: 1 }])}
-                            className="w-full rounded border border-dashed border-foreground/[0.08] py-1 text-[11px] text-muted-foreground/50 hover:text-muted-foreground hover:border-foreground/20 transition-colors"
+                            className="w-full rounded border border-dashed border-foreground/[0.08] py-1 text-[11px] text-muted-foreground hover:text-foreground hover:border-foreground/20 transition-colors"
                           >
                             + Phase hinzufügen
                           </button>
@@ -621,7 +621,7 @@ export default function MeetingRoomsPage() {
         ) : rooms.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <Users className="h-12 w-12 text-muted-foreground/30 mb-4" />
-            <h3 className="text-lg font-medium mb-1">Noch keine Besprechungsräume</h3>
+            <h3 className="text-lg font-medium mb-1">Noch keine Agenten-Runden</h3>
             <p className="text-sm text-muted-foreground">
               Lege einen Raum an, um ein Gruppengespräch zwischen Agenten zu starten.
             </p>

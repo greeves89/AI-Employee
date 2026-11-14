@@ -268,7 +268,7 @@ async def _push_ios_for_agent(
 #: Arten, die nur der Server selbst anlegt — ein Agent darf sie nicht über
 #: ``/request`` vortäuschen. ``mail_senden``: beim Freigeben sendet der Server einen
 #: Entwurf aus dem Postfach des Besitzers (core/mail_freigabe.py).
-SERVER_ARTEN = {"mail_senden"}
+SERVER_ARTEN = {"mail_senden", "teams_senden"}
 
 #: Ansichten, die zusagen, dass der SERVER nach dem Freigeben genau das Gezeigte
 #: ausführt. Nur Server-Bausteine dürfen sie verwenden (mail_freigabe, gebundene_freigabe).
@@ -279,7 +279,8 @@ def ist_server_art(art: str | None) -> bool:
     """Arten, die nur der Server anlegt: Mail-Freigabe und jede gebundene Handlung
     (core/gebundene_freigabe). Ein Agent, der so eine Art selbst anlegt, könnte sonst
     eine Handlung nach seinen Wünschen zur Ausführung durch den Server stellen."""
-    from app.core.gebundene_freigabe import AUSFUEHRER
+    from app.core.gebundene_freigabe import AUSFUEHRER, anmeldungen_laden
+    anmeldungen_laden()
     return art in SERVER_ARTEN or art in AUSFUEHRER
 
 
@@ -470,8 +471,16 @@ async def anfrage_anlegen(db: AsyncSession, agent_id: str, body: ApprovalRequest
     # Publish to agent's chat WS so approval appears inline in the chat
     if redis and redis.client:
         try:
+            # Gespraech der Aufgabe, falls bekannt: dort darf ein freigegebener Kollege
+            # sehen, DASS seine Anfrage auf den Besitzer wartet (ws.py, ohne Inhalt).
+            sitzung = None
+            if body.task_id:
+                from app.models.task import Task as _Task
+                _aufgabe = await db.get(_Task, body.task_id)
+                sitzung = ((_aufgabe.metadata_ or {}) if _aufgabe else {}).get("chat_session_id")
             ws_event = json.dumps({
                 "type": "approval_request",
+                **({"session_id": sitzung} if isinstance(sitzung, str) and sitzung else {}),
                 "data": {
                     "approval_id": str(approval.id),
                     "notification_id": str(notif.id),
@@ -757,7 +766,8 @@ async def _visible_agent_ids(user, db: AsyncSession) -> list[str]:
 
     uid = str(getattr(user, "id", "") or "")
     eigene = set((await db.execute(select(Agent.id).where(Agent.user_id == uid))).scalars().all())
-    eigene |= set((await db.execute(select(AgentAccess.agent_id).where(AgentAccess.user_id == uid))).scalars().all())
+    from app.core.ownership import verwaltende_freigaben
+    eigene |= set((await db.execute(verwaltende_freigaben(uid))).scalars().all())
     if getattr(user, "role", None) == UserRole.ADMIN:
         eigene.add("system")
     return sorted(str(a) for a in eigene)
@@ -942,7 +952,7 @@ async def approve_request(
         # Gebundene Handlung (Ticket anlegen …): genau DIESE, genau einmal — die
         # Zeilensperre oben verhindert eine zweite Ausführung bei Doppelklick.
         from app.core.gebundene_freigabe import ausfuehren as _gebunden
-        applied = await _gebunden(db, approval)
+        applied = await _gebunden(db, approval, user)
     if (approval.meta or {}).get("kind") == "reflection":
         from app.services.reflection_service import apply_reflection_approval
         try:

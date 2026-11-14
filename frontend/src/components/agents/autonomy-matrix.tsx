@@ -214,7 +214,7 @@ export function AutonomyMatrix({
                           disabled={gesperrt}
                           className={cn(
                             "inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium transition-all",
-                            active ? meta.on : "border-transparent text-muted-foreground/50 hover:bg-foreground/[0.05]",
+                            active ? meta.on : "border-transparent text-muted-foreground hover:bg-foreground/[0.05]",
                             gesperrt && "cursor-not-allowed opacity-30 hover:bg-transparent"
                           )}
                           title={gesperrt ? `Über der Grenze deiner Rolle (Stufe ${grenze?.toUpperCase()})` : meta.label}

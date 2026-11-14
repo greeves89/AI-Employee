@@ -21,6 +21,9 @@ import { Header } from "@/components/layout/header";
 import { ActivityTimeline } from "@/components/activity/activity-timeline";
 import { AgentAppearanceInline } from "@/components/agents/agent-appearance-inline";
 import { SelfHealingCard } from "@/components/agents/self-healing-card";
+import { AnonymisiererCard } from "@/components/agents/anonymisierer-card";
+import { FreigebenCard } from "@/components/agents/freigeben-card";
+import { KanaeleCard } from "@/components/agents/kanaele-card";
 import {
   FilePreview, FilePreviewEmpty,
   getFileColor, formatModified, formatModifiedFull,
@@ -37,6 +40,7 @@ import { InteractionModelCard } from "@/components/agents/interaction-model-card
 import { AgentSpeechTab } from "@/components/agents/agent-speech-tab";
 import { IntegrationSelector } from "@/components/agents/integration-selector";
 import { KontoVerbindungen } from "@/components/agents/konto-verbindungen";
+import { AgentenKonto } from "@/components/agents/agenten-konto";
 import { BridgeDownload } from "@/components/agents/bridge-download";
 import { InfoHint } from "@/components/ui/info-hint";
 import { MemoryTab } from "@/components/agents/memory-tab";
@@ -195,6 +199,9 @@ export default function AgentDetailPage() {
   const [aufgabenFenster, setAufgabenFenster] = useState(false);
   const { simpleMode } = useSimpleMode();
   const isAdminUser = useAuthStore((s) => s.user?.role) === "admin";
+  // Nur zum Nutzen freigegeben: wie die einfache Ansicht — Chat und Sprache, keine
+  // Einstellungen (der Server lehnt sie für diese Person ohnehin ab).
+  const nurNutzen = !!agent?.nur_nutzen;
 
   // Die Mitglieder-Ansicht zeigt nur den Chat (samt Mikrofon fuer die
   // Sprachsitzung) und rechts die Aufgaben — Reiter gibt es dort keine.
@@ -203,10 +210,10 @@ export default function AgentDetailPage() {
       tabGroups
         .map((g) => ({
           ...g,
-          subs: simpleMode ? g.subs.filter((s) => s.key === "chat") : g.subs,
+          subs: simpleMode || nurNutzen ? g.subs.filter((s) => s.key === "chat") : g.subs,
         }))
         .filter((g) => g.subs.length > 0),
-    [simpleMode],
+    [simpleMode, nurNutzen],
   );
 
   const activeGroup =
@@ -506,7 +513,10 @@ export default function AgentDetailPage() {
             <button
               onClick={() => setAufgabenFenster(true)}
               title="Aufgaben"
-              className="lg:hidden fixed bottom-24 right-4 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg"
+              aria-label="Aufgaben"
+              /* Oben rechts im Seitenkopf: unten lag der Knopf auf dem Senden-Knopf
+                 des Chats (UI-Durchsicht 14.11.2026). */
+              className="lg:hidden fixed top-2.5 right-4 z-30 flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg"
             >
               <ListTodo className="h-5 w-5" />
             </button>
@@ -802,7 +812,11 @@ function Schnellzugriff({ agent, setAgent }: { agent: Agent; setAgent: (a: Agent
         <div className="p-5">
           {offen === "konnektoren" && (
             <div className="space-y-4">
+              <AgentenKonto agentId={agent.id} />
               <KontoVerbindungen agentId={agent.id} />
+              {/* Teams, Slack, Discord, WhatsApp (core/kanaele) — hier, weil Mitglieder nur über
+                  dieses Fenster an die Einstellungen ihres Agenten kommen. */}
+              <KanaeleCard agentId={agent.id} />
               <BridgeDownload />
               <IntegrationSelector agentId={agent.id} />
             </div>
@@ -1465,10 +1479,10 @@ function KnowledgePanel({ agentId }: { agentId: string }) {
             {knowledge}
           </pre>
         ) : (
-          <div className="flex flex-col items-center justify-center flex-1 min-h-[12rem] text-muted-foreground/50">
+          <div className="flex flex-col items-center justify-center flex-1 min-h-[12rem] text-muted-foreground">
             <Brain className="h-8 w-8 mb-2" />
             <p className="text-sm">Noch keine Wissensbasis</p>
-            <p className="text-xs text-muted-foreground/40 mt-1">Sie entsteht mit der ersten erledigten Aufgabe.</p>
+            <p className="text-xs text-muted-foreground mt-1">Sie entsteht mit der ersten erledigten Aufgabe.</p>
           </div>
         )}
       </div>
@@ -1648,7 +1662,7 @@ function TelegramAgentSection({ agentId }: { agentId: string }) {
                   <RefreshCcw className="h-4 w-4" />
                 </button>
               </div>
-              <p className="text-[10px] text-muted-foreground/40 mt-1.5">
+              <p className="text-[10px] text-muted-foreground mt-1.5">
                 Nutzer senden <code className="text-sky-400/80">/auth {authKey}</code> im Telegram-Chat um sich zu autorisieren.
               </p>
             </div>
@@ -2124,7 +2138,7 @@ function AgentSettings({
       setRoomShared(r.shared_for_rooms);
       setMessage({ type: "success", text: v ? "Agent für Meeting-Räume freigegeben" : "Freigabe entfernt" });
     } catch {
-      setMessage({ type: "error", text: "Fehler beim Ändern der Meeting-Room-Freigabe" });
+      setMessage({ type: "error", text: "Fehler beim Ändern der Freigabe für Agenten-Runden" });
     } finally {
       setRoomSharedLoading(false);
     }
@@ -2465,7 +2479,7 @@ function AgentSettings({
               </button>
             ))}
           </div>
-          <p className="text-[11px] text-muted-foreground/50">
+          <p className="text-[11px] text-muted-foreground">
             Gilt für Aufgaben, Zeitpläne, delegierte Aufträge, Agent-zu-Agent-Nachrichten und Chats ohne gewählte Stufe. Eine im Chat gewählte Denktiefe gewinnt weiterhin. Vollständig wirksam ab dem nächsten Neuerstellen/Update des Agenten.
           </p>
         </div>
@@ -2538,7 +2552,7 @@ function AgentSettings({
                 </div>
               </div>
             )}
-            <p className="text-[11px] text-muted-foreground/50">
+            <p className="text-[11px] text-muted-foreground">
               {!agent.ai_account_id && agent.llm_config
                 ? "Dieser Agent nutzt aktuell die manuelle LLM-Konfiguration (Karte unten). Wähle einen Account, um auf einen zentral verwalteten Zugang umzustellen — die manuelle Karte verschwindet dann."
                 : "Verbindet den Agent mit einem zentral verwalteten Modell-Zugang. Beim Speichern wird der Container neu erstellt."}
@@ -2633,14 +2647,14 @@ function AgentSettings({
                     onChange={(e) => setLlmTemp(e.target.value)}
                     className="w-full max-w-[200px] rounded-lg border border-foreground/[0.1] bg-background/80 px-3.5 py-2 text-sm outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all tabular-nums"
                   />
-                  <p className="text-[10px] text-muted-foreground/40 mt-1">0 = präzise, 1 = kreativ</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">0 = präzise, 1 = kreativ</p>
                 </div>
 
                 {/* API Key (change) */}
                 <div>
                   <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">
                     API Key{" "}
-                    <span className="text-muted-foreground/40">(leer lassen = beibehalten)</span>
+                    <span className="text-muted-foreground">(leer lassen = beibehalten)</span>
                   </label>
                   <div className="relative">
                     <input
@@ -2653,7 +2667,7 @@ function AgentSettings({
                     <button
                       type="button"
                       onClick={() => setShowApiKey(!showApiKey)}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                     >
                       {showApiKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                     </button>
@@ -2751,6 +2765,7 @@ function AgentSettings({
       <SettingsAccordionSection title="Verbindungen" icon={Plug} secretsWarning>
       {/* Telegram Bot */}
       <TelegramAgentSection agentId={agentId} />
+
 
       {/* Meeting-Room shared pool (admin only) */}
       {isRoomAdmin && (
@@ -2935,7 +2950,7 @@ function AgentSettings({
 
             {/* Bearer Token */}
             <div>
-              <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">Bearer Token <span className="text-muted-foreground/40 font-normal">(gleicher wie Webhook)</span></label>
+              <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">Bearer Token <span className="text-muted-foreground font-normal">(gleicher wie Webhook)</span></label>
               <div className="flex items-center gap-2">
                 <code className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-[11px] font-mono text-muted-foreground truncate">
                   {webhookToken ? (webhookTokenVisible ? webhookToken : "•".repeat(32)) : "—"}
@@ -2972,6 +2987,12 @@ function AgentSettings({
       </SettingsAccordionSection>
 
       <SettingsAccordionSection title="Zugriff & Rechte" icon={ShieldCheck}>
+      {/* Anderen zum Nutzen freigeben (nur Chat und Sprache, eigene Gespräche) */}
+      <FreigebenCard agentId={agentId} />
+
+      {/* Anonymisierer vor dem Modell (opt-in je Agent) */}
+      <AnonymisiererCard agentId={agentId} />
+
       {/* Autonomy Level */}
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
         <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
@@ -3129,7 +3150,7 @@ function ResourceLimitsSection({ agentId, agent, onUpdated }: { agentId: string;
               <option value="480">8 Stunden</option>
               <option value="1440">24 Stunden</option>
             </select>
-            <p className="text-xs text-muted-foreground/50">
+            <p className="text-xs text-muted-foreground">
               {idleTimeout === "0" || idleTimeout === "" ? "Agent bleibt immer gestartet." : `Agent stoppt nach ${idleTimeout} Min. Inaktivität und fährt beim nächsten Task automatisch hoch.`}
             </p>
           </div>
@@ -3154,7 +3175,7 @@ function ResourceLimitsSection({ agentId, agent, onUpdated }: { agentId: string;
               />
               <span className="text-sm text-muted-foreground">GB</span>
             </div>
-            <p className="text-xs text-muted-foreground/50">
+            <p className="text-xs text-muted-foreground">
               Agent wird bei 95% des Limits gestoppt. Standard: 5 GB.
             </p>
           </div>
@@ -3163,7 +3184,7 @@ function ResourceLimitsSection({ agentId, agent, onUpdated }: { agentId: string;
         {/* Budget — admin sets the cap; non-admin users see it read-only */}
         <div className="space-y-2">
           <label className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wide">
-            Budget / Monat {!isAdmin && <span className="normal-case text-muted-foreground/40">(nur Admin änderbar)</span>}
+            Budget / Monat {!isAdmin && <span className="normal-case text-muted-foreground">(nur Admin änderbar)</span>}
           </label>
           {isAdmin ? (
             <div className="flex flex-wrap items-center gap-3">
@@ -3188,7 +3209,7 @@ function ResourceLimitsSection({ agentId, agent, onUpdated }: { agentId: string;
                 <option value="stop">Bei Limit: anhalten (Empfehlung)</option>
                 <option value="haiku">Bei Limit: Sparmodus (günstigeres Modell, falls die Laufzeit eins hat)</option>
               </select>
-              <p className="text-xs text-muted-foreground/50">Leer = kein Limit.</p>
+              <p className="text-xs text-muted-foreground">Leer = kein Limit.</p>
             </div>
           ) : (
             <p className="text-sm text-foreground/80">
@@ -3293,7 +3314,7 @@ function MountSelectorSection({ agentId }: { agentId: string }) {
                         <p className={cn("text-xs font-medium", enabled ? "text-foreground" : "text-muted-foreground/70")}>
                           {entry.label}
                         </p>
-                        <p className="text-[10px] text-muted-foreground/50 font-mono truncate">
+                        <p className="text-[10px] text-muted-foreground font-mono truncate">
                           → {entry.container_path}
                         </p>
                       </div>
@@ -3318,7 +3339,7 @@ function MountSelectorSection({ agentId }: { agentId: string }) {
                 );
               })}
             </div>
-            <p className="text-[10px] text-muted-foreground/50">
+            <p className="text-[10px] text-muted-foreground">
               Mounts werden in <code className="text-blue-400/70">docker-compose.yml → AGENT_MOUNT_CATALOG</code> vom Admin konfiguriert.
             </p>
           </>
@@ -3488,7 +3509,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
           >
             {isDir ? (
               <ChevronRight className={cn(
-                "h-3 w-3 text-muted-foreground/50 transition-transform duration-150 shrink-0",
+                "h-3 w-3 text-muted-foreground transition-transform duration-150 shrink-0",
                 isExpanded && "rotate-90"
               )} />
             ) : (
@@ -3505,19 +3526,19 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
             )}
             <span className="text-[12px] truncate flex-1 min-w-0" title={entry.path}>{dateiAnzeigeName(entry)}</span>
             {!isDir && entry.modified > 0 && (
-              <span className="text-[10px] text-muted-foreground/30 tabular-nums shrink-0" title={formatModifiedFull(entry.modified)}>
+              <span className="text-[10px] text-muted-foreground tabular-nums shrink-0" title={formatModifiedFull(entry.modified)}>
                 {formatModified(entry.modified)}
               </span>
             )}
             {!isDir && (
-              <span className="text-[10px] text-muted-foreground/40 tabular-nums shrink-0 w-12 text-right">
+              <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 w-12 text-right">
                 {formatFileSize(entry.size)}
               </span>
             )}
             {!isDir && (
               <button
                 onClick={(e) => { e.stopPropagation(); handleDownload(entry.path); }}
-                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-foreground can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-all shrink-0"
+                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-foreground can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-all shrink-0"
                 title="Herunterladen"
               >
                 <Download className="h-2.5 w-2.5" />
@@ -3526,7 +3547,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
             {isDir && (
               <button
                 onClick={(e) => { e.stopPropagation(); window.open(api.getFolderDownloadUrl(agentId, entry.path), "_blank"); }}
-                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-foreground can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-all shrink-0"
+                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-foreground can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-all shrink-0"
                 title={`Ordner als ZIP herunterladen (ohne node_modules, .git …)`}
               >
                 <Download className="h-2.5 w-2.5" />
@@ -3535,7 +3556,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
             {isDir && (
               <button
                 onClick={(e) => { e.stopPropagation(); setUploadTarget(entry.path); }}
-                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-foreground can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-all shrink-0"
+                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-foreground can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-all shrink-0"
                 title={`Hierher hochladen (${entry.path})`}
               >
                 <Upload className="h-2.5 w-2.5" />
@@ -3544,7 +3565,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
             {entry.path !== "/workspace" && (
               <button
                 onClick={(e) => { e.stopPropagation(); handleDelete(entry.path, entry.name); }}
-                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-red-400 can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-all shrink-0"
+                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-red-400 can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-all shrink-0"
                 title="Löschen"
               >
                 <Trash2 className="h-2.5 w-2.5" />
@@ -3606,12 +3627,12 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Dateien suchen..."
-                className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] pl-8 pr-8 py-1.5 text-[12px] placeholder:text-muted-foreground/30 focus:outline-none focus:border-primary/30 transition-colors"
+                className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] pl-8 pr-8 py-1.5 text-[12px] placeholder:text-muted-foreground focus:outline-none focus:border-primary/30 transition-colors"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground/40 hover:text-foreground"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -3619,7 +3640,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
             </div>
             <button
               onClick={refreshAll}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/40 hover:text-foreground hover:bg-foreground/[0.06] transition-colors shrink-0"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors shrink-0"
               title="Aktualisieren"
             >
               <RefreshCw className="h-3 w-3" />
@@ -3642,7 +3663,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
                   "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors",
                   sortMode === mode
                     ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-foreground/[0.04]"
+                    : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
                 )}
               >
                 {mode === "name" && <><Hash className="h-2.5 w-2.5" /> Name</>}
@@ -3672,13 +3693,13 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
             </div>
           ) : searchQuery.trim() ? (
             searchResults.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-32 text-muted-foreground/30">
+              <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
                 <Search className="h-5 w-5 mb-2" />
                 <span className="text-[11px]">Keine Treffer</span>
               </div>
             ) : (
               <div className="py-1">
-                <div className="px-3 py-1 text-[10px] text-muted-foreground/40 font-sans">
+                <div className="px-3 py-1 text-[10px] text-muted-foreground font-sans">
                   {searchResults.length} Treffer
                 </div>
                 {searchResults.map((entry) => {
@@ -3695,14 +3716,14 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
                       <File className={cn("h-3.5 w-3.5 shrink-0", getFileColor(entry.name))} />
                       <div className="flex flex-col flex-1 min-w-0">
                         <span className="text-[12px] truncate">{entry.name}</span>
-                        <span className="text-[10px] text-muted-foreground/30 truncate font-sans">{entry.path}</span>
+                        <span className="text-[10px] text-muted-foreground truncate font-sans">{entry.path}</span>
                       </div>
                       {entry.modified > 0 && (
-                        <span className="text-[10px] text-muted-foreground/30 tabular-nums shrink-0">
+                        <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
                           {formatModified(entry.modified)}
                         </span>
                       )}
-                      <span className="text-[10px] text-muted-foreground/40 tabular-nums shrink-0 w-12 text-right">
+                      <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 w-12 text-right">
                         {formatFileSize(entry.size)}
                       </span>
                     </div>
@@ -3711,7 +3732,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
               </div>
             )
           ) : !treeData["/workspace"] || treeData["/workspace"].length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-muted-foreground/50 font-sans">
+            <div className="flex flex-col items-center justify-center h-full text-muted-foreground font-sans">
               <FolderOpen className="h-8 w-8 mb-2" />
               <p className="text-sm">Leerer Arbeitsbereich</p>
             </div>

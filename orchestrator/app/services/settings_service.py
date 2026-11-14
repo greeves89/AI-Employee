@@ -36,7 +36,8 @@ SECRET_KEYS = {
     "whatsapp_app_secret",
     # Zugang zum Ticketsystem: erlaubt Anlegen und Kommentieren im Namen der Firma.
     "ticket_api_token",
-    # Das Bot-Geheimnis erlaubt, im Namen der Organisation Terminen beizutreten.
+    # Altlast der entfernten Teams-Anrufe (1.457): ein gespeicherter Wert bleibt
+    # geheim und wird nie im Klartext ausgeliefert.
     "teams_calling_app_secret",
     # Voice provider API keys
     "voice_openai_api_key",
@@ -54,6 +55,8 @@ SECRET_KEYS = {
 
 # All settings keys that can be persisted
 ALLOWED_KEYS = SECRET_KEYS | {
+    # Pruefwert (SHA-256) des Kiosk-Zugangs — nie der Zugang selbst (core/kiosk_zugang).
+    "kiosk_zugang_hash",
     "model_provider",
     "default_model",
     "max_turns",
@@ -85,6 +88,10 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "egress_proxy_enabled",
     "egress_ki_zugang",
     "egress_codex_zugang",
+    # Eigene Git-Server (#1194, api/settings.py /git-server): Zertifizierungsstelle der
+    # Firma und freigegebene Server im Firmennetz. Ohne Eintrag hier scheitert das Speichern still.
+    "git_ca_zertifikate",
+    "git_interne_server",
     "agenten_auto_update",
     "agenten_auto_update_angehalten",
     "aws_region",
@@ -135,6 +142,15 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "agent_idle_timeout_minutes",
     # Expose MS Graph MCP server to external LLM clients (OpenWebUI)
     "msgraph_mcp_external_enabled",
+    # Eigene MCP-Endpunkte per OAuth über den Firmen-IdP (#1195, core/mcp_idp_auth).
+    # Nichts davon ist geheim: Aussteller, Empfänger und Schlüsseladresse stehen
+    # ohnehin in der öffentlichen Protected Resource Metadata.
+    "mcp_idp_oauth_enabled",
+    "mcp_idp_issuer",
+    "mcp_idp_audience",
+    "mcp_idp_jwks_uri",
+    "mcp_idp_required_scope",
+    "mcp_idp_allowed_clients",
     # Platform-wide read-only enforcement for M365/Graph AND on-prem Exchange
     "msgraph_read_only",
     # Improvement engine thresholds
@@ -204,11 +220,6 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "slack_bot_token",
     "whatsapp_verify_token",
     "whatsapp_app_secret",
-    # Teams-Anrufe (Agent mit Stimme im Termin, service-hosted media).
-    "teams_calling_app_id",
-    "teams_calling_app_secret",
-    "teams_calling_tenant_id",
-    "teams_calling_enabled",
     # Ticketsystem (Matrix42 o.a.). Das Token ist zusaetzlich in SECRET_KEYS.
     "ticket_base_url",
     "ticket_api_token",

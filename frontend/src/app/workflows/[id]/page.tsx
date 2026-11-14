@@ -348,7 +348,7 @@ function NodeConfig({ node, agents, stepOptions, onChange, onDelete, onClose }: 
         <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">
           {d.kind === "agent_task" ? "Agenten-Aufgabe" : d.kind === "condition" ? "Bedingung" : "Warten"}
         </span>
-        <button onClick={onClose} className="text-muted-foreground/40 hover:text-foreground"><X className="h-4 w-4" /></button>
+        <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
       </div>
       <Field label="Titel"><input value={d.title ?? ""} onChange={(e) => onChange({ title: e.target.value })} className={inp} /></Field>
 
@@ -386,7 +386,7 @@ function NodeConfig({ node, agents, stepOptions, onChange, onDelete, onClose }: 
           {["contains", "equals", "not_equals"].includes(d.check?.op ?? "") && (
             <Field label="Wert"><input value={d.check?.value ?? ""} onChange={(e) => onChange({ check: { step: d.check?.step ?? "", op: d.check?.op ?? "contains", value: e.target.value } })} className={inp} /></Field>
           )}
-          <p className="text-[11px] text-muted-foreground/50">Grüner Punkt = „ja"-Zweig, roter = „nein". Ziehe von ihnen zum nächsten Baustein.</p>
+          <p className="text-[11px] text-muted-foreground">Grüner Punkt = „ja"-Zweig, roter = „nein". Ziehe von ihnen zum nächsten Baustein.</p>
         </>
       )}
 

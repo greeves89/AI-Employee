@@ -62,7 +62,7 @@ class _Manager:
     def __init__(self, db, docker, redis):
         self._docker = docker
 
-    async def start_agent(self, agent_id: str):
+    async def start_agent(self, agent_id: str, **_):
         _Manager.started.append(agent_id)
         self._docker.started()
         return SimpleNamespace(id=agent_id, container_id="c1")

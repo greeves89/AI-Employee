@@ -6,6 +6,9 @@
 * In aufgebrochenen Verbindungen werden Platzhalter durch die echten Werte
   ersetzt — nur, wenn der Orchestrator es fuer genau dieses Ziel erlaubt.
 * Ziele mit interner Adresse sind gesperrt; verbunden wird mit der geprueften IP.
+  Ausnahme: Git-Server im Firmennetz, die der Administrator freigegeben hat.
+* Eine Zertifizierungsstelle der Firma gilt nur fuer freigegebene Git-Server, wenn
+  der Proxy deren Gegenseite prueft (``tls_start_server``) — sonst nirgends.
 
 Die Logik steht in egress_logik.py (ohne mitmproxy, testbar).
 """
@@ -13,6 +16,7 @@ Die Logik steht in egress_logik.py (ohne mitmproxy, testbar).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from pathlib import Path
@@ -23,15 +27,106 @@ from mitmproxy.proxy import server_hooks
 import importlib
 
 import egress_logik as logik
+import anonym
 
 # mitmproxy laedt dieses Skript bei Aenderung neu, das importierte Modul aber nicht —
 # ohne das liefe nach einem Update neue Addon-Logik mit alter Pruefung.
 logik = importlib.reload(logik)
+anonym = importlib.reload(anonym)
 
 log = logging.getLogger("aie_egress")
 
+#: Ab dieser Größe wird in einem eigenen Prozess erkannt: Pythons ``re`` gibt den GIL nicht
+#: frei — ein Thread hielte bei 1 MB Ziffernfolgen (Pi: ~1 s) den Proxy für ALLE Agenten an.
+_PROZESS_AB = 64 * 1024
+_pool = None
+
+
+def _prozesse():
+    global _pool
+    if _pool is None:
+        import concurrent.futures
+        import multiprocessing
+
+        _pool = concurrent.futures.ProcessPoolExecutor(
+            max_workers=2, mp_context=multiprocessing.get_context("spawn"))
+    return _pool
+
+
+async def _erkennen(klar: bytes, schluessel: str, begriffe: list[str]):
+    if len(klar) < _PROZESS_AB:
+        return anonym.anfrage_anonymisieren(klar, schluessel, begriffe)
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_prozesse(), anonym.anfrage_anonymisieren, klar, schluessel, begriffe)
+
+
+def _zstd_begrenzt(roh: bytes, hoechstens: int) -> bytes:
+    """zstd entpacken, höchstens ``hoechstens`` Bytes.
+
+    mitmproxy bis 12.2 (Python 3.13) brachte das Paket ``zstandard`` mit; ab 12.3 läuft es auf
+    Python 3.14, das zstd selbst kann (``compression.zstd``) — ``zstandard`` fehlt dort. Beide
+    Wege begrenzen die Ausgabe (Kompressionsbombe)."""
+    try:
+        from compression import zstd   # Python ≥ 3.14
+    except ImportError:
+        import io
+
+        import zstandard
+        with zstandard.ZstdDecompressor().stream_reader(io.BytesIO(roh)) as r:
+            return r.read(hoechstens)
+    return zstd.ZstdDecompressor().decompress(roh, max_length=hoechstens)
+
+
+def _entpacken(roh: bytes, kodierung: str) -> bytes:
+    """Anfragekörper entpacken, nie über ``MAX_ANTWORT`` hinaus (Kompressionsbombe)."""
+    if kodierung == "zstd":
+        daten = _zstd_begrenzt(roh, logik.MAX_ANTWORT + 1)
+        if len(daten) > logik.MAX_ANTWORT:
+            raise logik.Abgelehnt(413, "zu groß")
+        return daten
+    return logik.entpacken_begrenzt(roh, kodierung)
+
+
 def _antwort(status: int, text: str, **kopf) -> http.Response:
     return http.Response.make(status, text.encode(), {"Content-Type": "text/plain; charset=utf-8", **kopf})
+
+
+def _sicher(richtung: str):
+    """Hook fail closed: Ein unerwarteter Fehler darf nie heißen „durchlassen“.
+
+    mitmproxy protokolliert eine Ausnahme in einem Hook und lässt den Fluss danach WEITER-
+    laufen — eine Anfrage ginge dann ungeprüft (nicht anonymisiert, Platzhalter nicht geprüft)
+    zum Anbieter, eine Antwort unverdeckt zum Agenten. Hier: Anfrage → 502 statt Senden,
+    Antwort/Websocket → Verbindung abbrechen.
+    """
+    import functools
+    import inspect
+
+    def abbrechen(flow, e):
+        log.exception("Egress-Proxy: %s nicht prüfbar — %s", richtung, type(e).__name__)
+        if richtung == "anfrage":
+            flow.response = _antwort(502, "Egress-Proxy: Anfrage konnte nicht geprüft werden — nicht gesendet")
+        else:
+            flow.kill()
+
+    def huelle(fn):
+        if inspect.iscoroutinefunction(fn):
+            @functools.wraps(fn)
+            async def a(self, flow, *args):
+                try:
+                    return await fn(self, flow, *args)
+                except Exception as e:  # noqa: BLE001
+                    abbrechen(flow, e)
+            return a
+
+        @functools.wraps(fn)
+        def s(self, flow, *args):
+            try:
+                return fn(self, flow, *args)
+            except Exception as e:  # noqa: BLE001
+                abbrechen(flow, e)
+        return s
+    return huelle
 
 
 class AieEgress:
@@ -44,20 +139,90 @@ class AieEgress:
         self.ziele: dict[str, tuple[str, int]] = {}     # client_conn.id → CONNECT-Ziel (Host, Port)
         self.maske = logik.Maske()
 
+    # ── Stelle der Firma nur für freigegebene Git-Server (#1194) ─────────
+    def _buendel(self, pem: str) -> str:
+        """Datei mit den üblichen Stellen (certifi) plus der Stelle der Firma — je Inhalt eine."""
+        import certifi
+        import hashlib
+        import tempfile
+
+        pfad = Path(tempfile.gettempdir(), f"aie-git-ca-{hashlib.sha256(pem.encode()).hexdigest()[:16]}.pem")
+        if not pfad.exists():
+            pfad.write_text(logik.ca_buendel(Path(certifi.where()).read_text(), pem))
+        return str(pfad)
+
+    def tls_start_server(self, data: tls.TlsData):
+        """Gegenseite eines freigegebenen Git-Servers auch mit der Stelle der Firma prüfen.
+
+        Nur für genau diese Ziele (CONNECT-Ziel auf Port 443, in der Freigabe): Alle
+        anderen Verbindungen — auch zu Modellanbietern — prüft mitmproxy weiter nur mit
+        den üblichen Stellen. Die Verbindung baut mitmproxys eigenes TLS-Addon (SNI,
+        Hostnamen-Prüfung, ALPN); hier wird nur der SSL-Kontext gegen einen mit der
+        zusätzlichen Stelle getauscht. Scheitert das, bleibt der übliche Kontext — dann
+        scheitert die Prüfung des Firmen-Zertifikats (sicher geschlossen).
+        """
+        try:
+            ziel, port = self.ziele.get(data.context.client.id, ("", 0))
+            pem = self.orch.git_ca
+            if not pem or not logik.git_ca_gilt(ziel, port, self.orch.interne):
+                return
+            from mitmproxy.addons import tlsconfig as tlsmod
+            from mitmproxy.net import tls as net_tls
+
+            if data.ssl_conn is None:
+                ctx.master.addons.get("tlsconfig").tls_start_server(data)
+            o = ctx.options
+            kontext = net_tls.create_proxy_server_context(
+                method=net_tls.Method.TLS_CLIENT_METHOD,
+                min_version=net_tls.Version[o.tls_version_server_min],
+                max_version=net_tls.Version[o.tls_version_server_max],
+                cipher_list=tuple(data.conn.cipher_list
+                                  or tlsmod._default_ciphers(net_tls.Version[o.tls_version_server_min])),
+                ecdh_curve=o.tls_ecdh_curve_server,
+                verify=net_tls.Verify.VERIFY_PEER,
+                ca_path=None,
+                ca_pemfile=self._buendel(pem),
+                client_cert=None,
+                legacy_server_connect=False,
+            )
+            data.ssl_conn.set_context(kontext)
+        except Exception:  # noqa: BLE001 — übliche Prüfung bleibt (sicher geschlossen)
+            log.exception("Egress-Proxy: Stelle der Firma für %s nicht gesetzt", self.ziele.get(
+                data.context.client.id, ("?", 0))[0])
+
     async def _hosts(self, agent):
         return await asyncio.to_thread(self.orch.hosts, agent)
 
     # ── Anmeldung ───────────────────────────────────────────────────────
-    async def http_connect(self, flow: http.HTTPFlow):
-        agent = logik.anmeldung(flow.request.headers.get("Proxy-Authorization"))
+    async def _zulassen(self, flow: http.HTTPFlow) -> tuple[str, str] | None:
+        """Anmeldung + Zielliste für CONNECT und Klartext-HTTP — None: abgewiesen (Antwort gesetzt)."""
+        kopf = flow.request.headers.get("Proxy-Authorization")
+        agent = logik.anmeldung(kopf)
+        # Mit Kennung (Zielliste beim Start an) nie auf einen gemerkten Stand „aus“ verlassen.
+        erwartet = logik.zielliste_erwartet(kopf)
         try:
-            hosts = await self._hosts(agent) if agent else None
+            frisch = bool(agent) and erwartet and self.orch.zielliste(agent) is None
+            hosts = await asyncio.to_thread(self.orch.hosts, agent, frisch) if agent else None
         except logik.OrchestratorFehler:
             flow.response = _antwort(503, "Egress-Proxy: Orchestrator nicht erreichbar")
-            return
+            return None
         if hosts is None:
             flow.response = _antwort(407, "Anmeldung am Egress-Proxy fehlt",
                                      **{"Proxy-Authenticate": 'Basic realm="ai-employee"'})
+            return None
+        ziele = self.orch.zielliste(agent)
+        if erwartet and ziele is None:
+            flow.response = _antwort(403, "Egress-Proxy: Liste der erlaubten Adressen nicht bestätigt")
+            return None
+        if not logik.ziel_erlaubt(flow.request.host, ziele):
+            flow.response = _antwort(403, f"Ziel {flow.request.host} steht nicht auf der Liste der "
+                                          "erlaubten Adressen dieses Agenten")
+            return None
+        return agent
+
+    async def http_connect(self, flow: http.HTTPFlow):
+        agent = await self._zulassen(flow)
+        if agent is None:
             return
         # Eine Client-Verbindung = ein Tunnel. Ein zweites CONNECT (etwa im Tunnel)
         # koennte sonst das gemerkte Ziel ueberschreiben.
@@ -66,6 +231,19 @@ class AieEgress:
             return
         self.agenten[flow.client_conn.id] = agent
         self.ziele[flow.client_conn.id] = (flow.request.host.lower().rstrip("."), flow.request.port)
+
+    def tcp_start(self, flow):
+        """Kein HTTP im Tunnel (rohes TCP, auch nach dem Aufbrechen): Für Agenten mit Zielliste
+        beenden. Der Proxy prüft nur, was er als HTTP lesen kann. Im Fehlerfall ebenso beenden
+        (mitmproxy ließe die Verbindung sonst weiterlaufen)."""
+        try:
+            agent = self.agenten.get(flow.client_conn.id)
+            if agent and self.orch.zielliste(agent) is not None:
+                log.info("Zielliste: rohe TCP-Verbindung beendet (Agent %s)", agent[0])
+                flow.kill()
+        except Exception:  # noqa: BLE001
+            log.exception("Egress-Proxy: TCP-Verbindung nicht prüfbar — beendet")
+            flow.kill()
 
     def client_disconnected(self, client):
         self.agenten.pop(client.id, None)
@@ -77,7 +255,7 @@ class AieEgress:
             return
         host, port = data.server.address
         try:
-            ip = await asyncio.to_thread(logik.ziel_adresse, host, port)
+            ip = await asyncio.to_thread(logik.ziel_adresse, host, port, interne=self.orch.interne)
         except logik.Abgelehnt as e:
             data.server.error = e.text
             return
@@ -88,9 +266,25 @@ class AieEgress:
         cid = data.context.client.id
         agent, (ziel, port) = self.agenten.get(cid), self.ziele.get(cid, ("", 0))
         sni = (data.client_hello.sni or "").lower().rstrip(".")
+        if agent and ziel in logik.MODELL_ANBIETER:
+            # Zu einem Modellanbieter immer mit frischer Einstellung: Wurde gerade der
+            # Anonymisierer eingeschaltet, darf keine neue Verbindung im Klartext bleiben,
+            # nur weil die Anmeldung noch eine Minute zwischengespeichert ist.
+            try:
+                await asyncio.to_thread(self.orch.hosts, agent, True)
+            except logik.OrchestratorFehler:
+                pass  # gemerkter Stand gilt (Notfall-Frist in ``hosts``)
+        if agent and ziel and self.orch.zielliste(agent) is not None:
+            # Zielliste: immer aufbrechen, sonst sähe der Proxy nur das CONNECT-Ziel und ein
+            # anderer Name (SNI, Host-Kopf) erreichte am selben CDN ein fremdes Ziel. Der
+            # Server-Name nach außen ist fest das geprüfte Ziel; den Host-Kopf prüft
+            # ``request`` je Anfrage.
+            data.context.server.sni = ziel
+            return
         aufbrechen = False
         if agent and ziel and sni == ziel and port == logik.KEY_PORT:
             try:
+                # Für Modellanbieter oben schon frisch geholt.
                 aufbrechen = logik.host_passt(ziel, await self._hosts(agent) or [])
             except logik.OrchestratorFehler:
                 aufbrechen = False
@@ -98,11 +292,15 @@ class AieEgress:
             data.ignore_connection = True
 
     # ── Platzhalter ersetzen ────────────────────────────────────────────
+    @_sicher("anfrage")
     async def request(self, flow: http.HTTPFlow):
         cid = flow.client_conn.id
         agent = self.agenten.get(cid)
         if agent is None:
-            await self._ohne_tunnel(flow)
+            return  # Klartext-HTTP ohne Tunnel: schon in ``requestheaders`` geprüft
+        abgelehnt = await self._anonymisieren(flow, agent)
+        if abgelehnt is not None:
+            flow.response = abgelehnt
             return
         gefunden: set[str] = set()
         for name, wert in flow.request.headers.items(multi=True):
@@ -153,11 +351,85 @@ class AieEgress:
         flow.metadata["aie_werte"] = werte
         self.maske.merken(agent[0], werte)
 
-    def requestheaders(self, flow: http.HTTPFlow):
+    # ── Anonymisierer (egress/anonym.py) ───────────────────────────────
+    def _anonym_einstellung(self, flow: http.HTTPFlow) -> dict | None:
+        """Einstellung, wenn diese Verbindung zu einem Modellanbieter eines Agenten mit
+        eingeschaltetem Anonymisierer geht — sonst None."""
+        agent = self.agenten.get(flow.client_conn.id)
+        cfg = self.orch.anonym(agent) if agent else None
+        if not cfg:
+            return None
+        ziel = self.ziele.get(flow.client_conn.id, ("", 0))[0]
+        return cfg if logik.host_passt(ziel, cfg.get("ziele") or []) else None
+
+    async def _anonymisieren(self, flow: http.HTTPFlow, agent) -> http.Response | None:
+        """Personendaten in der Anfrage durch Platzhalter ersetzen. Geht das nicht sicher,
+        wird die Anfrage abgewiesen — lieber keine als eine mit Klartext."""
+        cfg = self._anonym_einstellung(flow)
+        if cfg is None:
+            return None
+        roh = flow.request.raw_content
+        if roh is None:
+            # Gestreamter Körper (nicht gepuffert): ungeprüft nicht hinaus.
+            if flow.request.headers.get("content-length", "0") != "0" or flow.request.headers.get("transfer-encoding"):
+                return _antwort(413, "Anonymisierer: Anfrage nicht prüfbar")
+            return None
+        if not roh:
+            return None
+        kodierung = flow.request.headers.get("content-encoding", "identity").strip().lower()
+        if len(roh) > logik.MAX_ANTWORT:
+            return _antwort(413, "Anonymisierer: Anfrage zu groß zum Prüfen")
+        try:
+            klar = _entpacken(roh, kodierung)
+        except logik.Abgelehnt as e:
+            if e.status == 413:   # Kompressionsbombe: zu groß, nicht „unbekannte Kodierung“
+                return _antwort(413, "Anonymisierer: Anfrage entpackt zu groß zum Prüfen")
+            return _antwort(415, f"Anonymisierer: Kodierung {kodierung} nicht prüfbar")
+        except Exception:  # noqa: BLE001 — kaputte Kompression (ZstdError, zlib.error …): nicht senden
+            return _antwort(415, f"Anonymisierer: Kodierung {kodierung} nicht lesbar")
+        try:
+            # Außerhalb der Ereignisschleife: die Erkennung über bis zu 32 MB darf den Proxy
+            # für die anderen Agenten nicht anhalten.
+            neu, zuordnung = await _erkennen(klar, cfg["schluessel"], cfg.get("begriffe") or [])
+        except (ValueError, UnicodeDecodeError):
+            return _antwort(400, "Anonymisierer: Anfrage ist kein JSON und wird nicht unbesehen gesendet")
+        if zuordnung or klar is not roh:
+            # Unkomprimiert weiter: sonst müsste neu verpackt werden, und der Anbieter nimmt beides.
+            flow.request.headers.pop("content-encoding", None)
+            flow.request.set_content(neu)
+        if zuordnung:
+            flow.metadata["aie_anonym"] = zuordnung
+            log.info("Anonymisierer: %d Wert(e) ersetzt (Agent %s)", len(zuordnung), agent[0])
+        return None
+
+    @_sicher("anfrage")
+    async def requestheaders(self, flow: http.HTTPFlow):
+        # Hier, nicht erst in ``request``: Ein gestreamter Körper (``stream_large_bodies``)
+        # ginge sonst samt Kopfzeilen hinaus, bevor ``request`` läuft.
+        agent = self.agenten.get(flow.client_conn.id)
+        if agent is None:
+            await self._ohne_tunnel(flow)
+            return
+        if self.orch.zielliste(agent) is not None:
+            ziel = self.ziele.get(flow.client_conn.id, ("", 0))[0]
+            if not logik.host_werte_passen(
+                    flow.request.headers.get_all("host") + [flow.request.authority or ""], ziel):
+                flow.response = _antwort(421, "Host-Kopf passt nicht zum Ziel der Verbindung")
+                return
         # Aufgebrochene Verbindung eines Agenten: Antworten unkomprimiert anfordern —
         # verdecken laesst sich nur, was lesbar ist, und Entpacken kostet Speicher.
-        if flow.client_conn.id in self.agenten:
-            flow.request.headers["accept-encoding"] = "identity"
+        flow.request.headers["accept-encoding"] = "identity"
+        # Anonymisierer: den Körper IMMER puffern. ``stream_large_bodies`` (Compose: 5m)
+        # reichte große Anfragen sonst ungesehen durch — ein langer Verlauf hat schnell 5 MB.
+        if self._anonym_einstellung(flow) is not None:
+            try:
+                zu_gross = int(flow.request.headers.get("content-length") or 0) > logik.MAX_ANTWORT
+            except ValueError:
+                zu_gross = True
+            if zu_gross:
+                flow.response = _antwort(413, "Anonymisierer: Anfrage zu groß zum Prüfen")
+                return
+            flow.request.stream = False
 
     async def _ohne_tunnel(self, flow: http.HTTPFlow):
         """Klartext-HTTP direkt an den Proxy: CA-Zertifikat holen oder weiterleiten."""
@@ -166,15 +438,12 @@ class AieEgress:
             flow.response = (http.Response.make(200, pem.read_bytes(), {"Content-Type": "application/x-pem-file"})
                              if pem.exists() else _antwort(503, "CA noch nicht erzeugt"))
             return
-        agent = logik.anmeldung(flow.request.headers.get("Proxy-Authorization"))
-        try:
-            hosts = await self._hosts(agent) if agent else None
-        except logik.OrchestratorFehler:
-            flow.response = _antwort(503, "Egress-Proxy: Orchestrator nicht erreichbar")
+        agent = await self._zulassen(flow)
+        if agent is None:
             return
-        if hosts is None:
-            flow.response = _antwort(407, "Anmeldung am Egress-Proxy fehlt",
-                                     **{"Proxy-Authenticate": 'Basic realm="ai-employee"'})
+        if self.orch.zielliste(agent) is not None and not logik.host_werte_passen(
+                flow.request.headers.get_all("host"), flow.request.host.lower().rstrip(".")):
+            flow.response = _antwort(421, "Host-Kopf passt nicht zum Ziel der Anfrage")
             return
         flow.request.headers.pop("Proxy-Authorization", None)
         if logik.platzhalter_in(flow.request.url, *flow.request.headers.values()):
@@ -187,6 +456,7 @@ class AieEgress:
         werte.update(flow.metadata.get("aie_werte") or {})
         return werte
 
+    @_sicher("antwort")
     def responseheaders(self, flow: http.HTTPFlow):
         """Gibt es fuer diesen Agenten etwas zu verdecken, kommt keine Antwort ungeprueft durch.
 
@@ -201,6 +471,29 @@ class AieEgress:
             return
         art = (flow.response.headers.get("content-type") or "").lower()
         werte = self._maske(flow)
+        zuordnung = flow.metadata.get("aie_anonym")
+        if zuordnung:
+            # Anonymisierer: Platzhalter in der Antwort wieder einsetzen. Ereignisströme
+            # verstehen (zerteilte Platzhalter über Ereignisgrenzen), sonst ganz puffern.
+            if werte:
+                flow.response.headers.fields = tuple(
+                    (k, logik.zurueck_maskieren(v.decode("latin-1"), werte).encode("latin-1"))
+                    for k, v in flow.response.headers.fields
+                )
+            if art.startswith("text/event-stream"):
+                einsetzer = anonym.SseEinsetzer(zuordnung)
+                maske = logik.StromMaske(werte) if werte else None
+                flow.response.stream = (lambda b: einsetzer(maske(b))) if maske else einsetzer
+                return
+            try:
+                zu_gross = int(flow.response.headers.get("content-length") or 0) > logik.MAX_ANTWORT
+            except ValueError:
+                zu_gross = True
+            if zu_gross:
+                flow.kill()
+                return
+            flow.response.stream = False
+            return
         if not werte:
             if art.startswith("text/event-stream"):
                 flow.response.stream = True     # sofort durchreichen, nicht sammeln
@@ -228,9 +521,25 @@ class AieEgress:
             return
         flow.response.stream = logik.StromMaske(werte)
 
+    @_sicher("antwort")
     def response(self, flow: http.HTTPFlow):
         if flow.response is None:
             return
+        zuordnung = flow.metadata.get("aie_anonym")
+        if zuordnung and flow.response.stream is False and flow.response.raw_content:
+            try:
+                inhalt = logik.entpacken_begrenzt(flow.response.raw_content,
+                                                  flow.response.headers.get("content-encoding", ""))
+                text = inhalt.decode("utf-8")
+                try:
+                    neu = json.dumps(anonym.einsetzen_json(json.loads(text), zuordnung),
+                                     ensure_ascii=False).encode("utf-8")
+                except ValueError:
+                    neu = anonym.einsetzen(text, zuordnung).encode("utf-8")
+                flow.response.headers.pop("content-encoding", None)
+                flow.response.set_content(neu)
+            except Exception:  # noqa: BLE001
+                log.exception("Anonymisierer: Antwort liess sich nicht zurückübersetzen")
         werte = self._maske(flow)
         if not werte:
             return
@@ -252,7 +561,14 @@ class AieEgress:
             log.exception("Antwort liess sich nicht verdecken")
             flow.response = _antwort(502, "Egress-Proxy: Antwort konnte nicht geprüft werden")
 
+    @_sicher("websocket")
     def websocket_message(self, flow: http.HTTPFlow):
+        # Anonymisierer: Websockets zu Modellanbietern werden nicht anonymisiert — schließen
+        # statt Klartext durchlassen (Codex nutzt standardmäßig HTTP mit Ereignisstrom).
+        if self._anonym_einstellung(flow) is not None:
+            log.warning("Anonymisierer: Websocket zu einem Modellanbieter geschlossen")
+            flow.kill()
+            return
         werte = self._maske(flow)
         if not werte or not flow.websocket or not flow.websocket.messages:
             return

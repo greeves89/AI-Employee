@@ -80,12 +80,15 @@ import { MountPermissionsModal } from "@/components/admin/mount-permissions-moda
 import { ResetPasswordModal } from "@/components/admin/reset-password-modal";
 import { FeedbackDetailModal } from "@/components/admin/feedback-detail-modal";
 import { RolesPanel } from "@/components/admin/roles-panel";
+import { RechteUebersicht, RollenVorlagen } from "@/components/admin/rollen-vorlagen";
 import { PagesPanel } from "@/components/admin/pages-panel";
 import { SsoGroupsPanel } from "@/components/admin/sso-groups-panel";
 import { DatensicherungKarte } from "@/components/admin/datensicherung-karte";
 import { DatenschutzKarte } from "@/components/admin/datenschutz-karte";
 import { SicherheitsKarte } from "@/components/admin/sicherheits-karte";
 import { EgressStufenKarte } from "@/components/admin/egress-stufen-karte";
+import { GitServerKarte } from "@/components/admin/git-server-karte";
+import { KioskZugangKarte } from "@/components/admin/kiosk-zugang-karte";
 import { AgentenUpdatesKarte } from "@/components/admin/agenten-updates-karte";
 import { nutzerLoeschenMitRueckfrage } from "@/components/admin/nutzer-loeschen";
 import type { AdminOverview } from "@/lib/api";
@@ -130,6 +133,7 @@ export default function AdminPage() {
   // lib/admin-bereiche auf; Unbekanntes faellt auf die Nutzerliste.
   const angefragterReiter = searchParams.get("tab");
   const [tab, setTab] = useState<Tab>(() => adminBereichAusTab(angefragterReiter).bereich);
+  const [rollenStand, setRollenStand] = useState(0);
   // Ein Link auf einen anderen Bereich, waehrend die Konsole schon offen ist,
   // aendert nur die Adresse — der Bereich muss trotzdem folgen.
   useEffect(() => {
@@ -545,7 +549,7 @@ export default function AdminPage() {
             {tab === "second-brains" && <SecondBrainsView embedded />}
             {tab === "web-search" && <WebSearchView embedded />}
             {tab === "secrets" && <SecretsView embedded />}
-            {tab === "health" && <><SicherheitsKarte /><AgentenUpdatesKarte /><EgressStufenKarte /><DatensicherungKarte /><DatenschutzKarte /><HealthView embedded /></>}
+            {tab === "health" && <><SicherheitsKarte /><AgentenUpdatesKarte /><EgressStufenKarte /><GitServerKarte /><KioskZugangKarte /><DatensicherungKarte /><DatenschutzKarte /><HealthView embedded /></>}
             {tab === "audit" && <AuditView embedded />}
             {tab === "dlp" && <DlpView embedded />}
             {tab === "master-rules" && <MasterRulesView />}
@@ -790,7 +794,7 @@ export default function AdminPage() {
                           {agent.container_id.slice(0, 12)}
                         </p>
                       ) : (
-                        <p className="text-[11px] text-muted-foreground/40">Keiner</p>
+                        <p className="text-[11px] text-muted-foreground">Keiner</p>
                       )}
                     </div>
 
@@ -882,7 +886,7 @@ export default function AdminPage() {
                   <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-12 text-center">
                     <UserCog className="h-8 w-8 mx-auto text-muted-foreground/30 mb-3" />
                     <p className="text-sm text-muted-foreground">Noch keine Zuweisungen</p>
-                    <p className="text-xs text-muted-foreground/50 mt-1">Weise einem Nutzer eine Agenten-Vorlage zu</p>
+                    <p className="text-xs text-muted-foreground mt-1">Weise einem Nutzer eine Agenten-Vorlage zu</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -1101,7 +1105,14 @@ export default function AdminPage() {
             )}
 
             {tab === "roles" && (
+              <div className="mb-6 space-y-6">
+                <RollenVorlagen onAngelegt={() => setRollenStand((n) => n + 1)} />
+                <RechteUebersicht stand={rollenStand} />
+              </div>
+            )}
+            {tab === "roles" && (
               <RolesPanel
+                key={rollenStand}
                 users={users}
                 onUserRoleAssigned={(userId, customRoleId) => {
                   setUsers((prev) =>
@@ -1218,7 +1229,7 @@ export default function AdminPage() {
                     })}
                   </div>
                 )}
-                <p className="text-[10px] text-muted-foreground/40 mt-1">
+                <p className="text-[10px] text-muted-foreground mt-1">
                   Bestimmt die Rechte des Nutzers (Second Brains, KI-Konten, Schlüssel, MCP …). Administratorrechte werden separat in der Nutzerliste vergeben.
                 </p>
               </div>
@@ -1468,14 +1479,14 @@ function BudgetTab({
         <div className="rounded-xl border border-foreground/[0.06] bg-card/80 p-4">
           <p className="text-[11px] font-medium text-muted-foreground/70 mb-1">Kosten diesen Monat</p>
           <p className="text-2xl font-bold text-foreground" title={moneyTitle(monthCostExakt)}>{formatMoney(monthCost)}</p>
-          <p className="text-[10px] text-muted-foreground/50 mt-0.5" title={moneyTitle(sinceStart)}>
+          <p className="text-[10px] text-muted-foreground mt-0.5" title={moneyTitle(sinceStart)}>
             Aufgaben und Chat · seit Beginn {formatMoney(sinceStart)}
           </p>
         </div>
         <div className="rounded-xl border border-foreground/[0.06] bg-card/80 p-4">
           <p className="text-[11px] font-medium text-muted-foreground/70 mb-1">Mit Budget-Limit</p>
           <p className="text-2xl font-bold text-foreground">{agentsWithBudget.length}</p>
-          <p className="text-[10px] text-muted-foreground/50 mt-0.5">von {agents.length} Agenten</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">von {agents.length} Agenten</p>
         </div>
         <div className={cn(
           "rounded-xl border p-4",
@@ -1487,7 +1498,7 @@ function BudgetTab({
           <p className={cn("text-2xl font-bold", agentsOverBudget.length > 0 ? "text-red-400" : "text-foreground")}>
             {agentsOverBudget.length}
           </p>
-          <p className="text-[10px] text-muted-foreground/50 mt-0.5">Agenten</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">Agenten</p>
         </div>
         <div className={cn(
           "rounded-xl border p-4",
@@ -1499,7 +1510,7 @@ function BudgetTab({
           <p className={cn("text-2xl font-bold", agentsNearBudget.length > 0 ? "text-amber-700 dark:text-amber-400" : "text-foreground")}>
             {agentsNearBudget.length}
           </p>
-          <p className="text-[10px] text-muted-foreground/50 mt-0.5">&gt;75% verbraucht</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">&gt;75% verbraucht</p>
         </div>
       </div>
 
@@ -1507,7 +1518,7 @@ function BudgetTab({
       <div id="agenten-budget" className="scroll-mt-24 rounded-xl border border-foreground/[0.06] bg-card/80 overflow-hidden">
         <div className="px-5 py-3 border-b border-foreground/[0.06] flex items-center justify-between">
           <h3 className="text-sm font-semibold">Agenten Budget-Übersicht</h3>
-          <p className="text-[11px] text-muted-foreground/50">Klick auf Stift-Icon zum Bearbeiten</p>
+          <p className="text-[11px] text-muted-foreground">Klick auf Stift-Icon zum Bearbeiten</p>
         </div>
         <div className="divide-y divide-foreground/[0.04]">
           {sorted.map((agent) => {
@@ -1540,13 +1551,13 @@ function BudgetTab({
                 {/* Agent name + state */}
                 <div className="w-[180px] shrink-0">
                   <p className="text-sm font-medium truncate">{agent.name}</p>
-                  <p className="text-[10px] text-muted-foreground/50">{agentZustand(agent.state)}</p>
+                  <p className="text-[10px] text-muted-foreground">{agentZustand(agent.state)}</p>
                 </div>
 
                 {/* Spent */}
                 <div className="w-[90px] shrink-0 text-right">
                   <p className="text-sm font-mono font-semibold">{formatMoney(spent)}</p>
-                  <p className="text-[10px] text-muted-foreground/50">verbraucht</p>
+                  <p className="text-[10px] text-muted-foreground">verbraucht</p>
                 </div>
 
                 {/* Budget bar */}
@@ -1562,12 +1573,12 @@ function BudgetTab({
                           style={{ width: `${pct * 100}%` }}
                         />
                       </div>
-                      <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
                         {(pct * 100).toFixed(1)}% von {formatMoney(limit)}
                       </p>
                     </div>
                   ) : (
-                    <p className="text-[11px] text-muted-foreground/40 italic">kein Limit</p>
+                    <p className="text-[11px] text-muted-foreground italic">kein Limit</p>
                   )}
                 </div>
 
@@ -1641,11 +1652,11 @@ function BudgetTab({
               </div>
               <div className="w-[180px] shrink-0">
                 <p className="text-sm font-medium truncate text-muted-foreground">Gelöschte Agenten</p>
-                <p className="text-[10px] text-muted-foreground/50">nicht mehr vorhanden</p>
+                <p className="text-[10px] text-muted-foreground">nicht mehr vorhanden</p>
               </div>
               <div className="w-[90px] shrink-0 text-right">
                 <p className="text-sm font-mono font-semibold" title={moneyTitle(geloeschtMonat)}>{formatMoney(geloeschtMonat)}</p>
-                <p className="text-[10px] text-muted-foreground/50">verbraucht</p>
+                <p className="text-[10px] text-muted-foreground">verbraucht</p>
               </div>
               <div className="flex-1 min-w-0" />
             </div>
@@ -1863,7 +1874,7 @@ function FeedbackTab({
                     )}>
                       {statusCfg.label}
                     </span>
-                    <span className="text-[10px] text-muted-foreground/50 capitalize">{f.category}</span>
+                    <span className="text-[10px] text-muted-foreground capitalize">{f.category}</span>
                     {sentiment && (
                       <span className={cn("inline-flex items-center gap-1 text-[10px]", sentiment.color)}>
                         <sentiment.icon className="h-3 w-3" />
@@ -1874,7 +1885,7 @@ function FeedbackTab({
                   {f.description && (
                     <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{f.description}</p>
                   )}
-                  <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground/50">
+                  <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
                     <span>{f.user_name || f.user_id}</span>
                     <span>{new Date(f.created_at).toLocaleString("de-DE")}</span>
                     {f.page && <span className="font-mono">{f.page}</span>}
@@ -1955,7 +1966,7 @@ function FeedbackTab({
                       className={cn(
                         "p-1.5 rounded-lg transition-colors disabled:opacity-40",
                         githubConnected === false
-                          ? "text-muted-foreground/40 cursor-not-allowed"
+                          ? "text-muted-foreground cursor-not-allowed"
                           : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]"
                       )}
                       title={
@@ -2021,7 +2032,7 @@ function FeedbackTab({
         <div className="text-center py-12 text-muted-foreground">
           <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-30" />
           <p className="text-sm">Noch kein Feedback erhalten</p>
-          <p className="text-xs text-muted-foreground/50 mt-1">Feedback erscheint hier, sobald Nutzer welches senden.</p>
+          <p className="text-xs text-muted-foreground mt-1">Feedback erscheint hier, sobald Nutzer welches senden.</p>
         </div>
       )}
 

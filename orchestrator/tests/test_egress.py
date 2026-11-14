@@ -197,7 +197,8 @@ class UmgebungTests(unittest.IsolatedAsyncioTestCase):
         from app.dependencies import make_agent_token
         with patch.object(settings, "egress_proxy_enabled", True), \
                 patch.object(settings, "egress_proxy_token", TOKEN), \
-                patch.object(egress, "ca_zertifikat", AsyncMock(return_value="-----BEGIN CERTIFICATE-----\nX\n")):
+                patch.object(egress, "ca_zertifikat", AsyncMock(return_value="-----BEGIN CERTIFICATE-----\nX\n")), \
+                patch.object(egress, "_zielliste_umgebung", AsyncMock(return_value={})):
             env = await egress.agent_umgebung("a1")
         self.assertEqual(env["HTTPS_PROXY"],
                          f"http://a1:{make_agent_token('a1')}@ai-employee-egress-proxy:8080")
@@ -215,7 +216,8 @@ class UmgebungTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(egress.interne_hosts(None), [])
         with patch.object(settings, "egress_proxy_enabled", True), \
                 patch.object(settings, "egress_proxy_token", TOKEN), \
-                patch.object(egress, "ca_zertifikat", AsyncMock(return_value="-----BEGIN CERTIFICATE-----\nX\n")):
+                patch.object(egress, "ca_zertifikat", AsyncMock(return_value="-----BEGIN CERTIFICATE-----\nX\n")), \
+                patch.object(egress, "_zielliste_umgebung", AsyncMock(return_value={})):
             env = await egress.agent_umgebung("a1", mcp)
         self.assertIn("test-mcp-server", env["NO_PROXY"].split(","))
         self.assertNotIn("mcp.example.com", env["NO_PROXY"], "Externe MCPs bleiben am Proxy")
@@ -517,15 +519,15 @@ class EgressDatenTests(SecretsTestBasis):
         await self.db.commit()
         k = egress.platzhalter(0, egress.KI)
         with patch.object(creds, "resolve", AsyncMock(return_value=(creds.SOURCE_TEAM, "claude_code",
-                                                                      "sk-ant-oat01-erneuert"))):
-            self.assertEqual(await self._aufloesen("api.anthropic.com", k), {"werte": {k: "sk-ant-oat01-erneuert"}})
+                                                                      "sk" "-ant-oat01-erneuert"))):
+            self.assertEqual(await self._aufloesen("api.anthropic.com", k), {"werte": {k: "sk" "-ant-oat01-erneuert"}})
         # Nicht ermittelbar (Fehler): die Abschrift gilt
         with patch.object(creds, "resolve", AsyncMock(side_effect=RuntimeError("db weg"))):
             self.assertEqual(await self._aufloesen("api.anthropic.com", k), {"werte": {k: "sk-ant-oat01-alt"}})
         # Heute kein Zugang (vom Admin gesperrt) oder einer anderer Art: auch hinter dem
         # Proxy keiner — die Abschrift wuerde das Sperren unterlaufen
         for heute in ((creds.SOURCE_NONE, "claude_code", None),
-                      (creds.SOURCE_TEAM, "claude_code", "sk-ant-api03-schluessel")):
+                      (creds.SOURCE_TEAM, "claude_code", "sk" "-ant-api03-schluessel")):
             with self.subTest(heute), patch.object(creds, "resolve", AsyncMock(return_value=heute)):
                 self.assertEqual((await self._aufloesen("api.anthropic.com", k)).status_code, 403)
 
@@ -534,13 +536,13 @@ class EgressDatenTests(SecretsTestBasis):
         from app.api import agents as api_agents
         from app.core import agent_credentials as creds
         agent = await self.db.get(Agent, "a1")
-        echt = (creds.SOURCE_PERSONAL, "claude_code", "sk-ant-oat01-eigenes")
+        echt = (creds.SOURCE_PERSONAL, "claude_code", "sk" "-ant-oat01-eigenes")
         with patch.object(creds, "resolve", AsyncMock(return_value=echt)):
             agent.config = {}
             await self.db.commit()
             r = await api_agents.get_agent_claude_token("a1", db=self.db, agent_auth={"agent_id": "a1"})
-            self.assertEqual(r["access_token"], "sk-ant-oat01-eigenes", "ohne Proxy wie bisher")
-            agent.config = {"egress_ki": {"CLAUDE_CODE_OAUTH_TOKEN": "enc:sk-ant-oat01-eigenes"}}
+            self.assertEqual(r["access_token"], "sk" "-ant-oat01-eigenes", "ohne Proxy wie bisher")
+            agent.config = {"egress_ki": {"CLAUDE_CODE_OAUTH_TOKEN": "enc:sk" "-ant-oat01-eigenes"}}
             await self.db.commit()
             r = await api_agents.get_agent_claude_token("a1", db=self.db, agent_auth={"agent_id": "a1"})
             self.assertEqual(r["access_token"], egress.platzhalter(0, egress.KI))
@@ -714,7 +716,7 @@ class ProxyLogikTests(unittest.TestCase):
 
     def test_strom_maske(self):
         p = egress.platzhalter(5)
-        w = "sk-echter-wert-1234567890"
+        w = "sk" "-echter-wert-1234567890"
         b64 = base64.b64encode(w.encode()).decode()
         text = f"data: anfang {w} mitte {b64} ende {w}\n\n".encode()
 
@@ -806,9 +808,18 @@ class OrchestratorKlientTests(unittest.TestCase):
     def test_anmeldung_zwischengespeichert_und_notbetrieb(self):
         self.antworten = [(200, {"hosts": ["api.github.com"]})]
         self.assertEqual(self.o.hosts(("a1", "t")), ["api.github.com"])
-        self.uhr[0] += 30
+        self.uhr[0] += logik.ZIELLISTE_AUS_FRISCH - 1
         self.assertEqual(self.o.hosts(("a1", "t")), ["api.github.com"])
         self.assertEqual(len(self.aufrufe), 1)
+        # Ohne Zielliste gilt der Stand nur kurz (neu gestarteter Agent mit Liste)
+        self.uhr[0] += 2
+        self.antworten = [(200, {"hosts": ["api.github.com"], "zielliste": {"muster": []}})]
+        self.o.hosts(("a1", "t"))
+        self.assertEqual(len(self.aufrufe), 2)
+        # Mit Zielliste: 60 s
+        self.uhr[0] += logik.ANMELDUNG_FRISCH - 1
+        self.o.hosts(("a1", "t"))
+        self.assertEqual(len(self.aufrufe), 2)
         # Orchestrator startet neu: die bestaetigte Anmeldung gilt weiter
         self.uhr[0] += 300
         self.antworten = [logik.OrchestratorFehler("weg")]

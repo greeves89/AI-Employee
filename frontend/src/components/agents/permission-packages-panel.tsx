@@ -141,13 +141,13 @@ export function PermissionPackagesPanel({
         {packages.length === 0 && (
           <div className="flex items-center justify-center py-6">
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-2" />
-            <span className="text-xs text-muted-foreground/50">Berechtigungspakete werden geladen...</span>
+            <span className="text-xs text-muted-foreground">Berechtigungspakete werden geladen...</span>
           </div>
         )}
       </div>
 
       <div className="px-5 pb-4">
-        <p className="text-[11px] text-muted-foreground/50">
+        <p className="text-[11px] text-muted-foreground">
           Ohne Auswahl: nur pip/npm install (kein sudo). Basis-Werkzeuge (git, curl, node) sind immer verfügbar.
         </p>
       </div>

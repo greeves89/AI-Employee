@@ -240,7 +240,7 @@ class GitHubHostProvider(GitHostProvider):
                 "autor_name": str(autor.get("name") or "")[:100], "autor_mail": str(autor.get("email") or "")[:200]}
 
     async def kommentar_aendern(self, client: httpx.AsyncClient, token: str, repo: str, kommentar_id: int,
-                                body: str) -> bool:
+                                body: str, *, nummer: int | None = None) -> bool:
         """Einen Issue-Kommentar ersetzen (Übernahme verlängern)."""
         resp = await client.patch(f"{self.api_base}/repos/{repo}/issues/comments/{kommentar_id}",
                                   headers=self._headers(token), json={"body": body})

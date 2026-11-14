@@ -36,7 +36,7 @@ class TitleAdornmentTests(unittest.TestCase):
         src = HEADER.read_text()
         self.assertIn("titleAdornment", src)
         # Der Slot steht IM Titel-Block, nicht bei den actions am rechten Rand.
-        title_block = src.split('<h2 className=')[1].split("</div>")[0]
+        title_block = src.split('<h1 className=')[1].split("</div>")[0]
         self.assertIn("titleAdornment", title_block)
 
     def test_rename_moved_out_of_the_right_hand_actions(self):

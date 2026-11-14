@@ -301,7 +301,9 @@ def lesen(kommentar: dict, eigene_anlage: str | None = None) -> Uebernahme | Non
         u.seit = jetzt
     if u.bis is not None and u.bis > jetzt + MAX_BIS:
         u.bis = jetzt + MAX_BIS
-    autor = kommentar.get("autor")
+    # Stabile Kennung des Kontos, wenn der Anbieter eine nennt (GitLab: ``#<Nutzer-ID>``,
+    # übersteht Umbenennen) — sonst der Login. Verglichen mit ``projekt_git.schluessel_konto``.
+    autor = kommentar.get("konto") or kommentar.get("autor")
     u.autor = str(autor)[:60] if isinstance(autor, str) and autor else None
     if kommentar.get("vertraut") is True:
         return u

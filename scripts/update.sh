@@ -46,6 +46,17 @@ docker compose version &>/dev/null 2>&1 || die "docker compose plugin not found.
 command -v git &>/dev/null              || die "git not found."
 ok "Docker is running"
 
+# Laeuft gerade eine Sicherung (etwa die naechtliche), wuerde der Neustart der
+# Dienste sie abbrechen — am 14.11.2026 brach so die naechtliche Sicherung im
+# Datenbank-Schritt ab. Dann lieber nicht aktualisieren und es spaeter erneut tun.
+# Der zweite Durchgang (neue Fassung) prueft nicht erneut: die eigene Sicherung
+# des ersten Durchgangs ist da schon fertig.
+# shellcheck source=lib/sicherung.sh
+. ./scripts/lib/sicherung.sh
+if [ "${UPDATE_NEU_GESTARTET:-0}" != "1" ] && sicherung_laeuft; then
+    die "Gerade läuft eine Sicherung (scripts/backup.sh). Das Update würde sie abbrechen — bitte nach ihrem Ende erneut starten."
+fi
+
 # ── 2. Sicherung vor dem Update (#892) ────────────────────────────────────────
 # Ein Update ändert Datenbankschema und Abbilder. Geht dabei etwas schief, ist
 # die Sicherung von vorhin der Rückweg. Abschaltbar, aber nicht stillschweigend.
@@ -59,7 +70,7 @@ elif [ "$OHNE_SICHERUNG" = "1" ]; then
     warn "Sicherung vor dem Update übersprungen (--ohne-sicherung / UPDATE_OHNE_SICHERUNG=1)."
 else
     info "Sichere vor dem Update (scripts/backup.sh)..."
-    ./scripts/backup.sh \
+    BACKUP_NICHT_AUFRAEUMEN=1 ./scripts/backup.sh \
         || die "Sicherung fehlgeschlagen — Update abgebrochen, nichts verändert. Ursache beheben oder bewusst mit --ohne-sicherung aktualisieren."
     ok "Sicherung erstellt"
 fi
@@ -68,7 +79,15 @@ fi
 if [ "$NEU_GESTARTET" != "1" ]; then
     SKRIPT_VORHER="$(git hash-object scripts/update.sh 2>/dev/null || true)"
     info "Pulling latest code..."
-    git pull
+    # Unter sudo als root holen scheitert, wenn das Repo per SSH angebunden ist: root hat
+    # weder den Schlüssel noch den bekannten Host. Dann als Besitzer des Repos holen
+    # (so wurde es auch eingerichtet). ``git`` bleibt so auch Besitzer der Dateien.
+    REPO_BESITZER="$(stat -c %U .git 2>/dev/null || true)"
+    if [ "$(id -u)" = "0" ] && [ -n "$REPO_BESITZER" ] && [ "$REPO_BESITZER" != "root" ]; then
+        sudo -u "$REPO_BESITZER" -H git pull
+    else
+        git pull
+    fi
     ok "Code up to date (vorher: ${VORHER_COMMIT})"
     # Bringt der Pull eine neue Fassung DIESES Skripts, liefe sonst die alte
     # weiter: bash liest aus der bereits geoeffneten (alten) Datei. So geschehen

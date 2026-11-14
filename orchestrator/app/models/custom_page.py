@@ -28,7 +28,9 @@ from app.models.base import Base
 # Menuegruppen der Seitenleiste. Muss zu ``navGroups`` in
 # frontend/src/components/layout/sidebar.tsx passen — eine unbekannte Gruppe
 # wuerde den Menuepunkt verschlucken, deshalb wird der Wert beim Anlegen geprueft.
-GROUP_KEYS = ("overview", "collab", "automation", "system", "help")
+# ``apps`` (Anwendungen, seit 1.467.1): eigene Gruppe fuer eingebundene Anwendungen
+# wie OpenWebUI — erscheint nur, wenn es solche Menuepunkte gibt.
+GROUP_KEYS = ("overview", "collab", "automation", "apps", "system", "help")
 
 OPEN_MODES = ("iframe", "link")
 

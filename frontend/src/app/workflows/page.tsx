@@ -148,15 +148,15 @@ export default function WorkflowsPage() {
           <RailItem active={sel === "all"} icon={<WorkflowIcon className="h-4 w-4" />} label="Alle" count={workflows.length} onClick={() => setSel("all")} />
           <RailItem active={sel === "none"} icon={<Inbox className="h-4 w-4" />} label="Ohne Ordner" onClick={() => setSel("none")} />
           {sharedCount > 0 && <RailItem active={sel === "shared"} icon={<Users2 className="h-4 w-4" />} label="Mit mir geteilt" count={sharedCount} onClick={() => setSel("shared")} />}
-          <div className="flex items-center justify-between px-2 pb-1 pt-4 text-[11px] uppercase tracking-wide text-muted-foreground/50">
+          <div className="flex items-center justify-between px-2 pb-1 pt-4 text-[11px] uppercase tracking-wide text-muted-foreground">
             Ordner
-            <button onClick={newFolder} className="text-muted-foreground/50 hover:text-foreground" title="Ordner erstellen"><FolderPlus className="h-3.5 w-3.5" /></button>
+            <button onClick={newFolder} className="text-muted-foreground hover:text-foreground" title="Ordner erstellen"><FolderPlus className="h-3.5 w-3.5" /></button>
           </div>
           {folders.map((f) => (
             <div key={f.id} className="group flex items-center">
               <RailItem active={sel === f.id} icon={<Folder className={cn("h-4 w-4", f.shared && "text-sky-700 dark:text-sky-400")} />} label={f.name} count={workflows.filter((w) => w.folder_id === f.id).length} onClick={() => setSel(f.id)} />
               {!f.shared && (
-                <button onClick={() => removeFolder(f.id, f.name)} className="ml-1 shrink-0 text-muted-foreground/0 group-hover:text-muted-foreground/40 hover:!text-red-700 dark:hover:!text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
+                <button onClick={() => removeFolder(f.id, f.name)} className="ml-1 shrink-0 text-muted-foreground/0 group-hover:text-muted-foreground hover:!text-red-700 dark:hover:!text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
               )}
             </div>
           ))}
@@ -190,9 +190,9 @@ export default function WorkflowsPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
-                        <button onClick={() => exportWorkflow(wf)} title="Als Datei exportieren" className="text-muted-foreground/30 hover:text-primary"><Download className="h-4 w-4" /></button>
-                        {isOwner && <button onClick={() => setShareFor(wf)} title="Teilen" className="text-muted-foreground/30 hover:text-primary"><Share2 className="h-4 w-4" /></button>}
-                        {isOwner && <button onClick={() => removeWorkflow(wf)} title="Löschen" className="text-muted-foreground/30 hover:text-red-700 dark:hover:text-red-400"><Trash2 className="h-4 w-4" /></button>}
+                        <button onClick={() => exportWorkflow(wf)} title="Als Datei exportieren" className="text-muted-foreground hover:text-primary"><Download className="h-4 w-4" /></button>
+                        {isOwner && <button onClick={() => setShareFor(wf)} title="Teilen" className="text-muted-foreground hover:text-primary"><Share2 className="h-4 w-4" /></button>}
+                        {isOwner && <button onClick={() => removeWorkflow(wf)} title="Löschen" className="text-muted-foreground hover:text-red-700 dark:hover:text-red-400"><Trash2 className="h-4 w-4" /></button>}
                       </div>
                     </div>
                     {isOwner && folders.filter((f) => !f.shared).length > 0 && (
@@ -224,7 +224,7 @@ function RailItem({ active, icon, label, count, onClick }: { active: boolean; ic
     <button onClick={onClick} className={cn("flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] transition-colors", active ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-foreground/[0.04]")}>
       <span className={cn(active ? "text-primary" : "text-muted-foreground/60")}>{icon}</span>
       <span className="flex-1 truncate text-left">{label}</span>
-      {count != null && <span className="text-[11px] text-muted-foreground/40">{count}</span>}
+      {count != null && <span className="text-[11px] text-muted-foreground">{count}</span>}
     </button>
   );
 }
@@ -263,7 +263,7 @@ function ShareDialog({ workflow, onClose }: { workflow: api.Workflow; onClose: (
       <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl border border-foreground/[0.08] bg-card p-5 shadow-xl">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="flex items-center gap-2 text-sm font-semibold"><Share2 className="h-4 w-4 text-primary" /> „{workflow.name}" teilen</h3>
-          <button onClick={onClose} className="text-muted-foreground/50 hover:text-foreground"><X className="h-4 w-4" /></button>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
         </div>
 
         <div className="flex items-center gap-2">
@@ -280,16 +280,16 @@ function ShareDialog({ workflow, onClose }: { workflow: api.Workflow; onClose: (
 
         <div className="mt-4 space-y-1.5">
           {shares.length === 0 ? (
-            <p className="text-[12px] text-muted-foreground/50">Noch mit niemandem geteilt.</p>
+            <p className="text-[12px] text-muted-foreground">Noch mit niemandem geteilt.</p>
           ) : shares.map((s) => (
             <div key={s.id} className="flex items-center gap-2 rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-2.5 py-1.5 text-[13px]">
               <span className="flex-1 truncate">{s.user_name || s.user_id}</span>
               <span className="text-[11px] text-muted-foreground/60">{ROLE_LABEL[s.role] ?? s.role}</span>
-              <button onClick={() => revoke(s.id)} className="text-muted-foreground/30 hover:text-red-700 dark:hover:text-red-400"><X className="h-3.5 w-3.5" /></button>
+              <button onClick={() => revoke(s.id)} className="text-muted-foreground hover:text-red-700 dark:hover:text-red-400"><X className="h-3.5 w-3.5" /></button>
             </div>
           ))}
         </div>
-        <p className="mt-3 text-[11px] text-muted-foreground/40">Freigabe an ganze Team-Gruppen folgt separat. Ordner-Freigabe teilt alle enthaltenen Workflows.</p>
+        <p className="mt-3 text-[11px] text-muted-foreground">Freigabe an ganze Team-Gruppen folgt separat. Ordner-Freigabe teilt alle enthaltenen Workflows.</p>
       </div>
     </div>
   );

@@ -49,10 +49,18 @@ INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=lib/sicherung.sh
 . "${INSTALL_DIR}/scripts/lib/sicherung.sh"
 
-BACKUP_DIR="${BACKUP_DIR:-/var/backups/ai-employee}"
+STANDARD_ZIEL=/var/backups/ai-employee
+# Ziel und Sicherungsplatte auch aus der .env: Dann sichert ein Update dorthin, wo
+# auch die naechtliche Sicherung liegt (systemd-Unit), statt auf die Platte der
+# Anlage. Vorher landeten 21 GB je Update auf der lokalen Platte (14.11.2026).
+if [ -z "${BACKUP_DIR:-}" ]; then BACKUP_DIR="$(env_wert "${INSTALL_DIR}/.env" BACKUP_DIR)"; fi
+if [ -z "${BACKUP_MOUNT:-}" ]; then BACKUP_MOUNT="$(env_wert "${INSTALL_DIR}/.env" BACKUP_MOUNT)"; fi
+# Ausdruecklich gesetztes Ziel (Umgebung, .env oder --dest) wird nie ersetzt.
+ZIEL_GESETZT="${BACKUP_DIR:+ja}"
+BACKUP_DIR="${BACKUP_DIR:-$STANDARD_ZIEL}"
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --dest) BACKUP_DIR="$2"; shift 2 ;;
+        --dest) BACKUP_DIR="$2"; ZIEL_GESETZT=ja; shift 2 ;;
         *) echo "Unbekannte Option: $1"; exit 1 ;;
     esac
 done
@@ -62,8 +70,13 @@ PG_CONTAINER="${PG_CONTAINER:-ai-employee-postgres}"
 POSTGRES_USER="${POSTGRES_USER:-ai_employee}"
 POSTGRES_DB="${POSTGRES_DB:-ai_employee}"
 ORCHESTRATOR_URL="${ORCHESTRATOR_URL:-http://127.0.0.1:$(env_wert "$ENV_DATEI" ORCHESTRATOR_PORT | grep -E '^[0-9]+$' || echo 8000)}"
-KEEP_DAILY="${BACKUP_KEEP_DAILY:-7}"
-KEEP_WEEKLY="${BACKUP_KEEP_WEEKLY:-4}"
+# Aufbewahrung wie Ziel auch aus der .env — sonst raeumte ein Lauf mit dem
+# Standard (7) eine Ablage auf, die die naechtliche Sicherung mit 14 fuehrt
+# (14.11.2026: 8 Tagessicherungen auf dem NAS geloescht).
+KEEP_DAILY="${BACKUP_KEEP_DAILY:-$(env_wert "$ENV_DATEI" BACKUP_KEEP_DAILY)}"
+KEEP_DAILY="${KEEP_DAILY:-7}"
+KEEP_WEEKLY="${BACKUP_KEEP_WEEKLY:-$(env_wert "$ENV_DATEI" BACKUP_KEEP_WEEKLY)}"
+KEEP_WEEKLY="${KEEP_WEEKLY:-4}"
 ALPINE_IMAGE="${ALPINE_IMAGE:-alpine:3.21}"
 # Die Arbeit (pg_dump, tar, gzip) läuft in Containern — die startet dockerd,
 # also erben sie weder `nice` noch die Priorität der systemd-Unit. Deshalb hier
@@ -89,6 +102,20 @@ if [ -n "${BACKUP_MOUNT:-}" ] && ! ziel_eingehaengt "$BACKUP_MOUNT"; then
     ZIEL_FEHLT=true
     LOG=/dev/null
 else
+    # Ohne root ist das Standardziel oft nicht beschreibbar: /var/backups gehoert
+    # root, und ein frueheres ``sudo update.sh`` legt den Ordner mit 700 als root an.
+    # Dann bisher: Abbruch, das Update unterbleibt, niemand sichert (14.11.2026).
+    # Jetzt: auf einen eigenen Ordner ausweichen und das laut sagen. Nur beim
+    # Standardziel — ein ausdruecklich gesetztes Ziel (BACKUP_DIR, --dest) bleibt.
+    NEUES_ZIEL="$(sicherungsziel_waehlen "$BACKUP_DIR" "$STANDARD_ZIEL" "$(id -u)" "${HOME:-}" \
+        "${ZIEL_GESETZT:-}" "${BACKUP_MOUNT:-}")"
+    if [ "$NEUES_ZIEL" != "$BACKUP_DIR" ]; then
+        echo "[WARN] ${BACKUP_DIR} ist für $(id -un) nicht beschreibbar — sichere nach ${NEUES_ZIEL}." >&2
+        echo "[WARN] Dauerhaft beheben: sudo chown -R $(id -un) ${BACKUP_DIR}  (oder BACKUP_DIR in .env setzen)" >&2
+        BACKUP_DIR="$NEUES_ZIEL"
+        BACKUP_PATH="${BACKUP_DIR}/${BACKUP_TYPE}/${TIMESTAMP}"
+        LOG="${BACKUP_DIR}/backup.log"
+    fi
     mkdir -p "$BACKUP_DIR"
     chmod 700 "$BACKUP_DIR"
 fi
@@ -284,8 +311,14 @@ aufraeumen() {
             | while IFS= read -r alt; do rm -rf -- "$alt"; done
     fi
 }
-aufraeumen daily "$KEEP_DAILY"
-aufraeumen weekly "$KEEP_WEEKLY"
+# Die Sicherung vor einem Update (update.sh setzt BACKUP_NICHT_AUFRAEUMEN=1) raeumt
+# nicht auf: das ist Sache der planmaessigen Sicherung mit ihrer Aufbewahrung.
+if [ "${BACKUP_NICHT_AUFRAEUMEN:-0}" = "1" ]; then
+    log "Aufräumen übersprungen (Sicherung vor einem Update)"
+else
+    aufraeumen daily "$KEEP_DAILY"
+    aufraeumen weekly "$KEEP_WEEKLY"
+fi
 
 # ─── 6. Abschluss ─────────────────────────────────────────────────────────────
 SCHRITT="Abschluss"

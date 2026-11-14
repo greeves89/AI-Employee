@@ -146,7 +146,7 @@ export function FileUploader({
             </button>
           ))}
         </div>
-        <p className="mt-1.5 text-[11px] text-muted-foreground/50">
+        <p className="mt-1.5 text-[11px] text-muted-foreground">
           Der Ordner wird angelegt, falls es ihn noch nicht gibt.
         </p>
       </div>
@@ -168,14 +168,14 @@ export function FileUploader({
       >
         <Upload
           className={`h-8 w-8 mb-3 ${
-            dragOver ? "text-primary" : "text-muted-foreground/40"
+            dragOver ? "text-primary" : "text-muted-foreground"
           }`}
         />
         <p className="text-sm text-muted-foreground">
           Dateien hierher ziehen oder{" "}
           <span className="text-primary font-medium">auswählen</span>
         </p>
-        <p className="mt-1 text-xs text-muted-foreground/50">
+        <p className="mt-1 text-xs text-muted-foreground">
           Jeder Dateityp möglich
         </p>
         <input
@@ -202,7 +202,7 @@ export function FileUploader({
               <span className="text-xs font-medium truncate flex-1">
                 {file.name}
               </span>
-              <span className="text-[10px] text-muted-foreground/50 shrink-0">
+              <span className="text-[10px] text-muted-foreground shrink-0">
                 {formatSize(file.size)}
               </span>
               <button

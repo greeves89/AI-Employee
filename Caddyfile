@@ -49,10 +49,13 @@ import conf.d/*.caddy
 	import conf.d/site/*.caddy
 
 	# Kiosk is LOCAL-ONLY. Requests coming through the Cloudflare tunnel carry a
-	# Cf-Ray header → 404. Requests from the Pi's own browser hit Caddy directly
-	# and have no such header → served. (handle blocks are matched most-specific
+	# Cf-Ray header → 404. Everything else needs the kiosk device access
+	# (core/kiosk_zugang). (handle blocks are matched most-specific
 	# first, so these win over /api/* and the catch-all.)
 	@tunnel header Cf-Ray *
+	# Aus dem lokalen Netz schuetzt nicht Caddy, sondern der Zugang des Kiosk-Geraets
+	# (core/kiosk_zugang): eine Netzregel liesse 172.x-Firmennetze und Agenten
+	# (direkt am Orchestrator) durch (Sicherheitsreview 1.461).
 	handle /api/v1/kiosk* {
 		route {
 			respond @tunnel "Not found" 404
@@ -91,6 +94,17 @@ import conf.d/*.caddy
 	handle @projektdateien {
 		request_body {
 			max_size 21MB
+		}
+		reverse_proxy ai-employee-orchestrator:8000 {
+			import forwarded_https
+		}
+	}
+
+	# Graph-Benachrichtigungen (öffentlich, Microsoft ruft ohne Anmeldung an): kleine Körper.
+	# Der Orchestrator prüft zusätzlich (core/koerper_grenze.py).
+	handle /api/v1/msgraph/* {
+		request_body {
+			max_size 1MB
 		}
 		reverse_proxy ai-employee-orchestrator:8000 {
 			import forwarded_https

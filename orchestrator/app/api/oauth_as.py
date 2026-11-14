@@ -137,10 +137,39 @@ async def well_known_as():
 
 
 @wellknown_router.get("/.well-known/oauth-protected-resource")
+async def well_known_prm_root():
+    """Wurzel-Dokument: der MS-Graph-MCP, wenn eingeschaltet — sonst die eigenen
+    MCP-Endpunkte mit dem Firmen-IdP als Anmeldedienst (#1195). Clients nehmen
+    ohnehin zuerst die Adresse aus ``WWW-Authenticate`` bzw. den Pfad-Anhang."""
+    if _external_enabled():
+        return JSONResponse(oas.prm_metadata())
+    from app.core import mcp_idp_auth
+
+    if mcp_idp_auth.aktiv():
+        doc = mcp_idp_auth.prm_dokument("")
+        doc["resource"] = doc["resource"].rstrip("/")
+        return JSONResponse(doc)
+    raise HTTPException(status_code=404, detail="Not found")
+
+
 @wellknown_router.get("/.well-known/oauth-protected-resource/api/v1/mcp/msgraph")
 async def well_known_prm():
     _require_enabled()
     return JSONResponse(oas.prm_metadata())
+
+
+@wellknown_router.get("/.well-known/oauth-protected-resource/api/v1/mcp/{art}/{kennung}")
+async def well_known_prm_idp(art: str, kennung: str):
+    """RFC 9728 mit Pfad-Anhang für Second Brains und Agenten (#1195).
+
+    Kein Datenbankzugriff: Das Dokument ist für jede Kennung gleich aufgebaut und
+    bestätigt damit nicht, ob es ein Brain oder einen Agenten dieses Namens gibt.
+    """
+    from app.core import mcp_idp_auth
+
+    if art not in ("brains", "agents") or not mcp_idp_auth.aktiv() or len(kennung) > 200:
+        raise HTTPException(status_code=404, detail="Not found")
+    return JSONResponse(mcp_idp_auth.prm_dokument(f"{art}/{kennung.replace('/', '')}"))
 
 
 # ---------------------------------------------------------------------------
