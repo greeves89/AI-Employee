@@ -153,7 +153,7 @@ function KioskContent() {
       <div className="kiosk-root h-screen w-screen flex items-center justify-center kiosk-bg text-slate-100 p-8">
         <KioskStyles />
         <div className="max-w-md text-center space-y-3">
-          <ShieldCheck className="h-10 w-10 mx-auto text-amber-400" />
+          <ShieldCheck className="h-10 w-10 mx-auto text-amber-700 dark:text-amber-400" />
           <div className="text-lg font-medium">Dieses Gerät ist nicht als Kiosk angemeldet</div>
           <div className="text-sm text-slate-400">
             Ein Admin erzeugt unter Admin-Bereich → Betrieb → Kiosk-Anzeige einen Link und öffnet ihn
