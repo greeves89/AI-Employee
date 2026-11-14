@@ -55,6 +55,8 @@ SECRET_KEYS = {
 
 # All settings keys that can be persisted
 ALLOWED_KEYS = SECRET_KEYS | {
+    # Pruefwert (SHA-256) des Kiosk-Zugangs — nie der Zugang selbst (core/kiosk_zugang).
+    "kiosk_zugang_hash",
     "model_provider",
     "default_model",
     "max_turns",

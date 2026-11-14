@@ -464,7 +464,11 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                     # Ansicht nicht zeigt — kam ein Nutzer nie wieder an sie heran.
                     from app.services.user_lifecycle import wake_agent
                     async with _chat_wake_lock(agent_id):
-                        bereit = await wake_agent(db, _docker, agent_id, wait=True, timeout=45)
+                        # Ein Mensch oeffnet den Chat: weckt auch einen angehaltenen Agenten —
+                        # aber nur, wer ihn verwaltet. Nur-Nutzer heben den Halt des
+                        # Besitzers nicht auf.
+                        bereit = await wake_agent(db, _docker, agent_id, wait=True, timeout=45,
+                                                  durch_mensch=not _nur_nutzen)
                     if not bereit:
                         await websocket.close(code=4010, reason=f"Agent container is {status}")
                         return
@@ -1752,7 +1756,8 @@ async def ws_agent_browser(
     from app.core.agent_wakeup import ensure_agent_running
 
     try:
-        await ensure_agent_running(agent_id, _docker, _redis)
+        # Besitzer oeffnet den Browser-Reiter (require_agent_owner): ein Mensch.
+        await ensure_agent_running(agent_id, _docker, _redis, durch_mensch=True)
     except Exception as e:  # noqa: BLE001 — der Versuch darf den Kanal nicht kippen
         logger.warning("[Browser] Wecken von %s fehlgeschlagen: %s", scrub_log(agent_id), e)
 

@@ -43,6 +43,8 @@ api_router.include_router(integrations.router)
 # them on an actual kiosk device. See config.kiosk_enabled.
 if app_config.kiosk_enabled:
     api_router.include_router(kiosk.router)
+    api_router.include_router(kiosk.anmelde_router)
+api_router.include_router(kiosk.verwaltung_router)
 api_router.include_router(brain.router)
 api_router.include_router(knowledge.router)
 api_router.include_router(knowledge_feeds.router)

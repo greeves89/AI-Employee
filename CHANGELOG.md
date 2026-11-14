@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.461.0] - 2026-11-14
+
+### Sicherheit
+- **Angehaltene Agenten bleiben angehalten.** Hat der Nutzer einen Agenten gestoppt, weckt ihn kein automatischer Weg mehr: Aufgaben, Delegationen, Projekt-Takt, Kanäle, Produktivitätswächter. Ihre Nachrichten bleiben in der Warteschlange. Die Prüfung sitzt zentral in `user_lifecycle.wake_agent`.
+  - Wecken darf nur ein Mensch selbst: der Besitzer oder Admin im Chat oder eine Telegram-Nachricht an den eigenen Agenten des Bots. Wer den Agenten nur nutzen darf, hebt den Halt des Besitzers nicht auf.
+  - Am 13.11. liefen angehaltene Agenten wieder, dazu 1.458.0 für „Alle aktualisieren“.
+- **Kiosk nur mit Gerätezugang.** Mit `KIOSK_ENABLED` (Standard aus) antwortete der Kiosk ohne Anmeldung im ganzen lokalen Netz, und Agenten erreichten ihn direkt am Orchestrator. Betroffen waren Status, Chat mit den Agenten, Strompreis und, mit `KIOSK_VOICE_ENABLED`, ein Sprach-Ticket für den Besitzer.
+  - Jetzt braucht jedes Kiosk-Gerät einen Zugang. Ein Admin erzeugt unter **Admin-Bereich → Betrieb → Kiosk-Anzeige** einen Link und öffnet ihn einmal auf dem Gerät. Daraus wird ein Cookie, das nur für die Kiosk-Pfade gilt.
+  - Gespeichert wird nur der Prüfwert des Zugangs. Ohne Zugang antwortet jeder Kiosk-Endpunkt mit 404.
+  - Eine Netzregel in Caddy (nur lokal) hätte Firmennetze mit 172.x-Adressen und Agenten durchgelassen. Sie ist deshalb nicht Teil dieser Lösung.
+- **Weitere Startwege beachten den Halt:** Über `AgentManager.start_agent` laufen die Zustellung, die Agenten-Runden und die Nachrichten zwischen Agenten. Dort startet ein angehaltener Agent nur noch auf menschlichen Wunsch: Start-Knopf, Fortsetzen, Concierge, Browser-Reiter.
+  - Anonymisierer und Zielliste bauen einen gestoppten Agenten nur neu und lassen ihn gestoppt.
+  - Ein App-Bericht weckt nur über `wake_agent`.
+
+### Behoben
+- **Sicherung vor dem Update ohne root.** War `/var/backups/ai-employee` oder einer seiner Unterordner nicht beschreibbar (etwa nach einem früheren `sudo update.sh`), brach das Update ab und niemand sicherte. Jetzt sichert `backup.sh` nach `~/ai-employee-sicherungen` und nennt den Befehl, mit dem man es dauerhaft behebt.
+  - Kein Ausweichen, wenn ein Ziel ausdrücklich gesetzt ist (`BACKUP_DIR`, `--dest`).
+  - Kein Ausweichen, wenn eine eigene Sicherungsplatte eingehängt ist (`BACKUP_MOUNT`).
+
 ## [1.460.0] - 2026-11-14
 
 ### Neu

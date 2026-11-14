@@ -449,14 +449,26 @@ async def wake_user_agents(db: AsyncSession, docker_service, user_id: str) -> li
     return woken
 
 
-async def wake_agent(db: AsyncSession, docker_service, agent_id: str, wait: bool = False, timeout: int = 30) -> bool:
+async def wake_agent(db: AsyncSession, docker_service, agent_id: str, wait: bool = False, timeout: int = 30,
+                     *, durch_mensch: bool = False) -> bool:
     """Ensure a single agent is running. Returns True if the agent is ready.
 
     If the stored container_id no longer exists (e.g. removed by docker rm),
     falls back to a full agent restart via AgentManager to recreate the container.
+
+    Hat der NUTZER den Agenten angehalten (``agent_duty.vom_nutzer_angehalten``),
+    weckt ihn nur ein Mensch selbst (``durch_mensch=True``: der Besitzer schreibt im
+    Chat oder per Telegram). Aufgaben, Delegationen, Projekt-Takt, Kanaele und
+    Waechter wecken ihn nicht — ihre Nachricht bleibt in der Warteschlange, bis er
+    wieder gestartet wird. Bisher pruefte das nur der Scheduler und das
+    Kanal-Gateway; am 13.11.2026 liefen so angehaltene Agenten wieder.
     """
     agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
     if not agent:
+        return False
+    from app.core.agent_duty import vom_nutzer_angehalten
+    if not durch_mensch and vom_nutzer_angehalten(agent):
+        logger.info(f"[UserLifecycle] {scrub_log(agent_id)} vom Nutzer angehalten — nicht automatisch geweckt")
         return False
 
     if agent.state in (AgentState.RUNNING, AgentState.WORKING, AgentState.IDLE):
