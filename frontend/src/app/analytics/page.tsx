@@ -463,13 +463,13 @@ export default function AnalyticsPage() {
                           <td className="py-2.5 px-3 text-right text-[12px] text-muted-foreground">
                             <span className={s.usage_count > 0 ? "text-foreground font-medium" : ""}>{s.usage_count ?? 0}</span>
                             {s.period_uses > 0 && s.period_uses < s.usage_count && (
-                              <div className="text-[10px] text-muted-foreground/50">{s.period_uses} ({days}d)</div>
+                              <div className="text-[10px] text-muted-foreground">{s.period_uses} ({days}d)</div>
                             )}
                           </td>
                           <td className="py-2.5 px-3 text-right text-[12px]">
                             {s.manual_duration_seconds
                               ? <span className="text-amber-700 dark:text-amber-400">{fmtSeconds(s.manual_duration_seconds)}</span>
-                              : <span className="text-muted-foreground/40">—</span>}
+                              : <span className="text-muted-foreground">—</span>}
                           </td>
                           <td className="py-2.5 px-3 text-right text-[12px] text-blue-400">
                             {fmtSeconds(s.avg_agent_duration_seconds)}
@@ -477,12 +477,12 @@ export default function AnalyticsPage() {
                           <td className="py-2.5 px-3 text-right text-[12px]">
                             {s.time_saved_per_use_seconds
                               ? <span className="text-emerald-400 font-medium">{fmtSeconds(s.time_saved_per_use_seconds)}</span>
-                              : <span className="text-muted-foreground/40">—</span>}
+                              : <span className="text-muted-foreground">—</span>}
                           </td>
                           <td className="py-2.5 px-3 text-right text-[12px]">
                             {s.total_time_saved_seconds > 0
                               ? <span className="text-emerald-400 font-semibold">{fmtSeconds(s.total_time_saved_seconds)}</span>
-                              : <span className="text-muted-foreground/40">0s</span>}
+                              : <span className="text-muted-foreground">0s</span>}
                           </td>
                           <td className="py-2.5 px-3 text-right text-[12px]">
                             {s.roi_factor
@@ -496,7 +496,7 @@ export default function AnalyticsPage() {
                                   {s.roi_factor}×
                                 </span>
                               )
-                              : <span className="text-muted-foreground/40">—</span>}
+                              : <span className="text-muted-foreground">—</span>}
                           </td>
                           <td className="py-2.5 px-3 text-right">
                             <Stars value={s.avg_rating} />

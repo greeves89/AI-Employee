@@ -101,7 +101,7 @@ function formatAgentHealth(
 ): { label: string; className: string; ok: boolean } {
   const total = entry.connected + entry.failed + entry.needs_auth + entry.unknown;
   if (!entry.agent_status || total === 0) {
-    return { label: "Agent-Sicht: keine Daten", className: "text-muted-foreground/50", ok: false };
+    return { label: "Agent-Sicht: keine Daten", className: "text-muted-foreground", ok: false };
   }
   if (entry.agent_status === "connected") {
     return {
@@ -189,7 +189,7 @@ function McpToolRunner({ serverId, tool }: { serverId: number; tool: McpTool }) 
       {open && (
         <div className="mt-1.5 space-y-2 rounded-md bg-foreground/[0.02] border border-foreground/[0.04] p-2.5">
           {propNames.length === 0 ? (
-            <p className="text-[10px] text-muted-foreground/50">Keine Parameter.</p>
+            <p className="text-[10px] text-muted-foreground">Keine Parameter.</p>
           ) : (
             propNames.map((key) => {
               const prop = properties[key] || {};
@@ -198,7 +198,7 @@ function McpToolRunner({ serverId, tool }: { serverId: number; tool: McpTool }) 
                   <label className="block text-[10px] font-mono text-muted-foreground/70">
                     {key}
                     {required.has(key) && <span className="text-red-400">*</span>}
-                    {prop.type && <span className="text-muted-foreground/40"> : {prop.type}</span>}
+                    {prop.type && <span className="text-muted-foreground"> : {prop.type}</span>}
                   </label>
                   <input
                     type="text"
@@ -607,7 +607,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
             <div>
               <label className="text-[11px] font-medium text-muted-foreground mb-1 block">
                 Bearer Token{" "}
-                <span className="text-muted-foreground/40">
+                <span className="text-muted-foreground">
                   {editingServer?.has_auth ? "(leer lassen = unverändert)" : "(optional)"}
                 </span>
               </label>
@@ -635,7 +635,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
             <div>
               <label className="text-[11px] font-medium text-muted-foreground mb-1 block">
                 Eigene Header{" "}
-                <span className="text-muted-foreground/40">
+                <span className="text-muted-foreground">
                   {editingServer?.has_headers
                     ? "(leer lassen = unverändert — ein Name: Wert pro Zeile)"
                     : "(optional — ein Name: Wert pro Zeile)"}
@@ -660,7 +660,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
                   Gespeicherte Header entfernen
                 </label>
               )}
-              <p className="text-[10px] text-muted-foreground/50 mt-1">
+              <p className="text-[10px] text-muted-foreground mt-1">
                 Für Server, die statt „Bearer" einen eigenen Header erwarten (z. B. Composio: x-consumer-api-key).
               </p>
             </div>
@@ -668,7 +668,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
               <div>
                 <label className="text-[11px] font-medium text-muted-foreground mb-1 block">
                   Eigene OAuth-Rückkehr-Adresse{" "}
-                  <span className="text-muted-foreground/40">(optional — leer = die dieser Installation)</span>
+                  <span className="text-muted-foreground">(optional — leer = die dieser Installation)</span>
                 </label>
                 <input
                   type="url"
@@ -677,7 +677,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
                   placeholder="https://beispiel.invalid"
                   className="w-full rounded-lg border border-foreground/[0.08] bg-background/50 px-3 py-2 text-sm font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
                 />
-                <p className="text-[10px] text-muted-foreground/50 mt-1">
+                <p className="text-[10px] text-muted-foreground mt-1">
                   Nur nötig, wenn dieser Anbieter eine enge Liste erlaubter Rückkehr-Adressen führt.
                   Sonst musste bisher die Adresse der ganzen Installation umgestellt werden — was
                   gleichzeitig Anmeldung und Kalender-Anbindung umgehängt hat.
@@ -740,7 +740,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
               </label>
             )}
             {editingServer?.has_auth && !addBearer.trim() && !removeToken && (
-              <p className="text-[10px] text-muted-foreground/50">
+              <p className="text-[10px] text-muted-foreground">
                 Hinweis: Der Verbindungstest nutzt nur ein hier eingegebenes Token — der gespeicherte Token kann dafür nicht ausgelesen werden.
               </p>
             )}
@@ -809,7 +809,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
                   onClick={() => setExpandedServer(isExpanded ? null : server.id)}
                 >
                   <ChevronRight className={cn(
-                    "h-3.5 w-3.5 text-muted-foreground/50 transition-transform duration-150 shrink-0",
+                    "h-3.5 w-3.5 text-muted-foreground transition-transform duration-150 shrink-0",
                     isExpanded && "rotate-90"
                   )} />
 
@@ -859,7 +859,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
                         </span>
                       )}
                       {!server.enabled && (
-                        <span className="text-[10px] text-muted-foreground/50">deaktiviert</span>
+                        <span className="text-[10px] text-muted-foreground">deaktiviert</span>
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground/60 font-mono truncate mt-0.5">{server.url}</p>
@@ -896,7 +896,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
                           "flex h-7 w-7 items-center justify-center rounded-lg transition-colors",
                           server.fuer_alle
                             ? "text-sky-500 hover:bg-sky-500/15"
-                            : "text-muted-foreground/40 hover:text-foreground hover:bg-foreground/[0.06]"
+                            : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]"
                         )}
                         title={server.fuer_alle
                           ? "Allen Nutzern bereitgestellt — klicken, um es zurückzunehmen"
@@ -911,7 +911,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
                         "flex h-7 w-7 items-center justify-center rounded-lg transition-colors",
                         server.enabled
                           ? "text-emerald-400 hover:bg-emerald-500/15"
-                          : "text-muted-foreground/40 hover:bg-foreground/[0.06]"
+                          : "text-muted-foreground hover:bg-foreground/[0.06]"
                       )}
                       title={server.enabled ? "Deaktivieren" : "Aktivieren"}
                     >
@@ -924,7 +924,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
                         "flex h-7 w-7 items-center justify-center rounded-lg transition-colors",
                         server.oauth_connected
                           ? "text-emerald-400 hover:bg-emerald-500/15"
-                          : "text-muted-foreground/40 hover:text-foreground hover:bg-foreground/[0.06]"
+                          : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]"
                       )}
                       title={server.oauth_connected
                         ? "OAuth erneut verbinden (neuer Login)"
@@ -938,7 +938,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
                     </button>
                     <button
                       onClick={() => openEdit(server)}
-                      className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/40 hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+                      className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
                       title="Bearbeiten"
                     >
                       <Pencil className="h-3.5 w-3.5" />
@@ -946,7 +946,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
                     <button
                       onClick={() => handleRefresh(server.id)}
                       disabled={refreshing === server.id}
-                      className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/40 hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+                      className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
                       title="Werkzeuge neu laden"
                     >
                       {refreshing === server.id ? (
@@ -958,7 +958,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
                     <button
                       onClick={() => handleDelete(server.id)}
                       disabled={deleting === server.id}
-                      className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/40 hover:text-red-400 hover:bg-red-500/15 transition-colors"
+                      className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/15 transition-colors"
                       title="Entfernen"
                     >
                       {deleting === server.id ? (
@@ -974,7 +974,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
                 {isExpanded && (
                   <div className="border-t border-foreground/[0.06] px-4 py-3">
                     {toolCount === 0 ? (
-                      <p className="text-xs text-muted-foreground/50 py-2">Keine Werkzeuge gefunden</p>
+                      <p className="text-xs text-muted-foreground py-2">Keine Werkzeuge gefunden</p>
                     ) : (
                       <div className="space-y-1.5">
                         {server.tools.map((tool: McpTool) => (
@@ -994,7 +994,7 @@ export function McpServersSection({ onToast }: { onToast: (t: { type: "success" 
                         ))}
                       </div>
                     )}
-                    <p className="text-[10px] text-muted-foreground/40 mt-3">
+                    <p className="text-[10px] text-muted-foreground mt-3">
                       Die Agenten müssen neu gestartet werden, um neue MCP-Server zu nutzen.
                     </p>
                   </div>

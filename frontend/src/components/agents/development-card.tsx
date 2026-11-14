@@ -23,9 +23,9 @@ const TREND_STYLE: Record<string, { icon: typeof TrendingUp; className: string }
 function Kennzahl({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="rounded-lg border border-foreground/[0.06] bg-background/60 p-2.5">
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground/40">{label}</div>
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className="mt-0.5 text-sm font-medium text-foreground">{value}</div>
-      {hint && <div className="mt-0.5 text-[10px] text-muted-foreground/50">{hint}</div>}
+      {hint && <div className="mt-0.5 text-[10px] text-muted-foreground">{hint}</div>}
     </div>
   );
 }
@@ -50,7 +50,7 @@ export function DevelopmentCard({ agentId }: { agentId: string }) {
 
   const trend = TREND_STYLE[data?.trend ?? ""] ?? {
     icon: Minus,
-    className: "text-muted-foreground/50",
+    className: "text-muted-foreground",
   };
   const TrendIcon = trend.icon;
 
@@ -76,12 +76,12 @@ export function DevelopmentCard({ agentId }: { agentId: string }) {
       </div>
 
       {loading ? (
-        <div className="flex items-center gap-2 py-4 text-[11px] text-muted-foreground/50">
+        <div className="flex items-center gap-2 py-4 text-[11px] text-muted-foreground">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
           Zahlen werden geholt
         </div>
       ) : !data ? (
-        <div className="py-4 text-[11px] text-muted-foreground/50">
+        <div className="py-4 text-[11px] text-muted-foreground">
           Für diesen Agenten liegen keine Zahlen vor.
         </div>
       ) : (

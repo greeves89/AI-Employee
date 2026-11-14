@@ -74,7 +74,7 @@ export function AgentAppearanceInline({
           maxLength={32}
           className="w-full max-w-xs rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-1.5 text-xs outline-none transition-all focus:border-primary/50"
         />
-        <p className="mt-1 text-[10px] text-muted-foreground/50">
+        <p className="mt-1 text-[10px] text-muted-foreground">
           Frei wählbar. In der Übersicht lässt sich danach filtern und sortieren.
         </p>
       </div>

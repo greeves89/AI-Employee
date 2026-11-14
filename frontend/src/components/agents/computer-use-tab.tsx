@@ -668,14 +668,14 @@ function SessionCard({
                 return (
                   <div key={cap.id} className="flex items-center justify-between gap-3 py-1.5">
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <span className={cn("shrink-0", enabled ? RISK_COLORS[cap.risk] : "text-muted-foreground/40")}>
+                      <span className={cn("shrink-0", enabled ? RISK_COLORS[cap.risk] : "text-muted-foreground")}>
                         {cap.icon}
                       </span>
                       <div className="min-w-0">
                         <p className={cn("text-xs font-medium truncate", enabled ? "text-foreground" : "text-muted-foreground/60")}>
                           {cap.label}
                         </p>
-                        <p className="text-[10px] text-muted-foreground/50 truncate">{cap.description}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{cap.description}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -726,7 +726,7 @@ function SessionCard({
           </button>
         </div>
         {!isConnected && (
-          <p className="text-[10px] text-muted-foreground/50">
+          <p className="text-[10px] text-muted-foreground">
             Bridge-App starten und diese URL einfügen:{" "}
             <code className="text-violet-400/80">python tray_app.py</code>
           </p>
@@ -737,12 +737,12 @@ function SessionCard({
           </p>
         )}
         {bridgeUrl.source === "bridge_host" && (
-          <p className="text-[10px] text-muted-foreground/50">
+          <p className="text-[10px] text-muted-foreground">
             Hostname von der aktiven Bridge-Verbindung übernommen.
           </p>
         )}
         {bridgeUrl.source === "configured" && (
-          <p className="text-[10px] text-muted-foreground/50">
+          <p className="text-[10px] text-muted-foreground">
             Hostname aus der Server-Konfiguration übernommen.
           </p>
         )}
@@ -933,7 +933,7 @@ function MitdenkerPanel({ agentId, session, onChange }: {
     }
   };
 
-  const feld = "w-full rounded-lg bg-foreground/[0.04] border border-foreground/[0.08] px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-violet-500/40";
+  const feld = "w-full rounded-lg bg-foreground/[0.04] border border-foreground/[0.08] px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-violet-500/40";
 
   return (
     <div className="px-4 pb-4 border-t border-foreground/[0.04]">
@@ -1012,12 +1012,12 @@ function MitdenkerPanel({ agentId, session, onChange }: {
             {regeln.map((r) => (
               <div key={r.id} className="flex items-start justify-between gap-3 rounded-lg border border-foreground/[0.06] px-3 py-2">
                 <div className="min-w-0">
-                  <p className={cn("text-xs font-medium truncate", r.aktiv ? "text-foreground" : "text-muted-foreground/50")}>{r.name}</p>
+                  <p className={cn("text-xs font-medium truncate", r.aktiv ? "text-foreground" : "text-muted-foreground")}>{r.name}</p>
                   <p className="text-[10px] text-muted-foreground/60 truncate">
                     Wenn {[r.wenn_app && `App enthält „${r.wenn_app}“`, r.wenn_titel && `Titel enthält „${r.wenn_titel}“`].filter(Boolean).join(" und ")}
                     {" → „"}{r.angebot}{"“"}
                   </p>
-                  <p className="text-[10px] text-muted-foreground/40">
+                  <p className="text-[10px] text-muted-foreground">
                     {r.treffer} Treffer · {r.von === "nutzer" ? "von dir" : "vom Agenten"}
                   </p>
                 </div>
@@ -1053,7 +1053,7 @@ function MitdenkerPanel({ agentId, session, onChange }: {
             <textarea className={cn(feld, "min-h-[56px]")} placeholder="Auftrag nach einem Ja (was der Agent dann tun soll)" value={neu.auftrag}
               maxLength={300}
               onChange={(e) => setNeu({ ...neu, auftrag: e.target.value })} />
-            <p className="text-right text-[10px] text-muted-foreground/50">
+            <p className="text-right text-[10px] text-muted-foreground">
               {neu.auftrag.length}/300 — steht im Overlay vollständig neben dem Ja
             </p>
             <input className={feld} placeholder="Name (optional)" value={neu.name}
@@ -1199,7 +1199,7 @@ function ReplayPanel({
       {!recording && (
         <label className={cn(
           "flex items-start gap-2 text-[11px]",
-          humanCaptureAllowed ? "text-muted-foreground/80" : "text-muted-foreground/40",
+          humanCaptureAllowed ? "text-muted-foreground/80" : "text-muted-foreground",
         )}>
           <input
             type="checkbox"

@@ -722,7 +722,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                     )}>
                       {p.short}
                     </p>
-                    <p className="text-[10px] text-muted-foreground/50 leading-tight mt-0.5">
+                    <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">
                       {p.id === "anthropic" ? "Direkte API" :
                        p.id === "bedrock" ? "AWS" :
                        p.id === "vertex" ? "Google Cloud" :
@@ -817,7 +817,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                         Mit Claude einloggen
                         <ExternalLink className="h-3 w-3 opacity-50" />
                       </button>
-                      <p className="text-[10px] text-muted-foreground/40">
+                      <p className="text-[10px] text-muted-foreground">
                         Erstellt eine eigene OAuth-Session für den Bot. Kein Konflikt mit VS Code.
                       </p>
                       {settings?.has_oauth_token && (
@@ -853,7 +853,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                     {codexLoginLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
                     Mit ChatGPT/Codex einloggen
                   </button>
-                  <p className="text-[10px] text-muted-foreground/40">
+                  <p className="text-[10px] text-muted-foreground">
                     Öffnet den ChatGPT Device-Login im Browser. Nach der Autorisierung speichert der
                     Orchestrator die Codex-Session verschlüsselt und stellt sie Agent-Containern als CODEX_HOME bereit.
                   </p>
@@ -893,7 +893,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                     onChange={setAwsRegion}
                     options={AWS_REGIONS.map((r) => ({ value: r, label: r }))}
                   />
-                  <p className="text-[10px] text-muted-foreground/40 pt-1">
+                  <p className="text-[10px] text-muted-foreground pt-1">
                     Die Claude-Modelle müssen in der AWS-Bedrock-Konsole für die gewählte Region freigeschaltet sein.
                   </p>
                 </div>
@@ -923,10 +923,10 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                       onChange={(e) => setVertexCredentials(e.target.value)}
                       placeholder='{ … GCP-Service-Account-JSON hier einfügen … }'
                       rows={3}
-                      className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-xs font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/25 resize-none"
+                      className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-xs font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground resize-none"
                     />
                   </div>
-                  <p className="text-[10px] text-muted-foreground/40 pt-1">
+                  <p className="text-[10px] text-muted-foreground pt-1">
                     Das vollständige JSON des GCP-Dienstkontoschlüssels einfügen. Die Vertex-AI-API muss aktiviert sein.
                   </p>
                 </div>
@@ -951,7 +951,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                       mono
                     />
                   </div>
-                  <p className="text-[10px] text-muted-foreground/40 pt-1">
+                  <p className="text-[10px] text-muted-foreground pt-1">
                     Einrichtung im Azure-AI-Foundry-Portal. Die Claude-Modelle müssen in deiner Ressource bereitgestellt sein.
                     {" "}Eigene Deployments (z.&nbsp;B. GPT) werden hier <strong>nicht</strong> automatisch erkannt —
                     lege sie unter <strong>KI-Konten</strong> als Anbieter &bdquo;Azure OpenAI&ldquo; mit dem
@@ -963,7 +963,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
 
             {/* Footer: configured providers info */}
             <div className="px-5 py-3 bg-foreground/[0.015] border-t border-foreground/[0.04]">
-              <p className="text-[10px] text-muted-foreground/40">
+              <p className="text-[10px] text-muted-foreground">
                 Das Modell wählst du je Agent in dessen Einstellungen.
               </p>
             </div>
@@ -991,7 +991,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                 onChange={(e) => setMaxTurns(Number(e.target.value))}
                 className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-medium outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all tabular-nums"
               />
-              <p className="text-[10px] text-muted-foreground/40 mt-1.5">
+              <p className="text-[10px] text-muted-foreground mt-1.5">
                 Höchstzahl der Modellaufrufe je Aufgabe.
               </p>
             </div>
@@ -1007,7 +1007,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                 onChange={(e) => setMaxAgents(Number(e.target.value))}
                 className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-medium outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all tabular-nums"
               />
-              <p className="text-[10px] text-muted-foreground/40 mt-1.5">
+              <p className="text-[10px] text-muted-foreground mt-1.5">
                 So viele Agenten dürfen gleichzeitig laufen.
               </p>
             </div>
@@ -1043,7 +1043,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                     onChange={(e) => setUsdEurRate(Number(e.target.value))}
                     className="mt-1.5 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-medium outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all tabular-nums"
                   />
-                  <p className="text-[10px] text-muted-foreground/40 mt-1.5">
+                  <p className="text-[10px] text-muted-foreground mt-1.5">
                     Fester Kurs — er wird nicht automatisch nachgeführt. Abgerechnet
                     wird weiterhin in USD; der Originalbetrag steht an jeder Zahl als
                     Beschriftung.
@@ -1062,7 +1062,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
         {/* ─── Bereich: Dienste & Konten ─── */}
         {bereich === "integrationen" && (
         <div className="space-y-6">
-        <p className="text-[11px] text-muted-foreground/50">
+        <p className="text-[11px] text-muted-foreground">
           Anbindungen für die ganze Anlage: Anmeldung, Benachrichtigungskanäle,
           Mail und Kalender. Eigene Konten (Microsoft, Google, MCP-Server) verbindet
           jeder Nutzer selbst unter{" "}
@@ -1130,7 +1130,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                   placeholder="-1001234567890"
                 />
               </div>
-              <p className="text-[10px] text-muted-foreground/40 mt-3">
+              <p className="text-[10px] text-muted-foreground mt-3">
                 Lege über @BotFather in Telegram einen Bot an und füge ihn deiner Gruppe oder deinem Kanal hinzu.
               </p>
             </div>
@@ -1518,7 +1518,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                               <span className="flex-1 text-emerald-400 break-all">{url}</span>
                               <button
                                 onClick={() => navigator.clipboard.writeText(url)}
-                                className="text-muted-foreground/40 hover:text-muted-foreground transition-colors flex-shrink-0"
+                                className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
                                 title="Kopieren"
                               >
                                 <Copy className="h-3 w-3" />
@@ -1540,7 +1540,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                           <strong className="text-foreground">Application (Client) ID</strong> und Secret in die Felder unten eintragen &amp; speichern
                         </li>
                       </ol>
-                      <p className="text-[10px] text-muted-foreground/50 pt-1 border-t border-foreground/[0.06]">
+                      <p className="text-[10px] text-muted-foreground pt-1 border-t border-foreground/[0.06]">
                         Jeder Nutzer verbindet sein eigenes M365-Konto unter <strong>Integrationen</strong>. Token werden je Nutzer gespeichert, nicht geteilt.
                       </p>
                     </div>
@@ -1607,7 +1607,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                             }); }}
                             className={`rounded-md border px-2 py-1 font-mono text-[11px] transition ${
                               on ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-                                 : "border-foreground/10 text-muted-foreground/50 hover:text-foreground"}`}>
+                                 : "border-foreground/10 text-muted-foreground hover:text-foreground"}`}>
                             {sc}
                           </button>
                         );
@@ -1640,7 +1640,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                         Microsoft nur lesend (Anlage sperren)
                       </div>
                       <p className="mt-0.5 text-[10px] text-muted-foreground/60">
-                        An: Für M365/Graph <span className="text-muted-foreground/40">und</span> den on-prem-Exchange-Connector sendet, entwirft oder ändert kein Agent etwas — gleich, was beim Agenten eingestellt ist.
+                        An: Für M365/Graph <span className="text-muted-foreground">und</span> den on-prem-Exchange-Connector sendet, entwirft oder ändert kein Agent etwas — gleich, was beim Agenten eingestellt ist.
                         Aus: Jeder Nutzer stellt seine eigenen Agenten selbst ein (Lesen, Entwürfe + Freigabe, Lesen + Schreiben).
                       </p>
                     </div>
@@ -1715,13 +1715,13 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                         </span>
                         <button
                           onClick={() => navigator.clipboard.writeText(`${window.location.origin}/api/v1/mcp/msgraph`)}
-                          className="flex-shrink-0 text-muted-foreground/40 transition-colors hover:text-muted-foreground"
+                          className="flex-shrink-0 text-muted-foreground transition-colors hover:text-muted-foreground"
                           title="Kopieren"
                         >
                           <Copy className="h-3 w-3" />
                         </button>
                       </div>
-                      <p className="text-[10px] text-muted-foreground/50">
+                      <p className="text-[10px] text-muted-foreground">
                         Login &amp; Client-Registrierung (DCR) laufen automatisch über OAuth: Der User wird direkt zur Microsoft-Anmeldung geschickt und landet zurück im Chat. Wer in OpenWebUI bereits mit Microsoft angemeldet ist, sieht gar keine Maske. Token sind pro User — kein geteilter Zugriff.
                       </p>
                     </div>
@@ -1839,7 +1839,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                     mono
                   />
                 )}
-                <p className="text-[10px] text-muted-foreground/50 pt-1 border-t border-foreground/[0.06]">
+                <p className="text-[10px] text-muted-foreground pt-1 border-t border-foreground/[0.06]">
                   Server-URL eintragen &amp; speichern aktiviert die Integration. Im service_account/modern_auth-Modus
                   muss der User nichts hinterlegen. Voraussetzung am Server: ApplicationImpersonation-Rolle
                   (service_account) bzw. EWS-App-Berechtigung (modern_auth).
@@ -1849,7 +1849,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                 <div className="pt-3 mt-2 border-t border-foreground/[0.06] space-y-3">
                   <div>
                     <p className="text-xs font-medium">E-Mail-Versand über SMTP-Relay</p>
-                    <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
                       Universeller Sendeweg — funktioniert auch, wenn EWS/443 zum Mailserver gesperrt ist.
                       Der Agent sendet als sein Besitzer; Relay-Adresse legt nur der Admin fest.
                     </p>
@@ -2236,7 +2236,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                   onChange={(e) => setCodexAuthJson(e.target.value)}
                   placeholder='{"auth_mode":"chatgpt","tokens":{...}}'
                   rows={7}
-                  className="mt-3 w-full rounded-lg border border-foreground/[0.08] bg-background px-3.5 py-3 text-xs font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/25 resize-none"
+                  className="mt-3 w-full rounded-lg border border-foreground/[0.08] bg-background px-3.5 py-3 text-xs font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground resize-none"
                 />
               </details>
 
@@ -2303,11 +2303,11 @@ function CredentialField({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         className={cn(
-          "w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/25",
+          "w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground",
           mono && "font-mono text-xs"
         )}
       />
-      {hint && <p className="text-[10px] text-muted-foreground/40">{hint}</p>}
+      {hint && <p className="text-[10px] text-muted-foreground">{hint}</p>}
     </div>
   );
 }

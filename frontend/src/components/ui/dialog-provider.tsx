@@ -264,7 +264,7 @@ function ToastContainer({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id
               </div>
               <button
                 onClick={() => onDismiss(t.id)}
-                className="shrink-0 rounded p-1 text-muted-foreground/50 hover:text-foreground hover:bg-foreground/[0.06]"
+                className="shrink-0 rounded p-1 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]"
               >
                 <X className="h-3.5 w-3.5" />
               </button>

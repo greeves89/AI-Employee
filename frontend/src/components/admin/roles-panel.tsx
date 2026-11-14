@@ -481,7 +481,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
               <PermissionBlock title="Modelle" zusammenfassung={zaehlen(draft.models, modelOptions.length, "alle")}>
                 <div className="flex flex-wrap gap-2">
                   {modelOptions.length === 0 ? (
-                    <span className="text-[11px] text-muted-foreground/50">Keine Modelle aus KI-Konten</span>
+                    <span className="text-[11px] text-muted-foreground">Keine Modelle aus KI-Konten</span>
                   ) : modelOptions.map((model) => (
                     <ToggleChip
                       key={model}
@@ -500,7 +500,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
               <PermissionBlock title="KI-Konten" zusammenfassung={zaehlen(draft.ai_account_ids, aiAccounts.length, "keine")}>
                 <div className="flex flex-wrap gap-2">
                   {aiAccounts.length === 0 && (
-                    <span className="text-[11px] text-muted-foreground/50">Keine KI-Konten angelegt</span>
+                    <span className="text-[11px] text-muted-foreground">Keine KI-Konten angelegt</span>
                   )}
                   {aiAccounts.map((acc) => (
                     <ToggleChip
@@ -522,7 +522,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
               <PermissionBlock title="Schlüssel & Zugangsdaten" zusammenfassung={zaehlen(draft.secret_ids, secrets.length, "keine")}>
                 <div className="flex flex-wrap gap-2">
                   {secrets.length === 0 && (
-                    <span className="text-[11px] text-muted-foreground/50">Keine Schlüssel angelegt</span>
+                    <span className="text-[11px] text-muted-foreground">Keine Schlüssel angelegt</span>
                   )}
                   {secrets.map((s) => (
                     <ToggleChip
@@ -547,7 +547,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
               >
                 <div className="flex flex-wrap gap-2">
                   {mcpServers.length === 0 && (
-                    <span className="text-[11px] text-muted-foreground/50">Keine MCP-Server angelegt</span>
+                    <span className="text-[11px] text-muted-foreground">Keine MCP-Server angelegt</span>
                   )}
                   {mcpServers.map((m) => (
                     <ToggleChip
@@ -575,7 +575,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
               <PermissionBlock title="Integrationen (M365 / Exchange)" zusammenfassung={zaehlen(draft.integration_providers, integrations.length, "alle")}>
                 <div className="flex flex-wrap gap-2">
                   {integrations.length === 0 && (
-                    <span className="text-[11px] text-muted-foreground/50">Keine Integrationen verfügbar</span>
+                    <span className="text-[11px] text-muted-foreground">Keine Integrationen verfügbar</span>
                   )}
                   {integrations.map((it) => (
                     <ToggleChip

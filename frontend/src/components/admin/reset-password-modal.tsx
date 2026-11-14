@@ -55,7 +55,7 @@ export function ResetPasswordModal({ email, tempPassword, onClose }: Props) {
                     </Dialog.Description>
                   </div>
                 </div>
-                <button onClick={onClose} className="rounded p-1 text-muted-foreground/50 hover:text-foreground">
+                <button onClick={onClose} className="rounded p-1 text-muted-foreground hover:text-foreground">
                   <X className="h-4 w-4" />
                 </button>
               </div>

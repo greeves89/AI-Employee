@@ -75,7 +75,7 @@ export function FreigebenCard({ agentId }: { agentId: string }) {
       </div>
 
       {nutzer.length === 0 ? (
-        <p className="text-xs text-muted-foreground/50">Keine weiteren Nutzer auf dieser Anlage.</p>
+        <p className="text-xs text-muted-foreground">Keine weiteren Nutzer auf dieser Anlage.</p>
       ) : (
         <>
           {nutzer.length > 8 && (

@@ -70,7 +70,7 @@ function accountHealthBadge(a: AIAccount): { label: string; className: string } 
     auth_failed: { label: "Anmeldung fehlgeschlagen", className: "text-amber-700 dark:text-amber-400" },
     unreachable: { label: "nicht erreichbar", className: "text-red-400" },
     protocol_error: { label: "Protokollfehler", className: "text-red-400" },
-    unsupported: { label: "keine Prüfung möglich", className: "text-muted-foreground/50" },
+    unsupported: { label: "keine Prüfung möglich", className: "text-muted-foreground" },
   };
   return map[a.last_status] ?? { label: a.last_status, className: "text-muted-foreground/60" };
 }
@@ -343,13 +343,13 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
               </div>
               <div className="col-span-2">
                 <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">
-                  Modelle <span className="text-muted-foreground/40">— jedes mit eigenem Endpoint</span>
+                  Modelle <span className="text-muted-foreground">— jedes mit eigenem Endpoint</span>
                 </label>
 
                 {/* already-added models, each with its own surface */}
                 <div className="space-y-1.5 mb-2">
                   {form.models.length === 0 && (
-                    <span className="text-[11px] text-muted-foreground/40 italic">Noch keine Modelle hinzugefügt</span>
+                    <span className="text-[11px] text-muted-foreground italic">Noch keine Modelle hinzugefügt</span>
                   )}
                   {form.models.map((m) => (
                     <div key={m.name} className="flex items-center gap-2 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2">
@@ -357,7 +357,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                       <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-medium shrink-0", PROVIDER_COLORS[m.provider_type] || "")}>
                         {m.provider_type}
                       </span>
-                      <span className="text-[10px] text-muted-foreground/50 truncate flex-1">{m.api_endpoint || "— Endpoint fehlt —"}</span>
+                      <span className="text-[10px] text-muted-foreground truncate flex-1">{m.api_endpoint || "— Endpoint fehlt —"}</span>
                       {discovered && discovered.length > 0 && !discovered.some((d) => d.id === m.name) && (
                         <span className="shrink-0 rounded-full border border-amber-500/20 bg-amber-500/[0.06] px-2 py-0.5 text-[10px] text-amber-700 dark:text-amber-400" title="Nicht in der vom Anbieter abgerufenen Liste">
                           nicht in Liste
@@ -446,7 +446,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                   </button>
                 </div>
 
-                <p className="text-[10px] text-muted-foreground/50 mt-1.5">
+                <p className="text-[10px] text-muted-foreground mt-1.5">
                   Jedes Modell hat seinen eigenen Endpoint/API-Typ — so deckt <b>ein</b> KI-Konto
                   mehrere Azure-Zugänge ab (Chat, Responses/Codex, Anthropic/Claude).
                 </p>
@@ -474,7 +474,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                 <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">
                   {form.provider_type === "bedrock" ? "AWS Secret Access Key"
                     : form.provider_type === "brave-search" ? "Brave API-Key" : "API-Key"}
-                  {editingId && <span className="text-muted-foreground/40"> (leer = unverändert)</span>}
+                  {editingId && <span className="text-muted-foreground"> (leer = unverändert)</span>}
                 </label>
                 <input className={inputCls} type="password" value={form.api_key}
                   onChange={(e) => setForm({ ...form, api_key: e.target.value })}

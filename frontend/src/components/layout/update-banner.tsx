@@ -252,7 +252,7 @@ export function UpdateBanner() {
                   </Dialog.Title>
                   <p className="text-sm text-muted-foreground">
                     <span className="font-mono text-xs text-muted-foreground/70">{version?.current}</span>
-                    <span className="mx-2 text-muted-foreground/40">→</span>
+                    <span className="mx-2 text-muted-foreground">→</span>
                     <span className="font-mono text-xs font-semibold text-blue-400">{version?.latest}</span>
                   </p>
                 </div>
@@ -292,7 +292,7 @@ export function UpdateBanner() {
                               <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${type.color}`}>
                                 {type.label}
                               </span>
-                              <span className="font-mono text-[10px] text-muted-foreground/40">
+                              <span className="font-mono text-[10px] text-muted-foreground">
                                 {commit.sha}
                               </span>
                             </div>
@@ -301,7 +301,7 @@ export function UpdateBanner() {
                             </p>
                             <div className="flex items-center gap-2 mt-1">
                               <Clock className="h-3 w-3 text-muted-foreground/30" />
-                              <span className="text-[10px] text-muted-foreground/50">
+                              <span className="text-[10px] text-muted-foreground">
                                 {formatDate(commit.date)}
                                 {commit.author && ` · ${commit.author}`}
                               </span>
@@ -316,7 +316,7 @@ export function UpdateBanner() {
 
               {/* Footer */}
               <div className="border-t border-foreground/[0.06] px-6 py-3 flex items-center justify-between">
-                <p className="text-[11px] text-muted-foreground/50">
+                <p className="text-[11px] text-muted-foreground">
                   Update: <code className="font-mono text-[10px]">./scripts/update.sh</code>
                 </p>
                 <Dialog.Close className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-colors">

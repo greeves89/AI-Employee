@@ -443,7 +443,7 @@ export function TaskDetail({
                 >
                   <FileText className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-primary transition-colors" />
                   <span className="min-w-0 flex-1 truncate text-sm text-foreground/90">{a.name}</span>
-                  <span className="shrink-0 text-[11px] text-muted-foreground/50 tabular-nums">
+                  <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
                     {formatBytes(a.size)}
                   </span>
                   <Download className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 group-hover:text-primary transition-colors" />
@@ -467,10 +467,10 @@ export function TaskDetail({
                 onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) sendFollowUp(); }}
                 placeholder="Auf dem Ergebnis aufbauen … z. B. „mach eine interaktive Version mit Charts und Dark Mode"
                 rows={3}
-                className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all resize-none placeholder:text-muted-foreground/40"
+                className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all resize-none placeholder:text-muted-foreground"
               />
               <div className="flex items-center justify-between">
-                <span className="text-[11px] text-muted-foreground/50">Der Agent arbeitet mit seinem bisherigen Ergebnis weiter (⌘/Strg+Enter)</span>
+                <span className="text-[11px] text-muted-foreground">Der Agent arbeitet mit seinem bisherigen Ergebnis weiter (⌘/Strg+Enter)</span>
                 <button
                   onClick={sendFollowUp}
                   disabled={sendingFollowUp || !followUp.trim()}
@@ -521,7 +521,7 @@ export function TaskDetail({
             className="h-[500px] overflow-y-auto p-5 font-mono text-[12px] leading-relaxed space-y-1"
           >
             {logs.length === 0 && !isActive ? (
-              <div className="flex flex-col items-center justify-center h-full text-muted-foreground/40">
+              <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                 <Terminal className="h-8 w-8 mb-2" />
                 <p className="text-xs">
                   {task.status === "completed" || task.status === "failed"
@@ -579,7 +579,7 @@ export function TaskDetail({
             {replayLoaded && (
               <div className="p-5 space-y-3">
                 {replaySteps.length === 0 ? (
-                  <p className="text-xs text-muted-foreground/50">
+                  <p className="text-xs text-muted-foreground">
                     Keine aufgezeichneten Schritte für diese Task (vor Einführung des Step-Trackings ausgeführt).
                   </p>
                 ) : (
@@ -605,7 +605,7 @@ export function TaskDetail({
                       />
                       <span className="text-[11px] tabular-nums text-muted-foreground/70 w-28 text-right">
                         Schritt {replayIndex}/{replaySteps.length}
-                        {currentStepDurationMs != null && <span className="text-muted-foreground/40"> · {formatDuration(currentStepDurationMs)}</span>}
+                        {currentStepDurationMs != null && <span className="text-muted-foreground"> · {formatDuration(currentStepDurationMs)}</span>}
                       </span>
                     </div>
                     <div ref={replayContainerRef} className="h-[400px] overflow-y-auto rounded-lg bg-foreground/[0.03] dark:bg-black p-4 font-mono text-[12px] leading-relaxed space-y-1">
@@ -613,7 +613,7 @@ export function TaskDetail({
                         <TaskLogLine key={i} event={ev} agentNames={agentNames} />
                       ))}
                       {replayIndex === 0 && (
-                        <p className="text-muted-foreground/40">Abspielen drücken oder den Schieberegler bewegen, um die Ausführung Schritt für Schritt nachzuvollziehen.</p>
+                        <p className="text-muted-foreground">Abspielen drücken oder den Schieberegler bewegen, um die Ausführung Schritt für Schritt nachzuvollziehen.</p>
                       )}
                     </div>
                     {trace && (trace.summary.cost_usd != null || trace.governance.length > 0) && (
@@ -628,7 +628,7 @@ export function TaskDetail({
                         </div>
                         {trace.governance.length > 0 && (
                           <div>
-                            <p className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground/50">
+                            <p className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
                               <ShieldCheck className="h-2.5 w-2.5 text-emerald-400" /> Governance ({trace.governance.length})
                             </p>
                             <div className="space-y-0.5">
@@ -655,7 +655,7 @@ export function TaskDetail({
         )}
 
         {/* Timestamps */}
-        <div className="flex items-center gap-6 text-[11px] text-muted-foreground/50">
+        <div className="flex items-center gap-6 text-[11px] text-muted-foreground">
           <span>Erstellt: {new Date(task.created_at).toLocaleString("de-DE")}</span>
           {task.started_at && <span>Gestartet: {new Date(task.started_at).toLocaleString("de-DE")}</span>}
           {task.completed_at && <span>Fertig: {new Date(task.completed_at).toLocaleString("de-DE")}</span>}
@@ -701,7 +701,7 @@ function TaskLogLine({ event, agentNames = {} }: { event: LogEvent; agentNames?:
       // the replay feel "gebrochen". Timestamp stays as a subtle inline prefix.
       return (
         <div className="flex gap-2">
-          <span className="text-muted-foreground/40 select-none shrink-0 leading-relaxed">{time}</span>
+          <span className="text-muted-foreground select-none shrink-0 leading-relaxed">{time}</span>
           <MarkdownContent content={String(data.text || "")} className="flex-1 !text-foreground/90" />
         </div>
       );
@@ -716,7 +716,7 @@ function TaskLogLine({ event, agentNames = {} }: { event: LogEvent; agentNames?:
         const what = String(input.title || input.prompt || "");
         return (
           <div className="text-amber-700 dark:text-amber-300 flex items-start gap-1.5">
-            <span className="text-muted-foreground/40 mr-0.5 select-none">{time}</span>
+            <span className="text-muted-foreground mr-0.5 select-none">{time}</span>
             <ArrowRight className="h-3 w-3 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
             <span>
               <span className="font-medium">Delegiert an {who}</span>
@@ -727,12 +727,12 @@ function TaskLogLine({ event, agentNames = {} }: { event: LogEvent; agentNames?:
       }
       return (
         <div className="text-blue-600 dark:text-blue-400">
-          <span className="text-muted-foreground/40 mr-2 select-none">{time}</span>
+          <span className="text-muted-foreground mr-2 select-none">{time}</span>
           <span className="inline-flex items-center gap-1">
             <Wrench className="h-3 w-3 text-yellow-700 dark:text-yellow-400 inline" />
             <span className="text-yellow-700 dark:text-yellow-400 font-medium">{tool}</span>
           </span>
-          <span className="text-muted-foreground/50 ml-2">
+          <span className="text-muted-foreground ml-2">
             {JSON.stringify(input).slice(0, 300)}
           </span>
         </div>
@@ -747,7 +747,7 @@ function TaskLogLine({ event, agentNames = {} }: { event: LogEvent; agentNames?:
     case "error":
       return (
         <div className="text-red-600 dark:text-red-400 flex items-start gap-1.5">
-          <span className="text-muted-foreground/40 mr-0.5 select-none">{time}</span>
+          <span className="text-muted-foreground mr-0.5 select-none">{time}</span>
           <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
           {String(data.message || "")}
         </div>
@@ -755,20 +755,20 @@ function TaskLogLine({ event, agentNames = {} }: { event: LogEvent; agentNames?:
     case "system":
       return (
         <div className="text-violet-600/80 dark:text-violet-400/70 text-[11px]">
-          <span className="text-muted-foreground/30 mr-2 select-none">{time}</span>
+          <span className="text-muted-foreground mr-2 select-none">{time}</span>
           {String(data.message || "")}
         </div>
       );
     case "result":
       return (
         <div className="text-emerald-700 dark:text-emerald-400 border-t border-foreground/[0.08] mt-3 pt-3">
-          <span className="text-muted-foreground/40 mr-2 select-none">{time}</span>
+          <span className="text-muted-foreground mr-2 select-none">{time}</span>
           Task completed — Cost: {formatMoney(Number(data.cost_usd || 0))} | Duration: {formatDuration(Number(data.duration_ms || 0))} | Turns: {Number(data.num_turns || 0)}
         </div>
       );
     default:
       return (
-        <div className="text-muted-foreground/40 text-[11px]">
+        <div className="text-muted-foreground text-[11px]">
           {JSON.stringify(event.data)}
         </div>
       );

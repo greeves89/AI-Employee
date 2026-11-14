@@ -94,7 +94,7 @@ function Ref({ groups }: { groups: Group[] }) {
         <details key={g.title} className="group rounded-lg border border-foreground/[0.08] bg-card/60">
           <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-2.5 text-sm font-medium hover:bg-foreground/[0.03]">
             <span>{g.title}</span>
-            <span className="text-[11px] text-muted-foreground/50">{g.items.length}</span>
+            <span className="text-[11px] text-muted-foreground">{g.items.length}</span>
           </summary>
           <ul className="space-y-1 border-t border-foreground/[0.06] px-4 py-3">
             {g.items.map((it, i) => {
@@ -223,7 +223,7 @@ export default function ArchitecturePage() {
           </ul>
         </section>
 
-        <p className="pt-2 text-center text-[11px] text-muted-foreground/50">
+        <p className="pt-2 text-center text-[11px] text-muted-foreground">
           Faktenbasiert aus dem Code inventarisiert. Bei neuen Endpunkten/Tools die Referenz in <span className="font-mono">help/architecture/data.ts</span> ergänzen.
         </p>
       </div>

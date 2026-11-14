@@ -170,7 +170,7 @@ export function MasterRulesView() {
         />
 
         <div className="flex items-center justify-between">
-          <p className="text-[11px] text-muted-foreground/50">
+          <p className="text-[11px] text-muted-foreground">
             Wirksam bei jedem Agenten, sobald er aktualisiert wurde.
           </p>
           <button
@@ -238,7 +238,7 @@ export function MasterRulesView() {
         </div>
 
         {sperren.length === 0 ? (
-          <p className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-4 py-6 text-center text-xs text-muted-foreground/50">
+          <p className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-4 py-6 text-center text-xs text-muted-foreground">
             Noch keine globale Sperre. Agenten-spezifische Regeln stehen weiterhin beim
             jeweiligen Agenten unter „Befehlsregeln“.
           </p>
@@ -270,7 +270,7 @@ export function MasterRulesView() {
                   </span>
                   <button
                     onClick={() => sperreLoeschen(p)}
-                    className="shrink-0 rounded-lg p-1.5 text-muted-foreground/40 transition-colors hover:text-red-400"
+                    className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-red-400"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
