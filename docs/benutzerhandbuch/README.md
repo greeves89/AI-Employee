@@ -629,6 +629,8 @@ Tab **Chat**. Das ist das direkte Gespräch (wie ein Messenger).
   „Der Agent ist gestoppt. Er startet, sobald du schreibst.“ Mit deiner ersten Nachricht startet er
   („Agent startet …“) und antwortet dann. Hat der Besitzer den Agenten angehalten und du nutzt ihn
   nur, wartet deine Nachricht, bis er wieder gestartet wird.
+
+  ![Gestoppter Agent: Hinweis über dem Eingabefeld](screenshots/31-chat-gestoppt.png)
 - **Eingabefeld unten** — Nachricht/Anweisung tippen, **Enter** oder **Senden** (Pfeil).
   Mit **Shift+Enter** fügst du einen Zeilenumbruch ein — das Feld wächst automatisch mit
   (bis ca. 8 Zeilen, danach scrollt es), und die Umbrüche bleiben in der gesendeten
@@ -1881,6 +1883,8 @@ Solange du kein Sekretariat eingerichtet hast, zeigt **Start** deinen Tag:
 
 Darunter steht die Karte **Sekretariat einrichten**. Erst **Einrichten** öffnet das Formular aus 6c.1.
 
+![Start ohne Sekretariat: Wartet auf dich, Aufgaben heute, Als Nächstes geplant, Meine Agenten und die Karte Sekretariat einrichten](screenshots/84-mein-tag.png)
+
 ### 6c.1 Einrichten
 
 1. Seitenleiste → **Start** → Karte **Sekretariat einrichten** → **Einrichten**.
@@ -2626,6 +2630,8 @@ hier holst du **Ergebnisse** ab (Dokumente, Bilder, Videos, Auswertungen). Seite
 
 **Läuft keiner deiner Agenten** *(seit 1.467.0)*, steht je gestopptem Agent ein Knopf **Agent starten**.
 Nach dem Start erscheinen seine Dateien. Agenten, die du nur nutzen darfst, startet ihr Besitzer.
+
+![Dateien ohne laufenden Agenten: je Agent ein Knopf Agent starten](screenshots/14b-files-agent-starten.png)
 
 > Dieselben Dateien siehst du auch direkt am Agenten unter **Workspace** (Kap. 5.4) — der
 > Explorer bündelt sie zentral.
